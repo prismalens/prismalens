@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* PrismaLens Brand Colors - Light Mode */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 217 91% 60%;           /* Prism Blue #3B82F6 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 258 90% 66%;         /* Investigation Purple #8B5CF6 */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 258 90% 66%;            /* Investigation Purple */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;         /* Critical Red #EF4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 158 84% 39%;           /* Success Green #10B981 */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;            /* Warning Amber #F59E0B */
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;              /* Prism Blue */
+
+    --radius: 0.5rem;
+
+    /* Chart Colors */
+    --chart-1: 217 91% 60%;
+    --chart-2: 258 90% 66%;
+    --chart-3: 158 84% 39%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 0 84% 60%;
+  }
+
+  .dark {
+    /* PrismaLens Brand Colors - Dark Mode (Primary) */
+    --background: 222 47% 11%;        /* Deep Space #0F172A */
+    --foreground: 210 40% 98%;
+
+    --card: 217 33% 17%;              /* Slate 800 */
+    --card-foreground: 210 40% 98%;
+
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%;           /* Prism Blue #3B82F6 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 258 90% 66%;         /* Investigation Purple #8B5CF6 */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 258 90% 66%;            /* Investigation Purple */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 84% 60%;
+
+    --success: 158 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
+
+    /* Chart Colors - Dark Mode */
+    --chart-1: 217 91% 65%;
+    --chart-2: 258 90% 70%;
+    --chart-3: 158 84% 45%;
+    --chart-4: 38 92% 55%;
+    --chart-5: 0 84% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}

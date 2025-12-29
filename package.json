@@ -1,0 +1,44 @@
+{
+  "name": "prismalens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source AI-powered incident analysis and root cause detection",
+  "license": "ELv2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prismalens/prismalens.git"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "build:dist": "pnpm --filter prismalens build",
+    "dev": "pnpm db:init && turbo run dev",
+    "dev:api": "pnpm db:init && turbo run dev --filter=@prismalens/api",
+    "dev:frontend": "turbo run dev --filter=@prismalens/frontend",
+    "dev:worker": "cd packages/@prismalens/worker-python && uv run python worker.py --dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "prismalens": "pnpm --filter prismalens exec prismalens",
+    "db:init": "tsx scripts/db-init.ts",
+    "db:migrate": "cd packages/api && pnpm exec prisma migrate dev",
+    "db:generate": "cd packages/api && pnpm exec prisma generate",
+    "db:studio": "cd packages/api && pnpm exec prisma studio",
+    "db:reset": "cd packages/api && pnpm exec prisma migrate reset"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "dotenv": "^16.4.0",
+    "prettier": "^3.2.0",
+    "tsx": "^4.7.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.3.0"
+  },
+  "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

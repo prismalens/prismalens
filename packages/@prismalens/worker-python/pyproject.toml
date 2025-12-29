@@ -1,0 +1,73 @@
+[project]
+name = "prismalens-worker"
+version = "0.1.0"
+description = "PrismaLens Python Worker - Google ADK Agent Execution"
+readme = "README.md"
+license = "ELv2"
+requires-python = ">=3.11"
+dependencies = [
+    # Google ADK for agent execution
+    "google-adk>=1.0.0",
+    "google-genai>=1.0.0",
+
+    # Job queue
+    "bullmq>=0.8.0",
+    "redis>=5.0.0",
+
+    # Configuration and validation
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+
+    # Logging
+    "structlog>=24.0.0",
+
+    # HTTP client for external APIs
+    "httpx>=0.27.0",
+
+    # Environment variables
+    "python-dotenv>=1.0.0",
+
+    # YAML parsing (for OpenAPI specs)
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.10.0",
+]
+
+# Optional integrations
+render = [
+    "httpx>=0.27.0",
+]
+
+github = [
+    "httpx>=0.27.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
