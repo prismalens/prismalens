@@ -7,10 +7,12 @@ import {
   Query,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RecommendationsService } from './recommendations.service.js';
 import { UpdateRecommendationDto } from './dto/index.js';
 import type { Recommendation } from './recommendations.service.js';
 
+@ApiTags('recommendations')
 @Controller('recommendations')
 export class RecommendationsController {
   constructor(

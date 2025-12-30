@@ -11,12 +11,14 @@ import {
   HttpStatus,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AlertsService } from './alerts.service.js';
 import { CreateAlertDto, UpdateAlertDto } from './dto/index.js';
 import type { Alert } from './alerts.service.js';
 import { QueueService } from '../queue/queue.service.js';
 import { AnalysisService } from '../analysis/analysis.service.js';
 
+@ApiTags('alerts')
 @Controller('alerts')
 export class AlertsController {
   constructor(

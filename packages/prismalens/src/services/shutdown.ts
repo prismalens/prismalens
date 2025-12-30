@@ -32,9 +32,6 @@ export class ShutdownService {
     this.handlers.push(handler);
   }
 
-  /**
-   * Alias for registerHandler for API compatibility with n8n pattern.
-   */
   registerHandlers(handler: ShutdownHandler): void {
     this.registerHandler(handler);
   }

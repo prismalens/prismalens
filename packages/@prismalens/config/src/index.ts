@@ -23,16 +23,22 @@ import { serverSchema } from './schemas/server.js';
 import { frontendSchema } from './schemas/client.js';
 import { integrationsSchema } from './schemas/integrations.js';
 import { buildDatabaseUrl } from './utils/database-url.js';
+import { getAppDataDir, ensureAppDataDir } from './utils/app-data.js';
+import { deploymentSchema } from './schemas/deployment.js';
 
 // Re-export all schemas
 export * from './schemas/index.js';
 export * from './env.js';
 
+// Re-export app data utilities
+export { getAppDataDir, ensureAppDataDir };
+
 /**
  * Composed global configuration schema.
  * Merges all domain-specific schemas into a single validated config.
  */
-const baseConfigSchema = databaseSchema
+const baseConfigSchema = deploymentSchema
+  .merge(databaseSchema)
   .merge(llmSchema)
   .merge(serverSchema)
   .merge(frontendSchema)

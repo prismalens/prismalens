@@ -3,7 +3,9 @@
  * Used to construct connection strings for different database providers.
  */
 
+import { join } from 'path';
 import type { DatabaseConfig } from '../schemas/database.js';
+import { getAppDataDir } from './app-data.js';
 
 /**
  * Build a PostgreSQL connection URL from configuration.
@@ -27,14 +29,16 @@ function buildPostgresUrl(config: DatabaseConfig): string {
 
 /**
  * Build a SQLite connection URL from configuration.
+ * Database path is stored in the app data directory (~/.prismalens by default).
+ * Can be customized via PRISMALENS_USER_FOLDER environment variable.
  *
  * @param config - Database configuration object
  * @returns SQLite file path (prefixed with file:)
  */
 function buildSqliteUrl(config: DatabaseConfig): string {
-  const dbPath = config.PRISMALENS_DB_SQLITE_DATABASE || '../../.prismalens/prismalens.db';
-  // Return absolute path as-is, relative path with ./ prefix
-  return dbPath.startsWith('/') ? `file:${dbPath}` : `file:./${dbPath}`;
+  const appDataDir = getAppDataDir();
+  const dbPath = join(appDataDir, 'prismalens.db');
+  return `file:${dbPath}`;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 
 interface HealthResponse {
@@ -13,6 +14,7 @@ interface HealthResponse {
   };
 }
 
+@ApiTags('health')
 @Controller('health')
 export class HealthController {
   constructor(private readonly configService: ConfigService) {}

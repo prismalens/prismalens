@@ -8,12 +8,24 @@ export type DbType = z.infer<typeof dbTypeSchema>;
 
 /**
  * SQLite database configuration.
+ * Database file path is hardcoded to .prismalens/prismalens.db
+ * Configuration focuses on better-sqlite3 library options.
  */
 export const sqliteConfigSchema = z.object({
-  PRISMALENS_DB_SQLITE_DATABASE: z
-    .string()
-    .default('../../.prismalens/prismalens.db')
-    .describe('SQLite database file path (relative to packages/api)'),
+  PRISMALENS_DB_SQLITE_READONLY: z
+    .enum(['true', 'false'])
+    .transform((val) => val === 'true')
+    .default('false')
+    .describe('Open SQLite database connection in readonly mode'),
+  PRISMALENS_DB_SQLITE_FILE_MUST_EXIST: z
+    .enum(['true', 'false'])
+    .transform((val) => val === 'true')
+    .default('false')
+    .describe('Throw error if SQLite database file does not exist'),
+  PRISMALENS_DB_SQLITE_TIMEOUT: z.coerce
+    .number()
+    .default(5000)
+    .describe('Milliseconds to wait when executing queries on locked database'),
 });
 
 export type SqliteConfig = z.infer<typeof sqliteConfigSchema>;
@@ -80,6 +92,7 @@ export type PostgresConfig = z.infer<typeof postgresConfigSchema>;
 /**
  * Database configuration schema.
  * Supports SQLite (default) and PostgreSQL.
+ * Includes app data directory configuration for proper data storage.
  */
 export const databaseSchema = z.object({
   PRISMALENS_DB_TYPE: dbTypeSchema.describe('Database type (sqlite or postgresql)'),

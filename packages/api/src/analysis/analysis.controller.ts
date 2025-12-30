@@ -5,9 +5,11 @@ import {
   Query,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AnalysisService, AnalysisRunWithRecommendations } from './analysis.service.js';
 import { QueueService } from '../queue/queue.service.js';
 
+@ApiTags('analysis')
 @Controller('analysis')
 export class AnalysisController {
   constructor(

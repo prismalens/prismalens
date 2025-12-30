@@ -7,9 +7,11 @@ import {
   Headers,
   Logger,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { WebhooksService } from './webhooks.service.js';
 import { GenericWebhookDto, GithubWebhookDto, RenderWebhookDto } from './dto/index.js';
 
+@ApiTags('webhooks')
 @Controller('webhooks')
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
