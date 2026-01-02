@@ -18,13 +18,10 @@ import { z } from 'zod';
 
 // Import schemas
 import { databaseSchema } from './schemas/database.js';
-import { llmSchema, validateLLMConfig } from './schemas/llm.js';
-import { serverSchema } from './schemas/server.js';
-import { frontendSchema } from './schemas/client.js';
-import { integrationsSchema } from './schemas/integrations.js';
+
 import { buildDatabaseUrl } from './utils/database-url.js';
 import { getAppDataDir, ensureAppDataDir } from './utils/app-data.js';
-import { deploymentSchema } from './schemas/deployment.js';
+import { queueSchema, workerSchema, deploymentSchema, serverSchema } from './schemas/index.js';
 
 // Re-export all schemas
 export * from './schemas/index.js';
@@ -39,10 +36,9 @@ export { getAppDataDir, ensureAppDataDir };
  */
 const baseConfigSchema = deploymentSchema
   .merge(databaseSchema)
-  .merge(llmSchema)
   .merge(serverSchema)
-  .merge(frontendSchema)
-  .merge(integrationsSchema)
+  .merge(queueSchema)
+  .merge(workerSchema)
   .extend({
     PRISMALENS_DB_URL: z.string().describe('Computed database connection URL'),
   });
@@ -87,12 +83,6 @@ export function getConfig(): GlobalConfig {
       PRISMALENS_DB_URL: databaseUrl,
     };
 
-    // Additional validation: ensure at least one LLM key is provided
-    if (!validateLLMConfig(_config)) {
-      console.warn(
-        '\n⚠️  Warning: No LLM API key configured. Set one of: GOOGLE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or AZURE_API_KEY\n',
-      );
-    }
   }
 
   return _config;

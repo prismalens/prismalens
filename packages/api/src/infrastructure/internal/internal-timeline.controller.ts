@@ -1,0 +1,42 @@
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { ApiExcludeController } from '@nestjs/swagger';
+import { InternalGuard } from './guards/internal.guard.js';
+import { TimelineService } from '../../modules/timeline/timeline.service.js';
+import { CreateTimelineEntryDto } from './dto/index.js';
+import { TimelineSource } from '../../shared/enums/index.js';
+
+/**
+ * Internal API for timeline operations.
+ * Used by the Python worker to add timeline entries in real-time.
+ * Protected by InternalGuard (requires X-Internal-Secret header).
+ */
+@ApiExcludeController()
+@Controller('internal/timeline')
+@UseGuards(InternalGuard)
+export class InternalTimelineController {
+  constructor(private readonly timelineService: TimelineService) { }
+
+  /**
+   * Create a timeline entry (real-time during investigation)
+   * Typically used for 'investigation_started' events
+   */
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async addEntry(@Body() dto: CreateTimelineEntryDto) {
+    return this.timelineService.create({
+      incidentId: dto.incidentId,
+      type: dto.type,
+      title: dto.title,
+      description: dto.description,
+      metadata: dto.metadata,
+      source: dto.source ?? TimelineSource.AI_WORKER,
+    });
+  }
+}

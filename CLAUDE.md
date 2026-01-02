@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## System Context: PrismaLens Community Edition
+* **Architecture:** Single-tenant, local-first, self-hosted application.
+* **Project Scope:** Implicitly scoped to the current local project (Single Project Mode).
+* **Data Isolation:** No multi-tenancy. Ignore `tenant_id` or `organization_id` constraints.
+* **User Authority:** Single-user environment with full admin access.
+* **Execution Environment:** Local Docker/Process. All file paths are relative to the container/host mount.
+
 ## Repository Structure
 
 This is a Turborepo monorepo:
@@ -113,7 +120,6 @@ Agents are in `packages/@prismalens/worker-python/agents/`:
 - `app/` - Next.js App Router pages
 - `components/InvestigationCanvas.tsx` - React Flow DAG visualization
 - `lib/api/` - API client with TanStack Query hooks
-- `lib/extension-sdk/` - Extension system for plugins
 
 **Python Worker (`packages/@prismalens/worker-python/`)**
 - `agents/` - Google ADK agent implementations

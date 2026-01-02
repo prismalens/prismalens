@@ -3,18 +3,17 @@
 /**
  * Navbar Component
  *
- * Main navigation bar with extension slots for enterprise features.
+ * Main navigation bar
  */
 
 import Link from 'next/link';
-import { ExtensionSlot } from './slots';
 
 export function Navbar() {
   return (
     <nav className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          {/* Left side - Logo and extension slot */}
+          {/* Left side - Logo */}
           <div className="flex items-center gap-4">
             <Link
               href="/"
@@ -23,15 +22,9 @@ export function Navbar() {
               PrismaLens
             </Link>
 
-            {/* Extension slot for left navbar items (e.g., workspace switcher) */}
-            <ExtensionSlot
-              view="layout"
-              slot="navbar-left"
-              className="flex items-center gap-2"
-            />
           </div>
 
-          {/* Right side - Navigation and extension slot */}
+          {/* Right side - Navigation */}
           <div className="flex items-center space-x-4">
             <Link
               href="/"
@@ -52,12 +45,6 @@ export function Navbar() {
               Settings
             </Link>
 
-            {/* Extension slot for right navbar items (e.g., billing status, user menu) */}
-            <ExtensionSlot
-              view="layout"
-              slot="navbar-right"
-              className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-200 dark:border-slate-700"
-            />
           </div>
         </div>
       </div>

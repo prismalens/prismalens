@@ -1,0 +1,78 @@
+import {
+  Controller,
+  Patch,
+  Post,
+  Param,
+  Body,
+  UseGuards,
+  NotFoundException,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { ApiExcludeController } from '@nestjs/swagger';
+import { InternalGuard } from './guards/internal.guard.js';
+import { InvestigationsService } from '../../modules/investigations/investigations.service.js';
+import {
+  UpdateInvestigationStatusDto,
+  InternalInvestigationResultDto,
+} from './dto/index.js';
+
+/**
+ * Internal API for investigation operations.
+ * Used by the Python worker to update investigation status and write results.
+ * Protected by InternalGuard (requires X-Internal-Secret header).
+ */
+@ApiExcludeController()
+@Controller('internal/investigations')
+@UseGuards(InternalGuard)
+export class InternalInvestigationsController {
+  constructor(
+    private readonly investigationsService: InvestigationsService,
+  ) { }
+
+  /**
+   * Update investigation status (real-time updates during execution)
+   * Called when job starts (running), fails, or is cancelled
+   */
+  @Patch(':id/status')
+  @HttpCode(HttpStatus.OK)
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateInvestigationStatusDto,
+  ) {
+    const investigation = await this.investigationsService.updateStatusInternal(
+      id,
+      dto.status,
+      dto.startedAt ? new Date(dto.startedAt) : undefined,
+      dto.error,
+    );
+
+    if (!investigation) {
+      throw new NotFoundException(`Investigation ${id} not found`);
+    }
+
+    return investigation;
+  }
+
+  /**
+   * Write full investigation result (atomic write of all data)
+   * Called when worker completes analysis - writes investigation, agents, tools, recommendations
+   */
+  @Post(':id/result')
+  @HttpCode(HttpStatus.OK)
+  async writeResult(
+    @Param('id') id: string,
+    @Body() dto: InternalInvestigationResultDto,
+  ) {
+    const investigation = await this.investigationsService.writeResultWithRelations(
+      id,
+      dto,
+    );
+
+    if (!investigation) {
+      throw new NotFoundException(`Investigation ${id} not found`);
+    }
+
+    return investigation;
+  }
+}

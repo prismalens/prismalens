@@ -3,13 +3,32 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { AppController } from './app.controller.js';
-import { PrismaModule } from './prisma/prisma.module.js';
-import { HealthModule } from './health/health.module.js';
-import { QueueModule } from './queue/queue.module.js';
-import { AlertsModule } from './alerts/alerts.module.js';
-import { AnalysisModule } from './analysis/analysis.module.js';
-import { WebhooksModule } from './webhooks/webhooks.module.js';
-import { RecommendationsModule } from './recommendations/recommendations.module.js';
+
+// Core modules
+import { PrismaModule } from './core/prisma/prisma.module.js';
+import { AuthModule } from './core/auth/auth.module.js';
+import { UsersModule } from './core/users/users.module.js';
+import { SettingsModule } from './core/settings/settings.module.js';
+
+// Infrastructure modules
+import { HealthModule } from './infrastructure/health/health.module.js';
+import { QueueModule } from './infrastructure/queue/queue.module.js';
+import { InternalModule } from './infrastructure/internal/internal.module.js';
+
+// Feature modules
+import { AlertsModule } from './modules/alerts/alerts.module.js';
+import { EventsModule } from './modules/events/events.module.js';
+import { ServicesModule } from './modules/services/services.module.js';
+import { IncidentsModule } from './modules/incidents/incidents.module.js';
+import { InvestigationsModule } from './modules/investigations/investigations.module.js';
+import { TimelineModule } from './modules/timeline/timeline.module.js';
+import { CorrelationModule } from './modules/correlation/correlation.module.js';
+import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
+import { RecommendationsModule } from './modules/recommendations/recommendations.module.js';
+import { IntegrationsModule } from './modules/integrations/integrations.module.js';
+import { AlertMappingModule } from './modules/alert-mapping/alert-mapping.module.js';
+import { ServiceDiscoveryModule } from './modules/service-discovery/service-discovery.module.js';
+
 import configuration from '../config/configuration.js';
 
 @Module({
@@ -21,8 +40,16 @@ import configuration from '../config/configuration.js';
       ignoreEnvFile: true
     }),
 
-    // Database
+    // Core
     PrismaModule,
+    AuthModule,
+    UsersModule,
+    SettingsModule,
+
+    // Infrastructure
+    HealthModule,
+    QueueModule.forRoot(),
+    InternalModule,
 
     // Serve Next.js frontend in production
     ServeStaticModule.forRootAsync({
@@ -49,16 +76,20 @@ import configuration from '../config/configuration.js';
       },
     }),
 
-    // Core modules
-    HealthModule,
-    QueueModule,
-
-    // Feature modules
-    AlertsModule,
-    AnalysisModule,
-    WebhooksModule,
+    // Feature modules (incident-centric architecture)
+    EventsModule,        // Raw event ingestion
+    ServicesModule,      // Service catalog
+    AlertsModule,        // Alert processing
+    AlertMappingModule,  // Alert mapping rules
+    CorrelationModule,   // Alert → Incident correlation
+    IncidentsModule,     // Incident management (primary entity)
+    InvestigationsModule,// AI investigation (replaces AnalysisModule)
+    TimelineModule,      // Incident timeline
+    WebhooksModule,      // Webhook ingestion
     RecommendationsModule,
+    IntegrationsModule,  // External tool integrations (GitHub, Prometheus, Slack)
+    ServiceDiscoveryModule, // Service discovery from integrations
   ],
   controllers: [AppController],
 })
-export class AppModule {}
+export class AppModule { }
