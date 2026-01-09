@@ -10,22 +10,22 @@
  * Build the Commander system prompt with incident-specific context.
  */
 export function buildCommanderPrompt(context?: {
-    alertSummary?: string;
-    serviceName?: string;
-    incidentId?: string;
-    priority?: 'low' | 'normal' | 'high' | 'critical';
+	alertSummary?: string;
+	serviceName?: string;
+	incidentId?: string;
+	priority?: "low" | "normal" | "high" | "critical";
 }): string {
-    const incidentContext = context
-        ? `
+	const incidentContext = context
+		? `
 # Current Incident
-- **Incident ID**: ${context.incidentId || 'Unknown'}
-- **Service**: ${context.serviceName || 'Unknown'}
-- **Priority**: ${context.priority || 'normal'}
-- **Alert Summary**: ${context.alertSummary || 'See alert details below'}
+- **Incident ID**: ${context.incidentId || "Unknown"}
+- **Service**: ${context.serviceName || "Unknown"}
+- **Priority**: ${context.priority || "normal"}
+- **Alert Summary**: ${context.alertSummary || "See alert details below"}
 `
-        : '';
+		: "";
 
-    return `You are the Incident Commander for PrismaLens - an AI-powered incident investigation system.
+	return `You are the Incident Commander for PrismaLens - an AI-powered incident investigation system.
 
 ${incidentContext}
 
@@ -159,17 +159,17 @@ export const COMMANDER_SYSTEM_PROMPT = buildCommanderPrompt();
  * Build a task description for delegating to a SubAgent.
  */
 export function buildTaskDescription(
-    subagent: 'cartographer' | 'detective' | 'surgeon',
-    taskDetails: string,
-    previousContext?: string
+	subagent: "cartographer" | "detective" | "surgeon",
+	taskDetails: string,
+	previousContext?: string,
 ): string {
-    const contextSection = previousContext
-        ? `\n\n## Previous Context\n${previousContext}`
-        : '';
+	const contextSection = previousContext
+		? `\n\n## Previous Context\n${previousContext}`
+		: "";
 
-    switch (subagent) {
-        case 'cartographer':
-            return `## Context Gathering Task
+	switch (subagent) {
+		case "cartographer":
+			return `## Context Gathering Task
 
 ${taskDetails}
 
@@ -180,8 +180,8 @@ ${taskDetails}
 - Filter logs to relevant timeframes
 - Report what you found clearly${contextSection}`;
 
-        case 'detective':
-            return `## Root Cause Analysis Task
+		case "detective":
+			return `## Root Cause Analysis Task
 
 ${taskDetails}
 
@@ -192,8 +192,8 @@ ${taskDetails}
 - If uncertain, explain what additional data would help
 - Consider multiple failure modes${contextSection}`;
 
-        case 'surgeon':
-            return `## Fix Proposal Task
+		case "surgeon":
+			return `## Fix Proposal Task
 
 ${taskDetails}
 
@@ -203,5 +203,5 @@ ${taskDetails}
 - Use suggest_rollback if deployment is the issue
 - Include verification/test steps
 - Be conservative - unclear issues should recommend investigation${contextSection}`;
-    }
+	}
 }

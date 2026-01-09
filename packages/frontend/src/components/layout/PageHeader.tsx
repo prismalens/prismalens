@@ -1,19 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface PageHeaderProps {
-  // TODO: Define props during implementation
-  // title?: string;
-  // description?: string;
-  // actions?: React.ReactNode;
-  // breadcrumbs?: { label: string; href?: string }[];
-}
+export type PageHeaderProps = {};
 
 export function PageHeader({}: PageHeaderProps) {
-  return (
-    <div>
-      {/* TODO: Implement PageHeader */}
-    </div>
-  );
+	return <div>{/* TODO: Implement PageHeader */}</div>;
 }

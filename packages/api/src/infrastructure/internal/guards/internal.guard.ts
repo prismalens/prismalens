@@ -1,20 +1,27 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { EnvironmentVariables } from '@prismalens/config';
+import {
+	CanActivate,
+	ExecutionContext,
+	Injectable,
+	UnauthorizedException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { EnvironmentVariables } from "@prismalens/config";
 
 @Injectable()
 export class InternalGuard implements CanActivate {
-  constructor(private configService: ConfigService<EnvironmentVariables>) { }
+	constructor(private configService: ConfigService<EnvironmentVariables>) {}
 
-  canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const internalSecret = request.headers['x-internal-secret'];
-    const configuredSecret = this.configService.get<string>('PRISMALENS_INTERNAL_SECRET');
+	canActivate(context: ExecutionContext): boolean {
+		const request = context.switchToHttp().getRequest();
+		const internalSecret = request.headers["x-internal-secret"];
+		const configuredSecret = this.configService.get<string>(
+			"PRISMALENS_INTERNAL_SECRET",
+		);
 
-    if (!internalSecret || internalSecret !== configuredSecret) {
-      throw new UnauthorizedException('Invalid internal secret');
-    }
+		if (!internalSecret || internalSecret !== configuredSecret) {
+			throw new UnauthorizedException("Invalid internal secret");
+		}
 
-    return true;
-  }
+		return true;
+	}
 }

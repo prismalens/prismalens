@@ -1,9 +1,12 @@
-import { createDeepAgent } from 'deepagents';
-import { createLLM } from '../../llm/factory.js';
-import { createSubAgents, type SubAgentConfig } from '../subagents/index.js';
-import { createToolsForAgent } from '../../tools/factory.js';
-import { buildCommanderPrompt, COMMANDER_SYSTEM_PROMPT } from './prompts.js';
-import type { IntegrationContext, InvestigationState } from '../../types/state.js';
+import { createDeepAgent } from "deepagents";
+import { createLLM } from "../../llm/factory.js";
+import { createToolsForAgent } from "../../tools/factory.js";
+import type {
+	IntegrationContext,
+	InvestigationState,
+} from "../../types/state.js";
+import { createSubAgents, type SubAgentConfig } from "../subagents/index.js";
+import { buildCommanderPrompt, COMMANDER_SYSTEM_PROMPT } from "./prompts.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CommanderAgent = ReturnType<typeof createDeepAgent>;
@@ -19,26 +22,26 @@ type CommanderAgent = ReturnType<typeof createDeepAgent>;
  * Configuration for creating the Commander agent
  */
 export interface CommanderConfig {
-    /** Available integrations for tools (GitHub, Render, etc.) */
-    integrations?: IntegrationContext[];
-    /** Model overrides per agent */
-    models?: {
-        commander?: string;
-        cartographer?: string;
-        detective?: string;
-        surgeon?: string;
-    };
-    /** Maximum iterations for the agent */
-    maxIterations?: number;
-    /** LangChain callbacks for tracing */
-    callbacks?: any[];
-    /** Incident-specific context for the prompt */
-    incidentContext?: {
-        alertSummary?: string;
-        serviceName?: string;
-        incidentId?: string;
-        priority?: 'low' | 'normal' | 'high' | 'critical';
-    };
+	/** Available integrations for tools (GitHub, Render, etc.) */
+	integrations?: IntegrationContext[];
+	/** Model overrides per agent */
+	models?: {
+		commander?: string;
+		cartographer?: string;
+		detective?: string;
+		surgeon?: string;
+	};
+	/** Maximum iterations for the agent */
+	maxIterations?: number;
+	/** LangChain callbacks for tracing */
+	callbacks?: any[];
+	/** Incident-specific context for the prompt */
+	incidentContext?: {
+		alertSummary?: string;
+		serviceName?: string;
+		incidentId?: string;
+		priority?: "low" | "normal" | "high" | "critical";
+	};
 }
 
 /**
@@ -64,67 +67,71 @@ export interface CommanderConfig {
  * });
  */
 export function createCommander(config: CommanderConfig = {}): CommanderAgent {
-    const integrations = config.integrations || [];
+	const integrations = config.integrations || [];
 
-    // Create subagents with integrations support
-    const subagentConfig: SubAgentConfig = {
-        integrations,
-        models: config.models,
-    };
-    const subagents = createSubAgents(subagentConfig);
+	// Create subagents with integrations support
+	const subagentConfig: SubAgentConfig = {
+		integrations,
+		models: config.models,
+	};
+	const subagents = createSubAgents(subagentConfig);
 
-    // Create Commander's direct tools (for direct investigation if needed)
-    const commanderTools = createToolsForAgent('commander', integrations);
+	// Create Commander's direct tools (for direct investigation if needed)
+	const commanderTools = createToolsForAgent("commander", integrations);
 
-    // Build prompt with incident context if provided
-    const systemPrompt = config.incidentContext
-        ? buildCommanderPrompt(config.incidentContext)
-        : COMMANDER_SYSTEM_PROMPT;
+	// Build prompt with incident context if provided
+	const systemPrompt = config.incidentContext
+		? buildCommanderPrompt(config.incidentContext)
+		: COMMANDER_SYSTEM_PROMPT;
 
-    // Create the LLM for Commander
-    const model = createLLM({
-        agentName: 'commander',
-        modelName: config.models?.commander,
-        callbacks: config.callbacks,
-    });
+	// Create the LLM for Commander
+	const model = createLLM({
+		agentName: "commander",
+		modelName: config.models?.commander,
+		callbacks: config.callbacks,
+	});
 
-    // Create the DeepAgent with write_todos and task tools built-in
-    // Note: maxIterations is managed externally, not passed to createDeepAgent
-    const agent = createDeepAgent({
-        name: 'incident_commander',
-        model,
-        systemPrompt,
-        tools: commanderTools,
-        subagents,
-    });
+	// Create the DeepAgent with write_todos and task tools built-in
+	// Note: maxIterations is managed externally, not passed to createDeepAgent
+	const agent = createDeepAgent({
+		name: "incident_commander",
+		model,
+		systemPrompt,
+		tools: commanderTools,
+		subagents,
+	});
 
-    return agent;
+	return agent;
 }
 
 /**
  * Create Commander from investigation state.
  * This is the preferred method when called from the LangGraph wrapper.
  */
-export function createCommanderFromState(state: InvestigationState): CommanderAgent {
-    // Extract incident context from state
-    const primaryAlert = state.primaryAlert;
-    const incidentContext = primaryAlert
-        ? {
-              alertSummary: primaryAlert.title + (primaryAlert.description ? `: ${primaryAlert.description}` : ''),
-              serviceName: primaryAlert.serviceName,
-              incidentId: state.incidentId,
-              priority: state.priority,
-          }
-        : {
-              incidentId: state.incidentId,
-              priority: state.priority,
-          };
+export function createCommanderFromState(
+	state: InvestigationState,
+): CommanderAgent {
+	// Extract incident context from state
+	const primaryAlert = state.primaryAlert;
+	const incidentContext = primaryAlert
+		? {
+				alertSummary:
+					primaryAlert.title +
+					(primaryAlert.description ? `: ${primaryAlert.description}` : ""),
+				serviceName: primaryAlert.serviceName,
+				incidentId: state.incidentId,
+				priority: state.priority,
+			}
+		: {
+				incidentId: state.incidentId,
+				priority: state.priority,
+			};
 
-    return createCommander({
-        integrations: state.integrations,
-        incidentContext,
-        // Note: maxIterations is tracked in state but not passed to createDeepAgent
-    });
+	return createCommander({
+		integrations: state.integrations,
+		incidentContext,
+		// Note: maxIterations is tracked in state but not passed to createDeepAgent
+	});
 }
 
 // =============================================================================
@@ -136,7 +143,7 @@ export function createCommanderFromState(state: InvestigationState): CommanderAg
  * @deprecated Use createCommander() instead
  */
 export function createDeepRCAAgent(): CommanderAgent {
-    return createCommander();
+	return createCommander();
 }
 
 /**

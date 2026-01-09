@@ -17,8 +17,7 @@
  * ```
  */
 
-// Export all schemas
-export * from './schemas/index.js'
-
 // Export all contracts
-export * from './contracts/index.js'
+export * from "./contracts/index.js";
+// Export all schemas
+export * from "./schemas/index.js";

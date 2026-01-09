@@ -1,43 +1,43 @@
 {
-  "name": "@prismalens/contracts",
-  "version": "0.1.0",
-  "description": "Shared API contracts and Zod schemas for PrismaLens",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./schemas": {
-      "types": "./dist/schemas/index.d.ts",
-      "import": "./dist/schemas/index.js"
-    },
-    "./contracts": {
-      "types": "./dist/contracts/index.d.ts",
-      "import": "./dist/contracts/index.js"
-    }
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@orpc/contract": "^1.0.0",
-    "zod": "^3.24.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.0",
-    "typescript": "^5.7.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "files": [
-    "dist",
-    "src"
-  ]
+	"name": "@prismalens/contracts",
+	"version": "0.1.0",
+	"description": "Shared API contracts and Zod schemas for PrismaLens",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./schemas": {
+			"types": "./dist/schemas/index.d.ts",
+			"import": "./dist/schemas/index.js"
+		},
+		"./contracts": {
+			"types": "./dist/contracts/index.d.ts",
+			"import": "./dist/contracts/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@orpc/contract": "^1.0.0",
+		"zod": "^3.24.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.0",
+		"typescript": "^5.7.0"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"files": [
+		"dist",
+		"src"
+	]
 }

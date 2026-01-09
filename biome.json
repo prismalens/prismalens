@@ -30,5 +30,17 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["**/*.controller.ts", "**/*.service.ts", "**/*.guard.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"useImportType": "off"
+					}
+				}
+			}
+		}
+	]
 }

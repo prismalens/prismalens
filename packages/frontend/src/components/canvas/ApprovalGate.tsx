@@ -1,20 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface ApprovalGateProps {
-  // TODO: Define props during implementation
-  // nodeId?: string;
-  // title?: string;
-  // description?: string;
-  // onApprove?: () => void;
-  // onReject?: () => void;
-}
+export type ApprovalGateProps = {};
 
 export function ApprovalGate({}: ApprovalGateProps) {
-  return (
-    <div>
-      {/* TODO: Implement ApprovalGate */}
-    </div>
-  );
+	return <div>{/* TODO: Implement ApprovalGate */}</div>;
 }

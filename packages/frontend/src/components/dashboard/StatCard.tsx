@@ -1,20 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface StatCardProps {
-  // TODO: Define props during implementation
-  // title?: string;
-  // value?: number | string;
-  // trend?: number;
-  // icon?: React.ReactNode;
-  // description?: string;
-}
+export type StatCardProps = {};
 
 export function StatCard({}: StatCardProps) {
-  return (
-    <div>
-      {/* TODO: Implement StatCard */}
-    </div>
-  );
+	return <div>{/* TODO: Implement StatCard */}</div>;
 }

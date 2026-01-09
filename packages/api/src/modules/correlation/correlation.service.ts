@@ -1,9 +1,9 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma/prisma.service.js';
-import type { CorrelationRule, Alert, Incident } from '@prismalens/database';
-import { CreateCorrelationRuleDto, UpdateCorrelationRuleDto } from './dto/index.js';
-import { IncidentsService } from '../incidents/incidents.service.js';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import type { Alert, CorrelationRule, Incident } from '@prismalens/database';
 import * as crypto from 'crypto';
+import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { IncidentsService } from '../incidents/incidents.service.js';
+import { CreateCorrelationRuleDto, UpdateCorrelationRuleDto } from './dto/index.js';
 
 export type { CorrelationRule };
 

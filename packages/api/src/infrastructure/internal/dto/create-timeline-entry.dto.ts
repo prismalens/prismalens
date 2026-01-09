@@ -1,36 +1,39 @@
 import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsObject,
-  IsUUID,
-  IsEnum,
-} from 'class-validator';
-import { TimelineEntryType, TimelineSource } from '../../../shared/enums/index.js';
+	IsEnum,
+	IsNotEmpty,
+	IsObject,
+	IsOptional,
+	IsString,
+	IsUUID,
+} from "class-validator";
+import {
+	TimelineEntryType,
+	TimelineSource,
+} from "../../../shared/enums/index.js";
 
 /**
  * DTO for creating a timeline entry via internal API
  */
 export class CreateTimelineEntryDto {
-  @IsUUID()
-  incidentId!: string;
+	@IsUUID()
+	incidentId!: string;
 
-  @IsEnum(TimelineEntryType)
-  type!: TimelineEntryType;
+	@IsEnum(TimelineEntryType)
+	type!: TimelineEntryType;
 
-  @IsString()
-  @IsNotEmpty()
-  title!: string;
+	@IsString()
+	@IsNotEmpty()
+	title!: string;
 
-  @IsOptional()
-  @IsString()
-  description?: string;
+	@IsOptional()
+	@IsString()
+	description?: string;
 
-  @IsOptional()
-  @IsObject()
-  metadata?: Record<string, unknown>;
+	@IsOptional()
+	@IsObject()
+	metadata?: Record<string, unknown>;
 
-  @IsOptional()
-  @IsEnum(TimelineSource)
-  source?: TimelineSource;
+	@IsOptional()
+	@IsEnum(TimelineSource)
+	source?: TimelineSource;
 }

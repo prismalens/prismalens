@@ -1,24 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface IncidentOverviewProps {
-  // TODO: Define props during implementation
-  // incident?: {
-  //   id: string;
-  //   title: string;
-  //   description?: string;
-  //   severity: string;
-  //   source?: string;
-  //   service?: string;
-  //   createdAt: Date;
-  // };
-}
+export type IncidentOverviewProps = {};
 
 export function IncidentOverview({}: IncidentOverviewProps) {
-  return (
-    <div>
-      {/* TODO: Implement IncidentOverview */}
-    </div>
-  );
+	return <div>{/* TODO: Implement IncidentOverview */}</div>;
 }

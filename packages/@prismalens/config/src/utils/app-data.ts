@@ -1,6 +1,6 @@
-import { homedir } from 'os';
-import { join } from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 
 /**
  * Get the application data directory for Prismalens.
@@ -25,7 +25,7 @@ import { mkdirSync } from 'fs';
  */
 export function getAppDataDir(): string {
 	const userFolder = process.env.PRISMALENS_USER_FOLDER ?? homedir();
-	return join(userFolder, '.prismalens');
+	return join(userFolder, ".prismalens");
 }
 
 /**

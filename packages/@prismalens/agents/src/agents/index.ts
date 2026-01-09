@@ -6,30 +6,30 @@
 
 // Commander Agent
 export {
-    createCommander,
-    createCommanderFromState,
-    createDeepRCAAgent,
-    graph,
-    type CommanderConfig,
-} from './commander/agent.js';
+	type CommanderConfig,
+	createCommander,
+	createCommanderFromState,
+	createDeepRCAAgent,
+	graph,
+} from "./commander/agent.js";
 
 export {
-    buildCommanderPrompt,
-    buildTaskDescription,
-    COMMANDER_SYSTEM_PROMPT,
-} from './commander/prompts.js';
+	buildCommanderPrompt,
+	buildTaskDescription,
+	COMMANDER_SYSTEM_PROMPT,
+} from "./commander/prompts.js";
 
 // SubAgents
 export {
-    createSubAgents,
-    createCartographerSubAgent,
-    createDetectiveSubAgent,
-    createSurgeonSubAgent,
-    getSubAgent,
-    type SubAgentConfig,
-    // Legacy exports
-    cartographerSubagent,
-    detectiveSubagent,
-    surgeonSubagent,
-    subagents,
-} from './subagents/index.js';
+	// Legacy exports
+	cartographerSubagent,
+	createCartographerSubAgent,
+	createDetectiveSubAgent,
+	createSubAgents,
+	createSurgeonSubAgent,
+	detectiveSubagent,
+	getSubAgent,
+	type SubAgentConfig,
+	subagents,
+	surgeonSubagent,
+} from "./subagents/index.js";

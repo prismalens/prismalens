@@ -4,68 +4,64 @@
  * All hooks use oRPC for type-safe API calls.
  */
 
+// Re-export the oRPC client for direct usage
+export { client, orpc } from "../orpc-client";
 // Alert hooks
 export {
-  useAlerts,
-  useAlert,
-  useAlertStats,
-  useCreateAlert,
-  useUpdateAlert,
-  useDeleteAlert,
-  useAcknowledgeAlert,
-  useResolveAlert,
-  alertKeys,
-} from './use-alerts-orpc'
-
+	alertKeys,
+	useAcknowledgeAlert,
+	useAlert,
+	useAlertStats,
+	useAlerts,
+	useCreateAlert,
+	useDeleteAlert,
+	useResolveAlert,
+	useUpdateAlert,
+} from "./use-alerts-orpc";
 // Incident hooks
 export {
-  useIncidents,
-  useIncident,
-  useActiveIncidents,
-  useIncidentStats,
-  useCreateIncident,
-  useUpdateIncident,
-  useResolveIncident,
-  useInvestigateIncident,
-  useAddAlertToIncident,
-  incidentKeys,
-} from './use-incidents-orpc'
-
+	incidentKeys,
+	useActiveIncidents,
+	useAddAlertToIncident,
+	useCreateIncident,
+	useIncident,
+	useIncidentStats,
+	useIncidents,
+	useInvestigateIncident,
+	useResolveIncident,
+	useUpdateIncident,
+} from "./use-incidents-orpc";
 // Investigation hooks
 export {
-  useInvestigations,
-  useInvestigation,
-  useInvestigationStatus,
-  useInvestigationsByIncident,
-  useCreateInvestigation,
-  useCancelInvestigation,
-  investigationKeys,
-} from './use-investigations-orpc'
-
-// Service hooks
-export {
-  useServices,
-  useService,
-  useServiceTopology,
-  useCreateService,
-  useUpdateService,
-  useDeleteService,
-  useAddServiceDependency,
-  useRemoveServiceDependency,
-  serviceKeys,
-} from './use-services-orpc'
+	investigationKeys,
+	useCancelInvestigation,
+	useCreateInvestigation,
+	useInvestigation,
+	useInvestigationStatus,
+	useInvestigations,
+	useInvestigationsByIncident,
+} from "./use-investigations-orpc";
 
 // Recommendation hooks
 export {
-  useRecommendations,
-  useRecommendation,
-  useRecommendationsByInvestigation,
-  useRecommendationStats,
-  useUpdateRecommendation,
-  useCompleteRecommendation,
-  useDismissRecommendation,
-  recommendationKeys,
-} from './use-recommendations-orpc'
-
-// Re-export the oRPC client for direct usage
-export { orpc, client } from '../orpc-client'
+	recommendationKeys,
+	useCompleteRecommendation,
+	useDismissRecommendation,
+	useRecommendation,
+	useRecommendationStats,
+	useRecommendations,
+	useRecommendationsByInvestigation,
+	useUpdateRecommendation,
+} from "./use-recommendations-orpc";
+// Service hooks
+export {
+	serviceKeys,
+	useAddServiceDependency,
+	useCreateService,
+	useDeleteService,
+	useRemoveServiceDependency,
+	useService,
+	useServices,
+	useServiceTopology,
+	useUpdateService,
+} from "./use-services-orpc";

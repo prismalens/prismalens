@@ -1,21 +1,21 @@
 import {
-  Controller,
-  Patch,
-  Post,
-  Param,
   Body,
-  UseGuards,
-  NotFoundException,
+  Controller,
   HttpCode,
   HttpStatus,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { InternalGuard } from './guards/internal.guard.js';
 import { InvestigationsService } from '../../modules/investigations/investigations.service.js';
 import {
-  UpdateInvestigationStatusDto,
   InternalInvestigationResultDto,
+  UpdateInvestigationStatusDto,
 } from './dto/index.js';
+import { InternalGuard } from './guards/internal.guard.js';
 
 /**
  * Internal API for investigation operations.

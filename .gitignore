@@ -66,3 +66,6 @@ temp/
 *.key
 credentials.json
 secrets.yaml
+
+# MCP
+*.playwright-mcp

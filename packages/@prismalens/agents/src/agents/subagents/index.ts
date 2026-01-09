@@ -1,9 +1,9 @@
-import type { SubAgent } from 'deepagents';
-import type { StructuredTool } from '@langchain/core/tools';
-import { createToolsForAgent } from '../../tools/factory.js';
-import { createDetectiveTools } from '../../tools/hypothesis.js';
-import { createSurgeonTools } from '../../tools/fix-proposal.js';
-import type { IntegrationContext } from '../../types/state.js';
+import type { StructuredTool } from "@langchain/core/tools";
+import type { SubAgent } from "deepagents";
+import { createToolsForAgent } from "../../tools/factory.js";
+import { createSurgeonTools } from "../../tools/fix-proposal.js";
+import { createDetectiveTools } from "../../tools/hypothesis.js";
+import type { IntegrationContext } from "../../types/state.js";
 
 // =============================================================================
 // SUBAGENT DEFINITIONS
@@ -18,14 +18,14 @@ import type { IntegrationContext } from '../../types/state.js';
  * Configuration for creating subagents
  */
 export interface SubAgentConfig {
-    /** Available integrations for tools */
-    integrations: IntegrationContext[];
-    /** Optional model overrides per agent */
-    models?: {
-        cartographer?: string;
-        detective?: string;
-        surgeon?: string;
-    };
+	/** Available integrations for tools */
+	integrations: IntegrationContext[];
+	/** Optional model overrides per agent */
+	models?: {
+		cartographer?: string;
+		detective?: string;
+		surgeon?: string;
+	};
 }
 
 // =============================================================================
@@ -76,16 +76,16 @@ NOTE: You are meant to be a fast agent. To achieve this:
  * Create the Cartographer SubAgent - Read-only context gatherer
  */
 export function createCartographerSubAgent(config: SubAgentConfig): SubAgent {
-    const tools = createToolsForAgent('cartographer', config.integrations);
+	const tools = createToolsForAgent("cartographer", config.integrations);
 
-    return {
-        name: 'cartographer',
-        description:
-            'Gathers all relevant context about an incident. Use Cartographer to search code, view logs, check recent deployments, and collect information needed for root cause analysis. Cartographer is READ-ONLY and cannot modify anything.',
-        systemPrompt: CARTOGRAPHER_SYSTEM_PROMPT,
-        tools: tools as StructuredTool[],
-        model: config.models?.cartographer || process.env.CARTOGRAPHER_MODEL,
-    };
+	return {
+		name: "cartographer",
+		description:
+			"Gathers all relevant context about an incident. Use Cartographer to search code, view logs, check recent deployments, and collect information needed for root cause analysis. Cartographer is READ-ONLY and cannot modify anything.",
+		systemPrompt: CARTOGRAPHER_SYSTEM_PROMPT,
+		tools: tools as StructuredTool[],
+		model: config.models?.cartographer || process.env.CARTOGRAPHER_MODEL,
+	};
 }
 
 // =============================================================================
@@ -150,16 +150,16 @@ Use the form_hypothesis tool to record your conclusions:
  * Create the Detective SubAgent - Root cause analyzer
  */
 export function createDetectiveSubAgent(config: SubAgentConfig): SubAgent {
-    const tools = createDetectiveTools();
+	const tools = createDetectiveTools();
 
-    return {
-        name: 'detective',
-        description:
-            'Analyzes gathered context to identify root cause. Use Detective after Cartographer has gathered information. Detective forms hypotheses with confidence levels and identifies the most likely cause of the incident.',
-        systemPrompt: DETECTIVE_SYSTEM_PROMPT,
-        tools: tools as StructuredTool[],
-        model: config.models?.detective || process.env.DETECTIVE_MODEL,
-    };
+	return {
+		name: "detective",
+		description:
+			"Analyzes gathered context to identify root cause. Use Detective after Cartographer has gathered information. Detective forms hypotheses with confidence levels and identifies the most likely cause of the incident.",
+		systemPrompt: DETECTIVE_SYSTEM_PROMPT,
+		tools: tools as StructuredTool[],
+		model: config.models?.detective || process.env.DETECTIVE_MODEL,
+	};
 }
 
 // =============================================================================
@@ -224,16 +224,16 @@ For incidents that could have been detected earlier:
  * Create the Surgeon SubAgent - Fix proposer
  */
 export function createSurgeonSubAgent(config: SubAgentConfig): SubAgent {
-    const tools = createSurgeonTools();
+	const tools = createSurgeonTools();
 
-    return {
-        name: 'surgeon',
-        description:
-            'Proposes fixes based on root cause analysis. Use Surgeon after Detective has identified a likely root cause with sufficient confidence (70%+). Surgeon creates actionable recommendations and code change proposals for human review.',
-        systemPrompt: SURGEON_SYSTEM_PROMPT,
-        tools: tools as StructuredTool[],
-        model: config.models?.surgeon || process.env.SURGEON_MODEL,
-    };
+	return {
+		name: "surgeon",
+		description:
+			"Proposes fixes based on root cause analysis. Use Surgeon after Detective has identified a likely root cause with sufficient confidence (70%+). Surgeon creates actionable recommendations and code change proposals for human review.",
+		systemPrompt: SURGEON_SYSTEM_PROMPT,
+		tools: tools as StructuredTool[],
+		model: config.models?.surgeon || process.env.SURGEON_MODEL,
+	};
 }
 
 // =============================================================================
@@ -244,30 +244,30 @@ export function createSurgeonSubAgent(config: SubAgentConfig): SubAgent {
  * Create all SubAgents for the Commander
  */
 export function createSubAgents(config: SubAgentConfig): SubAgent[] {
-    return [
-        createCartographerSubAgent(config),
-        createDetectiveSubAgent(config),
-        createSurgeonSubAgent(config),
-    ];
+	return [
+		createCartographerSubAgent(config),
+		createDetectiveSubAgent(config),
+		createSurgeonSubAgent(config),
+	];
 }
 
 /**
  * Get SubAgent by name
  */
 export function getSubAgent(
-    name: 'cartographer' | 'detective' | 'surgeon',
-    config: SubAgentConfig
+	name: "cartographer" | "detective" | "surgeon",
+	config: SubAgentConfig,
 ): SubAgent {
-    switch (name) {
-        case 'cartographer':
-            return createCartographerSubAgent(config);
-        case 'detective':
-            return createDetectiveSubAgent(config);
-        case 'surgeon':
-            return createSurgeonSubAgent(config);
-        default:
-            throw new Error(`Unknown subagent: ${name}`);
-    }
+	switch (name) {
+		case "cartographer":
+			return createCartographerSubAgent(config);
+		case "detective":
+			return createDetectiveSubAgent(config);
+		case "surgeon":
+			return createSurgeonSubAgent(config);
+		default:
+			throw new Error(`Unknown subagent: ${name}`);
+	}
 }
 
 // =============================================================================
@@ -275,7 +275,13 @@ export function getSubAgent(
 // =============================================================================
 
 // Legacy static subagents - use createSubAgents() instead for integration support
-export const cartographerSubagent = createCartographerSubAgent({ integrations: [] });
+export const cartographerSubagent = createCartographerSubAgent({
+	integrations: [],
+});
 export const detectiveSubagent = createDetectiveSubAgent({ integrations: [] });
 export const surgeonSubagent = createSurgeonSubAgent({ integrations: [] });
-export const subagents = [cartographerSubagent, detectiveSubagent, surgeonSubagent];
+export const subagents = [
+	cartographerSubagent,
+	detectiveSubagent,
+	surgeonSubagent,
+];

@@ -2,47 +2,43 @@
  * API client exports
  */
 
-// Client utilities
-export { apiGet, apiPost, apiPatch, apiDelete, ApiError } from './client';
-
-// Types
-export type {
-  Alert,
-  AnalysisRun,
-  Recommendation,
-  CreateAlertDto,
-  UpdateAlertDto,
-  UpdateRecommendationDto,
-  AnalyzeAlertResponse,
-  QueueStats,
-  RecommendationStats,
-} from './types';
-
 // Alert API
 export {
-  getAlerts,
-  getAlert,
-  createAlert,
-  updateAlert,
-  updateAlertStatus,
-  deleteAlert,
-  analyzeAlert,
-} from './alerts';
-
+	analyzeAlert,
+	createAlert,
+	deleteAlert,
+	getAlert,
+	getAlerts,
+	updateAlert,
+	updateAlertStatus,
+} from "./alerts";
 // Analysis API
 export {
-  getAnalysisRuns,
-  getAnalysisRun,
-  getAnalysisRunStatus,
-  getAnalysisRunsByAlert,
-  getQueueStats,
-} from './analysis';
-
+	getAnalysisRun,
+	getAnalysisRunStatus,
+	getAnalysisRuns,
+	getAnalysisRunsByAlert,
+	getQueueStats,
+} from "./analysis";
+// Client utilities
+export { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "./client";
 // Recommendations API
 export {
-  getRecommendations,
-  getRecommendation,
-  getRecommendationsByAnalysisRun,
-  updateRecommendation,
-  getRecommendationStats,
-} from './recommendations';
+	getRecommendation,
+	getRecommendationStats,
+	getRecommendations,
+	getRecommendationsByAnalysisRun,
+	updateRecommendation,
+} from "./recommendations";
+// Types
+export type {
+	Alert,
+	AnalysisRun,
+	AnalyzeAlertResponse,
+	CreateAlertDto,
+	QueueStats,
+	Recommendation,
+	RecommendationStats,
+	UpdateAlertDto,
+	UpdateRecommendationDto,
+} from "./types";

@@ -1,8 +1,8 @@
-import { Controller, Inject, forwardRef } from '@nestjs/common';
+import { Controller, forwardRef, Inject } from '@nestjs/common';
 import { Implement, implement, ORPCError } from '@orpc/nest';
 import { alertsContract } from '@prismalens/contracts';
-import { AlertsService } from './alerts.service.js';
 import { CorrelationService } from '../correlation/correlation.service.js';
+import { AlertsService } from './alerts.service.js';
 import type { CreateAlertDto, UpdateAlertDto } from './dto/index.js';
 
 @Controller()

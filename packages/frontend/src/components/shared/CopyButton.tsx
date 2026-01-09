@@ -1,17 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface CopyButtonProps {
-  // TODO: Define props during implementation
-  // value?: string;
-  // onCopy?: () => void;
-}
+export type CopyButtonProps = {};
 
 export function CopyButton({}: CopyButtonProps) {
-  return (
-    <div>
-      {/* TODO: Implement CopyButton */}
-    </div>
-  );
+	return <div>{/* TODO: Implement CopyButton */}</div>;
 }

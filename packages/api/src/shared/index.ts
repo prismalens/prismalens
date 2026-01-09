@@ -5,4 +5,4 @@
  * used across the PrismaLens API.
  */
 
-export * from './enums/index.js';
+export * from "./enums/index.js";

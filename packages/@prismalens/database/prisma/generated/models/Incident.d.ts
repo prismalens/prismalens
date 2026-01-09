@@ -1,2315 +1,3677 @@
 import type * as runtime from "@prisma/client/runtime/client";
 import type * as Prisma from "../internal/prismaNamespace.js";
-export type IncidentModel = runtime.Types.Result.DefaultSelection<Prisma.$IncidentPayload>;
+export type IncidentModel =
+	runtime.Types.Result.DefaultSelection<Prisma.$IncidentPayload>;
 export type AggregateIncident = {
-    _count: IncidentCountAggregateOutputType | null;
-    _avg: IncidentAvgAggregateOutputType | null;
-    _sum: IncidentSumAggregateOutputType | null;
-    _min: IncidentMinAggregateOutputType | null;
-    _max: IncidentMaxAggregateOutputType | null;
+	_count: IncidentCountAggregateOutputType | null;
+	_avg: IncidentAvgAggregateOutputType | null;
+	_sum: IncidentSumAggregateOutputType | null;
+	_min: IncidentMinAggregateOutputType | null;
+	_max: IncidentMaxAggregateOutputType | null;
 };
 export type IncidentAvgAggregateOutputType = {
-    number: number | null;
-    alertCount: number | null;
-    timeToAcknowledge: number | null;
-    timeToResolve: number | null;
+	number: number | null;
+	alertCount: number | null;
+	timeToAcknowledge: number | null;
+	timeToResolve: number | null;
 };
 export type IncidentSumAggregateOutputType = {
-    number: number | null;
-    alertCount: number | null;
-    timeToAcknowledge: number | null;
-    timeToResolve: number | null;
+	number: number | null;
+	alertCount: number | null;
+	timeToAcknowledge: number | null;
+	timeToResolve: number | null;
 };
 export type IncidentMinAggregateOutputType = {
-    id: string | null;
-    number: number | null;
-    title: string | null;
-    description: string | null;
-    severity: string | null;
-    status: string | null;
-    priority: string | null;
-    serviceId: string | null;
-    assignedToId: string | null;
-    correlationReason: string | null;
-    correlationRuleId: string | null;
-    tags: string | null;
-    customerImpact: string | null;
-    affectedSystems: string | null;
-    triggeredAt: Date | null;
-    acknowledgedAt: Date | null;
-    resolvedAt: Date | null;
-    alertCount: number | null;
-    timeToAcknowledge: number | null;
-    timeToResolve: number | null;
-    createdAt: Date | null;
-    updatedAt: Date | null;
+	id: string | null;
+	number: number | null;
+	title: string | null;
+	description: string | null;
+	severity: string | null;
+	status: string | null;
+	priority: string | null;
+	serviceId: string | null;
+	assignedToId: string | null;
+	correlationReason: string | null;
+	correlationRuleId: string | null;
+	tags: string | null;
+	customerImpact: string | null;
+	affectedSystems: string | null;
+	triggeredAt: Date | null;
+	acknowledgedAt: Date | null;
+	resolvedAt: Date | null;
+	alertCount: number | null;
+	timeToAcknowledge: number | null;
+	timeToResolve: number | null;
+	createdAt: Date | null;
+	updatedAt: Date | null;
 };
 export type IncidentMaxAggregateOutputType = {
-    id: string | null;
-    number: number | null;
-    title: string | null;
-    description: string | null;
-    severity: string | null;
-    status: string | null;
-    priority: string | null;
-    serviceId: string | null;
-    assignedToId: string | null;
-    correlationReason: string | null;
-    correlationRuleId: string | null;
-    tags: string | null;
-    customerImpact: string | null;
-    affectedSystems: string | null;
-    triggeredAt: Date | null;
-    acknowledgedAt: Date | null;
-    resolvedAt: Date | null;
-    alertCount: number | null;
-    timeToAcknowledge: number | null;
-    timeToResolve: number | null;
-    createdAt: Date | null;
-    updatedAt: Date | null;
+	id: string | null;
+	number: number | null;
+	title: string | null;
+	description: string | null;
+	severity: string | null;
+	status: string | null;
+	priority: string | null;
+	serviceId: string | null;
+	assignedToId: string | null;
+	correlationReason: string | null;
+	correlationRuleId: string | null;
+	tags: string | null;
+	customerImpact: string | null;
+	affectedSystems: string | null;
+	triggeredAt: Date | null;
+	acknowledgedAt: Date | null;
+	resolvedAt: Date | null;
+	alertCount: number | null;
+	timeToAcknowledge: number | null;
+	timeToResolve: number | null;
+	createdAt: Date | null;
+	updatedAt: Date | null;
 };
 export type IncidentCountAggregateOutputType = {
-    id: number;
-    number: number;
-    title: number;
-    description: number;
-    severity: number;
-    status: number;
-    priority: number;
-    serviceId: number;
-    assignedToId: number;
-    correlationReason: number;
-    correlationRuleId: number;
-    tags: number;
-    customerImpact: number;
-    affectedSystems: number;
-    triggeredAt: number;
-    acknowledgedAt: number;
-    resolvedAt: number;
-    alertCount: number;
-    timeToAcknowledge: number;
-    timeToResolve: number;
-    createdAt: number;
-    updatedAt: number;
-    _all: number;
+	id: number;
+	number: number;
+	title: number;
+	description: number;
+	severity: number;
+	status: number;
+	priority: number;
+	serviceId: number;
+	assignedToId: number;
+	correlationReason: number;
+	correlationRuleId: number;
+	tags: number;
+	customerImpact: number;
+	affectedSystems: number;
+	triggeredAt: number;
+	acknowledgedAt: number;
+	resolvedAt: number;
+	alertCount: number;
+	timeToAcknowledge: number;
+	timeToResolve: number;
+	createdAt: number;
+	updatedAt: number;
+	_all: number;
 };
 export type IncidentAvgAggregateInputType = {
-    number?: true;
-    alertCount?: true;
-    timeToAcknowledge?: true;
-    timeToResolve?: true;
+	number?: true;
+	alertCount?: true;
+	timeToAcknowledge?: true;
+	timeToResolve?: true;
 };
 export type IncidentSumAggregateInputType = {
-    number?: true;
-    alertCount?: true;
-    timeToAcknowledge?: true;
-    timeToResolve?: true;
+	number?: true;
+	alertCount?: true;
+	timeToAcknowledge?: true;
+	timeToResolve?: true;
 };
 export type IncidentMinAggregateInputType = {
-    id?: true;
-    number?: true;
-    title?: true;
-    description?: true;
-    severity?: true;
-    status?: true;
-    priority?: true;
-    serviceId?: true;
-    assignedToId?: true;
-    correlationReason?: true;
-    correlationRuleId?: true;
-    tags?: true;
-    customerImpact?: true;
-    affectedSystems?: true;
-    triggeredAt?: true;
-    acknowledgedAt?: true;
-    resolvedAt?: true;
-    alertCount?: true;
-    timeToAcknowledge?: true;
-    timeToResolve?: true;
-    createdAt?: true;
-    updatedAt?: true;
+	id?: true;
+	number?: true;
+	title?: true;
+	description?: true;
+	severity?: true;
+	status?: true;
+	priority?: true;
+	serviceId?: true;
+	assignedToId?: true;
+	correlationReason?: true;
+	correlationRuleId?: true;
+	tags?: true;
+	customerImpact?: true;
+	affectedSystems?: true;
+	triggeredAt?: true;
+	acknowledgedAt?: true;
+	resolvedAt?: true;
+	alertCount?: true;
+	timeToAcknowledge?: true;
+	timeToResolve?: true;
+	createdAt?: true;
+	updatedAt?: true;
 };
 export type IncidentMaxAggregateInputType = {
-    id?: true;
-    number?: true;
-    title?: true;
-    description?: true;
-    severity?: true;
-    status?: true;
-    priority?: true;
-    serviceId?: true;
-    assignedToId?: true;
-    correlationReason?: true;
-    correlationRuleId?: true;
-    tags?: true;
-    customerImpact?: true;
-    affectedSystems?: true;
-    triggeredAt?: true;
-    acknowledgedAt?: true;
-    resolvedAt?: true;
-    alertCount?: true;
-    timeToAcknowledge?: true;
-    timeToResolve?: true;
-    createdAt?: true;
-    updatedAt?: true;
+	id?: true;
+	number?: true;
+	title?: true;
+	description?: true;
+	severity?: true;
+	status?: true;
+	priority?: true;
+	serviceId?: true;
+	assignedToId?: true;
+	correlationReason?: true;
+	correlationRuleId?: true;
+	tags?: true;
+	customerImpact?: true;
+	affectedSystems?: true;
+	triggeredAt?: true;
+	acknowledgedAt?: true;
+	resolvedAt?: true;
+	alertCount?: true;
+	timeToAcknowledge?: true;
+	timeToResolve?: true;
+	createdAt?: true;
+	updatedAt?: true;
 };
 export type IncidentCountAggregateInputType = {
-    id?: true;
-    number?: true;
-    title?: true;
-    description?: true;
-    severity?: true;
-    status?: true;
-    priority?: true;
-    serviceId?: true;
-    assignedToId?: true;
-    correlationReason?: true;
-    correlationRuleId?: true;
-    tags?: true;
-    customerImpact?: true;
-    affectedSystems?: true;
-    triggeredAt?: true;
-    acknowledgedAt?: true;
-    resolvedAt?: true;
-    alertCount?: true;
-    timeToAcknowledge?: true;
-    timeToResolve?: true;
-    createdAt?: true;
-    updatedAt?: true;
-    _all?: true;
+	id?: true;
+	number?: true;
+	title?: true;
+	description?: true;
+	severity?: true;
+	status?: true;
+	priority?: true;
+	serviceId?: true;
+	assignedToId?: true;
+	correlationReason?: true;
+	correlationRuleId?: true;
+	tags?: true;
+	customerImpact?: true;
+	affectedSystems?: true;
+	triggeredAt?: true;
+	acknowledgedAt?: true;
+	resolvedAt?: true;
+	alertCount?: true;
+	timeToAcknowledge?: true;
+	timeToResolve?: true;
+	createdAt?: true;
+	updatedAt?: true;
+	_all?: true;
 };
-export type IncidentAggregateArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    where?: Prisma.IncidentWhereInput;
-    orderBy?: Prisma.IncidentOrderByWithRelationInput | Prisma.IncidentOrderByWithRelationInput[];
-    cursor?: Prisma.IncidentWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    _count?: true | IncidentCountAggregateInputType;
-    _avg?: IncidentAvgAggregateInputType;
-    _sum?: IncidentSumAggregateInputType;
-    _min?: IncidentMinAggregateInputType;
-    _max?: IncidentMaxAggregateInputType;
+export type IncidentAggregateArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	where?: Prisma.IncidentWhereInput;
+	orderBy?:
+		| Prisma.IncidentOrderByWithRelationInput
+		| Prisma.IncidentOrderByWithRelationInput[];
+	cursor?: Prisma.IncidentWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	_count?: true | IncidentCountAggregateInputType;
+	_avg?: IncidentAvgAggregateInputType;
+	_sum?: IncidentSumAggregateInputType;
+	_min?: IncidentMinAggregateInputType;
+	_max?: IncidentMaxAggregateInputType;
 };
 export type GetIncidentAggregateType<T extends IncidentAggregateArgs> = {
-    [P in keyof T & keyof AggregateIncident]: P extends '_count' | 'count' ? T[P] extends true ? number : Prisma.GetScalarType<T[P], AggregateIncident[P]> : Prisma.GetScalarType<T[P], AggregateIncident[P]>;
+	[P in keyof T & keyof AggregateIncident]: P extends "_count" | "count"
+		? T[P] extends true
+			? number
+			: Prisma.GetScalarType<T[P], AggregateIncident[P]>
+		: Prisma.GetScalarType<T[P], AggregateIncident[P]>;
 };
-export type IncidentGroupByArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    where?: Prisma.IncidentWhereInput;
-    orderBy?: Prisma.IncidentOrderByWithAggregationInput | Prisma.IncidentOrderByWithAggregationInput[];
-    by: Prisma.IncidentScalarFieldEnum[] | Prisma.IncidentScalarFieldEnum;
-    having?: Prisma.IncidentScalarWhereWithAggregatesInput;
-    take?: number;
-    skip?: number;
-    _count?: IncidentCountAggregateInputType | true;
-    _avg?: IncidentAvgAggregateInputType;
-    _sum?: IncidentSumAggregateInputType;
-    _min?: IncidentMinAggregateInputType;
-    _max?: IncidentMaxAggregateInputType;
+export type IncidentGroupByArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	where?: Prisma.IncidentWhereInput;
+	orderBy?:
+		| Prisma.IncidentOrderByWithAggregationInput
+		| Prisma.IncidentOrderByWithAggregationInput[];
+	by: Prisma.IncidentScalarFieldEnum[] | Prisma.IncidentScalarFieldEnum;
+	having?: Prisma.IncidentScalarWhereWithAggregatesInput;
+	take?: number;
+	skip?: number;
+	_count?: IncidentCountAggregateInputType | true;
+	_avg?: IncidentAvgAggregateInputType;
+	_sum?: IncidentSumAggregateInputType;
+	_min?: IncidentMinAggregateInputType;
+	_max?: IncidentMaxAggregateInputType;
 };
 export type IncidentGroupByOutputType = {
-    id: string;
-    number: number;
-    title: string;
-    description: string | null;
-    severity: string;
-    status: string;
-    priority: string;
-    serviceId: string | null;
-    assignedToId: string | null;
-    correlationReason: string | null;
-    correlationRuleId: string | null;
-    tags: string | null;
-    customerImpact: string | null;
-    affectedSystems: string | null;
-    triggeredAt: Date;
-    acknowledgedAt: Date | null;
-    resolvedAt: Date | null;
-    alertCount: number;
-    timeToAcknowledge: number | null;
-    timeToResolve: number | null;
-    createdAt: Date;
-    updatedAt: Date;
-    _count: IncidentCountAggregateOutputType | null;
-    _avg: IncidentAvgAggregateOutputType | null;
-    _sum: IncidentSumAggregateOutputType | null;
-    _min: IncidentMinAggregateOutputType | null;
-    _max: IncidentMaxAggregateOutputType | null;
+	id: string;
+	number: number;
+	title: string;
+	description: string | null;
+	severity: string;
+	status: string;
+	priority: string;
+	serviceId: string | null;
+	assignedToId: string | null;
+	correlationReason: string | null;
+	correlationRuleId: string | null;
+	tags: string | null;
+	customerImpact: string | null;
+	affectedSystems: string | null;
+	triggeredAt: Date;
+	acknowledgedAt: Date | null;
+	resolvedAt: Date | null;
+	alertCount: number;
+	timeToAcknowledge: number | null;
+	timeToResolve: number | null;
+	createdAt: Date;
+	updatedAt: Date;
+	_count: IncidentCountAggregateOutputType | null;
+	_avg: IncidentAvgAggregateOutputType | null;
+	_sum: IncidentSumAggregateOutputType | null;
+	_min: IncidentMinAggregateOutputType | null;
+	_max: IncidentMaxAggregateOutputType | null;
 };
-type GetIncidentGroupByPayload<T extends IncidentGroupByArgs> = Prisma.PrismaPromise<Array<Prisma.PickEnumerable<IncidentGroupByOutputType, T['by']> & {
-    [P in ((keyof T) & (keyof IncidentGroupByOutputType))]: P extends '_count' ? T[P] extends boolean ? number : Prisma.GetScalarType<T[P], IncidentGroupByOutputType[P]> : Prisma.GetScalarType<T[P], IncidentGroupByOutputType[P]>;
-}>>;
+type GetIncidentGroupByPayload<T extends IncidentGroupByArgs> =
+	Prisma.PrismaPromise<
+		Array<
+			Prisma.PickEnumerable<IncidentGroupByOutputType, T["by"]> & {
+				[P in keyof T & keyof IncidentGroupByOutputType]: P extends "_count"
+					? T[P] extends boolean
+						? number
+						: Prisma.GetScalarType<T[P], IncidentGroupByOutputType[P]>
+					: Prisma.GetScalarType<T[P], IncidentGroupByOutputType[P]>;
+			}
+		>
+	>;
 export type IncidentWhereInput = {
-    AND?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
-    OR?: Prisma.IncidentWhereInput[];
-    NOT?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
-    id?: Prisma.StringFilter<"Incident"> | string;
-    number?: Prisma.IntFilter<"Incident"> | number;
-    title?: Prisma.StringFilter<"Incident"> | string;
-    description?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    severity?: Prisma.StringFilter<"Incident"> | string;
-    status?: Prisma.StringFilter<"Incident"> | string;
-    priority?: Prisma.StringFilter<"Incident"> | string;
-    serviceId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    assignedToId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    correlationReason?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    correlationRuleId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    tags?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    customerImpact?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    affectedSystems?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    triggeredAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    acknowledgedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
-    resolvedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
-    alertCount?: Prisma.IntFilter<"Incident"> | number;
-    timeToAcknowledge?: Prisma.IntNullableFilter<"Incident"> | number | null;
-    timeToResolve?: Prisma.IntNullableFilter<"Incident"> | number | null;
-    createdAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    updatedAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    service?: Prisma.XOR<Prisma.ServiceNullableScalarRelationFilter, Prisma.ServiceWhereInput> | null;
-    assignedTo?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null;
-    correlationRule?: Prisma.XOR<Prisma.CorrelationRuleNullableScalarRelationFilter, Prisma.CorrelationRuleWhereInput> | null;
-    alerts?: Prisma.AlertListRelationFilter;
-    investigations?: Prisma.InvestigationListRelationFilter;
-    timeline?: Prisma.TimelineEntryListRelationFilter;
-    postmortem?: Prisma.XOR<Prisma.PostmortemNullableScalarRelationFilter, Prisma.PostmortemWhereInput> | null;
+	AND?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
+	OR?: Prisma.IncidentWhereInput[];
+	NOT?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
+	id?: Prisma.StringFilter<"Incident"> | string;
+	number?: Prisma.IntFilter<"Incident"> | number;
+	title?: Prisma.StringFilter<"Incident"> | string;
+	description?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	severity?: Prisma.StringFilter<"Incident"> | string;
+	status?: Prisma.StringFilter<"Incident"> | string;
+	priority?: Prisma.StringFilter<"Incident"> | string;
+	serviceId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	assignedToId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	correlationReason?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	correlationRuleId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	tags?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	customerImpact?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	affectedSystems?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	triggeredAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+	acknowledgedAt?:
+		| Prisma.DateTimeNullableFilter<"Incident">
+		| Date
+		| string
+		| null;
+	resolvedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
+	alertCount?: Prisma.IntFilter<"Incident"> | number;
+	timeToAcknowledge?: Prisma.IntNullableFilter<"Incident"> | number | null;
+	timeToResolve?: Prisma.IntNullableFilter<"Incident"> | number | null;
+	createdAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+	updatedAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+	service?: Prisma.XOR<
+		Prisma.ServiceNullableScalarRelationFilter,
+		Prisma.ServiceWhereInput
+	> | null;
+	assignedTo?: Prisma.XOR<
+		Prisma.UserNullableScalarRelationFilter,
+		Prisma.UserWhereInput
+	> | null;
+	correlationRule?: Prisma.XOR<
+		Prisma.CorrelationRuleNullableScalarRelationFilter,
+		Prisma.CorrelationRuleWhereInput
+	> | null;
+	alerts?: Prisma.AlertListRelationFilter;
+	investigations?: Prisma.InvestigationListRelationFilter;
+	timeline?: Prisma.TimelineEntryListRelationFilter;
+	postmortem?: Prisma.XOR<
+		Prisma.PostmortemNullableScalarRelationFilter,
+		Prisma.PostmortemWhereInput
+	> | null;
 };
 export type IncidentOrderByWithRelationInput = {
-    id?: Prisma.SortOrder;
-    number?: Prisma.SortOrder;
-    title?: Prisma.SortOrder;
-    description?: Prisma.SortOrderInput | Prisma.SortOrder;
-    severity?: Prisma.SortOrder;
-    status?: Prisma.SortOrder;
-    priority?: Prisma.SortOrder;
-    serviceId?: Prisma.SortOrderInput | Prisma.SortOrder;
-    assignedToId?: Prisma.SortOrderInput | Prisma.SortOrder;
-    correlationReason?: Prisma.SortOrderInput | Prisma.SortOrder;
-    correlationRuleId?: Prisma.SortOrderInput | Prisma.SortOrder;
-    tags?: Prisma.SortOrderInput | Prisma.SortOrder;
-    customerImpact?: Prisma.SortOrderInput | Prisma.SortOrder;
-    affectedSystems?: Prisma.SortOrderInput | Prisma.SortOrder;
-    triggeredAt?: Prisma.SortOrder;
-    acknowledgedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
-    resolvedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrderInput | Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrderInput | Prisma.SortOrder;
-    createdAt?: Prisma.SortOrder;
-    updatedAt?: Prisma.SortOrder;
-    service?: Prisma.ServiceOrderByWithRelationInput;
-    assignedTo?: Prisma.UserOrderByWithRelationInput;
-    correlationRule?: Prisma.CorrelationRuleOrderByWithRelationInput;
-    alerts?: Prisma.AlertOrderByRelationAggregateInput;
-    investigations?: Prisma.InvestigationOrderByRelationAggregateInput;
-    timeline?: Prisma.TimelineEntryOrderByRelationAggregateInput;
-    postmortem?: Prisma.PostmortemOrderByWithRelationInput;
+	id?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	title?: Prisma.SortOrder;
+	description?: Prisma.SortOrderInput | Prisma.SortOrder;
+	severity?: Prisma.SortOrder;
+	status?: Prisma.SortOrder;
+	priority?: Prisma.SortOrder;
+	serviceId?: Prisma.SortOrderInput | Prisma.SortOrder;
+	assignedToId?: Prisma.SortOrderInput | Prisma.SortOrder;
+	correlationReason?: Prisma.SortOrderInput | Prisma.SortOrder;
+	correlationRuleId?: Prisma.SortOrderInput | Prisma.SortOrder;
+	tags?: Prisma.SortOrderInput | Prisma.SortOrder;
+	customerImpact?: Prisma.SortOrderInput | Prisma.SortOrder;
+	affectedSystems?: Prisma.SortOrderInput | Prisma.SortOrder;
+	triggeredAt?: Prisma.SortOrder;
+	acknowledgedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
+	resolvedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrderInput | Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrderInput | Prisma.SortOrder;
+	createdAt?: Prisma.SortOrder;
+	updatedAt?: Prisma.SortOrder;
+	service?: Prisma.ServiceOrderByWithRelationInput;
+	assignedTo?: Prisma.UserOrderByWithRelationInput;
+	correlationRule?: Prisma.CorrelationRuleOrderByWithRelationInput;
+	alerts?: Prisma.AlertOrderByRelationAggregateInput;
+	investigations?: Prisma.InvestigationOrderByRelationAggregateInput;
+	timeline?: Prisma.TimelineEntryOrderByRelationAggregateInput;
+	postmortem?: Prisma.PostmortemOrderByWithRelationInput;
 };
-export type IncidentWhereUniqueInput = Prisma.AtLeast<{
-    id?: string;
-    number?: number;
-    AND?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
-    OR?: Prisma.IncidentWhereInput[];
-    NOT?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
-    title?: Prisma.StringFilter<"Incident"> | string;
-    description?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    severity?: Prisma.StringFilter<"Incident"> | string;
-    status?: Prisma.StringFilter<"Incident"> | string;
-    priority?: Prisma.StringFilter<"Incident"> | string;
-    serviceId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    assignedToId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    correlationReason?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    correlationRuleId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    tags?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    customerImpact?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    affectedSystems?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    triggeredAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    acknowledgedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
-    resolvedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
-    alertCount?: Prisma.IntFilter<"Incident"> | number;
-    timeToAcknowledge?: Prisma.IntNullableFilter<"Incident"> | number | null;
-    timeToResolve?: Prisma.IntNullableFilter<"Incident"> | number | null;
-    createdAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    updatedAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    service?: Prisma.XOR<Prisma.ServiceNullableScalarRelationFilter, Prisma.ServiceWhereInput> | null;
-    assignedTo?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null;
-    correlationRule?: Prisma.XOR<Prisma.CorrelationRuleNullableScalarRelationFilter, Prisma.CorrelationRuleWhereInput> | null;
-    alerts?: Prisma.AlertListRelationFilter;
-    investigations?: Prisma.InvestigationListRelationFilter;
-    timeline?: Prisma.TimelineEntryListRelationFilter;
-    postmortem?: Prisma.XOR<Prisma.PostmortemNullableScalarRelationFilter, Prisma.PostmortemWhereInput> | null;
-}, "id" | "number">;
+export type IncidentWhereUniqueInput = Prisma.AtLeast<
+	{
+		id?: string;
+		number?: number;
+		AND?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
+		OR?: Prisma.IncidentWhereInput[];
+		NOT?: Prisma.IncidentWhereInput | Prisma.IncidentWhereInput[];
+		title?: Prisma.StringFilter<"Incident"> | string;
+		description?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		severity?: Prisma.StringFilter<"Incident"> | string;
+		status?: Prisma.StringFilter<"Incident"> | string;
+		priority?: Prisma.StringFilter<"Incident"> | string;
+		serviceId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		assignedToId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		correlationReason?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		correlationRuleId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		tags?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		customerImpact?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		affectedSystems?: Prisma.StringNullableFilter<"Incident"> | string | null;
+		triggeredAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+		acknowledgedAt?:
+			| Prisma.DateTimeNullableFilter<"Incident">
+			| Date
+			| string
+			| null;
+		resolvedAt?:
+			| Prisma.DateTimeNullableFilter<"Incident">
+			| Date
+			| string
+			| null;
+		alertCount?: Prisma.IntFilter<"Incident"> | number;
+		timeToAcknowledge?: Prisma.IntNullableFilter<"Incident"> | number | null;
+		timeToResolve?: Prisma.IntNullableFilter<"Incident"> | number | null;
+		createdAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+		updatedAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+		service?: Prisma.XOR<
+			Prisma.ServiceNullableScalarRelationFilter,
+			Prisma.ServiceWhereInput
+		> | null;
+		assignedTo?: Prisma.XOR<
+			Prisma.UserNullableScalarRelationFilter,
+			Prisma.UserWhereInput
+		> | null;
+		correlationRule?: Prisma.XOR<
+			Prisma.CorrelationRuleNullableScalarRelationFilter,
+			Prisma.CorrelationRuleWhereInput
+		> | null;
+		alerts?: Prisma.AlertListRelationFilter;
+		investigations?: Prisma.InvestigationListRelationFilter;
+		timeline?: Prisma.TimelineEntryListRelationFilter;
+		postmortem?: Prisma.XOR<
+			Prisma.PostmortemNullableScalarRelationFilter,
+			Prisma.PostmortemWhereInput
+		> | null;
+	},
+	"id" | "number"
+>;
 export type IncidentOrderByWithAggregationInput = {
-    id?: Prisma.SortOrder;
-    number?: Prisma.SortOrder;
-    title?: Prisma.SortOrder;
-    description?: Prisma.SortOrderInput | Prisma.SortOrder;
-    severity?: Prisma.SortOrder;
-    status?: Prisma.SortOrder;
-    priority?: Prisma.SortOrder;
-    serviceId?: Prisma.SortOrderInput | Prisma.SortOrder;
-    assignedToId?: Prisma.SortOrderInput | Prisma.SortOrder;
-    correlationReason?: Prisma.SortOrderInput | Prisma.SortOrder;
-    correlationRuleId?: Prisma.SortOrderInput | Prisma.SortOrder;
-    tags?: Prisma.SortOrderInput | Prisma.SortOrder;
-    customerImpact?: Prisma.SortOrderInput | Prisma.SortOrder;
-    affectedSystems?: Prisma.SortOrderInput | Prisma.SortOrder;
-    triggeredAt?: Prisma.SortOrder;
-    acknowledgedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
-    resolvedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrderInput | Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrderInput | Prisma.SortOrder;
-    createdAt?: Prisma.SortOrder;
-    updatedAt?: Prisma.SortOrder;
-    _count?: Prisma.IncidentCountOrderByAggregateInput;
-    _avg?: Prisma.IncidentAvgOrderByAggregateInput;
-    _max?: Prisma.IncidentMaxOrderByAggregateInput;
-    _min?: Prisma.IncidentMinOrderByAggregateInput;
-    _sum?: Prisma.IncidentSumOrderByAggregateInput;
+	id?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	title?: Prisma.SortOrder;
+	description?: Prisma.SortOrderInput | Prisma.SortOrder;
+	severity?: Prisma.SortOrder;
+	status?: Prisma.SortOrder;
+	priority?: Prisma.SortOrder;
+	serviceId?: Prisma.SortOrderInput | Prisma.SortOrder;
+	assignedToId?: Prisma.SortOrderInput | Prisma.SortOrder;
+	correlationReason?: Prisma.SortOrderInput | Prisma.SortOrder;
+	correlationRuleId?: Prisma.SortOrderInput | Prisma.SortOrder;
+	tags?: Prisma.SortOrderInput | Prisma.SortOrder;
+	customerImpact?: Prisma.SortOrderInput | Prisma.SortOrder;
+	affectedSystems?: Prisma.SortOrderInput | Prisma.SortOrder;
+	triggeredAt?: Prisma.SortOrder;
+	acknowledgedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
+	resolvedAt?: Prisma.SortOrderInput | Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrderInput | Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrderInput | Prisma.SortOrder;
+	createdAt?: Prisma.SortOrder;
+	updatedAt?: Prisma.SortOrder;
+	_count?: Prisma.IncidentCountOrderByAggregateInput;
+	_avg?: Prisma.IncidentAvgOrderByAggregateInput;
+	_max?: Prisma.IncidentMaxOrderByAggregateInput;
+	_min?: Prisma.IncidentMinOrderByAggregateInput;
+	_sum?: Prisma.IncidentSumOrderByAggregateInput;
 };
 export type IncidentScalarWhereWithAggregatesInput = {
-    AND?: Prisma.IncidentScalarWhereWithAggregatesInput | Prisma.IncidentScalarWhereWithAggregatesInput[];
-    OR?: Prisma.IncidentScalarWhereWithAggregatesInput[];
-    NOT?: Prisma.IncidentScalarWhereWithAggregatesInput | Prisma.IncidentScalarWhereWithAggregatesInput[];
-    id?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
-    number?: Prisma.IntWithAggregatesFilter<"Incident"> | number;
-    title?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
-    description?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    severity?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
-    status?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
-    priority?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
-    serviceId?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    assignedToId?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    correlationReason?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    correlationRuleId?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    tags?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    customerImpact?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    affectedSystems?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
-    triggeredAt?: Prisma.DateTimeWithAggregatesFilter<"Incident"> | Date | string;
-    acknowledgedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Incident"> | Date | string | null;
-    resolvedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Incident"> | Date | string | null;
-    alertCount?: Prisma.IntWithAggregatesFilter<"Incident"> | number;
-    timeToAcknowledge?: Prisma.IntNullableWithAggregatesFilter<"Incident"> | number | null;
-    timeToResolve?: Prisma.IntNullableWithAggregatesFilter<"Incident"> | number | null;
-    createdAt?: Prisma.DateTimeWithAggregatesFilter<"Incident"> | Date | string;
-    updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Incident"> | Date | string;
+	AND?:
+		| Prisma.IncidentScalarWhereWithAggregatesInput
+		| Prisma.IncidentScalarWhereWithAggregatesInput[];
+	OR?: Prisma.IncidentScalarWhereWithAggregatesInput[];
+	NOT?:
+		| Prisma.IncidentScalarWhereWithAggregatesInput
+		| Prisma.IncidentScalarWhereWithAggregatesInput[];
+	id?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
+	number?: Prisma.IntWithAggregatesFilter<"Incident"> | number;
+	title?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
+	description?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	severity?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
+	status?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
+	priority?: Prisma.StringWithAggregatesFilter<"Incident"> | string;
+	serviceId?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	assignedToId?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	tags?: Prisma.StringNullableWithAggregatesFilter<"Incident"> | string | null;
+	customerImpact?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.StringNullableWithAggregatesFilter<"Incident">
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeWithAggregatesFilter<"Incident"> | Date | string;
+	acknowledgedAt?:
+		| Prisma.DateTimeNullableWithAggregatesFilter<"Incident">
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.DateTimeNullableWithAggregatesFilter<"Incident">
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntWithAggregatesFilter<"Incident"> | number;
+	timeToAcknowledge?:
+		| Prisma.IntNullableWithAggregatesFilter<"Incident">
+		| number
+		| null;
+	timeToResolve?:
+		| Prisma.IntNullableWithAggregatesFilter<"Incident">
+		| number
+		| null;
+	createdAt?: Prisma.DateTimeWithAggregatesFilter<"Incident"> | Date | string;
+	updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Incident"> | Date | string;
 };
 export type IncidentCreateInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUpdateInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentCreateManyInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
 };
 export type IncidentUpdateManyMutationInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 export type IncidentUncheckedUpdateManyInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 export type IncidentListRelationFilter = {
-    every?: Prisma.IncidentWhereInput;
-    some?: Prisma.IncidentWhereInput;
-    none?: Prisma.IncidentWhereInput;
+	every?: Prisma.IncidentWhereInput;
+	some?: Prisma.IncidentWhereInput;
+	none?: Prisma.IncidentWhereInput;
 };
 export type IncidentOrderByRelationAggregateInput = {
-    _count?: Prisma.SortOrder;
+	_count?: Prisma.SortOrder;
 };
 export type IncidentNullableScalarRelationFilter = {
-    is?: Prisma.IncidentWhereInput | null;
-    isNot?: Prisma.IncidentWhereInput | null;
+	is?: Prisma.IncidentWhereInput | null;
+	isNot?: Prisma.IncidentWhereInput | null;
 };
 export type IncidentCountOrderByAggregateInput = {
-    id?: Prisma.SortOrder;
-    number?: Prisma.SortOrder;
-    title?: Prisma.SortOrder;
-    description?: Prisma.SortOrder;
-    severity?: Prisma.SortOrder;
-    status?: Prisma.SortOrder;
-    priority?: Prisma.SortOrder;
-    serviceId?: Prisma.SortOrder;
-    assignedToId?: Prisma.SortOrder;
-    correlationReason?: Prisma.SortOrder;
-    correlationRuleId?: Prisma.SortOrder;
-    tags?: Prisma.SortOrder;
-    customerImpact?: Prisma.SortOrder;
-    affectedSystems?: Prisma.SortOrder;
-    triggeredAt?: Prisma.SortOrder;
-    acknowledgedAt?: Prisma.SortOrder;
-    resolvedAt?: Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrder;
-    createdAt?: Prisma.SortOrder;
-    updatedAt?: Prisma.SortOrder;
+	id?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	title?: Prisma.SortOrder;
+	description?: Prisma.SortOrder;
+	severity?: Prisma.SortOrder;
+	status?: Prisma.SortOrder;
+	priority?: Prisma.SortOrder;
+	serviceId?: Prisma.SortOrder;
+	assignedToId?: Prisma.SortOrder;
+	correlationReason?: Prisma.SortOrder;
+	correlationRuleId?: Prisma.SortOrder;
+	tags?: Prisma.SortOrder;
+	customerImpact?: Prisma.SortOrder;
+	affectedSystems?: Prisma.SortOrder;
+	triggeredAt?: Prisma.SortOrder;
+	acknowledgedAt?: Prisma.SortOrder;
+	resolvedAt?: Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrder;
+	createdAt?: Prisma.SortOrder;
+	updatedAt?: Prisma.SortOrder;
 };
 export type IncidentAvgOrderByAggregateInput = {
-    number?: Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrder;
 };
 export type IncidentMaxOrderByAggregateInput = {
-    id?: Prisma.SortOrder;
-    number?: Prisma.SortOrder;
-    title?: Prisma.SortOrder;
-    description?: Prisma.SortOrder;
-    severity?: Prisma.SortOrder;
-    status?: Prisma.SortOrder;
-    priority?: Prisma.SortOrder;
-    serviceId?: Prisma.SortOrder;
-    assignedToId?: Prisma.SortOrder;
-    correlationReason?: Prisma.SortOrder;
-    correlationRuleId?: Prisma.SortOrder;
-    tags?: Prisma.SortOrder;
-    customerImpact?: Prisma.SortOrder;
-    affectedSystems?: Prisma.SortOrder;
-    triggeredAt?: Prisma.SortOrder;
-    acknowledgedAt?: Prisma.SortOrder;
-    resolvedAt?: Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrder;
-    createdAt?: Prisma.SortOrder;
-    updatedAt?: Prisma.SortOrder;
+	id?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	title?: Prisma.SortOrder;
+	description?: Prisma.SortOrder;
+	severity?: Prisma.SortOrder;
+	status?: Prisma.SortOrder;
+	priority?: Prisma.SortOrder;
+	serviceId?: Prisma.SortOrder;
+	assignedToId?: Prisma.SortOrder;
+	correlationReason?: Prisma.SortOrder;
+	correlationRuleId?: Prisma.SortOrder;
+	tags?: Prisma.SortOrder;
+	customerImpact?: Prisma.SortOrder;
+	affectedSystems?: Prisma.SortOrder;
+	triggeredAt?: Prisma.SortOrder;
+	acknowledgedAt?: Prisma.SortOrder;
+	resolvedAt?: Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrder;
+	createdAt?: Prisma.SortOrder;
+	updatedAt?: Prisma.SortOrder;
 };
 export type IncidentMinOrderByAggregateInput = {
-    id?: Prisma.SortOrder;
-    number?: Prisma.SortOrder;
-    title?: Prisma.SortOrder;
-    description?: Prisma.SortOrder;
-    severity?: Prisma.SortOrder;
-    status?: Prisma.SortOrder;
-    priority?: Prisma.SortOrder;
-    serviceId?: Prisma.SortOrder;
-    assignedToId?: Prisma.SortOrder;
-    correlationReason?: Prisma.SortOrder;
-    correlationRuleId?: Prisma.SortOrder;
-    tags?: Prisma.SortOrder;
-    customerImpact?: Prisma.SortOrder;
-    affectedSystems?: Prisma.SortOrder;
-    triggeredAt?: Prisma.SortOrder;
-    acknowledgedAt?: Prisma.SortOrder;
-    resolvedAt?: Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrder;
-    createdAt?: Prisma.SortOrder;
-    updatedAt?: Prisma.SortOrder;
+	id?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	title?: Prisma.SortOrder;
+	description?: Prisma.SortOrder;
+	severity?: Prisma.SortOrder;
+	status?: Prisma.SortOrder;
+	priority?: Prisma.SortOrder;
+	serviceId?: Prisma.SortOrder;
+	assignedToId?: Prisma.SortOrder;
+	correlationReason?: Prisma.SortOrder;
+	correlationRuleId?: Prisma.SortOrder;
+	tags?: Prisma.SortOrder;
+	customerImpact?: Prisma.SortOrder;
+	affectedSystems?: Prisma.SortOrder;
+	triggeredAt?: Prisma.SortOrder;
+	acknowledgedAt?: Prisma.SortOrder;
+	resolvedAt?: Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrder;
+	createdAt?: Prisma.SortOrder;
+	updatedAt?: Prisma.SortOrder;
 };
 export type IncidentSumOrderByAggregateInput = {
-    number?: Prisma.SortOrder;
-    alertCount?: Prisma.SortOrder;
-    timeToAcknowledge?: Prisma.SortOrder;
-    timeToResolve?: Prisma.SortOrder;
+	number?: Prisma.SortOrder;
+	alertCount?: Prisma.SortOrder;
+	timeToAcknowledge?: Prisma.SortOrder;
+	timeToResolve?: Prisma.SortOrder;
 };
 export type IncidentScalarRelationFilter = {
-    is?: Prisma.IncidentWhereInput;
-    isNot?: Prisma.IncidentWhereInput;
+	is?: Prisma.IncidentWhereInput;
+	isNot?: Prisma.IncidentWhereInput;
 };
 export type IncidentCreateNestedManyWithoutAssignedToInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutAssignedToInput, Prisma.IncidentUncheckedCreateWithoutAssignedToInput> | Prisma.IncidentCreateWithoutAssignedToInput[] | Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAssignedToInput | Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
-    createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutAssignedToInput,
+				Prisma.IncidentUncheckedCreateWithoutAssignedToInput
+		  >
+		| Prisma.IncidentCreateWithoutAssignedToInput[]
+		| Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
+	createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
 };
 export type IncidentUncheckedCreateNestedManyWithoutAssignedToInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutAssignedToInput, Prisma.IncidentUncheckedCreateWithoutAssignedToInput> | Prisma.IncidentCreateWithoutAssignedToInput[] | Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAssignedToInput | Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
-    createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutAssignedToInput,
+				Prisma.IncidentUncheckedCreateWithoutAssignedToInput
+		  >
+		| Prisma.IncidentCreateWithoutAssignedToInput[]
+		| Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
+	createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
 };
 export type IncidentUpdateManyWithoutAssignedToNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutAssignedToInput, Prisma.IncidentUncheckedCreateWithoutAssignedToInput> | Prisma.IncidentCreateWithoutAssignedToInput[] | Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAssignedToInput | Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
-    upsert?: Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput | Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput[];
-    createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
-    set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    disconnect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    update?: Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput | Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput[];
-    updateMany?: Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput | Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput[];
-    deleteMany?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutAssignedToInput,
+				Prisma.IncidentUncheckedCreateWithoutAssignedToInput
+		  >
+		| Prisma.IncidentCreateWithoutAssignedToInput[]
+		| Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
+	upsert?:
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput[];
+	createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
+	set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	disconnect?:
+		| Prisma.IncidentWhereUniqueInput
+		| Prisma.IncidentWhereUniqueInput[];
+	delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	update?:
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput[];
+	updateMany?:
+		| Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput
+		| Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput[];
+	deleteMany?:
+		| Prisma.IncidentScalarWhereInput
+		| Prisma.IncidentScalarWhereInput[];
 };
 export type IncidentUncheckedUpdateManyWithoutAssignedToNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutAssignedToInput, Prisma.IncidentUncheckedCreateWithoutAssignedToInput> | Prisma.IncidentCreateWithoutAssignedToInput[] | Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAssignedToInput | Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
-    upsert?: Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput | Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput[];
-    createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
-    set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    disconnect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    update?: Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput | Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput[];
-    updateMany?: Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput | Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput[];
-    deleteMany?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutAssignedToInput,
+				Prisma.IncidentUncheckedCreateWithoutAssignedToInput
+		  >
+		| Prisma.IncidentCreateWithoutAssignedToInput[]
+		| Prisma.IncidentUncheckedCreateWithoutAssignedToInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput
+		| Prisma.IncidentCreateOrConnectWithoutAssignedToInput[];
+	upsert?:
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutAssignedToInput[];
+	createMany?: Prisma.IncidentCreateManyAssignedToInputEnvelope;
+	set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	disconnect?:
+		| Prisma.IncidentWhereUniqueInput
+		| Prisma.IncidentWhereUniqueInput[];
+	delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	update?:
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutAssignedToInput[];
+	updateMany?:
+		| Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput
+		| Prisma.IncidentUpdateManyWithWhereWithoutAssignedToInput[];
+	deleteMany?:
+		| Prisma.IncidentScalarWhereInput
+		| Prisma.IncidentScalarWhereInput[];
 };
 export type IncidentCreateNestedManyWithoutServiceInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutServiceInput, Prisma.IncidentUncheckedCreateWithoutServiceInput> | Prisma.IncidentCreateWithoutServiceInput[] | Prisma.IncidentUncheckedCreateWithoutServiceInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutServiceInput | Prisma.IncidentCreateOrConnectWithoutServiceInput[];
-    createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutServiceInput,
+				Prisma.IncidentUncheckedCreateWithoutServiceInput
+		  >
+		| Prisma.IncidentCreateWithoutServiceInput[]
+		| Prisma.IncidentUncheckedCreateWithoutServiceInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput[];
+	createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
 };
 export type IncidentUncheckedCreateNestedManyWithoutServiceInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutServiceInput, Prisma.IncidentUncheckedCreateWithoutServiceInput> | Prisma.IncidentCreateWithoutServiceInput[] | Prisma.IncidentUncheckedCreateWithoutServiceInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutServiceInput | Prisma.IncidentCreateOrConnectWithoutServiceInput[];
-    createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutServiceInput,
+				Prisma.IncidentUncheckedCreateWithoutServiceInput
+		  >
+		| Prisma.IncidentCreateWithoutServiceInput[]
+		| Prisma.IncidentUncheckedCreateWithoutServiceInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput[];
+	createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
 };
 export type IncidentUpdateManyWithoutServiceNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutServiceInput, Prisma.IncidentUncheckedCreateWithoutServiceInput> | Prisma.IncidentCreateWithoutServiceInput[] | Prisma.IncidentUncheckedCreateWithoutServiceInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutServiceInput | Prisma.IncidentCreateOrConnectWithoutServiceInput[];
-    upsert?: Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput | Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput[];
-    createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
-    set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    disconnect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    update?: Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput | Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput[];
-    updateMany?: Prisma.IncidentUpdateManyWithWhereWithoutServiceInput | Prisma.IncidentUpdateManyWithWhereWithoutServiceInput[];
-    deleteMany?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutServiceInput,
+				Prisma.IncidentUncheckedCreateWithoutServiceInput
+		  >
+		| Prisma.IncidentCreateWithoutServiceInput[]
+		| Prisma.IncidentUncheckedCreateWithoutServiceInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput[];
+	upsert?:
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput[];
+	createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
+	set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	disconnect?:
+		| Prisma.IncidentWhereUniqueInput
+		| Prisma.IncidentWhereUniqueInput[];
+	delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	update?:
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput[];
+	updateMany?:
+		| Prisma.IncidentUpdateManyWithWhereWithoutServiceInput
+		| Prisma.IncidentUpdateManyWithWhereWithoutServiceInput[];
+	deleteMany?:
+		| Prisma.IncidentScalarWhereInput
+		| Prisma.IncidentScalarWhereInput[];
 };
 export type IncidentUncheckedUpdateManyWithoutServiceNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutServiceInput, Prisma.IncidentUncheckedCreateWithoutServiceInput> | Prisma.IncidentCreateWithoutServiceInput[] | Prisma.IncidentUncheckedCreateWithoutServiceInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutServiceInput | Prisma.IncidentCreateOrConnectWithoutServiceInput[];
-    upsert?: Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput | Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput[];
-    createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
-    set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    disconnect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    update?: Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput | Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput[];
-    updateMany?: Prisma.IncidentUpdateManyWithWhereWithoutServiceInput | Prisma.IncidentUpdateManyWithWhereWithoutServiceInput[];
-    deleteMany?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutServiceInput,
+				Prisma.IncidentUncheckedCreateWithoutServiceInput
+		  >
+		| Prisma.IncidentCreateWithoutServiceInput[]
+		| Prisma.IncidentUncheckedCreateWithoutServiceInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput
+		| Prisma.IncidentCreateOrConnectWithoutServiceInput[];
+	upsert?:
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutServiceInput[];
+	createMany?: Prisma.IncidentCreateManyServiceInputEnvelope;
+	set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	disconnect?:
+		| Prisma.IncidentWhereUniqueInput
+		| Prisma.IncidentWhereUniqueInput[];
+	delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	update?:
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutServiceInput[];
+	updateMany?:
+		| Prisma.IncidentUpdateManyWithWhereWithoutServiceInput
+		| Prisma.IncidentUpdateManyWithWhereWithoutServiceInput[];
+	deleteMany?:
+		| Prisma.IncidentScalarWhereInput
+		| Prisma.IncidentScalarWhereInput[];
 };
 export type IncidentCreateNestedOneWithoutAlertsInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutAlertsInput, Prisma.IncidentUncheckedCreateWithoutAlertsInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAlertsInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutAlertsInput,
+		Prisma.IncidentUncheckedCreateWithoutAlertsInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAlertsInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
 };
 export type IncidentUpdateOneWithoutAlertsNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutAlertsInput, Prisma.IncidentUncheckedCreateWithoutAlertsInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAlertsInput;
-    upsert?: Prisma.IncidentUpsertWithoutAlertsInput;
-    disconnect?: Prisma.IncidentWhereInput | boolean;
-    delete?: Prisma.IncidentWhereInput | boolean;
-    connect?: Prisma.IncidentWhereUniqueInput;
-    update?: Prisma.XOR<Prisma.XOR<Prisma.IncidentUpdateToOneWithWhereWithoutAlertsInput, Prisma.IncidentUpdateWithoutAlertsInput>, Prisma.IncidentUncheckedUpdateWithoutAlertsInput>;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutAlertsInput,
+		Prisma.IncidentUncheckedCreateWithoutAlertsInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutAlertsInput;
+	upsert?: Prisma.IncidentUpsertWithoutAlertsInput;
+	disconnect?: Prisma.IncidentWhereInput | boolean;
+	delete?: Prisma.IncidentWhereInput | boolean;
+	connect?: Prisma.IncidentWhereUniqueInput;
+	update?: Prisma.XOR<
+		Prisma.XOR<
+			Prisma.IncidentUpdateToOneWithWhereWithoutAlertsInput,
+			Prisma.IncidentUpdateWithoutAlertsInput
+		>,
+		Prisma.IncidentUncheckedUpdateWithoutAlertsInput
+	>;
 };
 export type NullableIntFieldUpdateOperationsInput = {
-    set?: number | null;
-    increment?: number;
-    decrement?: number;
-    multiply?: number;
-    divide?: number;
+	set?: number | null;
+	increment?: number;
+	decrement?: number;
+	multiply?: number;
+	divide?: number;
 };
 export type IncidentCreateNestedOneWithoutInvestigationsInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutInvestigationsInput, Prisma.IncidentUncheckedCreateWithoutInvestigationsInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutInvestigationsInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutInvestigationsInput,
+		Prisma.IncidentUncheckedCreateWithoutInvestigationsInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutInvestigationsInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
 };
 export type IncidentUpdateOneRequiredWithoutInvestigationsNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutInvestigationsInput, Prisma.IncidentUncheckedCreateWithoutInvestigationsInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutInvestigationsInput;
-    upsert?: Prisma.IncidentUpsertWithoutInvestigationsInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
-    update?: Prisma.XOR<Prisma.XOR<Prisma.IncidentUpdateToOneWithWhereWithoutInvestigationsInput, Prisma.IncidentUpdateWithoutInvestigationsInput>, Prisma.IncidentUncheckedUpdateWithoutInvestigationsInput>;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutInvestigationsInput,
+		Prisma.IncidentUncheckedCreateWithoutInvestigationsInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutInvestigationsInput;
+	upsert?: Prisma.IncidentUpsertWithoutInvestigationsInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
+	update?: Prisma.XOR<
+		Prisma.XOR<
+			Prisma.IncidentUpdateToOneWithWhereWithoutInvestigationsInput,
+			Prisma.IncidentUpdateWithoutInvestigationsInput
+		>,
+		Prisma.IncidentUncheckedUpdateWithoutInvestigationsInput
+	>;
 };
 export type IncidentCreateNestedOneWithoutTimelineInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutTimelineInput, Prisma.IncidentUncheckedCreateWithoutTimelineInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutTimelineInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutTimelineInput,
+		Prisma.IncidentUncheckedCreateWithoutTimelineInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutTimelineInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
 };
 export type IncidentUpdateOneRequiredWithoutTimelineNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutTimelineInput, Prisma.IncidentUncheckedCreateWithoutTimelineInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutTimelineInput;
-    upsert?: Prisma.IncidentUpsertWithoutTimelineInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
-    update?: Prisma.XOR<Prisma.XOR<Prisma.IncidentUpdateToOneWithWhereWithoutTimelineInput, Prisma.IncidentUpdateWithoutTimelineInput>, Prisma.IncidentUncheckedUpdateWithoutTimelineInput>;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutTimelineInput,
+		Prisma.IncidentUncheckedCreateWithoutTimelineInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutTimelineInput;
+	upsert?: Prisma.IncidentUpsertWithoutTimelineInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
+	update?: Prisma.XOR<
+		Prisma.XOR<
+			Prisma.IncidentUpdateToOneWithWhereWithoutTimelineInput,
+			Prisma.IncidentUpdateWithoutTimelineInput
+		>,
+		Prisma.IncidentUncheckedUpdateWithoutTimelineInput
+	>;
 };
 export type IncidentCreateNestedOneWithoutPostmortemInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutPostmortemInput, Prisma.IncidentUncheckedCreateWithoutPostmortemInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutPostmortemInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutPostmortemInput,
+		Prisma.IncidentUncheckedCreateWithoutPostmortemInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutPostmortemInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
 };
 export type IncidentUpdateOneRequiredWithoutPostmortemNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutPostmortemInput, Prisma.IncidentUncheckedCreateWithoutPostmortemInput>;
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutPostmortemInput;
-    upsert?: Prisma.IncidentUpsertWithoutPostmortemInput;
-    connect?: Prisma.IncidentWhereUniqueInput;
-    update?: Prisma.XOR<Prisma.XOR<Prisma.IncidentUpdateToOneWithWhereWithoutPostmortemInput, Prisma.IncidentUpdateWithoutPostmortemInput>, Prisma.IncidentUncheckedUpdateWithoutPostmortemInput>;
+	create?: Prisma.XOR<
+		Prisma.IncidentCreateWithoutPostmortemInput,
+		Prisma.IncidentUncheckedCreateWithoutPostmortemInput
+	>;
+	connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutPostmortemInput;
+	upsert?: Prisma.IncidentUpsertWithoutPostmortemInput;
+	connect?: Prisma.IncidentWhereUniqueInput;
+	update?: Prisma.XOR<
+		Prisma.XOR<
+			Prisma.IncidentUpdateToOneWithWhereWithoutPostmortemInput,
+			Prisma.IncidentUpdateWithoutPostmortemInput
+		>,
+		Prisma.IncidentUncheckedUpdateWithoutPostmortemInput
+	>;
 };
 export type IncidentCreateNestedManyWithoutCorrelationRuleInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput> | Prisma.IncidentCreateWithoutCorrelationRuleInput[] | Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput | Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
-    createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutCorrelationRuleInput,
+				Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput
+		  >
+		| Prisma.IncidentCreateWithoutCorrelationRuleInput[]
+		| Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
+	createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
 };
 export type IncidentUncheckedCreateNestedManyWithoutCorrelationRuleInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput> | Prisma.IncidentCreateWithoutCorrelationRuleInput[] | Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput | Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
-    createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutCorrelationRuleInput,
+				Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput
+		  >
+		| Prisma.IncidentCreateWithoutCorrelationRuleInput[]
+		| Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
+	createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
 };
 export type IncidentUpdateManyWithoutCorrelationRuleNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput> | Prisma.IncidentCreateWithoutCorrelationRuleInput[] | Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput | Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
-    upsert?: Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput | Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput[];
-    createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
-    set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    disconnect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    update?: Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput | Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput[];
-    updateMany?: Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput | Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput[];
-    deleteMany?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutCorrelationRuleInput,
+				Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput
+		  >
+		| Prisma.IncidentCreateWithoutCorrelationRuleInput[]
+		| Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
+	upsert?:
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput[];
+	createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
+	set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	disconnect?:
+		| Prisma.IncidentWhereUniqueInput
+		| Prisma.IncidentWhereUniqueInput[];
+	delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	update?:
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput[];
+	updateMany?:
+		| Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput
+		| Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput[];
+	deleteMany?:
+		| Prisma.IncidentScalarWhereInput
+		| Prisma.IncidentScalarWhereInput[];
 };
 export type IncidentUncheckedUpdateManyWithoutCorrelationRuleNestedInput = {
-    create?: Prisma.XOR<Prisma.IncidentCreateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput> | Prisma.IncidentCreateWithoutCorrelationRuleInput[] | Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
-    connectOrCreate?: Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput | Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
-    upsert?: Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput | Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput[];
-    createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
-    set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    disconnect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
-    update?: Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput | Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput[];
-    updateMany?: Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput | Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput[];
-    deleteMany?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	create?:
+		| Prisma.XOR<
+				Prisma.IncidentCreateWithoutCorrelationRuleInput,
+				Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput
+		  >
+		| Prisma.IncidentCreateWithoutCorrelationRuleInput[]
+		| Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput[];
+	connectOrCreate?:
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput
+		| Prisma.IncidentCreateOrConnectWithoutCorrelationRuleInput[];
+	upsert?:
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput
+		| Prisma.IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput[];
+	createMany?: Prisma.IncidentCreateManyCorrelationRuleInputEnvelope;
+	set?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	disconnect?:
+		| Prisma.IncidentWhereUniqueInput
+		| Prisma.IncidentWhereUniqueInput[];
+	delete?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	connect?: Prisma.IncidentWhereUniqueInput | Prisma.IncidentWhereUniqueInput[];
+	update?:
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput
+		| Prisma.IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput[];
+	updateMany?:
+		| Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput
+		| Prisma.IncidentUpdateManyWithWhereWithoutCorrelationRuleInput[];
+	deleteMany?:
+		| Prisma.IncidentScalarWhereInput
+		| Prisma.IncidentScalarWhereInput[];
 };
 export type IncidentCreateWithoutAssignedToInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutAssignedToInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutAssignedToInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutAssignedToInput, Prisma.IncidentUncheckedCreateWithoutAssignedToInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutAssignedToInput,
+		Prisma.IncidentUncheckedCreateWithoutAssignedToInput
+	>;
 };
 export type IncidentCreateManyAssignedToInputEnvelope = {
-    data: Prisma.IncidentCreateManyAssignedToInput | Prisma.IncidentCreateManyAssignedToInput[];
+	data:
+		| Prisma.IncidentCreateManyAssignedToInput
+		| Prisma.IncidentCreateManyAssignedToInput[];
 };
 export type IncidentUpsertWithWhereUniqueWithoutAssignedToInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutAssignedToInput, Prisma.IncidentUncheckedUpdateWithoutAssignedToInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutAssignedToInput, Prisma.IncidentUncheckedCreateWithoutAssignedToInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutAssignedToInput,
+		Prisma.IncidentUncheckedUpdateWithoutAssignedToInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutAssignedToInput,
+		Prisma.IncidentUncheckedCreateWithoutAssignedToInput
+	>;
 };
 export type IncidentUpdateWithWhereUniqueWithoutAssignedToInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutAssignedToInput, Prisma.IncidentUncheckedUpdateWithoutAssignedToInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutAssignedToInput,
+		Prisma.IncidentUncheckedUpdateWithoutAssignedToInput
+	>;
 };
 export type IncidentUpdateManyWithWhereWithoutAssignedToInput = {
-    where: Prisma.IncidentScalarWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateManyMutationInput, Prisma.IncidentUncheckedUpdateManyWithoutAssignedToInput>;
+	where: Prisma.IncidentScalarWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateManyMutationInput,
+		Prisma.IncidentUncheckedUpdateManyWithoutAssignedToInput
+	>;
 };
 export type IncidentScalarWhereInput = {
-    AND?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
-    OR?: Prisma.IncidentScalarWhereInput[];
-    NOT?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
-    id?: Prisma.StringFilter<"Incident"> | string;
-    number?: Prisma.IntFilter<"Incident"> | number;
-    title?: Prisma.StringFilter<"Incident"> | string;
-    description?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    severity?: Prisma.StringFilter<"Incident"> | string;
-    status?: Prisma.StringFilter<"Incident"> | string;
-    priority?: Prisma.StringFilter<"Incident"> | string;
-    serviceId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    assignedToId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    correlationReason?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    correlationRuleId?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    tags?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    customerImpact?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    affectedSystems?: Prisma.StringNullableFilter<"Incident"> | string | null;
-    triggeredAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    acknowledgedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
-    resolvedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
-    alertCount?: Prisma.IntFilter<"Incident"> | number;
-    timeToAcknowledge?: Prisma.IntNullableFilter<"Incident"> | number | null;
-    timeToResolve?: Prisma.IntNullableFilter<"Incident"> | number | null;
-    createdAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
-    updatedAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+	AND?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	OR?: Prisma.IncidentScalarWhereInput[];
+	NOT?: Prisma.IncidentScalarWhereInput | Prisma.IncidentScalarWhereInput[];
+	id?: Prisma.StringFilter<"Incident"> | string;
+	number?: Prisma.IntFilter<"Incident"> | number;
+	title?: Prisma.StringFilter<"Incident"> | string;
+	description?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	severity?: Prisma.StringFilter<"Incident"> | string;
+	status?: Prisma.StringFilter<"Incident"> | string;
+	priority?: Prisma.StringFilter<"Incident"> | string;
+	serviceId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	assignedToId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	correlationReason?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	correlationRuleId?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	tags?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	customerImpact?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	affectedSystems?: Prisma.StringNullableFilter<"Incident"> | string | null;
+	triggeredAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+	acknowledgedAt?:
+		| Prisma.DateTimeNullableFilter<"Incident">
+		| Date
+		| string
+		| null;
+	resolvedAt?: Prisma.DateTimeNullableFilter<"Incident"> | Date | string | null;
+	alertCount?: Prisma.IntFilter<"Incident"> | number;
+	timeToAcknowledge?: Prisma.IntNullableFilter<"Incident"> | number | null;
+	timeToResolve?: Prisma.IntNullableFilter<"Incident"> | number | null;
+	createdAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
+	updatedAt?: Prisma.DateTimeFilter<"Incident"> | Date | string;
 };
 export type IncidentCreateWithoutServiceInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutServiceInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutServiceInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutServiceInput, Prisma.IncidentUncheckedCreateWithoutServiceInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutServiceInput,
+		Prisma.IncidentUncheckedCreateWithoutServiceInput
+	>;
 };
 export type IncidentCreateManyServiceInputEnvelope = {
-    data: Prisma.IncidentCreateManyServiceInput | Prisma.IncidentCreateManyServiceInput[];
+	data:
+		| Prisma.IncidentCreateManyServiceInput
+		| Prisma.IncidentCreateManyServiceInput[];
 };
 export type IncidentUpsertWithWhereUniqueWithoutServiceInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutServiceInput, Prisma.IncidentUncheckedUpdateWithoutServiceInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutServiceInput, Prisma.IncidentUncheckedCreateWithoutServiceInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutServiceInput,
+		Prisma.IncidentUncheckedUpdateWithoutServiceInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutServiceInput,
+		Prisma.IncidentUncheckedCreateWithoutServiceInput
+	>;
 };
 export type IncidentUpdateWithWhereUniqueWithoutServiceInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutServiceInput, Prisma.IncidentUncheckedUpdateWithoutServiceInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutServiceInput,
+		Prisma.IncidentUncheckedUpdateWithoutServiceInput
+	>;
 };
 export type IncidentUpdateManyWithWhereWithoutServiceInput = {
-    where: Prisma.IncidentScalarWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateManyMutationInput, Prisma.IncidentUncheckedUpdateManyWithoutServiceInput>;
+	where: Prisma.IncidentScalarWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateManyMutationInput,
+		Prisma.IncidentUncheckedUpdateManyWithoutServiceInput
+	>;
 };
 export type IncidentCreateWithoutAlertsInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutAlertsInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutAlertsInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutAlertsInput, Prisma.IncidentUncheckedCreateWithoutAlertsInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutAlertsInput,
+		Prisma.IncidentUncheckedCreateWithoutAlertsInput
+	>;
 };
 export type IncidentUpsertWithoutAlertsInput = {
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutAlertsInput, Prisma.IncidentUncheckedUpdateWithoutAlertsInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutAlertsInput, Prisma.IncidentUncheckedCreateWithoutAlertsInput>;
-    where?: Prisma.IncidentWhereInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutAlertsInput,
+		Prisma.IncidentUncheckedUpdateWithoutAlertsInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutAlertsInput,
+		Prisma.IncidentUncheckedCreateWithoutAlertsInput
+	>;
+	where?: Prisma.IncidentWhereInput;
 };
 export type IncidentUpdateToOneWithWhereWithoutAlertsInput = {
-    where?: Prisma.IncidentWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutAlertsInput, Prisma.IncidentUncheckedUpdateWithoutAlertsInput>;
+	where?: Prisma.IncidentWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutAlertsInput,
+		Prisma.IncidentUncheckedUpdateWithoutAlertsInput
+	>;
 };
 export type IncidentUpdateWithoutAlertsInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutAlertsInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentCreateWithoutInvestigationsInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutInvestigationsInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutInvestigationsInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutInvestigationsInput, Prisma.IncidentUncheckedCreateWithoutInvestigationsInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutInvestigationsInput,
+		Prisma.IncidentUncheckedCreateWithoutInvestigationsInput
+	>;
 };
 export type IncidentUpsertWithoutInvestigationsInput = {
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutInvestigationsInput, Prisma.IncidentUncheckedUpdateWithoutInvestigationsInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutInvestigationsInput, Prisma.IncidentUncheckedCreateWithoutInvestigationsInput>;
-    where?: Prisma.IncidentWhereInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutInvestigationsInput,
+		Prisma.IncidentUncheckedUpdateWithoutInvestigationsInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutInvestigationsInput,
+		Prisma.IncidentUncheckedCreateWithoutInvestigationsInput
+	>;
+	where?: Prisma.IncidentWhereInput;
 };
 export type IncidentUpdateToOneWithWhereWithoutInvestigationsInput = {
-    where?: Prisma.IncidentWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutInvestigationsInput, Prisma.IncidentUncheckedUpdateWithoutInvestigationsInput>;
+	where?: Prisma.IncidentWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutInvestigationsInput,
+		Prisma.IncidentUncheckedUpdateWithoutInvestigationsInput
+	>;
 };
 export type IncidentUpdateWithoutInvestigationsInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutInvestigationsInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentCreateWithoutTimelineInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutTimelineInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutTimelineInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutTimelineInput, Prisma.IncidentUncheckedCreateWithoutTimelineInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutTimelineInput,
+		Prisma.IncidentUncheckedCreateWithoutTimelineInput
+	>;
 };
 export type IncidentUpsertWithoutTimelineInput = {
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutTimelineInput, Prisma.IncidentUncheckedUpdateWithoutTimelineInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutTimelineInput, Prisma.IncidentUncheckedCreateWithoutTimelineInput>;
-    where?: Prisma.IncidentWhereInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutTimelineInput,
+		Prisma.IncidentUncheckedUpdateWithoutTimelineInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutTimelineInput,
+		Prisma.IncidentUncheckedCreateWithoutTimelineInput
+	>;
+	where?: Prisma.IncidentWhereInput;
 };
 export type IncidentUpdateToOneWithWhereWithoutTimelineInput = {
-    where?: Prisma.IncidentWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutTimelineInput, Prisma.IncidentUncheckedUpdateWithoutTimelineInput>;
+	where?: Prisma.IncidentWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutTimelineInput,
+		Prisma.IncidentUncheckedUpdateWithoutTimelineInput
+	>;
 };
 export type IncidentUpdateWithoutTimelineInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutTimelineInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentCreateWithoutPostmortemInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	correlationRule?: Prisma.CorrelationRuleCreateNestedOneWithoutIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutPostmortemInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutPostmortemInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutPostmortemInput, Prisma.IncidentUncheckedCreateWithoutPostmortemInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutPostmortemInput,
+		Prisma.IncidentUncheckedCreateWithoutPostmortemInput
+	>;
 };
 export type IncidentUpsertWithoutPostmortemInput = {
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutPostmortemInput, Prisma.IncidentUncheckedUpdateWithoutPostmortemInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutPostmortemInput, Prisma.IncidentUncheckedCreateWithoutPostmortemInput>;
-    where?: Prisma.IncidentWhereInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutPostmortemInput,
+		Prisma.IncidentUncheckedUpdateWithoutPostmortemInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutPostmortemInput,
+		Prisma.IncidentUncheckedCreateWithoutPostmortemInput
+	>;
+	where?: Prisma.IncidentWhereInput;
 };
 export type IncidentUpdateToOneWithWhereWithoutPostmortemInput = {
-    where?: Prisma.IncidentWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutPostmortemInput, Prisma.IncidentUncheckedUpdateWithoutPostmortemInput>;
+	where?: Prisma.IncidentWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutPostmortemInput,
+		Prisma.IncidentUncheckedUpdateWithoutPostmortemInput
+	>;
 };
 export type IncidentUpdateWithoutPostmortemInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutPostmortemInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
 };
 export type IncidentCreateWithoutCorrelationRuleInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
-    assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
-    alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	service?: Prisma.ServiceCreateNestedOneWithoutIncidentsInput;
+	assignedTo?: Prisma.UserCreateNestedOneWithoutAssignedIncidentsInput;
+	alerts?: Prisma.AlertCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentUncheckedCreateWithoutCorrelationRuleInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
-    alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
-    investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
-    timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
-    postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
+	alerts?: Prisma.AlertUncheckedCreateNestedManyWithoutIncidentInput;
+	investigations?: Prisma.InvestigationUncheckedCreateNestedManyWithoutIncidentInput;
+	timeline?: Prisma.TimelineEntryUncheckedCreateNestedManyWithoutIncidentInput;
+	postmortem?: Prisma.PostmortemUncheckedCreateNestedOneWithoutIncidentInput;
 };
 export type IncidentCreateOrConnectWithoutCorrelationRuleInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutCorrelationRuleInput,
+		Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput
+	>;
 };
 export type IncidentCreateManyCorrelationRuleInputEnvelope = {
-    data: Prisma.IncidentCreateManyCorrelationRuleInput | Prisma.IncidentCreateManyCorrelationRuleInput[];
+	data:
+		| Prisma.IncidentCreateManyCorrelationRuleInput
+		| Prisma.IncidentCreateManyCorrelationRuleInput[];
 };
 export type IncidentUpsertWithWhereUniqueWithoutCorrelationRuleInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    update: Prisma.XOR<Prisma.IncidentUpdateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedUpdateWithoutCorrelationRuleInput>;
-    create: Prisma.XOR<Prisma.IncidentCreateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutCorrelationRuleInput,
+		Prisma.IncidentUncheckedUpdateWithoutCorrelationRuleInput
+	>;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateWithoutCorrelationRuleInput,
+		Prisma.IncidentUncheckedCreateWithoutCorrelationRuleInput
+	>;
 };
 export type IncidentUpdateWithWhereUniqueWithoutCorrelationRuleInput = {
-    where: Prisma.IncidentWhereUniqueInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateWithoutCorrelationRuleInput, Prisma.IncidentUncheckedUpdateWithoutCorrelationRuleInput>;
+	where: Prisma.IncidentWhereUniqueInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateWithoutCorrelationRuleInput,
+		Prisma.IncidentUncheckedUpdateWithoutCorrelationRuleInput
+	>;
 };
 export type IncidentUpdateManyWithWhereWithoutCorrelationRuleInput = {
-    where: Prisma.IncidentScalarWhereInput;
-    data: Prisma.XOR<Prisma.IncidentUpdateManyMutationInput, Prisma.IncidentUncheckedUpdateManyWithoutCorrelationRuleInput>;
+	where: Prisma.IncidentScalarWhereInput;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateManyMutationInput,
+		Prisma.IncidentUncheckedUpdateManyWithoutCorrelationRuleInput
+	>;
 };
 export type IncidentCreateManyAssignedToInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
 };
 export type IncidentUpdateWithoutAssignedToInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutAssignedToInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateManyWithoutAssignedToInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 export type IncidentCreateManyServiceInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    correlationRuleId?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	correlationRuleId?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
 };
 export type IncidentUpdateWithoutServiceInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	correlationRule?: Prisma.CorrelationRuleUpdateOneWithoutIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutServiceInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateManyWithoutServiceInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationRuleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationRuleId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 export type IncidentCreateManyCorrelationRuleInput = {
-    id?: string;
-    number: number;
-    title: string;
-    description?: string | null;
-    severity?: string;
-    status?: string;
-    priority?: string;
-    serviceId?: string | null;
-    assignedToId?: string | null;
-    correlationReason?: string | null;
-    tags?: string | null;
-    customerImpact?: string | null;
-    affectedSystems?: string | null;
-    triggeredAt?: Date | string;
-    acknowledgedAt?: Date | string | null;
-    resolvedAt?: Date | string | null;
-    alertCount?: number;
-    timeToAcknowledge?: number | null;
-    timeToResolve?: number | null;
-    createdAt?: Date | string;
-    updatedAt?: Date | string;
+	id?: string;
+	number: number;
+	title: string;
+	description?: string | null;
+	severity?: string;
+	status?: string;
+	priority?: string;
+	serviceId?: string | null;
+	assignedToId?: string | null;
+	correlationReason?: string | null;
+	tags?: string | null;
+	customerImpact?: string | null;
+	affectedSystems?: string | null;
+	triggeredAt?: Date | string;
+	acknowledgedAt?: Date | string | null;
+	resolvedAt?: Date | string | null;
+	alertCount?: number;
+	timeToAcknowledge?: number | null;
+	timeToResolve?: number | null;
+	createdAt?: Date | string;
+	updatedAt?: Date | string;
 };
 export type IncidentUpdateWithoutCorrelationRuleInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
-    assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
-    alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	service?: Prisma.ServiceUpdateOneWithoutIncidentsNestedInput;
+	assignedTo?: Prisma.UserUpdateOneWithoutAssignedIncidentsNestedInput;
+	alerts?: Prisma.AlertUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateWithoutCorrelationRuleInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
-    investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
-    timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
-    postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	alerts?: Prisma.AlertUncheckedUpdateManyWithoutIncidentNestedInput;
+	investigations?: Prisma.InvestigationUncheckedUpdateManyWithoutIncidentNestedInput;
+	timeline?: Prisma.TimelineEntryUncheckedUpdateManyWithoutIncidentNestedInput;
+	postmortem?: Prisma.PostmortemUncheckedUpdateOneWithoutIncidentNestedInput;
 };
 export type IncidentUncheckedUpdateManyWithoutCorrelationRuleInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string;
-    number?: Prisma.IntFieldUpdateOperationsInput | number;
-    title?: Prisma.StringFieldUpdateOperationsInput | string;
-    description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    severity?: Prisma.StringFieldUpdateOperationsInput | string;
-    status?: Prisma.StringFieldUpdateOperationsInput | string;
-    priority?: Prisma.StringFieldUpdateOperationsInput | string;
-    serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    assignedToId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    correlationReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    customerImpact?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    affectedSystems?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-    triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    acknowledgedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    resolvedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-    alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
-    timeToAcknowledge?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
-    createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-    updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	id?: Prisma.StringFieldUpdateOperationsInput | string;
+	number?: Prisma.IntFieldUpdateOperationsInput | number;
+	title?: Prisma.StringFieldUpdateOperationsInput | string;
+	description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	severity?: Prisma.StringFieldUpdateOperationsInput | string;
+	status?: Prisma.StringFieldUpdateOperationsInput | string;
+	priority?: Prisma.StringFieldUpdateOperationsInput | string;
+	serviceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	assignedToId?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	correlationReason?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	tags?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+	customerImpact?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	affectedSystems?:
+		| Prisma.NullableStringFieldUpdateOperationsInput
+		| string
+		| null;
+	triggeredAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	acknowledgedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	resolvedAt?:
+		| Prisma.NullableDateTimeFieldUpdateOperationsInput
+		| Date
+		| string
+		| null;
+	alertCount?: Prisma.IntFieldUpdateOperationsInput | number;
+	timeToAcknowledge?:
+		| Prisma.NullableIntFieldUpdateOperationsInput
+		| number
+		| null;
+	timeToResolve?: Prisma.NullableIntFieldUpdateOperationsInput | number | null;
+	createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+	updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 export type IncidentCountOutputType = {
-    alerts: number;
-    investigations: number;
-    timeline: number;
+	alerts: number;
+	investigations: number;
+	timeline: number;
 };
-export type IncidentCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    alerts?: boolean | IncidentCountOutputTypeCountAlertsArgs;
-    investigations?: boolean | IncidentCountOutputTypeCountInvestigationsArgs;
-    timeline?: boolean | IncidentCountOutputTypeCountTimelineArgs;
+export type IncidentCountOutputTypeSelect<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	alerts?: boolean | IncidentCountOutputTypeCountAlertsArgs;
+	investigations?: boolean | IncidentCountOutputTypeCountInvestigationsArgs;
+	timeline?: boolean | IncidentCountOutputTypeCountTimelineArgs;
 };
-export type IncidentCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentCountOutputTypeSelect<ExtArgs> | null;
+export type IncidentCountOutputTypeDefaultArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentCountOutputTypeSelect<ExtArgs> | null;
 };
-export type IncidentCountOutputTypeCountAlertsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    where?: Prisma.AlertWhereInput;
+export type IncidentCountOutputTypeCountAlertsArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	where?: Prisma.AlertWhereInput;
 };
-export type IncidentCountOutputTypeCountInvestigationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    where?: Prisma.InvestigationWhereInput;
+export type IncidentCountOutputTypeCountInvestigationsArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	where?: Prisma.InvestigationWhereInput;
 };
-export type IncidentCountOutputTypeCountTimelineArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    where?: Prisma.TimelineEntryWhereInput;
+export type IncidentCountOutputTypeCountTimelineArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	where?: Prisma.TimelineEntryWhereInput;
 };
-export type IncidentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
-    id?: boolean;
-    number?: boolean;
-    title?: boolean;
-    description?: boolean;
-    severity?: boolean;
-    status?: boolean;
-    priority?: boolean;
-    serviceId?: boolean;
-    assignedToId?: boolean;
-    correlationReason?: boolean;
-    correlationRuleId?: boolean;
-    tags?: boolean;
-    customerImpact?: boolean;
-    affectedSystems?: boolean;
-    triggeredAt?: boolean;
-    acknowledgedAt?: boolean;
-    resolvedAt?: boolean;
-    alertCount?: boolean;
-    timeToAcknowledge?: boolean;
-    timeToResolve?: boolean;
-    createdAt?: boolean;
-    updatedAt?: boolean;
-    service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
-    assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
-    correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
-    alerts?: boolean | Prisma.Incident$alertsArgs<ExtArgs>;
-    investigations?: boolean | Prisma.Incident$investigationsArgs<ExtArgs>;
-    timeline?: boolean | Prisma.Incident$timelineArgs<ExtArgs>;
-    postmortem?: boolean | Prisma.Incident$postmortemArgs<ExtArgs>;
-    _count?: boolean | Prisma.IncidentCountOutputTypeDefaultArgs<ExtArgs>;
-}, ExtArgs["result"]["incident"]>;
-export type IncidentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
-    id?: boolean;
-    number?: boolean;
-    title?: boolean;
-    description?: boolean;
-    severity?: boolean;
-    status?: boolean;
-    priority?: boolean;
-    serviceId?: boolean;
-    assignedToId?: boolean;
-    correlationReason?: boolean;
-    correlationRuleId?: boolean;
-    tags?: boolean;
-    customerImpact?: boolean;
-    affectedSystems?: boolean;
-    triggeredAt?: boolean;
-    acknowledgedAt?: boolean;
-    resolvedAt?: boolean;
-    alertCount?: boolean;
-    timeToAcknowledge?: boolean;
-    timeToResolve?: boolean;
-    createdAt?: boolean;
-    updatedAt?: boolean;
-    service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
-    assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
-    correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
-}, ExtArgs["result"]["incident"]>;
-export type IncidentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
-    id?: boolean;
-    number?: boolean;
-    title?: boolean;
-    description?: boolean;
-    severity?: boolean;
-    status?: boolean;
-    priority?: boolean;
-    serviceId?: boolean;
-    assignedToId?: boolean;
-    correlationReason?: boolean;
-    correlationRuleId?: boolean;
-    tags?: boolean;
-    customerImpact?: boolean;
-    affectedSystems?: boolean;
-    triggeredAt?: boolean;
-    acknowledgedAt?: boolean;
-    resolvedAt?: boolean;
-    alertCount?: boolean;
-    timeToAcknowledge?: boolean;
-    timeToResolve?: boolean;
-    createdAt?: boolean;
-    updatedAt?: boolean;
-    service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
-    assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
-    correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
-}, ExtArgs["result"]["incident"]>;
+export type IncidentSelect<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = runtime.Types.Extensions.GetSelect<
+	{
+		id?: boolean;
+		number?: boolean;
+		title?: boolean;
+		description?: boolean;
+		severity?: boolean;
+		status?: boolean;
+		priority?: boolean;
+		serviceId?: boolean;
+		assignedToId?: boolean;
+		correlationReason?: boolean;
+		correlationRuleId?: boolean;
+		tags?: boolean;
+		customerImpact?: boolean;
+		affectedSystems?: boolean;
+		triggeredAt?: boolean;
+		acknowledgedAt?: boolean;
+		resolvedAt?: boolean;
+		alertCount?: boolean;
+		timeToAcknowledge?: boolean;
+		timeToResolve?: boolean;
+		createdAt?: boolean;
+		updatedAt?: boolean;
+		service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
+		assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
+		correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
+		alerts?: boolean | Prisma.Incident$alertsArgs<ExtArgs>;
+		investigations?: boolean | Prisma.Incident$investigationsArgs<ExtArgs>;
+		timeline?: boolean | Prisma.Incident$timelineArgs<ExtArgs>;
+		postmortem?: boolean | Prisma.Incident$postmortemArgs<ExtArgs>;
+		_count?: boolean | Prisma.IncidentCountOutputTypeDefaultArgs<ExtArgs>;
+	},
+	ExtArgs["result"]["incident"]
+>;
+export type IncidentSelectCreateManyAndReturn<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = runtime.Types.Extensions.GetSelect<
+	{
+		id?: boolean;
+		number?: boolean;
+		title?: boolean;
+		description?: boolean;
+		severity?: boolean;
+		status?: boolean;
+		priority?: boolean;
+		serviceId?: boolean;
+		assignedToId?: boolean;
+		correlationReason?: boolean;
+		correlationRuleId?: boolean;
+		tags?: boolean;
+		customerImpact?: boolean;
+		affectedSystems?: boolean;
+		triggeredAt?: boolean;
+		acknowledgedAt?: boolean;
+		resolvedAt?: boolean;
+		alertCount?: boolean;
+		timeToAcknowledge?: boolean;
+		timeToResolve?: boolean;
+		createdAt?: boolean;
+		updatedAt?: boolean;
+		service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
+		assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
+		correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
+	},
+	ExtArgs["result"]["incident"]
+>;
+export type IncidentSelectUpdateManyAndReturn<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = runtime.Types.Extensions.GetSelect<
+	{
+		id?: boolean;
+		number?: boolean;
+		title?: boolean;
+		description?: boolean;
+		severity?: boolean;
+		status?: boolean;
+		priority?: boolean;
+		serviceId?: boolean;
+		assignedToId?: boolean;
+		correlationReason?: boolean;
+		correlationRuleId?: boolean;
+		tags?: boolean;
+		customerImpact?: boolean;
+		affectedSystems?: boolean;
+		triggeredAt?: boolean;
+		acknowledgedAt?: boolean;
+		resolvedAt?: boolean;
+		alertCount?: boolean;
+		timeToAcknowledge?: boolean;
+		timeToResolve?: boolean;
+		createdAt?: boolean;
+		updatedAt?: boolean;
+		service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
+		assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
+		correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
+	},
+	ExtArgs["result"]["incident"]
+>;
 export type IncidentSelectScalar = {
-    id?: boolean;
-    number?: boolean;
-    title?: boolean;
-    description?: boolean;
-    severity?: boolean;
-    status?: boolean;
-    priority?: boolean;
-    serviceId?: boolean;
-    assignedToId?: boolean;
-    correlationReason?: boolean;
-    correlationRuleId?: boolean;
-    tags?: boolean;
-    customerImpact?: boolean;
-    affectedSystems?: boolean;
-    triggeredAt?: boolean;
-    acknowledgedAt?: boolean;
-    resolvedAt?: boolean;
-    alertCount?: boolean;
-    timeToAcknowledge?: boolean;
-    timeToResolve?: boolean;
-    createdAt?: boolean;
-    updatedAt?: boolean;
+	id?: boolean;
+	number?: boolean;
+	title?: boolean;
+	description?: boolean;
+	severity?: boolean;
+	status?: boolean;
+	priority?: boolean;
+	serviceId?: boolean;
+	assignedToId?: boolean;
+	correlationReason?: boolean;
+	correlationRuleId?: boolean;
+	tags?: boolean;
+	customerImpact?: boolean;
+	affectedSystems?: boolean;
+	triggeredAt?: boolean;
+	acknowledgedAt?: boolean;
+	resolvedAt?: boolean;
+	alertCount?: boolean;
+	timeToAcknowledge?: boolean;
+	timeToResolve?: boolean;
+	createdAt?: boolean;
+	updatedAt?: boolean;
 };
-export type IncidentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "number" | "title" | "description" | "severity" | "status" | "priority" | "serviceId" | "assignedToId" | "correlationReason" | "correlationRuleId" | "tags" | "customerImpact" | "affectedSystems" | "triggeredAt" | "acknowledgedAt" | "resolvedAt" | "alertCount" | "timeToAcknowledge" | "timeToResolve" | "createdAt" | "updatedAt", ExtArgs["result"]["incident"]>;
-export type IncidentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
-    assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
-    correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
-    alerts?: boolean | Prisma.Incident$alertsArgs<ExtArgs>;
-    investigations?: boolean | Prisma.Incident$investigationsArgs<ExtArgs>;
-    timeline?: boolean | Prisma.Incident$timelineArgs<ExtArgs>;
-    postmortem?: boolean | Prisma.Incident$postmortemArgs<ExtArgs>;
-    _count?: boolean | Prisma.IncidentCountOutputTypeDefaultArgs<ExtArgs>;
+export type IncidentOmit<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = runtime.Types.Extensions.GetOmit<
+	| "id"
+	| "number"
+	| "title"
+	| "description"
+	| "severity"
+	| "status"
+	| "priority"
+	| "serviceId"
+	| "assignedToId"
+	| "correlationReason"
+	| "correlationRuleId"
+	| "tags"
+	| "customerImpact"
+	| "affectedSystems"
+	| "triggeredAt"
+	| "acknowledgedAt"
+	| "resolvedAt"
+	| "alertCount"
+	| "timeToAcknowledge"
+	| "timeToResolve"
+	| "createdAt"
+	| "updatedAt",
+	ExtArgs["result"]["incident"]
+>;
+export type IncidentInclude<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
+	assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
+	correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
+	alerts?: boolean | Prisma.Incident$alertsArgs<ExtArgs>;
+	investigations?: boolean | Prisma.Incident$investigationsArgs<ExtArgs>;
+	timeline?: boolean | Prisma.Incident$timelineArgs<ExtArgs>;
+	postmortem?: boolean | Prisma.Incident$postmortemArgs<ExtArgs>;
+	_count?: boolean | Prisma.IncidentCountOutputTypeDefaultArgs<ExtArgs>;
 };
-export type IncidentIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
-    assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
-    correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
+export type IncidentIncludeCreateManyAndReturn<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
+	assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
+	correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
 };
-export type IncidentIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
-    assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
-    correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
+export type IncidentIncludeUpdateManyAndReturn<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	service?: boolean | Prisma.Incident$serviceArgs<ExtArgs>;
+	assignedTo?: boolean | Prisma.Incident$assignedToArgs<ExtArgs>;
+	correlationRule?: boolean | Prisma.Incident$correlationRuleArgs<ExtArgs>;
 };
-export type $IncidentPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    name: "Incident";
-    objects: {
-        service: Prisma.$ServicePayload<ExtArgs> | null;
-        assignedTo: Prisma.$UserPayload<ExtArgs> | null;
-        correlationRule: Prisma.$CorrelationRulePayload<ExtArgs> | null;
-        alerts: Prisma.$AlertPayload<ExtArgs>[];
-        investigations: Prisma.$InvestigationPayload<ExtArgs>[];
-        timeline: Prisma.$TimelineEntryPayload<ExtArgs>[];
-        postmortem: Prisma.$PostmortemPayload<ExtArgs> | null;
-    };
-    scalars: runtime.Types.Extensions.GetPayloadResult<{
-        id: string;
-        number: number;
-        title: string;
-        description: string | null;
-        severity: string;
-        status: string;
-        priority: string;
-        serviceId: string | null;
-        assignedToId: string | null;
-        correlationReason: string | null;
-        correlationRuleId: string | null;
-        tags: string | null;
-        customerImpact: string | null;
-        affectedSystems: string | null;
-        triggeredAt: Date;
-        acknowledgedAt: Date | null;
-        resolvedAt: Date | null;
-        alertCount: number;
-        timeToAcknowledge: number | null;
-        timeToResolve: number | null;
-        createdAt: Date;
-        updatedAt: Date;
-    }, ExtArgs["result"]["incident"]>;
-    composites: {};
+export type $IncidentPayload<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	name: "Incident";
+	objects: {
+		service: Prisma.$ServicePayload<ExtArgs> | null;
+		assignedTo: Prisma.$UserPayload<ExtArgs> | null;
+		correlationRule: Prisma.$CorrelationRulePayload<ExtArgs> | null;
+		alerts: Prisma.$AlertPayload<ExtArgs>[];
+		investigations: Prisma.$InvestigationPayload<ExtArgs>[];
+		timeline: Prisma.$TimelineEntryPayload<ExtArgs>[];
+		postmortem: Prisma.$PostmortemPayload<ExtArgs> | null;
+	};
+	scalars: runtime.Types.Extensions.GetPayloadResult<
+		{
+			id: string;
+			number: number;
+			title: string;
+			description: string | null;
+			severity: string;
+			status: string;
+			priority: string;
+			serviceId: string | null;
+			assignedToId: string | null;
+			correlationReason: string | null;
+			correlationRuleId: string | null;
+			tags: string | null;
+			customerImpact: string | null;
+			affectedSystems: string | null;
+			triggeredAt: Date;
+			acknowledgedAt: Date | null;
+			resolvedAt: Date | null;
+			alertCount: number;
+			timeToAcknowledge: number | null;
+			timeToResolve: number | null;
+			createdAt: Date;
+			updatedAt: Date;
+		},
+		ExtArgs["result"]["incident"]
+	>;
+	composites: {};
 };
-export type IncidentGetPayload<S extends boolean | null | undefined | IncidentDefaultArgs> = runtime.Types.Result.GetResult<Prisma.$IncidentPayload, S>;
-export type IncidentCountArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = Omit<IncidentFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
-    select?: IncidentCountAggregateInputType | true;
+export type IncidentGetPayload<
+	S extends boolean | null | undefined | IncidentDefaultArgs,
+> = runtime.Types.Result.GetResult<Prisma.$IncidentPayload, S>;
+export type IncidentCountArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = Omit<IncidentFindManyArgs, "select" | "include" | "distinct" | "omit"> & {
+	select?: IncidentCountAggregateInputType | true;
 };
-export interface IncidentDelegate<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> {
-    [K: symbol]: {
-        types: Prisma.TypeMap<ExtArgs>['model']['Incident'];
-        meta: {
-            name: 'Incident';
-        };
-    };
-    findUnique<T extends IncidentFindUniqueArgs>(args: Prisma.SelectSubset<T, IncidentFindUniqueArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>;
-    findUniqueOrThrow<T extends IncidentFindUniqueOrThrowArgs>(args: Prisma.SelectSubset<T, IncidentFindUniqueOrThrowArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>;
-    findFirst<T extends IncidentFindFirstArgs>(args?: Prisma.SelectSubset<T, IncidentFindFirstArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>;
-    findFirstOrThrow<T extends IncidentFindFirstOrThrowArgs>(args?: Prisma.SelectSubset<T, IncidentFindFirstOrThrowArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>;
-    findMany<T extends IncidentFindManyArgs>(args?: Prisma.SelectSubset<T, IncidentFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>;
-    create<T extends IncidentCreateArgs>(args: Prisma.SelectSubset<T, IncidentCreateArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>;
-    createMany<T extends IncidentCreateManyArgs>(args?: Prisma.SelectSubset<T, IncidentCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<Prisma.BatchPayload>;
-    createManyAndReturn<T extends IncidentCreateManyAndReturnArgs>(args?: Prisma.SelectSubset<T, IncidentCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>;
-    delete<T extends IncidentDeleteArgs>(args: Prisma.SelectSubset<T, IncidentDeleteArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>;
-    update<T extends IncidentUpdateArgs>(args: Prisma.SelectSubset<T, IncidentUpdateArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>;
-    deleteMany<T extends IncidentDeleteManyArgs>(args?: Prisma.SelectSubset<T, IncidentDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<Prisma.BatchPayload>;
-    updateMany<T extends IncidentUpdateManyArgs>(args: Prisma.SelectSubset<T, IncidentUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<Prisma.BatchPayload>;
-    updateManyAndReturn<T extends IncidentUpdateManyAndReturnArgs>(args: Prisma.SelectSubset<T, IncidentUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>;
-    upsert<T extends IncidentUpsertArgs>(args: Prisma.SelectSubset<T, IncidentUpsertArgs<ExtArgs>>): Prisma.Prisma__IncidentClient<runtime.Types.Result.GetResult<Prisma.$IncidentPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>;
-    count<T extends IncidentCountArgs>(args?: Prisma.Subset<T, IncidentCountArgs>): Prisma.PrismaPromise<T extends runtime.Types.Utils.Record<'select', any> ? T['select'] extends true ? number : Prisma.GetScalarType<T['select'], IncidentCountAggregateOutputType> : number>;
-    aggregate<T extends IncidentAggregateArgs>(args: Prisma.Subset<T, IncidentAggregateArgs>): Prisma.PrismaPromise<GetIncidentAggregateType<T>>;
-    groupBy<T extends IncidentGroupByArgs, HasSelectOrTake extends Prisma.Or<Prisma.Extends<'skip', Prisma.Keys<T>>, Prisma.Extends<'take', Prisma.Keys<T>>>, OrderByArg extends Prisma.True extends HasSelectOrTake ? {
-        orderBy: IncidentGroupByArgs['orderBy'];
-    } : {
-        orderBy?: IncidentGroupByArgs['orderBy'];
-    }, OrderFields extends Prisma.ExcludeUnderscoreKeys<Prisma.Keys<Prisma.MaybeTupleToUnion<T['orderBy']>>>, ByFields extends Prisma.MaybeTupleToUnion<T['by']>, ByValid extends Prisma.Has<ByFields, OrderFields>, HavingFields extends Prisma.GetHavingFields<T['having']>, HavingValid extends Prisma.Has<ByFields, HavingFields>, ByEmpty extends T['by'] extends never[] ? Prisma.True : Prisma.False, InputErrors extends ByEmpty extends Prisma.True ? `Error: "by" must not be empty.` : HavingValid extends Prisma.False ? {
-        [P in HavingFields]: P extends ByFields ? never : P extends string ? `Error: Field "${P}" used in "having" needs to be provided in "by".` : [
-            Error,
-            'Field ',
-            P,
-            ` in "having" needs to be provided in "by"`
-        ];
-    }[HavingFields] : 'take' extends Prisma.Keys<T> ? 'orderBy' extends Prisma.Keys<T> ? ByValid extends Prisma.True ? {} : {
-        [P in OrderFields]: P extends ByFields ? never : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`;
-    }[OrderFields] : 'Error: If you provide "take", you also need to provide "orderBy"' : 'skip' extends Prisma.Keys<T> ? 'orderBy' extends Prisma.Keys<T> ? ByValid extends Prisma.True ? {} : {
-        [P in OrderFields]: P extends ByFields ? never : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`;
-    }[OrderFields] : 'Error: If you provide "skip", you also need to provide "orderBy"' : ByValid extends Prisma.True ? {} : {
-        [P in OrderFields]: P extends ByFields ? never : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`;
-    }[OrderFields]>(args: Prisma.SubsetIntersection<T, IncidentGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetIncidentGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>;
-    readonly fields: IncidentFieldRefs;
+export interface IncidentDelegate<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+	GlobalOmitOptions = {},
+> {
+	[K: symbol]: {
+		types: Prisma.TypeMap<ExtArgs>["model"]["Incident"];
+		meta: {
+			name: "Incident";
+		};
+	};
+	findUnique<T extends IncidentFindUniqueArgs>(
+		args: Prisma.SelectSubset<T, IncidentFindUniqueArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"findUnique",
+			GlobalOmitOptions
+		> | null,
+		null,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	findUniqueOrThrow<T extends IncidentFindUniqueOrThrowArgs>(
+		args: Prisma.SelectSubset<T, IncidentFindUniqueOrThrowArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"findUniqueOrThrow",
+			GlobalOmitOptions
+		>,
+		never,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	findFirst<T extends IncidentFindFirstArgs>(
+		args?: Prisma.SelectSubset<T, IncidentFindFirstArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"findFirst",
+			GlobalOmitOptions
+		> | null,
+		null,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	findFirstOrThrow<T extends IncidentFindFirstOrThrowArgs>(
+		args?: Prisma.SelectSubset<T, IncidentFindFirstOrThrowArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"findFirstOrThrow",
+			GlobalOmitOptions
+		>,
+		never,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	findMany<T extends IncidentFindManyArgs>(
+		args?: Prisma.SelectSubset<T, IncidentFindManyArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"findMany",
+			GlobalOmitOptions
+		>
+	>;
+	create<T extends IncidentCreateArgs>(
+		args: Prisma.SelectSubset<T, IncidentCreateArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"create",
+			GlobalOmitOptions
+		>,
+		never,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	createMany<T extends IncidentCreateManyArgs>(
+		args?: Prisma.SelectSubset<T, IncidentCreateManyArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<Prisma.BatchPayload>;
+	createManyAndReturn<T extends IncidentCreateManyAndReturnArgs>(
+		args?: Prisma.SelectSubset<T, IncidentCreateManyAndReturnArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"createManyAndReturn",
+			GlobalOmitOptions
+		>
+	>;
+	delete<T extends IncidentDeleteArgs>(
+		args: Prisma.SelectSubset<T, IncidentDeleteArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"delete",
+			GlobalOmitOptions
+		>,
+		never,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	update<T extends IncidentUpdateArgs>(
+		args: Prisma.SelectSubset<T, IncidentUpdateArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"update",
+			GlobalOmitOptions
+		>,
+		never,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	deleteMany<T extends IncidentDeleteManyArgs>(
+		args?: Prisma.SelectSubset<T, IncidentDeleteManyArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<Prisma.BatchPayload>;
+	updateMany<T extends IncidentUpdateManyArgs>(
+		args: Prisma.SelectSubset<T, IncidentUpdateManyArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<Prisma.BatchPayload>;
+	updateManyAndReturn<T extends IncidentUpdateManyAndReturnArgs>(
+		args: Prisma.SelectSubset<T, IncidentUpdateManyAndReturnArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"updateManyAndReturn",
+			GlobalOmitOptions
+		>
+	>;
+	upsert<T extends IncidentUpsertArgs>(
+		args: Prisma.SelectSubset<T, IncidentUpsertArgs<ExtArgs>>,
+	): Prisma.Prisma__IncidentClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$IncidentPayload<ExtArgs>,
+			T,
+			"upsert",
+			GlobalOmitOptions
+		>,
+		never,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	count<T extends IncidentCountArgs>(
+		args?: Prisma.Subset<T, IncidentCountArgs>,
+	): Prisma.PrismaPromise<
+		T extends runtime.Types.Utils.Record<"select", any>
+			? T["select"] extends true
+				? number
+				: Prisma.GetScalarType<T["select"], IncidentCountAggregateOutputType>
+			: number
+	>;
+	aggregate<T extends IncidentAggregateArgs>(
+		args: Prisma.Subset<T, IncidentAggregateArgs>,
+	): Prisma.PrismaPromise<GetIncidentAggregateType<T>>;
+	groupBy<
+		T extends IncidentGroupByArgs,
+		HasSelectOrTake extends Prisma.Or<
+			Prisma.Extends<"skip", Prisma.Keys<T>>,
+			Prisma.Extends<"take", Prisma.Keys<T>>
+		>,
+		OrderByArg extends Prisma.True extends HasSelectOrTake
+			? {
+					orderBy: IncidentGroupByArgs["orderBy"];
+				}
+			: {
+					orderBy?: IncidentGroupByArgs["orderBy"];
+				},
+		OrderFields extends Prisma.ExcludeUnderscoreKeys<
+			Prisma.Keys<Prisma.MaybeTupleToUnion<T["orderBy"]>>
+		>,
+		ByFields extends Prisma.MaybeTupleToUnion<T["by"]>,
+		ByValid extends Prisma.Has<ByFields, OrderFields>,
+		HavingFields extends Prisma.GetHavingFields<T["having"]>,
+		HavingValid extends Prisma.Has<ByFields, HavingFields>,
+		ByEmpty extends T["by"] extends never[] ? Prisma.True : Prisma.False,
+		InputErrors extends ByEmpty extends Prisma.True
+			? `Error: "by" must not be empty.`
+			: HavingValid extends Prisma.False
+				? {
+						[P in HavingFields]: P extends ByFields
+							? never
+							: P extends string
+								? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+								: [
+										Error,
+										"Field ",
+										P,
+										` in "having" needs to be provided in "by"`,
+									];
+					}[HavingFields]
+				: "take" extends Prisma.Keys<T>
+					? "orderBy" extends Prisma.Keys<T>
+						? ByValid extends Prisma.True
+							? {}
+							: {
+									[P in OrderFields]: P extends ByFields
+										? never
+										: `Error: Field "${P}" in "orderBy" needs to be provided in "by"`;
+								}[OrderFields]
+						: 'Error: If you provide "take", you also need to provide "orderBy"'
+					: "skip" extends Prisma.Keys<T>
+						? "orderBy" extends Prisma.Keys<T>
+							? ByValid extends Prisma.True
+								? {}
+								: {
+										[P in OrderFields]: P extends ByFields
+											? never
+											: `Error: Field "${P}" in "orderBy" needs to be provided in "by"`;
+									}[OrderFields]
+							: 'Error: If you provide "skip", you also need to provide "orderBy"'
+						: ByValid extends Prisma.True
+							? {}
+							: {
+									[P in OrderFields]: P extends ByFields
+										? never
+										: `Error: Field "${P}" in "orderBy" needs to be provided in "by"`;
+								}[OrderFields],
+	>(
+		args: Prisma.SubsetIntersection<T, IncidentGroupByArgs, OrderByArg> &
+			InputErrors,
+	): {} extends InputErrors
+		? GetIncidentGroupByPayload<T>
+		: Prisma.PrismaPromise<InputErrors>;
+	readonly fields: IncidentFieldRefs;
 }
-export interface Prisma__IncidentClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
-    readonly [Symbol.toStringTag]: "PrismaPromise";
-    service<T extends Prisma.Incident$serviceArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$serviceArgs<ExtArgs>>): Prisma.Prisma__ServiceClient<runtime.Types.Result.GetResult<Prisma.$ServicePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>;
-    assignedTo<T extends Prisma.Incident$assignedToArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$assignedToArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>;
-    correlationRule<T extends Prisma.Incident$correlationRuleArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$correlationRuleArgs<ExtArgs>>): Prisma.Prisma__CorrelationRuleClient<runtime.Types.Result.GetResult<Prisma.$CorrelationRulePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>;
-    alerts<T extends Prisma.Incident$alertsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$alertsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$AlertPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>;
-    investigations<T extends Prisma.Incident$investigationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$investigationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$InvestigationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>;
-    timeline<T extends Prisma.Incident$timelineArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$timelineArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TimelineEntryPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>;
-    postmortem<T extends Prisma.Incident$postmortemArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Incident$postmortemArgs<ExtArgs>>): Prisma.Prisma__PostmortemClient<runtime.Types.Result.GetResult<Prisma.$PostmortemPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>;
-    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): runtime.Types.Utils.JsPromise<TResult1 | TResult2>;
-    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): runtime.Types.Utils.JsPromise<T | TResult>;
-    finally(onfinally?: (() => void) | undefined | null): runtime.Types.Utils.JsPromise<T>;
+export interface Prisma__IncidentClient<
+	T,
+	Null = never,
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+	GlobalOmitOptions = {},
+> extends Prisma.PrismaPromise<T> {
+	readonly [Symbol.toStringTag]: "PrismaPromise";
+	service<T extends Prisma.Incident$serviceArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$serviceArgs<ExtArgs>>,
+	): Prisma.Prisma__ServiceClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$ServicePayload<ExtArgs>,
+			T,
+			"findUniqueOrThrow",
+			GlobalOmitOptions
+		> | null,
+		null,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	assignedTo<T extends Prisma.Incident$assignedToArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$assignedToArgs<ExtArgs>>,
+	): Prisma.Prisma__UserClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$UserPayload<ExtArgs>,
+			T,
+			"findUniqueOrThrow",
+			GlobalOmitOptions
+		> | null,
+		null,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	correlationRule<T extends Prisma.Incident$correlationRuleArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$correlationRuleArgs<ExtArgs>>,
+	): Prisma.Prisma__CorrelationRuleClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$CorrelationRulePayload<ExtArgs>,
+			T,
+			"findUniqueOrThrow",
+			GlobalOmitOptions
+		> | null,
+		null,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	alerts<T extends Prisma.Incident$alertsArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$alertsArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<
+		| runtime.Types.Result.GetResult<
+				Prisma.$AlertPayload<ExtArgs>,
+				T,
+				"findMany",
+				GlobalOmitOptions
+		  >
+		| Null
+	>;
+	investigations<T extends Prisma.Incident$investigationsArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$investigationsArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<
+		| runtime.Types.Result.GetResult<
+				Prisma.$InvestigationPayload<ExtArgs>,
+				T,
+				"findMany",
+				GlobalOmitOptions
+		  >
+		| Null
+	>;
+	timeline<T extends Prisma.Incident$timelineArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$timelineArgs<ExtArgs>>,
+	): Prisma.PrismaPromise<
+		| runtime.Types.Result.GetResult<
+				Prisma.$TimelineEntryPayload<ExtArgs>,
+				T,
+				"findMany",
+				GlobalOmitOptions
+		  >
+		| Null
+	>;
+	postmortem<T extends Prisma.Incident$postmortemArgs<ExtArgs> = {}>(
+		args?: Prisma.Subset<T, Prisma.Incident$postmortemArgs<ExtArgs>>,
+	): Prisma.Prisma__PostmortemClient<
+		runtime.Types.Result.GetResult<
+			Prisma.$PostmortemPayload<ExtArgs>,
+			T,
+			"findUniqueOrThrow",
+			GlobalOmitOptions
+		> | null,
+		null,
+		ExtArgs,
+		GlobalOmitOptions
+	>;
+	then<TResult1 = T, TResult2 = never>(
+		onfulfilled?:
+			| ((value: T) => TResult1 | PromiseLike<TResult1>)
+			| undefined
+			| null,
+		onrejected?:
+			| ((reason: any) => TResult2 | PromiseLike<TResult2>)
+			| undefined
+			| null,
+	): runtime.Types.Utils.JsPromise<TResult1 | TResult2>;
+	catch<TResult = never>(
+		onrejected?:
+			| ((reason: any) => TResult | PromiseLike<TResult>)
+			| undefined
+			| null,
+	): runtime.Types.Utils.JsPromise<T | TResult>;
+	finally(
+		onfinally?: (() => void) | undefined | null,
+	): runtime.Types.Utils.JsPromise<T>;
 }
 export interface IncidentFieldRefs {
-    readonly id: Prisma.FieldRef<"Incident", 'String'>;
-    readonly number: Prisma.FieldRef<"Incident", 'Int'>;
-    readonly title: Prisma.FieldRef<"Incident", 'String'>;
-    readonly description: Prisma.FieldRef<"Incident", 'String'>;
-    readonly severity: Prisma.FieldRef<"Incident", 'String'>;
-    readonly status: Prisma.FieldRef<"Incident", 'String'>;
-    readonly priority: Prisma.FieldRef<"Incident", 'String'>;
-    readonly serviceId: Prisma.FieldRef<"Incident", 'String'>;
-    readonly assignedToId: Prisma.FieldRef<"Incident", 'String'>;
-    readonly correlationReason: Prisma.FieldRef<"Incident", 'String'>;
-    readonly correlationRuleId: Prisma.FieldRef<"Incident", 'String'>;
-    readonly tags: Prisma.FieldRef<"Incident", 'String'>;
-    readonly customerImpact: Prisma.FieldRef<"Incident", 'String'>;
-    readonly affectedSystems: Prisma.FieldRef<"Incident", 'String'>;
-    readonly triggeredAt: Prisma.FieldRef<"Incident", 'DateTime'>;
-    readonly acknowledgedAt: Prisma.FieldRef<"Incident", 'DateTime'>;
-    readonly resolvedAt: Prisma.FieldRef<"Incident", 'DateTime'>;
-    readonly alertCount: Prisma.FieldRef<"Incident", 'Int'>;
-    readonly timeToAcknowledge: Prisma.FieldRef<"Incident", 'Int'>;
-    readonly timeToResolve: Prisma.FieldRef<"Incident", 'Int'>;
-    readonly createdAt: Prisma.FieldRef<"Incident", 'DateTime'>;
-    readonly updatedAt: Prisma.FieldRef<"Incident", 'DateTime'>;
+	readonly id: Prisma.FieldRef<"Incident", "String">;
+	readonly number: Prisma.FieldRef<"Incident", "Int">;
+	readonly title: Prisma.FieldRef<"Incident", "String">;
+	readonly description: Prisma.FieldRef<"Incident", "String">;
+	readonly severity: Prisma.FieldRef<"Incident", "String">;
+	readonly status: Prisma.FieldRef<"Incident", "String">;
+	readonly priority: Prisma.FieldRef<"Incident", "String">;
+	readonly serviceId: Prisma.FieldRef<"Incident", "String">;
+	readonly assignedToId: Prisma.FieldRef<"Incident", "String">;
+	readonly correlationReason: Prisma.FieldRef<"Incident", "String">;
+	readonly correlationRuleId: Prisma.FieldRef<"Incident", "String">;
+	readonly tags: Prisma.FieldRef<"Incident", "String">;
+	readonly customerImpact: Prisma.FieldRef<"Incident", "String">;
+	readonly affectedSystems: Prisma.FieldRef<"Incident", "String">;
+	readonly triggeredAt: Prisma.FieldRef<"Incident", "DateTime">;
+	readonly acknowledgedAt: Prisma.FieldRef<"Incident", "DateTime">;
+	readonly resolvedAt: Prisma.FieldRef<"Incident", "DateTime">;
+	readonly alertCount: Prisma.FieldRef<"Incident", "Int">;
+	readonly timeToAcknowledge: Prisma.FieldRef<"Incident", "Int">;
+	readonly timeToResolve: Prisma.FieldRef<"Incident", "Int">;
+	readonly createdAt: Prisma.FieldRef<"Incident", "DateTime">;
+	readonly updatedAt: Prisma.FieldRef<"Incident", "DateTime">;
 }
-export type IncidentFindUniqueArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where: Prisma.IncidentWhereUniqueInput;
+export type IncidentFindUniqueArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where: Prisma.IncidentWhereUniqueInput;
 };
-export type IncidentFindUniqueOrThrowArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where: Prisma.IncidentWhereUniqueInput;
+export type IncidentFindUniqueOrThrowArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where: Prisma.IncidentWhereUniqueInput;
 };
-export type IncidentFindFirstArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where?: Prisma.IncidentWhereInput;
-    orderBy?: Prisma.IncidentOrderByWithRelationInput | Prisma.IncidentOrderByWithRelationInput[];
-    cursor?: Prisma.IncidentWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    distinct?: Prisma.IncidentScalarFieldEnum | Prisma.IncidentScalarFieldEnum[];
+export type IncidentFindFirstArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where?: Prisma.IncidentWhereInput;
+	orderBy?:
+		| Prisma.IncidentOrderByWithRelationInput
+		| Prisma.IncidentOrderByWithRelationInput[];
+	cursor?: Prisma.IncidentWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	distinct?: Prisma.IncidentScalarFieldEnum | Prisma.IncidentScalarFieldEnum[];
 };
-export type IncidentFindFirstOrThrowArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where?: Prisma.IncidentWhereInput;
-    orderBy?: Prisma.IncidentOrderByWithRelationInput | Prisma.IncidentOrderByWithRelationInput[];
-    cursor?: Prisma.IncidentWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    distinct?: Prisma.IncidentScalarFieldEnum | Prisma.IncidentScalarFieldEnum[];
+export type IncidentFindFirstOrThrowArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where?: Prisma.IncidentWhereInput;
+	orderBy?:
+		| Prisma.IncidentOrderByWithRelationInput
+		| Prisma.IncidentOrderByWithRelationInput[];
+	cursor?: Prisma.IncidentWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	distinct?: Prisma.IncidentScalarFieldEnum | Prisma.IncidentScalarFieldEnum[];
 };
-export type IncidentFindManyArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where?: Prisma.IncidentWhereInput;
-    orderBy?: Prisma.IncidentOrderByWithRelationInput | Prisma.IncidentOrderByWithRelationInput[];
-    cursor?: Prisma.IncidentWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    distinct?: Prisma.IncidentScalarFieldEnum | Prisma.IncidentScalarFieldEnum[];
+export type IncidentFindManyArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where?: Prisma.IncidentWhereInput;
+	orderBy?:
+		| Prisma.IncidentOrderByWithRelationInput
+		| Prisma.IncidentOrderByWithRelationInput[];
+	cursor?: Prisma.IncidentWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	distinct?: Prisma.IncidentScalarFieldEnum | Prisma.IncidentScalarFieldEnum[];
 };
-export type IncidentCreateArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    data: Prisma.XOR<Prisma.IncidentCreateInput, Prisma.IncidentUncheckedCreateInput>;
+export type IncidentCreateArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	data: Prisma.XOR<
+		Prisma.IncidentCreateInput,
+		Prisma.IncidentUncheckedCreateInput
+	>;
 };
-export type IncidentCreateManyArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    data: Prisma.IncidentCreateManyInput | Prisma.IncidentCreateManyInput[];
+export type IncidentCreateManyArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	data: Prisma.IncidentCreateManyInput | Prisma.IncidentCreateManyInput[];
 };
-export type IncidentCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelectCreateManyAndReturn<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    data: Prisma.IncidentCreateManyInput | Prisma.IncidentCreateManyInput[];
-    include?: Prisma.IncidentIncludeCreateManyAndReturn<ExtArgs> | null;
+export type IncidentCreateManyAndReturnArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelectCreateManyAndReturn<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	data: Prisma.IncidentCreateManyInput | Prisma.IncidentCreateManyInput[];
+	include?: Prisma.IncidentIncludeCreateManyAndReturn<ExtArgs> | null;
 };
-export type IncidentUpdateArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    data: Prisma.XOR<Prisma.IncidentUpdateInput, Prisma.IncidentUncheckedUpdateInput>;
-    where: Prisma.IncidentWhereUniqueInput;
+export type IncidentUpdateArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateInput,
+		Prisma.IncidentUncheckedUpdateInput
+	>;
+	where: Prisma.IncidentWhereUniqueInput;
 };
-export type IncidentUpdateManyArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    data: Prisma.XOR<Prisma.IncidentUpdateManyMutationInput, Prisma.IncidentUncheckedUpdateManyInput>;
-    where?: Prisma.IncidentWhereInput;
-    limit?: number;
+export type IncidentUpdateManyArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateManyMutationInput,
+		Prisma.IncidentUncheckedUpdateManyInput
+	>;
+	where?: Prisma.IncidentWhereInput;
+	limit?: number;
 };
-export type IncidentUpdateManyAndReturnArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelectUpdateManyAndReturn<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    data: Prisma.XOR<Prisma.IncidentUpdateManyMutationInput, Prisma.IncidentUncheckedUpdateManyInput>;
-    where?: Prisma.IncidentWhereInput;
-    limit?: number;
-    include?: Prisma.IncidentIncludeUpdateManyAndReturn<ExtArgs> | null;
+export type IncidentUpdateManyAndReturnArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelectUpdateManyAndReturn<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	data: Prisma.XOR<
+		Prisma.IncidentUpdateManyMutationInput,
+		Prisma.IncidentUncheckedUpdateManyInput
+	>;
+	where?: Prisma.IncidentWhereInput;
+	limit?: number;
+	include?: Prisma.IncidentIncludeUpdateManyAndReturn<ExtArgs> | null;
 };
-export type IncidentUpsertArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where: Prisma.IncidentWhereUniqueInput;
-    create: Prisma.XOR<Prisma.IncidentCreateInput, Prisma.IncidentUncheckedCreateInput>;
-    update: Prisma.XOR<Prisma.IncidentUpdateInput, Prisma.IncidentUncheckedUpdateInput>;
+export type IncidentUpsertArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where: Prisma.IncidentWhereUniqueInput;
+	create: Prisma.XOR<
+		Prisma.IncidentCreateInput,
+		Prisma.IncidentUncheckedCreateInput
+	>;
+	update: Prisma.XOR<
+		Prisma.IncidentUpdateInput,
+		Prisma.IncidentUncheckedUpdateInput
+	>;
 };
-export type IncidentDeleteArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
-    where: Prisma.IncidentWhereUniqueInput;
+export type IncidentDeleteArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
+	where: Prisma.IncidentWhereUniqueInput;
 };
-export type IncidentDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    where?: Prisma.IncidentWhereInput;
-    limit?: number;
+export type IncidentDeleteManyArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	where?: Prisma.IncidentWhereInput;
+	limit?: number;
 };
-export type Incident$serviceArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.ServiceSelect<ExtArgs> | null;
-    omit?: Prisma.ServiceOmit<ExtArgs> | null;
-    include?: Prisma.ServiceInclude<ExtArgs> | null;
-    where?: Prisma.ServiceWhereInput;
+export type Incident$serviceArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.ServiceSelect<ExtArgs> | null;
+	omit?: Prisma.ServiceOmit<ExtArgs> | null;
+	include?: Prisma.ServiceInclude<ExtArgs> | null;
+	where?: Prisma.ServiceWhereInput;
 };
-export type Incident$assignedToArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.UserSelect<ExtArgs> | null;
-    omit?: Prisma.UserOmit<ExtArgs> | null;
-    include?: Prisma.UserInclude<ExtArgs> | null;
-    where?: Prisma.UserWhereInput;
+export type Incident$assignedToArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.UserSelect<ExtArgs> | null;
+	omit?: Prisma.UserOmit<ExtArgs> | null;
+	include?: Prisma.UserInclude<ExtArgs> | null;
+	where?: Prisma.UserWhereInput;
 };
-export type Incident$correlationRuleArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.CorrelationRuleSelect<ExtArgs> | null;
-    omit?: Prisma.CorrelationRuleOmit<ExtArgs> | null;
-    include?: Prisma.CorrelationRuleInclude<ExtArgs> | null;
-    where?: Prisma.CorrelationRuleWhereInput;
+export type Incident$correlationRuleArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.CorrelationRuleSelect<ExtArgs> | null;
+	omit?: Prisma.CorrelationRuleOmit<ExtArgs> | null;
+	include?: Prisma.CorrelationRuleInclude<ExtArgs> | null;
+	where?: Prisma.CorrelationRuleWhereInput;
 };
-export type Incident$alertsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.AlertSelect<ExtArgs> | null;
-    omit?: Prisma.AlertOmit<ExtArgs> | null;
-    include?: Prisma.AlertInclude<ExtArgs> | null;
-    where?: Prisma.AlertWhereInput;
-    orderBy?: Prisma.AlertOrderByWithRelationInput | Prisma.AlertOrderByWithRelationInput[];
-    cursor?: Prisma.AlertWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    distinct?: Prisma.AlertScalarFieldEnum | Prisma.AlertScalarFieldEnum[];
+export type Incident$alertsArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.AlertSelect<ExtArgs> | null;
+	omit?: Prisma.AlertOmit<ExtArgs> | null;
+	include?: Prisma.AlertInclude<ExtArgs> | null;
+	where?: Prisma.AlertWhereInput;
+	orderBy?:
+		| Prisma.AlertOrderByWithRelationInput
+		| Prisma.AlertOrderByWithRelationInput[];
+	cursor?: Prisma.AlertWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	distinct?: Prisma.AlertScalarFieldEnum | Prisma.AlertScalarFieldEnum[];
 };
-export type Incident$investigationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.InvestigationSelect<ExtArgs> | null;
-    omit?: Prisma.InvestigationOmit<ExtArgs> | null;
-    include?: Prisma.InvestigationInclude<ExtArgs> | null;
-    where?: Prisma.InvestigationWhereInput;
-    orderBy?: Prisma.InvestigationOrderByWithRelationInput | Prisma.InvestigationOrderByWithRelationInput[];
-    cursor?: Prisma.InvestigationWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    distinct?: Prisma.InvestigationScalarFieldEnum | Prisma.InvestigationScalarFieldEnum[];
+export type Incident$investigationsArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.InvestigationSelect<ExtArgs> | null;
+	omit?: Prisma.InvestigationOmit<ExtArgs> | null;
+	include?: Prisma.InvestigationInclude<ExtArgs> | null;
+	where?: Prisma.InvestigationWhereInput;
+	orderBy?:
+		| Prisma.InvestigationOrderByWithRelationInput
+		| Prisma.InvestigationOrderByWithRelationInput[];
+	cursor?: Prisma.InvestigationWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	distinct?:
+		| Prisma.InvestigationScalarFieldEnum
+		| Prisma.InvestigationScalarFieldEnum[];
 };
-export type Incident$timelineArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.TimelineEntrySelect<ExtArgs> | null;
-    omit?: Prisma.TimelineEntryOmit<ExtArgs> | null;
-    include?: Prisma.TimelineEntryInclude<ExtArgs> | null;
-    where?: Prisma.TimelineEntryWhereInput;
-    orderBy?: Prisma.TimelineEntryOrderByWithRelationInput | Prisma.TimelineEntryOrderByWithRelationInput[];
-    cursor?: Prisma.TimelineEntryWhereUniqueInput;
-    take?: number;
-    skip?: number;
-    distinct?: Prisma.TimelineEntryScalarFieldEnum | Prisma.TimelineEntryScalarFieldEnum[];
+export type Incident$timelineArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.TimelineEntrySelect<ExtArgs> | null;
+	omit?: Prisma.TimelineEntryOmit<ExtArgs> | null;
+	include?: Prisma.TimelineEntryInclude<ExtArgs> | null;
+	where?: Prisma.TimelineEntryWhereInput;
+	orderBy?:
+		| Prisma.TimelineEntryOrderByWithRelationInput
+		| Prisma.TimelineEntryOrderByWithRelationInput[];
+	cursor?: Prisma.TimelineEntryWhereUniqueInput;
+	take?: number;
+	skip?: number;
+	distinct?:
+		| Prisma.TimelineEntryScalarFieldEnum
+		| Prisma.TimelineEntryScalarFieldEnum[];
 };
-export type Incident$postmortemArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.PostmortemSelect<ExtArgs> | null;
-    omit?: Prisma.PostmortemOmit<ExtArgs> | null;
-    include?: Prisma.PostmortemInclude<ExtArgs> | null;
-    where?: Prisma.PostmortemWhereInput;
+export type Incident$postmortemArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.PostmortemSelect<ExtArgs> | null;
+	omit?: Prisma.PostmortemOmit<ExtArgs> | null;
+	include?: Prisma.PostmortemInclude<ExtArgs> | null;
+	where?: Prisma.PostmortemWhereInput;
 };
-export type IncidentDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-    select?: Prisma.IncidentSelect<ExtArgs> | null;
-    omit?: Prisma.IncidentOmit<ExtArgs> | null;
-    include?: Prisma.IncidentInclude<ExtArgs> | null;
+export type IncidentDefaultArgs<
+	ExtArgs extends
+		runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+	select?: Prisma.IncidentSelect<ExtArgs> | null;
+	omit?: Prisma.IncidentOmit<ExtArgs> | null;
+	include?: Prisma.IncidentInclude<ExtArgs> | null;
 };
-export {};

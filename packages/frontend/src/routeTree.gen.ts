@@ -8,15 +8,15 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './app/__root'
-import { Route as IndexRouteImport } from './app/index'
-import { Route as SetupIndexRouteImport } from './app/setup/index'
-import { Route as SettingsIndexRouteImport } from './app/settings/index'
-import { Route as ServicesIndexRouteImport } from './app/services/index'
-import { Route as InvestigationsIndexRouteImport } from './app/investigations/index'
-import { Route as ServicesIdIndexRouteImport } from './app/services/$id/index'
-import { Route as InvestigationsIdIndexRouteImport } from './app/investigations/$id/index'
-import { Route as IncidentsIdIndexRouteImport } from './app/incidents/$id/index'
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as SetupIndexRouteImport } from './routes/setup/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as ServicesIndexRouteImport } from './routes/services/index'
+import { Route as InvestigationsIndexRouteImport } from './routes/investigations/index'
+import { Route as ServicesIdIndexRouteImport } from './routes/services/$id/index'
+import { Route as InvestigationsIdIndexRouteImport } from './routes/investigations/$id/index'
+import { Route as IncidentsIdIndexRouteImport } from './routes/incidents/$id/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',

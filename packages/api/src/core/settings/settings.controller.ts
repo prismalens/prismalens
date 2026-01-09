@@ -1,16 +1,16 @@
 import {
-  Controller,
-  Get,
-  Put,
-  Delete,
   Body,
-  Param,
-  UseGuards,
-  HttpStatus,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
+  HttpStatus,
+  Param,
+  Put,
+  UseGuards,
 } from '@nestjs/common';
+import { SetActiveProviderDto, UpdateLlmDto } from './dto/update-llm.dto.js';
 import { SettingsService } from './settings.service.js';
-import { UpdateLlmDto, SetActiveProviderDto } from './dto/update-llm.dto.js';
 
 @Controller('settings')
 export class SettingsController {

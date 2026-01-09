@@ -1,19 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface CanvasExportMenuProps {
-  // TODO: Define props during implementation
-  // onExportPNG?: () => void;
-  // onExportSVG?: () => void;
-  // onExportJSON?: () => void;
-  // onExportMarkdown?: () => void;
-}
+export type CanvasExportMenuProps = {};
 
 export function CanvasExportMenu({}: CanvasExportMenuProps) {
-  return (
-    <div>
-      {/* TODO: Implement CanvasExportMenu */}
-    </div>
-  );
+	return <div>{/* TODO: Implement CanvasExportMenu */}</div>;
 }

@@ -1,21 +1,21 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import type {
-  Investigation,
   AgentExecution,
-  ToolExecution,
+  Investigation,
   Recommendation,
+  ToolExecution,
 } from '@prismalens/database';
-import {
-  CreateInvestigationDto,
-  InvestigationResultDto,
-  CreateAgentExecutionDto,
-  UpdateAgentExecutionDto,
-  CreateToolExecutionDto,
-} from './dto/index.js';
-import { TimelineService } from '../timeline/timeline.service.js';
+import { PrismaService } from '../../core/prisma/prisma.service.js';
 import type { InternalInvestigationResultDto } from '../../infrastructure/internal/dto/investigation-result.dto.js';
 import { TimelineEntryType, TimelineSource } from '../../shared/enums/index.js';
+import { TimelineService } from '../timeline/timeline.service.js';
+import {
+  CreateAgentExecutionDto,
+  CreateInvestigationDto,
+  CreateToolExecutionDto,
+  InvestigationResultDto,
+  UpdateAgentExecutionDto,
+} from './dto/index.js';
 
 export type { Investigation, AgentExecution, ToolExecution };
 

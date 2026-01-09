@@ -1,22 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface NodeDetailsPanelProps {
-  // TODO: Define props during implementation
-  // node?: {
-  //   id: string;
-  //   type: string;
-  //   data: unknown;
-  // };
-  // open?: boolean;
-  // onClose?: () => void;
-}
+export type NodeDetailsPanelProps = {};
 
 export function NodeDetailsPanel({}: NodeDetailsPanelProps) {
-  return (
-    <div>
-      {/* TODO: Implement NodeDetailsPanel */}
-    </div>
-  );
+	return <div>{/* TODO: Implement NodeDetailsPanel */}</div>;
 }

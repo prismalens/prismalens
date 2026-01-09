@@ -1,1 +1,1 @@
-export { createPrismaMock } from './prisma.service.mock.js';
+export { createPrismaMock } from "./prisma.service.mock.js";

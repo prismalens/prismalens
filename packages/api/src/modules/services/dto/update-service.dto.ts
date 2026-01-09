@@ -1,50 +1,50 @@
 import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsArray,
-  IsObject,
-} from 'class-validator';
-import { ServiceType, ServiceTier } from '../../../shared/enums/index.js';
+	IsArray,
+	IsEnum,
+	IsObject,
+	IsOptional,
+	IsString,
+} from "class-validator";
+import { ServiceTier, ServiceType } from "../../../shared/enums/index.js";
 
 /**
  * DTO for updating a service
  */
 export class UpdateServiceDto {
-  @IsOptional()
-  @IsString()
-  displayName?: string;
+	@IsOptional()
+	@IsString()
+	displayName?: string;
 
-  @IsOptional()
-  @IsString()
-  description?: string;
+	@IsOptional()
+	@IsString()
+	description?: string;
 
-  @IsOptional()
-  @IsEnum(ServiceType)
-  type?: ServiceType;
+	@IsOptional()
+	@IsEnum(ServiceType)
+	type?: ServiceType;
 
-  @IsOptional()
-  @IsEnum(ServiceTier)
-  tier?: ServiceTier;
+	@IsOptional()
+	@IsEnum(ServiceTier)
+	tier?: ServiceTier;
 
-  @IsOptional()
-  @IsString()
-  team?: string;
+	@IsOptional()
+	@IsString()
+	team?: string;
 
-  @IsOptional()
-  @IsString()
-  slackChannel?: string;
+	@IsOptional()
+	@IsString()
+	slackChannel?: string;
 
-  @IsOptional()
-  @IsString()
-  repository?: string;
+	@IsOptional()
+	@IsString()
+	repository?: string;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  tags?: string[];
+	@IsOptional()
+	@IsArray()
+	@IsString({ each: true })
+	tags?: string[];
 
-  @IsOptional()
-  @IsObject()
-  metadata?: Record<string, unknown>;
+	@IsOptional()
+	@IsObject()
+	metadata?: Record<string, unknown>;
 }

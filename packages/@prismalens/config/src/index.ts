@@ -14,16 +14,20 @@
  * ```
  */
 
-import { z } from 'zod';
-
+import { z } from "zod";
+import {
+	databaseSchema,
+	deploymentSchema,
+	globalSchema,
+	queueSchema,
+} from "./schemas/index.js";
+import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 // Import schemas
-import { buildDatabaseUrl } from './utils/database-url.js';
-import { getAppDataDir, ensureAppDataDir } from './utils/app-data.js';
-import { globalSchema, databaseSchema, queueSchema, deploymentSchema } from './schemas/index.js';
+import { buildDatabaseUrl } from "./utils/database-url.js";
 
+export * from "./env.js";
 // Re-export all schemas
-export * from './schemas/index.js';
-export * from './env.js';
+export * from "./schemas/index.js";
 
 // Re-export app data utilities
 export { getAppDataDir, ensureAppDataDir };
@@ -33,12 +37,12 @@ export { getAppDataDir, ensureAppDataDir };
  * Merges all domain-specific schemas into a single validated config.
  */
 const baseConfigSchema = globalSchema
-  .merge(deploymentSchema)
-  .merge(databaseSchema)
-  .merge(queueSchema)
-  .extend({
-    PRISMALENS_DB_URL: z.string().describe('Computed database connection URL'),
-  });
+	.merge(deploymentSchema)
+	.merge(databaseSchema)
+	.merge(queueSchema)
+	.extend({
+		PRISMALENS_DB_URL: z.string().describe("Computed database connection URL"),
+	});
 
 /**
  * Type-safe global configuration.
@@ -56,33 +60,34 @@ let _config: GlobalConfig | null = null;
  * @returns Validated configuration object with computed DATABASE_URL
  */
 export function getConfig(): GlobalConfig {
-  if (!_config) {
-    const result = baseConfigSchema.omit({ PRISMALENS_DB_URL: true }).safeParse(process.env);
+	if (!_config) {
+		const result = baseConfigSchema
+			.omit({ PRISMALENS_DB_URL: true })
+			.safeParse(process.env);
 
-    if (!result.success) {
-      console.error('\n❌ Configuration validation failed:\n');
-      result.error.issues.forEach((issue) => {
-        const path = issue.path.join('.');
-        console.error(`  • ${path}: ${issue.message}`);
-      });
-      console.error('\n');
-      throw new Error('Invalid configuration. Check environment variables.');
-    }
+		if (!result.success) {
+			console.error("\n❌ Configuration validation failed:\n");
+			result.error.issues.forEach((issue) => {
+				const path = issue.path.join(".");
+				console.error(`  • ${path}: ${issue.message}`);
+			});
+			console.error("\n");
+			throw new Error("Invalid configuration. Check environment variables.");
+		}
 
-    const baseConfig = result.data;
+		const baseConfig = result.data;
 
-    // Compute database URL based on configuration
-    const databaseUrl = buildDatabaseUrl(baseConfig);
+		// Compute database URL based on configuration
+		const databaseUrl = buildDatabaseUrl(baseConfig);
 
-    // Combine base config with computed database URL
-    _config = {
-      ...baseConfig,
-      PRISMALENS_DB_URL: databaseUrl,
-    };
+		// Combine base config with computed database URL
+		_config = {
+			...baseConfig,
+			PRISMALENS_DB_URL: databaseUrl,
+		};
+	}
 
-  }
-
-  return _config;
+	return _config;
 }
 
 /**
@@ -92,29 +97,31 @@ export function getConfig(): GlobalConfig {
  * @returns Validation result with success flag and data/errors
  */
 export function validateConfig(): z.SafeParseReturnType<unknown, GlobalConfig> {
-  const result = baseConfigSchema.omit({ PRISMALENS_DB_URL: true }).safeParse(process.env);
+	const result = baseConfigSchema
+		.omit({ PRISMALENS_DB_URL: true })
+		.safeParse(process.env);
 
-  if (!result.success) {
-    return result;
-  }
+	if (!result.success) {
+		return result;
+	}
 
-  const baseConfig = result.data;
-  const databaseUrl = buildDatabaseUrl(baseConfig);
+	const baseConfig = result.data;
+	const databaseUrl = buildDatabaseUrl(baseConfig);
 
-  return {
-    success: true,
-    data: {
-      ...baseConfig,
-      PRISMALENS_DB_URL: databaseUrl,
-    },
-  } as z.SafeParseReturnType<unknown, GlobalConfig>;
+	return {
+		success: true,
+		data: {
+			...baseConfig,
+			PRISMALENS_DB_URL: databaseUrl,
+		},
+	} as z.SafeParseReturnType<unknown, GlobalConfig>;
 }
 
 /**
  * Reset cached config. Useful for testing.
  */
 export function resetConfig(): void {
-  _config = null;
+	_config = null;
 }
 
 export type EnvironmentVariables = z.infer<typeof baseConfigSchema>;

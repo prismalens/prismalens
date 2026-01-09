@@ -1,16 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface StatusBadgeProps {
-  // TODO: Define props during implementation
-  // status?: 'pending' | 'running' | 'completed' | 'failed';
-}
+export type StatusBadgeProps = {};
 
 export function StatusBadge({}: StatusBadgeProps) {
-  return (
-    <div>
-      {/* TODO: Implement StatusBadge */}
-    </div>
-  );
+	return <div>{/* TODO: Implement StatusBadge */}</div>;
 }

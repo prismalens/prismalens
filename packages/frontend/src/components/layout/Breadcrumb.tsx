@@ -1,16 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface BreadcrumbProps {
-  // TODO: Define props during implementation
-  // items?: { label: string; href?: string }[];
-}
+export type BreadcrumbProps = {};
 
 export function Breadcrumb({}: BreadcrumbProps) {
-  return (
-    <div>
-      {/* TODO: Implement Breadcrumb */}
-    </div>
-  );
+	return <div>{/* TODO: Implement Breadcrumb */}</div>;
 }

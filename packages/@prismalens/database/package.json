@@ -1,46 +1,46 @@
 {
-  "name": "@prismalens/database",
-  "version": "0.1.0",
-  "description": "Shared database adapter and Prisma client for PrismaLens",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist",
-    "db:init": "tsx scripts/db-init.ts",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev --skip-generate",
-    "db:deploy": "prisma migrate deploy",
-    "db:studio": "cd packages/api && pnpm exec prisma studio",
-    "db:reset": "cd packages/api && pnpm exec prisma migrate reset"
-  },
-  "dependencies": {
-    "@prisma/adapter-better-sqlite3": "^7.2.0",
-    "@prisma/adapter-pg": "^7.2.0",
-    "@prisma/client": "^7.2.0",
-    "@prismalens/config": "workspace:*",
-    "pg": "^8.16.3"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.10.0",
-    "typescript": "^5.7.0",
-    "@types/pg": "^8.16.0",
-    "prisma": "^7.2.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "files": [
-    "dist",
-    "src"
-  ]
+	"name": "@prismalens/database",
+	"version": "0.1.0",
+	"description": "Shared database adapter and Prisma client for PrismaLens",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"db:init": "tsx scripts/db-init.ts",
+		"db:generate": "prisma generate",
+		"db:migrate": "prisma migrate dev --skip-generate",
+		"db:deploy": "prisma migrate deploy",
+		"db:studio": "cd packages/api && pnpm exec prisma studio",
+		"db:reset": "cd packages/api && pnpm exec prisma migrate reset"
+	},
+	"dependencies": {
+		"@prisma/adapter-better-sqlite3": "^7.2.0",
+		"@prisma/adapter-pg": "^7.2.0",
+		"@prisma/client": "^7.2.0",
+		"@prismalens/config": "workspace:*",
+		"pg": "^8.16.3"
+	},
+	"devDependencies": {
+		"@types/better-sqlite3": "^7.6.13",
+		"@types/node": "^22.10.0",
+		"typescript": "^5.7.0",
+		"@types/pg": "^8.16.0",
+		"prisma": "^7.2.0"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"files": [
+		"dist",
+		"src"
+	]
 }

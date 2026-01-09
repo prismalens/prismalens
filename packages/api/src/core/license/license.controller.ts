@@ -5,13 +5,13 @@
  */
 
 import {
-  Controller,
-  Get,
-  Post,
-  Delete,
   Body,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
+  Post,
 } from '@nestjs/common';
 import { LicenseService, type LicenseState } from './license.service.js';
 

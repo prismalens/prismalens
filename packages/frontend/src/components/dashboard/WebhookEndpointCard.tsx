@@ -1,18 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface WebhookEndpointCardProps {
-  // TODO: Define props during implementation
-  // title?: string;
-  // endpoint?: string;
-  // description?: string;
-}
+export type WebhookEndpointCardProps = {};
 
 export function WebhookEndpointCard({}: WebhookEndpointCardProps) {
-  return (
-    <div>
-      {/* TODO: Implement WebhookEndpointCard */}
-    </div>
-  );
+	return <div>{/* TODO: Implement WebhookEndpointCard */}</div>;
 }

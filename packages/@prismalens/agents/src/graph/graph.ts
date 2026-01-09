@@ -1,20 +1,23 @@
-import { StateGraph, START, END } from '@langchain/langgraph';
-import { HumanMessage } from '@langchain/core/messages';
+import { HumanMessage } from "@langchain/core/messages";
+import { END, START, StateGraph } from "@langchain/langgraph";
+import { createCommanderFromState } from "../agents/commander/agent.js";
 import {
-    InvestigationStateAnnotation,
-    type InvestigationState,
-    type Hypothesis,
-    type Recommendation,
-    getBestHypothesis,
-} from '../types/state.js';
-import { createCommanderFromState } from '../agents/commander/agent.js';
-import { getCheckpointer, getInvocationConfig } from './persistence/checkpointer.js';
+	getStoredHypotheses,
+	getStoredRecommendations,
+	resetHypothesisStore,
+	resetRecommendationStore,
+} from "../tools/index.js";
 import {
-    resetHypothesisStore,
-    getStoredHypotheses,
-    resetRecommendationStore,
-    getStoredRecommendations,
-} from '../tools/index.js';
+	getBestHypothesis,
+	type Hypothesis,
+	type InvestigationState,
+	InvestigationStateAnnotation,
+	type Recommendation,
+} from "../types/state.js";
+import {
+	getCheckpointer,
+	getInvocationConfig,
+} from "./persistence/checkpointer.js";
 
 // =============================================================================
 // INVESTIGATION GRAPH
@@ -31,59 +34,64 @@ import {
  * This runs before the Commander to ensure we have valid input.
  */
 async function validateAlerts(
-    state: InvestigationState
+	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-    console.log(`[validateAlerts] Validating ${state.alerts.length} alerts for investigation ${state.investigationId}`);
+	console.log(
+		`[validateAlerts] Validating ${state.alerts.length} alerts for investigation ${state.investigationId}`,
+	);
 
-    // Validate required fields
-    if (!state.investigationId) {
-        return {
-            status: 'failed',
-            error: 'Missing investigationId in state',
-        };
-    }
+	// Validate required fields
+	if (!state.investigationId) {
+		return {
+			status: "failed",
+			error: "Missing investigationId in state",
+		};
+	}
 
-    if (!state.incidentId) {
-        return {
-            status: 'failed',
-            error: 'Missing incidentId in state',
-        };
-    }
+	if (!state.incidentId) {
+		return {
+			status: "failed",
+			error: "Missing incidentId in state",
+		};
+	}
 
-    if (state.alerts.length === 0) {
-        return {
-            status: 'failed',
-            error: 'No alerts provided for investigation',
-        };
-    }
+	if (state.alerts.length === 0) {
+		return {
+			status: "failed",
+			error: "No alerts provided for investigation",
+		};
+	}
 
-    // Set primary alert if not already set
-    const primaryAlert = state.primaryAlert || state.alerts[0];
+	// Set primary alert if not already set
+	const primaryAlert = state.primaryAlert || state.alerts[0];
 
-    // Calculate data quality score based on alert completeness
-    const alertQualityScores = state.alerts.map((alert) => {
-        let score = 0;
-        if (alert.title) score += 20;
-        if (alert.description) score += 15;
-        if (alert.severity) score += 15;
-        if (alert.source) score += 10;
-        if (alert.serviceName || alert.serviceId) score += 15;
-        if (alert.repository) score += 15;
-        if (alert.labels && Object.keys(alert.labels).length > 0) score += 5;
-        if (alert.triggeredAt) score += 5;
-        return score;
-    });
+	// Calculate data quality score based on alert completeness
+	const alertQualityScores = state.alerts.map((alert) => {
+		let score = 0;
+		if (alert.title) score += 20;
+		if (alert.description) score += 15;
+		if (alert.severity) score += 15;
+		if (alert.source) score += 10;
+		if (alert.serviceName || alert.serviceId) score += 15;
+		if (alert.repository) score += 15;
+		if (alert.labels && Object.keys(alert.labels).length > 0) score += 5;
+		if (alert.triggeredAt) score += 5;
+		return score;
+	});
 
-    const avgQuality = alertQualityScores.reduce((a, b) => a + b, 0) / alertQualityScores.length;
+	const avgQuality =
+		alertQualityScores.reduce((a, b) => a + b, 0) / alertQualityScores.length;
 
-    console.log(`[validateAlerts] Alert quality score: ${avgQuality.toFixed(1)}%`);
+	console.log(
+		`[validateAlerts] Alert quality score: ${avgQuality.toFixed(1)}%`,
+	);
 
-    return {
-        primaryAlert,
-        status: 'running',
-        dataQuality: { alerts: avgQuality },
-        agentProgression: { validation: true },
-    };
+	return {
+		primaryAlert,
+		status: "running",
+		dataQuality: { alerts: avgQuality },
+		agentProgression: { validation: true },
+	};
 }
 
 /**
@@ -91,24 +99,27 @@ async function validateAlerts(
  * This is where the actual investigation happens.
  */
 async function runCommander(
-    state: InvestigationState
+	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-    console.log(`[runCommander] Starting investigation ${state.investigationId}`);
+	console.log(`[runCommander] Starting investigation ${state.investigationId}`);
 
-    // Reset tool stores for fresh collection
-    resetHypothesisStore();
-    resetRecommendationStore();
+	// Reset tool stores for fresh collection
+	resetHypothesisStore();
+	resetRecommendationStore();
 
-    try {
-        // Create Commander with state context
-        const commander = createCommanderFromState(state);
+	try {
+		// Create Commander with state context
+		const commander = createCommanderFromState(state);
 
-        // Build the initial message for Commander
-        const alertSummaries = state.alerts
-            .map((a) => `- [${a.severity}] ${a.title}${a.description ? `: ${a.description}` : ''}`)
-            .join('\n');
+		// Build the initial message for Commander
+		const alertSummaries = state.alerts
+			.map(
+				(a) =>
+					`- [${a.severity}] ${a.title}${a.description ? `: ${a.description}` : ""}`,
+			)
+			.join("\n");
 
-        const initialMessage = `
+		const initialMessage = `
 # Incident Investigation Request
 
 ## Incident Details
@@ -120,9 +131,9 @@ async function runCommander(
 ${alertSummaries}
 
 ## Available Context
-- Primary alert service: ${state.primaryAlert?.serviceName || 'Unknown'}
-- Repository: ${state.primaryAlert?.repository || 'Not specified'}
-- Triggered at: ${state.primaryAlert?.triggeredAt || 'Unknown'}
+- Primary alert service: ${state.primaryAlert?.serviceName || "Unknown"}
+- Repository: ${state.primaryAlert?.repository || "Not specified"}
+- Triggered at: ${state.primaryAlert?.triggeredAt || "Unknown"}
 
 ## Your Task
 Investigate this incident following the standard workflow:
@@ -132,50 +143,55 @@ Investigate this incident following the standard workflow:
 4. Compile your findings into a final report
 `;
 
-        // Invoke Commander
-        const result = await commander.invoke({
-            messages: [new HumanMessage(initialMessage)],
-        });
+		// Invoke Commander
+		const result = await commander.invoke({
+			messages: [new HumanMessage(initialMessage)],
+		});
 
-        // Extract hypotheses and recommendations from tool stores
-        const hypotheses = getStoredHypotheses();
-        const recommendations = getStoredRecommendations();
+		// Extract hypotheses and recommendations from tool stores
+		const hypotheses = getStoredHypotheses();
+		const recommendations = getStoredRecommendations();
 
-        // Find best hypothesis
-        const bestHypothesis = hypotheses.length > 0
-            ? hypotheses.reduce((best, h) => (h.confidence > (best?.confidence || 0) ? h : best), null as Hypothesis | null)
-            : null;
+		// Find best hypothesis
+		const bestHypothesis =
+			hypotheses.length > 0
+				? hypotheses.reduce(
+						(best, h) => (h.confidence > (best?.confidence || 0) ? h : best),
+						null as Hypothesis | null,
+					)
+				: null;
 
-        // Extract final message content
-        const messages = result.messages || [];
-        const lastMessage = messages[messages.length - 1];
-        const summary = typeof lastMessage?.content === 'string'
-            ? lastMessage.content
-            : null;
+		// Extract final message content
+		const messages = result.messages || [];
+		const lastMessage = messages[messages.length - 1];
+		const summary =
+			typeof lastMessage?.content === "string" ? lastMessage.content : null;
 
-        console.log(`[runCommander] Investigation complete. ${hypotheses.length} hypotheses, ${recommendations.length} recommendations`);
+		console.log(
+			`[runCommander] Investigation complete. ${hypotheses.length} hypotheses, ${recommendations.length} recommendations`,
+		);
 
-        return {
-            messages: result.messages,
-            hypotheses,
-            recommendations,
-            summary,
-            rootCause: bestHypothesis?.claim || null,
-            rootCauseCategory: bestHypothesis?.category || null,
-            confidence: bestHypothesis?.confidence || null,
-            commanderResult: result,
-            agentProgression: { commander: true },
-            iterationCount: state.iterationCount + 1,
-        };
-    } catch (error: any) {
-        console.error(`[runCommander] Investigation failed:`, error);
+		return {
+			messages: result.messages,
+			hypotheses,
+			recommendations,
+			summary,
+			rootCause: bestHypothesis?.claim || null,
+			rootCauseCategory: bestHypothesis?.category || null,
+			confidence: bestHypothesis?.confidence || null,
+			commanderResult: result,
+			agentProgression: { commander: true },
+			iterationCount: state.iterationCount + 1,
+		};
+	} catch (error: any) {
+		console.error(`[runCommander] Investigation failed:`, error);
 
-        return {
-            status: 'failed',
-            error: error.message || 'Commander failed unexpectedly',
-            agentProgression: { commander: false },
-        };
-    }
+		return {
+			status: "failed",
+			error: error.message || "Commander failed unexpectedly",
+			agentProgression: { commander: false },
+		};
+	}
 }
 
 /**
@@ -183,58 +199,62 @@ Investigate this incident following the standard workflow:
  * Called after Commander completes to save findings.
  */
 async function writeToApi(
-    state: InvestigationState
+	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-    console.log(`[writeToApi] Persisting results for investigation ${state.investigationId}`);
+	console.log(
+		`[writeToApi] Persisting results for investigation ${state.investigationId}`,
+	);
 
-    // In a real implementation, this would call the API to update:
-    // - Investigation status
-    // - Hypotheses/root cause
-    // - Recommendations
-    // - Agent executions
-    //
-    // For now, we just mark as complete. The actual API integration
-    // happens in the processor that calls this graph.
+	// In a real implementation, this would call the API to update:
+	// - Investigation status
+	// - Hypotheses/root cause
+	// - Recommendations
+	// - Agent executions
+	//
+	// For now, we just mark as complete. The actual API integration
+	// happens in the processor that calls this graph.
 
-    const bestHypothesis = getBestHypothesis(state);
-    const hasHighConfidence = bestHypothesis && bestHypothesis.confidence >= 70;
-    const hasRecommendations = state.recommendations.length > 0;
+	const bestHypothesis = getBestHypothesis(state);
+	const hasHighConfidence = bestHypothesis && bestHypothesis.confidence >= 70;
+	const hasRecommendations = state.recommendations.length > 0;
 
-    // Determine final status
-    let status: InvestigationState['status'] = 'completed';
-    let analysisMethod = 'multi_agent_investigation';
+	// Determine final status
+	let status: InvestigationState["status"] = "completed";
+	let analysisMethod = "multi_agent_investigation";
 
-    if (state.error) {
-        status = 'failed';
-    } else if (!hasHighConfidence) {
-        analysisMethod = 'inconclusive_analysis';
-    }
+	if (state.error) {
+		status = "failed";
+	} else if (!hasHighConfidence) {
+		analysisMethod = "inconclusive_analysis";
+	}
 
-    console.log(`[writeToApi] Final status: ${status}, confidence: ${bestHypothesis?.confidence || 0}%`);
+	console.log(
+		`[writeToApi] Final status: ${status}, confidence: ${bestHypothesis?.confidence || 0}%`,
+	);
 
-    return {
-        status,
-        analysisMethod,
-        agentProgression: { apiWriter: true },
-    };
+	return {
+		status,
+		analysisMethod,
+		agentProgression: { apiWriter: true },
+	};
 }
 
 /**
  * Routing function - determines next node after validation.
  */
 function routeAfterValidation(state: InvestigationState): string {
-    if (state.status === 'failed') {
-        return 'writeToApi'; // Skip commander, go straight to API to record failure
-    }
-    return 'commander';
+	if (state.status === "failed") {
+		return "writeToApi"; // Skip commander, go straight to API to record failure
+	}
+	return "commander";
 }
 
 /**
  * Routing function - determines next node after commander.
  */
 function routeAfterCommander(state: InvestigationState): string {
-    // Always go to API writer to persist results
-    return 'writeToApi';
+	// Always go to API writer to persist results
+	return "writeToApi";
 }
 
 // =============================================================================
@@ -250,24 +270,24 @@ function routeAfterCommander(state: InvestigationState): string {
  * ```
  */
 export function buildInvestigationGraph() {
-    const graph = new StateGraph(InvestigationStateAnnotation)
-        // Add nodes
-        .addNode('validateAlerts', validateAlerts)
-        .addNode('commander', runCommander)
-        .addNode('writeToApi', writeToApi)
+	const graph = new StateGraph(InvestigationStateAnnotation)
+		// Add nodes
+		.addNode("validateAlerts", validateAlerts)
+		.addNode("commander", runCommander)
+		.addNode("writeToApi", writeToApi)
 
-        // Add edges
-        .addEdge(START, 'validateAlerts')
-        .addConditionalEdges('validateAlerts', routeAfterValidation, {
-            commander: 'commander',
-            writeToApi: 'writeToApi',
-        })
-        .addConditionalEdges('commander', routeAfterCommander, {
-            writeToApi: 'writeToApi',
-        })
-        .addEdge('writeToApi', END);
+		// Add edges
+		.addEdge(START, "validateAlerts")
+		.addConditionalEdges("validateAlerts", routeAfterValidation, {
+			commander: "commander",
+			writeToApi: "writeToApi",
+		})
+		.addConditionalEdges("commander", routeAfterCommander, {
+			writeToApi: "writeToApi",
+		})
+		.addEdge("writeToApi", END);
 
-    return graph;
+	return graph;
 }
 
 /**
@@ -278,12 +298,12 @@ export function buildInvestigationGraph() {
  * const result = await graph.invoke(initialState, getInvocationConfig(investigationId));
  */
 export async function compileInvestigationGraph() {
-    const graph = buildInvestigationGraph();
-    const checkpointer = await getCheckpointer();
+	const graph = buildInvestigationGraph();
+	const checkpointer = await getCheckpointer();
 
-    return graph.compile({
-        checkpointer,
-    });
+	return graph.compile({
+		checkpointer,
+	});
 }
 
 /**
@@ -298,22 +318,26 @@ export async function compileInvestigationGraph() {
  * });
  */
 export async function runInvestigation(
-    initialState: Partial<InvestigationState>
+	initialState: Partial<InvestigationState>,
 ): Promise<InvestigationState> {
-    if (!initialState.investigationId) {
-        throw new Error('investigationId is required');
-    }
+	if (!initialState.investigationId) {
+		throw new Error("investigationId is required");
+	}
 
-    const graph = await compileInvestigationGraph();
-    const config = getInvocationConfig(initialState.investigationId);
+	const graph = await compileInvestigationGraph();
+	const config = getInvocationConfig(initialState.investigationId);
 
-    console.log(`[runInvestigation] Starting investigation ${initialState.investigationId}`);
+	console.log(
+		`[runInvestigation] Starting investigation ${initialState.investigationId}`,
+	);
 
-    const result = await graph.invoke(initialState, config);
+	const result = await graph.invoke(initialState, config);
 
-    console.log(`[runInvestigation] Investigation ${initialState.investigationId} completed with status: ${result.status}`);
+	console.log(
+		`[runInvestigation] Investigation ${initialState.investigationId} completed with status: ${result.status}`,
+	);
 
-    return result as InvestigationState;
+	return result as InvestigationState;
 }
 
 /**
@@ -323,19 +347,23 @@ export async function runInvestigation(
  * const result = await resumeInvestigation('inv-123');
  */
 export async function resumeInvestigation(
-    investigationId: string
+	investigationId: string,
 ): Promise<InvestigationState> {
-    const graph = await compileInvestigationGraph();
-    const config = getInvocationConfig(investigationId);
+	const graph = await compileInvestigationGraph();
+	const config = getInvocationConfig(investigationId);
 
-    console.log(`[resumeInvestigation] Resuming investigation ${investigationId}`);
+	console.log(
+		`[resumeInvestigation] Resuming investigation ${investigationId}`,
+	);
 
-    // Invoke with empty state - checkpointer will restore from last checkpoint
-    const result = await graph.invoke({}, config);
+	// Invoke with empty state - checkpointer will restore from last checkpoint
+	const result = await graph.invoke({}, config);
 
-    console.log(`[resumeInvestigation] Investigation ${investigationId} resumed with status: ${result.status}`);
+	console.log(
+		`[resumeInvestigation] Investigation ${investigationId} resumed with status: ${result.status}`,
+	);
 
-    return result as InvestigationState;
+	return result as InvestigationState;
 }
 
 // =============================================================================
@@ -346,13 +374,14 @@ export async function resumeInvestigation(
  * Default compiled graph for LangGraph Studio.
  * Note: This uses environment variables for configuration.
  */
-let _studioGraph: Awaited<ReturnType<typeof compileInvestigationGraph>> | null = null;
+let _studioGraph: Awaited<ReturnType<typeof compileInvestigationGraph>> | null =
+	null;
 
 export async function getStudioGraph() {
-    if (!_studioGraph) {
-        _studioGraph = await compileInvestigationGraph();
-    }
-    return _studioGraph;
+	if (!_studioGraph) {
+		_studioGraph = await compileInvestigationGraph();
+	}
+	return _studioGraph;
 }
 
 // Export the builder for studio (langgraph.json points to this)

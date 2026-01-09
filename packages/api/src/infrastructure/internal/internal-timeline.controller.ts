@@ -1,16 +1,16 @@
 import {
-  Controller,
-  Post,
   Body,
-  UseGuards,
+  Controller,
   HttpCode,
   HttpStatus,
+  Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { InternalGuard } from './guards/internal.guard.js';
 import { TimelineService } from '../../modules/timeline/timeline.service.js';
-import { CreateTimelineEntryDto } from './dto/index.js';
 import { TimelineSource } from '../../shared/enums/index.js';
+import { CreateTimelineEntryDto } from './dto/index.js';
+import { InternalGuard } from './guards/internal.guard.js';
 
 /**
  * Internal API for timeline operations.

@@ -1,17 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface LoadingSpinnerProps {
-  // TODO: Define props during implementation
-  // size?: 'sm' | 'md' | 'lg';
-  // className?: string;
-}
+export type LoadingSpinnerProps = {};
 
 export function LoadingSpinner({}: LoadingSpinnerProps) {
-  return (
-    <div>
-      {/* TODO: Implement LoadingSpinner */}
-    </div>
-  );
+	return <div>{/* TODO: Implement LoadingSpinner */}</div>;
 }

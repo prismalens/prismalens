@@ -1,6 +1,6 @@
-import { Annotation, messagesStateReducer } from '@langchain/langgraph';
-import { BaseMessage } from '@langchain/core/messages';
-import { z } from 'zod';
+import type { BaseMessage } from "@langchain/core/messages";
+import { Annotation, messagesStateReducer } from "@langchain/langgraph";
+import { z } from "zod";
 
 // =============================================================================
 // LANGGRAPH STATE ANNOTATION & ZOD SCHEMAS
@@ -17,20 +17,22 @@ import { z } from 'zod';
  * Alert context schema - represents a single alert in the investigation
  */
 export const AlertContextSchema = z.object({
-    alertId: z.string(),
-    title: z.string(),
-    description: z.string().optional(),
-    severity: z.enum(['critical', 'high', 'medium', 'low', 'info']),
-    status: z.enum(['triggered', 'acknowledged', 'correlated', 'resolved', 'suppressed']).optional(),
-    source: z.string().optional(),
-    sourceUrl: z.string().optional(),
-    serviceId: z.string().optional(),
-    serviceName: z.string().optional(),
-    repository: z.string().optional(),
-    labels: z.record(z.string()).optional(),
-    tags: z.array(z.string()).optional(),
-    triggeredAt: z.string().optional(),
-    rawPayload: z.unknown().optional(),
+	alertId: z.string(),
+	title: z.string(),
+	description: z.string().optional(),
+	severity: z.enum(["critical", "high", "medium", "low", "info"]),
+	status: z
+		.enum(["triggered", "acknowledged", "correlated", "resolved", "suppressed"])
+		.optional(),
+	source: z.string().optional(),
+	sourceUrl: z.string().optional(),
+	serviceId: z.string().optional(),
+	serviceName: z.string().optional(),
+	repository: z.string().optional(),
+	labels: z.record(z.string()).optional(),
+	tags: z.array(z.string()).optional(),
+	triggeredAt: z.string().optional(),
+	rawPayload: z.unknown().optional(),
 });
 
 export type AlertContext = z.infer<typeof AlertContextSchema>;
@@ -39,11 +41,11 @@ export type AlertContext = z.infer<typeof AlertContextSchema>;
  * Integration context schema - credentials and config for external tools
  */
 export const IntegrationContextSchema = z.object({
-    type: z.string(),
-    connectionId: z.string(),
-    credentials: z.record(z.unknown()),
-    config: z.record(z.unknown()),
-    serviceOverrides: z.record(z.unknown()).optional(),
+	type: z.string(),
+	connectionId: z.string(),
+	credentials: z.record(z.unknown()),
+	config: z.record(z.unknown()),
+	serviceOverrides: z.record(z.unknown()).optional(),
 });
 
 export type IntegrationContext = z.infer<typeof IntegrationContextSchema>;
@@ -52,11 +54,13 @@ export type IntegrationContext = z.infer<typeof IntegrationContextSchema>;
  * Hypothesis schema - Detective agent's root cause hypothesis
  */
 export const HypothesisSchema = z.object({
-    claim: z.string().describe('The root cause hypothesis'),
-    confidence: z.number().min(0).max(100).describe('Confidence level 0-100'),
-    evidence: z.array(z.string()).describe('Evidence supporting this hypothesis'),
-    category: z.enum(['code', 'config', 'infrastructure', 'external', 'unknown']).optional(),
-    timestamp: z.string().optional(),
+	claim: z.string().describe("The root cause hypothesis"),
+	confidence: z.number().min(0).max(100).describe("Confidence level 0-100"),
+	evidence: z.array(z.string()).describe("Evidence supporting this hypothesis"),
+	category: z
+		.enum(["code", "config", "infrastructure", "external", "unknown"])
+		.optional(),
+	timestamp: z.string().optional(),
 });
 
 export type Hypothesis = z.infer<typeof HypothesisSchema>;
@@ -65,10 +69,12 @@ export type Hypothesis = z.infer<typeof HypothesisSchema>;
  * Code change schema - Surgeon's proposed code fix
  */
 export const CodeChangeSchema = z.object({
-    filePath: z.string().describe('Path to the file to modify'),
-    searchBlock: z.string().describe('Exact content to find (must match exactly)'),
-    replaceBlock: z.string().describe('Content to replace with'),
-    testCase: z.string().describe('How to verify this fix works'),
+	filePath: z.string().describe("Path to the file to modify"),
+	searchBlock: z
+		.string()
+		.describe("Exact content to find (must match exactly)"),
+	replaceBlock: z.string().describe("Content to replace with"),
+	testCase: z.string().describe("How to verify this fix works"),
 });
 
 export type CodeChange = z.infer<typeof CodeChangeSchema>;
@@ -77,14 +83,20 @@ export type CodeChange = z.infer<typeof CodeChangeSchema>;
  * Recommendation schema - Actionable recommendation from investigation
  */
 export const RecommendationSchema = z.object({
-    title: z.string(),
-    description: z.string().optional(),
-    priority: z.enum(['critical', 'high', 'medium', 'low']),
-    category: z.enum(['code_fix', 'config_change', 'rollback', 'monitoring', 'investigation']),
-    urgency: z.enum(['immediate', 'short_term', 'long_term']),
-    actionable: z.boolean(),
-    estimatedEffort: z.enum(['minutes', 'hours', 'days']).optional(),
-    codeChanges: z.array(CodeChangeSchema).optional(),
+	title: z.string(),
+	description: z.string().optional(),
+	priority: z.enum(["critical", "high", "medium", "low"]),
+	category: z.enum([
+		"code_fix",
+		"config_change",
+		"rollback",
+		"monitoring",
+		"investigation",
+	]),
+	urgency: z.enum(["immediate", "short_term", "long_term"]),
+	actionable: z.boolean(),
+	estimatedEffort: z.enum(["minutes", "hours", "days"]).optional(),
+	codeChanges: z.array(CodeChangeSchema).optional(),
 });
 
 export type Recommendation = z.infer<typeof RecommendationSchema>;
@@ -93,15 +105,15 @@ export type Recommendation = z.infer<typeof RecommendationSchema>;
  * Tool execution record - tracks individual tool calls
  */
 export const ToolExecutionRecordSchema = z.object({
-    toolName: z.string(),
-    toolCategory: z.string().optional(),
-    arguments: z.unknown(),
-    result: z.unknown(),
-    status: z.enum(['pending', 'running', 'success', 'error']),
-    executionTimeMs: z.number().optional(),
-    confidence: z.number().optional(),
-    error: z.string().optional(),
-    executedAt: z.string().optional(),
+	toolName: z.string(),
+	toolCategory: z.string().optional(),
+	arguments: z.unknown(),
+	result: z.unknown(),
+	status: z.enum(["pending", "running", "success", "error"]),
+	executionTimeMs: z.number().optional(),
+	confidence: z.number().optional(),
+	error: z.string().optional(),
+	executedAt: z.string().optional(),
 });
 
 export type ToolExecutionRecord = z.infer<typeof ToolExecutionRecordSchema>;
@@ -110,18 +122,18 @@ export type ToolExecutionRecord = z.infer<typeof ToolExecutionRecordSchema>;
  * Agent execution record - tracks agent invocations
  */
 export const AgentExecutionRecordSchema = z.object({
-    agentName: z.string(),
-    agentType: z.enum(['llm', 'sequential', 'loop']).optional(),
-    status: z.enum(['pending', 'running', 'completed', 'failed']),
-    startedAt: z.string().optional(),
-    completedAt: z.string().optional(),
-    executionTimeMs: z.number().optional(),
-    output: z.unknown().optional(),
-    confidence: z.number().optional(),
-    inputTokens: z.number().optional(),
-    outputTokens: z.number().optional(),
-    error: z.string().optional(),
-    toolExecutions: z.array(ToolExecutionRecordSchema).optional(),
+	agentName: z.string(),
+	agentType: z.enum(["llm", "sequential", "loop"]).optional(),
+	status: z.enum(["pending", "running", "completed", "failed"]),
+	startedAt: z.string().optional(),
+	completedAt: z.string().optional(),
+	executionTimeMs: z.number().optional(),
+	output: z.unknown().optional(),
+	confidence: z.number().optional(),
+	inputTokens: z.number().optional(),
+	outputTokens: z.number().optional(),
+	error: z.string().optional(),
+	toolExecutions: z.array(ToolExecutionRecordSchema).optional(),
 });
 
 export type AgentExecutionRecord = z.infer<typeof AgentExecutionRecordSchema>;
@@ -135,151 +147,155 @@ export type AgentExecutionRecord = z.infer<typeof AgentExecutionRecordSchema>;
  * This is the root state annotation shared across all nodes in the main graph.
  */
 export const InvestigationStateAnnotation = Annotation.Root({
-    // =========================================================================
-    // Job Metadata
-    // =========================================================================
+	// =========================================================================
+	// Job Metadata
+	// =========================================================================
 
-    /** Investigation ID from the database */
-    investigationId: Annotation<string>,
+	/** Investigation ID from the database */
+	investigationId: Annotation<string>,
 
-    /** Incident ID this investigation belongs to */
-    incidentId: Annotation<string>,
+	/** Incident ID this investigation belongs to */
+	incidentId: Annotation<string>,
 
-    /** Priority level for the investigation */
-    priority: Annotation<'low' | 'normal' | 'high' | 'critical'>({
-        reducer: (x, y) => y ?? x,
-        default: () => 'normal',
-    }),
+	/** Priority level for the investigation */
+	priority: Annotation<"low" | "normal" | "high" | "critical">({
+		reducer: (x, y) => y ?? x,
+		default: () => "normal",
+	}),
 
-    // =========================================================================
-    // Alert Context
-    // =========================================================================
+	// =========================================================================
+	// Alert Context
+	// =========================================================================
 
-    /** All alerts associated with this incident */
-    alerts: Annotation<AlertContext[]>({
-        reducer: (current, update) => [...current, ...update],
-        default: () => [],
-    }),
+	/** All alerts associated with this incident */
+	alerts: Annotation<AlertContext[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
 
-    /** Primary alert that triggered investigation */
-    primaryAlert: Annotation<AlertContext | null>,
+	/** Primary alert that triggered investigation */
+	primaryAlert: Annotation<AlertContext | null>,
 
-    // =========================================================================
-    // Integration Context
-    // =========================================================================
+	// =========================================================================
+	// Integration Context
+	// =========================================================================
 
-    /** Available integrations for tools (GitHub, Render, etc.) */
-    integrations: Annotation<IntegrationContext[]>({
-        reducer: (x, y) => y ?? x,
-        default: () => [],
-    }),
+	/** Available integrations for tools (GitHub, Render, etc.) */
+	integrations: Annotation<IntegrationContext[]>({
+		reducer: (x, y) => y ?? x,
+		default: () => [],
+	}),
 
-    // =========================================================================
-    // Agent Communication
-    // =========================================================================
+	// =========================================================================
+	// Agent Communication
+	// =========================================================================
 
-    /** Message history for agent communication */
-    messages: Annotation<BaseMessage[]>({
-        reducer: messagesStateReducer,
-        default: () => [],
-    }),
+	/** Message history for agent communication */
+	messages: Annotation<BaseMessage[]>({
+		reducer: messagesStateReducer,
+		default: () => [],
+	}),
 
-    // =========================================================================
-    // Investigation Findings
-    // =========================================================================
+	// =========================================================================
+	// Investigation Findings
+	// =========================================================================
 
-    /** Context gathered by Cartographer agent */
-    gatheredContext: Annotation<Record<string, unknown>>({
-        reducer: (current, update) => ({ ...current, ...update }),
-        default: () => ({}),
-    }),
+	/** Context gathered by Cartographer agent */
+	gatheredContext: Annotation<Record<string, unknown>>({
+		reducer: (current, update) => ({ ...current, ...update }),
+		default: () => ({}),
+	}),
 
-    /** Hypotheses formed by Detective agent */
-    hypotheses: Annotation<Hypothesis[]>({
-        reducer: (current, update) => [...current, ...update],
-        default: () => [],
-    }),
+	/** Hypotheses formed by Detective agent */
+	hypotheses: Annotation<Hypothesis[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
 
-    /** Recommendations from Surgeon agent */
-    recommendations: Annotation<Recommendation[]>({
-        reducer: (current, update) => [...current, ...update],
-        default: () => [],
-    }),
+	/** Recommendations from Surgeon agent */
+	recommendations: Annotation<Recommendation[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
 
-    // =========================================================================
-    // Execution Tracking
-    // =========================================================================
+	// =========================================================================
+	// Execution Tracking
+	// =========================================================================
 
-    /** Record of all agent executions */
-    agentExecutions: Annotation<AgentExecutionRecord[]>({
-        reducer: (current, update) => [...current, ...update],
-        default: () => [],
-    }),
+	/** Record of all agent executions */
+	agentExecutions: Annotation<AgentExecutionRecord[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
 
-    /** Progression tracking for each agent */
-    agentProgression: Annotation<Record<string, boolean>>({
-        reducer: (current, update) => ({ ...current, ...update }),
-        default: () => ({}),
-    }),
+	/** Progression tracking for each agent */
+	agentProgression: Annotation<Record<string, boolean>>({
+		reducer: (current, update) => ({ ...current, ...update }),
+		default: () => ({}),
+	}),
 
-    /** Data quality scores from various sources */
-    dataQuality: Annotation<Record<string, number>>({
-        reducer: (current, update) => ({ ...current, ...update }),
-        default: () => ({}),
-    }),
+	/** Data quality scores from various sources */
+	dataQuality: Annotation<Record<string, number>>({
+		reducer: (current, update) => ({ ...current, ...update }),
+		default: () => ({}),
+	}),
 
-    /** Data sources used during investigation */
-    dataSourcesUsed: Annotation<string[]>({
-        reducer: (current, update) => [...new Set([...current, ...update])],
-        default: () => [],
-    }),
+	/** Data sources used during investigation */
+	dataSourcesUsed: Annotation<string[]>({
+		reducer: (current, update) => [...new Set([...current, ...update])],
+		default: () => [],
+	}),
 
-    // =========================================================================
-    // Final Results
-    // =========================================================================
+	// =========================================================================
+	// Final Results
+	// =========================================================================
 
-    /** Executive summary of the investigation */
-    summary: Annotation<string | null>,
+	/** Executive summary of the investigation */
+	summary: Annotation<string | null>,
 
-    /** Identified root cause */
-    rootCause: Annotation<string | null>,
+	/** Identified root cause */
+	rootCause: Annotation<string | null>,
 
-    /** Root cause category */
-    rootCauseCategory: Annotation<'code' | 'config' | 'infrastructure' | 'external' | 'unknown' | null>,
+	/** Root cause category */
+	rootCauseCategory: Annotation<
+		"code" | "config" | "infrastructure" | "external" | "unknown" | null
+	>,
 
-    /** Overall confidence score (0-100) */
-    confidence: Annotation<number | null>,
+	/** Overall confidence score (0-100) */
+	confidence: Annotation<number | null>,
 
-    /** Analysis method used */
-    analysisMethod: Annotation<string | null>,
+	/** Analysis method used */
+	analysisMethod: Annotation<string | null>,
 
-    // =========================================================================
-    // Workflow Control
-    // =========================================================================
+	// =========================================================================
+	// Workflow Control
+	// =========================================================================
 
-    /** Current workflow status */
-    status: Annotation<'pending' | 'validating' | 'running' | 'completed' | 'failed'>({
-        reducer: (x, y) => y ?? x,
-        default: () => 'pending',
-    }),
+	/** Current workflow status */
+	status: Annotation<
+		"pending" | "validating" | "running" | "completed" | "failed"
+	>({
+		reducer: (x, y) => y ?? x,
+		default: () => "pending",
+	}),
 
-    /** Error message if workflow failed */
-    error: Annotation<string | null>,
+	/** Error message if workflow failed */
+	error: Annotation<string | null>,
 
-    /** Raw output from DeepAgent commander (for debugging) */
-    commanderResult: Annotation<unknown>,
+	/** Raw output from DeepAgent commander (for debugging) */
+	commanderResult: Annotation<unknown>,
 
-    /** Iteration count for max iterations check */
-    iterationCount: Annotation<number>({
-        reducer: (x, y) => y ?? x,
-        default: () => 0,
-    }),
+	/** Iteration count for max iterations check */
+	iterationCount: Annotation<number>({
+		reducer: (x, y) => y ?? x,
+		default: () => 0,
+	}),
 
-    /** Maximum allowed iterations */
-    maxIterations: Annotation<number>({
-        reducer: (x, y) => y ?? x,
-        default: () => 10,
-    }),
+	/** Maximum allowed iterations */
+	maxIterations: Annotation<number>({
+		reducer: (x, y) => y ?? x,
+		default: () => 10,
+	}),
 });
 
 /**
@@ -300,40 +316,45 @@ export type InvestigationStateUpdate = Partial<InvestigationState>;
  * Create initial state from job data
  */
 export function createInitialState(jobData: {
-    investigationId: string;
-    incidentId: string;
-    priority?: 'low' | 'normal' | 'high' | 'critical';
-    alerts?: AlertContext[];
-    integrations?: IntegrationContext[];
+	investigationId: string;
+	incidentId: string;
+	priority?: "low" | "normal" | "high" | "critical";
+	alerts?: AlertContext[];
+	integrations?: IntegrationContext[];
 }): Partial<InvestigationState> {
-    return {
-        investigationId: jobData.investigationId,
-        incidentId: jobData.incidentId,
-        priority: jobData.priority || 'normal',
-        alerts: jobData.alerts || [],
-        primaryAlert: jobData.alerts?.[0] || null,
-        integrations: jobData.integrations || [],
-        status: 'pending',
-    };
+	return {
+		investigationId: jobData.investigationId,
+		incidentId: jobData.incidentId,
+		priority: jobData.priority || "normal",
+		alerts: jobData.alerts || [],
+		primaryAlert: jobData.alerts?.[0] || null,
+		integrations: jobData.integrations || [],
+		status: "pending",
+	};
 }
 
 /**
  * Extract the best hypothesis from state
  */
-export function getBestHypothesis(state: InvestigationState): Hypothesis | null {
-    if (state.hypotheses.length === 0) {
-        return null;
-    }
-    return state.hypotheses.reduce((best, h) =>
-        h.confidence > (best?.confidence || 0) ? h : best,
-        null as Hypothesis | null
-    );
+export function getBestHypothesis(
+	state: InvestigationState,
+): Hypothesis | null {
+	if (state.hypotheses.length === 0) {
+		return null;
+	}
+	return state.hypotheses.reduce(
+		(best, h) => (h.confidence > (best?.confidence || 0) ? h : best),
+		null as Hypothesis | null,
+	);
 }
 
 /**
  * Check if investigation has sufficient confidence to proceed to fix proposal
  */
-export function hassufficientConfidence(state: InvestigationState, threshold: number = 80): boolean {
-    const best = getBestHypothesis(state);
-    return best !== null && best.confidence >= threshold;
+export function hassufficientConfidence(
+	state: InvestigationState,
+	threshold: number = 80,
+): boolean {
+	const best = getBestHypothesis(state);
+	return best !== null && best.confidence >= threshold;
 }

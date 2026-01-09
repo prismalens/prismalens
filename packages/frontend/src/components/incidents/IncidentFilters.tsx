@@ -1,20 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface IncidentFiltersProps {
-  // TODO: Define props during implementation
-  // onFilterChange?: (filters: {
-  //   severity?: string;
-  //   service?: string;
-  //   dateRange?: { start: Date; end: Date };
-  // }) => void;
-}
+export type IncidentFiltersProps = {};
 
 export function IncidentFilters({}: IncidentFiltersProps) {
-  return (
-    <div>
-      {/* TODO: Implement IncidentFilters */}
-    </div>
-  );
+	return <div>{/* TODO: Implement IncidentFilters */}</div>;
 }

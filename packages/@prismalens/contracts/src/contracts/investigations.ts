@@ -1,130 +1,130 @@
 /**
  * Investigation route contracts
  */
-import { oc } from '@orpc/contract'
-import { z } from 'zod'
+import { oc } from "@orpc/contract";
+import { z } from "zod";
 import {
-  InvestigationSchema,
-  InvestigationWithRelationsSchema,
-  CreateInvestigationSchema,
-  InvestigationQuerySchema,
-  InvestigationStatusSchema,
-  AgentExecutionWithToolsSchema,
-  IdParamSchema,
-  UpdateInvestigationStatusSchema,
-  WriteInvestigationResultSchema,
-} from '../schemas/index.js'
+	AgentExecutionWithToolsSchema,
+	CreateInvestigationSchema,
+	IdParamSchema,
+	InvestigationQuerySchema,
+	InvestigationSchema,
+	InvestigationStatusSchema,
+	InvestigationWithRelationsSchema,
+	UpdateInvestigationStatusSchema,
+	WriteInvestigationResultSchema,
+} from "../schemas/index.js";
 
 export const investigationsContract = {
-  /**
-   * Create a new investigation
-   * POST /investigations
-   */
-  create: oc
-    .route({
-      method: 'POST',
-      path: '/investigations',
-      summary: 'Create a new investigation',
-      tags: ['investigations'],
-    })
-    .input(CreateInvestigationSchema)
-    .output(InvestigationSchema),
+	/**
+	 * Create a new investigation
+	 * POST /investigations
+	 */
+	create: oc
+		.route({
+			method: "POST",
+			path: "/investigations",
+			summary: "Create a new investigation",
+			tags: ["investigations"],
+		})
+		.input(CreateInvestigationSchema)
+		.output(InvestigationSchema),
 
-  /**
-   * List investigations with filtering
-   * GET /investigations
-   */
-  list: oc
-    .route({
-      method: 'GET',
-      path: '/investigations',
-      summary: 'List investigations with optional filtering',
-      tags: ['investigations'],
-    })
-    .input(InvestigationQuerySchema)
-    .output(z.array(InvestigationWithRelationsSchema)),
+	/**
+	 * List investigations with filtering
+	 * GET /investigations
+	 */
+	list: oc
+		.route({
+			method: "GET",
+			path: "/investigations",
+			summary: "List investigations with optional filtering",
+			tags: ["investigations"],
+		})
+		.input(InvestigationQuerySchema)
+		.output(z.array(InvestigationWithRelationsSchema)),
 
-  /**
-   * Get a single investigation by ID
-   * GET /investigations/:id
-   */
-  get: oc
-    .route({
-      method: 'GET',
-      path: '/investigations/{id}',
-      summary: 'Get investigation by ID',
-      tags: ['investigations'],
-    })
-    .input(IdParamSchema)
-    .output(InvestigationWithRelationsSchema),
+	/**
+	 * Get a single investigation by ID
+	 * GET /investigations/:id
+	 */
+	get: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}",
+			summary: "Get investigation by ID",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationWithRelationsSchema),
 
-  /**
-   * Get investigation status (includes job queue info)
-   * GET /investigations/:id/status
-   */
-  getStatus: oc
-    .route({
-      method: 'GET',
-      path: '/investigations/{id}/status',
-      summary: 'Get investigation status with job queue info',
-      tags: ['investigations'],
-    })
-    .input(IdParamSchema)
-    .output(InvestigationStatusSchema),
+	/**
+	 * Get investigation status (includes job queue info)
+	 * GET /investigations/:id/status
+	 */
+	getStatus: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/status",
+			summary: "Get investigation status with job queue info",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationStatusSchema),
 
-  /**
-   * Get agent executions for an investigation
-   * GET /investigations/:id/agents
-   */
-  getAgentExecutions: oc
-    .route({
-      method: 'GET',
-      path: '/investigations/{id}/agents',
-      summary: 'Get agent executions for investigation',
-      tags: ['investigations'],
-    })
-    .input(IdParamSchema)
-    .output(z.array(AgentExecutionWithToolsSchema)),
+	/**
+	 * Get agent executions for an investigation
+	 * GET /investigations/:id/agents
+	 */
+	getAgentExecutions: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/agents",
+			summary: "Get agent executions for investigation",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(z.array(AgentExecutionWithToolsSchema)),
 
-  /**
-   * Cancel an investigation
-   * POST /investigations/:id/cancel
-   */
-  cancel: oc
-    .route({
-      method: 'POST',
-      path: '/investigations/{id}/cancel',
-      summary: 'Cancel a running investigation',
-      tags: ['investigations'],
-    })
-    .input(IdParamSchema)
-    .output(InvestigationSchema),
+	/**
+	 * Cancel an investigation
+	 * POST /investigations/:id/cancel
+	 */
+	cancel: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/cancel",
+			summary: "Cancel a running investigation",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationSchema),
 
-  /**
-   * Update investigation status (Worker)
-   * PATCH /investigations/:id/status
-   */
-  updateStatus: oc
-    .route({
-      method: 'PATCH',
-      path: '/investigations/{id}/status',
-      summary: 'Update investigation status',
-      tags: ['investigations'],
-    })
-    .input(UpdateInvestigationStatusSchema)
-    .output(InvestigationSchema),
+	/**
+	 * Update investigation status (Worker)
+	 * PATCH /investigations/:id/status
+	 */
+	updateStatus: oc
+		.route({
+			method: "PATCH",
+			path: "/investigations/{id}/status",
+			summary: "Update investigation status",
+			tags: ["investigations"],
+		})
+		.input(UpdateInvestigationStatusSchema)
+		.output(InvestigationSchema),
 
-  /**
-   * Write investigation result (Worker)
-   * POST /investigations/:id/result
-   */
-  writeResult: oc
-    .route({
-      method: 'POST',
-      path: '/investigations/{id}/result',
-      summary: 'Write investigation result',
-      tags: ['investigations'],
-    })
-    .input(WriteInvestigationResultSchema)
-    .output(InvestigationWithRelationsSchema),
-}
+	/**
+	 * Write investigation result (Worker)
+	 * POST /investigations/:id/result
+	 */
+	writeResult: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/result",
+			summary: "Write investigation result",
+			tags: ["investigations"],
+		})
+		.input(WriteInvestigationResultSchema)
+		.output(InvestigationWithRelationsSchema),
+};

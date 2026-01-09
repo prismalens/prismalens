@@ -1,18 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface SetupProgressProps {
-  // TODO: Define props during implementation
-  // currentStep?: number;
-  // totalSteps?: number;
-  // steps?: Array<{ label: string; completed?: boolean }>;
-}
+export type SetupProgressProps = {};
 
 export function SetupProgress({}: SetupProgressProps) {
-  return (
-    <div>
-      {/* TODO: Implement SetupProgress */}
-    </div>
-  );
+	return <div>{/* TODO: Implement SetupProgress */}</div>;
 }

@@ -1,13 +1,13 @@
-import { Injectable, Logger, Inject, forwardRef, NotFoundException } from '@nestjs/common';
-import { AlertsService } from '../alerts/alerts.service.js';
-import { EventsService } from '../events/events.service.js';
-import { CorrelationService } from '../correlation/correlation.service.js';
+import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Severity } from '../../shared/enums/index.js';
 import { AlertMappingService } from '../alert-mapping/alert-mapping.service.js';
+import type { Alert } from '../alerts/alerts.service.js';
+import { AlertsService } from '../alerts/alerts.service.js';
+import { CorrelationService } from '../correlation/correlation.service.js';
+import type { Event } from '../events/events.service.js';
+import { EventsService } from '../events/events.service.js';
 import { IntegrationsService } from '../integrations/integrations.service.js';
 import { GenericWebhookDto, GithubWebhookDto, RenderWebhookDto } from './dto/index.js';
-import type { Alert } from '../alerts/alerts.service.js';
-import type { Event } from '../events/events.service.js';
-import { Severity } from '../../shared/enums/index.js';
 
 export interface WebhookResult {
   event: Event;

@@ -1,22 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface CorrelatedAlertsProps {
-  // TODO: Define props during implementation
-  // alerts?: Array<{
-  //   id: string;
-  //   title: string;
-  //   severity: string;
-  //   source: string;
-  //   createdAt: Date;
-  // }>;
-}
+export type CorrelatedAlertsProps = {};
 
 export function CorrelatedAlerts({}: CorrelatedAlertsProps) {
-  return (
-    <div>
-      {/* TODO: Implement CorrelatedAlerts */}
-    </div>
-  );
+	return <div>{/* TODO: Implement CorrelatedAlerts */}</div>;
 }

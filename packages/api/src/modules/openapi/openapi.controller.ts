@@ -1,10 +1,10 @@
 import { Controller, Get, Header, Res } from '@nestjs/common'
-import type { Response } from 'express'
+import { ConfigService } from '@nestjs/config/dist/index.js'
 import { OpenAPIGenerator } from '@orpc/openapi'
 import { ZodToJsonSchemaConverter } from '@orpc/zod'
-import { contract } from '@prismalens/contracts'
 import { EnvironmentVariables } from '@prismalens/config'
-import { ConfigService } from '@nestjs/config/dist/index.js'
+import { contract } from '@prismalens/contracts'
+import type { Response } from 'express'
 
 @Controller()
 export class OpenAPIController {

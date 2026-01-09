@@ -1,24 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface ServiceCardProps {
-  // TODO: Define props during implementation
-  // service?: {
-  //   id: string;
-  //   name: string;
-  //   type?: string;
-  //   team?: string;
-  //   incidentCount?: number;
-  //   integrations?: string[];
-  // };
-  // onClick?: () => void;
-}
+export type ServiceCardProps = {};
 
 export function ServiceCard({}: ServiceCardProps) {
-  return (
-    <div>
-      {/* TODO: Implement ServiceCard */}
-    </div>
-  );
+	return <div>{/* TODO: Implement ServiceCard */}</div>;
 }

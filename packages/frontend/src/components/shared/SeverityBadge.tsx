@@ -1,16 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface SeverityBadgeProps {
-  // TODO: Define props during implementation
-  // severity?: 'critical' | 'warning' | 'info';
-}
+export type SeverityBadgeProps = {};
 
 export function SeverityBadge({}: SeverityBadgeProps) {
-  return (
-    <div>
-      {/* TODO: Implement SeverityBadge */}
-    </div>
-  );
+	return <div>{/* TODO: Implement SeverityBadge */}</div>;
 }

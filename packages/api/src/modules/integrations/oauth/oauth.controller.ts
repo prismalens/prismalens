@@ -1,15 +1,15 @@
 import {
+  BadRequestException,
   Controller,
   Get,
-  Query,
-  Param,
-  Redirect,
-  BadRequestException,
   Logger,
+  Param,
+  Query,
+  Redirect,
 } from '@nestjs/common';
-import { OAuthService } from './oauth.service.js';
-import { EnvironmentVariables } from '@prismalens/config';
 import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '@prismalens/config';
+import { OAuthService } from './oauth.service.js';
 
 @Controller('integrations/oauth')
 export class OAuthController {

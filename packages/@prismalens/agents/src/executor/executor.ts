@@ -1,17 +1,17 @@
 import {
-    runInvestigation,
-    resumeInvestigation,
-    hasExistingCheckpoint,
-    closeCheckpointer,
-} from '../graph/index.js';
+	closeCheckpointer,
+	hasExistingCheckpoint,
+	resumeInvestigation,
+	runInvestigation,
+} from "../graph/index.js";
 import type {
-    InvestigationState,
-    AlertContext,
-    IntegrationContext,
-    Hypothesis,
-    Recommendation,
-} from '../types/index.js';
-import { ExecutionTracker } from './callbacks.js';
+	AlertContext,
+	Hypothesis,
+	IntegrationContext,
+	InvestigationState,
+	Recommendation,
+} from "../types/index.js";
+import { ExecutionTracker } from "./callbacks.js";
 
 // =============================================================================
 // INVESTIGATION EXECUTOR
@@ -24,63 +24,72 @@ import { ExecutionTracker } from './callbacks.js';
  * Input parameters for starting an investigation
  */
 export interface InvestigationInput {
-    /** Unique investigation ID */
-    investigationId: string;
-    /** Incident ID this investigation belongs to */
-    incidentId: string;
-    /** Priority level */
-    priority?: 'low' | 'normal' | 'high' | 'critical';
-    /** Alerts to investigate */
-    alerts: AlertContext[];
-    /** Available integrations for tools */
-    integrations?: IntegrationContext[];
-    /** Maximum iterations before stopping */
-    maxIterations?: number;
+	/** Unique investigation ID */
+	investigationId: string;
+	/** Incident ID this investigation belongs to */
+	incidentId: string;
+	/** Priority level */
+	priority?: "low" | "normal" | "high" | "critical";
+	/** Alerts to investigate */
+	alerts: AlertContext[];
+	/** Available integrations for tools */
+	integrations?: IntegrationContext[];
+	/** Maximum iterations before stopping */
+	maxIterations?: number;
 }
 
 /**
  * Result of an investigation
  */
 export interface InvestigationResult {
-    /** Investigation ID */
-    investigationId: string;
-    /** Final status */
-    status: 'completed' | 'failed';
-    /** Executive summary */
-    summary: string | null;
-    /** Root cause description */
-    rootCause: string | null;
-    /** Root cause category */
-    rootCauseCategory: 'code' | 'config' | 'infrastructure' | 'external' | 'unknown' | null;
-    /** Confidence score (0-100) */
-    confidence: number | null;
-    /** Formed hypotheses */
-    hypotheses: Hypothesis[];
-    /** Actionable recommendations */
-    recommendations: Recommendation[];
-    /** Error message if failed */
-    error: string | null;
-    /** Total execution time in milliseconds */
-    executionTimeMs: number;
-    /** Analysis method used */
-    analysisMethod: string | null;
+	/** Investigation ID */
+	investigationId: string;
+	/** Final status */
+	status: "completed" | "failed";
+	/** Executive summary */
+	summary: string | null;
+	/** Root cause description */
+	rootCause: string | null;
+	/** Root cause category */
+	rootCauseCategory:
+		| "code"
+		| "config"
+		| "infrastructure"
+		| "external"
+		| "unknown"
+		| null;
+	/** Confidence score (0-100) */
+	confidence: number | null;
+	/** Formed hypotheses */
+	hypotheses: Hypothesis[];
+	/** Actionable recommendations */
+	recommendations: Recommendation[];
+	/** Error message if failed */
+	error: string | null;
+	/** Total execution time in milliseconds */
+	executionTimeMs: number;
+	/** Analysis method used */
+	analysisMethod: string | null;
 }
 
 /**
  * Callbacks for investigation progress events
  */
 export interface InvestigationCallbacks {
-    /** Called when investigation starts */
-    onStart?: (investigationId: string) => void | Promise<void>;
-    /** Called when investigation completes */
-    onComplete?: (result: InvestigationResult) => void | Promise<void>;
-    /** Called when investigation fails */
-    onError?: (investigationId: string, error: Error) => void | Promise<void>;
-    /** Called on progress updates */
-    onProgress?: (investigationId: string, progress: {
-        phase: string;
-        message: string;
-    }) => void | Promise<void>;
+	/** Called when investigation starts */
+	onStart?: (investigationId: string) => void | Promise<void>;
+	/** Called when investigation completes */
+	onComplete?: (result: InvestigationResult) => void | Promise<void>;
+	/** Called when investigation fails */
+	onError?: (investigationId: string, error: Error) => void | Promise<void>;
+	/** Called on progress updates */
+	onProgress?: (
+		investigationId: string,
+		progress: {
+			phase: string;
+			message: string;
+		},
+	) => void | Promise<void>;
 }
 
 /**
@@ -106,171 +115,171 @@ export interface InvestigationCallbacks {
  * ```
  */
 export class InvestigationExecutor {
-    private callbacks: InvestigationCallbacks;
-    private tracker: ExecutionTracker;
+	private callbacks: InvestigationCallbacks;
+	private tracker: ExecutionTracker;
 
-    constructor(callbacks: InvestigationCallbacks = {}) {
-        this.callbacks = callbacks;
-        this.tracker = new ExecutionTracker();
-    }
+	constructor(callbacks: InvestigationCallbacks = {}) {
+		this.callbacks = callbacks;
+		this.tracker = new ExecutionTracker();
+	}
 
-    /**
-     * Execute an investigation
-     */
-    async execute(input: InvestigationInput): Promise<InvestigationResult> {
-        const startTime = Date.now();
+	/**
+	 * Execute an investigation
+	 */
+	async execute(input: InvestigationInput): Promise<InvestigationResult> {
+		const startTime = Date.now();
 
-        try {
-            // Notify start
-            await this.callbacks.onStart?.(input.investigationId);
-            await this.callbacks.onProgress?.(input.investigationId, {
-                phase: 'starting',
-                message: 'Investigation starting',
-            });
+		try {
+			// Notify start
+			await this.callbacks.onStart?.(input.investigationId);
+			await this.callbacks.onProgress?.(input.investigationId, {
+				phase: "starting",
+				message: "Investigation starting",
+			});
 
-            // Check if we can resume from checkpoint
-            const canResume = await hasExistingCheckpoint(input.investigationId);
+			// Check if we can resume from checkpoint
+			const canResume = await hasExistingCheckpoint(input.investigationId);
 
-            let state: InvestigationState;
-            if (canResume) {
-                await this.callbacks.onProgress?.(input.investigationId, {
-                    phase: 'resuming',
-                    message: 'Resuming from checkpoint',
-                });
-                state = await resumeInvestigation(input.investigationId);
-            } else {
-                await this.callbacks.onProgress?.(input.investigationId, {
-                    phase: 'running',
-                    message: 'Running investigation',
-                });
-                state = await runInvestigation({
-                    investigationId: input.investigationId,
-                    incidentId: input.incidentId,
-                    priority: input.priority || 'normal',
-                    alerts: input.alerts,
-                    integrations: input.integrations || [],
-                    maxIterations: input.maxIterations || 10,
-                });
-            }
+			let state: InvestigationState;
+			if (canResume) {
+				await this.callbacks.onProgress?.(input.investigationId, {
+					phase: "resuming",
+					message: "Resuming from checkpoint",
+				});
+				state = await resumeInvestigation(input.investigationId);
+			} else {
+				await this.callbacks.onProgress?.(input.investigationId, {
+					phase: "running",
+					message: "Running investigation",
+				});
+				state = await runInvestigation({
+					investigationId: input.investigationId,
+					incidentId: input.incidentId,
+					priority: input.priority || "normal",
+					alerts: input.alerts,
+					integrations: input.integrations || [],
+					maxIterations: input.maxIterations || 10,
+				});
+			}
 
-            const executionTimeMs = Date.now() - startTime;
+			const executionTimeMs = Date.now() - startTime;
 
-            const result: InvestigationResult = {
-                investigationId: input.investigationId,
-                status: state.status === 'failed' ? 'failed' : 'completed',
-                summary: state.summary,
-                rootCause: state.rootCause,
-                rootCauseCategory: state.rootCauseCategory,
-                confidence: state.confidence,
-                hypotheses: state.hypotheses,
-                recommendations: state.recommendations,
-                error: state.error,
-                executionTimeMs,
-                analysisMethod: state.analysisMethod,
-            };
+			const result: InvestigationResult = {
+				investigationId: input.investigationId,
+				status: state.status === "failed" ? "failed" : "completed",
+				summary: state.summary,
+				rootCause: state.rootCause,
+				rootCauseCategory: state.rootCauseCategory,
+				confidence: state.confidence,
+				hypotheses: state.hypotheses,
+				recommendations: state.recommendations,
+				error: state.error,
+				executionTimeMs,
+				analysisMethod: state.analysisMethod,
+			};
 
-            // Notify completion
-            await this.callbacks.onComplete?.(result);
-            await this.callbacks.onProgress?.(input.investigationId, {
-                phase: 'completed',
-                message: `Investigation completed in ${executionTimeMs}ms`,
-            });
+			// Notify completion
+			await this.callbacks.onComplete?.(result);
+			await this.callbacks.onProgress?.(input.investigationId, {
+				phase: "completed",
+				message: `Investigation completed in ${executionTimeMs}ms`,
+			});
 
-            return result;
-        } catch (error) {
-            const executionTimeMs = Date.now() - startTime;
-            const err = error instanceof Error ? error : new Error(String(error));
+			return result;
+		} catch (error) {
+			const executionTimeMs = Date.now() - startTime;
+			const err = error instanceof Error ? error : new Error(String(error));
 
-            // Notify error
-            await this.callbacks.onError?.(input.investigationId, err);
-            await this.callbacks.onProgress?.(input.investigationId, {
-                phase: 'failed',
-                message: err.message,
-            });
+			// Notify error
+			await this.callbacks.onError?.(input.investigationId, err);
+			await this.callbacks.onProgress?.(input.investigationId, {
+				phase: "failed",
+				message: err.message,
+			});
 
-            return {
-                investigationId: input.investigationId,
-                status: 'failed',
-                summary: null,
-                rootCause: null,
-                rootCauseCategory: null,
-                confidence: null,
-                hypotheses: [],
-                recommendations: [],
-                error: err.message,
-                executionTimeMs,
-                analysisMethod: null,
-            };
-        }
-    }
+			return {
+				investigationId: input.investigationId,
+				status: "failed",
+				summary: null,
+				rootCause: null,
+				rootCauseCategory: null,
+				confidence: null,
+				hypotheses: [],
+				recommendations: [],
+				error: err.message,
+				executionTimeMs,
+				analysisMethod: null,
+			};
+		}
+	}
 
-    /**
-     * Resume a paused investigation
-     */
-    async resume(investigationId: string): Promise<InvestigationResult> {
-        const startTime = Date.now();
+	/**
+	 * Resume a paused investigation
+	 */
+	async resume(investigationId: string): Promise<InvestigationResult> {
+		const startTime = Date.now();
 
-        try {
-            await this.callbacks.onStart?.(investigationId);
-            await this.callbacks.onProgress?.(investigationId, {
-                phase: 'resuming',
-                message: 'Resuming investigation',
-            });
+		try {
+			await this.callbacks.onStart?.(investigationId);
+			await this.callbacks.onProgress?.(investigationId, {
+				phase: "resuming",
+				message: "Resuming investigation",
+			});
 
-            const state = await resumeInvestigation(investigationId);
-            const executionTimeMs = Date.now() - startTime;
+			const state = await resumeInvestigation(investigationId);
+			const executionTimeMs = Date.now() - startTime;
 
-            const result: InvestigationResult = {
-                investigationId,
-                status: state.status === 'failed' ? 'failed' : 'completed',
-                summary: state.summary,
-                rootCause: state.rootCause,
-                rootCauseCategory: state.rootCauseCategory,
-                confidence: state.confidence,
-                hypotheses: state.hypotheses,
-                recommendations: state.recommendations,
-                error: state.error,
-                executionTimeMs,
-                analysisMethod: state.analysisMethod,
-            };
+			const result: InvestigationResult = {
+				investigationId,
+				status: state.status === "failed" ? "failed" : "completed",
+				summary: state.summary,
+				rootCause: state.rootCause,
+				rootCauseCategory: state.rootCauseCategory,
+				confidence: state.confidence,
+				hypotheses: state.hypotheses,
+				recommendations: state.recommendations,
+				error: state.error,
+				executionTimeMs,
+				analysisMethod: state.analysisMethod,
+			};
 
-            await this.callbacks.onComplete?.(result);
-            return result;
-        } catch (error) {
-            const executionTimeMs = Date.now() - startTime;
-            const err = error instanceof Error ? error : new Error(String(error));
+			await this.callbacks.onComplete?.(result);
+			return result;
+		} catch (error) {
+			const executionTimeMs = Date.now() - startTime;
+			const err = error instanceof Error ? error : new Error(String(error));
 
-            await this.callbacks.onError?.(investigationId, err);
+			await this.callbacks.onError?.(investigationId, err);
 
-            return {
-                investigationId,
-                status: 'failed',
-                summary: null,
-                rootCause: null,
-                rootCauseCategory: null,
-                confidence: null,
-                hypotheses: [],
-                recommendations: [],
-                error: err.message,
-                executionTimeMs,
-                analysisMethod: null,
-            };
-        }
-    }
+			return {
+				investigationId,
+				status: "failed",
+				summary: null,
+				rootCause: null,
+				rootCauseCategory: null,
+				confidence: null,
+				hypotheses: [],
+				recommendations: [],
+				error: err.message,
+				executionTimeMs,
+				analysisMethod: null,
+			};
+		}
+	}
 
-    /**
-     * Check if an investigation can be resumed
-     */
-    async canResume(investigationId: string): Promise<boolean> {
-        return hasExistingCheckpoint(investigationId);
-    }
+	/**
+	 * Check if an investigation can be resumed
+	 */
+	async canResume(investigationId: string): Promise<boolean> {
+		return hasExistingCheckpoint(investigationId);
+	}
 
-    /**
-     * Close any open connections (call during shutdown)
-     */
-    async close(): Promise<void> {
-        await closeCheckpointer();
-    }
+	/**
+	 * Close any open connections (call during shutdown)
+	 */
+	async close(): Promise<void> {
+		await closeCheckpointer();
+	}
 }
 
 /**
@@ -279,15 +288,17 @@ export class InvestigationExecutor {
 let defaultExecutor: InvestigationExecutor | null = null;
 
 export function getDefaultExecutor(): InvestigationExecutor {
-    if (!defaultExecutor) {
-        defaultExecutor = new InvestigationExecutor();
-    }
-    return defaultExecutor;
+	if (!defaultExecutor) {
+		defaultExecutor = new InvestigationExecutor();
+	}
+	return defaultExecutor;
 }
 
 /**
  * Execute an investigation using the default executor
  */
-export async function executeInvestigation(input: InvestigationInput): Promise<InvestigationResult> {
-    return getDefaultExecutor().execute(input);
+export async function executeInvestigation(
+	input: InvestigationInput,
+): Promise<InvestigationResult> {
+	return getDefaultExecutor().execute(input);
 }

@@ -4,22 +4,22 @@
  * Route decorators for declaring license requirements.
  */
 
-import { SetMetadata, applyDecorators, UseGuards } from '@nestjs/common';
-import type { LicenseFeature, LicenseTierType } from './license.constants.js';
+import { applyDecorators, SetMetadata, UseGuards } from "@nestjs/common";
+import type { LicenseFeature, LicenseTierType } from "./license.constants.js";
 import {
-  LicenseFeatureGuard,
-  LicenseTierGuard,
-  LicenseWriteGuard,
-  LicenseGuard,
-} from './license.guard.js';
+	LicenseFeatureGuard,
+	LicenseGuard,
+	LicenseTierGuard,
+	LicenseWriteGuard,
+} from "./license.guard.js";
 
 // =============================================================================
 // METADATA KEYS
 // =============================================================================
 
-export const REQUIRES_FEATURE_KEY = 'license:requires_feature';
-export const REQUIRES_TIER_KEY = 'license:requires_tier';
-export const REQUIRES_WRITE_ACCESS_KEY = 'license:requires_write_access';
+export const REQUIRES_FEATURE_KEY = "license:requires_feature";
+export const REQUIRES_TIER_KEY = "license:requires_tier";
+export const REQUIRES_WRITE_ACCESS_KEY = "license:requires_write_access";
 
 // =============================================================================
 // DECORATORS
@@ -36,10 +36,10 @@ export const REQUIRES_WRITE_ACCESS_KEY = 'license:requires_write_access';
  * ```
  */
 export const RequiresFeature = (feature: LicenseFeature) =>
-  applyDecorators(
-    SetMetadata(REQUIRES_FEATURE_KEY, feature),
-    UseGuards(LicenseFeatureGuard),
-  );
+	applyDecorators(
+		SetMetadata(REQUIRES_FEATURE_KEY, feature),
+		UseGuards(LicenseFeatureGuard),
+	);
 
 /**
  * Require a minimum license tier to access this route.
@@ -52,10 +52,10 @@ export const RequiresFeature = (feature: LicenseFeature) =>
  * ```
  */
 export const RequiresTier = (tier: LicenseTierType) =>
-  applyDecorators(
-    SetMetadata(REQUIRES_TIER_KEY, tier),
-    UseGuards(LicenseTierGuard),
-  );
+	applyDecorators(
+		SetMetadata(REQUIRES_TIER_KEY, tier),
+		UseGuards(LicenseTierGuard),
+	);
 
 /**
  * Mark a route as requiring write access.
@@ -69,10 +69,10 @@ export const RequiresTier = (tier: LicenseTierType) =>
  * ```
  */
 export const RequiresWriteAccess = () =>
-  applyDecorators(
-    SetMetadata(REQUIRES_WRITE_ACCESS_KEY, true),
-    UseGuards(LicenseWriteGuard),
-  );
+	applyDecorators(
+		SetMetadata(REQUIRES_WRITE_ACCESS_KEY, true),
+		UseGuards(LicenseWriteGuard),
+	);
 
 /**
  * Apply all license checks: feature, tier, and write access.
@@ -90,28 +90,30 @@ export const RequiresWriteAccess = () =>
  * ```
  */
 export const RequiresLicense = (options: {
-  feature?: LicenseFeature;
-  tier?: LicenseTierType;
-  writeAccess?: boolean;
+	feature?: LicenseFeature;
+	tier?: LicenseTierType;
+	writeAccess?: boolean;
 }) => {
-  const decorators: Array<ClassDecorator | MethodDecorator | PropertyDecorator> = [];
+	const decorators: Array<
+		ClassDecorator | MethodDecorator | PropertyDecorator
+	> = [];
 
-  if (options.feature) {
-    decorators.push(SetMetadata(REQUIRES_FEATURE_KEY, options.feature));
-  }
+	if (options.feature) {
+		decorators.push(SetMetadata(REQUIRES_FEATURE_KEY, options.feature));
+	}
 
-  if (options.tier) {
-    decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
-  }
+	if (options.tier) {
+		decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
+	}
 
-  if (options.writeAccess) {
-    decorators.push(SetMetadata(REQUIRES_WRITE_ACCESS_KEY, true));
-  }
+	if (options.writeAccess) {
+		decorators.push(SetMetadata(REQUIRES_WRITE_ACCESS_KEY, true));
+	}
 
-  // Use the combined guard
-  decorators.push(UseGuards(LicenseGuard));
+	// Use the combined guard
+	decorators.push(UseGuards(LicenseGuard));
 
-  return applyDecorators(...decorators);
+	return applyDecorators(...decorators);
 };
 
 /**
@@ -125,4 +127,4 @@ export const RequiresLicense = (options: {
  * getAdvancedAnalytics() { ... }
  * ```
  */
-export const PaidFeature = () => RequiresTier('free_plus' as LicenseTierType);
+export const PaidFeature = () => RequiresTier("free_plus" as LicenseTierType);

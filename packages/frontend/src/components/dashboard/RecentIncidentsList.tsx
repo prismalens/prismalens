@@ -1,23 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface RecentIncidentsListProps {
-  // TODO: Define props during implementation
-  // incidents?: Array<{
-  //   id: string;
-  //   title: string;
-  //   severity: string;
-  //   status: string;
-  //   createdAt: Date;
-  // }>;
-  // limit?: number;
-}
+export type RecentIncidentsListProps = {};
 
 export function RecentIncidentsList({}: RecentIncidentsListProps) {
-  return (
-    <div>
-      {/* TODO: Implement RecentIncidentsList */}
-    </div>
-  );
+	return <div>{/* TODO: Implement RecentIncidentsList */}</div>;
 }

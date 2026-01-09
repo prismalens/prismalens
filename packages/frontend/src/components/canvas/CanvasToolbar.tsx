@@ -1,20 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 
-export interface CanvasToolbarProps {
-  // TODO: Define props during implementation
-  // onZoomIn?: () => void;
-  // onZoomOut?: () => void;
-  // onFitView?: () => void;
-  // onToggleMinimap?: () => void;
-  // onFullscreen?: () => void;
-}
+export type CanvasToolbarProps = {};
 
 export function CanvasToolbar({}: CanvasToolbarProps) {
-  return (
-    <div>
-      {/* TODO: Implement CanvasToolbar */}
-    </div>
-  );
+	return <div>{/* TODO: Implement CanvasToolbar */}</div>;
 }
