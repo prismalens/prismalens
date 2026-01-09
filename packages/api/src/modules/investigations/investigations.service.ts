@@ -5,7 +5,7 @@ import type {
   AgentExecution,
   ToolExecution,
   Recommendation,
-} from '../../../prisma/generated/client.js';
+} from '@prismalens/database';
 import {
   CreateInvestigationDto,
   InvestigationResultDto,

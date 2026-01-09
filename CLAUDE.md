@@ -16,10 +16,11 @@ This is a Turborepo monorepo:
 ```
 prismalens/
 ├── packages/
-│   ├── api/                        # NestJS REST API (TypeScript)
-│   ├── frontend/                   # Next.js 14 App Router dashboard
+│   ├── api/                        # NestJS REST API (TypeScript) + Prisma ORM
+│   ├── frontend/                   # Next.js 14 App Router dashboard + Tanstack + ShadCN + Tailwind
 │   ├── cli/                        # CLI tool (@prismalens/cli)
-│   └── @prismalens/worker-python/  # Python worker with Google ADK agents
+│   └── worker-python/              # Python worker with Google ADK agents
+│   └── @prismalens/config/  # Config for environemnt variables to be shared across all packages
 └── docker/
     └── images/                     # Docker images (main, worker)
 ```

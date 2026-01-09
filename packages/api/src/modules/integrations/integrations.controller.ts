@@ -1,199 +1,118 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  Query,
-  NotFoundException,
-  HttpCode,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { Controller, Logger } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { integrationsContract } from '@prismalens/contracts';
 import { IntegrationsService } from './integrations.service.js';
-import {
-  CreateConnectionDto,
-  UpdateConnectionDto,
-  UpdateOAuthConfigDto,
-  CreateServiceIntegrationDto,
-} from './dto/index.js';
+import type { CreateConnectionDto, UpdateConnectionDto } from './dto/index.js';
 
-@Controller('integrations')
+@Controller()
 export class IntegrationsController {
   private readonly logger = new Logger(IntegrationsController.name);
 
   constructor(private readonly integrationsService: IntegrationsService) {}
 
-  // =========================================================================
-  // INTEGRATION DEFINITIONS (Catalog)
-  // =========================================================================
-
-  @Get('definitions')
-  async getDefinitions() {
-    const definitions = await this.integrationsService.findAllDefinitions();
-    return { definitions };
-  }
-
-  @Get('definitions/:name')
-  async getDefinition(@Param('name') name: string) {
-    const definition = await this.integrationsService.findDefinitionByName(name);
-    if (!definition) {
-      throw new NotFoundException(`Integration '${name}' not found`);
-    }
-    return { definition };
-  }
-
-  @Patch('definitions/:name/oauth')
-  async updateOAuthConfig(
-    @Param('name') name: string,
-    @Body() dto: UpdateOAuthConfigDto,
-  ) {
-    const definition = await this.integrationsService.updateOAuthConfig(name, dto);
-    this.logger.log(`Updated OAuth config for integration: ${name}`);
-    return { definition, message: 'OAuth configuration updated successfully' };
-  }
-
-  // =========================================================================
-  // INTEGRATION CONNECTIONS (User Instances)
-  // =========================================================================
-
-  @Post('connections')
-  @HttpCode(HttpStatus.CREATED)
-  async createConnection(@Body() dto: CreateConnectionDto) {
-    const connection = await this.integrationsService.createConnection(dto);
-    this.logger.log(`Created integration connection: ${connection.id}`);
-    return { connection };
-  }
-
-  @Get('connections')
-  async getConnections(
-    @Query('status') status?: string,
-    @Query('definitionId') definitionId?: string,
-    @Query('global') globalParam?: string,
-  ) {
-    const isGlobal =
-      globalParam === 'true' ? true : globalParam === 'false' ? false : undefined;
-
-    const connections = await this.integrationsService.findAllConnections({
-      status,
-      definitionId,
-      isGlobal,
-    });
-
-    // Mask credentials for API response
-    const safeConnections = connections.map((conn) => ({
-      ...conn,
-      credentials: '[ENCRYPTED]',
-    }));
-
-    return { connections: safeConnections };
-  }
-
-  @Get('connections/:id')
-  async getConnection(@Param('id') id: string) {
-    const connection =
-      await this.integrationsService.getConnectionWithMaskedCredentials(id);
-    if (!connection) {
-      throw new NotFoundException('Connection not found');
-    }
-
+  @Implement(integrationsContract)
+  integrations() {
     return {
-      connection: {
-        ...connection,
-        credentials: connection.maskedCredentials,
-      },
+      // GET /integrations/definitions - List available integration definitions
+      listDefinitions: implement(integrationsContract.listDefinitions).handler(async () => {
+        const definitions = await this.integrationsService.findAllDefinitions();
+        return definitions.map((d) => this.serializeDefinition(d));
+      }),
+
+      // GET /integrations/definitions/:id - Get a single integration definition
+      getDefinition: implement(integrationsContract.getDefinition).handler(async ({ input }) => {
+        const definition = await this.integrationsService.findDefinitionById(input.id);
+        if (!definition) {
+          throw new ORPCError('NOT_FOUND', { message: `Integration definition ${input.id} not found` });
+        }
+        return this.serializeDefinition(definition);
+      }),
+
+      // POST /integrations/connections - Create a new integration connection
+      createConnection: implement(integrationsContract.createConnection).handler(async ({ input }) => {
+        const connection = await this.integrationsService.createConnection(input as CreateConnectionDto);
+        this.logger.log(`Created integration connection: ${connection.id}`);
+        return this.serializeConnection(connection);
+      }),
+
+      // GET /integrations/connections - List integration connections
+      listConnections: implement(integrationsContract.listConnections).handler(async ({ input }) => {
+        const connections = await this.integrationsService.findAllConnections({
+          status: input.status,
+        });
+        return connections.map((c) => this.serializeConnectionWithDefinition(c));
+      }),
+
+      // GET /integrations/connections/:id - Get a single integration connection
+      getConnection: implement(integrationsContract.getConnection).handler(async ({ input }) => {
+        const connection = await this.integrationsService.getConnectionWithMaskedCredentials(input.id);
+        if (!connection) {
+          throw new ORPCError('NOT_FOUND', { message: 'Connection not found' });
+        }
+        return this.serializeConnectionWithDefinition(connection);
+      }),
+
+      // PATCH /integrations/connections/:id - Update an integration connection
+      updateConnection: implement(integrationsContract.updateConnection).handler(async ({ input }) => {
+        const { id, ...updateData } = input;
+        const connection = await this.integrationsService.updateConnection(id, updateData as UpdateConnectionDto);
+        if (!connection) {
+          throw new ORPCError('NOT_FOUND', { message: 'Connection not found' });
+        }
+        this.logger.log(`Updated integration connection: ${id}`);
+        return this.serializeConnection(connection);
+      }),
+
+      // DELETE /integrations/connections/:id - Delete an integration connection
+      deleteConnection: implement(integrationsContract.deleteConnection).handler(async ({ input }) => {
+        const deleted = await this.integrationsService.deleteConnection(input.id);
+        if (!deleted) {
+          throw new ORPCError('NOT_FOUND', { message: 'Connection not found' });
+        }
+        this.logger.log(`Deleted integration connection: ${input.id}`);
+      }),
+
+      // POST /integrations/connections/:id/test - Test an integration connection
+      testConnection: implement(integrationsContract.testConnection).handler(async ({ input }) => {
+        const result = await this.integrationsService.testConnection(input.id);
+        return {
+          success: result.success,
+          message: result.success
+            ? 'Connection test successful'
+            : `Connection test failed: ${result.error}`,
+        };
+      }),
     };
   }
 
-  @Patch('connections/:id')
-  async updateConnection(
-    @Param('id') id: string,
-    @Body() dto: UpdateConnectionDto,
-  ) {
-    const connection = await this.integrationsService.updateConnection(id, dto);
-    if (!connection) {
-      throw new NotFoundException('Connection not found');
-    }
-    this.logger.log(`Updated integration connection: ${id}`);
-    return { connection };
-  }
-
-  @Delete('connections/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteConnection(@Param('id') id: string) {
-    const deleted = await this.integrationsService.deleteConnection(id);
-    if (!deleted) {
-      throw new NotFoundException('Connection not found');
-    }
-    this.logger.log(`Deleted integration connection: ${id}`);
-  }
-
-  @Post('connections/:id/test')
-  async testConnection(@Param('id') id: string) {
-    const result = await this.integrationsService.testConnection(id);
+  private serializeDefinition(definition: any): any {
     return {
-      success: result.success,
-      error: result.error,
-      message: result.success
-        ? 'Connection test successful'
-        : `Connection test failed: ${result.error}`,
+      ...definition,
+      capabilities: definition.capabilities ? JSON.parse(definition.capabilities) : null,
+      configSchema: definition.configSchema ? JSON.parse(definition.configSchema) : null,
+      createdAt: definition.createdAt?.toISOString(),
+      updatedAt: definition.updatedAt?.toISOString(),
     };
   }
 
-  // =========================================================================
-  // SERVICE INTEGRATIONS (Service-Level Mappings)
-  // =========================================================================
-
-  @Post('services/:serviceId/integrations')
-  @HttpCode(HttpStatus.CREATED)
-  async createServiceIntegration(
-    @Param('serviceId') serviceId: string,
-    @Body() dto: CreateServiceIntegrationDto,
-  ) {
-    const mapping = await this.integrationsService.createServiceIntegration(
-      serviceId,
-      dto,
-    );
-    this.logger.log(
-      `Created service integration mapping: ${serviceId} -> ${dto.connectionId}`,
-    );
-    return { mapping };
+  private serializeConnection(connection: any): any {
+    return {
+      ...connection,
+      credentials: '[ENCRYPTED]', // Always mask credentials
+      config: connection.config ? JSON.parse(connection.config) : null,
+      createdAt: connection.createdAt?.toISOString(),
+      updatedAt: connection.updatedAt?.toISOString(),
+      lastTestedAt: connection.lastTestedAt?.toISOString() ?? null,
+    };
   }
 
-  @Get('services/:serviceId/integrations')
-  async getServiceIntegrations(@Param('serviceId') serviceId: string) {
-    const integrations =
-      await this.integrationsService.findServiceIntegrations(serviceId);
+  private serializeConnectionWithDefinition(connection: any): any {
+    const serialized = this.serializeConnection(connection);
 
-    // Mask credentials
-    const safeIntegrations = integrations.map((si) => ({
-      ...si,
-      connection: {
-        ...si.connection,
-        credentials: '[ENCRYPTED]',
-      },
-    }));
-
-    return { integrations: safeIntegrations };
-  }
-
-  @Delete('services/:serviceId/integrations/:connectionId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteServiceIntegration(
-    @Param('serviceId') serviceId: string,
-    @Param('connectionId') connectionId: string,
-  ) {
-    const deleted = await this.integrationsService.deleteServiceIntegration(
-      serviceId,
-      connectionId,
-    );
-    if (!deleted) {
-      throw new NotFoundException('Service integration mapping not found');
+    if (connection.definition) {
+      serialized.definition = this.serializeDefinition(connection.definition);
     }
-    this.logger.log(
-      `Deleted service integration mapping: ${serviceId} -> ${connectionId}`,
-    );
+
+    return serialized;
   }
 }

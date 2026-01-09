@@ -1,128 +1,145 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Param,
-  Body,
-  Query,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { servicesContract } from '@prismalens/contracts';
 import { ServicesService } from './services.service.js';
-import { CreateServiceDto, UpdateServiceDto, AddDependencyDto } from './dto/index.js';
-import type { Service, ServiceWithDependencies, ServiceDependency } from './services.service.js';
+import type { CreateServiceDto, UpdateServiceDto, AddDependencyDto } from './dto/index.js';
 
-@ApiTags('services')
-@Controller('services')
+@Controller()
 export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() dto: CreateServiceDto): Promise<Service> {
-    // Check if service with same name exists
-    const existing = await this.servicesService.findByName(dto.name);
-    if (existing) {
-      throw new ConflictException(`Service with name '${dto.name}' already exists`);
-    }
+  @Implement(servicesContract)
+  services() {
+    return {
+      // POST /services - Create a new service
+      create: implement(servicesContract.create).handler(async ({ input }) => {
+        // Check if service with same name exists
+        const existing = await this.servicesService.findByName(input.name);
+        if (existing) {
+          throw new ORPCError('CONFLICT', { message: `Service with name '${input.name}' already exists` });
+        }
 
-    return this.servicesService.create(dto);
+        const service = await this.servicesService.create(input as CreateServiceDto);
+        return this.serializeService(service);
+      }),
+
+      // GET /services - List all services
+      list: implement(servicesContract.list).handler(async ({ input }) => {
+        const services = await this.servicesService.findAll({
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return services.map((s) => this.serializeServiceWithRelations(s));
+      }),
+
+      // GET /services/:id - Get a single service by ID
+      get: implement(servicesContract.get).handler(async ({ input }) => {
+        const service = await this.servicesService.findById(input.id);
+        if (!service) {
+          throw new ORPCError('NOT_FOUND', { message: `Service ${input.id} not found` });
+        }
+        return this.serializeServiceWithRelations(service);
+      }),
+
+      // PATCH /services/:id - Update a service
+      update: implement(servicesContract.update).handler(async ({ input }) => {
+        const { id, ...updateData } = input;
+        const service = await this.servicesService.update(id, updateData as UpdateServiceDto);
+        if (!service) {
+          throw new ORPCError('NOT_FOUND', { message: `Service ${id} not found` });
+        }
+        return this.serializeService(service);
+      }),
+
+      // DELETE /services/:id - Delete a service
+      delete: implement(servicesContract.delete).handler(async ({ input }) => {
+        const deleted = await this.servicesService.delete(input.id);
+        if (!deleted) {
+          throw new ORPCError('NOT_FOUND', { message: `Service ${input.id} not found` });
+        }
+      }),
+
+      // POST /services/:id/dependencies - Add a dependency
+      addDependency: implement(servicesContract.addDependency).handler(async ({ input }) => {
+        const { id, ...dependencyData } = input;
+
+        // Verify service exists
+        const service = await this.servicesService.findById(id);
+        if (!service) {
+          throw new ORPCError('NOT_FOUND', { message: `Service ${id} not found` });
+        }
+
+        // Verify dependency service exists
+        const dependency = await this.servicesService.findById(dependencyData.dependencyId);
+        if (!dependency) {
+          throw new ORPCError('NOT_FOUND', { message: `Dependency service ${dependencyData.dependencyId} not found` });
+        }
+
+        const result = await this.servicesService.addDependency(id, dependencyData as AddDependencyDto);
+        if (!result) {
+          throw new ORPCError('CONFLICT', { message: 'Dependency already exists' });
+        }
+
+        return this.serializeServiceDependency(result);
+      }),
+
+      // DELETE /services/:id/dependencies/:dependencyId - Remove a dependency
+      removeDependency: implement(servicesContract.removeDependency).handler(async ({ input }) => {
+        const removed = await this.servicesService.removeDependency(input.id, input.dependencyId);
+        if (!removed) {
+          throw new ORPCError('NOT_FOUND', { message: 'Dependency not found' });
+        }
+      }),
+
+      // GET /services/:id/topology - Get service topology
+      getTopology: implement(servicesContract.getTopology).handler(async ({ input }) => {
+        const service = await this.servicesService.findById(input.id);
+        if (!service) {
+          throw new ORPCError('NOT_FOUND', { message: `Service ${input.id} not found` });
+        }
+
+        // Extract upstream and downstream from service dependencies
+        const upstream = (service as any).dependencies?.map((d: any) => d.dependency).filter(Boolean) ?? [];
+        const downstream = (service as any).dependents?.map((d: any) => d.service).filter(Boolean) ?? [];
+
+        return {
+          service: this.serializeServiceWithRelations(service),
+          upstream: upstream.map((s: any) => this.serializeService(s)),
+          downstream: downstream.map((s: any) => this.serializeService(s)),
+        };
+      }),
+    };
   }
 
-  @Get()
-  async findAll(
-    @Query('type') type?: string,
-    @Query('tier') tier?: string,
-    @Query('team') team?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ): Promise<Service[]> {
-    return this.servicesService.findAll({
-      type,
-      tier,
-      team,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    });
+  private serializeService(service: any): any {
+    return {
+      ...service,
+      tags: service.tags ? JSON.parse(service.tags) : null,
+      metadata: service.metadata ? JSON.parse(service.metadata) : null,
+      discoveryMetadata: service.discoveryMetadata ? JSON.parse(service.discoveryMetadata) : null,
+      createdAt: service.createdAt?.toISOString(),
+      updatedAt: service.updatedAt?.toISOString(),
+    };
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<ServiceWithDependencies> {
-    const service = await this.servicesService.findById(id);
+  private serializeServiceWithRelations(service: any): any {
+    const serialized = this.serializeService(service);
 
-    if (!service) {
-      throw new NotFoundException(`Service ${id} not found`);
+    if (service.dependencies) {
+      serialized.dependencies = service.dependencies.map((d: any) => this.serializeServiceDependency(d));
     }
 
-    return service;
+    if (service.dependents) {
+      serialized.dependents = service.dependents.map((d: any) => this.serializeServiceDependency(d));
+    }
+
+    return serialized;
   }
 
-  @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdateServiceDto,
-  ): Promise<Service> {
-    const service = await this.servicesService.update(id, dto);
-
-    if (!service) {
-      throw new NotFoundException(`Service ${id} not found`);
-    }
-
-    return service;
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string): Promise<void> {
-    const deleted = await this.servicesService.delete(id);
-
-    if (!deleted) {
-      throw new NotFoundException(`Service ${id} not found`);
-    }
-  }
-
-  @Post(':id/dependencies')
-  @HttpCode(HttpStatus.CREATED)
-  async addDependency(
-    @Param('id') id: string,
-    @Body() dto: AddDependencyDto,
-  ): Promise<ServiceDependency> {
-    // Verify service exists
-    const service = await this.servicesService.findById(id);
-    if (!service) {
-      throw new NotFoundException(`Service ${id} not found`);
-    }
-
-    // Verify dependency service exists
-    const dependency = await this.servicesService.findById(dto.dependencyId);
-    if (!dependency) {
-      throw new NotFoundException(`Dependency service ${dto.dependencyId} not found`);
-    }
-
-    const result = await this.servicesService.addDependency(id, dto);
-
-    if (!result) {
-      throw new ConflictException('Dependency already exists');
-    }
-
-    return result;
-  }
-
-  @Delete(':id/dependencies/:dependencyId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async removeDependency(
-    @Param('id') id: string,
-    @Param('dependencyId') dependencyId: string,
-  ): Promise<void> {
-    const removed = await this.servicesService.removeDependency(id, dependencyId);
-
-    if (!removed) {
-      throw new NotFoundException('Dependency not found');
-    }
+  private serializeServiceDependency(dep: any): any {
+    return {
+      ...dep,
+      createdAt: dep.createdAt?.toISOString(),
+    };
   }
 }

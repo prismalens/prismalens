@@ -4,6 +4,6 @@ import { PrismaService } from './prisma.service.js';
 @Global()
 @Module({
   providers: [PrismaService],
-  exports: [PrismaService],
+  exports: [PrismaService], //export this service to use in other modules
 })
 export class PrismaModule {}

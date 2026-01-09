@@ -1,14 +1,18 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
 import { Queue, QueueEvents } from 'bullmq';
 import type { ConnectionOptions } from 'bullmq';
-import { getConfig } from '@prismalens/config';
-import { firstValueFrom } from 'rxjs';
-
-const config = getConfig();
+import { EnvironmentVariables } from '@prismalens/config';
+import { ConfigService } from '@nestjs/config';
+import {
+  InvestigationExecutor,
+  type InvestigationInput,
+  type InvestigationResult,
+  type AlertContext,
+  type IntegrationContext as AgentIntegrationContext,
+} from '@prismalens/agents';
 
 /**
- * Integration context for worker (matches Python IntegrationContext)
+ * Integration context for worker (matches worker IntegrationContext)
  */
 export interface IntegrationContext {
   type: string;
@@ -45,28 +49,35 @@ export interface InvestigationJobResult {
 
 /**
  * Queue service with dual-mode support:
- * - regular mode: Direct HTTP dispatch to worker (no Redis)
- * - queue mode: BullMQ queue with Redis
+ * - regular mode: Direct execution via @prismalens/agents (no Redis)
+ * - queue mode: BullMQ queue with Redis (separate worker process)
  */
 @Injectable()
 export class QueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
   private readonly workerMode: 'regular' | 'queue';
-  private readonly workerUrl: string;
+
+  // Regular mode: agent executor
+  private executor: InvestigationExecutor | null = null;
 
   // Queue mode resources (only initialized in queue mode)
   private investigationQueue: Queue<InvestigationJobData, InvestigationJobResult> | null = null;
   private queueEvents: QueueEvents | null = null;
   private connection: ConnectionOptions | null = null;
 
-  constructor(private readonly httpService: HttpService) {
-    this.workerMode = config.PRISMALENS_WORKER_MODE as 'regular' | 'queue';
-    this.workerUrl = config.PRISMALENS_WORKER_URL;
+  constructor(private configService: ConfigService<EnvironmentVariables>) {
+    const config = this.configService.get('PRISMALENS_MODE');
+    this.workerMode = config;
   }
 
   async onModuleInit() {
     if (this.workerMode === 'regular') {
-      this.logger.log(`Regular mode: Jobs will be dispatched via HTTP to ${this.workerUrl}`);
+      this.logger.log('Regular mode: Investigations will run directly via @prismalens/agents');
+      this.executor = new InvestigationExecutor({
+        onProgress: async (investigationId, progress) => {
+          this.logger.debug(`[${investigationId}] ${progress.phase}: ${progress.message}`);
+        },
+      });
       return;
     }
 
@@ -120,12 +131,20 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildRedisUrl(): string {
-    const { PRISMALENS_REDIS_HOST, PRISMALENS_REDIS_PORT, PRISMALENS_REDIS_PASSWORD, PRISMALENS_REDIS_DB } = config;
+    const PRISMALENS_REDIS_HOST = this.configService.get<EnvironmentVariables>('PRISMALENS_REDIS_HOST');
+    const PRISMALENS_REDIS_PASSWORD = this.configService.get<EnvironmentVariables>('PRISMALENS_REDIS_PASSWORD');
+    const PRISMALENS_REDIS_PORT = this.configService.get<EnvironmentVariables>('PRISMALENS_REDIS_PORT');
+    const PRISMALENS_REDIS_DB = this.configService.get<EnvironmentVariables>('PRISMALENS_REDIS_DB');
     const auth = PRISMALENS_REDIS_PASSWORD ? `:${PRISMALENS_REDIS_PASSWORD}@` : '';
     return `redis://${auth}${PRISMALENS_REDIS_HOST}:${PRISMALENS_REDIS_PORT}/${PRISMALENS_REDIS_DB}`;
   }
 
   async onModuleDestroy() {
+    // Close executor connections (regular mode)
+    if (this.executor) {
+      await this.executor.close();
+    }
+    // Close queue connections (queue mode)
     if (this.queueEvents) {
       await this.queueEvents.close();
     }
@@ -136,12 +155,12 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Check if job dispatching is available.
-   * - Regular mode: Always true (HTTP dispatch)
+   * - Regular mode: Always true (direct execution)
    * - Queue mode: True if Redis queue is initialized
    */
   isEnabled(): boolean {
     if (this.workerMode === 'regular') {
-      return true;
+      return this.executor !== null;
     }
     return this.investigationQueue !== null;
   }
@@ -155,46 +174,126 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Add an investigation job.
-   * - Regular mode: Dispatches directly to worker via HTTP
+   * - Regular mode: Execute directly via @prismalens/agents
    * - Queue mode: Adds to BullMQ queue
    */
   async addInvestigationJob(data: InvestigationJobData): Promise<string | null> {
     if (this.workerMode === 'regular') {
-      return this.dispatchViaHttp(data);
+      return this.executeDirectly(data);
     }
 
     return this.enqueueToRedis(data);
   }
 
   /**
-   * Dispatch job directly to worker via HTTP (regular mode).
+   * Execute investigation directly using @prismalens/agents (regular mode).
+   * This runs the investigation in-process without requiring a separate worker.
    */
-  private async dispatchViaHttp(data: InvestigationJobData): Promise<string | null> {
+  private async executeDirectly(data: InvestigationJobData): Promise<string | null> {
+    if (!this.executor) {
+      this.logger.error('Executor not initialized');
+      return null;
+    }
+
     const jobId = `direct-${data.investigationId}`;
 
     try {
-      this.logger.log(`Dispatching job ${jobId} to worker at ${this.workerUrl}/jobs`);
+      this.logger.log(`Executing investigation ${jobId} directly via @prismalens/agents`);
 
-      await firstValueFrom(
-        this.httpService.post(`${this.workerUrl}/jobs`, data, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 5000, // 5 second timeout for job submission
-        }),
+      // Build input for executor
+      const input = this.buildExecutorInput(data);
+
+      // Execute in the background - don't block the HTTP response
+      // The investigation will update the database as it progresses
+      this.executor.execute(input).then(
+        (result: InvestigationResult) => {
+          this.logger.log(
+            `Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
+          );
+        },
+        (error: Error) => {
+          this.logger.error(`Investigation ${jobId} failed: ${error.message}`);
+        },
       );
 
-      this.logger.log(`Job ${jobId} dispatched successfully`);
+      this.logger.log(`Investigation ${jobId} started successfully`);
       return jobId;
     } catch (error) {
       const err = error as Error;
-      this.logger.error(`Failed to dispatch job to worker: ${err.message}`);
-
-      // Check if worker is not running
-      if (err.message.includes('ECONNREFUSED')) {
-        this.logger.warn(`Worker not available at ${this.workerUrl}. Is the worker running?`);
-      }
-
+      this.logger.error(`Failed to start investigation: ${err.message}`);
       return null;
     }
+  }
+
+  /**
+   * Build executor input from job data.
+   */
+  private buildExecutorInput(jobData: InvestigationJobData): InvestigationInput {
+    // Convert alerts from job data to AlertContext
+    const alerts: AlertContext[] = (jobData.alerts || []).map((alertUnknown) => {
+      const alert = alertUnknown as Record<string, unknown>;
+      const labels = alert.labels as Record<string, string> | undefined;
+      return {
+        alertId: (alert.id as string) || (alert.alertId as string) || `alert-${Date.now()}`,
+        title: (alert.title as string) || (alert.alertname as string) || 'Unknown Alert',
+        description: (alert.description as string | undefined) || (alert.summary as string | undefined),
+        severity: this.mapSeverity((alert.severity as string) || labels?.severity),
+        status: alert.status as AlertContext['status'],
+        source: (alert.source as string) || labels?.source,
+        sourceUrl: (alert.sourceUrl as string) || (alert.generatorURL as string),
+        serviceId: alert.serviceId as string | undefined,
+        serviceName: (alert.serviceName as string) || labels?.service,
+        repository: (alert.repository as string) || labels?.repository,
+        labels,
+        tags: alert.tags as string[] | undefined,
+        triggeredAt: (alert.triggeredAt as string) || (alert.startsAt as string),
+        rawPayload: alert,
+      };
+    });
+
+    // Convert integrations
+    const integrations: AgentIntegrationContext[] = (jobData.integrations || []).map((int) => ({
+      type: int.type,
+      connectionId: int.connectionId,
+      credentials: int.credentials,
+      config: int.config,
+      serviceOverrides: int.serviceOverrides,
+    }));
+
+    return {
+      investigationId: jobData.investigationId,
+      incidentId: jobData.incidentId,
+      priority: jobData.priority,
+      alerts,
+      integrations,
+    };
+  }
+
+  /**
+   * Map various severity formats to standard format.
+   */
+  private mapSeverity(severity: string | undefined): 'critical' | 'high' | 'medium' | 'low' | 'info' {
+    if (!severity) return 'medium';
+
+    const lower = severity.toLowerCase();
+
+    if (lower === 'critical' || lower === 'crit' || lower === 'p1') {
+      return 'critical';
+    }
+    if (lower === 'high' || lower === 'error' || lower === 'p2' || lower === 'severe') {
+      return 'high';
+    }
+    if (lower === 'medium' || lower === 'warning' || lower === 'warn' || lower === 'p3') {
+      return 'medium';
+    }
+    if (lower === 'low' || lower === 'minor' || lower === 'p4') {
+      return 'low';
+    }
+    if (lower === 'info' || lower === 'informational' || lower === 'p5') {
+      return 'info';
+    }
+
+    return 'medium';
   }
 
   /**
@@ -228,9 +327,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     result?: InvestigationJobResult;
   } | null> {
     if (this.workerMode === 'regular') {
-      // In regular mode, job status is not tracked by the API
-      // The worker handles execution directly
-      this.logger.debug('Job status not available in regular mode');
+      // In regular mode, job status is tracked via database
+      // not in-memory (investigation runs async)
+      this.logger.debug('Job status not available in regular mode - check database');
       return null;
     }
 

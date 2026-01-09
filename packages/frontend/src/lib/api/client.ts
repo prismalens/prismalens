@@ -1,86 +1,84 @@
 /**
- * Base API client for PrismaLens frontend
+ * Generic API Client for PrismaLens Frontend
+ *
+ * Provides simple HTTP utilities for API calls.
+ * For type-safe oRPC calls, use the orpc-client instead.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+// API base URL - uses Vite proxy in development
+const API_BASE_URL = '/api'
 
+/**
+ * Custom error class for API errors
+ */
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public statusText: string,
-    message?: string
-  ) {
-    super(message || `API Error: ${status} ${statusText}`);
-    this.name = 'ApiError';
-  }
+    constructor(
+        message: string,
+        public status: number,
+        public data?: unknown
+    ) {
+        super(message)
+        this.name = 'ApiError'
+    }
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    throw new ApiError(
-      response.status,
-      response.statusText,
-      errorBody || undefined
-    );
-  }
-
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json();
-}
-
-export async function apiGet<T>(endpoint: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  return handleResponse<T>(response);
-}
-
-export async function apiPost<T, D = unknown>(
-  endpoint: string,
-  data?: D
+/**
+ * Generic fetch wrapper with error handling
+ */
+async function fetchApi<T>(
+    url: string,
+    options?: RequestInit
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: data ? JSON.stringify(data) : undefined,
-  });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options?.headers,
+        },
+    })
 
-  return handleResponse<T>(response);
+    if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new ApiError(
+            data?.message || `HTTP ${response.status}`,
+            response.status,
+            data
+        )
+    }
+
+    return response.json()
 }
 
-export async function apiPatch<T, D = unknown>(
-  endpoint: string,
-  data: D
-): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  return handleResponse<T>(response);
+/**
+ * GET request
+ */
+export async function apiGet<T>(url: string): Promise<T> {
+    return fetchApi<T>(url, { method: 'GET' })
 }
 
-export async function apiDelete(endpoint: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+/**
+ * POST request
+ */
+export async function apiPost<T>(url: string, body?: unknown): Promise<T> {
+    return fetchApi<T>(url, {
+        method: 'POST',
+        body: body ? JSON.stringify(body) : undefined,
+    })
+}
 
-  return handleResponse<void>(response);
+/**
+ * PATCH request
+ */
+export async function apiPatch<T>(url: string, body?: unknown): Promise<T> {
+    return fetchApi<T>(url, {
+        method: 'PATCH',
+        body: body ? JSON.stringify(body) : undefined,
+    })
+}
+
+/**
+ * DELETE request
+ */
+export async function apiDelete<T>(url: string): Promise<T> {
+    return fetchApi<T>(url, { method: 'DELETE' })
 }

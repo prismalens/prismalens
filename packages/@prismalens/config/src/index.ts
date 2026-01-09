@@ -17,11 +17,9 @@
 import { z } from 'zod';
 
 // Import schemas
-import { databaseSchema } from './schemas/database.js';
-
 import { buildDatabaseUrl } from './utils/database-url.js';
 import { getAppDataDir, ensureAppDataDir } from './utils/app-data.js';
-import { queueSchema, workerSchema, deploymentSchema, serverSchema } from './schemas/index.js';
+import { globalSchema, databaseSchema, queueSchema, deploymentSchema } from './schemas/index.js';
 
 // Re-export all schemas
 export * from './schemas/index.js';
@@ -34,11 +32,10 @@ export { getAppDataDir, ensureAppDataDir };
  * Composed global configuration schema.
  * Merges all domain-specific schemas into a single validated config.
  */
-const baseConfigSchema = deploymentSchema
+const baseConfigSchema = globalSchema
+  .merge(deploymentSchema)
   .merge(databaseSchema)
-  .merge(serverSchema)
   .merge(queueSchema)
-  .merge(workerSchema)
   .extend({
     PRISMALENS_DB_URL: z.string().describe('Computed database connection URL'),
   });
@@ -119,3 +116,5 @@ export function validateConfig(): z.SafeParseReturnType<unknown, GlobalConfig> {
 export function resetConfig(): void {
   _config = null;
 }
+
+export type EnvironmentVariables = z.infer<typeof baseConfigSchema>;

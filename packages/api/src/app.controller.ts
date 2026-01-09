@@ -1,9 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '@prismalens/config';
 
 @Controller()
 export class AppController {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService<EnvironmentVariables>) {}
 
   @Get()
   root(): {
@@ -15,7 +16,7 @@ export class AppController {
     return {
       name: 'PrismaLens API',
       version: '0.1.0',
-      edition: this.configService.get('PRISMALENS_EDITION', 'COMMUNITY'),
+      edition: 'COMMUNITY', //TODO: Dynamically set based on license
       docs: '/api',
     };
   }

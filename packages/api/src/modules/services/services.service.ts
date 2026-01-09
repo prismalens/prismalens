@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import type { Service, ServiceDependency } from '../../../prisma/generated/client.js';
+import type { Service, ServiceDependency } from '@prismalens/database';
 import { CreateServiceDto, UpdateServiceDto, AddDependencyDto } from './dto/index.js';
 
 export type { Service, ServiceDependency };

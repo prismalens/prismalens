@@ -5,7 +5,7 @@ import {
   IntegrationDefinition,
   IntegrationConnection,
   ServiceIntegration,
-} from '../../../prisma/generated/client.js';
+} from '@prismalens/database';
 import {
   CreateConnectionDto,
   UpdateConnectionDto,

@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { Service, ServiceSuggestion, IntegrationConnection } from '../../../prisma/generated/client.js';
+import { Service, ServiceSuggestion, IntegrationConnection } from '@prismalens/database';
 import { AcceptSuggestionDto, AcceptBulkSuggestionsDto } from './dto/index.js';
 
 export interface DiscoveredService {

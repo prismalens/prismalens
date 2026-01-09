@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { AlertMappingRule, Service } from '../../../prisma/generated/client.js';
+import { AlertMappingRule, Service } from '@prismalens/database';
 import { CreateMappingRuleDto, UpdateMappingRuleDto } from './dto/index.js';
 
 export interface AlertInfo {

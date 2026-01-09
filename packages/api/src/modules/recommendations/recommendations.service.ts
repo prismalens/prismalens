@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { Recommendation } from '../../../prisma/generated/client.js';
+import { Recommendation } from '@prismalens/database';
 import { UpdateRecommendationDto } from './dto/index.js';
 import { RecommendationStatus } from '../../shared/enums/index.js';
 

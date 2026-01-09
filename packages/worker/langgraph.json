@@ -1,0 +1,15 @@
+{
+  "$schema": "https://langchain-ai.github.io/langgraph/langgraph-json-schema.json",
+  "dependencies": ["."],
+  "graphs": {
+    "investigation": {
+      "path": "./dist/agents/graph.js:investigationGraph",
+      "description": "Multi-agent incident investigation graph with Commander, Cartographer, Detective, and Surgeon agents"
+    },
+    "commander": {
+      "path": "./dist/agents/agent.js:graph",
+      "description": "Commander DeepAgent for direct invocation (without LangGraph wrapper)"
+    }
+  },
+  "env": ".env"
+}

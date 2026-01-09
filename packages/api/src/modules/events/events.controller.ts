@@ -1,49 +1,51 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Query,
-  NotFoundException,
-} from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { eventsContract } from '@prismalens/contracts';
 import { EventsService } from './events.service.js';
-import type { EventWithAlert } from './events.service.js';
 
-@ApiTags('events')
-@Controller('events')
+@Controller()
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
-  @Get()
-  async findAll(
-    @Query('source') source?: string,
-    @Query('eventType') eventType?: string,
-    @Query('processed') processed?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ): Promise<EventWithAlert[]> {
-    return this.eventsService.findAll({
-      source,
-      eventType,
-      processed: processed !== undefined ? processed === 'true' : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    });
+  @Implement(eventsContract)
+  events() {
+    return {
+      // POST /events - Create a new event
+      create: implement(eventsContract.create).handler(async ({ input }) => {
+        const event = await this.eventsService.create(input);
+        return this.serializeEvent(event);
+      }),
+
+      // GET /events - List events with filtering
+      list: implement(eventsContract.list).handler(async ({ input }) => {
+        const events = await this.eventsService.findAll({
+          source: input.source,
+          eventType: input.eventType,
+          processed: input.processed,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return events.map((e) => this.serializeEvent(e));
+      }),
+
+      // GET /events/:id - Get a single event by ID
+      get: implement(eventsContract.get).handler(async ({ input }) => {
+        const event = await this.eventsService.findById(input.id);
+        if (!event) {
+          throw new ORPCError('NOT_FOUND', { message: `Event ${input.id} not found` });
+        }
+        return this.serializeEvent(event);
+      }),
+    };
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<EventWithAlert> {
-    const event = await this.eventsService.findById(id);
-
-    if (!event) {
-      throw new NotFoundException(`Event ${id} not found`);
-    }
-
-    return event;
-  }
-
-  @Get('alert/:alertId')
-  async findByAlert(@Param('alertId') alertId: string) {
-    return this.eventsService.findByAlertId(alertId);
+  private serializeEvent(event: any): any {
+    return {
+      ...event,
+      rawPayload: event.rawPayload ? JSON.parse(event.rawPayload) : null,
+      receivedAt: event.receivedAt?.toISOString(),
+      processedAt: event.processedAt?.toISOString() ?? null,
+      createdAt: event.createdAt?.toISOString(),
+    };
   }
 }

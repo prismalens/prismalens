@@ -1,72 +1,71 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Body,
-  Query,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-} from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { timelineContract } from '@prismalens/contracts';
 import { TimelineService } from './timeline.service.js';
-import { CreateTimelineEntryDto } from './dto/index.js';
-import type { TimelineEntryWithUser } from './timeline.service.js';
+import type { CreateTimelineEntryDto } from './dto/index.js';
 
-@ApiTags('timeline')
-@Controller('timeline')
+@Controller()
 export class TimelineController {
   constructor(private readonly timelineService: TimelineService) {}
 
-  @Get('incident/:incidentId')
-  async findByIncident(
-    @Param('incidentId') incidentId: string,
-    @Query('type') type?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ): Promise<TimelineEntryWithUser[]> {
-    return this.timelineService.findByIncidentId(incidentId, {
-      type,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    });
+  @Implement(timelineContract)
+  timeline() {
+    return {
+      // POST /timeline - Create a new timeline entry
+      create: implement(timelineContract.create).handler(async ({ input }) => {
+        const entry = await this.timelineService.create(input as unknown as CreateTimelineEntryDto);
+        return this.serializeTimelineEntry(entry);
+      }),
+
+      // GET /timeline - List timeline entries for an incident
+      list: implement(timelineContract.list).handler(async ({ input }) => {
+        const entries = await this.timelineService.findByIncidentId(input.incidentId, {
+          type: input.type,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return entries.map((e) => this.serializeTimelineEntryWithRelations(e));
+      }),
+
+      // GET /timeline/:id - Get a single timeline entry
+      get: implement(timelineContract.get).handler(async ({ input }) => {
+        const entry = await this.timelineService.findById(input.id);
+        if (!entry) {
+          throw new ORPCError('NOT_FOUND', { message: `Timeline entry ${input.id} not found` });
+        }
+        return this.serializeTimelineEntryWithRelations(entry);
+      }),
+
+      // DELETE /timeline/:id - Delete a timeline entry
+      delete: implement(timelineContract.delete).handler(async ({ input }) => {
+        const deleted = await this.timelineService.delete(input.id);
+        if (!deleted) {
+          throw new ORPCError('NOT_FOUND', { message: `Timeline entry ${input.id} not found` });
+        }
+      }),
+    };
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<TimelineEntryWithUser> {
-    const entry = await this.timelineService.findById(id);
+  private serializeTimelineEntry(entry: any): any {
+    return {
+      ...entry,
+      metadata: entry.metadata ? JSON.parse(entry.metadata) : null,
+      timestamp: entry.timestamp?.toISOString(),
+      createdAt: entry.createdAt?.toISOString(),
+    };
+  }
 
-    if (!entry) {
-      throw new NotFoundException(`Timeline entry ${id} not found`);
+  private serializeTimelineEntryWithRelations(entry: any): any {
+    const serialized = this.serializeTimelineEntry(entry);
+
+    if (entry.user) {
+      serialized.user = {
+        id: entry.user.id,
+        email: entry.user.email,
+        name: entry.user.name,
+      };
     }
 
-    return entry;
-  }
-
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() dto: CreateTimelineEntryDto) {
-    return this.timelineService.create(dto);
-  }
-
-  @Post('incident/:incidentId/comment')
-  @HttpCode(HttpStatus.CREATED)
-  async addComment(
-    @Param('incidentId') incidentId: string,
-    @Body() body: { comment: string; userId?: string },
-  ) {
-    return this.timelineService.addComment(incidentId, body.comment, body.userId);
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string): Promise<void> {
-    const deleted = await this.timelineService.delete(id);
-
-    if (!deleted) {
-      throw new NotFoundException(`Timeline entry ${id} not found`);
-    }
+    return serialized;
   }
 }

@@ -1,6 +1,5 @@
 import { Module, Global, DynamicModule, Logger } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { HttpModule } from '@nestjs/axios';
 import { QueueService } from './queue.service.js';
 import { BullModule } from '@nestjs/bullmq';
 import * as IORedis from 'ioredis';
@@ -51,15 +50,15 @@ function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
 /**
  * Queue module with conditional BullMQ import based on worker mode.
  *
- * - regular mode: Uses HttpModule for direct worker HTTP calls (no Redis)
+ * - regular mode: Direct execution via @prismalens/agents (no Redis)
  * - queue mode: Uses BullMQ with Redis for job queuing
  */
 @Global()
 @Module({})
 export class QueueModule {
   static forRoot(): DynamicModule {
-    const workerMode = config.PRISMALENS_WORKER_MODE;
-    const imports: any[] = [ConfigModule, HttpModule];
+    const workerMode = config.PRISMALENS_MODE;
+    const imports: any[] = [ConfigModule];
 
     if (workerMode === 'queue') {
       logger.log('Queue mode: Initializing BullMQ with Redis connection');
@@ -70,7 +69,7 @@ export class QueueModule {
         }),
       );
     } else {
-      logger.log('Regular mode: Using HTTP dispatch (no Redis required)');
+      logger.log('Regular mode: Using @prismalens/agents directly (no Redis required)');
     }
 
     return {

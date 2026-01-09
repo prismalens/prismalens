@@ -1,0 +1,9 @@
+{
+  "node_version": "20",
+  "dependencies": ["."],
+  "graphs": {
+    "investigation": "./dist/graph/graph.js:investigationGraph",
+    "commander": "./dist/agents/commander/agent.js:graph"
+  },
+  "env": ".env"
+}

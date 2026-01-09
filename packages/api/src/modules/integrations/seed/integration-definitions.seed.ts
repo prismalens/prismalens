@@ -1,20 +1,4 @@
-import { PrismaClient } from '../../../../prisma/generated/client.js';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { getConfig, ensureAppDataDir } from '@prismalens/config';
-
-/**
- * Create a PrismaClient instance for seeding.
- */
-function createPrismaClient(): PrismaClient {
-  const config = getConfig();
-  ensureAppDataDir();
-
-  const adapter = new PrismaBetterSqlite3({
-    url: config.PRISMALENS_DB_URL,
-  });
-
-  return new PrismaClient({ adapter });
-}
+import { PrismaClient, prisma } from '@prismalens/database';
 
 /**
  * Seed integration definitions (catalog of available integrations).
@@ -152,7 +136,6 @@ export async function seedIntegrationDefinitions(prisma: PrismaClient): Promise<
 
 // Allow running directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const prisma = createPrismaClient();
   seedIntegrationDefinitions(prisma)
     .then(() => prisma.$disconnect())
     .catch((e) => {

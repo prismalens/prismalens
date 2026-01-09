@@ -1,14 +1,29 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { REQUEST } from '@nestjs/core';
 import { join } from 'path';
 import { AppController } from './app.controller.js';
+import { getConfig } from '@prismalens/config';
+import { WebhookCorsMiddleware } from './middlewares/webhook-cors.middleware.js';
+
+// oRPC imports
+import { ORPCModule, onError, ORPCError } from '@orpc/nest';
+import { experimental_RethrowHandlerPlugin as RethrowHandlerPlugin } from '@orpc/server/plugins';
+import type { Request } from 'express';
+
+// Extend oRPC global context for type safety
+declare module '@orpc/nest' {
+  interface ORPCGlobalContext {
+    request: Request;
+  }
+}
 
 // Core modules
 import { PrismaModule } from './core/prisma/prisma.module.js';
-import { AuthModule } from './core/auth/auth.module.js';
 import { UsersModule } from './core/users/users.module.js';
 import { SettingsModule } from './core/settings/settings.module.js';
+import { LicenseModule } from './core/license/license.module.js';
 
 // Infrastructure modules
 import { HealthModule } from './infrastructure/health/health.module.js';
@@ -28,23 +43,44 @@ import { RecommendationsModule } from './modules/recommendations/recommendations
 import { IntegrationsModule } from './modules/integrations/integrations.module.js';
 import { AlertMappingModule } from './modules/alert-mapping/alert-mapping.module.js';
 import { ServiceDiscoveryModule } from './modules/service-discovery/service-discovery.module.js';
-
-import configuration from '../config/configuration.js';
+import { OpenAPIModule } from './modules/openapi/openapi.module.js';
 
 @Module({
   imports: [
     // Configuration
     ConfigModule.forRoot({
-      isGlobal: true,
-      load: [configuration],
-      ignoreEnvFile: true
+      ignoreEnvFile: true,
+      load: [getConfig],
+    }),
+
+    // oRPC Module - provides end-to-end type safety
+    ORPCModule.forRootAsync({
+      useFactory: (request: Request) => ({
+        interceptors: [
+          onError((error) => {
+            // Log oRPC errors for debugging
+            const logger = new Logger('oRPC');
+            logger.error(`oRPC Error: ${error.message}`, error.stack);
+          }),
+        ],
+        context: { request }, // Make request available in handlers
+        plugins: [
+          new RethrowHandlerPlugin({
+            filter: (error) => {
+              // Rethrow non-oRPC errors to NestJS exception filters
+              return !(error instanceof ORPCError);
+            },
+          }),
+        ],
+      }),
+      inject: [REQUEST],
     }),
 
     // Core
     PrismaModule,
-    AuthModule,
     UsersModule,
     SettingsModule,
+    LicenseModule,
 
     // Infrastructure
     HealthModule,
@@ -89,7 +125,16 @@ import configuration from '../config/configuration.js';
     RecommendationsModule,
     IntegrationsModule,  // External tool integrations (GitHub, Prometheus, Slack)
     ServiceDiscoveryModule, // Service discovery from integrations
+    OpenAPIModule,       // OpenAPI spec and documentation
   ],
   controllers: [AppController],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply permissive CORS middleware only to webhook routes
+    // This allows browser-based testing tools while keeping main API restricted
+    if (getConfig().PRISMALENS_CORS_WEBHOOK_OPEN) {
+      consumer.apply(WebhookCorsMiddleware).forRoutes('webhooks/*');
+    }
+  }
+}

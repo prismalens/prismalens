@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import type { Alert } from '../../../prisma/generated/client.js';
+import type { Alert } from '@prismalens/database';
 import { CreateAlertDto, UpdateAlertDto } from './dto/index.js';
 import * as crypto from 'crypto';
 

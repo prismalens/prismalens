@@ -93,14 +93,14 @@ async function main() {
   // Copy compiled output
   mkdirSync(apiDest, { recursive: true });
   cpSync(resolve(apiSrc, 'dist'), resolve(apiDest, 'dist'), { recursive: true });
-  cpSync(resolve(apiSrc, 'prisma'), resolve(apiDest, 'prisma'), { recursive: true });
   cpSync(resolve(apiSrc, 'package.json'), resolve(apiDest, 'package.json'));
 
   // Install production dependencies
   log('Installing API production dependencies...', 'dim');
-  execSync('pnpm install --prod --ignore-scripts', {
+  execSync('pnpm install --prod --ignore-scripts --force', {
     cwd: apiDest,
     stdio: 'inherit',
+    env: { ...process.env, CI: 'true' },
   });
 
   log('API bundled successfully', 'green');
@@ -152,15 +152,25 @@ async function main() {
 
   log('Worker bundled successfully', 'green');
 
-  // Step 4: Copy Prisma schema to package root
+  // Step 4: Copy Prisma schema from database package
   step(4, 'Copying Prisma schema...');
-  const prismaSchema = resolve(apiSrc, 'prisma');
+  const databaseSrc = resolve(PACKAGES, '@prismalens', 'database');
+  const prismaSchema = resolve(databaseSrc, 'prisma');
   const prismaDest = resolve(ROOT, 'prisma');
 
   if (existsSync(prismaSchema)) {
     rmSync(prismaDest, { recursive: true, force: true });
     cpSync(prismaSchema, prismaDest, { recursive: true });
     log('Prisma schema copied', 'green');
+  } else {
+    log(`Warning: Prisma schema not found at ${prismaSchema}`, 'yellow');
+  }
+
+  // Also copy Prisma to bundled API for runtime access
+  const apiBundledPrisma = resolve(apiDest, 'prisma');
+  if (existsSync(prismaSchema)) {
+    cpSync(prismaSchema, apiBundledPrisma, { recursive: true });
+    log('Prisma schema copied to bundled API', 'green');
   }
 
   // Summary

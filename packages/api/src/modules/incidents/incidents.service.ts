@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import type { Incident, Alert } from '../../../prisma/generated/client.js';
+import type { Incident, Alert } from '@prismalens/database';
 import { CreateIncidentDto, UpdateIncidentDto } from './dto/index.js';
 import { TimelineService } from '../timeline/timeline.service.js';
 import { TimelineEntryType, TimelineSource } from '../../shared/enums/index.js';

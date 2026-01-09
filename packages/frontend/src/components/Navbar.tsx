@@ -1,12 +1,10 @@
-'use client';
-
 /**
  * Navbar Component
  *
  * Main navigation bar
  */
 
-import Link from 'next/link';
+import { Link } from '@tanstack/react-router'
 
 export function Navbar() {
   return (
@@ -16,7 +14,7 @@ export function Navbar() {
           {/* Left side - Logo */}
           <div className="flex items-center gap-4">
             <Link
-              href="/"
+              to="/"
               className="text-xl font-bold text-primary-600 hover:text-primary-700"
             >
               PrismaLens
@@ -27,19 +25,19 @@ export function Navbar() {
           {/* Right side - Navigation */}
           <div className="flex items-center space-x-4">
             <Link
-              href="/"
+              to="/"
               className="text-slate-600 dark:text-slate-300 hover:text-primary-600"
             >
               Dashboard
             </Link>
             <Link
-              href="/investigations"
+              to="/investigations"
               className="text-slate-600 dark:text-slate-300 hover:text-primary-600"
             >
               Investigations
             </Link>
             <Link
-              href="/settings"
+              to="/settings"
               className="text-slate-600 dark:text-slate-300 hover:text-primary-600"
             >
               Settings
@@ -49,5 +47,5 @@ export function Navbar() {
         </div>
       </div>
     </nav>
-  );
+  )
 }

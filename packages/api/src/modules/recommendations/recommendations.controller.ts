@@ -1,114 +1,99 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Param,
-  Body,
-  Query,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-} from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { recommendationsContract } from '@prismalens/contracts';
 import { RecommendationsService } from './recommendations.service.js';
-import { UpdateRecommendationDto } from './dto/index.js';
-import type { Recommendation, RecommendationWithRelations } from './recommendations.service.js';
+import type { UpdateRecommendationDto } from './dto/index.js';
 
-@ApiTags('recommendations')
-@Controller('recommendations')
+@Controller()
 export class RecommendationsController {
-  constructor(
-    private readonly recommendationsService: RecommendationsService,
-  ) {}
+  constructor(private readonly recommendationsService: RecommendationsService) {}
 
-  @Get()
-  async findAll(
-    @Query('status') status?: string,
-    @Query('priority') priority?: string,
-    @Query('urgency') urgency?: string,
-    @Query('investigationId') investigationId?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ): Promise<RecommendationWithRelations[]> {
-    return this.recommendationsService.findAll({
-      status,
-      priority,
-      urgency,
-      investigationId,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    });
+  @Implement(recommendationsContract)
+  recommendations() {
+    return {
+      // GET /recommendations - List recommendations with filtering
+      list: implement(recommendationsContract.list).handler(async ({ input }) => {
+        const recommendations = await this.recommendationsService.findAll({
+          status: input.status,
+          priority: input.priority,
+          investigationId: input.investigationId,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return recommendations.map((r) => this.serializeRecommendationWithRelations(r));
+      }),
+
+      // GET /recommendations/stats - Get recommendation statistics
+      getStats: implement(recommendationsContract.getStats).handler(async () => {
+        const [total, byStatus, byPriority] = await Promise.all([
+          this.recommendationsService.count(),
+          this.recommendationsService.getStatsByStatus(),
+          this.recommendationsService.getStatsByPriority(),
+        ]);
+
+        return { total, byStatus, byPriority, byCategory: {} };
+      }),
+
+      // GET /recommendations/:id - Get a single recommendation
+      get: implement(recommendationsContract.get).handler(async ({ input }) => {
+        const recommendation = await this.recommendationsService.findById(input.id);
+        if (!recommendation) {
+          throw new ORPCError('NOT_FOUND', { message: `Recommendation ${input.id} not found` });
+        }
+        return this.serializeRecommendationWithRelations(recommendation);
+      }),
+
+      // PATCH /recommendations/:id - Update a recommendation
+      update: implement(recommendationsContract.update).handler(async ({ input }) => {
+        const { id, ...updateData } = input;
+        const recommendation = await this.recommendationsService.update(id, updateData as UpdateRecommendationDto);
+        if (!recommendation) {
+          throw new ORPCError('NOT_FOUND', { message: `Recommendation ${id} not found` });
+        }
+        return this.serializeRecommendation(recommendation);
+      }),
+
+      // POST /recommendations/:id/complete - Complete a recommendation
+      complete: implement(recommendationsContract.complete).handler(async ({ input }) => {
+        const recommendation = await this.recommendationsService.complete(input.id);
+        if (!recommendation) {
+          throw new ORPCError('NOT_FOUND', { message: `Recommendation ${input.id} not found` });
+        }
+        return this.serializeRecommendation(recommendation);
+      }),
+
+      // POST /recommendations/:id/dismiss - Dismiss a recommendation
+      dismiss: implement(recommendationsContract.dismiss).handler(async ({ input }) => {
+        const recommendation = await this.recommendationsService.dismiss(input.id);
+        if (!recommendation) {
+          throw new ORPCError('NOT_FOUND', { message: `Recommendation ${input.id} not found` });
+        }
+        return this.serializeRecommendation(recommendation);
+      }),
+    };
   }
 
-  @Get('stats')
-  async getStats(): Promise<{
-    total: number;
-    byStatus: Record<string, number>;
-    byPriority: Record<string, number>;
-  }> {
-    const [total, byStatus, byPriority] = await Promise.all([
-      this.recommendationsService.count(),
-      this.recommendationsService.getStatsByStatus(),
-      this.recommendationsService.getStatsByPriority(),
-    ]);
-
-    return { total, byStatus, byPriority };
+  private serializeRecommendation(rec: any): any {
+    return {
+      ...rec,
+      metadata: rec.metadata ? JSON.parse(rec.metadata) : null,
+      createdAt: rec.createdAt?.toISOString(),
+      updatedAt: rec.updatedAt?.toISOString(),
+      completedAt: rec.completedAt?.toISOString() ?? null,
+    };
   }
 
-  @Get('investigation/:investigationId')
-  async findByInvestigation(
-    @Param('investigationId') investigationId: string,
-  ): Promise<Recommendation[]> {
-    return this.recommendationsService.findByInvestigationId(investigationId);
-  }
+  private serializeRecommendationWithRelations(rec: any): any {
+    const serialized = this.serializeRecommendation(rec);
 
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<RecommendationWithRelations> {
-    const recommendation = await this.recommendationsService.findById(id);
-
-    if (!recommendation) {
-      throw new NotFoundException(`Recommendation ${id} not found`);
+    if (rec.investigation) {
+      serialized.investigation = {
+        id: rec.investigation.id,
+        status: rec.investigation.status,
+        incidentId: rec.investigation.incidentId,
+      };
     }
 
-    return recommendation;
-  }
-
-  @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdateRecommendationDto,
-  ): Promise<Recommendation> {
-    const recommendation = await this.recommendationsService.update(id, dto);
-
-    if (!recommendation) {
-      throw new NotFoundException(`Recommendation ${id} not found`);
-    }
-
-    return recommendation;
-  }
-
-  @Post(':id/complete')
-  @HttpCode(HttpStatus.OK)
-  async complete(@Param('id') id: string): Promise<Recommendation> {
-    const recommendation = await this.recommendationsService.complete(id);
-
-    if (!recommendation) {
-      throw new NotFoundException(`Recommendation ${id} not found`);
-    }
-
-    return recommendation;
-  }
-
-  @Post(':id/dismiss')
-  @HttpCode(HttpStatus.OK)
-  async dismiss(@Param('id') id: string): Promise<Recommendation> {
-    const recommendation = await this.recommendationsService.dismiss(id);
-
-    if (!recommendation) {
-      throw new NotFoundException(`Recommendation ${id} not found`);
-    }
-
-    return recommendation;
+    return serialized;
   }
 }

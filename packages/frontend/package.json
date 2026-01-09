@@ -1,27 +1,33 @@
 {
   "name": "@prismalens/frontend",
   "version": "0.1.0",
-  "description": "PrismaLens Frontend - Next.js dashboard for incident analysis",
+  "description": "PrismaLens Frontend - TanStack Start dashboard for incident analysis",
+  "type": "module",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@orpc/client": "^1.13.2",
+    "@orpc/contract": "^1.13.2",
+    "@orpc/tanstack-query": "^1.13.2",
     "@prismalens/config": "workspace:*",
+    "@prismalens/contracts": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-toast": "^1.2.15",
     "@tanstack/react-query": "^5.60.0",
     "@tanstack/react-query-devtools": "^5.60.0",
+    "@tanstack/react-router": "^1.120.3",
+    "@tanstack/react-start": "^1.120.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.0",
     "lucide-react": "^0.460.0",
-    "next": "^14.2.0",
     "next-themes": "^0.4.6",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
@@ -31,14 +37,18 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@fontsource-variable/inter": "^5.1.1",
+    "@fontsource-variable/jetbrains-mono": "^5.1.2",
     "@types/node": "^20.10.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.0",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vite": "^7.0.0",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }

@@ -1,8 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
 import { CredentialsService } from '../crypto/credentials.service.js';
-import { IntegrationConnection } from '../../../../prisma/generated/client.js';
+import { IntegrationConnection } from '@prismalens/database';
 
 export interface OAuthConfig {
   clientId: string;
@@ -35,7 +34,6 @@ export class OAuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly credentialsService: CredentialsService,
-    private readonly configService: ConfigService,
   ) {}
 
   /**

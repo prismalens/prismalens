@@ -7,8 +7,9 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { OAuthService } from './oauth.service.js';
+import { EnvironmentVariables } from '@prismalens/config';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('integrations/oauth')
 export class OAuthController {
@@ -16,7 +17,7 @@ export class OAuthController {
 
   constructor(
     private readonly oauthService: OAuthService,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService<EnvironmentVariables>
   ) {}
 
   /**
@@ -40,7 +41,7 @@ export class OAuthController {
     }
 
     // Default redirect URI to our callback endpoint
-    const baseUrl = this.configService.get<string>('APP_BASE_URL', 'http://localhost:3001');
+    const baseUrl = this.configService.get('PRISMALENS_DASHBOARD_BASE_URL');
     const callbackUri = redirectUri || `${baseUrl}/api/integrations/oauth/${provider}/callback`;
 
     const authUrl = await this.oauthService.getAuthorizationUrl(

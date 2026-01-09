@@ -6,9 +6,11 @@ import { SettingsModule } from '../../core/settings/settings.module.js';
 import { InvestigationsModule } from '../../modules/investigations/investigations.module.js';
 import { TimelineModule } from '../../modules/timeline/timeline.module.js';
 import { InternalGuard } from './guards/internal.guard.js';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    ConfigModule,
     SettingsModule,
     InvestigationsModule,
     TimelineModule,

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '@prismalens/config';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 /**
@@ -25,19 +26,18 @@ export class CredentialsService implements OnModuleInit {
   private readonly AUTH_TAG_LENGTH = 16;
   private readonly KEY_LENGTH = 32; // 256 bits
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private configService: ConfigService<EnvironmentVariables>) {}
 
   onModuleInit(): void {
     this.initializeEncryptionKey();
   }
 
   private initializeEncryptionKey(): void {
-    const keyHex = this.configService.get<string>('PRISMALENS_ENCRYPTION_KEY');
+    const keyHex = this.configService.get('PRISMALENS_ENCRYPTION_KEY');
 
     if (!keyHex) {
       this.logger.warn(
-        'PRISMALENS_ENCRYPTION_KEY not set. Integration credentials will be stored in plaintext. ' +
-          'Set a 64-character hex string for production use.',
+        'PRISMALENS_ENCRYPTION_KEY not set. Generating a random key. '
       );
       return;
     }

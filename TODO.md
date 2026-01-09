@@ -48,4 +48,13 @@ This file tracks technical debt and improvements that are deferred for later imp
 
 ---
 
+## Developer ides - Rough notes to be analyzed and broken down into todos by AI and moved up
+- Use @orpc/tanstack-query in forntend
+- Move simple routes from api to frontend repo. Routes that have simple CRUD operations and only get used via the frontend client. Routes should be oRPC complient.
+- Moving a few routes to frontend will require breaking of Prisma setup for DB from the api repo and moving it into @prismalens
+- Verify the owner setup is working fine, when a user logs in for the first time on a self hosted setup.
+- The more we work on this project and the more complex it is getting. At this point I feel getting rid of the CLI and directly distributing docker images would be a better idea. Need to plan how to package API, UI and worker for normal mode. In queue mode we can have worker running in a separate container
+-
+---
+
 Last updated: 2026-01-01

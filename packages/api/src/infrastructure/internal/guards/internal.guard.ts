@@ -1,9 +1,10 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '@prismalens/config';
 
 @Injectable()
 export class InternalGuard implements CanActivate {
-  constructor(private configService: ConfigService) { }
+  constructor(private configService: ConfigService<EnvironmentVariables>) { }
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();

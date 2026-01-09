@@ -1,24 +1,12 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Param,
-  Body,
-  Query,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-} from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { incidentsContract } from '@prismalens/contracts';
 import { IncidentsService } from './incidents.service.js';
 import { InvestigationsService } from '../investigations/investigations.service.js';
 import { QueueService } from '../../infrastructure/queue/queue.service.js';
-import { CreateIncidentDto, UpdateIncidentDto, AddAlertDto } from './dto/index.js';
-import type { Incident, IncidentWithRelations } from './incidents.service.js';
+import type { CreateIncidentDto, UpdateIncidentDto } from './dto/index.js';
 
-@ApiTags('incidents')
-@Controller('incidents')
+@Controller()
 export class IncidentsController {
   constructor(
     private readonly incidentsService: IncidentsService,
@@ -26,151 +14,137 @@ export class IncidentsController {
     private readonly queueService: QueueService,
   ) {}
 
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() dto: CreateIncidentDto): Promise<Incident> {
-    return this.incidentsService.create(dto);
-  }
-
-  @Get()
-  async findAll(
-    @Query('status') status?: string,
-    @Query('severity') severity?: string,
-    @Query('priority') priority?: string,
-    @Query('serviceId') serviceId?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ): Promise<IncidentWithRelations[]> {
-    return this.incidentsService.findAll({
-      status,
-      severity,
-      priority,
-      serviceId,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      offset: offset ? parseInt(offset, 10) : undefined,
-    });
-  }
-
-  @Get('active')
-  async findActive(): Promise<IncidentWithRelations[]> {
-    return this.incidentsService.findActive();
-  }
-
-  @Get('stats')
-  async getStats() {
-    return this.incidentsService.getStats();
-  }
-
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<IncidentWithRelations> {
-    const incident = await this.incidentsService.findById(id);
-
-    if (!incident) {
-      throw new NotFoundException(`Incident ${id} not found`);
-    }
-
-    return incident;
-  }
-
-  @Get('number/:number')
-  async findByNumber(@Param('number') number: string): Promise<IncidentWithRelations> {
-    const incident = await this.incidentsService.findByNumber(parseInt(number, 10));
-
-    if (!incident) {
-      throw new NotFoundException(`Incident INC-${number} not found`);
-    }
-
-    return incident;
-  }
-
-  @Patch(':id')
-  async update(
-    @Param('id') id: string,
-    @Body() dto: UpdateIncidentDto,
-  ): Promise<Incident> {
-    const incident = await this.incidentsService.update(id, dto);
-
-    if (!incident) {
-      throw new NotFoundException(`Incident ${id} not found`);
-    }
-
-    return incident;
-  }
-
-  @Post(':id/investigate')
-  @HttpCode(HttpStatus.ACCEPTED)
-  async investigate(@Param('id') id: string): Promise<{
-    incidentId: string;
-    investigationId: string;
-    jobId: string | null;
-    queued: boolean;
-  }> {
-    const incident = await this.incidentsService.findById(id);
-
-    if (!incident) {
-      throw new NotFoundException(`Incident ${id} not found`);
-    }
-
-    // Update incident status to investigating
-    await this.incidentsService.update(id, { status: 'investigating' });
-
-    // Create investigation
-    const investigation = await this.investigationsService.create({
-      incidentId: id,
-    });
-
-    // Queue the investigation job
-    const jobId = await this.queueService.addInvestigationJob({
-      incidentId: id,
-      investigationId: investigation.id,
-      priority: this.mapPriorityToJobPriority(incident.priority),
-      context: {
-        title: incident.title,
-        severity: incident.severity,
-        alertCount: incident.alertCount,
-        serviceName: incident.service?.name,
-      },
-    });
-
+  @Implement(incidentsContract)
+  incidents() {
     return {
-      incidentId: id,
-      investigationId: investigation.id,
-      jobId,
-      queued: jobId !== null,
+      // POST /incidents - Create a new incident
+      create: implement(incidentsContract.create).handler(async ({ input }) => {
+        const incident = await this.incidentsService.create(input as CreateIncidentDto);
+        return this.serializeIncident(incident);
+      }),
+
+      // GET /incidents - List incidents with filtering
+      list: implement(incidentsContract.list).handler(async ({ input }) => {
+        const incidents = await this.incidentsService.findAll({
+          status: input.status,
+          severity: input.severity,
+          priority: input.priority,
+          serviceId: input.serviceId,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return incidents.map((i) => this.serializeIncidentWithRelations(i));
+      }),
+
+      // GET /incidents/active - List active incidents
+      listActive: implement(incidentsContract.listActive).handler(async () => {
+        const incidents = await this.incidentsService.findActive();
+        return incidents.map((i) => this.serializeIncidentWithRelations(i));
+      }),
+
+      // GET /incidents/stats - Get incident statistics
+      getStats: implement(incidentsContract.getStats).handler(async () => {
+        const stats = await this.incidentsService.getStats();
+        const activeCount = (stats.byStatus?.['open'] ?? 0) + (stats.byStatus?.['investigating'] ?? 0);
+        return {
+          total: stats.total,
+          active: activeCount,
+          byStatus: stats.byStatus,
+          bySeverity: stats.bySeverity,
+          byPriority: {},
+          avgTimeToAcknowledge: stats.avgTimeToAcknowledge,
+          avgTimeToResolve: stats.avgTimeToResolve,
+        };
+      }),
+
+      // GET /incidents/:id - Get a single incident
+      get: implement(incidentsContract.get).handler(async ({ input }) => {
+        const incident = await this.incidentsService.findById(input.id);
+        if (!incident) {
+          throw new ORPCError('NOT_FOUND', { message: `Incident ${input.id} not found` });
+        }
+        return this.serializeIncidentWithRelations(incident);
+      }),
+
+      // GET /incidents/number/:number - Get incident by number
+      getByNumber: implement(incidentsContract.getByNumber).handler(async ({ input }) => {
+        const incident = await this.incidentsService.findByNumber(input.number);
+        if (!incident) {
+          throw new ORPCError('NOT_FOUND', { message: `Incident INC-${input.number} not found` });
+        }
+        return this.serializeIncidentWithRelations(incident);
+      }),
+
+      // PATCH /incidents/:id - Update an incident
+      update: implement(incidentsContract.update).handler(async ({ input }) => {
+        const { id, ...updateData } = input;
+        const incident = await this.incidentsService.update(id, updateData as UpdateIncidentDto);
+        if (!incident) {
+          throw new ORPCError('NOT_FOUND', { message: `Incident ${id} not found` });
+        }
+        return this.serializeIncident(incident);
+      }),
+
+      // POST /incidents/:id/investigate - Start investigation
+      investigate: implement(incidentsContract.investigate).handler(async ({ input }) => {
+        const incident = await this.incidentsService.findById(input.id);
+        if (!incident) {
+          throw new ORPCError('NOT_FOUND', { message: `Incident ${input.id} not found` });
+        }
+
+        // Update incident status to investigating
+        await this.incidentsService.update(input.id, { status: 'investigating' });
+
+        // Create investigation
+        const investigation = await this.investigationsService.create({
+          incidentId: input.id,
+        });
+
+        // Queue the investigation job
+        const jobId = await this.queueService.addInvestigationJob({
+          incidentId: input.id,
+          investigationId: investigation.id,
+          priority: this.mapPriorityToJobPriority(incident.priority),
+          context: {
+            title: incident.title,
+            severity: incident.severity,
+            alertCount: incident.alertCount,
+            serviceName: incident.service?.name,
+          },
+        });
+
+        return {
+          incidentId: input.id,
+          investigationId: investigation.id,
+          jobId,
+          queued: jobId !== null,
+        };
+      }),
+
+      // POST /incidents/:id/resolve - Resolve an incident
+      resolve: implement(incidentsContract.resolve).handler(async ({ input }) => {
+        const incident = await this.incidentsService.resolve(input.id);
+        if (!incident) {
+          throw new ORPCError('NOT_FOUND', { message: `Incident ${input.id} not found` });
+        }
+        return this.serializeIncident(incident);
+      }),
+
+      // POST /incidents/:id/alerts - Add an alert to an incident
+      addAlert: implement(incidentsContract.addAlert).handler(async ({ input }) => {
+        const incident = await this.incidentsService.findById(input.id);
+        if (!incident) {
+          throw new ORPCError('NOT_FOUND', { message: `Incident ${input.id} not found` });
+        }
+
+        const success = await this.incidentsService.addAlert(input.id, input.alertId);
+        if (!success) {
+          throw new ORPCError('NOT_FOUND', { message: `Alert ${input.alertId} not found or already correlated` });
+        }
+
+        return { success };
+      }),
     };
-  }
-
-  @Post(':id/resolve')
-  @HttpCode(HttpStatus.OK)
-  async resolve(@Param('id') id: string): Promise<Incident> {
-    const incident = await this.incidentsService.resolve(id);
-
-    if (!incident) {
-      throw new NotFoundException(`Incident ${id} not found`);
-    }
-
-    return incident;
-  }
-
-  @Post(':id/alerts')
-  @HttpCode(HttpStatus.CREATED)
-  async addAlert(
-    @Param('id') id: string,
-    @Body() dto: AddAlertDto,
-  ): Promise<{ success: boolean }> {
-    const incident = await this.incidentsService.findById(id);
-
-    if (!incident) {
-      throw new NotFoundException(`Incident ${id} not found`);
-    }
-
-    const success = await this.incidentsService.addAlert(id, dto.alertId);
-
-    if (!success) {
-      throw new NotFoundException(`Alert ${dto.alertId} not found or already correlated`);
-    }
-
-    return { success };
   }
 
   private mapPriorityToJobPriority(priority: string): 'low' | 'normal' | 'high' | 'critical' {
@@ -187,5 +161,49 @@ export class IncidentsController {
       default:
         return 'normal';
     }
+  }
+
+  private serializeIncident(incident: any): any {
+    return {
+      ...incident,
+      tags: incident.tags ? JSON.parse(incident.tags) : null,
+      labels: incident.labels ? JSON.parse(incident.labels) : null,
+      triggeredAt: incident.triggeredAt?.toISOString(),
+      acknowledgedAt: incident.acknowledgedAt?.toISOString() ?? null,
+      resolvedAt: incident.resolvedAt?.toISOString() ?? null,
+      createdAt: incident.createdAt?.toISOString(),
+      updatedAt: incident.updatedAt?.toISOString(),
+    };
+  }
+
+  private serializeIncidentWithRelations(incident: any): any {
+    const serialized = this.serializeIncident(incident);
+
+    if (incident.service) {
+      serialized.service = {
+        id: incident.service.id,
+        name: incident.service.name,
+        type: incident.service.type,
+        tier: incident.service.tier,
+      };
+    }
+
+    if (incident.alerts) {
+      serialized.alerts = incident.alerts.map((a: any) => ({
+        id: a.id,
+        title: a.title,
+        severity: a.severity,
+        status: a.status,
+      }));
+    }
+
+    if (incident.investigations) {
+      serialized.investigations = incident.investigations.map((i: any) => ({
+        id: i.id,
+        status: i.status,
+      }));
+    }
+
+    return serialized;
   }
 }

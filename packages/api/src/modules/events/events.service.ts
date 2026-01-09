@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import type { Event } from '../../../prisma/generated/client.js';
+import type { Event } from '@prismalens/database';
 import { CreateEventDto } from './dto/index.js';
 
 export type { Event };
