@@ -64,9 +64,7 @@ async function bootstrap() {
 	// Enable CORS for main API (restrictive - allowlist only)
 	// Webhooks have their own permissive CORS middleware applied in AppModule
 	const corsOrigins = configService.get<string>("PRISMALENS_CORS_ORIGIN");
-	const dashboardUrl = configService.get<string>(
-		"PRISMALENS_DASHBOARD_BASE_URL",
-	);
+	const publicUrl = configService.get<string>("PRISMALENS_PUBLIC_URL");
 
 	let allowedOrigins: string[] = [];
 
@@ -81,10 +79,10 @@ async function bootstrap() {
 		}
 		allowedOrigins = corsOrigins.split(",").map((s) => s.trim());
 	} else {
-		// Safe defaults: localhost dev + dashboard URL if configured
+		// Safe defaults: localhost dev + public URL if configured
 		allowedOrigins = ["http://localhost:3000"];
-		if (dashboardUrl) {
-			allowedOrigins.push(dashboardUrl);
+		if (publicUrl) {
+			allowedOrigins.push(publicUrl);
 		}
 	}
 
@@ -114,7 +112,7 @@ async function bootstrap() {
 	// Prefer PRISMALENS_PORT/HOST over generics if available in Config setup (mapped in schemas/Global)
 	// But schemas map them to defaults.
 	// Let's use the explicit PRISMALENS_ keys from config service which we added to Global schema.
-	const port = configService.get<number>("PRISMALENS_PORT", 5367);
+	const port = configService.get<number>("PRISMALENS_PORT", 3001);
 	const host = configService.get<string>("PRISMALENS_HOST", "localhost");
 
 	await app.listen(port, host);

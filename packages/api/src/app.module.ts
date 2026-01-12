@@ -4,15 +4,13 @@ import {
 	Module,
 	type NestModule,
 } from "@nestjs/common";
-import { ConfigModule, ConfigService } from "@nestjs/config";
+import { ConfigModule } from "@nestjs/config";
 import { REQUEST } from "@nestjs/core";
-import { ServeStaticModule } from "@nestjs/serve-static";
 // oRPC imports
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
 import { experimental_RethrowHandlerPlugin as RethrowHandlerPlugin } from "@orpc/server/plugins";
 import { getConfig } from "@prismalens/config";
 import type { Request } from "express";
-import { join } from "path";
 import { AppController } from "./app.controller.js";
 import { WebhookCorsMiddleware } from "./middlewares/webhook-cors.middleware.js";
 
@@ -23,6 +21,7 @@ declare module "@orpc/nest" {
 	}
 }
 
+import { AuthModule } from "./core/auth/auth.module.js";
 import { LicenseModule } from "./core/license/license.module.js";
 // Core modules
 import { PrismaModule } from "./core/prisma/prisma.module.js";
@@ -81,6 +80,7 @@ import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 
 		// Core
 		PrismaModule,
+		AuthModule, // Better Auth for authentication
 		UsersModule,
 		SettingsModule,
 		LicenseModule,
@@ -90,30 +90,8 @@ import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 		QueueModule.forRoot(),
 		InternalModule,
 
-		// Serve Next.js frontend in production
-		ServeStaticModule.forRootAsync({
-			imports: [ConfigModule],
-			inject: [ConfigService],
-			useFactory: (configService: ConfigService) => {
-				const isProduction = configService.get("NODE_ENV") === "production";
-				const frontendPath = configService.get(
-					"FRONTEND_PATH",
-					join(__dirname, "..", "..", "frontend", "out"),
-				);
-
-				if (!isProduction) {
-					// In development, don't serve static files (frontend runs separately)
-					return [];
-				}
-
-				return [
-					{
-						rootPath: frontendPath,
-						exclude: ["/api/*", "/health"],
-					},
-				];
-			},
-		}),
+		// Note: Frontend is now served by TanStack Start via Caddy reverse proxy
+		// ServeStaticModule removed - Caddy routes /api/* to this service, /* to frontend
 
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion

@@ -1,0 +1,548 @@
+// =============================================================================
+// PRISMALENS APPLICATION SCHEMA - SQLite
+// =============================================================================
+//
+// NOTE: SQLite does not support native enums. All enum fields are String types
+// with comments documenting valid values.
+//
+// ARCHITECTURE: Incident-Centric Event Management
+// ------------------------------------------------
+// This schema follows industry patterns (PagerDuty, Datadog, BigPanda) for
+// incident management, where multiple alerts are correlated into incidents.
+//
+// =============================================================================
+
+// =============================================================================
+// SERVICE CATALOG
+// =============================================================================
+
+/// Service represents a monitored component (API, database, queue, etc.)
+model Service {
+  id           String  @id @default(uuid())
+  name         String  @unique
+  displayName  String?
+  description  String?
+  type         String  @default("service") // service, database, queue, cache, gateway, external, infrastructure
+  tier         String  @default("tier_3") // tier_1, tier_2, tier_3, tier_4
+  team         String?
+  slackChannel String?
+  repository   String? // For AI code analysis
+  tags         String? // JSON array
+  metadata     String? // JSON object
+
+  // Discovery metadata
+  discoverySource   String? // "github", "manual", etc.
+  discoveryMetadata String? // JSON: { "owner": "org", "repo": "name", "isMonorepo": false }
+  isDiscovered      Boolean @default(false) // true = auto-discovered, false = manually created
+  isConfirmed       Boolean @default(true) // false = pending user confirmation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alerts            Alert[]
+  incidents         Incident[]
+  dependencies      ServiceDependency[]  @relation("DependentService")
+  dependents        ServiceDependency[]  @relation("DependencyService")
+  integrations      ServiceIntegration[]
+  alertMappingRules AlertMappingRule[]
+
+  @@map("services")
+}
+
+/// Service dependency for topology-based correlation
+model ServiceDependency {
+  id             String   @id @default(uuid())
+  dependentId    String
+  dependencyId   String
+  dependencyType String   @default("runtime") // runtime, build, data
+  criticality    String   @default("required") // required, optional, degraded
+  createdAt      DateTime @default(now())
+
+  dependent  Service @relation("DependentService", fields: [dependentId], references: [id], onDelete: Cascade)
+  dependency Service @relation("DependencyService", fields: [dependencyId], references: [id], onDelete: Cascade)
+
+  @@unique([dependentId, dependencyId])
+  @@map("service_dependencies")
+}
+
+// =============================================================================
+// EVENTS - RAW INCOMING SIGNALS
+// =============================================================================
+
+/// Raw event from monitoring systems (immutable)
+model Event {
+  id            String    @id @default(uuid())
+  source        String // prometheus, github, render, generic
+  sourceEventId String?
+  eventType     String // alert, deployment, commit
+  payload       String // Full raw JSON
+  receivedAt    DateTime  @default(now())
+  eventTime     DateTime?
+  processed     Boolean   @default(false)
+  alertId       String?
+
+  alert Alert? @relation(fields: [alertId], references: [id])
+
+  @@index([source, sourceEventId])
+  @@index([receivedAt])
+  @@index([processed])
+  @@map("events")
+}
+
+// =============================================================================
+// ALERTS - DEDUPLICATED, NORMALIZED SIGNALS
+// =============================================================================
+
+/// Deduplicated, normalized alert
+model Alert {
+  id              String    @id @default(uuid())
+  dedupKey        String    @unique // Hash for deduplication
+  fingerprint     String? // Content fingerprint for similarity
+  externalId      String?   @unique
+  title           String
+  description     String?
+  severity        String    @default("medium") // critical, high, medium, low, info
+  status          String    @default("triggered") // triggered, acknowledged, correlated, resolved, suppressed
+  source          String?
+  sourceUrl       String?
+  serviceId       String?
+  tags            String? // JSON array
+  labels          String? // JSON object
+  triggeredAt     DateTime  @default(now())
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  occurrenceCount Int       @default(1)
+  lastOccurrence  DateTime  @default(now())
+  rawPayload      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  service    Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  incidentId String?
+  incident   Incident? @relation(fields: [incidentId], references: [id])
+  events     Event[]
+
+  @@index([status])
+  @@index([severity])
+  @@index([serviceId])
+  @@index([incidentId])
+  @@index([triggeredAt])
+  @@index([fingerprint])
+  @@map("alerts")
+}
+
+// =============================================================================
+// INCIDENTS - CORRELATED ALERTS (THE MAIN WORK UNIT)
+// =============================================================================
+
+/// Incident - correlated alerts representing a single business problem
+model Incident {
+  id                String    @id @default(uuid())
+  number            Int       @unique // Managed by application (no autoincrement in SQLite)
+  title             String
+  description       String?
+  severity          String    @default("medium") // critical, high, medium, low, info
+  status            String    @default("triggered") // triggered, investigating, identified, monitoring, resolved, closed
+  priority          String    @default("p3") // p1, p2, p3, p4, p5
+  serviceId         String?
+  assignedToId      String?
+  correlationReason String?
+  correlationRuleId String?
+  tags              String? // JSON array
+  customerImpact    String?
+  affectedSystems   String? // JSON array
+  triggeredAt       DateTime  @default(now())
+  acknowledgedAt    DateTime?
+  resolvedAt        DateTime?
+  alertCount        Int       @default(0)
+  timeToAcknowledge Int? // Seconds
+  timeToResolve     Int? // Seconds
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  service         Service?         @relation(fields: [serviceId], references: [id])
+  assignedTo      User?            @relation("AssignedTo", fields: [assignedToId], references: [id])
+  correlationRule CorrelationRule? @relation(fields: [correlationRuleId], references: [id])
+  alerts          Alert[]
+  investigations  Investigation[]
+  timeline        TimelineEntry[]
+  postmortem      Postmortem?
+
+  @@index([status])
+  @@index([severity])
+  @@index([priority])
+  @@index([serviceId])
+  @@index([triggeredAt])
+  @@map("incidents")
+}
+
+// =============================================================================
+// INVESTIGATION - AI WORKER ANALYSIS
+// =============================================================================
+
+/// AI-driven investigation of an incident
+model Investigation {
+  id                String    @id @default(uuid())
+  incidentId        String
+  status            String    @default("pending") // pending, running, completed, failed, cancelled
+  startedAt         DateTime?
+  completedAt       DateTime?
+  summary           String?
+  rootCause         String?
+  rootCauseCategory String? // code, config, infrastructure, external, unknown
+  confidence        Float? // 0.0 to 1.0
+  dataQuality       String? // JSON
+  analysisMethod    String?
+  dataSourcesUsed   String? // JSON array
+  rawOutput         String? // JSON
+  error             String?
+  agentProgression  String? // JSON
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  incident        Incident         @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  agentExecutions AgentExecution[]
+  recommendations Recommendation[]
+
+  @@index([incidentId])
+  @@index([status])
+  @@map("investigations")
+}
+
+/// Agent execution within an investigation
+model AgentExecution {
+  id              String    @id @default(uuid())
+  investigationId String
+  agentName       String // alert_agent, gatherer_agent, analyzer_agent, recommender_agent
+  agentType       String    @default("llm") // llm, sequential, loop
+  status          String    @default("pending") // pending, running, completed, failed
+  startedAt       DateTime?
+  completedAt     DateTime?
+  executionTimeMs Int?
+  output          String? // JSON
+  confidence      Float?
+  inputTokens     Int?
+  outputTokens    Int?
+  error           String?
+  createdAt       DateTime  @default(now())
+
+  investigation  Investigation   @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  toolExecutions ToolExecution[]
+
+  @@index([investigationId])
+  @@index([agentName])
+  @@map("agent_executions")
+}
+
+/// Tool execution within an agent execution
+model ToolExecution {
+  id               String   @id @default(uuid())
+  agentExecutionId String
+  toolName         String
+  toolCategory     String? // file, search, github, logs, analysis
+  arguments        String? // JSON
+  result           String? // JSON
+  status           String   @default("pending") // pending, running, success, error
+  executionTimeMs  Int?
+  confidence       Float?
+  dataQuality      String?
+  error            String?
+  executedAt       DateTime @default(now())
+
+  agentExecution AgentExecution @relation(fields: [agentExecutionId], references: [id], onDelete: Cascade)
+
+  @@index([agentExecutionId])
+  @@index([toolName])
+  @@map("tool_executions")
+}
+
+// =============================================================================
+// RECOMMENDATIONS - ACTIONABLE SOLUTIONS
+// =============================================================================
+
+/// Recommendation for resolving an incident
+model Recommendation {
+  id              String    @id @default(uuid())
+  investigationId String
+  title           String
+  description     String?
+  priority        String    @default("medium") // critical, high, medium, low
+  category        String? // code_fix, config_change, rollback, monitoring, investigation
+  urgency         String? // immediate, short_term, long_term
+  actionable      Boolean   @default(true)
+  estimatedEffort String? // minutes, hours, days
+  status          String    @default("pending") // pending, in_progress, completed, rejected, deferred
+  implementedAt   DateTime?
+  implementedBy   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId])
+  @@index([status])
+  @@index([priority])
+  @@map("recommendations")
+}
+
+// =============================================================================
+// TIMELINE - INCIDENT ACTIVITY LOG
+// =============================================================================
+
+/// Timeline entry for tracking incident activity
+model TimelineEntry {
+  id          String   @id @default(uuid())
+  incidentId  String
+  type        String // incident_created, alert_added, status_changed, etc.
+  title       String
+  description String?
+  metadata    String? // JSON
+  source      String   @default("system") // system, user, ai_worker
+  userId      String?
+  occurredAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([incidentId])
+  @@index([occurredAt])
+  @@map("timeline_entries")
+}
+
+// =============================================================================
+// POSTMORTEM - POST-INCIDENT ANALYSIS
+// =============================================================================
+
+/// Postmortem for post-incident learnings
+model Postmortem {
+  id              String    @id @default(uuid())
+  incidentId      String    @unique
+  title           String?
+  summary         String?
+  timeline        String? // JSON array
+  whatHappened    String?
+  whyItHappened   String?
+  whatWeLearned   String?
+  actionItems     String? // JSON array
+  customerImpact  String?
+  financialImpact Float?
+  status          String    @default("draft") // draft, in_review, published, archived
+  authorId        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  publishedAt     DateTime?
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  author   User?    @relation("PostmortemAuthor", fields: [authorId], references: [id])
+
+  @@map("postmortems")
+}
+
+// =============================================================================
+// CORRELATION RULES - ALERT-TO-INCIDENT MATCHING
+// =============================================================================
+
+/// Correlation rule for grouping alerts into incidents
+model CorrelationRule {
+  id                String   @id @default(uuid())
+  name              String   @unique
+  description       String?
+  enabled           Boolean  @default(true)
+  priority          Int      @default(100) // Lower = higher priority
+  matchCriteria     String // JSON
+  timeWindowMinutes Int      @default(60)
+  action            String   @default("correlate") // correlate, suppress, create_incident
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  incidents Incident[]
+
+  @@map("correlation_rules")
+}
+
+// =============================================================================
+// SETTINGS - SYSTEM CONFIGURATION
+// =============================================================================
+
+/// System settings and configuration
+model Setting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String // JSON
+  type        String   @default("string") // string, number, boolean, json
+  category    String? // general, correlation, ai, notifications
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// =============================================================================
+// INTEGRATIONS - EXTERNAL TOOL CONNECTIONS
+// =============================================================================
+
+/// Integration catalog - available integration types (github, prometheus, slack)
+model IntegrationDefinition {
+  id               String   @id @default(uuid())
+  name             String   @unique // github, prometheus, slack
+  displayName      String
+  description      String?
+  category         String // monitoring | code_source | knowledge_base
+  authType         String // api_key, oauth2, both
+  configSchema     String? // JSON Schema for config fields
+  oauthConfig      String? // Encrypted JSON: { clientId, clientSecret, scopes, authUrl, tokenUrl }
+  iconUrl          String?
+  docsUrl          String?
+  maxConnectionsCE Int? // null = unlimited, 1 = single connection in CE
+  isEnabled        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  connections IntegrationConnection[]
+
+  @@map("integration_definitions")
+}
+
+/// User-configured integration instance
+model IntegrationConnection {
+  id              String    @id @default(uuid())
+  definitionId    String
+  name            String
+  description     String?
+  isGlobal        Boolean   @default(true)
+  status          String    @default("pending") // pending, connected, error, disabled
+  lastHealthCheck DateTime?
+  lastError       String?
+  authMethod      String // api_key, oauth2
+  credentials     String // Encrypted JSON: { apiKey } or { accessToken, refreshToken, expiresAt }
+  config          String? // JSON: baseUrl, org, etc.
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  definition         IntegrationDefinition @relation(fields: [definitionId], references: [id])
+  serviceMappings    ServiceIntegration[]
+  serviceSuggestions ServiceSuggestion[]
+
+  @@unique([definitionId, name])
+  @@index([status])
+  @@map("integration_connections")
+}
+
+/// Service-to-integration mapping (optional overrides)
+model ServiceIntegration {
+  id           String   @id @default(uuid())
+  serviceId    String
+  connectionId String
+  priority     Int      @default(0)
+  config       String? // Service-specific overrides (repo, channel, etc.)
+  isEnabled    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  service    Service               @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, connectionId])
+  @@index([serviceId])
+  @@index([connectionId])
+  @@map("service_integrations")
+}
+
+// =============================================================================
+// ALERT MAPPING RULES - MAP ALERTS TO SERVICES
+// =============================================================================
+
+/// Alert mapping rule for routing incoming alerts to services.
+model AlertMappingRule {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  priority    Int     @default(100) // Lower = higher priority
+  enabled     Boolean @default(true)
+
+  // Match conditions (JSON)
+  matchCriteria String
+
+  // Target service
+  serviceId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([priority])
+  @@index([enabled])
+  @@index([serviceId])
+  @@map("alert_mapping_rules")
+}
+
+// =============================================================================
+// SERVICE SUGGESTIONS - PENDING SERVICE DISCOVERIES
+// =============================================================================
+
+/// Service suggestion from auto-discovery.
+model ServiceSuggestion {
+  id            String   @id @default(uuid())
+  connectionId  String // Which IntegrationConnection discovered this
+  suggestedName String
+  displayName   String?
+  repository    String // "owner/repo"
+  isMonorepo    Boolean  @default(false)
+  subPath       String? // For monorepo: "packages/api"
+  status        String   @default("pending") // "pending" | "accepted" | "rejected" | "ignored"
+  metadata      String? // JSON with additional discovery info
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, repository, subPath])
+  @@index([status])
+  @@index([connectionId])
+  @@map("service_suggestions")
+}
+
+// =============================================================================
+// LICENSE MANAGEMENT
+// =============================================================================
+// SQLite version uses String for enums since SQLite doesn't support native enums.
+// =============================================================================
+
+/// License information for the installation.
+model LicenseInfo {
+  id String @id @default(uuid())
+
+  // License identification
+  licenseKey  String? @unique // The license key from Keygen.sh
+  licenseType String  @default("none") // "none" | "perpetual" | "subscription"
+  tier        String  @default("free") // "free" | "free_plus" | "beginner" | "team" | "business" | "enterprise"
+
+  // Validity and activation
+  validUntil    DateTime? // null for perpetual, set for subscription
+  activatedAt   DateTime? // When the license was first activated
+  lastValidated DateTime? // Last successful validation with license server
+
+  // Entitlements (from Keygen policy)
+  features String @default("[]") // JSON array: ["feat:extended_agents", "feat:sso", ...]
+  quotas   String @default("{}") // JSON object: {"investigations_monthly": 500, ...}
+
+  // Subscription-specific (for future use)
+  billingCycle String? // "monthly", "annual" (null for perpetual)
+  seats        Int? // null for unlimited, set for seat-based tiers
+
+  // Cloud-hosted specific (for future cloud tiers)
+  cloudInstanceId String? // Links to cloud deployment (pre-configured licenses)
+  isCloudManaged  Boolean @default(false) // true = license managed by cloud, user never sees key
+
+  // Customer metadata
+  customerEmail String?
+  customerName  String?
+  metadata      String  @default("{}") // JSON for additional data from license server
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("license_info")
+}

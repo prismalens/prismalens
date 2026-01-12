@@ -1,0 +1,30 @@
+# PrismaLens Caddyfile - Local Development / No SSL
+# Serves on port 5367 with HTTP only
+
+:5367 {
+    # API routes - proxy to NestJS backend
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    # Health check endpoint - proxy to API
+    handle /health {
+        reverse_proxy api:3001
+    }
+
+    # oRPC endpoint - proxy to API
+    handle /orpc/* {
+        reverse_proxy api:3001
+    }
+
+    # Everything else - proxy to TanStack Start frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

@@ -1,0 +1,17 @@
+// =============================================================================
+// PRISMALENS DATABASE SCHEMA - PostgreSQL (Main Configuration)
+// =============================================================================
+// This file contains only the generator and datasource configuration.
+// Models are split across:
+//   - auth.prisma: Better Auth authentication models
+//   - app.prisma: PrismaLens application models
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}

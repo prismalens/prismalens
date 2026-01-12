@@ -16,11 +16,15 @@
 		"dev": "tsc --watch",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"db:init": "tsx scripts/db-init.ts",
-		"db:generate": "prisma generate",
-		"db:migrate": "prisma migrate dev --skip-generate",
-		"db:deploy": "prisma migrate deploy",
-		"db:studio": "cd packages/api && pnpm exec prisma studio",
-		"db:reset": "cd packages/api && pnpm exec prisma migrate reset"
+		"db:generate": "prisma generate --config prisma.pg.config.ts",
+		"db:generate:sqlite": "prisma generate --config prisma.sqlite.config.ts",
+		"db:migrate": "prisma migrate dev --skip-generate --config prisma.pg.config.ts",
+		"db:migrate:sqlite": "prisma migrate dev --skip-generate --config prisma.sqlite.config.ts",
+		"db:deploy": "prisma migrate deploy --config prisma.pg.config.ts",
+		"db:deploy:sqlite": "prisma migrate deploy --config prisma.sqlite.config.ts",
+		"db:studio": "prisma studio --config prisma.pg.config.ts",
+		"db:studio:sqlite": "prisma studio --config prisma.sqlite.config.ts",
+		"db:reset": "prisma migrate reset --config prisma.pg.config.ts"
 	},
 	"dependencies": {
 		"@prisma/adapter-better-sqlite3": "^7.2.0",

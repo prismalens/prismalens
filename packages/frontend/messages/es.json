@@ -1,0 +1,18 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "nav_dashboard": "Panel",
+  "nav_investigations": "Investigaciones",
+  "nav_settings": "Configuracion",
+  "theme_toggle_light": "Claro",
+  "theme_toggle_dark": "Oscuro",
+  "app_name": "PrismaLens",
+  "error_404_title": "404",
+  "error_404_subtitle": "Pagina no encontrada",
+  "error_404_description": "La pagina que buscas no existe o ha sido movida.",
+  "error_404_go_home": "Volver al inicio",
+  "error_connection_title": "Error de conexion",
+  "error_connection_description": "No se puede conectar al servidor API de PrismaLens. Asegurate de que el backend este ejecutandose e intentalo de nuevo.",
+  "error_generic_title": "Algo salio mal",
+  "error_generic_description": "Ocurrio un error inesperado.",
+  "error_try_again": "Intentar de nuevo"
+}

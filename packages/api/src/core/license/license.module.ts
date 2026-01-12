@@ -2,6 +2,7 @@
  * License Module
  *
  * NestJS module for license management and feature gating.
+ * Simplified for Community/Enterprise model.
  */
 
 import { Global, Module } from "@nestjs/common";
@@ -11,7 +12,6 @@ import {
 	LicenseFeatureGuard,
 	LicenseGuard,
 	LicenseTierGuard,
-	LicenseWriteGuard,
 } from "./license.guard.js";
 import { LicenseService } from "./license.service.js";
 
@@ -24,14 +24,12 @@ import { LicenseService } from "./license.service.js";
 		LicenseGuard,
 		LicenseFeatureGuard,
 		LicenseTierGuard,
-		LicenseWriteGuard,
 	],
 	exports: [
 		LicenseService,
 		LicenseGuard,
 		LicenseFeatureGuard,
 		LicenseTierGuard,
-		LicenseWriteGuard,
 	],
 })
 export class LicenseModule {}

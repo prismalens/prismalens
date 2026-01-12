@@ -44,11 +44,6 @@ htmlcov/
 data/
 .prismalens/
 
-# Python
-.venv/
-venv/
-.uv/
-
 # Docker
 .docker/
 
@@ -69,3 +64,6 @@ secrets.yaml
 
 # MCP
 *.playwright-mcp
+
+#Calude
+.claude

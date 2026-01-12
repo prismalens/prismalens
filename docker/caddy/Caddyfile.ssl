@@ -1,0 +1,31 @@
+# PrismaLens Caddyfile - Production with SSL (Let's Encrypt)
+# Automatic HTTPS with Let's Encrypt certificates
+# Set DOMAIN environment variable when running
+
+{$DOMAIN:localhost} {
+    # API routes - proxy to NestJS backend
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    # Health check endpoint - proxy to API
+    handle /health {
+        reverse_proxy api:3001
+    }
+
+    # oRPC endpoint - proxy to API
+    handle /orpc/* {
+        reverse_proxy api:3001
+    }
+
+    # Everything else - proxy to TanStack Start frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

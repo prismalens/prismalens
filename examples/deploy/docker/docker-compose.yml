@@ -1,0 +1,57 @@
+# PrismaLens Docker Compose - Production (No SSL)
+# Usage: docker compose up -d
+# Access: http://localhost:5367
+
+services:
+  # Caddy reverse proxy - unified entry point on port 5367
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "5367:5367"
+    volumes:
+      - ./docker/caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - frontend
+      - api
+    restart: unless-stopped
+    networks:
+      - prismalens
+
+  # TanStack Start frontend (SSR)
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/images/frontend/Dockerfile
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    networks:
+      - prismalens
+
+  # NestJS API backend
+  api:
+    build:
+      context: .
+      dockerfile: docker/images/api/Dockerfile
+    expose:
+      - "3001"
+    environment:
+      - NODE_ENV=production
+      - PRISMALENS_PORT=3001
+      - PRISMALENS_HOST=0.0.0.0
+      - DATABASE_URL=${DATABASE_URL:-file:./prismalens.db}
+    volumes:
+      - prismalens_data:/app/data
+    restart: unless-stopped
+    networks:
+      - prismalens
+
+networks:
+  prismalens:
+    driver: bridge
+
+volumes:
+  prismalens_data:

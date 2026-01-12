@@ -1,0 +1,34 @@
+# PrismaLens Caddyfile - Self-Signed SSL
+# For testing SSL locally or on VPS without a domain
+# Uses Caddy's internal CA to generate self-signed certificates
+
+:5367 {
+    # Enable self-signed TLS
+    tls internal
+
+    # API routes - proxy to NestJS backend
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+
+    # Health check endpoint - proxy to API
+    handle /health {
+        reverse_proxy api:3001
+    }
+
+    # oRPC endpoint - proxy to API
+    handle /orpc/* {
+        reverse_proxy api:3001
+    }
+
+    # Everything else - proxy to TanStack Start frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

@@ -41,7 +41,7 @@ export class OAuthController {
     }
 
     // Default redirect URI to our callback endpoint
-    const baseUrl = this.configService.get('PRISMALENS_DASHBOARD_BASE_URL');
+    const baseUrl = this.configService.get('PRISMALENS_PUBLIC_URL');
     const callbackUri = redirectUri || `${baseUrl}/api/integrations/oauth/${provider}/callback`;
 
     const authUrl = await this.oauthService.getAuthorizationUrl(

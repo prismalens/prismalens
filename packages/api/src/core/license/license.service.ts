@@ -2,22 +2,21 @@
  * License Service
  *
  * Core license validation and management logic.
- * Supports perpetual (Free+License) and subscription (paid tiers) license types.
+ * Simplified for Community/Enterprise model:
+ * - Community: Open-source, self-hosted, unlimited (no license key needed)
+ * - Enterprise: SSO, audit logs, multi-tenancy, premium support (license key required)
  */
 
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 import {
-	DEFAULT_TIER_CONFIGS,
-	LICENSE_FEATURES,
-	LICENSE_QUOTAS,
 	LICENSE_TIERS,
 	LICENSE_TYPES,
+	TIER_CONFIGS,
+	hasFeature,
 	type LicenseFeature,
-	type LicenseQuota,
 	type LicenseTierType,
 	type LicenseTypeValue,
-	UNLIMITED_QUOTA,
 } from "./license.constants.js";
 
 // =============================================================================
@@ -29,20 +28,10 @@ export interface LicenseState {
 	licenseType: LicenseTypeValue;
 	tier: LicenseTierType;
 	features: LicenseFeature[];
-	quotas: Record<string, number>;
 	expiresAt: Date | null;
 	isExpired: boolean;
-	isReadOnly: boolean; // True if subscription expired (can read, cannot write)
 	customerEmail?: string;
 	customerName?: string;
-}
-
-export interface QuotaCheckResult {
-	allowed: boolean;
-	current: number;
-	limit: number;
-	remaining: number;
-	reason?: string;
 }
 
 export interface ActivateLicenseResult {
@@ -77,7 +66,7 @@ interface LicenseInfoRecord {
 // CONSTANTS
 // =============================================================================
 
-// Cache TTL in milliseconds (1 hour for production use)
+// Cache TTL in milliseconds (1 hour)
 const LICENSE_CACHE_TTL_MS = 60 * 60 * 1000;
 
 // Revalidation threshold for subscriptions (24 hours)
@@ -132,77 +121,30 @@ export class LicenseService implements OnModuleInit {
 	 */
 	async hasFeature(feature: LicenseFeature): Promise<boolean> {
 		const state = await this.getLicenseState();
-		return state.features.includes(feature);
+		return hasFeature(state.tier, feature);
 	}
 
 	/**
-	 * Check if current tier matches or exceeds required tier
+	 * Check if current tier is Enterprise
 	 */
-	async hasTier(requiredTier: LicenseTierType): Promise<boolean> {
+	async isEnterprise(): Promise<boolean> {
 		const state = await this.getLicenseState();
-		return this.tierMeetsRequirement(state.tier, requiredTier);
+		return state.tier === LICENSE_TIERS.ENTERPRISE;
 	}
 
 	/**
-	 * Check quota availability for a given quota key
+	 * Check if running Community Edition
 	 */
-	async checkQuota(
-		quotaKey: LicenseQuota,
-		currentUsage: number,
-	): Promise<QuotaCheckResult> {
+	async isCommunity(): Promise<boolean> {
 		const state = await this.getLicenseState();
-		const limit = state.quotas[quotaKey] ?? 0;
-
-		// Unlimited quota (-1)
-		if (limit === UNLIMITED_QUOTA) {
-			return {
-				allowed: true,
-				current: currentUsage,
-				limit: -1,
-				remaining: -1,
-			};
-		}
-
-		const remaining = Math.max(0, limit - currentUsage);
-		const allowed = currentUsage < limit;
-
-		return {
-			allowed,
-			current: currentUsage,
-			limit,
-			remaining,
-			reason: allowed
-				? undefined
-				: `Quota exceeded: ${currentUsage}/${limit} for ${quotaKey}`,
-		};
+		return state.tier === LICENSE_TIERS.COMMUNITY;
 	}
 
 	/**
-	 * Check if write operations are allowed
-	 * (Subscription licenses in read-only mode after expiry)
-	 */
-	async canWrite(): Promise<{ allowed: boolean; reason?: string }> {
-		const state = await this.getLicenseState();
-
-		if (state.isReadOnly) {
-			return {
-				allowed: false,
-				reason:
-					"License expired. Please renew your subscription to create new investigations.",
-			};
-		}
-
-		return { allowed: true };
-	}
-
-	/**
-	 * Activate a license key
+	 * Activate an Enterprise license key
 	 */
 	async activateLicense(licenseKey: string): Promise<ActivateLicenseResult> {
 		try {
-			// For now, we'll store the license key and mark as needing validation
-			// In production, this would call the Keygen.sh API to validate
-
 			// Check if license already exists
 			const existing = await this.getLicenseFromDb();
 
@@ -213,7 +155,7 @@ export class LicenseService implements OnModuleInit {
 				};
 			}
 
-			// Validate with license server (stub for now)
+			// Validate with license server
 			const validationResult = await this.validateWithLicenseServer(licenseKey);
 
 			if (!validationResult.isValid) {
@@ -226,11 +168,10 @@ export class LicenseService implements OnModuleInit {
 			// Store license in database
 			await this.storeLicense({
 				licenseKey,
-				licenseType: validationResult.licenseType,
-				tier: validationResult.tier,
+				licenseType: LICENSE_TYPES.SUBSCRIPTION,
+				tier: LICENSE_TIERS.ENTERPRISE,
 				validUntil: validationResult.validUntil,
-				features: validationResult.features,
-				quotas: validationResult.quotas,
+				features: TIER_CONFIGS[LICENSE_TIERS.ENTERPRISE].features,
 				customerEmail: validationResult.customerEmail,
 				customerName: validationResult.customerName,
 			});
@@ -238,9 +179,7 @@ export class LicenseService implements OnModuleInit {
 			// Refresh cache
 			const newState = await this.getLicenseState(true);
 
-			this.logger.log(
-				`License activated: ${validationResult.tier} (${validationResult.licenseType})`,
-			);
+			this.logger.log("Enterprise license activated");
 
 			return {
 				success: true,
@@ -256,7 +195,7 @@ export class LicenseService implements OnModuleInit {
 	}
 
 	/**
-	 * Deactivate current license (revert to free tier)
+	 * Deactivate current license (revert to Community Edition)
 	 */
 	async deactivateLicense(): Promise<void> {
 		const existing = await this.getLicenseFromDb();
@@ -271,27 +210,22 @@ export class LicenseService implements OnModuleInit {
 		this.cachedLicenseState = null;
 		this.cacheTimestamp = 0;
 
-		this.logger.log("License deactivated, reverted to free tier");
+		this.logger.log("License deactivated, reverted to Community Edition");
 	}
 
 	/**
 	 * Get license state for internal API (worker consumption)
-	 * Returns a simplified, serializable format
 	 */
 	async getLicenseStateForWorker(): Promise<{
 		tier: string;
 		features: string[];
-		quotas: Record<string, number>;
 		isValid: boolean;
-		isReadOnly: boolean;
 	}> {
 		const state = await this.getLicenseState();
 		return {
 			tier: state.tier,
 			features: state.features,
-			quotas: state.quotas,
 			isValid: state.isValid,
-			isReadOnly: state.isReadOnly,
 		};
 	}
 
@@ -305,27 +239,19 @@ export class LicenseService implements OnModuleInit {
 	private async validateLicense(): Promise<LicenseState> {
 		const license = await this.getLicenseFromDb();
 
-		// No license or "none" type → free tier
+		// No license → Community Edition
 		if (!license || license.licenseType === LICENSE_TYPES.NONE) {
-			return this.getFreeTierDefaults();
+			return this.getCommunityDefaults();
 		}
 
-		// Perpetual license: validate once, trust forever
-		if (license.licenseType === LICENSE_TYPES.PERPETUAL) {
-			// If never validated, validate now (first activation)
-			if (license.activatedAt && !license.lastValidated) {
-				await this.revalidateWithServer(license);
-			}
-			return this.buildLicenseState(license, false);
-		}
-
-		// Subscription license: check expiry and periodic validation
+		// Subscription license: check expiry
 		if (license.licenseType === LICENSE_TYPES.SUBSCRIPTION) {
 			const isExpired = this.isLicenseExpired(license);
 
-			// If expired, return read-only state
+			// If expired, revert to Community Edition
 			if (isExpired) {
-				return this.buildLicenseState(license, true);
+				this.logger.warn("Enterprise license expired, reverting to Community");
+				return this.getCommunityDefaults();
 			}
 
 			// Check if revalidation needed
@@ -333,11 +259,11 @@ export class LicenseService implements OnModuleInit {
 				await this.revalidateWithServer(license);
 			}
 
-			return this.buildLicenseState(license, false);
+			return this.buildLicenseState(license);
 		}
 
-		// Unknown license type → free tier
-		return this.getFreeTierDefaults();
+		// Unknown license type → Community Edition
+		return this.getCommunityDefaults();
 	}
 
 	/**
@@ -345,7 +271,6 @@ export class LicenseService implements OnModuleInit {
 	 */
 	private async getLicenseFromDb(): Promise<LicenseInfoRecord | null> {
 		try {
-			// Get first (and only) license record
 			const license = await (this.prisma as any).licenseInfo.findFirst();
 			return license as LicenseInfoRecord | null;
 		} catch (error) {
@@ -364,7 +289,6 @@ export class LicenseService implements OnModuleInit {
 		tier: string;
 		validUntil: Date | null;
 		features: LicenseFeature[];
-		quotas: Record<string, number>;
 		customerEmail?: string;
 		customerName?: string;
 	}): Promise<void> {
@@ -378,7 +302,7 @@ export class LicenseService implements OnModuleInit {
 			activatedAt: new Date(),
 			lastValidated: new Date(),
 			features: JSON.stringify(data.features),
-			quotas: JSON.stringify(data.quotas),
+			quotas: JSON.stringify({}), // No quotas in simplified model
 			customerEmail: data.customerEmail,
 			customerName: data.customerName,
 		};
@@ -398,17 +322,10 @@ export class LicenseService implements OnModuleInit {
 	/**
 	 * Build license state from database record
 	 */
-	private buildLicenseState(
-		license: LicenseInfoRecord,
-		isReadOnly: boolean,
-	): LicenseState {
+	private buildLicenseState(license: LicenseInfoRecord): LicenseState {
 		const features = this.parseJsonField<LicenseFeature[]>(
 			license.features,
 			[],
-		);
-		const quotas = this.parseJsonField<Record<string, number>>(
-			license.quotas,
-			{},
 		);
 
 		return {
@@ -416,32 +333,24 @@ export class LicenseService implements OnModuleInit {
 			licenseType: license.licenseType as LicenseTypeValue,
 			tier: license.tier as LicenseTierType,
 			features,
-			quotas,
 			expiresAt: license.validUntil,
-			isExpired:
-				license.licenseType === LICENSE_TYPES.SUBSCRIPTION &&
-				this.isLicenseExpired(license),
-			isReadOnly,
+			isExpired: this.isLicenseExpired(license),
 			customerEmail: license.customerEmail ?? undefined,
 			customerName: license.customerName ?? undefined,
 		};
 	}
 
 	/**
-	 * Get default free tier state
+	 * Get default Community Edition state
 	 */
-	private getFreeTierDefaults(): LicenseState {
-		const config = DEFAULT_TIER_CONFIGS[LICENSE_TIERS.FREE];
-
+	private getCommunityDefaults(): LicenseState {
 		return {
 			isValid: true,
 			licenseType: LICENSE_TYPES.NONE,
-			tier: LICENSE_TIERS.FREE,
-			features: config.features,
-			quotas: config.quotas,
+			tier: LICENSE_TIERS.COMMUNITY,
+			features: [], // Community has core features, not enterprise features
 			expiresAt: null,
 			isExpired: false,
-			isReadOnly: false,
 		};
 	}
 
@@ -466,7 +375,7 @@ export class LicenseService implements OnModuleInit {
 	}
 
 	/**
-	 * Revalidate license with Keygen.sh server
+	 * Revalidate license with server
 	 */
 	private async revalidateWithServer(
 		license: LicenseInfoRecord,
@@ -477,13 +386,10 @@ export class LicenseService implements OnModuleInit {
 			const result = await this.validateWithLicenseServer(license.licenseKey);
 
 			if (result.isValid) {
-				// Update last validated timestamp
 				await (this.prisma as any).licenseInfo.update({
 					where: { id: license.id },
 					data: {
 						lastValidated: new Date(),
-						features: JSON.stringify(result.features),
-						quotas: JSON.stringify(result.quotas),
 						validUntil: result.validUntil,
 					},
 				});
@@ -499,70 +405,37 @@ export class LicenseService implements OnModuleInit {
 	}
 
 	/**
-	 * Validate license key with Keygen.sh server
-	 * TODO: Implement actual Keygen.sh API call
+	 * Validate license key with server
+	 * TODO: Implement actual license server API call
 	 */
 	private async validateWithLicenseServer(licenseKey: string): Promise<{
 		isValid: boolean;
 		error?: string;
-		licenseType: LicenseTypeValue;
-		tier: LicenseTierType;
 		validUntil: Date | null;
-		features: LicenseFeature[];
-		quotas: Record<string, number>;
 		customerEmail?: string;
 		customerName?: string;
 	}> {
-		// STUB: For now, accept any key starting with "PL-" as Free+License
-		// This will be replaced with actual Keygen.sh API integration
+		// STUB: For now, accept any key starting with "PL-ENT-" as Enterprise
+		// This will be replaced with actual license server integration
 
-		if (!licenseKey || !licenseKey.startsWith("PL-")) {
+		if (!licenseKey || !licenseKey.startsWith("PL-ENT-")) {
 			return {
 				isValid: false,
-				error: "Invalid license key format",
-				licenseType: LICENSE_TYPES.NONE,
-				tier: LICENSE_TIERS.FREE,
+				error: "Invalid license key format. Enterprise keys start with PL-ENT-",
 				validUntil: null,
-				features: [],
-				quotas: {},
 			};
 		}
 
-		// Simulate Free+License tier (perpetual)
-		const config = DEFAULT_TIER_CONFIGS[LICENSE_TIERS.FREE_PLUS];
+		// Simulate Enterprise license (1 year validity)
+		const validUntil = new Date();
+		validUntil.setFullYear(validUntil.getFullYear() + 1);
 
 		return {
 			isValid: true,
-			licenseType: LICENSE_TYPES.PERPETUAL,
-			tier: LICENSE_TIERS.FREE_PLUS,
-			validUntil: null, // Perpetual never expires
-			features: config.features,
-			quotas: config.quotas,
-			customerEmail: "user@example.com",
-			customerName: "License User",
+			validUntil,
+			customerEmail: "enterprise@example.com",
+			customerName: "Enterprise Customer",
 		};
-	}
-
-	/**
-	 * Check if a tier meets or exceeds a requirement
-	 */
-	private tierMeetsRequirement(
-		currentTier: LicenseTierType,
-		requiredTier: LicenseTierType,
-	): boolean {
-		const tierOrder: LicenseTierType[] = [
-			LICENSE_TIERS.FREE,
-			LICENSE_TIERS.FREE_PLUS,
-			LICENSE_TIERS.BEGINNER,
-			LICENSE_TIERS.TEAM,
-			LICENSE_TIERS.BUSINESS,
-			LICENSE_TIERS.ENTERPRISE,
-		];
-
-		const currentIndex = tierOrder.indexOf(currentTier);
-		const requiredIndex = tierOrder.indexOf(requiredTier);
-
-		return currentIndex >= requiredIndex;
 	}
 
 	/**

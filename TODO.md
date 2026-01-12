@@ -57,4 +57,43 @@ This file tracks technical debt and improvements that are deferred for later imp
 -
 ---
 
-Last updated: 2026-01-01
+## Post-Architecture Tasks
+
+These tasks are deferred until the core architecture is stable.
+
+### CRUD Migration to TanStack Server Functions
+- [ ] Migrate UI CRUD operations to TanStack Server Functions
+  - User settings CRUD
+  - Dashboard layout preferences
+  - Search/filter state persistence
+
+### oRPC Integration
+- [ ] Set up oRPC integration between frontend and API
+  - Type-safe API calls from frontend
+  - Shared contract definitions
+
+### Real-time Features
+- [ ] Add WebSocket support through Caddy
+  - Real-time alert notifications
+  - Investigation status updates
+
+### Kubernetes Deployment
+- [ ] Create Kubernetes manifests
+  - Ingress resource for path-based routing
+  - Service definitions for frontend/api
+  - ConfigMap for environment variables
+  - Secrets for sensitive data
+
+### Shell Scripts & CLI
+- [ ] Refine deploy/install.sh
+  - Interactive prompts for domain and LLM key
+  - Support for different deployment modes (local, SSL, self-signed)
+- [ ] Refine deploy/prismalens.sh wrapper
+  - start, stop, logs, upgrade commands
+  - Docker Compose management
+- [ ] Extend packages/prismalens CLI for Docker deployments
+  - `prismalens docker start`
+  - `prismalens docker stop`
+  - `prismalens docker logs`
+
+Last updated: 2026-01-11(YYYY-MM-DD)

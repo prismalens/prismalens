@@ -1,22 +1,22 @@
 /**
  * License Constants
  *
- * Defines feature flags, quota keys, and default values for each license tier.
- * These constants are shared with the Python worker via mirrored definitions.
+ * Defines feature flags and default values for Community and Enterprise editions.
+ *
+ * PHILOSOPHY:
+ * - Community Edition: Honest, unlimited. No fake quotas or artificial limits.
+ *   Like GitLab CE - run your own instance, no restrictions.
+ * - Enterprise Edition: SSO, audit logs, multi-tenancy, premium support.
+ *   Feature-based differentiation, not quota-based.
  */
 
 // =============================================================================
-// LICENSE FEATURES
+// LICENSE FEATURES (Enterprise-only)
 // =============================================================================
-// Feature flags that can be enabled/disabled per license tier.
-// Format: "feat:{feature_name}"
+// Features that are only available in Enterprise Edition.
+// Community Edition has all core features, unlimited.
 
 export const LICENSE_FEATURES = {
-	// Extended agent capabilities
-	EXTENDED_AGENTS: "feat:extended_agents",
-	EXTENDED_TOOLS: "feat:extended_tools",
-	CUSTOM_AGENT_PROMPTS: "feat:custom_agent_prompts",
-
 	// Authentication (Enterprise)
 	SSO_SAML: "feat:sso_saml",
 	SSO_LDAP: "feat:sso_ldap",
@@ -25,13 +25,15 @@ export const LICENSE_FEATURES = {
 	// Multi-tenancy (Enterprise)
 	MULTI_TENANCY: "feat:multi_tenancy",
 
-	// Advanced features
-	CODE_INDEXING: "feat:code_indexing",
+	// Compliance (Enterprise)
 	AUDIT_LOGS: "feat:audit_logs",
+
+	// Advanced features (Enterprise)
+	CODE_INDEXING: "feat:code_indexing",
 	ADVANCED_CORRELATION: "feat:advanced_correlation",
 	CUSTOM_INTEGRATIONS: "feat:custom_integrations",
 
-	// Premium integrations
+	// Premium integrations (Enterprise)
 	INTEGRATION_PAGERDUTY: "feat:integration_pagerduty",
 	INTEGRATION_DATADOG: "feat:integration_datadog",
 	INTEGRATION_SPLUNK: "feat:integration_splunk",
@@ -41,41 +43,14 @@ export type LicenseFeature =
 	(typeof LICENSE_FEATURES)[keyof typeof LICENSE_FEATURES];
 
 // =============================================================================
-// LICENSE QUOTAS
-// =============================================================================
-// Numeric limits that can be set per license tier.
-// Format: "quota:{quota_name}"
-
-export const LICENSE_QUOTAS = {
-	// Investigation limits
-	MAX_INVESTIGATIONS_MONTHLY: "quota:investigations_monthly",
-	MAX_CONCURRENT_INVESTIGATIONS: "quota:concurrent_investigations",
-
-	// Resource limits
-	MAX_SERVICES: "quota:services",
-	MAX_USERS: "quota:users",
-	MAX_INTEGRATIONS: "quota:integrations",
-
-	// Data retention
-	MAX_RETENTION_DAYS: "quota:retention_days",
-	MAX_TIMELINE_ENTRIES: "quota:timeline_entries",
-
-	// Seat-based (for Team tier)
-	SEATS: "quota:seats",
-} as const;
-
-export type LicenseQuota = (typeof LICENSE_QUOTAS)[keyof typeof LICENSE_QUOTAS];
-
-// =============================================================================
 // LICENSE TIERS
 // =============================================================================
+// Simplified two-tier model:
+// - COMMUNITY: Self-hosted, open-source, unlimited
+// - ENTERPRISE: SSO, audit logs, multi-tenancy, premium support
 
 export const LICENSE_TIERS = {
-	FREE: "free",
-	FREE_PLUS: "free_plus",
-	BEGINNER: "beginner",
-	TEAM: "team",
-	BUSINESS: "business",
+	COMMUNITY: "community",
 	ENTERPRISE: "enterprise",
 } as const;
 
@@ -87,147 +62,83 @@ export type LicenseTierType =
 // =============================================================================
 
 export const LICENSE_TYPES = {
-	NONE: "none",
-	PERPETUAL: "perpetual",
-	SUBSCRIPTION: "subscription",
+	NONE: "none", // Community Edition (no license key needed)
+	SUBSCRIPTION: "subscription", // Enterprise Edition
 } as const;
 
 export type LicenseTypeValue =
 	(typeof LICENSE_TYPES)[keyof typeof LICENSE_TYPES];
 
 // =============================================================================
-// DEFAULT TIER CONFIGURATIONS
+// TIER CONFIGURATIONS
 // =============================================================================
-// Default features and quotas for each tier.
-// When a license is activated, these are populated from the license server.
-// These serve as fallbacks if the license server is unavailable.
 
 export interface TierConfig {
 	features: LicenseFeature[];
-	quotas: Record<string, number>;
+	description: string;
 }
 
-export const DEFAULT_TIER_CONFIGS: Record<LicenseTierType, TierConfig> = {
-	[LICENSE_TIERS.FREE]: {
+export const TIER_CONFIGS: Record<LicenseTierType, TierConfig> = {
+	[LICENSE_TIERS.COMMUNITY]: {
 		features: [],
-		quotas: {
-			[LICENSE_QUOTAS.MAX_INVESTIGATIONS_MONTHLY]: 50,
-			[LICENSE_QUOTAS.MAX_CONCURRENT_INVESTIGATIONS]: 2,
-			[LICENSE_QUOTAS.MAX_SERVICES]: 5,
-			[LICENSE_QUOTAS.MAX_USERS]: 3,
-			[LICENSE_QUOTAS.MAX_INTEGRATIONS]: 3,
-			[LICENSE_QUOTAS.MAX_RETENTION_DAYS]: 7,
-			[LICENSE_QUOTAS.MAX_TIMELINE_ENTRIES]: 100,
-		},
-	},
-
-	[LICENSE_TIERS.FREE_PLUS]: {
-		features: [
-			LICENSE_FEATURES.EXTENDED_AGENTS,
-			LICENSE_FEATURES.EXTENDED_TOOLS,
-		],
-		quotas: {
-			[LICENSE_QUOTAS.MAX_INVESTIGATIONS_MONTHLY]: 500,
-			[LICENSE_QUOTAS.MAX_CONCURRENT_INVESTIGATIONS]: 10,
-			[LICENSE_QUOTAS.MAX_SERVICES]: 25,
-			[LICENSE_QUOTAS.MAX_USERS]: 10,
-			[LICENSE_QUOTAS.MAX_INTEGRATIONS]: 10,
-			[LICENSE_QUOTAS.MAX_RETENTION_DAYS]: 30,
-			[LICENSE_QUOTAS.MAX_TIMELINE_ENTRIES]: 1000,
-		},
-	},
-
-	[LICENSE_TIERS.BEGINNER]: {
-		// Same as Free+License but cloud-hosted
-		features: [
-			LICENSE_FEATURES.EXTENDED_AGENTS,
-			LICENSE_FEATURES.EXTENDED_TOOLS,
-		],
-		quotas: {
-			[LICENSE_QUOTAS.MAX_INVESTIGATIONS_MONTHLY]: 500,
-			[LICENSE_QUOTAS.MAX_CONCURRENT_INVESTIGATIONS]: 10,
-			[LICENSE_QUOTAS.MAX_SERVICES]: 25,
-			[LICENSE_QUOTAS.MAX_USERS]: 10,
-			[LICENSE_QUOTAS.MAX_INTEGRATIONS]: 10,
-			[LICENSE_QUOTAS.MAX_RETENTION_DAYS]: 30,
-			[LICENSE_QUOTAS.MAX_TIMELINE_ENTRIES]: 1000,
-		},
-	},
-
-	[LICENSE_TIERS.TEAM]: {
-		features: [
-			LICENSE_FEATURES.EXTENDED_AGENTS,
-			LICENSE_FEATURES.EXTENDED_TOOLS,
-			LICENSE_FEATURES.CUSTOM_AGENT_PROMPTS,
-		],
-		quotas: {
-			[LICENSE_QUOTAS.MAX_INVESTIGATIONS_MONTHLY]: 2000,
-			[LICENSE_QUOTAS.MAX_CONCURRENT_INVESTIGATIONS]: 25,
-			[LICENSE_QUOTAS.MAX_SERVICES]: 100,
-			[LICENSE_QUOTAS.MAX_USERS]: -1, // Seat-based, use SEATS quota
-			[LICENSE_QUOTAS.SEATS]: 10, // Default seats
-			[LICENSE_QUOTAS.MAX_INTEGRATIONS]: 25,
-			[LICENSE_QUOTAS.MAX_RETENTION_DAYS]: 90,
-			[LICENSE_QUOTAS.MAX_TIMELINE_ENTRIES]: 10000,
-		},
-	},
-
-	[LICENSE_TIERS.BUSINESS]: {
-		features: [
-			LICENSE_FEATURES.EXTENDED_AGENTS,
-			LICENSE_FEATURES.EXTENDED_TOOLS,
-			LICENSE_FEATURES.CUSTOM_AGENT_PROMPTS,
-			LICENSE_FEATURES.SSO_SAML,
-			LICENSE_FEATURES.SSO_LDAP,
-			LICENSE_FEATURES.SSO_OIDC,
-			LICENSE_FEATURES.AUDIT_LOGS,
-			LICENSE_FEATURES.ADVANCED_CORRELATION,
-			LICENSE_FEATURES.INTEGRATION_PAGERDUTY,
-			LICENSE_FEATURES.INTEGRATION_DATADOG,
-		],
-		quotas: {
-			[LICENSE_QUOTAS.MAX_INVESTIGATIONS_MONTHLY]: 10000,
-			[LICENSE_QUOTAS.MAX_CONCURRENT_INVESTIGATIONS]: 50,
-			[LICENSE_QUOTAS.MAX_SERVICES]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_USERS]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_INTEGRATIONS]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_RETENTION_DAYS]: 365,
-			[LICENSE_QUOTAS.MAX_TIMELINE_ENTRIES]: -1, // Unlimited
-		},
+		description:
+			"Open-source, self-hosted. Unlimited users, services, integrations, and investigations. No artificial limits.",
 	},
 
 	[LICENSE_TIERS.ENTERPRISE]: {
 		features: [
-			LICENSE_FEATURES.EXTENDED_AGENTS,
-			LICENSE_FEATURES.EXTENDED_TOOLS,
-			LICENSE_FEATURES.CUSTOM_AGENT_PROMPTS,
 			LICENSE_FEATURES.SSO_SAML,
 			LICENSE_FEATURES.SSO_LDAP,
 			LICENSE_FEATURES.SSO_OIDC,
 			LICENSE_FEATURES.MULTI_TENANCY,
-			LICENSE_FEATURES.CODE_INDEXING,
 			LICENSE_FEATURES.AUDIT_LOGS,
+			LICENSE_FEATURES.CODE_INDEXING,
 			LICENSE_FEATURES.ADVANCED_CORRELATION,
 			LICENSE_FEATURES.CUSTOM_INTEGRATIONS,
 			LICENSE_FEATURES.INTEGRATION_PAGERDUTY,
 			LICENSE_FEATURES.INTEGRATION_DATADOG,
 			LICENSE_FEATURES.INTEGRATION_SPLUNK,
 		],
-		quotas: {
-			[LICENSE_QUOTAS.MAX_INVESTIGATIONS_MONTHLY]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_CONCURRENT_INVESTIGATIONS]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_SERVICES]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_USERS]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_INTEGRATIONS]: -1, // Unlimited
-			[LICENSE_QUOTAS.MAX_RETENTION_DAYS]: -1, // Custom
-			[LICENSE_QUOTAS.MAX_TIMELINE_ENTRIES]: -1, // Unlimited
-		},
+		description:
+			"Enterprise features: SSO, audit logs, multi-tenancy, premium integrations, and priority support.",
 	},
 };
 
 // =============================================================================
-// UNLIMITED QUOTA MARKER
+// HELPER FUNCTIONS
 // =============================================================================
-// -1 means unlimited for quota checks
 
-export const UNLIMITED_QUOTA = -1;
+/**
+ * Check if a feature is available for a given tier
+ */
+export function hasFeature(
+	tier: LicenseTierType,
+	feature: LicenseFeature,
+): boolean {
+	// Enterprise has all features
+	if (tier === LICENSE_TIERS.ENTERPRISE) {
+		return true;
+	}
+
+	// Community has core features (not in LICENSE_FEATURES)
+	// Enterprise-only features are explicitly listed in LICENSE_FEATURES
+	return !Object.values(LICENSE_FEATURES).includes(feature);
+}
+
+/**
+ * Check if running Community Edition (no license key)
+ */
+export function isCommunityEdition(licenseType: LicenseTypeValue): boolean {
+	return licenseType === LICENSE_TYPES.NONE;
+}
+
+/**
+ * Get the current tier based on license type
+ */
+export function getTierFromLicenseType(
+	licenseType: LicenseTypeValue,
+): LicenseTierType {
+	return licenseType === LICENSE_TYPES.SUBSCRIPTION
+		? LICENSE_TIERS.ENTERPRISE
+		: LICENSE_TIERS.COMMUNITY;
+}

@@ -2,15 +2,16 @@
  * License Decorators
  *
  * Route decorators for declaring license requirements.
+ * Simplified for Community/Enterprise model.
  */
 
 import { applyDecorators, SetMetadata, UseGuards } from "@nestjs/common";
+import { LICENSE_TIERS } from "./license.constants.js";
 import type { LicenseFeature, LicenseTierType } from "./license.constants.js";
 import {
 	LicenseFeatureGuard,
 	LicenseGuard,
 	LicenseTierGuard,
-	LicenseWriteGuard,
 } from "./license.guard.js";
 
 // =============================================================================
@@ -19,7 +20,6 @@ import {
 
 export const REQUIRES_FEATURE_KEY = "license:requires_feature";
 export const REQUIRES_TIER_KEY = "license:requires_tier";
-export const REQUIRES_WRITE_ACCESS_KEY = "license:requires_write_access";
 
 // =============================================================================
 // DECORATORS
@@ -27,6 +27,7 @@ export const REQUIRES_WRITE_ACCESS_KEY = "license:requires_write_access";
 
 /**
  * Require a specific license feature to access this route.
+ * Enterprise-only features are defined in LICENSE_FEATURES.
  *
  * @example
  * ```ts
@@ -43,12 +44,13 @@ export const RequiresFeature = (feature: LicenseFeature) =>
 
 /**
  * Require a minimum license tier to access this route.
+ * In the simplified model, only ENTERPRISE tier requires a license.
  *
  * @example
  * ```ts
- * @RequiresTier(LICENSE_TIERS.TEAM)
- * @Get('collaboration/settings')
- * getCollaborationSettings() { ... }
+ * @RequiresTier(LICENSE_TIERS.ENTERPRISE)
+ * @Get('audit-logs')
+ * getAuditLogs() { ... }
  * ```
  */
 export const RequiresTier = (tier: LicenseTierType) =>
@@ -58,24 +60,7 @@ export const RequiresTier = (tier: LicenseTierType) =>
 	);
 
 /**
- * Mark a route as requiring write access.
- * Write access is blocked when a subscription license is expired.
- *
- * @example
- * ```ts
- * @RequiresWriteAccess()
- * @Post('investigations')
- * createInvestigation() { ... }
- * ```
- */
-export const RequiresWriteAccess = () =>
-	applyDecorators(
-		SetMetadata(REQUIRES_WRITE_ACCESS_KEY, true),
-		UseGuards(LicenseWriteGuard),
-	);
-
-/**
- * Apply all license checks: feature, tier, and write access.
+ * Apply all license checks: feature and tier.
  * Useful when you need multiple requirements on a single route.
  *
  * @example
@@ -83,7 +68,6 @@ export const RequiresWriteAccess = () =>
  * @RequiresLicense({
  *   feature: LICENSE_FEATURES.MULTI_TENANCY,
  *   tier: LICENSE_TIERS.ENTERPRISE,
- *   writeAccess: true,
  * })
  * @Post('tenants')
  * createTenant() { ... }
@@ -92,7 +76,6 @@ export const RequiresWriteAccess = () =>
 export const RequiresLicense = (options: {
 	feature?: LicenseFeature;
 	tier?: LicenseTierType;
-	writeAccess?: boolean;
 }) => {
 	const decorators: Array<
 		ClassDecorator | MethodDecorator | PropertyDecorator
@@ -106,10 +89,6 @@ export const RequiresLicense = (options: {
 		decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
 	}
 
-	if (options.writeAccess) {
-		decorators.push(SetMetadata(REQUIRES_WRITE_ACCESS_KEY, true));
-	}
-
 	// Use the combined guard
 	decorators.push(UseGuards(LicenseGuard));
 
@@ -117,14 +96,14 @@ export const RequiresLicense = (options: {
 };
 
 /**
- * Mark a route as a paid feature (requires any non-free tier).
- * Convenience decorator for routes that require a license but not a specific feature.
+ * Mark a route as requiring Enterprise license.
+ * Convenience decorator for Enterprise-only routes.
  *
  * @example
  * ```ts
  * @PaidFeature()
- * @Get('analytics/advanced')
- * getAdvancedAnalytics() { ... }
+ * @Get('audit-logs')
+ * getAuditLogs() { ... }
  * ```
  */
-export const PaidFeature = () => RequiresTier("free_plus" as LicenseTierType);
+export const PaidFeature = () => RequiresTier(LICENSE_TIERS.ENTERPRISE);

@@ -1,0 +1,41 @@
+{
+	"name": "@prismalens/auth",
+	"version": "0.1.0",
+	"description": "Authentication configuration and client for PrismaLens using Better Auth",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./client": {
+			"types": "./dist/client.d.ts",
+			"import": "./dist/client.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"better-auth": "^1.4.10"
+	},
+	"peerDependencies": {
+		"@prismalens/database": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.0",
+		"typescript": "^5.7.0"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"files": [
+		"dist",
+		"src"
+	]
+}

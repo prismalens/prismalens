@@ -1,0 +1,65 @@
+# PrismaLens Docker Compose - Production with SSL (Let's Encrypt)
+# Usage: DOMAIN=your-domain.com docker compose -f docker-compose.ssl.yml up -d
+# Access: https://your-domain.com
+
+services:
+  # Caddy reverse proxy with automatic SSL
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"      # Required for ACME challenge
+      - "443:443"    # HTTPS
+      - "5367:5367"  # Legacy/fallback port
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./docker/caddy/Caddyfile.ssl:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # SSL certificates stored here
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - api
+    restart: unless-stopped
+    networks:
+      - prismalens
+
+  # TanStack Start frontend (SSR)
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/images/frontend/Dockerfile
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    networks:
+      - prismalens
+
+  # NestJS API backend
+  api:
+    build:
+      context: .
+      dockerfile: docker/images/api/Dockerfile
+    expose:
+      - "3001"
+    environment:
+      - NODE_ENV=production
+      - PRISMALENS_PORT=3001
+      - PRISMALENS_HOST=0.0.0.0
+      - DATABASE_URL=${DATABASE_URL:-file:./prismalens.db}
+    volumes:
+      - prismalens_data:/app/data
+    restart: unless-stopped
+    networks:
+      - prismalens
+
+networks:
+  prismalens:
+    driver: bridge
+
+volumes:
+  prismalens_data:
+  caddy_data:      # Persistent SSL certificate storage
+  caddy_config:

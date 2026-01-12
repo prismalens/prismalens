@@ -9,8 +9,7 @@ export type { TimelineEntry };
 export type TimelineEntryWithUser = TimelineEntry & {
 	user?: {
 		id: string;
-		firstName: string | null;
-		lastName: string | null;
+		name: string | null;
 		email: string;
 	} | null;
 };
@@ -62,7 +61,7 @@ export class TimelineService {
 			},
 			include: {
 				user: {
-					select: { id: true, firstName: true, lastName: true, email: true },
+					select: { id: true, name: true, email: true },
 				},
 			},
 			orderBy: { occurredAt: "desc" },
@@ -79,7 +78,7 @@ export class TimelineService {
 			where: { id },
 			include: {
 				user: {
-					select: { id: true, firstName: true, lastName: true, email: true },
+					select: { id: true, name: true, email: true },
 				},
 			},
 		});

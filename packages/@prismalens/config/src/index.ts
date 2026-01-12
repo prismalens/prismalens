@@ -22,8 +22,13 @@ import {
 	queueSchema,
 } from "./schemas/index.js";
 import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
-// Import schemas
 import { buildDatabaseUrl } from "./utils/database-url.js";
+import {
+	generateEncryptionKey,
+	getEncryptionKeyPath,
+	getOrCreateEncryptionKey,
+	isValidEncryptionKey,
+} from "./utils/encryption-key.js";
 
 export * from "./env.js";
 // Re-export all schemas
@@ -31,6 +36,14 @@ export * from "./schemas/index.js";
 
 // Re-export app data utilities
 export { getAppDataDir, ensureAppDataDir };
+
+// Re-export encryption key utilities
+export {
+	generateEncryptionKey,
+	getEncryptionKeyPath,
+	getOrCreateEncryptionKey,
+	isValidEncryptionKey,
+};
 
 /**
  * Composed global configuration schema.
@@ -61,6 +74,14 @@ let _config: GlobalConfig | null = null;
  */
 export function getConfig(): GlobalConfig {
 	if (!_config) {
+		// Auto-generate encryption key if not set (following n8n's _FILE suffix pattern)
+		if (
+			!process.env.PRISMALENS_ENCRYPTION_KEY &&
+			!process.env.PRISMALENS_ENCRYPTION_KEY_FILE
+		) {
+			process.env.PRISMALENS_ENCRYPTION_KEY = getOrCreateEncryptionKey();
+		}
+
 		const result = baseConfigSchema
 			.omit({ PRISMALENS_DB_URL: true })
 			.safeParse(process.env);
