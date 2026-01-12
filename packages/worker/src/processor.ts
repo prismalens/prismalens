@@ -5,6 +5,8 @@ import {
 	InvestigationExecutor,
 	type InvestigationInput,
 } from "@prismalens/agents";
+import { Logger, enrichContext } from "@prismalens/logger";
+import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { Job } from "bullmq";
 import { api } from "./orpc-client.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
@@ -19,6 +21,9 @@ import type { InvestigationJobData, InvestigationResult } from "./types.js";
 // Create a singleton executor
 const executor = new InvestigationExecutor();
 
+// Create logger for processor
+const logger = new Logger({ context: "InvestigationProcessor" });
+
 /**
  * Process an investigation job from the queue.
  *
@@ -32,11 +37,39 @@ export async function processInvestigationJob(
 	job: Job<InvestigationJobData>,
 ): Promise<InvestigationResult> {
 	const { data } = job;
-	const logger = console;
 
-	logger.log(
-		`[Worker] Processing job ${job.id} for investigation ${data.investigationId}`,
+	// Wrap job processing in a wide event context
+	return runWithWideEvent(
+		`job-${job.id}`,
+		async () => processJobInternal(job, data),
+		{
+			context: {
+				job_id: job.id,
+				job_name: job.name,
+				investigation_id: data.investigationId,
+				incident_id: data.incidentId,
+			},
+		},
 	);
+}
+
+/**
+ * Internal job processing logic.
+ */
+async function processJobInternal(
+	job: Job<InvestigationJobData>,
+	data: InvestigationJobData,
+): Promise<InvestigationResult> {
+	logger.info(`Processing job ${job.id} for investigation ${data.investigationId}`);
+
+	// Enrich with job context
+	enrichContext({
+		context: {
+			alert_count: data.alerts?.length ?? 0,
+			integration_count: data.integrations?.length ?? 0,
+			priority: data.priority,
+		},
+	});
 
 	try {
 		// 1. Update status to running
@@ -100,14 +133,12 @@ export async function processInvestigationJob(
 			message: "Investigation complete",
 		});
 
-		logger.log(
-			`[Worker] Job ${job.id} completed. Status: ${result.success ? "success" : "failed"}`,
-		);
+		logger.info(`Job ${job.id} completed`, { success: result.success });
 
 		return result;
 	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		logger.error(`[Worker] Job failed: ${errorMessage}`);
+		logger.error(`Job failed: ${errorMessage}`, error);
 
 		// Update status to failed
 		try {
@@ -130,7 +161,7 @@ export async function processInvestigationJob(
 				},
 			});
 		} catch (e) {
-			logger.error(`[Worker] Failed to update failure status: ${e}`);
+			logger.error(`Failed to update failure status`, e);
 		}
 
 		throw error;

@@ -14,6 +14,8 @@ import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ServicesIndexRouteImport } from './routes/services/index'
 import { Route as InvestigationsIndexRouteImport } from './routes/investigations/index'
+import { Route as IncidentsIndexRouteImport } from './routes/incidents/index'
+import { Route as AlertsIndexRouteImport } from './routes/alerts/index'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as ServicesIdIndexRouteImport } from './routes/services/$id/index'
 import { Route as InvestigationsIdIndexRouteImport } from './routes/investigations/$id/index'
@@ -44,6 +46,16 @@ const InvestigationsIndexRoute = InvestigationsIndexRouteImport.update({
   path: '/investigations/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IncidentsIndexRoute = IncidentsIndexRouteImport.update({
+  id: '/incidents/',
+  path: '/incidents/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlertsIndexRoute = AlertsIndexRouteImport.update({
+  id: '/alerts/',
+  path: '/alerts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/auth/login',
   path: '/auth/login',
@@ -68,6 +80,8 @@ const IncidentsIdIndexRoute = IncidentsIdIndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth/login': typeof AuthLoginRoute
+  '/alerts': typeof AlertsIndexRoute
+  '/incidents': typeof IncidentsIndexRoute
   '/investigations': typeof InvestigationsIndexRoute
   '/services': typeof ServicesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -79,6 +93,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/login': typeof AuthLoginRoute
+  '/alerts': typeof AlertsIndexRoute
+  '/incidents': typeof IncidentsIndexRoute
   '/investigations': typeof InvestigationsIndexRoute
   '/services': typeof ServicesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -91,6 +107,8 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth/login': typeof AuthLoginRoute
+  '/alerts/': typeof AlertsIndexRoute
+  '/incidents/': typeof IncidentsIndexRoute
   '/investigations/': typeof InvestigationsIndexRoute
   '/services/': typeof ServicesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -104,6 +122,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth/login'
+    | '/alerts'
+    | '/incidents'
     | '/investigations'
     | '/services'
     | '/settings'
@@ -115,6 +135,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth/login'
+    | '/alerts'
+    | '/incidents'
     | '/investigations'
     | '/services'
     | '/settings'
@@ -126,6 +148,8 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth/login'
+    | '/alerts/'
+    | '/incidents/'
     | '/investigations/'
     | '/services/'
     | '/settings/'
@@ -138,6 +162,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthLoginRoute: typeof AuthLoginRoute
+  AlertsIndexRoute: typeof AlertsIndexRoute
+  IncidentsIndexRoute: typeof IncidentsIndexRoute
   InvestigationsIndexRoute: typeof InvestigationsIndexRoute
   ServicesIndexRoute: typeof ServicesIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -184,6 +210,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvestigationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/incidents/': {
+      id: '/incidents/'
+      path: '/incidents'
+      fullPath: '/incidents'
+      preLoaderRoute: typeof IncidentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alerts/': {
+      id: '/alerts/'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AlertsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/login': {
       id: '/auth/login'
       path: '/auth/login'
@@ -218,6 +258,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthLoginRoute: AuthLoginRoute,
+  AlertsIndexRoute: AlertsIndexRoute,
+  IncidentsIndexRoute: IncidentsIndexRoute,
   InvestigationsIndexRoute: InvestigationsIndexRoute,
   ServicesIndexRoute: ServicesIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,

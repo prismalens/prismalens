@@ -1,9 +1,17 @@
-import { Logger, ValidationPipe } from "@nestjs/common";
+import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config/dist/index.js";
 import { NestFactory } from "@nestjs/core";
 import { getConfig } from "@prismalens/config";
+import { Logger } from "@prismalens/logger";
 import * as fs from "fs";
 import { AppModule } from "./app.module.js";
+
+// Set service info for all loggers
+Logger.setServiceInfo({
+	name: "prismalens-api",
+	version: "0.1.0",
+	environment: process.env.NODE_ENV ?? "development",
+});
 
 async function bootstrap() {
 	/**
@@ -19,7 +27,7 @@ async function bootstrap() {
 		process.exit(1);
 	}
 
-	const logger = new Logger("Bootstrap");
+	const logger = new Logger({ context: "Bootstrap" });
 
 	// Create an initial context to read config before creating the full app (optional pattern)
 	// or just use process.env here if we want to bootstrap create method options.
@@ -93,7 +101,7 @@ async function bootstrap() {
 		allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 	});
 
-	logger.log(`CORS enabled for origins: ${allowedOrigins.join(", ")}`);
+	logger.info(`CORS enabled for origins: ${allowedOrigins.join(", ")}`);
 
 	// Global validation pipe
 	app.useGlobalPipes(
@@ -118,10 +126,10 @@ async function bootstrap() {
 	await app.listen(port, host);
 
 	const protocolDisplay = httpsOptions ? "https" : "http";
-	logger.log(`PrismaLens API running on ${protocolDisplay}://${host}:${port}`);
-	logger.log(`Health check: ${protocolDisplay}://${host}:${port}/health`);
-	logger.log(`API endpoints: ${protocolDisplay}://${host}:${port}/api`);
-	logger.log(
+	logger.info(`PrismaLens API running on ${protocolDisplay}://${host}:${port}`);
+	logger.info(`Health check: ${protocolDisplay}://${host}:${port}/health`);
+	logger.info(`API endpoints: ${protocolDisplay}://${host}:${port}/api`);
+	logger.info(
 		`API documentation: ${protocolDisplay}://${host}:${port}/api/docs`,
 	);
 }

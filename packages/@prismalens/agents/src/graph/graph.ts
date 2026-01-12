@@ -1,5 +1,6 @@
 import { HumanMessage } from "@langchain/core/messages";
 import { END, START, StateGraph } from "@langchain/langgraph";
+import { Logger } from "@prismalens/logger";
 import { createCommanderFromState } from "../agents/commander/agent.js";
 import {
 	getStoredHypotheses,
@@ -19,6 +20,9 @@ import {
 	getInvocationConfig,
 } from "./persistence/checkpointer.js";
 
+// Create logger for the investigation graph
+const logger = new Logger({ context: "InvestigationGraph" });
+
 // =============================================================================
 // INVESTIGATION GRAPH
 // =============================================================================
@@ -36,9 +40,7 @@ import {
 async function validateAlerts(
 	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-	console.log(
-		`[validateAlerts] Validating ${state.alerts.length} alerts for investigation ${state.investigationId}`,
-	);
+	logger.info(`Validating ${state.alerts.length} alerts for investigation ${state.investigationId}`);
 
 	// Validate required fields
 	if (!state.investigationId) {
@@ -82,9 +84,7 @@ async function validateAlerts(
 	const avgQuality =
 		alertQualityScores.reduce((a, b) => a + b, 0) / alertQualityScores.length;
 
-	console.log(
-		`[validateAlerts] Alert quality score: ${avgQuality.toFixed(1)}%`,
-	);
+	logger.debug(`Alert quality score: ${avgQuality.toFixed(1)}%`);
 
 	return {
 		primaryAlert,
@@ -101,7 +101,7 @@ async function validateAlerts(
 async function runCommander(
 	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-	console.log(`[runCommander] Starting investigation ${state.investigationId}`);
+	logger.info(`Starting commander for investigation ${state.investigationId}`);
 
 	// Reset tool stores for fresh collection
 	resetHypothesisStore();
@@ -167,9 +167,10 @@ Investigate this incident following the standard workflow:
 		const summary =
 			typeof lastMessage?.content === "string" ? lastMessage.content : null;
 
-		console.log(
-			`[runCommander] Investigation complete. ${hypotheses.length} hypotheses, ${recommendations.length} recommendations`,
-		);
+		logger.info(`Commander complete`, {
+			hypotheses: hypotheses.length,
+			recommendations: recommendations.length,
+		});
 
 		return {
 			messages: result.messages,
@@ -183,12 +184,12 @@ Investigate this incident following the standard workflow:
 			agentProgression: { commander: true },
 			iterationCount: state.iterationCount + 1,
 		};
-	} catch (error: any) {
-		console.error(`[runCommander] Investigation failed:`, error);
+	} catch (error: unknown) {
+		logger.error(`Commander failed`, error);
 
 		return {
 			status: "failed",
-			error: error.message || "Commander failed unexpectedly",
+			error: error instanceof Error ? error.message : "Commander failed unexpectedly",
 			agentProgression: { commander: false },
 		};
 	}
@@ -201,9 +202,7 @@ Investigate this incident following the standard workflow:
 async function writeToApi(
 	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-	console.log(
-		`[writeToApi] Persisting results for investigation ${state.investigationId}`,
-	);
+	logger.debug(`Persisting results for investigation ${state.investigationId}`);
 
 	// In a real implementation, this would call the API to update:
 	// - Investigation status
@@ -228,9 +227,7 @@ async function writeToApi(
 		analysisMethod = "inconclusive_analysis";
 	}
 
-	console.log(
-		`[writeToApi] Final status: ${status}, confidence: ${bestHypothesis?.confidence || 0}%`,
-	);
+	logger.info(`Final status: ${status}`, { confidence: bestHypothesis?.confidence || 0 });
 
 	return {
 		status,
@@ -327,15 +324,11 @@ export async function runInvestigation(
 	const graph = await compileInvestigationGraph();
 	const config = getInvocationConfig(initialState.investigationId);
 
-	console.log(
-		`[runInvestigation] Starting investigation ${initialState.investigationId}`,
-	);
+	logger.info(`Starting investigation ${initialState.investigationId}`);
 
 	const result = await graph.invoke(initialState, config);
 
-	console.log(
-		`[runInvestigation] Investigation ${initialState.investigationId} completed with status: ${result.status}`,
-	);
+	logger.info(`Investigation ${initialState.investigationId} completed`, { status: result.status });
 
 	return result as InvestigationState;
 }
@@ -352,16 +345,12 @@ export async function resumeInvestigation(
 	const graph = await compileInvestigationGraph();
 	const config = getInvocationConfig(investigationId);
 
-	console.log(
-		`[resumeInvestigation] Resuming investigation ${investigationId}`,
-	);
+	logger.info(`Resuming investigation ${investigationId}`);
 
 	// Invoke with empty state - checkpointer will restore from last checkpoint
 	const result = await graph.invoke({}, config);
 
-	console.log(
-		`[resumeInvestigation] Investigation ${investigationId} resumed with status: ${result.status}`,
-	);
+	logger.info(`Investigation ${investigationId} resumed`, { status: result.status });
 
 	return result as InvestigationState;
 }

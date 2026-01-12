@@ -1,8 +1,30 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Activity, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+	Activity,
+	AlertCircle,
+	CheckCircle,
+	Clock,
+	RefreshCw,
+	Search,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+
+import type { WorkflowStatus } from "@prismalens/contracts";
+
+import { orpc } from "@/lib/api/orpc-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Table,
 	TableBody,
@@ -16,115 +38,253 @@ export const Route = createFileRoute("/investigations/")({
 	component: InvestigationsPage,
 });
 
+const workflowStatuses: { value: WorkflowStatus | "all"; label: string }[] = [
+	{ value: "all", label: "All Statuses" },
+	{ value: "pending", label: "Pending" },
+	{ value: "running", label: "Running" },
+	{ value: "completed", label: "Completed" },
+	{ value: "failed", label: "Failed" },
+];
+
 function InvestigationsPage() {
-	// Mock data - will be replaced with API calls
-	const investigations = [
-		{
-			id: "case_abc123",
-			alertName: "HTTP 500 Errors Spike",
-			service: "auth-service",
-			status: "completed",
-			confidence: 0.87,
-			startedAt: "2024-01-15T10:30:00Z",
-			completedAt: "2024-01-15T10:35:00Z",
-		},
-		{
-			id: "case_def456",
-			alertName: "High Memory Usage",
-			service: "todo-app-api",
-			status: "running",
-			confidence: null,
-			startedAt: "2024-01-15T10:40:00Z",
-			completedAt: null,
-		},
-		{
-			id: "case_ghi789",
-			alertName: "Database Connection Timeout",
-			service: "payment-gateway",
-			status: "completed",
-			confidence: 0.92,
-			startedAt: "2024-01-15T09:15:00Z",
-			completedAt: "2024-01-15T09:22:00Z",
-		},
-	];
+	const [statusFilter, setStatusFilter] = useState<WorkflowStatus | "all">(
+		"all",
+	);
+
+	// Build query params
+	const queryParams: { status?: WorkflowStatus; limit: number } = {
+		limit: 50,
+	};
+	if (statusFilter !== "all") {
+		queryParams.status = statusFilter;
+	}
+
+	// Fetch investigations
+	const {
+		data: investigations = [],
+		isLoading,
+		refetch,
+		isRefetching,
+	} = useQuery(orpc.investigations.list.queryOptions({ input: queryParams }));
+
+	const handleClearFilters = () => {
+		setStatusFilter("all");
+	};
+
+	const hasFilters = statusFilter !== "all";
+
+	// Calculate stats
+	const stats = {
+		total: investigations.length,
+		running: investigations.filter((i) => i.status === "running").length,
+		completed: investigations.filter((i) => i.status === "completed").length,
+		failed: investigations.filter((i) => i.status === "failed").length,
+	};
 
 	return (
-		<div className="px-4 py-6 sm:px-0">
-			<div className="flex justify-between items-center mb-8">
-				<h1 className="text-3xl font-bold text-foreground">Investigations</h1>
-				<Button>New Investigation</Button>
+		<div className="space-y-6">
+			{/* Header */}
+			<div className="flex items-center justify-between">
+				<div className="flex items-center gap-3">
+					<Search className="h-8 w-8 text-primary" />
+					<div>
+						<h1 className="text-2xl font-bold">Investigations</h1>
+						<p className="text-muted-foreground">
+							{investigations.length} investigations
+							{hasFilters && ` (filtered)`}
+						</p>
+					</div>
+				</div>
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={() => refetch()}
+					disabled={isRefetching}
+				>
+					<RefreshCw
+						className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
+					/>
+					Refresh
+				</Button>
+			</div>
+
+			{/* Stats Cards */}
+			{!isLoading && investigations.length > 0 && (
+				<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+					<StatCard
+						label="Total"
+						value={stats.total}
+						icon={<Search className="h-4 w-4" />}
+						className="bg-primary/10 text-primary"
+					/>
+					<StatCard
+						label="Running"
+						value={stats.running}
+						icon={<Activity className="h-4 w-4" />}
+						className="bg-blue-500/10 text-blue-600"
+					/>
+					<StatCard
+						label="Completed"
+						value={stats.completed}
+						icon={<CheckCircle className="h-4 w-4" />}
+						className="bg-green-500/10 text-green-600"
+					/>
+					<StatCard
+						label="Failed"
+						value={stats.failed}
+						icon={<AlertCircle className="h-4 w-4" />}
+						className="bg-red-500/10 text-red-600"
+					/>
+				</div>
+			)}
+
+			{/* Filters */}
+			<div className="flex flex-wrap items-center gap-3">
+				<Select
+					value={statusFilter}
+					onValueChange={(value) =>
+						setStatusFilter(value as WorkflowStatus | "all")
+					}
+				>
+					<SelectTrigger className="w-[160px]">
+						<SelectValue placeholder="Filter by status" />
+					</SelectTrigger>
+					<SelectContent>
+						{workflowStatuses.map((status) => (
+							<SelectItem key={status.value} value={status.value}>
+								{status.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+
+				{hasFilters && (
+					<Button variant="ghost" size="sm" onClick={handleClearFilters}>
+						Clear filters
+					</Button>
+				)}
 			</div>
 
 			{/* Investigations Table */}
-			<Card>
-				<CardContent className="p-0">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Case ID</TableHead>
-								<TableHead>Alert</TableHead>
-								<TableHead>Service</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead>Confidence</TableHead>
-								<TableHead>Duration</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{investigations.map((investigation) => (
-								<TableRow key={investigation.id} className="cursor-pointer">
-									<TableCell>
-										<Link
-											to="/investigations/$id"
-											params={{ id: investigation.id }}
-											className="text-primary hover:text-primary/80 font-mono text-sm"
-										>
-											{investigation.id}
-										</Link>
-									</TableCell>
-									<TableCell>
-										<span className="text-sm text-foreground">
-											{investigation.alertName}
-										</span>
-									</TableCell>
-									<TableCell>
-										<Badge variant="secondary">{investigation.service}</Badge>
-									</TableCell>
-									<TableCell>
-										<StatusBadge status={investigation.status} />
-									</TableCell>
-									<TableCell>
-										{investigation.confidence ? (
-											<div className="flex items-center">
-												<div className="w-16 bg-muted rounded-full h-2 mr-2">
-													<div
-														className="bg-green-500 h-2 rounded-full"
-														style={{
-															width: `${investigation.confidence * 100}%`,
-														}}
-													/>
-												</div>
-												<span className="text-sm text-muted-foreground">
-													{(investigation.confidence * 100).toFixed(0)}%
-												</span>
-											</div>
-										) : (
-											<span className="text-sm text-muted-foreground">-</span>
-										)}
-									</TableCell>
-									<TableCell className="text-sm text-muted-foreground">
-										{investigation.completedAt
-											? calculateDuration(
-													investigation.startedAt,
-													investigation.completedAt,
-												)
-											: "In progress..."}
-									</TableCell>
+			{isLoading ? (
+				<InvestigationsTableSkeleton />
+			) : investigations.length === 0 ? (
+				<Card>
+					<CardContent className="flex flex-col items-center justify-center py-12">
+						<Search className="h-12 w-12 mb-4 opacity-50 text-muted-foreground" />
+						<p className="text-lg font-medium text-muted-foreground">
+							No investigations found
+						</p>
+						<p className="text-sm text-muted-foreground">
+							Investigations will appear here when incidents are investigated
+						</p>
+					</CardContent>
+				</Card>
+			) : (
+				<Card>
+					<CardContent className="p-0">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>ID</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead>Root Cause</TableHead>
+									<TableHead>Confidence</TableHead>
+									<TableHead>Agents</TableHead>
+									<TableHead>Started</TableHead>
+									<TableHead>Duration</TableHead>
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</CardContent>
-			</Card>
+							</TableHeader>
+							<TableBody>
+								{investigations.map((investigation) => (
+									<TableRow key={investigation.id} className="cursor-pointer">
+										<TableCell>
+											<Link
+												to="/investigations/$id"
+												params={{ id: investigation.id }}
+												className="text-primary hover:text-primary/80 font-mono text-sm"
+											>
+												{investigation.id.slice(0, 8)}...
+											</Link>
+										</TableCell>
+										<TableCell>
+											<StatusBadge status={investigation.status} />
+										</TableCell>
+										<TableCell>
+											<span className="text-sm line-clamp-1 max-w-[200px]">
+												{investigation.rootCause || "-"}
+											</span>
+										</TableCell>
+										<TableCell>
+											{investigation.confidence ? (
+												<div className="flex items-center">
+													<div className="w-16 bg-muted rounded-full h-2 mr-2">
+														<div
+															className="bg-green-500 h-2 rounded-full"
+															style={{
+																width: `${investigation.confidence * 100}%`,
+															}}
+														/>
+													</div>
+													<span className="text-sm text-muted-foreground">
+														{(investigation.confidence * 100).toFixed(0)}%
+													</span>
+												</div>
+											) : (
+												<span className="text-sm text-muted-foreground">-</span>
+											)}
+										</TableCell>
+										<TableCell>
+											<span className="text-sm text-muted-foreground">
+												{investigation.agentExecutions?.length ?? 0}
+											</span>
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">
+											{investigation.startedAt
+												? formatDistanceToNow(new Date(investigation.startedAt), {
+														addSuffix: true,
+													})
+												: "-"}
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">
+											{investigation.startedAt && investigation.completedAt
+												? calculateDuration(
+														investigation.startedAt,
+														investigation.completedAt,
+													)
+												: investigation.status === "running"
+													? "In progress..."
+													: "-"}
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</CardContent>
+				</Card>
+			)}
+		</div>
+	);
+}
+
+function StatCard({
+	label,
+	value,
+	icon,
+	className,
+}: {
+	label: string;
+	value: number;
+	icon: React.ReactNode;
+	className?: string;
+}) {
+	return (
+		<div className={`rounded-lg p-4 ${className}`}>
+			<div className="flex items-center justify-between">
+				<div className="text-2xl font-bold">{value}</div>
+				{icon}
+			</div>
+			<div className="text-sm text-muted-foreground">{label}</div>
 		</div>
 	);
 }
@@ -174,5 +334,59 @@ function calculateDuration(start: string, end: string): string {
 	const diffMs = endDate.getTime() - startDate.getTime();
 	const diffMins = Math.floor(diffMs / 60000);
 	const diffSecs = Math.floor((diffMs % 60000) / 1000);
-	return `${diffMins}m ${diffSecs}s`;
+	if (diffMins > 0) {
+		return `${diffMins}m ${diffSecs}s`;
+	}
+	return `${diffSecs}s`;
+}
+
+function InvestigationsTableSkeleton() {
+	const skeletonIds = ["skel-1", "skel-2", "skel-3", "skel-4", "skel-5"];
+
+	return (
+		<Card>
+			<CardContent className="p-0">
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>ID</TableHead>
+							<TableHead>Status</TableHead>
+							<TableHead>Root Cause</TableHead>
+							<TableHead>Confidence</TableHead>
+							<TableHead>Agents</TableHead>
+							<TableHead>Started</TableHead>
+							<TableHead>Duration</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{skeletonIds.map((id) => (
+							<TableRow key={id}>
+								<TableCell>
+									<Skeleton className="h-4 w-20" />
+								</TableCell>
+								<TableCell>
+									<Skeleton className="h-5 w-20" />
+								</TableCell>
+								<TableCell>
+									<Skeleton className="h-4 w-32" />
+								</TableCell>
+								<TableCell>
+									<Skeleton className="h-2 w-20" />
+								</TableCell>
+								<TableCell>
+									<Skeleton className="h-4 w-8" />
+								</TableCell>
+								<TableCell>
+									<Skeleton className="h-4 w-24" />
+								</TableCell>
+								<TableCell>
+									<Skeleton className="h-4 w-16" />
+								</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
+			</CardContent>
+		</Card>
+	);
 }

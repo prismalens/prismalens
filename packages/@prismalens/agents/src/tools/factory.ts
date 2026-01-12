@@ -1,8 +1,11 @@
 import type { StructuredTool } from "@langchain/core/tools";
+import { Logger } from "@prismalens/logger";
 import type { IntegrationContext } from "../types/state.js";
 import { createGitHubTools } from "./github.js";
 import { createRenderTools } from "./render.js";
 import { createRepoTools } from "./repo.js";
+
+const logger = new Logger({ context: "ToolFactory" });
 
 // =============================================================================
 // TOOL FACTORY
@@ -79,7 +82,7 @@ export function createToolsForAgent(
 	for (const category of permissions) {
 		const factory = TOOL_REGISTRY[category];
 		if (!factory) {
-			console.warn(`[ToolFactory] Unknown tool category: ${category}`);
+			logger.warn(`Unknown tool category: ${category}`);
 			continue;
 		}
 

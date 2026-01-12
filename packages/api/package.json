@@ -41,6 +41,7 @@
 		"@prismalens/agents": "workspace:*",
 		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
+		"@prismalens/logger": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"@prismalens/database": "workspace:*",
 		"better-auth": "^1.4.10",

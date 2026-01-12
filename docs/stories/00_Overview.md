@@ -190,6 +190,146 @@ The Community Edition provides full functionality for self-hosted deployments wi
 | Auth | better-auth |
 | Queue | BullMQ (optional) |
 
+## Implementation Status
+
+Track the implementation progress of each user story. Update this section as features are completed.
+
+### Legend
+- [x] Completed - UI implemented and functional
+- [ ] Pending - Not yet implemented
+- [~] Partial - Some features implemented
+
+---
+
+### Story 01: Installation
+- [x] CLI quick start documentation
+- [x] Docker Compose production setup
+- [x] Environment variable configuration
+
+### Story 02: Onboarding
+- [ ] Setup wizard - Step 1: Create account
+- [ ] Setup wizard - Step 2: Configure AI provider
+- [ ] Setup wizard - Step 3: Connect integration
+- [ ] Setup complete confirmation
+
+### Story 03: Dashboard
+- [x] Stats cards (active incidents, MTTR, alerts)
+- [x] Recent incidents widget
+- [x] Active investigations widget
+- [x] Pending recommendations widget
+- [x] Service health summary
+- [ ] Empty state for new users
+
+### Story 04: Alerts
+- [x] Alerts list page with filters
+- [x] Severity badges and status indicators
+- [x] Quick actions (acknowledge, view incident)
+- [ ] Alert mapping rules configuration
+- [ ] Correlation rules configuration
+- [ ] Alert detail page
+
+### Story 05: Incidents
+- [x] Incidents list page with filters
+- [x] Incident detail page with tabs
+- [x] Overview tab with correlated alerts
+- [x] Timeline tab
+- [x] Investigation progress display
+- [x] Quick actions (acknowledge, investigate, resolve)
+- [ ] Postmortem editor
+- [ ] Postmortem auto-population from AI
+
+### Story 06: Investigations
+- [x] Investigations list page
+- [x] Investigation detail/canvas page
+- [x] Agent executions timeline
+- [x] Tool execution details
+- [x] Real-time status polling
+- [ ] ReactFlow canvas visualization
+- [ ] Human approval gates UI
+- [ ] Node detail panel on click
+- [ ] Export graph (PNG, JSON, Markdown)
+
+### Story 07: Services
+- [x] Services list page with filters
+- [x] Service detail page with tabs
+- [x] Overview tab with statistics
+- [x] Dependencies tab (upstream/downstream)
+- [ ] Create service form
+- [ ] Edit service form
+- [ ] Integrations tab (per-service)
+- [ ] Investigation policy tab
+- [ ] Service discovery from integrations
+
+### Story 08: Team
+- [ ] Team members list
+- [ ] Invite member flow
+- [ ] Role management (Owner, Admin, Member, Viewer)
+- [ ] On-call schedules list
+- [ ] Schedule detail with calendar
+- [ ] Escalation policies
+- [ ] Incident war room
+
+### Story 09: Integrations
+- [ ] Connected integrations list
+- [ ] Add integration selection grid
+- [ ] GitHub OAuth flow
+- [ ] Slack OAuth flow
+- [ ] Webhook URLs display (Prometheus, Generic)
+- [ ] Integration configuration pages
+- [ ] Test connection functionality
+
+### Story 10: Settings
+- [ ] AI provider selection (Gemini, OpenAI, Anthropic, Ollama)
+- [ ] AI provider configuration form
+- [ ] Test AI connection
+- [ ] Investigation policies by tier
+- [ ] Investigation limits configuration
+- [ ] Default notification settings
+- [ ] Severity routing configuration
+- [ ] Data retention settings
+- [ ] Storage usage display
+- [ ] Data export functionality
+- [ ] Danger zone (reset data, factory reset)
+
+### Story 11: Notifications
+- [ ] Notification channels list
+- [ ] Add Slack channel (OAuth)
+- [ ] Add Email channel (SMTP)
+- [ ] Add PagerDuty channel (API key)
+- [ ] Add MS Teams channel (webhook)
+- [ ] Add Discord channel (webhook)
+- [ ] Notification routing rules
+- [ ] Event type configuration
+- [ ] Quiet hours settings
+- [ ] Notification templates
+
+---
+
+### Summary
+
+| Story | Status | Progress |
+|-------|--------|----------|
+| 01 Installation | Complete | 100% |
+| 02 Onboarding | Not Started | 0% |
+| 03 Dashboard | Complete | 90% |
+| 04 Alerts | Partial | 60% |
+| 05 Incidents | Partial | 80% |
+| 06 Investigations | Partial | 60% |
+| 07 Services | Partial | 50% |
+| 08 Team | Not Started | 0% |
+| 09 Integrations | Not Started | 0% |
+| 10 Settings | Not Started | 0% |
+| 11 Notifications | Not Started | 0% |
+
+**Overall Progress**: ~40% of UI features implemented
+
+**Priority for Next Sprint**:
+1. Story 02: Onboarding wizard (required for new users)
+2. Story 09: Integrations (required for alert ingestion)
+3. Story 10: Settings - AI provider (required for investigations)
+
+---
+
 ## Next Steps
 
 - [Installation](./01_Installation.md) - Deploy PrismaLens

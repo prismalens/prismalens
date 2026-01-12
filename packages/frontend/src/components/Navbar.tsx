@@ -48,6 +48,30 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
+										<Link to="/alerts">Alerts</Link>
+									</NavigationMenuLink>
+								</NavigationMenuItem>
+								<NavigationMenuItem>
+									<NavigationMenuLink
+										asChild
+										className={navigationMenuTriggerStyle()}
+									>
+										<Link to="/incidents">Incidents</Link>
+									</NavigationMenuLink>
+								</NavigationMenuItem>
+								<NavigationMenuItem>
+									<NavigationMenuLink
+										asChild
+										className={navigationMenuTriggerStyle()}
+									>
+										<Link to="/services">Services</Link>
+									</NavigationMenuLink>
+								</NavigationMenuItem>
+								<NavigationMenuItem>
+									<NavigationMenuLink
+										asChild
+										className={navigationMenuTriggerStyle()}
+									>
 										<Link to="/investigations">{m.nav_investigations()}</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>

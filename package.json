@@ -9,6 +9,7 @@
 		"url": "https://github.com/prismalens/prismalens.git"
 	},
 	"scripts": {
+		"postinstall": "pnpm rebuild better-sqlite3 2>/dev/null || true",
 		"build": "turbo run build",
 		"build:dist": "pnpm --filter prismalens build",
 		"dev": "if [ \"$PRISMALENS_MODE\" = \"queue\" ]; then turbo run dev; else turbo run dev --filter=!@prismalens/worker; fi",

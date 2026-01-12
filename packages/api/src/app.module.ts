@@ -1,5 +1,4 @@
 import {
-	Logger,
 	type MiddlewareConsumer,
 	Module,
 	type NestModule,
@@ -10,6 +9,8 @@ import { REQUEST } from "@nestjs/core";
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
 import { experimental_RethrowHandlerPlugin as RethrowHandlerPlugin } from "@orpc/server/plugins";
 import { getConfig } from "@prismalens/config";
+import { LoggerModule } from "@prismalens/logger/nestjs";
+import { Logger } from "@prismalens/logger";
 import type { Request } from "express";
 import { AppController } from "./app.controller.js";
 import { WebhookCorsMiddleware } from "./middlewares/webhook-cors.middleware.js";
@@ -47,6 +48,9 @@ import { ServicesModule } from "./modules/services/services.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 
+// Create a logger instance for oRPC error handling
+const orpcLogger = new Logger({ context: "oRPC" });
+
 @Module({
 	imports: [
 		// Configuration
@@ -55,14 +59,22 @@ import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 			load: [getConfig],
 		}),
 
+		// Logger Module - wide events logging with tail sampling
+		LoggerModule.forRoot({
+			service: {
+				name: "prismalens-api",
+				version: "0.1.0",
+				environment: process.env.NODE_ENV ?? "development",
+			},
+		}),
+
 		// oRPC Module - provides end-to-end type safety
 		ORPCModule.forRootAsync({
 			useFactory: (request: Request) => ({
 				interceptors: [
 					onError((error) => {
 						// Log oRPC errors for debugging
-						const logger = new Logger("oRPC");
-						logger.error(`oRPC Error: ${error.message}`, error.stack);
+						orpcLogger.error(`oRPC Error: ${error.message}`, error);
 					}),
 				],
 				context: { request }, // Make request available in handlers
