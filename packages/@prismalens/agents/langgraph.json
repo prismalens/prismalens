@@ -1,5 +1,5 @@
 {
-	"node_version": "20",
+	"node_version": "24",
 	"dependencies": ["."],
 	"graphs": {
 		"investigation": "./dist/graph/graph.js:investigationGraph",
