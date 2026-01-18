@@ -1,0 +1,200 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Render API - Curated Endpoints",
+    "description": "Curated subset of Render API endpoints for deployment and log investigation",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.render.com/v1"
+    }
+  ],
+  "paths": {
+    "/services": {
+      "get": {
+        "operationId": "list_services",
+        "summary": "List services",
+        "description": "List all services for the authenticated user",
+        "tags": ["services"],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["static_site", "web_service", "private_service", "background_worker", "cron_job"]
+            },
+            "description": "Filter by service type"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 20 },
+            "description": "Number of services to return"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    },
+    "/services/{serviceId}": {
+      "get": {
+        "operationId": "get_service",
+        "summary": "Get service details",
+        "description": "Get details for a specific service",
+        "tags": ["services"],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Service ID"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    },
+    "/services/{serviceId}/deploys": {
+      "get": {
+        "operationId": "list_deploys",
+        "summary": "List deployments",
+        "description": "List deployments for a service",
+        "tags": ["deploys"],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 20 },
+            "description": "Number of deployments to return"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    },
+    "/services/{serviceId}/deploys/{deployId}": {
+      "get": {
+        "operationId": "get_deploy",
+        "summary": "Get deployment details",
+        "description": "Get details for a specific deployment",
+        "tags": ["deploys"],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "deployId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    },
+    "/logs": {
+      "get": {
+        "operationId": "get_logs",
+        "summary": "Get logs",
+        "description": "Get logs for resources",
+        "tags": ["logs"],
+        "parameters": [
+          {
+            "name": "ownerId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Owner ID"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "description": "Resource IDs to fetch logs for"
+          },
+          {
+            "name": "startTime",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "Start time for logs"
+          },
+          {
+            "name": "endTime",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "End time for logs"
+          },
+          {
+            "name": "text",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Text to search for in logs"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 100 },
+            "description": "Number of log entries to return"
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["forward", "backward"],
+              "default": "backward"
+            },
+            "description": "Direction to read logs"
+          }
+        ],
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    },
+    "/services/{serviceId}/events": {
+      "get": {
+        "operationId": "list_service_events",
+        "summary": "List service events",
+        "description": "List events for a service (deployments, restarts, etc.)",
+        "tags": ["events"],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 20 }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Success" }
+        }
+      }
+    }
+  }
+}

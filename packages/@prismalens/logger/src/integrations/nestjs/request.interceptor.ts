@@ -4,9 +4,9 @@ import {
 	type ExecutionContext,
 	type CallHandler,
 } from "@nestjs/common";
-import type { Observable, Subscriber } from "rxjs";
-import { tap, catchError } from "rxjs";
-import { runInRequestContext, enrichContext } from "../../core/context.js";
+import type { Observable } from "rxjs";
+import { tap, catchError, finalize } from "rxjs";
+import { enrichContext } from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
 import type { WideEvent } from "../../types/wide-event.js";
 
@@ -92,56 +92,43 @@ export class WideEventInterceptor implements NestInterceptor {
 			};
 		}
 
-		// Create a custom observable that wraps request in context
-		const self = this;
-		return {
-			subscribe(subscriber: Subscriber<unknown>) {
-				runInRequestContext(() => {
-					next
-						.handle()
-						.pipe(
-							tap((data: unknown) => {
-								// Enrich with response data on success
-								enrichContext({
-									response: {
-										status_code: response.statusCode,
-										body_size: data ? self.getBodySize(data) : 0,
-									},
-								});
-							}),
-							catchError((error: Error & { status?: number; statusCode?: number; code?: string }) => {
-								// Enrich with error data on failure
-								enrichContext({
-									error: {
-										type: error.name || "Error",
-										message: error.message,
-										stack: error.stack,
-										code: error.code,
-									},
-									response: {
-										status_code: error.status || error.statusCode || 500,
-									},
-								});
-								throw error;
-							}),
-						)
-						.subscribe({
-							next: (value: unknown) => subscriber.next(value),
-							error: (err: unknown) => {
-								self.emitWideEvent();
-								subscriber.error(err);
-							},
-							complete: () => {
-								self.emitWideEvent();
-								subscriber.complete();
-							},
-						});
-				}, initialContext);
+		// Store initial context for this request (simplified - no AsyncLocalStorage wrapper)
+		// The enrichContext calls will still work for basic logging
+		enrichContext(initialContext);
 
-				// Return a subscription-like object
-				return { unsubscribe: () => {} };
-			},
-		} as Observable<unknown>;
+		// Return a proper rxjs Observable chain using pipe operators
+		return next.handle().pipe(
+			tap((data: unknown) => {
+				// Enrich with response data on success
+				enrichContext({
+					response: {
+						status_code: response.statusCode,
+						body_size: data ? this.getBodySize(data) : 0,
+					},
+				});
+			}),
+			catchError(
+				(error: Error & { status?: number; statusCode?: number; code?: string }) => {
+					// Enrich with error data on failure
+					enrichContext({
+						error: {
+							type: error.name || "Error",
+							message: error.message,
+							stack: error.stack,
+							code: error.code,
+						},
+						response: {
+							status_code: error.status || error.statusCode || 500,
+						},
+					});
+					throw error;
+				},
+			),
+			finalize(() => {
+				// Emit wide event when request completes (success or error)
+				this.emitWideEvent();
+			}),
+		);
 	}
 
 	/**

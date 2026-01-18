@@ -1,0 +1,53 @@
+{
+  "name": "github-search-code-null-pointer",
+  "recordedAt": "2024-01-15T15:00:00Z",
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://api.github.com/search/code?q=NullPointerException+repo:acme/api-service",
+      "response": {
+        "status": 200,
+        "data": {
+          "total_count": 1,
+          "incomplete_results": false,
+          "items": [
+            {
+              "name": "auth-handler.ts",
+              "path": "src/services/auth-handler.ts",
+              "sha": "abc123def456",
+              "url": "https://api.github.com/repos/acme/api-service/contents/src/services/auth-handler.ts?ref=main",
+              "git_url": "https://api.github.com/repos/acme/api-service/git/blobs/abc123def456",
+              "html_url": "https://github.com/acme/api-service/blob/main/src/services/auth-handler.ts",
+              "repository": {
+                "id": 123456,
+                "node_id": "R_123456",
+                "name": "api-service",
+                "full_name": "acme/api-service",
+                "private": true
+              },
+              "text_matches": [
+                {
+                  "object_url": "https://api.github.com/repos/acme/api-service/contents/src/services/auth-handler.ts?ref=main",
+                  "object_type": "FileContent",
+                  "property": "content",
+                  "fragment": "// Line 42: Bug - Missing null check\n  return user.id.toString();",
+                  "matches": [
+                    {
+                      "text": "null",
+                      "indices": [15, 19]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "x-ratelimit-limit": "30",
+          "x-ratelimit-remaining": "29",
+          "x-ratelimit-reset": "1705330800"
+        }
+      }
+    }
+  ]
+}

@@ -2,19 +2,29 @@
 // TOOLS INDEX
 // =============================================================================
 // Central export for all tools. Use the factory pattern for integration-aware tools.
+// Progressive disclosure system available via bundles exports.
 // =============================================================================
 
 // Factory exports (preferred for new code)
 export {
+	contextToFactoryOptions,
+	createDefaultBundleRegistry,
+	createProgressiveTools,
 	createToolsForAgent,
+	factoryOptionsToContext,
 	getAgentPermissions,
+	getManifestsDir,
 	getToolCategories,
 	isReadOnlyAgent,
 	registerToolCategory,
 	setAgentPermissions,
 	setReadOnlyAgent,
+	type ProgressiveToolsOptions,
 	type ToolFactoryOptions,
 } from "./factory.js";
+
+// Bundle system exports
+export * from "./bundles/index.js";
 // Fix proposal tools for Surgeon
 export {
 	createProposeFixTool,

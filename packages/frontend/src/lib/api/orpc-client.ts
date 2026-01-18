@@ -3,15 +3,26 @@
  *
  * Provides type-safe API calls using oRPC contracts.
  * Integrates with TanStack Query for data fetching.
+ *
+ * Uses OpenAPILink to match the NestJS @Implement decorator routes.
  */
 import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
+import { OpenAPILink } from "@orpc/openapi-client/fetch";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import type { Contract } from "@prismalens/contracts";
+import { contract, type Contract } from "@prismalens/contracts";
 
-// API base URL - uses Next.js proxy in development
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+/**
+ * API base URL
+ * - Browser: Use absolute URL with current origin (works with Vite proxy)
+ * - SSR: Use absolute URL to the API server directly
+ *
+ * Must be an absolute URL to avoid "Failed to construct 'URL'" errors
+ */
+const API_BASE_URL =
+	typeof window !== "undefined"
+		? `${window.location.origin}/api`
+		: `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env.PRISMALENS_HOST || "localhost"}:${process.env.PRISMALENS_PORT || "3001"}/api`;
 
 /**
  * Custom error class for connection errors
@@ -24,15 +35,16 @@ export class ConnectionError extends Error {
 }
 
 /**
- * RPC Link for oRPC client
- * Configured to work with the PrismaLens API
+ * OpenAPI Link for oRPC client
+ * Uses OpenAPI-compatible paths that match the NestJS @Implement routes
+ * (e.g., POST /api/setup instead of POST /api/setup/createOwner)
  */
-const link = new RPCLink({
+const link = new OpenAPILink(contract, {
 	url: API_BASE_URL,
 	headers: () => ({
 		"Content-Type": "application/json",
 	}),
-	fetch: async (input, init) => {
+	fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
 		try {
 			const response = await fetch(input, {
 				...init,

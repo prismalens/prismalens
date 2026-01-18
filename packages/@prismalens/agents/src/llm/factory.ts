@@ -1,7 +1,14 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatGroq } from "@langchain/groq";
 import { ChatOpenAI } from "@langchain/openai";
+import {
+	getConfig,
+	LLM_PROVIDERS,
+	type LLMConfig,
+	type LLMProviderId,
+} from "@prismalens/config";
 
 // =============================================================================
 // LLM FACTORY - Per-Agent Configuration Support
@@ -10,6 +17,7 @@ import { ChatOpenAI } from "@langchain/openai";
 // - Per-agent model overrides via environment variables
 // - Multiple providers (OpenAI, Anthropic, Google, Ollama)
 // - Default configurations per agent type
+// - Database-stored LLM config (via createLLMFromStoredConfig)
 // =============================================================================
 
 export interface LLMFactoryOptions {
@@ -79,19 +87,15 @@ function getModelForAgent(
 		}
 	}
 
-	// Fall back to provider defaults
-	switch (provider.toLowerCase()) {
-		case "openai":
-			return process.env.OPENAI_MODEL_NAME || "gpt-4o";
-		case "anthropic":
-			return process.env.ANTHROPIC_MODEL_NAME || "claude-sonnet-4-20250514";
-		case "google":
-			return process.env.GOOGLE_MODEL_NAME || "gemini-1.5-pro";
-		case "ollama":
-			return process.env.OLLAMA_MODEL_NAME || "llama3";
-		default:
-			return "gpt-4o";
+	// Fall back to provider defaults from LLM_PROVIDERS
+	const providerKey = provider.toLowerCase() as LLMProviderId;
+	const providerMeta = LLM_PROVIDERS[providerKey];
+	if (providerMeta) {
+		return providerMeta.suggestedModels[0];
 	}
+
+	// Ultimate fallback
+	return "gpt-4o";
 }
 
 /**
@@ -100,6 +104,11 @@ function getModelForAgent(
  */
 function detectProviderFromModel(modelName: string): string | null {
 	const lowerModel = modelName.toLowerCase();
+
+	// OpenRouter models have org/model format or :free suffix
+	if (lowerModel.includes("/") || lowerModel.includes(":free")) {
+		return "openrouter";
+	}
 
 	if (
 		lowerModel.includes("gpt-") ||
@@ -114,6 +123,18 @@ function detectProviderFromModel(modelName: string): string | null {
 	if (lowerModel.includes("gemini")) {
 		return "google";
 	}
+
+	// Groq-specific model patterns (fast inference models)
+	if (
+		lowerModel.includes("llama-3.3-70b-versatile") ||
+		lowerModel.includes("llama-3.1-8b-instant") ||
+		lowerModel.includes("mixtral-8x7b")
+	) {
+		return "groq";
+	}
+
+	// Generic llama/mistral/qwen could be ollama (local) or groq
+	// Default to ollama for these generic names
 	if (
 		lowerModel.includes("llama") ||
 		lowerModel.includes("mistral") ||
@@ -127,6 +148,7 @@ function detectProviderFromModel(modelName: string): string | null {
 
 /**
  * Creates an LLM instance with agent-specific configuration support.
+ * Uses getConfig() from @prismalens/config for centralized, validated env vars.
  *
  * @example
  * // Use defaults for commander agent
@@ -145,6 +167,9 @@ function detectProviderFromModel(modelName: string): string | null {
  * const llm = createLLM({ agentName: 'detective' });
  */
 export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
+	// Get centralized, validated config
+	const config = getConfig();
+
 	// Merge agent defaults with provided options
 	const agentDefaults = options.agentName
 		? AGENT_DEFAULT_CONFIGS[options.agentName] || {}
@@ -152,7 +177,7 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 	const mergedOptions = { ...agentDefaults, ...options };
 
 	// Determine provider - check if agent-specific model implies a provider
-	let provider = mergedOptions.provider || process.env.LLM_PROVIDER || "openai";
+	let provider = mergedOptions.provider || config.LLM_PROVIDER;
 
 	// If agent has a specific model set via env, detect its provider
 	if (options.agentName) {
@@ -191,7 +216,7 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 				...baseConfig,
 				modelName,
 				maxTokens,
-				apiKey: mergedOptions.apiKey || process.env.OPENAI_API_KEY,
+				apiKey: mergedOptions.apiKey || config.OPENAI_API_KEY,
 			});
 
 		case "anthropic":
@@ -199,7 +224,7 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 				...baseConfig,
 				modelName,
 				maxTokens,
-				apiKey: mergedOptions.apiKey || process.env.ANTHROPIC_API_KEY,
+				apiKey: mergedOptions.apiKey || config.ANTHROPIC_API_KEY,
 			});
 
 		case "google":
@@ -207,7 +232,7 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 				...baseConfig,
 				model: modelName,
 				maxOutputTokens: maxTokens,
-				apiKey: mergedOptions.apiKey || process.env.GOOGLE_API_KEY,
+				apiKey: mergedOptions.apiKey || config.GOOGLE_API_KEY,
 			});
 
 		case "ollama":
@@ -216,7 +241,30 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 				modelName,
 				maxTokens,
 				configuration: {
-					baseURL: process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1",
+					baseURL: `${config.OLLAMA_BASE_URL}/v1`,
+				},
+			});
+
+		case "groq":
+			return new ChatGroq({
+				...baseConfig,
+				model: modelName,
+				maxTokens,
+				apiKey: mergedOptions.apiKey || config.GROQ_API_KEY,
+			});
+
+		case "openrouter":
+			return new ChatOpenAI({
+				...baseConfig,
+				modelName,
+				maxTokens,
+				apiKey: mergedOptions.apiKey || config.OPENROUTER_API_KEY,
+				configuration: {
+					baseURL: "https://openrouter.ai/api/v1",
+					defaultHeaders: {
+						"HTTP-Referer": "https://prismalens.dev",
+						"X-Title": "PrismaLens",
+					},
 				},
 			});
 
@@ -243,6 +291,55 @@ export function getAgentConfig(
 	agentName: string,
 ): Partial<LLMFactoryOptions> | undefined {
 	return AGENT_DEFAULT_CONFIGS[agentName];
+}
+
+/**
+ * Creates LLM from stored database config.
+ * DB config takes priority, then falls back to getConfig() env vars.
+ *
+ * @example
+ * // From settings service
+ * const storedConfig = await settingsService.getActiveLlmConfigInternal();
+ * const llm = createLLMFromStoredConfig(storedConfig);
+ */
+export function createLLMFromStoredConfig(
+	storedConfig: LLMConfig | null,
+	agentOptions: Omit<
+		LLMFactoryOptions,
+		"provider" | "modelName" | "apiKey"
+	> = {},
+): BaseChatModel {
+	if (!storedConfig) {
+		// Fall back to env vars via getConfig()
+		return createLLM(agentOptions);
+	}
+
+	// Build options from stored config
+	const options: LLMFactoryOptions = {
+		...agentOptions,
+		provider: storedConfig.provider,
+		modelName: storedConfig.model,
+		apiKey: storedConfig.apiKey,
+		temperature: storedConfig.temperature,
+		maxTokens: storedConfig.maxTokens,
+	};
+
+	// Add provider-specific fields if present
+	if ("topK" in storedConfig && storedConfig.topK !== undefined) {
+		// topK is supported by Anthropic/Google but not in our current factory
+		// We'll pass it through temperature for now (factory can be extended later)
+	}
+
+	if ("baseUrl" in storedConfig && storedConfig.baseUrl) {
+		// For Ollama, we need to handle baseUrl specially
+		// The factory will use OLLAMA_BASE_URL from config, but we can override via env
+		// For now, temporarily set the env var (not ideal, but works)
+		if (storedConfig.provider === "ollama") {
+			process.env.OLLAMA_BASE_URL = storedConfig.baseUrl;
+		}
+	}
+
+	return createLLM(options);
 }
 
 // Re-export types for convenience

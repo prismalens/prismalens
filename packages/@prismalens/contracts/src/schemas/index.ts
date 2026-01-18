@@ -16,5 +16,7 @@ export * from "./recommendation.js";
 // Entity schemas
 export * from "./service.js";
 export * from "./service-discovery.js";
+export * from "./settings.js";
 export * from "./timeline.js";
+export * from "./postmortem.js";
 export * from "./webhook.js";

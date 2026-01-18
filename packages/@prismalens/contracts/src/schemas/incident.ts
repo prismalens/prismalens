@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { AlertSchema } from "./alert.js";
 import {
+	CoerceDateSchema,
 	DateStringSchema,
 	IncidentStatusSchema,
 	PrioritySchema,
@@ -98,6 +99,8 @@ export const IncidentQuerySchema = z.object({
 	severity: SeveritySchema.optional(),
 	priority: PrioritySchema.optional(),
 	serviceId: z.string().uuid().optional(),
+	fromDate: CoerceDateSchema.optional(),
+	toDate: CoerceDateSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });

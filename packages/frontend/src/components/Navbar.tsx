@@ -2,9 +2,10 @@
  * Navbar Component
  *
  * Main navigation bar with theme toggle and language switcher using shadcn NavigationMenu
+ * Hidden during setup flow to prevent navigation away from required setup steps
  */
 
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
@@ -17,6 +18,14 @@ import {
 import * as m from "@/lib/paraglide/messages.js";
 
 export function Navbar() {
+	const location = useLocation();
+	const isSetupRoute = location.pathname.startsWith("/setup");
+
+	// Hide navbar entirely during setup flow
+	if (isSetupRoute) {
+		return null;
+	}
+
 	return (
 		<nav className="relative z-40 bg-card border-b border-border">
 			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -40,7 +49,7 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
-										<Link to="/">{m.nav_dashboard()}</Link>
+										<Link to="/">Command Center</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>
 								<NavigationMenuItem>

@@ -86,3 +86,35 @@ Alert → Alert Agent → Gatherer → Analyzer → Recommender
 ```
 
 Located in `packages/@prismalens/worker-python/agents/`.
+
+## Frontend Development Guidelines
+
+### API Calls - Use oRPC (Required)
+
+**Never use raw `fetch()` for API calls.** Always use oRPC hooks from `@/lib/api/hooks/`:
+
+```typescript
+// ✅ Correct - Use oRPC hooks
+import { useAlerts, useCreateAlert } from "@/lib/api/hooks";
+const { data: alerts } = useAlerts({ status: "open" });
+const createMutation = useCreateAlert();
+
+// ❌ Wrong - Raw fetch
+const response = await fetch("/api/alerts");
+```
+
+**Pattern for new API endpoints:**
+1. Create contract in `@prismalens/contracts/src/contracts/`
+2. Add to combined contract in `contracts/index.ts`
+3. Implement in API with `@Implement(contract)` decorator
+4. Create hooks in `frontend/src/lib/api/hooks/`
+
+### Component Architecture
+
+**Use existing components** - Check `/packages/frontend/src/components/` before creating inline implementations:
+- `components/setup/` - Setup wizard steps
+- `components/settings/` - Settings page sections
+- `components/dashboard/` - Dashboard widgets (StatCard, etc.)
+- `components/shared/` - Reusable utilities (EmptyState, LoadingSpinner, SeverityBadge, etc.)
+
+**Route files should be thin** - Routes compose components, not implement UI logic. A route should typically be <100 lines.

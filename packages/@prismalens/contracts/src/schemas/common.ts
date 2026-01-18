@@ -29,6 +29,36 @@ export const ServiceTierSchema = z.enum([
 	"tier_4",
 ]);
 
+/**
+ * Service tier metadata with human-readable labels and descriptions.
+ * Used across frontend and backend for consistent tier display.
+ */
+export const SERVICE_TIER_METADATA: Record<
+	z.infer<typeof ServiceTierSchema>,
+	{ name: string; shortName: string; description: string }
+> = {
+	tier_1: {
+		name: "Tier 1 - Critical",
+		shortName: "Critical",
+		description: "Production-critical services requiring immediate response",
+	},
+	tier_2: {
+		name: "Tier 2 - High",
+		shortName: "High",
+		description: "Important business services, response within hours",
+	},
+	tier_3: {
+		name: "Tier 3 - Medium",
+		shortName: "Medium",
+		description: "Supporting services with standard SLA",
+	},
+	tier_4: {
+		name: "Tier 4 - Low",
+		shortName: "Low",
+		description: "Non-critical services, best-effort response",
+	},
+};
+
 export const DependencyTypeSchema = z.enum(["runtime", "build", "data"]);
 
 export const DependencyCriticalitySchema = z.enum([

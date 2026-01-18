@@ -8,6 +8,8 @@ export { alertMappingContract } from "./alert-mapping.js";
 // Import individual contracts
 export { alertsContract } from "./alerts.js";
 export { correlationContract } from "./correlation.js";
+export { settingsContract } from "./settings.js";
+export { setupContract, type SetupStep } from "./setup.js";
 export { eventsContract } from "./events.js";
 export { incidentsContract } from "./incidents.js";
 export { integrationsContract, oauthContract } from "./integrations.js";
@@ -16,12 +18,15 @@ export { recommendationsContract } from "./recommendations.js";
 export { serviceDiscoveryContract } from "./service-discovery.js";
 export { servicesContract } from "./services.js";
 export { timelineContract } from "./timeline.js";
+export { postmortemsContract } from "./postmortems.js";
 export { webhooksContract } from "./webhooks.js";
 
 import { alertMappingContract } from "./alert-mapping.js";
 // Re-import for combined contract
 import { alertsContract } from "./alerts.js";
 import { correlationContract } from "./correlation.js";
+import { settingsContract } from "./settings.js";
+import { setupContract } from "./setup.js";
 import { eventsContract } from "./events.js";
 import { incidentsContract } from "./incidents.js";
 import { integrationsContract, oauthContract } from "./integrations.js";
@@ -30,6 +35,7 @@ import { recommendationsContract } from "./recommendations.js";
 import { serviceDiscoveryContract } from "./service-discovery.js";
 import { servicesContract } from "./services.js";
 import { timelineContract } from "./timeline.js";
+import { postmortemsContract } from "./postmortems.js";
 import { webhooksContract } from "./webhooks.js";
 
 /**
@@ -45,11 +51,14 @@ export const contract = {
 	webhooks: webhooksContract,
 	events: eventsContract,
 	timeline: timelineContract,
+	postmortems: postmortemsContract,
 	correlation: correlationContract,
 	integrations: integrationsContract,
 	oauth: oauthContract,
 	serviceDiscovery: serviceDiscoveryContract,
 	alertMapping: alertMappingContract,
+	settings: settingsContract,
+	setup: setupContract,
 };
 
 export type Contract = typeof contract;

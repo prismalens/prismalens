@@ -38,6 +38,38 @@ export const AlertContextSchema = z.object({
 export type AlertContext = z.infer<typeof AlertContextSchema>;
 
 /**
+ * Incident context schema - represents the incident being investigated
+ * This is the primary unit of investigation, with alerts as supporting data.
+ */
+export const IncidentContextSchema = z.object({
+	incidentId: z.string(),
+	number: z.number().int(),
+	title: z.string(),
+	description: z.string().optional(),
+	severity: z.enum(["critical", "high", "medium", "low", "info"]),
+	status: z.enum([
+		"triggered",
+		"investigating",
+		"identified",
+		"monitoring",
+		"resolved",
+		"closed",
+	]),
+	priority: z.enum(["p1", "p2", "p3", "p4", "p5"]),
+	serviceId: z.string().optional(),
+	serviceName: z.string().optional(),
+	correlationReason: z.string().optional(),
+	alertCount: z.number().int(),
+	triggeredAt: z.string(),
+	acknowledgedAt: z.string().optional(),
+	tags: z.array(z.string()).optional(),
+	customerImpact: z.string().optional(),
+	affectedSystems: z.array(z.string()).optional(),
+});
+
+export type IncidentContext = z.infer<typeof IncidentContextSchema>;
+
+/**
  * Integration context schema - credentials and config for external tools
  */
 export const IntegrationContextSchema = z.object({
@@ -164,7 +196,17 @@ export const InvestigationStateAnnotation = Annotation.Root({
 	}),
 
 	// =========================================================================
-	// Alert Context
+	// Incident Context (Primary Unit of Investigation)
+	// =========================================================================
+
+	/** The incident being investigated - primary context for the investigation */
+	incident: Annotation<IncidentContext | null>({
+		reducer: (current, update) => update ?? current,
+		default: () => null,
+	}),
+
+	// =========================================================================
+	// Alert Context (Supporting Data)
 	// =========================================================================
 
 	/** All alerts associated with this incident */
@@ -173,7 +215,7 @@ export const InvestigationStateAnnotation = Annotation.Root({
 		default: () => [],
 	}),
 
-	/** Primary alert that triggered investigation */
+	/** Primary alert that triggered investigation (legacy - prefer incident context) */
 	primaryAlert: Annotation<AlertContext | null>,
 
 	// =========================================================================
@@ -313,12 +355,14 @@ export type InvestigationStateUpdate = Partial<InvestigationState>;
 // =============================================================================
 
 /**
- * Create initial state from job data
+ * Create initial state from job data.
+ * Supports both incident-centric (preferred) and alert-centric (legacy) initialization.
  */
 export function createInitialState(jobData: {
 	investigationId: string;
 	incidentId: string;
 	priority?: "low" | "normal" | "high" | "critical";
+	incident?: IncidentContext;
 	alerts?: AlertContext[];
 	integrations?: IntegrationContext[];
 }): Partial<InvestigationState> {
@@ -326,6 +370,7 @@ export function createInitialState(jobData: {
 		investigationId: jobData.investigationId,
 		incidentId: jobData.incidentId,
 		priority: jobData.priority || "normal",
+		incident: jobData.incident || null,
 		alerts: jobData.alerts || [],
 		primaryAlert: jobData.alerts?.[0] || null,
 		integrations: jobData.integrations || [],
@@ -357,4 +402,60 @@ export function hassufficientConfidence(
 ): boolean {
 	const best = getBestHypothesis(state);
 	return best !== null && best.confidence >= threshold;
+}
+
+/**
+ * Get incident display info from state.
+ * Returns incident context if available, otherwise builds context from primary alert.
+ */
+export function getIncidentDisplayInfo(state: InvestigationState): {
+	incidentId: string;
+	number?: number;
+	title: string;
+	description?: string;
+	severity: "critical" | "high" | "medium" | "low" | "info";
+	priority: string;
+	serviceName?: string;
+	alertCount: number;
+} {
+	// Prefer incident context if available
+	if (state.incident) {
+		return {
+			incidentId: state.incident.incidentId,
+			number: state.incident.number,
+			title: state.incident.title,
+			description: state.incident.description,
+			severity: state.incident.severity,
+			priority: state.incident.priority,
+			serviceName: state.incident.serviceName,
+			alertCount: state.incident.alertCount,
+		};
+	}
+
+	// Fallback to alert-based context
+	const primaryAlert = state.primaryAlert || state.alerts[0];
+	return {
+		incidentId: state.incidentId,
+		title: primaryAlert?.title || "Unknown incident",
+		description: primaryAlert?.description,
+		severity: primaryAlert?.severity || "medium",
+		priority: state.priority,
+		serviceName: primaryAlert?.serviceName,
+		alertCount: state.alerts.length,
+	};
+}
+
+/**
+ * Map priority string to incident priority format
+ */
+export function mapPriorityToIncidentPriority(
+	priority: "low" | "normal" | "high" | "critical",
+): "p1" | "p2" | "p3" | "p4" | "p5" {
+	const mapping: Record<string, "p1" | "p2" | "p3" | "p4" | "p5"> = {
+		critical: "p1",
+		high: "p2",
+		normal: "p3",
+		low: "p4",
+	};
+	return mapping[priority] || "p3";
 }

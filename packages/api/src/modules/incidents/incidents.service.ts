@@ -142,6 +142,8 @@ export class IncidentsService {
     severity?: string;
     priority?: string;
     serviceId?: string;
+    fromDate?: Date;
+    toDate?: Date;
     limit?: number;
     offset?: number;
   }): Promise<IncidentWithRelations[]> {
@@ -151,6 +153,12 @@ export class IncidentsService {
         ...(options?.severity && { severity: options.severity }),
         ...(options?.priority && { priority: options.priority }),
         ...(options?.serviceId && { serviceId: options.serviceId }),
+        ...((options?.fromDate || options?.toDate) && {
+          triggeredAt: {
+            ...(options?.fromDate && { gte: options.fromDate }),
+            ...(options?.toDate && { lte: options.toDate }),
+          },
+        }),
       },
       include: {
         alerts: {

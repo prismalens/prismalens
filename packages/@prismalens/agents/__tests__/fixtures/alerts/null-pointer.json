@@ -1,0 +1,28 @@
+{
+  "alertId": "alert-np-001",
+  "title": "NullPointerException in AuthHandler",
+  "description": "Uncaught exception in authentication handler at line 42 - Cannot read property 'id' of null",
+  "severity": "high",
+  "status": "triggered",
+  "source": "prometheus",
+  "sourceUrl": "https://prometheus.internal/alerts/np-001",
+  "serviceId": "svc-api-001",
+  "serviceName": "api-service",
+  "repository": "acme/api-service",
+  "labels": {
+    "environment": "production",
+    "team": "backend",
+    "error_type": "NullPointerException",
+    "file": "src/services/auth-handler.ts",
+    "line": "42"
+  },
+  "tags": ["auth", "critical-path"],
+  "triggeredAt": "2024-01-15T14:30:00Z",
+  "rawPayload": {
+    "alertname": "AuthHandlerError",
+    "instance": "api-001:3001",
+    "job": "api-service",
+    "severity": "high",
+    "stacktrace": "NullPointerException: Cannot read property 'id' of null\n    at handleAuth (auth-handler.ts:42:15)\n    at processRequest (request.ts:123:20)"
+  }
+}

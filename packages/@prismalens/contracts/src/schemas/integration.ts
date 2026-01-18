@@ -114,6 +114,81 @@ export const IntegrationQuerySchema = z.object({
 });
 
 // =============================================================================
+// GIT PROVIDER SCHEMAS (GitHub, GitLab, BitBucket)
+// =============================================================================
+
+export const GitOrganizationSchema = z.object({
+	id: z.string(),
+	name: z.string(), // Login/slug (e.g., "prismalens-org")
+	displayName: z.string(),
+	avatarUrl: z.string().optional(),
+	repoCount: z.number().int().optional(),
+	description: z.string().optional(),
+});
+
+export const GitRepositorySchema = z.object({
+	id: z.string(),
+	name: z.string(), // Repo name only (e.g., "api")
+	fullName: z.string(), // Full name with org (e.g., "prismalens-org/api")
+	description: z.string().optional(),
+	language: z.string().optional(),
+	stars: z.number().int().optional(),
+	defaultBranch: z.string(),
+	isPrivate: z.boolean(),
+	url: z.string(), // Web URL
+	cloneUrl: z.string().optional(),
+	updatedAt: z.string().optional(),
+});
+
+// =============================================================================
+// SERVICE INTEGRATION SCHEMAS (Per-service overrides)
+// =============================================================================
+
+export const ServiceIntegrationSchema = z.object({
+	id: z.string().uuid(),
+	serviceId: z.string().uuid(),
+	connectionId: z.string().uuid(),
+	priority: z.number().int().default(0),
+	config: z.record(z.unknown()).nullable(), // Service-specific config overrides
+	isEnabled: z.boolean().default(true),
+	createdAt: DateStringSchema,
+	updatedAt: DateStringSchema,
+});
+
+export const CreateServiceIntegrationSchema = z.object({
+	serviceId: z.string().uuid(),
+	connectionId: z.string().uuid(),
+	priority: z.number().int().optional(),
+	config: z.record(z.unknown()).optional(),
+	isEnabled: z.boolean().optional(),
+});
+
+export const UpdateServiceIntegrationSchema = z.object({
+	priority: z.number().int().optional(),
+	config: z.record(z.unknown()).optional(),
+	isEnabled: z.boolean().optional(),
+});
+
+/**
+ * Service integration with computed override status
+ * Used when listing integrations for a service
+ */
+export const ServiceIntegrationWithStatusSchema = z.object({
+	connectionId: z.string().uuid(),
+	connectionName: z.string(),
+	definitionName: z.string(), // github, prometheus, etc.
+	definitionDisplayName: z.string(),
+	category: z.string(),
+	status: ConnectionStatusSchema,
+	isGlobal: z.boolean(), // true = inherited from global, false = service-specific
+	hasOverride: z.boolean(), // true = has service-specific override
+	overrideId: z.string().uuid().optional(), // ServiceIntegration.id if has override
+	globalConfig: z.record(z.unknown()).nullable(), // Global connection config
+	serviceConfig: z.record(z.unknown()).nullable(), // Service-specific override config
+	effectiveConfig: z.record(z.unknown()).nullable(), // Merged config (serviceConfig || globalConfig)
+});
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -128,3 +203,19 @@ export type OAuthStartResponse = z.infer<typeof OAuthStartResponseSchema>;
 export type OAuthCallbackInput = z.infer<typeof OAuthCallbackSchema>;
 export type OAuthCallbackResponse = z.infer<typeof OAuthCallbackResponseSchema>;
 export type IntegrationQuery = z.infer<typeof IntegrationQuerySchema>;
+
+// Git provider types
+export type GitOrganization = z.infer<typeof GitOrganizationSchema>;
+export type GitRepository = z.infer<typeof GitRepositorySchema>;
+
+// Service integration types
+export type ServiceIntegration = z.infer<typeof ServiceIntegrationSchema>;
+export type CreateServiceIntegrationInput = z.infer<
+	typeof CreateServiceIntegrationSchema
+>;
+export type UpdateServiceIntegrationInput = z.infer<
+	typeof UpdateServiceIntegrationSchema
+>;
+export type ServiceIntegrationWithStatus = z.infer<
+	typeof ServiceIntegrationWithStatusSchema
+>;

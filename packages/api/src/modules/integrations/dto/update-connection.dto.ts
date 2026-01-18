@@ -80,6 +80,9 @@ export class UpdateOAuthConfigDto {
  */
 export class CreateServiceIntegrationDto {
 	@IsString()
+	serviceId!: string;
+
+	@IsString()
 	connectionId!: string;
 
 	@IsOptional()
@@ -90,4 +93,26 @@ export class CreateServiceIntegrationDto {
 	@IsInt()
 	@Min(0)
 	priority?: number;
+
+	@IsOptional()
+	@IsBoolean()
+	isEnabled?: boolean;
+}
+
+/**
+ * DTO for updating a service integration mapping.
+ */
+export class UpdateServiceIntegrationDto {
+	@IsOptional()
+	@IsObject()
+	config?: Record<string, unknown>;
+
+	@IsOptional()
+	@IsInt()
+	@Min(0)
+	priority?: number;
+
+	@IsOptional()
+	@IsBoolean()
+	isEnabled?: boolean;
 }

@@ -59,10 +59,7 @@ async function fetchLicenseStatus(): Promise<LicenseStatus> {
 async function activateLicenseApi(
 	data: ActivateLicenseRequest,
 ): Promise<ActivateLicenseResponse> {
-	return apiPost<ActivateLicenseResponse, ActivateLicenseRequest>(
-		"/license/activate",
-		data,
-	);
+	return apiPost<ActivateLicenseResponse>("/license/activate", data);
 }
 
 async function deactivateLicenseApi(): Promise<void> {

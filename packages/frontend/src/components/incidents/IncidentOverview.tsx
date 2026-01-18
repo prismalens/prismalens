@@ -4,14 +4,21 @@
  * Shows key incident metrics and information in cards
  */
 
-import type { IncidentWithRelations } from "@prismalens/contracts";
-import { Clock, AlertTriangle, Users, Tag } from "lucide-react";
+import type {
+	IncidentWithRelations,
+	TimelineEntryWithRelations,
+} from "@prismalens/contracts";
+import { AlertTriangle, Clock, Tag, Users } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TimelinePreview } from "./TimelinePreview";
 
 export interface IncidentOverviewProps {
 	incident: IncidentWithRelations;
+	timelineEntries?: TimelineEntryWithRelations[];
+	timelineLoading?: boolean;
+	onViewTimeline?: () => void;
 }
 
 function formatDuration(ms: number | null): string {
@@ -25,7 +32,12 @@ function formatDuration(ms: number | null): string {
 	return `${minutes}m`;
 }
 
-export function IncidentOverview({ incident }: IncidentOverviewProps) {
+export function IncidentOverview({
+	incident,
+	timelineEntries = [],
+	timelineLoading,
+	onViewTimeline,
+}: IncidentOverviewProps) {
 	const isActive = !["resolved", "closed"].includes(incident.status);
 	const duration = isActive
 		? new Date().getTime() - new Date(incident.triggeredAt).getTime()
@@ -149,6 +161,15 @@ export function IncidentOverview({ incident }: IncidentOverviewProps) {
 					</CardContent>
 				</Card>
 			)}
+
+			{/* Timeline Preview */}
+			<TimelinePreview
+				entries={timelineEntries}
+				totalCount={timelineEntries.length}
+				onViewAll={onViewTimeline}
+				isLoading={timelineLoading}
+				className="md:col-span-2 lg:col-span-4"
+			/>
 		</div>
 	);
 }

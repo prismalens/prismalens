@@ -9,8 +9,6 @@ export {
 	type CommanderConfig,
 	createCommander,
 	createCommanderFromState,
-	createDeepRCAAgent,
-	graph,
 } from "./commander/agent.js";
 
 export {

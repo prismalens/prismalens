@@ -5,6 +5,9 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	CreateConnectionSchema,
+	CreateServiceIntegrationSchema,
+	GitOrganizationSchema,
+	GitRepositorySchema,
 	IdParamSchema,
 	IntegrationConnectionSchema,
 	IntegrationConnectionWithDefinitionSchema,
@@ -13,8 +16,11 @@ import {
 	OAuthCallbackResponseSchema,
 	OAuthCallbackSchema,
 	OAuthStartResponseSchema,
+	ServiceIntegrationSchema,
+	ServiceIntegrationWithStatusSchema,
 	SuccessResponseSchema,
 	UpdateConnectionSchema,
+	UpdateServiceIntegrationSchema,
 } from "../schemas/index.js";
 
 export const integrationsContract = {
@@ -129,6 +135,120 @@ export const integrationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(SuccessResponseSchema),
+
+	// =========================================================================
+	// GIT PROVIDER ENDPOINTS
+	// =========================================================================
+
+	/**
+	 * Get organizations from a git provider connection
+	 * GET /integrations/connections/:id/git/organizations
+	 */
+	getGitOrganizations: oc
+		.route({
+			method: "GET",
+			path: "/integrations/connections/{id}/git/organizations",
+			summary: "Get organizations from git provider",
+			tags: ["integrations", "git"],
+		})
+		.input(IdParamSchema)
+		.output(z.array(GitOrganizationSchema)),
+
+	/**
+	 * Get repositories from a git provider connection
+	 * GET /integrations/connections/:id/git/repositories
+	 */
+	getGitRepositories: oc
+		.route({
+			method: "GET",
+			path: "/integrations/connections/{id}/git/repositories",
+			summary: "Get repositories from git provider",
+			tags: ["integrations", "git"],
+		})
+		.input(
+			IdParamSchema.extend({
+				org: z.string().optional(),
+			}),
+		)
+		.output(z.array(GitRepositorySchema)),
+
+	/**
+	 * Update connection config (e.g., selected repos after OAuth)
+	 * PATCH /integrations/connections/:id/config
+	 */
+	updateConnectionConfig: oc
+		.route({
+			method: "PATCH",
+			path: "/integrations/connections/{id}/config",
+			summary: "Update connection configuration",
+			tags: ["integrations"],
+		})
+		.input(
+			IdParamSchema.extend({
+				config: z.record(z.unknown()),
+			}),
+		)
+		.output(IntegrationConnectionSchema),
+
+	// =========================================================================
+	// SERVICE INTEGRATION ENDPOINTS (Per-service overrides)
+	// =========================================================================
+
+	/**
+	 * Get integrations for a service (with override status)
+	 * GET /integrations/service/:serviceId
+	 */
+	getServiceIntegrations: oc
+		.route({
+			method: "GET",
+			path: "/integrations/service/{serviceId}",
+			summary: "Get integrations for a service with override status",
+			tags: ["integrations", "services"],
+		})
+		.input(z.object({ serviceId: z.string().uuid() }))
+		.output(z.array(ServiceIntegrationWithStatusSchema)),
+
+	/**
+	 * Create a service integration override
+	 * POST /integrations/service-integrations
+	 */
+	createServiceIntegration: oc
+		.route({
+			method: "POST",
+			path: "/integrations/service-integrations",
+			summary: "Create per-service integration override",
+			tags: ["integrations", "services"],
+		})
+		.input(CreateServiceIntegrationSchema)
+		.output(ServiceIntegrationSchema),
+
+	/**
+	 * Update a service integration override
+	 * PATCH /integrations/service-integrations/:id
+	 */
+	updateServiceIntegration: oc
+		.route({
+			method: "PATCH",
+			path: "/integrations/service-integrations/{id}",
+			summary: "Update per-service integration override",
+			tags: ["integrations", "services"],
+		})
+		.input(IdParamSchema.merge(UpdateServiceIntegrationSchema))
+		.output(ServiceIntegrationSchema),
+
+	/**
+	 * Delete a service integration override
+	 * DELETE /integrations/service-integrations/:id
+	 */
+	deleteServiceIntegration: oc
+		.route({
+			method: "DELETE",
+			path: "/integrations/service-integrations/{id}",
+			summary: "Delete per-service integration override",
+			tags: ["integrations", "services"],
+		})
+		.input(IdParamSchema)
+		.output(z.void()),
 };
 
 export const oauthContract = {

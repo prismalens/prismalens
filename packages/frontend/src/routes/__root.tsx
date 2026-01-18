@@ -1,24 +1,26 @@
 /// <reference types="vite/client" />
 
 import {
-	createRootRoute,
+	createRootRouteWithContext,
 	HeadContent,
 	Link,
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AlertTriangle, Frown, ServerOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/Navbar";
-import { QueryProvider } from "@/lib/providers/query-provider";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { LanguageProvider } from "@/lib/providers/language-provider";
 import { getThemeServerFn } from "@/lib/theme";
 import { getLocaleServerFn } from "@/lib/locale";
+import { queryClient, type RouterContext } from "@/router";
 import * as m from "@/lib/paraglide/messages.js";
 import appCss from "../app.css?url";
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<RouterContext>()({
 	loader: async () => {
 		const [theme, locale] = await Promise.all([
 			getThemeServerFn(),
@@ -54,14 +56,15 @@ function RootLayout() {
 			<body className="font-sans">
 				<LanguageProvider locale={locale}>
 					<ThemeProvider theme={theme}>
-						<QueryProvider>
+						<QueryClientProvider client={queryClient}>
 							<div className="min-h-screen bg-background text-foreground">
 								<Navbar />
 								<main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
 									<Outlet />
 								</main>
 							</div>
-						</QueryProvider>
+							<ReactQueryDevtools initialIsOpen={false} />
+						</QueryClientProvider>
 					</ThemeProvider>
 				</LanguageProvider>
 				<Scripts />

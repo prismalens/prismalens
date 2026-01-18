@@ -2,6 +2,7 @@ import type { StructuredTool } from "@langchain/core/tools";
 import { tool } from "@langchain/core/tools";
 import axios from "axios";
 import { z } from "zod";
+import type { BundleExecutionContext } from "./bundles/types.js";
 import type { ToolFactoryOptions } from "./factory.js";
 
 // =============================================================================
@@ -282,3 +283,257 @@ export const renderTools = createRenderTools({
 	agentName: "default",
 	integrations: [],
 });
+
+// =============================================================================
+// BUNDLE FACTORY EXPORTS
+// =============================================================================
+
+/**
+ * Get Render credentials from bundle context
+ */
+function getRenderCredentialsFromContext(
+	context: BundleExecutionContext,
+): RenderCredentials | null {
+	return getRenderCredentials(context.integrations);
+}
+
+/**
+ * Create Render tools from bundle context.
+ * Used by the progressive disclosure system.
+ */
+export function createRenderLogsBundle(
+	context: BundleExecutionContext,
+): StructuredTool[] {
+	const credentials = getRenderCredentialsFromContext(context);
+	return createRenderToolsInternal(credentials);
+}
+
+/**
+ * Internal function to create tools with credentials.
+ * Shared between legacy and bundle factory paths.
+ */
+function createRenderToolsInternal(
+	credentials: RenderCredentials | null,
+): StructuredTool[] {
+	return [
+		// Fetch logs from a Render service
+		tool(
+			async ({ time_range_minutes, limit, search_query, resource_id }) => {
+				if (!credentials) {
+					return "Error: Render credentials not configured. Set RENDER_API_KEY and RENDER_OWNER_ID environment variables.";
+				}
+
+				const ownerId = credentials.ownerId;
+				const resourceId = resource_id || credentials.resourceId;
+
+				if (!ownerId) {
+					return "Error: RENDER_OWNER_ID is required";
+				}
+				if (!resourceId) {
+					return "Error: resource_id parameter or RENDER_RESOURCE_ID is required";
+				}
+
+				try {
+					const endTime = new Date();
+					const startTime = new Date(
+						endTime.getTime() - (time_range_minutes || 60) * 60000,
+					);
+
+					const params: Record<string, unknown> = {
+						ownerId,
+						resource: [resourceId],
+						startTime: startTime.toISOString(),
+						endTime: endTime.toISOString(),
+						limit: Math.min(limit || 100, 500),
+						direction: "backward",
+					};
+
+					if (search_query) {
+						params.text = search_query;
+					}
+
+					const response = await axios.get("https://api.render.com/v1/logs", {
+						headers: {
+							Authorization: `Bearer ${credentials.apiKey}`,
+						},
+						params,
+					});
+
+					const logs = ((response.data.logs || []) as Array<Record<string, unknown>>).map((log) => ({
+						timestamp: log.timestamp,
+						message: log.message,
+						level: log.level || "info",
+						source: log.source || "unknown",
+					}));
+
+					return JSON.stringify(
+						{
+							logs,
+							count: logs.length,
+							timeRange: {
+								start: startTime.toISOString(),
+								end: endTime.toISOString(),
+							},
+						},
+						null,
+						2,
+					);
+				} catch (error: unknown) {
+					const axiosError = error as { response?: { status: number }; message?: string };
+					if (axiosError.response?.status === 401) {
+						return "Error: Invalid Render API key";
+					}
+					if (axiosError.response?.status === 404) {
+						return `Error: Resource not found: ${resourceId}`;
+					}
+					return `Error fetching Render logs: ${axiosError.message || "Unknown error"}`;
+				}
+			},
+			{
+				name: "render_get_logs",
+				description:
+					"Fetch logs from a Render.com service. Useful for investigating deployment issues, errors, and runtime behavior.",
+				schema: z.object({
+					time_range_minutes: z
+						.number()
+						.optional()
+						.default(60)
+						.describe("How many minutes of logs to fetch (default: 60)"),
+					limit: z
+						.number()
+						.optional()
+						.default(100)
+						.describe("Maximum number of log entries (default: 100, max: 500)"),
+					search_query: z
+						.string()
+						.optional()
+						.describe(
+							'Filter logs by text content (e.g., "error", "exception")',
+						),
+					resource_id: z
+						.string()
+						.optional()
+						.describe(
+							"Render resource ID to fetch logs from (overrides default)",
+						),
+				}),
+			},
+		),
+
+		// List Render services
+		tool(
+			async ({ type }) => {
+				if (!credentials) {
+					return "Error: Render credentials not configured";
+				}
+
+				try {
+					const params: Record<string, unknown> = {};
+					if (type) {
+						params.type = type;
+					}
+
+					const response = await axios.get(
+						"https://api.render.com/v1/services",
+						{
+							headers: {
+								Authorization: `Bearer ${credentials.apiKey}`,
+							},
+							params,
+						},
+					);
+
+					const services = (response.data as Array<Record<string, unknown>>).map((item) => {
+						const service = item.service as Record<string, unknown>;
+						return {
+							id: service.id,
+							name: service.name,
+							type: service.type,
+							status: service.suspended ? "suspended" : "active",
+							repo: service.repo,
+							branch: service.branch,
+						};
+					});
+
+					return JSON.stringify(services, null, 2);
+				} catch (error: unknown) {
+					const axiosError = error as { message?: string };
+					return `Error listing Render services: ${axiosError.message || "Unknown error"}`;
+				}
+			},
+			{
+				name: "render_list_services",
+				description:
+					"List all Render services. Useful for discovering service IDs for log queries.",
+				schema: z.object({
+					type: z
+						.enum([
+							"static_site",
+							"web_service",
+							"private_service",
+							"background_worker",
+							"cron_job",
+						])
+						.optional()
+						.describe("Filter by service type"),
+				}),
+			},
+		),
+
+		// Get deployment history
+		tool(
+			async ({ service_id, limit }) => {
+				if (!credentials) {
+					return "Error: Render credentials not configured";
+				}
+
+				if (!service_id) {
+					return "Error: service_id is required";
+				}
+
+				try {
+					const response = await axios.get(
+						`https://api.render.com/v1/services/${service_id}/deploys`,
+						{
+							headers: {
+								Authorization: `Bearer ${credentials.apiKey}`,
+							},
+							params: { limit: limit || 10 },
+						},
+					);
+
+					const deploys = (response.data as Array<Record<string, unknown>>).map((item) => {
+						const deploy = item.deploy as Record<string, unknown>;
+						const commit = deploy.commit as Record<string, unknown> | undefined;
+						return {
+							id: deploy.id,
+							status: deploy.status,
+							commit: (commit?.id as string)?.substring(0, 7),
+							message: (commit?.message as string)?.split("\n")[0],
+							createdAt: deploy.createdAt,
+							finishedAt: deploy.finishedAt,
+						};
+					});
+
+					return JSON.stringify(deploys, null, 2);
+				} catch (error: unknown) {
+					const axiosError = error as { message?: string };
+					return `Error fetching deployments: ${axiosError.message || "Unknown error"}`;
+				}
+			},
+			{
+				name: "render_get_deployments",
+				description:
+					"Get recent deployments for a Render service. Useful for correlating incidents with recent deployments.",
+				schema: z.object({
+					service_id: z.string().describe("Render service ID"),
+					limit: z
+						.number()
+						.optional()
+						.default(10)
+						.describe("Number of deployments to return"),
+				}),
+			},
+		),
+	];
+}

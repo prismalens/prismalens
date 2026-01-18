@@ -1,3 +1,4 @@
+export { AgentNode, type AgentNodeData } from "./AgentNode";
 export { ApprovalGate, type ApprovalGateProps } from "./ApprovalGate";
 export {
 	CanvasExportMenu,
@@ -8,3 +9,5 @@ export {
 	NodeDetailsPanel,
 	type NodeDetailsPanelProps,
 } from "./NodeDetailsPanel";
+export { StartEndNode, type StartEndNodeData } from "./StartEndNode";
+export { StatusIndicator, type StatusIndicatorProps } from "./StatusIndicator";

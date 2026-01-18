@@ -10,6 +10,12 @@ import { ArrowLeft, CheckCircle, Play, Search, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
@@ -19,6 +25,8 @@ export interface IncidentDetailHeaderProps {
 	onInvestigate?: () => void;
 	onResolve?: () => void;
 	isInvestigating?: boolean;
+	investigateDisabled?: boolean;
+	investigateDisabledReason?: string;
 }
 
 const priorityColors: Record<string, string> = {
@@ -35,6 +43,8 @@ export function IncidentDetailHeader({
 	onInvestigate,
 	onResolve,
 	isInvestigating,
+	investigateDisabled,
+	investigateDisabledReason,
 }: IncidentDetailHeaderProps) {
 	const canAcknowledge = incident.status === "triggered";
 	const canInvestigate = ["triggered", "investigating"].includes(incident.status);
@@ -116,19 +126,35 @@ export function IncidentDetailHeader({
 						</Button>
 					)}
 					{canInvestigate && onInvestigate && (
-						<Button onClick={onInvestigate} disabled={isInvestigating}>
-							{isInvestigating ? (
-								<>
-									<Play className="h-4 w-4 mr-2 animate-pulse" />
-									Starting...
-								</>
-							) : (
-								<>
-									<Search className="h-4 w-4 mr-2" />
-									Investigate
-								</>
-							)}
-						</Button>
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<span>
+										<Button
+											onClick={onInvestigate}
+											disabled={isInvestigating || investigateDisabled}
+										>
+											{isInvestigating ? (
+												<>
+													<Play className="h-4 w-4 mr-2 animate-pulse" />
+													Starting...
+												</>
+											) : (
+												<>
+													<Search className="h-4 w-4 mr-2" />
+													Investigate
+												</>
+											)}
+										</Button>
+									</span>
+								</TooltipTrigger>
+								{investigateDisabled && investigateDisabledReason && (
+									<TooltipContent>
+										<p>{investigateDisabledReason}</p>
+									</TooltipContent>
+								)}
+							</Tooltip>
+						</TooltipProvider>
 					)}
 					{canResolve && onResolve && (
 						<Button variant="outline" onClick={onResolve}>

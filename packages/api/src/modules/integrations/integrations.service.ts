@@ -9,6 +9,11 @@ import {
 	IntegrationDefinition,
 	ServiceIntegration,
 } from "@prismalens/database";
+import type {
+	GitOrganization,
+	GitRepository,
+	ServiceIntegrationWithStatus,
+} from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
 import {
@@ -17,6 +22,10 @@ import {
 	UpdateConnectionDto,
 	UpdateOAuthConfigDto,
 } from "./dto/index.js";
+import {
+	createGitProvider,
+	isGitProviderSupported,
+} from "./git-providers/index.js";
 
 export type {
 	IntegrationDefinition,
@@ -443,11 +452,114 @@ export class IntegrationsService {
 	}
 
 	// =========================================================================
+	// GIT PROVIDER OPERATIONS
+	// =========================================================================
+
+	/**
+	 * Get organizations from a git provider connection.
+	 */
+	async getGitOrganizations(connectionId: string): Promise<GitOrganization[]> {
+		const connection = await this.findConnectionById(connectionId);
+		if (!connection) {
+			throw new NotFoundException("Connection not found");
+		}
+
+		const providerName = connection.definition.name;
+		if (!isGitProviderSupported(providerName)) {
+			throw new BadRequestException(
+				`'${providerName}' is not a supported git provider`,
+			);
+		}
+
+		const provider = createGitProvider(providerName);
+		if (!provider) {
+			throw new BadRequestException(`Failed to create git provider for '${providerName}'`);
+		}
+
+		const credentials = this.credentialsService.decrypt<Record<string, unknown>>(
+			connection.credentials,
+		);
+		const accessToken = (credentials.accessToken || credentials.apiKey) as string;
+
+		if (!accessToken) {
+			throw new BadRequestException("No access token found for this connection");
+		}
+
+		return provider.getOrganizations(accessToken);
+	}
+
+	/**
+	 * Get repositories from a git provider connection.
+	 */
+	async getGitRepositories(
+		connectionId: string,
+		org?: string,
+	): Promise<GitRepository[]> {
+		const connection = await this.findConnectionById(connectionId);
+		if (!connection) {
+			throw new NotFoundException("Connection not found");
+		}
+
+		const providerName = connection.definition.name;
+		if (!isGitProviderSupported(providerName)) {
+			throw new BadRequestException(
+				`'${providerName}' is not a supported git provider`,
+			);
+		}
+
+		const provider = createGitProvider(providerName);
+		if (!provider) {
+			throw new BadRequestException(`Failed to create git provider for '${providerName}'`);
+		}
+
+		const credentials = this.credentialsService.decrypt<Record<string, unknown>>(
+			connection.credentials,
+		);
+		const accessToken = (credentials.accessToken || credentials.apiKey) as string;
+
+		if (!accessToken) {
+			throw new BadRequestException("No access token found for this connection");
+		}
+
+		return provider.getRepositories(accessToken, org);
+	}
+
+	/**
+	 * Update connection config (e.g., selected repos after OAuth).
+	 */
+	async updateConnectionConfig(
+		connectionId: string,
+		config: Record<string, unknown>,
+	): Promise<IntegrationConnection> {
+		const connection = await this.findConnectionById(connectionId);
+		if (!connection) {
+			throw new NotFoundException("Connection not found");
+		}
+
+		// Merge with existing config
+		const existingConfig = connection.config
+			? (JSON.parse(connection.config) as Record<string, unknown>)
+			: {};
+		const mergedConfig = { ...existingConfig, ...config };
+
+		return this.prisma.integrationConnection.update({
+			where: { id: connectionId },
+			data: {
+				config: JSON.stringify(mergedConfig),
+				// If status was pending_config, mark as connected now
+				status: connection.status === "pending" ? "connected" : connection.status,
+			},
+		});
+	}
+
+	// =========================================================================
 	// SERVICE INTEGRATIONS (Service-Level Mappings)
 	// =========================================================================
 
+	/**
+	 * Create a service integration override.
+	 */
 	async createServiceIntegration(
-		serviceId: string,
 		dto: CreateServiceIntegrationDto,
 	): Promise<ServiceIntegration> {
 		const connection = await this.findConnectionById(dto.connectionId);
@@ -455,15 +567,155 @@ export class IntegrationsService {
 			throw new NotFoundException("Integration connection not found");
 		}
 
+		// Check if override already exists
+		const existing = await this.prisma.serviceIntegration.findUnique({
+			where: {
+				serviceId_connectionId: {
+					serviceId: dto.serviceId,
+					connectionId: dto.connectionId,
+				},
+			},
+		});
+
+		if (existing) {
+			throw new BadRequestException(
+				"A service integration override already exists for this connection",
+			);
+		}
+
 		return this.prisma.serviceIntegration.create({
 			data: {
-				serviceId,
+				serviceId: dto.serviceId,
 				connectionId: dto.connectionId,
 				config: dto.config ? JSON.stringify(dto.config) : null,
 				priority: dto.priority ?? 0,
-				isEnabled: true,
+				isEnabled: dto.isEnabled ?? true,
 			},
 		});
+	}
+
+	/**
+	 * Update a service integration override by ID.
+	 */
+	async updateServiceIntegrationById(
+		id: string,
+		data: { priority?: number; config?: Record<string, unknown>; isEnabled?: boolean },
+	): Promise<ServiceIntegration | null> {
+		const existing = await this.prisma.serviceIntegration.findUnique({
+			where: { id },
+		});
+
+		if (!existing) {
+			return null;
+		}
+
+		const updateData: Record<string, unknown> = { updatedAt: new Date() };
+		if (data.priority !== undefined) updateData.priority = data.priority;
+		if (data.isEnabled !== undefined) updateData.isEnabled = data.isEnabled;
+		if (data.config !== undefined) updateData.config = JSON.stringify(data.config);
+
+		return this.prisma.serviceIntegration.update({
+			where: { id },
+			data: updateData,
+		});
+	}
+
+	/**
+	 * Delete a service integration override by ID.
+	 */
+	async deleteServiceIntegrationById(id: string): Promise<boolean> {
+		try {
+			await this.prisma.serviceIntegration.delete({ where: { id } });
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Get all integrations for a service with override status.
+	 * Returns both global integrations and service-specific overrides.
+	 */
+	async getServiceIntegrationsWithStatus(
+		serviceId: string,
+	): Promise<ServiceIntegrationWithStatus[]> {
+		// Get all connected global integrations
+		const globalConnections = await this.prisma.integrationConnection.findMany({
+			where: { isGlobal: true, status: "connected" },
+			include: { definition: true },
+		});
+
+		// Get service-specific overrides
+		const serviceOverrides = await this.prisma.serviceIntegration.findMany({
+			where: { serviceId },
+			include: {
+				connection: {
+					include: { definition: true },
+				},
+			},
+		});
+
+		// Build map of overrides by connection ID
+		const overridesByConnectionId = new Map(
+			serviceOverrides.map((so) => [so.connectionId, so]),
+		);
+
+		const results: ServiceIntegrationWithStatus[] = [];
+
+		// Process global integrations
+		for (const conn of globalConnections) {
+			const override = overridesByConnectionId.get(conn.id);
+			const globalConfig = conn.config
+				? (JSON.parse(conn.config) as Record<string, unknown>)
+				: null;
+			const serviceConfig = override?.config
+				? (JSON.parse(override.config) as Record<string, unknown>)
+				: null;
+
+			results.push({
+				connectionId: conn.id,
+				connectionName: conn.name,
+				definitionName: conn.definition.name,
+				definitionDisplayName: conn.definition.displayName,
+				category: conn.definition.category,
+				status: conn.status as "connected" | "pending" | "error" | "disabled",
+				isGlobal: true,
+				hasOverride: !!override,
+				overrideId: override?.id,
+				globalConfig,
+				serviceConfig,
+				effectiveConfig: serviceConfig ?? globalConfig,
+			});
+		}
+
+		// Add non-global service-specific connections (if any)
+		for (const override of serviceOverrides) {
+			if (!override.connection.isGlobal) {
+				const globalConfig = override.connection.config
+					? (JSON.parse(override.connection.config) as Record<string, unknown>)
+					: null;
+				const serviceConfig = override.config
+					? (JSON.parse(override.config) as Record<string, unknown>)
+					: null;
+
+				results.push({
+					connectionId: override.connectionId,
+					connectionName: override.connection.name,
+					definitionName: override.connection.definition.name,
+					definitionDisplayName: override.connection.definition.displayName,
+					category: override.connection.definition.category,
+					status: override.connection.status as "connected" | "pending" | "error" | "disabled",
+					isGlobal: false,
+					hasOverride: true,
+					overrideId: override.id,
+					globalConfig,
+					serviceConfig,
+					effectiveConfig: serviceConfig ?? globalConfig,
+				});
+			}
+		}
+
+		return results;
 	}
 
 	async findServiceIntegrations(serviceId: string): Promise<

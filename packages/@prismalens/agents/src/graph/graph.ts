@@ -10,6 +10,7 @@ import {
 } from "../tools/index.js";
 import {
 	getBestHypothesis,
+	getIncidentDisplayInfo,
 	type Hypothesis,
 	type InvestigationState,
 	InvestigationStateAnnotation,
@@ -34,13 +35,20 @@ const logger = new Logger({ context: "InvestigationGraph" });
 // =============================================================================
 
 /**
- * Alert validation node - validates and enriches incoming alerts.
+ * Validation node - validates incident and alert context.
  * This runs before the Commander to ensure we have valid input.
+ * Supports both incident-centric (preferred) and alert-centric (legacy) approaches.
  */
 async function validateAlerts(
 	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
-	logger.info(`Validating ${state.alerts.length} alerts for investigation ${state.investigationId}`);
+	const hasIncident = state.incident !== null;
+	const hasAlerts = state.alerts.length > 0;
+
+	logger.info(`Validating investigation ${state.investigationId}`, {
+		hasIncident,
+		alertCount: state.alerts.length,
+	});
 
 	// Validate required fields
 	if (!state.investigationId) {
@@ -57,39 +65,62 @@ async function validateAlerts(
 		};
 	}
 
-	if (state.alerts.length === 0) {
+	// Must have either incident or alerts
+	if (!hasIncident && !hasAlerts) {
 		return {
 			status: "failed",
-			error: "No alerts provided for investigation",
+			error: "No incident or alerts provided for investigation",
 		};
 	}
 
-	// Set primary alert if not already set
-	const primaryAlert = state.primaryAlert || state.alerts[0];
+	// Set primary alert if not already set (for backward compatibility)
+	const primaryAlert = state.primaryAlert || state.alerts[0] || null;
 
-	// Calculate data quality score based on alert completeness
-	const alertQualityScores = state.alerts.map((alert) => {
-		let score = 0;
-		if (alert.title) score += 20;
-		if (alert.description) score += 15;
-		if (alert.severity) score += 15;
-		if (alert.source) score += 10;
-		if (alert.serviceName || alert.serviceId) score += 15;
-		if (alert.repository) score += 15;
-		if (alert.labels && Object.keys(alert.labels).length > 0) score += 5;
-		if (alert.triggeredAt) score += 5;
-		return score;
-	});
+	// Calculate data quality scores
+	const dataQuality: Record<string, number> = {};
 
-	const avgQuality =
-		alertQualityScores.reduce((a, b) => a + b, 0) / alertQualityScores.length;
+	// Calculate incident quality score if incident is present
+	if (hasIncident) {
+		const inc = state.incident!;
+		let incidentScore = 0;
+		if (inc.title) incidentScore += 20;
+		if (inc.description) incidentScore += 15;
+		if (inc.severity) incidentScore += 15;
+		if (inc.priority) incidentScore += 10;
+		if (inc.serviceName || inc.serviceId) incidentScore += 15;
+		if (inc.alertCount > 0) incidentScore += 10;
+		if (inc.tags && inc.tags.length > 0) incidentScore += 5;
+		if (inc.customerImpact) incidentScore += 5;
+		if (inc.correlationReason) incidentScore += 5;
+		dataQuality.incident = incidentScore;
+		logger.debug(`Incident quality score: ${incidentScore}%`);
+	}
 
-	logger.debug(`Alert quality score: ${avgQuality.toFixed(1)}%`);
+	// Calculate alert quality score if alerts are present
+	if (hasAlerts) {
+		const alertQualityScores = state.alerts.map((alert) => {
+			let score = 0;
+			if (alert.title) score += 20;
+			if (alert.description) score += 15;
+			if (alert.severity) score += 15;
+			if (alert.source) score += 10;
+			if (alert.serviceName || alert.serviceId) score += 15;
+			if (alert.repository) score += 15;
+			if (alert.labels && Object.keys(alert.labels).length > 0) score += 5;
+			if (alert.triggeredAt) score += 5;
+			return score;
+		});
+
+		const avgQuality =
+			alertQualityScores.reduce((a, b) => a + b, 0) / alertQualityScores.length;
+		dataQuality.alerts = avgQuality;
+		logger.debug(`Alert quality score: ${avgQuality.toFixed(1)}%`);
+	}
 
 	return {
 		primaryAlert,
 		status: "running",
-		dataQuality: { alerts: avgQuality },
+		dataQuality,
 		agentProgression: { validation: true },
 	};
 }
@@ -97,6 +128,7 @@ async function validateAlerts(
 /**
  * Commander node - runs the DeepAgent investigation.
  * This is where the actual investigation happens.
+ * Uses incident-centric context when available, falls back to alerts.
  */
 async function runCommander(
 	state: InvestigationState,
@@ -111,32 +143,48 @@ async function runCommander(
 		// Create Commander with state context
 		const commander = createCommanderFromState(state);
 
-		// Build the initial message for Commander
-		const alertSummaries = state.alerts
-			.map(
-				(a) =>
-					`- [${a.severity}] ${a.title}${a.description ? `: ${a.description}` : ""}`,
-			)
-			.join("\n");
+		// Get incident display info (prefers incident, falls back to alerts)
+		const displayInfo = getIncidentDisplayInfo(state);
+		const incidentNumber = displayInfo.number
+			? `INC-${displayInfo.number}`
+			: displayInfo.incidentId;
 
+		// Build alert summaries for supporting context
+		const alertSummaries = state.alerts.length > 0
+			? state.alerts
+					.map(
+						(a) =>
+							`- [${a.severity?.toUpperCase()}] ${a.title}${a.description ? `: ${a.description}` : ""}`,
+					)
+					.join("\n")
+			: "No individual alerts - see incident details above";
+
+		// Build the initial message for Commander (incident-centric)
 		const initialMessage = `
 # Incident Investigation Request
 
-## Incident Details
-- **Investigation ID**: ${state.investigationId}
-- **Incident ID**: ${state.incidentId}
-- **Priority**: ${state.priority}
+## Incident: ${incidentNumber}
+- **Title**: ${displayInfo.title}
+- **Severity**: ${displayInfo.severity.toUpperCase()}
+- **Priority**: ${displayInfo.priority.toUpperCase()}
+- **Service**: ${displayInfo.serviceName || "Unknown"}
+- **Alert Count**: ${displayInfo.alertCount}
+${displayInfo.description ? `- **Description**: ${displayInfo.description}` : ""}
+${state.incident?.customerImpact ? `- **Customer Impact**: ${state.incident.customerImpact}` : ""}
+${state.incident?.correlationReason ? `- **Correlation**: ${state.incident.correlationReason}` : ""}
 
-## Alerts (${state.alerts.length})
+## Investigation Metadata
+- **Investigation ID**: ${state.investigationId}
+
+## Associated Alerts (${state.alerts.length})
 ${alertSummaries}
 
 ## Available Context
-- Primary alert service: ${state.primaryAlert?.serviceName || "Unknown"}
 - Repository: ${state.primaryAlert?.repository || "Not specified"}
-- Triggered at: ${state.primaryAlert?.triggeredAt || "Unknown"}
+- Triggered at: ${state.incident?.triggeredAt || state.primaryAlert?.triggeredAt || "Unknown"}
 
 ## Your Task
-Investigate this incident following the standard workflow:
+Investigate incident **${incidentNumber}** ("${displayInfo.title}") following the standard workflow:
 1. Use cartographer to gather context (logs, code, deployments)
 2. Use detective to analyze and form hypothesis
 3. Use surgeon to propose fixes if root cause is identified

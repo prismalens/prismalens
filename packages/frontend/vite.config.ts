@@ -14,6 +14,11 @@ export default defineConfig({
 				target: `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env.PRISMALENS_HOST || "localhost"}:${process.env.PRISMALENS_PORT || "3001"}`,
 				changeOrigin: true,
 			},
+			// Proxy health endpoint (excluded from /api prefix in backend)
+			"/health": {
+				target: `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env.PRISMALENS_HOST || "localhost"}:${process.env.PRISMALENS_PORT || "3001"}`,
+				changeOrigin: true,
+			},
 		},
 	},
 	plugins: [

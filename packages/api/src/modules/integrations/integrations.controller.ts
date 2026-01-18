@@ -121,6 +121,94 @@ export class IntegrationsController {
 					};
 				},
 			),
+
+			// =========================================================================
+			// GIT PROVIDER ENDPOINTS
+			// =========================================================================
+
+			// GET /integrations/connections/:id/git/organizations
+			getGitOrganizations: implement(
+				integrationsContract.getGitOrganizations,
+			).handler(async ({ input }) => {
+				return this.integrationsService.getGitOrganizations(input.id);
+			}),
+
+			// GET /integrations/connections/:id/git/repositories
+			getGitRepositories: implement(
+				integrationsContract.getGitRepositories,
+			).handler(async ({ input }) => {
+				return this.integrationsService.getGitRepositories(input.id, input.org);
+			}),
+
+			// PATCH /integrations/connections/:id/config
+			updateConnectionConfig: implement(
+				integrationsContract.updateConnectionConfig,
+			).handler(async ({ input }) => {
+				const connection = await this.integrationsService.updateConnectionConfig(
+					input.id,
+					input.config,
+				);
+				this.logger.log(`Updated config for connection: ${input.id}`);
+				return this.serializeConnection(connection);
+			}),
+
+			// =========================================================================
+			// SERVICE INTEGRATION ENDPOINTS
+			// =========================================================================
+
+			// GET /integrations/service/:serviceId
+			getServiceIntegrations: implement(
+				integrationsContract.getServiceIntegrations,
+			).handler(async ({ input }) => {
+				return this.integrationsService.getServiceIntegrationsWithStatus(
+					input.serviceId,
+				);
+			}),
+
+			// POST /integrations/service-integrations
+			createServiceIntegration: implement(
+				integrationsContract.createServiceIntegration,
+			).handler(async ({ input }) => {
+				const serviceIntegration =
+					await this.integrationsService.createServiceIntegration(input);
+				this.logger.log(
+					`Created service integration: ${serviceIntegration.id}`,
+				);
+				return this.serializeServiceIntegration(serviceIntegration);
+			}),
+
+			// PATCH /integrations/service-integrations/:id
+			updateServiceIntegration: implement(
+				integrationsContract.updateServiceIntegration,
+			).handler(async ({ input }) => {
+				const { id, ...updateData } = input;
+				const serviceIntegration =
+					await this.integrationsService.updateServiceIntegrationById(
+						id,
+						updateData,
+					);
+				if (!serviceIntegration) {
+					throw new ORPCError("NOT_FOUND", {
+						message: "Service integration not found",
+					});
+				}
+				this.logger.log(`Updated service integration: ${id}`);
+				return this.serializeServiceIntegration(serviceIntegration);
+			}),
+
+			// DELETE /integrations/service-integrations/:id
+			deleteServiceIntegration: implement(
+				integrationsContract.deleteServiceIntegration,
+			).handler(async ({ input }) => {
+				const deleted =
+					await this.integrationsService.deleteServiceIntegrationById(input.id);
+				if (!deleted) {
+					throw new ORPCError("NOT_FOUND", {
+						message: "Service integration not found",
+					});
+				}
+				this.logger.log(`Deleted service integration: ${input.id}`);
+			}),
 		};
 	}
 
@@ -157,5 +245,16 @@ export class IntegrationsController {
 		}
 
 		return serialized;
+	}
+
+	private serializeServiceIntegration(serviceIntegration: any): any {
+		return {
+			...serviceIntegration,
+			config: serviceIntegration.config
+				? JSON.parse(serviceIntegration.config)
+				: null,
+			createdAt: serviceIntegration.createdAt?.toISOString(),
+			updatedAt: serviceIntegration.updatedAt?.toISOString(),
+		};
 	}
 }

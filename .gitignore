@@ -67,3 +67,6 @@ secrets.yaml
 
 #Calude
 .claude
+
+# Internal documentation
+internal-docs

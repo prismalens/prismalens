@@ -59,8 +59,7 @@ export class TimelineController {
 		return {
 			...entry,
 			metadata: entry.metadata ? JSON.parse(entry.metadata) : null,
-			timestamp: entry.timestamp?.toISOString(),
-			createdAt: entry.createdAt?.toISOString(),
+			occurredAt: entry.occurredAt?.toISOString(),
 		};
 	}
 
@@ -71,7 +70,8 @@ export class TimelineController {
 			serialized.user = {
 				id: entry.user.id,
 				email: entry.user.email,
-				name: entry.user.name,
+				firstName: entry.user.firstName ?? null,
+				lastName: entry.user.lastName ?? null,
 			};
 		}
 

@@ -1,15 +1,22 @@
-import { createDeepAgent } from "deepagents";
+import { createDeepAgent, type DeepAgent } from "deepagents";
 import { createLLM } from "../../llm/factory.js";
 import { createToolsForAgent } from "../../tools/factory.js";
 import type {
 	IntegrationContext,
 	InvestigationState,
 } from "../../types/state.js";
+import { getIncidentDisplayInfo } from "../../types/state.js";
 import { createSubAgents, type SubAgentConfig } from "../subagents/index.js";
-import { buildCommanderPrompt, COMMANDER_SYSTEM_PROMPT } from "./prompts.js";
+import {
+	buildCommanderPrompt,
+	COMMANDER_SYSTEM_PROMPT,
+	type CommanderIncidentContext,
+	type CommanderAlertContext,
+} from "./prompts.js";
 
+// Use DeepAgent type directly to avoid type instantiation depth issues
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CommanderAgent = ReturnType<typeof createDeepAgent>;
+type CommanderAgent = DeepAgent<any>;
 
 // =============================================================================
 // COMMANDER DEEP AGENT
@@ -35,13 +42,10 @@ export interface CommanderConfig {
 	maxIterations?: number;
 	/** LangChain callbacks for tracing */
 	callbacks?: any[];
-	/** Incident-specific context for the prompt */
-	incidentContext?: {
-		alertSummary?: string;
-		serviceName?: string;
-		incidentId?: string;
-		priority?: "low" | "normal" | "high" | "critical";
-	};
+	/**
+	 * Incident-specific context for the prompt (incident-centric approach - preferred)
+	 */
+	incidentContext?: CommanderIncidentContext | CommanderAlertContext;
 }
 
 /**
@@ -93,13 +97,14 @@ export function createCommander(config: CommanderConfig = {}): CommanderAgent {
 
 	// Create the DeepAgent with write_todos and task tools built-in
 	// Note: maxIterations is managed externally, not passed to createDeepAgent
+	// Type cast to avoid TS2589: Type instantiation is excessively deep
 	const agent = createDeepAgent({
 		name: "incident_commander",
 		model,
 		systemPrompt,
 		tools: commanderTools,
 		subagents,
-	});
+	}) as unknown as CommanderAgent;
 
 	return agent;
 }
@@ -107,25 +112,26 @@ export function createCommander(config: CommanderConfig = {}): CommanderAgent {
 /**
  * Create Commander from investigation state.
  * This is the preferred method when called from the LangGraph wrapper.
+ * Uses incident-centric context when available, falls back to alert-based.
  */
 export function createCommanderFromState(
 	state: InvestigationState,
 ): CommanderAgent {
-	// Extract incident context from state
-	const primaryAlert = state.primaryAlert;
-	const incidentContext = primaryAlert
-		? {
-				alertSummary:
-					primaryAlert.title +
-					(primaryAlert.description ? `: ${primaryAlert.description}` : ""),
-				serviceName: primaryAlert.serviceName,
-				incidentId: state.incidentId,
-				priority: state.priority,
-			}
-		: {
-				incidentId: state.incidentId,
-				priority: state.priority,
-			};
+	// Use helper to extract incident display info (prefers incident, falls back to alerts)
+	const displayInfo = getIncidentDisplayInfo(state);
+
+	// Build incident-centric context
+	const incidentContext: CommanderIncidentContext = {
+		incidentId: displayInfo.incidentId,
+		number: displayInfo.number,
+		title: displayInfo.title,
+		description: displayInfo.description,
+		severity: displayInfo.severity,
+		priority: displayInfo.priority,
+		serviceName: displayInfo.serviceName,
+		alertCount: displayInfo.alertCount,
+		customerImpact: state.incident?.customerImpact,
+	};
 
 	return createCommander({
 		integrations: state.integrations,
@@ -133,25 +139,6 @@ export function createCommanderFromState(
 		// Note: maxIterations is tracked in state but not passed to createDeepAgent
 	});
 }
-
-// =============================================================================
-// LEGACY EXPORTS
-// =============================================================================
-// For backward compatibility with existing code
-
-/**
- * @deprecated Use createCommander() instead
- */
-export function createDeepRCAAgent(): CommanderAgent {
-	return createCommander();
-}
-
-/**
- * Default agent instance for LangGraph Studio.
- * Note: This instance doesn't have integration credentials - use createCommander()
- * with integrations for production use.
- */
-export const graph: CommanderAgent = createCommander();
 
 // Export the type for external use
 export type { CommanderAgent };

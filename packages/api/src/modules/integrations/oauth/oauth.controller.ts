@@ -10,6 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '@prismalens/config';
 import { OAuthService } from './oauth.service.js';
+import { IntegrationsService } from '../integrations.service.js';
 
 @Controller('integrations/oauth')
 export class OAuthController {
@@ -17,7 +18,8 @@ export class OAuthController {
 
   constructor(
     private readonly oauthService: OAuthService,
-    private readonly configService: ConfigService<EnvironmentVariables>
+    private readonly configService: ConfigService<EnvironmentVariables>,
+    private readonly integrationsService: IntegrationsService,
   ) {}
 
   /**
@@ -65,8 +67,11 @@ export class OAuthController {
    * - state: State parameter for CSRF validation
    * - error: Error code if authorization failed
    * - error_description: Error description
+   *
+   * Redirects to frontend settings page with result query params.
    */
   @Get(':provider/callback')
+  @Redirect()
   async callback(
     @Param('provider') provider: string,
     @Query('code') code?: string,
@@ -74,19 +79,50 @@ export class OAuthController {
     @Query('error') error?: string,
     @Query('error_description') errorDescription?: string,
   ) {
-    // Handle OAuth errors
+    // Parse state to get the original redirect URI
+    const baseUrl = this.configService.get('PRISMALENS_PUBLIC_URL') || '';
+    const defaultRedirect = `${baseUrl}/settings`;
+
+    let frontendRedirect = defaultRedirect;
+
+    // Try to extract redirect URI from state
+    if (state) {
+      try {
+        const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
+        if (stateData.redirectUri) {
+          // The redirectUri in state points to our callback, but we stored
+          // the original frontend URL - extract the origin
+          const parsedUri = new URL(stateData.redirectUri);
+          // If the redirect_uri was the frontend URL (not our callback), use it
+          if (!parsedUri.pathname.includes('/api/integrations/oauth/')) {
+            frontendRedirect = stateData.redirectUri;
+          }
+        }
+      } catch {
+        // Invalid state, use default redirect
+      }
+    }
+
+    // Handle OAuth errors - redirect with error params
     if (error) {
       this.logger.warn(`OAuth error for ${provider}: ${error} - ${errorDescription}`);
-      return {
-        success: false,
-        error,
-        errorDescription,
-        message: `OAuth authorization was denied or failed: ${errorDescription || error}`,
-      };
+      const errorParams = new URLSearchParams({
+        oauth: provider,
+        status: 'error',
+        error: error,
+        ...(errorDescription && { error_description: errorDescription }),
+      });
+      return { url: `${frontendRedirect}?${errorParams.toString()}` };
     }
 
     if (!code || !state) {
-      throw new BadRequestException('Missing authorization code or state');
+      const errorParams = new URLSearchParams({
+        oauth: provider,
+        status: 'error',
+        error: 'missing_params',
+        error_description: 'Missing authorization code or state',
+      });
+      return { url: `${frontendRedirect}?${errorParams.toString()}` };
     }
 
     try {
@@ -94,16 +130,39 @@ export class OAuthController {
 
       this.logger.log(`OAuth completed for ${provider}, connection: ${connection.id}`);
 
-      return {
-        success: true,
+      // Check if this is a code_source integration that needs configuration
+      const connectionWithDef = await this.integrationsService.findConnectionById(connection.id);
+      const isCodeSource = connectionWithDef?.definition?.category === 'code_source';
+
+      if (isCodeSource) {
+        // Redirect to configuration page for code_source integrations (GitHub, GitLab, etc.)
+        // This allows the user to select organizations and repositories
+        const configureUrl = `${baseUrl}/settings/integrations/configure`;
+        const configParams = new URLSearchParams({
+          connectionId: connection.id,
+          provider: provider,
+        });
+        this.logger.log(`Redirecting to configure page for code_source: ${connection.id}`);
+        return { url: `${configureUrl}?${configParams.toString()}` };
+      }
+
+      // For non-code_source integrations, redirect with success params as before
+      const successParams = new URLSearchParams({
+        oauth: provider,
+        status: 'success',
         connectionId: connection.id,
-        connectionName: connection.name,
-        status: connection.status,
-        message: `Successfully connected to ${provider}`,
-      };
-    } catch (error) {
-      this.logger.error(`OAuth callback failed for ${provider}`, error);
-      throw error;
+      });
+      return { url: `${frontendRedirect}?${successParams.toString()}` };
+    } catch (err) {
+      this.logger.error(`OAuth callback failed for ${provider}`, err);
+      const errorMessage = err instanceof Error ? err.message : 'OAuth callback failed';
+      const errorParams = new URLSearchParams({
+        oauth: provider,
+        status: 'error',
+        error: 'callback_failed',
+        error_description: errorMessage,
+      });
+      return { url: `${frontendRedirect}?${errorParams.toString()}` };
     }
   }
 

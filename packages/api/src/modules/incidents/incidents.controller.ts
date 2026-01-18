@@ -32,6 +32,8 @@ export class IncidentsController {
 					severity: input.severity,
 					priority: input.priority,
 					serviceId: input.serviceId,
+					fromDate: input.fromDate,
+					toDate: input.toDate,
 					limit: input.limit,
 					offset: input.offset,
 				});

@@ -27,6 +27,7 @@ import { LicenseModule } from "./core/license/license.module.js";
 // Core modules
 import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
+import { SetupModule } from "./core/setup/setup.module.js";
 import { UsersModule } from "./core/users/users.module.js";
 
 // Infrastructure modules
@@ -46,6 +47,7 @@ import { RecommendationsModule } from "./modules/recommendations/recommendations
 import { ServiceDiscoveryModule } from "./modules/service-discovery/service-discovery.module.js";
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
+import { PostmortemsModule } from "./modules/postmortems/postmortems.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
 
 // Create a logger instance for oRPC error handling
@@ -94,6 +96,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		PrismaModule,
 		AuthModule, // Better Auth for authentication
 		UsersModule,
+		SetupModule, // Initial setup (oRPC)
 		SettingsModule,
 		LicenseModule,
 
@@ -114,6 +117,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		IncidentsModule, // Incident management (primary entity)
 		InvestigationsModule, // AI investigation (replaces AnalysisModule)
 		TimelineModule, // Incident timeline
+		PostmortemsModule, // Postmortem management
 		WebhooksModule, // Webhook ingestion
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)

@@ -54,7 +54,12 @@ This file tracks technical debt and improvements that are deferred for later imp
 - Moving a few routes to frontend will require breaking of Prisma setup for DB from the api repo and moving it into @prismalens
 - Verify the owner setup is working fine, when a user logs in for the first time on a self hosted setup.
 - The more we work on this project and the more complex it is getting. At this point I feel getting rid of the CLI and directly distributing docker images would be a better idea. Need to plan how to package API, UI and worker for normal mode. In queue mode we can have worker running in a separate container
--
+- Lookup about context rot. Basic understanding of mine is that the more a agent works on an issue the more the result degrades cause of the overloaded context of previous messages. Ralph Wiggum script creator suggests starting a new session for every time the chat session completes. This is new session not being created by the plugin Ralph Wiggum, is what he suggests is the issue with the plugin.
+- Need to look into the logic of grouping alerts into incidents. Who groups the alerts? AI prefered
+- When should an investigation be initiated
+- What happens if an alerts comes in when an incident is under investigation. Added to incident manually or automatically by AI
+- What happens if an alerts is removed from the incident for by a user
+- What happens when an alert comes in after an investigation is done. Was the investigation successful, were the recommendations applied or rejected
 ---
 
 ## Post-Architecture Tasks
