@@ -160,57 +160,123 @@ export class ExecutionTracker {
 }
 
 /**
+ * Tracked tool info stored between start and end events.
+ */
+interface TrackedToolInfo {
+	startTime: number;
+	toolName: string;
+	input: unknown;
+	parentRunId?: string;
+	metadata?: Record<string, unknown>;
+}
+
+/**
  * LangChain callback handler that records executions to an ExecutionTracker.
  * Attach this to LLM calls to automatically track tool usage.
+ *
+ * Enhanced to:
+ * - Track tool names from handleToolStart to handleToolEnd
+ * - Include metadata for LangSmith nested trace visibility
+ * - Support parent-child trace relationships
  */
 export class ExecutionTrackerCallbackHandler extends BaseCallbackHandler {
 	name = "ExecutionTrackerCallbackHandler";
 	private tracker: ExecutionTracker;
-	private toolStartTimes: Map<string, number> = new Map();
+	private trackedTools: Map<string, TrackedToolInfo> = new Map();
 
-	constructor(tracker: ExecutionTracker) {
+	/**
+	 * Optional metadata to include in all traces.
+	 * Useful for identifying agent name, role, parent agent, etc.
+	 */
+	public traceMetadata: Record<string, unknown> = {};
+
+	constructor(tracker: ExecutionTracker, metadata?: Record<string, unknown>) {
 		super();
 		this.tracker = tracker;
+		if (metadata) {
+			this.traceMetadata = metadata;
+		}
+	}
+
+	/**
+	 * Set metadata that will be included in trace information.
+	 * Useful for setting agent context before execution.
+	 */
+	setTraceMetadata(metadata: Record<string, unknown>): void {
+		this.traceMetadata = { ...this.traceMetadata, ...metadata };
 	}
 
 	override async handleToolStart(
 		tool: { name?: string },
 		input: string,
 		runId: string,
-		_parentRunId?: string,
+		parentRunId?: string,
 		_tags?: string[],
-		_metadata?: Record<string, unknown>,
+		metadata?: Record<string, unknown>,
 		_runName?: string,
 	): Promise<void> {
-		this.toolStartTimes.set(runId, Date.now());
+		// Store tool info for use in handleToolEnd
+		this.trackedTools.set(runId, {
+			startTime: Date.now(),
+			toolName: tool.name || "unknown",
+			input: this.safeParseInput(input),
+			parentRunId,
+			metadata: { ...this.traceMetadata, ...metadata },
+		});
 	}
 
 	async handleToolEnd(output: string, runId: string): Promise<void> {
-		const startTime = this.toolStartTimes.get(runId);
-		const executionTimeMs = startTime ? Date.now() - startTime : undefined;
-		this.toolStartTimes.delete(runId);
+		const trackedInfo = this.trackedTools.get(runId);
+		const executionTimeMs = trackedInfo
+			? Date.now() - trackedInfo.startTime
+			: undefined;
 
-		// Note: Tool name is not available in handleToolEnd
-		// This is a limitation - we'd need to track it from handleToolStart
+		// Get tool name from tracked info (fixed from "unknown")
+		const toolName = trackedInfo?.toolName || "unknown";
+
 		this.tracker.recordToolExecution({
-			toolName: "unknown", // Would need to be tracked from start
+			toolName,
 			status: "success",
 			result: output,
 			executionTimeMs,
 		});
+
+		// Clean up tracked info
+		this.trackedTools.delete(runId);
 	}
 
 	async handleToolError(err: Error, runId: string): Promise<void> {
-		const startTime = this.toolStartTimes.get(runId);
-		const executionTimeMs = startTime ? Date.now() - startTime : undefined;
-		this.toolStartTimes.delete(runId);
+		const trackedInfo = this.trackedTools.get(runId);
+		const executionTimeMs = trackedInfo
+			? Date.now() - trackedInfo.startTime
+			: undefined;
+
+		// Get tool name from tracked info (fixed from "unknown")
+		const toolName = trackedInfo?.toolName || "unknown";
 
 		this.tracker.recordToolExecution({
-			toolName: "unknown",
+			toolName,
 			status: "error",
 			error: err.message,
 			executionTimeMs,
 		});
+
+		// Clean up tracked info
+		this.trackedTools.delete(runId);
+	}
+
+	/**
+	 * Safely parse tool input, handling both string and object inputs.
+	 */
+	private safeParseInput(input: string | unknown): unknown {
+		if (typeof input === "string") {
+			try {
+				return JSON.parse(input);
+			} catch {
+				return input;
+			}
+		}
+		return input;
 	}
 }
 
@@ -224,10 +290,53 @@ export function createExecutionTracker(
 }
 
 /**
- * Create a LangChain callback handler for an execution tracker
+ * Options for creating an execution tracker callback handler.
+ */
+export interface ExecutionTrackerCallbackOptions {
+	/** The execution tracker to record to */
+	tracker: ExecutionTracker;
+	/**
+	 * Metadata to include in traces.
+	 * Useful for identifying agent name, role, parent agent, etc.
+	 * This enables proper nested trace visualization in LangSmith.
+	 */
+	metadata?: {
+		agentName?: string;
+		agentRole?: string;
+		parentAgent?: string;
+		[key: string]: unknown;
+	};
+}
+
+/**
+ * Create a LangChain callback handler for an execution tracker.
+ *
+ * @param trackerOrOptions - Either an ExecutionTracker or options object
+ * @returns A callback handler for LangChain
+ *
+ * @example
+ * // Simple usage
+ * const callback = createExecutionTrackerCallback(tracker);
+ *
+ * @example
+ * // With metadata for LangSmith visibility
+ * const callback = createExecutionTrackerCallback({
+ *   tracker,
+ *   metadata: {
+ *     agentName: "cartographer",
+ *     agentRole: "context_gathering",
+ *     parentAgent: "commander"
+ *   }
+ * });
  */
 export function createExecutionTrackerCallback(
-	tracker: ExecutionTracker,
+	trackerOrOptions: ExecutionTracker | ExecutionTrackerCallbackOptions,
 ): ExecutionTrackerCallbackHandler {
-	return new ExecutionTrackerCallbackHandler(tracker);
+	if ("tracker" in trackerOrOptions) {
+		return new ExecutionTrackerCallbackHandler(
+			trackerOrOptions.tracker,
+			trackerOrOptions.metadata,
+		);
+	}
+	return new ExecutionTrackerCallbackHandler(trackerOrOptions);
 }

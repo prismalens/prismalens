@@ -1,14 +1,19 @@
 ---
 name: dependency-trace
 description: Traces file dependencies to find related code that might be the actual error source using MCP code analysis tools.
+type: mcp
+requires: code-pathfinder
 ---
 
-# Dependency Trace Skill
+# Dependency Trace Skill (MCP)
 
 ## Purpose
 When an error is logged in file A, the actual bug might be in a dependency (file B, C, or D). This skill uses MCP-based code analysis to trace dependencies bidirectionally.
 
-## Available MCP Tools
+**Note:** This skill requires the `code-pathfinder` MCP server to be configured.
+
+## MCP Tools Available
+These tools are provided by the `code-pathfinder` MCP server:
 - `mcp_get_callers(functionName, depth)` - Find all functions that call this function (reverse call graph)
 - `mcp_get_callees(functionName, depth)` - Find all functions this function calls (forward call graph)
 - `mcp_find_symbol(symbolName)` - Locate a function, class, or symbol in the codebase

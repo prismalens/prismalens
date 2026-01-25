@@ -1,6 +1,5 @@
 import { createDeepAgent, type DeepAgent } from "deepagents";
 import { createLLM } from "../../llm/factory.js";
-import { createToolsForAgent } from "../../tools/factory.js";
 import type {
 	IntegrationContext,
 	InvestigationState,
@@ -11,7 +10,6 @@ import {
 	buildCommanderPrompt,
 	COMMANDER_SYSTEM_PROMPT,
 	type CommanderIncidentContext,
-	type CommanderAlertContext,
 } from "./prompts.js";
 
 // Use DeepAgent type directly to avoid type instantiation depth issues
@@ -21,8 +19,9 @@ type CommanderAgent = DeepAgent<any>;
 // =============================================================================
 // COMMANDER DEEP AGENT
 // =============================================================================
-// The main orchestrating agent that uses DeepAgents' write_todos for planning
-// and delegates to SubAgents (Cartographer, Detective, Surgeon) for specific tasks.
+// Commander is a PURE COORDINATOR with NO direct investigation tools.
+// It uses DeepAgent built-ins (write_todos, task) to plan and delegate work
+// to SubAgents (Cartographer, Detective, Surgeon) for actual investigation.
 // =============================================================================
 
 /**
@@ -40,12 +39,16 @@ export interface CommanderConfig {
 	};
 	/** Maximum iterations for the agent */
 	maxIterations?: number;
-	/** LangChain callbacks for tracing */
+	/**
+	 * LangChain callbacks for tracing.
+	 * These callbacks are propagated to sub-agents for LangSmith visibility,
+	 * enabling nested traces that show sub-agent execution within the parent trace.
+	 */
 	callbacks?: any[];
 	/**
-	 * Incident-specific context for the prompt (incident-centric approach - preferred)
+	 * Incident-specific context for the prompt
 	 */
-	incidentContext?: CommanderIncidentContext | CommanderAlertContext;
+	incidentContext?: CommanderIncidentContext;
 }
 
 /**
@@ -74,14 +77,14 @@ export function createCommander(config: CommanderConfig = {}): CommanderAgent {
 	const integrations = config.integrations || [];
 
 	// Create subagents with integrations support
+	// SubAgents have capability-based tools resolved from integrations
+	// Callbacks are propagated for LangSmith visibility of sub-agent traces
 	const subagentConfig: SubAgentConfig = {
 		integrations,
 		models: config.models,
+		callbacks: config.callbacks,
 	};
 	const subagents = createSubAgents(subagentConfig);
-
-	// Create Commander's direct tools (for direct investigation if needed)
-	const commanderTools = createToolsForAgent("commander", integrations);
 
 	// Build prompt with incident context if provided
 	const systemPrompt = config.incidentContext
@@ -95,14 +98,15 @@ export function createCommander(config: CommanderConfig = {}): CommanderAgent {
 		callbacks: config.callbacks,
 	});
 
-	// Create the DeepAgent with write_todos and task tools built-in
-	// Note: maxIterations is managed externally, not passed to createDeepAgent
+	// Create the DeepAgent with NO direct tools
+	// Commander uses built-in write_todos and task to coordinate investigation
+	// All investigation is delegated to SubAgents (Cartographer, Detective, Surgeon)
 	// Type cast to avoid TS2589: Type instantiation is excessively deep
 	const agent = createDeepAgent({
 		name: "incident_commander",
 		model,
 		systemPrompt,
-		tools: commanderTools,
+		tools: [], // No direct tools - Commander is a pure coordinator
 		subagents,
 	}) as unknown as CommanderAgent;
 

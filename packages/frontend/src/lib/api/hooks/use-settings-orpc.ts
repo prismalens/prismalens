@@ -101,6 +101,79 @@ export function useSetActiveLlmProvider() {
 }
 
 // =============================================================================
+// COMPREHENSIVE LLM CONFIGURATION (ENV-ONLY API KEYS)
+// =============================================================================
+
+/**
+ * Query key factory for new LLM settings
+ */
+export const llmSettingsKeys = {
+	envStatus: () => orpc.settings.llm.getEnvStatus.key(),
+	settings: () => orpc.settings.llm.getSettings.key(),
+	models: (provider?: string) =>
+		orpc.settings.llm.getModels.key({ input: { provider } }),
+};
+
+/**
+ * Fetch environment variable status for all providers
+ * Shows which providers have API keys configured via env vars
+ */
+export function useLlmEnvStatus() {
+	return useQuery(
+		orpc.settings.llm.getEnvStatus.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Fetch comprehensive LLM settings (model, temperature, per-agent overrides)
+ */
+export function useLlmSettings() {
+	return useQuery(
+		orpc.settings.llm.getSettings.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Update LLM settings (partial update)
+ */
+export function useUpdateLlmSettings() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.llm.updateSettings.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.settings() });
+		},
+	});
+}
+
+/**
+ * Fetch available models from the models registry
+ * Optionally filter by provider
+ */
+export function useLlmModels(provider?: string) {
+	return useQuery({
+		...orpc.settings.llm.getModels.queryOptions({
+			input: { provider },
+		}),
+		staleTime: 24 * 60 * 60 * 1000, // 24 hours - models list rarely changes
+	});
+}
+
+/**
+ * Test LLM connection using environment variables (no API key input)
+ */
+export function useTestLlmConnectionWithEnv() {
+	return useMutation({
+		...orpc.settings.llm.testConnection.mutationOptions(),
+	});
+}
+
+// =============================================================================
 // INVESTIGATION POLICIES
 // =============================================================================
 
@@ -183,5 +256,77 @@ export function useResetData() {
 export function useFactoryReset() {
 	return useMutation({
 		...orpc.settings.danger.factoryReset.mutationOptions(),
+	});
+}
+
+// =============================================================================
+// MCP SERVER CONFIGURATION
+// =============================================================================
+
+/**
+ * Query key factory for MCP settings
+ */
+export const mcpSettingsKeys = {
+	settings: () => orpc.settings.mcp.getSettings.key(),
+	status: () => orpc.settings.mcp.getStatus.key(),
+	serverStatus: (serverId: "github" | "render" | "gitlab") =>
+		orpc.settings.mcp.getServerStatus.key({ input: { serverId } }),
+};
+
+/**
+ * Fetch MCP settings (enabled servers, tool filters, read-only mode)
+ */
+export function useMcpSettings() {
+	return useQuery(
+		orpc.settings.mcp.getSettings.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Update MCP settings (partial update)
+ */
+export function useUpdateMcpSettings() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.mcp.updateSettings.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: mcpSettingsKeys.settings() });
+			queryClient.invalidateQueries({ queryKey: mcpSettingsKeys.status() });
+		},
+	});
+}
+
+/**
+ * Fetch MCP server status (enabled, has credentials, ready)
+ */
+export function useMcpStatus() {
+	return useQuery(
+		orpc.settings.mcp.getStatus.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Fetch status of a specific MCP server
+ */
+export function useMcpServerStatus(serverId: "github" | "render" | "gitlab") {
+	return useQuery({
+		...orpc.settings.mcp.getServerStatus.queryOptions({
+			input: { serverId },
+		}),
+		enabled: !!serverId,
+	});
+}
+
+/**
+ * Test MCP server connection
+ */
+export function useTestMcpConnection() {
+	return useMutation({
+		...orpc.settings.mcp.testConnection.mutationOptions(),
 	});
 }

@@ -3,12 +3,12 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatGroq } from "@langchain/groq";
 import { ChatOpenAI } from "@langchain/openai";
+import { getConfig } from "@prismalens/config";
 import {
-	getConfig,
 	LLM_PROVIDERS,
 	type LLMConfig,
 	type LLMProviderId,
-} from "@prismalens/config";
+} from "@prismalens/config/llm";
 
 // =============================================================================
 // LLM FACTORY - Per-Agent Configuration Support
@@ -177,7 +177,7 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 	const mergedOptions = { ...agentDefaults, ...options };
 
 	// Determine provider - check if agent-specific model implies a provider
-	let provider = mergedOptions.provider || config.LLM_PROVIDER;
+	let provider = mergedOptions.provider || config.PRISMALENS_LLM_PROVIDER;
 
 	// If agent has a specific model set via env, detect its provider
 	if (options.agentName) {
@@ -235,15 +235,23 @@ export function createLLM(options: LLMFactoryOptions = {}): BaseChatModel {
 				apiKey: mergedOptions.apiKey || config.GOOGLE_API_KEY,
 			});
 
-		case "ollama":
+		case "ollama": {
+			// Determine base URL: cloud if API key set, otherwise local
+			const ollamaApiKey = mergedOptions.apiKey || config.OLLAMA_API_KEY;
+			const ollamaBaseUrl = ollamaApiKey
+				? "https://ollama.com" // Cloud endpoint
+				: config.PRISMALENS_OLLAMA_BASE_URL || "http://localhost:11434";
+
 			return new ChatOpenAI({
 				...baseConfig,
 				modelName,
 				maxTokens,
+				apiKey: ollamaApiKey || "ollama", // OpenAI client needs a value
 				configuration: {
-					baseURL: `${config.OLLAMA_BASE_URL}/v1`,
+					baseURL: `${ollamaBaseUrl}/v1`,
 				},
 			});
+		}
 
 		case "groq":
 			return new ChatGroq({
@@ -335,7 +343,7 @@ export function createLLMFromStoredConfig(
 		// The factory will use OLLAMA_BASE_URL from config, but we can override via env
 		// For now, temporarily set the env var (not ideal, but works)
 		if (storedConfig.provider === "ollama") {
-			process.env.OLLAMA_BASE_URL = storedConfig.baseUrl;
+			process.env.PRISMALENS_OLLAMA_BASE_URL = storedConfig.baseUrl;
 		}
 	}
 

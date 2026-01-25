@@ -3,11 +3,16 @@ import { Logger } from "@prismalens/logger";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IntegrationContext } from "../types/state.js";
-import { BundleRegistry, createNativeBundleSource } from "./bundles/index.js";
+import {
+	BundleRegistry,
+	createMCPBundleSource,
+	createNativeBundleSource,
+	DEFAULT_MCP_BUNDLES,
+} from "./bundles/index.js";
 import type { BundleExecutionContext, NativeBundleDefinition } from "./bundles/types.js";
-import { createGitHubCodeBundle, createGitHubTools } from "./github.js";
-import { createRenderLogsBundle, createRenderTools } from "./render.js";
+import { createRateLimiter } from "./rate-limiter.js";
 import { createRepoFilesBundle, createRepoTools } from "./repo.js";
+import { createWorkspaceTools } from "./workspace.js";
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -19,7 +24,7 @@ const logger = new Logger({ context: "ToolFactory" });
 // TOOL FACTORY
 // =============================================================================
 // Creates tools dynamically based on agent permissions and available integrations.
-// Supports both legacy direct loading and progressive disclosure via bundles.
+// Supports both direct loading and progressive disclosure via bundles.
 // =============================================================================
 
 export interface ToolFactoryOptions {
@@ -38,27 +43,36 @@ export interface ToolFactoryOptions {
 type ToolFactory = (options: ToolFactoryOptions) => StructuredTool[];
 
 const TOOL_REGISTRY: Record<string, ToolFactory> = {
-	github: createGitHubTools,
-	render: createRenderTools,
 	repo: createRepoTools,
 };
 
 /**
  * Agent tool permissions - which tool categories each agent can use.
  * This is the primary access control mechanism.
+ *
+ * Design: Commander is a pure coordinator with NO direct tools.
+ * It uses DeepAgent built-ins (write_todos, task) to delegate work.
+ * SubAgents have capability-based tools resolved from integrations.
  */
 const AGENT_TOOL_PERMISSIONS: Record<string, string[]> = {
-	// Commander has access to all tools for orchestration
-	commander: ["github", "render", "repo"],
+	// Commander is a PURE COORDINATOR - no direct tools
+	// Uses DeepAgent built-ins (write_todos, task) to delegate to subagents
+	commander: [],
 
 	// Cartographer is READ-ONLY - can gather context but not modify
-	cartographer: ["github", "render", "repo"],
+	// Tools resolved based on configured integrations (GitHub/GitLab/local via MCP bundles)
+	// NOTE: github and render tools are now provided via MCP bundles, not direct tool creation
+	cartographer: ["repo"],
 
 	// Detective only has the hypothesis tool (added separately)
 	detective: [],
 
 	// Surgeon only has the fix proposal tool (added separately)
 	surgeon: [],
+
+	// Adversary has challenge tools (added separately) + potential RAG/MCP access
+	// RAG and MCP tools will be added dynamically based on integrations
+	adversary: [],
 };
 
 /**
@@ -68,7 +82,7 @@ const READ_ONLY_AGENTS = new Set(["cartographer"]);
 
 /**
  * Create tools for a specific agent based on permissions and integrations.
- * This is the LEGACY approach - loads all tools at once.
+ * Loads all permitted tools at once for the agent.
  *
  * @example
  * // Create tools for cartographer with GitHub integration
@@ -181,38 +195,12 @@ export function getToolCategories(): string[] {
 
 /**
  * Default bundle definitions for native tools.
+ *
+ * NOTE: GitHub and Render tools are now provided via MCP bundles (github-mcp, render-mcp)
+ * which offer better rate limiting, deferred loading, and unified server management.
+ * The native axios-based implementations have been removed.
  */
 const DEFAULT_BUNDLE_DEFINITIONS: NativeBundleDefinition[] = [
-	{
-		name: "github-code",
-		category: "github",
-		description:
-			"Read and search code in GitHub repositories. Provides tools for fetching file contents, searching code patterns, listing directories, and viewing commit history.",
-		readOnly: true,
-		estimatedTokens: 900,
-		keywords: ["github", "code", "files", "search", "commits", "repository", "git"],
-		useCases: [
-			"Finding where errors are thrown in the codebase",
-			"Searching for function definitions and usages",
-			"Correlating incidents with recent code changes",
-		],
-		tools: createGitHubCodeBundle,
-	},
-	{
-		name: "render-logs",
-		category: "render",
-		description:
-			"Fetch logs and deployment information from Render.com services. Provides tools for retrieving service logs, listing services, and checking deployment history.",
-		readOnly: true,
-		estimatedTokens: 750,
-		keywords: ["render", "logs", "deployment", "services", "hosting"],
-		useCases: [
-			"Investigating production errors by fetching logs",
-			"Correlating incidents with recent deployments",
-			"Checking deployment status and history",
-		],
-		tools: createRenderLogsBundle,
-	},
 	{
 		name: "repo-files",
 		category: "repo",
@@ -234,6 +222,10 @@ const DEFAULT_BUNDLE_DEFINITIONS: NativeBundleDefinition[] = [
  * Create a bundle registry configured with default bundles.
  * Use this for progressive tool disclosure.
  *
+ * Includes:
+ * - Native bundles (github-code, render-logs, repo-files) - direct HTTP API calls
+ * - MCP bundles (github-mcp, render-mcp) - MCP server-based with deferred loading
+ *
  * @example
  * const registry = createDefaultBundleRegistry();
  * const { tools, getState, setState } = createMetaTools(
@@ -244,11 +236,64 @@ const DEFAULT_BUNDLE_DEFINITIONS: NativeBundleDefinition[] = [
  * );
  */
 export function createDefaultBundleRegistry(): BundleRegistry {
+	// Native bundles (direct HTTP API tools)
 	const nativeSource = createNativeBundleSource(DEFAULT_BUNDLE_DEFINITIONS);
 
+	// MCP bundles (new deferred loading via MCP servers)
+	const rateLimiter = createRateLimiter();
+	const mcpSource = createMCPBundleSource(DEFAULT_MCP_BUNDLES, rateLimiter);
+
 	const registry = new BundleRegistry({
-		sources: [nativeSource],
+		sources: [nativeSource, mcpSource],
 		agentPermissions: AGENT_TOOL_PERMISSIONS,
+		readOnlyAgents: READ_ONLY_AGENTS,
+	});
+
+	return registry;
+}
+
+/**
+ * Create a bundle registry with workspace tools for a specific investigation.
+ * This includes all default bundles plus workspace escalation tools.
+ *
+ * @example
+ * const registry = createBundleRegistryWithWorkspace("inv-123");
+ */
+export function createBundleRegistryWithWorkspace(
+	investigationId: string,
+): BundleRegistry {
+	// Native bundles
+	const nativeSource = createNativeBundleSource([
+		...DEFAULT_BUNDLE_DEFINITIONS,
+		{
+			name: "workspace",
+			category: "workspace",
+			description:
+				"Workspace management tools for cloning repositories and switching to local analysis. Use when API rate limits are reached or you need faster local file access.",
+			readOnly: false,
+			estimatedTokens: 600,
+			keywords: ["workspace", "clone", "local", "repository", "git"],
+			useCases: [
+				"Cloning a repository for local analysis",
+				"Switching from API to local file tools",
+				"Getting git history for blame/log analysis",
+			],
+			tools: (_ctx) => createWorkspaceTools({ investigationId }),
+		},
+	]);
+
+	// MCP bundles
+	const rateLimiter = createRateLimiter();
+	const mcpSource = createMCPBundleSource(DEFAULT_MCP_BUNDLES, rateLimiter);
+
+	const registry = new BundleRegistry({
+		sources: [nativeSource, mcpSource],
+		agentPermissions: {
+			...AGENT_TOOL_PERMISSIONS,
+			// Add workspace permission to agents that can use it
+			commander: [...AGENT_TOOL_PERMISSIONS.commander, "workspace"],
+			cartographer: [...AGENT_TOOL_PERMISSIONS.cartographer, "workspace"],
+		},
 		readOnlyAgents: READ_ONLY_AGENTS,
 	});
 

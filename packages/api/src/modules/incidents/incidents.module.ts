@@ -1,4 +1,5 @@
 import { forwardRef, Module } from "@nestjs/common";
+import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { InvestigationsModule } from "../investigations/investigations.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
 import { IncidentsController } from "./incidents.controller.js";
@@ -8,6 +9,7 @@ import { IncidentsService } from "./incidents.service.js";
 	imports: [
 		forwardRef(() => InvestigationsModule),
 		forwardRef(() => TimelineModule),
+		IntegrationsModule,
 		// QueueModule is @Global, no need to import - QueueService is available globally
 	],
 	controllers: [IncidentsController],

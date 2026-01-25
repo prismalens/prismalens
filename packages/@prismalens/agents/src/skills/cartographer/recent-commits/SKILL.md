@@ -1,6 +1,12 @@
 ---
 name: recent-commits
 description: Retrieves and analyzes recent git commits to identify changes that may have caused the incident.
+capability: code-search
+integrations:
+  - github
+  - gitlab
+  - bitbucket
+  - repo
 ---
 
 # Recent Commits Skill
@@ -8,11 +14,17 @@ description: Retrieves and analyzes recent git commits to identify changes that 
 ## Purpose
 Analyze recent git commits to identify code changes that correlate with the incident timing or affect the relevant code paths.
 
-## Available Tools
-- `github_list_commits(options)` - List recent commits
-- `github_get_commit(sha)` - Get commit details and diff
-- `github_compare_commits(base, head)` - Compare two commits
-- `github_get_file_contents(path, ref)` - Get file at specific commit
+## Capability-Based Tools
+This skill uses the **code-search** capability which automatically resolves to the appropriate integration:
+
+| Integration | Tools Available |
+|-------------|-----------------|
+| GitHub | `github_list_commits`, `github_get_commit` |
+| GitLab | `gitlab_list_commits`, `gitlab_get_commit` |
+| Bitbucket | `bitbucket_list_commits`, `bitbucket_get_commit` |
+| Local Repo | `repo_git_log`, `repo_git_show` |
+
+The system automatically selects tools based on the configured integration. You don't need to choose which one to use - just describe what you need.
 
 ## Process
 

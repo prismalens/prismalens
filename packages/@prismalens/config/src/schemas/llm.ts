@@ -41,11 +41,12 @@ export const LLM_PROVIDERS = {
 	},
 	ollama: {
 		id: "ollama",
-		name: "Ollama (Local)",
+		name: "Ollama",
 		helpUrl: "https://ollama.ai",
-		envVar: null, // No API key needed
-		baseUrlRequired: true,
+		envVar: "OLLAMA_API_KEY", // Optional - for Ollama Cloud
+		baseUrlRequired: false, // Not required if using cloud
 		defaultBaseUrl: "http://localhost:11434",
+		cloudBaseUrl: "https://ollama.com",
 		suggestedModels: ["llama3.2", "llama3.1", "mistral", "codellama"],
 	},
 	groq: {
@@ -76,6 +77,21 @@ export const LLM_PROVIDERS = {
 } as const;
 
 export type LLMProviderId = keyof typeof LLM_PROVIDERS;
+
+/**
+ * Derive provider IDs array for Zod schema.
+ * This creates a tuple type required by z.enum().
+ */
+export const LLM_PROVIDER_IDS = Object.keys(LLM_PROVIDERS) as [
+	LLMProviderId,
+	...LLMProviderId[],
+];
+
+/**
+ * Zod schema for provider IDs - dynamically derived from LLM_PROVIDERS.
+ * Use this instead of hardcoding provider enums.
+ */
+export const llmProviderIdSchema = z.enum(LLM_PROVIDER_IDS);
 
 /**
  * Common configuration fields derived from LangChain type interfaces.
@@ -145,21 +161,24 @@ export type CommonLLMConfig = z.infer<typeof commonLLMConfigSchema>;
  * These are fallback values when no DB config exists.
  */
 export const llmEnvSchema = z.object({
-	// Provider selection
-	LLM_PROVIDER: z
-		.enum(["anthropic", "openai", "google", "ollama", "groq", "openrouter"])
+	// Provider selection - uses dynamic schema derived from LLM_PROVIDERS
+	PRISMALENS_LLM_PROVIDER: llmProviderIdSchema
 		.default("anthropic")
 		.describe("Default LLM provider"),
 
-	// API Keys (one per provider)
+	// API Keys (one per provider) - Keep standard names for external services
 	ANTHROPIC_API_KEY: z.string().optional().describe("Anthropic API key"),
 	OPENAI_API_KEY: z.string().optional().describe("OpenAI API key"),
 	GOOGLE_API_KEY: z.string().optional().describe("Google Gemini API key"),
 	GROQ_API_KEY: z.string().optional().describe("Groq API key"),
 	OPENROUTER_API_KEY: z.string().optional().describe("OpenRouter API key"),
+	OLLAMA_API_KEY: z
+		.string()
+		.optional()
+		.describe("Ollama Cloud API key (optional - for cloud mode)"),
 
-	// Ollama
-	OLLAMA_BASE_URL: z
+	// Ollama base URL - internal config
+	PRISMALENS_OLLAMA_BASE_URL: z
 		.string()
 		.default("http://localhost:11434")
 		.describe("Ollama server URL"),

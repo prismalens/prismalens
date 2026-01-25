@@ -2,15 +2,30 @@
  * @prismalens/config
  *
  * Centralized configuration management for PrismaLens monorepo.
- * Provides type-safe environment variable validation using Zod schemas.
+ *
+ * ## Available Exports
+ *
+ * ### Environment Configuration (this module)
+ * - `getConfig()` - Validated environment variables
+ * - `validateConfig()` - Config validation without caching
+ * - Environment schemas (globalSchema, databaseSchema, etc.)
+ *
+ * ### LLM Provider Metadata (`@prismalens/config/llm`)
+ * - `LLM_PROVIDERS` - Static provider metadata
+ * - `llmProviderIdSchema` - Zod schema for provider IDs
+ * - Provider-specific config schemas
+ *
+ * ### Browser-Safe (`@prismalens/config/browser`)
+ * - Subset safe for frontend use (no Node.js dependencies)
  *
  * @example
  * ```typescript
+ * // Environment config
  * import { getConfig } from '@prismalens/config';
- *
  * const config = getConfig();
- * console.log(config.PRISMALENS_EDITION); // 'COMMUNITY' | 'ENTERPRISE'
- * console.log(config.DATABASE_URL);
+ *
+ * // LLM metadata
+ * import { LLM_PROVIDERS } from '@prismalens/config/llm';
  * ```
  */
 
@@ -19,6 +34,7 @@ import {
 	databaseSchema,
 	deploymentSchema,
 	globalSchema,
+	langsmithSchema,
 	llmEnvSchema,
 	loggingSchema,
 	queueSchema,
@@ -59,6 +75,7 @@ const baseConfigSchema = globalSchema
 	.merge(loggingSchema)
 	.merge(llmEnvSchema)
 	.merge(skillsSchema)
+	.merge(langsmithSchema)
 	.extend({
 		PRISMALENS_DB_URL: z.string().describe("Computed database connection URL"),
 	});

@@ -45,6 +45,7 @@ model Service {
   dependents        ServiceDependency[]  @relation("DependencyService")
   integrations      ServiceIntegration[]
   alertMappingRules AlertMappingRule[]
+  changeEvents      ChangeEvent[]
 
   @@map("services")
 }
@@ -200,6 +201,15 @@ model Investigation {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  // Pre-gathering phase tracking (BigPanda pattern)
+  preGatheringStartedAt   DateTime?
+  preGatheringCompletedAt DateTime?
+  preGatheringQuality     Float? // 0.0 to 1.0
+
+  // Trigger tracking
+  triggerType   String? // manual, auto_critical, auto_tier, alert_threshold, scheduled, re_trigger
+  triggerReason String?
+
   incident        Incident         @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   agentExecutions AgentExecution[]
   recommendations Recommendation[]
@@ -336,6 +346,59 @@ model Postmortem {
   author   User?    @relation("PostmortemAuthor", fields: [authorId], references: [id])
 
   @@map("postmortems")
+}
+
+// =============================================================================
+// CHANGE TRACKING - FOR CHANGE CORRELATION (BigPanda Pattern)
+// =============================================================================
+// Change events track deployments, config changes, and other changes that
+// may correlate with incidents. 60-90% of incidents are change-related.
+// =============================================================================
+
+/// Change event for correlation with incidents
+/// Tracks deployments, commits, config changes that may cause incidents
+model ChangeEvent {
+  id          String   @id @default(uuid())
+  type        String // deployment, config, migration, commit, rollback
+  source      String // render, github, manual, argocd, etc.
+  timestamp   DateTime
+  serviceId   String?
+  description String?
+  metadata    String? // JSON: { version, environment, author, url, etc. }
+  riskScore   Int? // 0-100, calculated based on time proximity and change type
+
+  createdAt DateTime @default(now())
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, timestamp])
+  @@index([timestamp])
+  @@index([type])
+  @@map("change_events")
+}
+
+// =============================================================================
+// SIMILAR INCIDENT TRACKING - FOR PATTERN MATCHING (BigPanda 30% Threshold)
+// =============================================================================
+// Track similarity between incidents for pattern detection and
+// providing resolution hints based on past incidents.
+// =============================================================================
+
+/// Incident similarity record for pattern matching
+/// Pre-calculated similarity scores for faster lookups
+model IncidentSimilarity {
+  id                String   @id @default(uuid())
+  incidentId        String // Current incident
+  similarIncidentId String // Similar past incident
+  similarityScore   Int // 0-100 (BigPanda uses 30% threshold)
+  matchFactors      String? // JSON: { titleMatch, serviceMatch, tagMatch, etc. }
+  calculatedAt      DateTime @default(now())
+
+  @@unique([incidentId, similarIncidentId])
+  @@index([incidentId])
+  @@index([similarIncidentId])
+  @@index([similarityScore])
+  @@map("incident_similarities")
 }
 
 // =============================================================================

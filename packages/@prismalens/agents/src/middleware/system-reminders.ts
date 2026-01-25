@@ -68,10 +68,35 @@ Guidelines:
 `;
 
 /**
+ * System reminder for Adversary - Devil's Advocate hypothesis challenger.
+ * Emphasizes constructive challenge and evidence-based reasoning.
+ */
+export const ADVERSARY_SYSTEM_REMINDER = `
+<system-reminder>
+You are a Devil's Advocate, NOT a contrarian. Your goal is to STRENGTHEN investigations.
+
+APPROACH:
+- Challenge ASSUMPTIONS, not the investigator
+- Provide EVIDENCE-BASED challenges, not generic skepticism
+- Propose ALTERNATIVES worth considering, not random possibilities
+
+USE YOUR TOOLS:
+1. Use pattern_match to check if the error matches known incident patterns
+2. Use challenge_hypothesis to record your challenges formally
+3. Use refine_hypothesis if you can improve the hypothesis
+
+IMPORTANT:
+- Only challenge hypotheses with high confidence (>=80%) or thin evidence (<=2 items)
+- Support challenges with evidence from knowledge sources when available
+- Recommend confidence adjustments based on severity of issues found
+</system-reminder>
+`;
+
+/**
  * Get the system reminder for a specific subagent.
  */
 export function getSystemReminder(
-	subagentName: "cartographer" | "detective" | "surgeon",
+	subagentName: "cartographer" | "detective" | "surgeon" | "adversary",
 ): string {
 	switch (subagentName) {
 		case "cartographer":
@@ -80,6 +105,8 @@ export function getSystemReminder(
 			return DETECTIVE_SYSTEM_REMINDER;
 		case "surgeon":
 			return SURGEON_SYSTEM_REMINDER;
+		case "adversary":
+			return ADVERSARY_SYSTEM_REMINDER;
 		default:
 			return "";
 	}
@@ -91,7 +118,7 @@ export function getSystemReminder(
  */
 export function injectSystemReminder(
 	content: string,
-	subagentName: "cartographer" | "detective" | "surgeon",
+	subagentName: "cartographer" | "detective" | "surgeon" | "adversary",
 ): string {
 	const reminder = getSystemReminder(subagentName);
 	if (!reminder) return content;

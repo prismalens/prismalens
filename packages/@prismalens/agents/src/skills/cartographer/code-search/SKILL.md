@@ -1,6 +1,12 @@
 ---
 name: code-search
 description: Searches the codebase for error origins, patterns, and relevant code sections to understand the context of an incident.
+capability: code-search
+integrations:
+  - github
+  - gitlab
+  - bitbucket
+  - repo
 ---
 
 # Code Search Skill
@@ -8,11 +14,17 @@ description: Searches the codebase for error origins, patterns, and relevant cod
 ## Purpose
 Search the connected repository to find error origins, related code patterns, and contextual information needed for incident investigation.
 
-## Available Tools
-- `github_search_code(query, options)` - Search code in repository
-- `github_get_file_contents(path)` - Read specific file contents
-- `repo_list_files(path)` - List directory contents
-- `repo_search_pattern(pattern)` - Regex search across files
+## Capability-Based Tools
+This skill uses the **code-search** capability which automatically resolves to the appropriate integration:
+
+| Integration | Tools Available |
+|-------------|-----------------|
+| GitHub | `github_search_code`, `github_get_file`, `github_list_files` |
+| GitLab | `gitlab_search_code`, `gitlab_get_file`, `gitlab_list_files` |
+| Bitbucket | `bitbucket_search`, `bitbucket_get_file` |
+| Local Repo | `repo_search`, `repo_read_file`, `repo_list_dir` |
+
+The system automatically selects tools based on the configured integration. You don't need to choose which one to use - just describe what you need.
 
 ## Process
 

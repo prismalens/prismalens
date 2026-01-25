@@ -1,16 +1,32 @@
 ---
 name: log-analysis
-description: Fetches and analyzes logs from deployment platforms (Render, CloudWatch) to identify errors, warnings, and patterns relevant to the incident.
+description: Fetches and analyzes logs from deployment/observability platforms to identify errors, warnings, and patterns relevant to the incident.
+capability: log-analysis
+integrations:
+  - render
+  - datadog
+  - opentelemetry
+  - cloudwatch
+  - splunk
 ---
 
 # Log Analysis Skill
 
 ## Purpose
-Retrieve application logs from deployment platforms to find errors and patterns relevant to the incident being investigated.
+Retrieve application logs from deployment/observability platforms to find errors and patterns relevant to the incident being investigated.
 
-## Available Tools
-- `render_get_logs(serviceId, timeRange, searchQuery)` - Fetch logs from Render deployments
-- `render_list_services()` - List available Render services
+## Capability-Based Tools
+This skill uses the **log-analysis** capability which automatically resolves to the appropriate integration:
+
+| Integration | Tools Available |
+|-------------|-----------------|
+| Render | `render_get_logs`, `render_list_services` |
+| Datadog | `datadog_query_logs`, `datadog_search_events` |
+| OpenTelemetry | `otel_query_traces`, `otel_get_logs` |
+| CloudWatch | `cloudwatch_get_logs`, `cloudwatch_filter_logs` |
+| Splunk | `splunk_search`, `splunk_get_events` |
+
+The system automatically selects tools based on the configured integration. You don't need to choose which one to use - just describe what you need.
 
 ## Process
 

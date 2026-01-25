@@ -8,9 +8,15 @@ import { cn } from "@/lib/utils";
 
 export interface LLMWarningBannerProps {
 	className?: string;
+	/** Optional count of active incidents to show contextual message */
+	incidentCount?: number;
 }
 
-export function LLMWarningBanner({ className }: LLMWarningBannerProps) {
+export function LLMWarningBanner({ className, incidentCount }: LLMWarningBannerProps) {
+	const message = incidentCount
+		? `You have ${incidentCount} active incident${incidentCount > 1 ? "s" : ""} that could benefit from AI investigation. Configure an AI provider to get started.`
+		: "Configure an AI provider to enable automated incident investigation and recommendations.";
+
 	return (
 		<Alert
 			variant="default"
@@ -22,8 +28,7 @@ export function LLMWarningBanner({ className }: LLMWarningBannerProps) {
 			</AlertTitle>
 			<AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
 				<span className="text-amber-800 dark:text-amber-300">
-					Configure an AI provider to enable automated incident investigation
-					and recommendations.
+					{message}
 				</span>
 				<Button variant="outline" size="sm" asChild className="w-fit">
 					<Link to="/settings">

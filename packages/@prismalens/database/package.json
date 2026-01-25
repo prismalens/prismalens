@@ -11,6 +11,9 @@
 			"import": "./dist/index.js"
 		}
 	},
+	"prisma": {
+		"seed": "tsx prisma/seed.ts"
+	},
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
@@ -20,7 +23,8 @@
 		"db:migrate": "prisma migrate dev --config prisma.config.ts",
 		"db:deploy": "prisma migrate deploy --config prisma.config.ts",
 		"db:studio": "prisma studio --config prisma.config.ts",
-		"db:reset": "prisma migrate reset --config prisma.config.ts"
+		"db:reset": "prisma migrate reset --config prisma.config.ts",
+		"db:seed": "prisma db seed --config prisma.config.ts"
 	},
 	"dependencies": {
 		"@prisma/adapter-better-sqlite3": "^7.2.0",

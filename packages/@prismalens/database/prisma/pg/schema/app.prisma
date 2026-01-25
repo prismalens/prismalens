@@ -284,6 +284,25 @@ enum SettingCategory {
   notifications // Notification settings
 }
 
+/// Investigation trigger types
+enum InvestigationTriggerType {
+  manual // User clicks "Investigate" button
+  auto_critical // Auto-triggered for critical severity
+  auto_tier // Auto-triggered based on service tier
+  alert_threshold // Auto-triggered when alert count exceeds threshold
+  scheduled // Auto-triggered for stale incidents
+  re_trigger // Re-triggered when new alerts are added
+}
+
+/// Change event types for correlation
+enum ChangeEventType {
+  deployment // Application deployment
+  config // Configuration change
+  migration // Database migration
+  commit // Code commit
+  rollback // Rollback of deployment
+}
+
 /// Integration connection status
 enum ConnectionStatus {
   pending // Not yet connected
@@ -347,6 +366,7 @@ model Service {
   dependents        ServiceDependency[]  @relation("DependencyService")
   integrations      ServiceIntegration[]
   alertMappingRules AlertMappingRule[]
+  changeEvents      ChangeEvent[]
 
   @@map("services")
 }
@@ -528,6 +548,15 @@ model Investigation {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
+  // Pre-gathering phase tracking (BigPanda pattern)
+  preGatheringStartedAt   DateTime?
+  preGatheringCompletedAt DateTime?
+  preGatheringQuality     Float? // 0.0 to 1.0
+
+  // Trigger tracking
+  triggerType   InvestigationTriggerType?
+  triggerReason String?
+
   // Relations
   incident        Incident         @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   agentExecutions AgentExecution[] // Execution records for each agent
@@ -689,6 +718,59 @@ model Postmortem {
   author   User?    @relation("PostmortemAuthor", fields: [authorId], references: [id])
 
   @@map("postmortems")
+}
+
+// =============================================================================
+// CHANGE TRACKING - FOR CHANGE CORRELATION (BigPanda Pattern)
+// =============================================================================
+// Change events track deployments, config changes, and other changes that
+// may correlate with incidents. 60-90% of incidents are change-related.
+// =============================================================================
+
+/// Change event for correlation with incidents.
+/// Tracks deployments, commits, config changes that may cause incidents.
+model ChangeEvent {
+  id          String          @id @default(uuid())
+  type        ChangeEventType
+  source      String // render, github, manual, argocd, etc.
+  timestamp   DateTime
+  serviceId   String?
+  description String?
+  metadata    String? // JSON: { version, environment, author, url, etc. }
+  riskScore   Int? // 0-100, calculated based on time proximity and change type
+
+  createdAt DateTime @default(now())
+
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, timestamp])
+  @@index([timestamp])
+  @@index([type])
+  @@map("change_events")
+}
+
+// =============================================================================
+// SIMILAR INCIDENT TRACKING - FOR PATTERN MATCHING (BigPanda 30% Threshold)
+// =============================================================================
+// Track similarity between incidents for pattern detection and
+// providing resolution hints based on past incidents.
+// =============================================================================
+
+/// Incident similarity record for pattern matching.
+/// Pre-calculated similarity scores for faster lookups.
+model IncidentSimilarity {
+  id                String   @id @default(uuid())
+  incidentId        String // Current incident
+  similarIncidentId String // Similar past incident
+  similarityScore   Int // 0-100 (BigPanda uses 30% threshold)
+  matchFactors      String? // JSON: { titleMatch, serviceMatch, tagMatch, etc. }
+  calculatedAt      DateTime @default(now())
+
+  @@unique([incidentId, similarIncidentId])
+  @@index([incidentId])
+  @@index([similarIncidentId])
+  @@index([similarityScore])
+  @@map("incident_similarities")
 }
 
 // =============================================================================

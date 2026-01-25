@@ -1,14 +1,19 @@
 ---
 name: code-structure
 description: Analyzes code structure using AST-based tools to find function definitions, usages, and patterns across the codebase.
+type: mcp
+requires: code-index
 ---
 
-# Code Structure Analysis Skill
+# Code Structure Analysis Skill (MCP)
 
 ## Purpose
 Use AST-based code analysis to understand code structure, find function usages, and identify patterns that might be related to the incident.
 
-## Available MCP Tools
+**Note:** This skill requires the `code-index` or `ripgrep` MCP server to be configured.
+
+## MCP Tools Available
+These tools are provided by code analysis MCP servers:
 - `mcp_search_code_advanced(query, regex, filePattern)` - Smart code search with AST awareness
 - `mcp_get_file_summary(filePath)` - Analyze file structure: functions, imports, complexity
 - `mcp_build_deep_index(path)` - Build full symbol index for comprehensive search

@@ -1,0 +1,11 @@
+# Environment variables (secrets)
+.env
+.env.local
+.env.test
+
+# LangGraph API
+.langgraph_api
+
+# Test database
+test.db
+test.db-journal

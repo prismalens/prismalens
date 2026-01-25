@@ -12,14 +12,25 @@ import {
 	InvestigationLimitsSchema,
 	InvestigationPolicySchema,
 	LlmConfigResponseSchema,
+	LlmEnvStatusResponseSchema,
+	LlmSettingsSchema,
+	McpServerIdSchema,
+	McpSettingsSchema,
+	McpStatusResponseSchema,
+	ModelsListResponseSchema,
 	ProviderParamSchema,
 	ResetDataInputSchema,
 	SetActiveProviderSchema,
 	SettingRecordSchema,
+	TestLlmConnectionInputSchema,
 	TestLlmResultSchema,
+	TestMcpConnectionInputSchema,
+	TestMcpResultSchema,
 	UpdateInvestigationLimitsSchema,
 	UpdateInvestigationPolicySchema,
 	UpdateLlmConfigSchema,
+	UpdateLlmSettingsSchema,
+	UpdateMcpSettingsSchema,
 } from "../schemas/settings.js";
 
 export const settingsContract = {
@@ -37,6 +48,98 @@ export const settingsContract = {
 			})
 			.input(z.object({}))
 			.output(AllLlmConfigsResponseSchema),
+
+		// =====================================================================
+		// SPECIFIC ROUTES (must come before parameterized routes)
+		// =====================================================================
+
+		/**
+		 * Set active LLM provider
+		 * PUT /settings/llm/active
+		 */
+		setActive: oc
+			.route({
+				method: "PUT",
+				path: "/settings/llm/active",
+				summary: "Set the active LLM provider",
+				tags: ["settings"],
+			})
+			.input(SetActiveProviderSchema)
+			.output(SettingRecordSchema),
+
+		/**
+		 * Get environment variable status for all providers
+		 * GET /settings/llm/env-status
+		 */
+		getEnvStatus: oc
+			.route({
+				method: "GET",
+				path: "/settings/llm/env-status",
+				summary: "Get environment variable status for all LLM providers",
+				tags: ["settings"],
+			})
+			.input(z.object({}))
+			.output(LlmEnvStatusResponseSchema),
+
+		/**
+		 * Get full LLM settings (model, temperature, per-agent overrides)
+		 * GET /settings/llm/config
+		 */
+		getSettings: oc
+			.route({
+				method: "GET",
+				path: "/settings/llm/config",
+				summary: "Get comprehensive LLM configuration settings",
+				tags: ["settings"],
+			})
+			.input(z.object({}))
+			.output(LlmSettingsSchema),
+
+		/**
+		 * Update LLM settings
+		 * PATCH /settings/llm/config
+		 */
+		updateSettings: oc
+			.route({
+				method: "PATCH",
+				path: "/settings/llm/config",
+				summary: "Update LLM configuration settings",
+				tags: ["settings"],
+			})
+			.input(UpdateLlmSettingsSchema)
+			.output(LlmSettingsSchema),
+
+		/**
+		 * Get available models from registry
+		 * GET /settings/llm/models
+		 */
+		getModels: oc
+			.route({
+				method: "GET",
+				path: "/settings/llm/models",
+				summary: "Get available models from models registry",
+				tags: ["settings"],
+			})
+			.input(z.object({ provider: z.string().optional() }))
+			.output(ModelsListResponseSchema),
+
+		/**
+		 * Test LLM connection using env vars (no API key input)
+		 * POST /settings/llm/test-connection
+		 */
+		testConnection: oc
+			.route({
+				method: "POST",
+				path: "/settings/llm/test-connection",
+				summary: "Test LLM connection using environment variables",
+				tags: ["settings"],
+			})
+			.input(TestLlmConnectionInputSchema)
+			.output(TestLlmResultSchema),
+
+		// =====================================================================
+		// PARAMETERIZED ROUTES (must come after specific routes)
+		// =====================================================================
 
 		/**
 		 * Get LLM configuration for a provider
@@ -93,20 +196,6 @@ export const settingsContract = {
 			})
 			.input(ProviderParamSchema.merge(UpdateLlmConfigSchema))
 			.output(TestLlmResultSchema),
-
-		/**
-		 * Set active LLM provider
-		 * PUT /settings/llm/active
-		 */
-		setActive: oc
-			.route({
-				method: "PUT",
-				path: "/settings/llm/active",
-				summary: "Set the active LLM provider",
-				tags: ["settings"],
-			})
-			.input(SetActiveProviderSchema)
-			.output(SettingRecordSchema),
 	},
 
 	investigation: {
@@ -195,5 +284,87 @@ export const settingsContract = {
 			})
 			.input(FactoryResetInputSchema)
 			.output(DangerOperationResultSchema),
+	},
+
+	mcp: {
+		/**
+		 * Get MCP settings (enabled servers, tool filters, read-only mode)
+		 * GET /settings/mcp
+		 */
+		getSettings: oc
+			.route({
+				method: "GET",
+				path: "/settings/mcp",
+				summary: "Get MCP server configuration settings",
+				tags: ["settings"],
+			})
+			.input(z.object({}))
+			.output(McpSettingsSchema),
+
+		/**
+		 * Update MCP settings
+		 * PATCH /settings/mcp
+		 */
+		updateSettings: oc
+			.route({
+				method: "PATCH",
+				path: "/settings/mcp",
+				summary: "Update MCP server configuration settings",
+				tags: ["settings"],
+			})
+			.input(UpdateMcpSettingsSchema)
+			.output(McpSettingsSchema),
+
+		/**
+		 * Get MCP server status (enabled, has credentials, ready)
+		 * GET /settings/mcp/status
+		 */
+		getStatus: oc
+			.route({
+				method: "GET",
+				path: "/settings/mcp/status",
+				summary: "Get status of all MCP servers",
+				tags: ["settings"],
+			})
+			.input(z.object({}))
+			.output(McpStatusResponseSchema),
+
+		/**
+		 * Test MCP server connection
+		 * POST /settings/mcp/test
+		 */
+		testConnection: oc
+			.route({
+				method: "POST",
+				path: "/settings/mcp/test",
+				summary: "Test MCP server connection",
+				tags: ["settings"],
+			})
+			.input(TestMcpConnectionInputSchema)
+			.output(TestMcpResultSchema),
+
+		/**
+		 * Get MCP server status by ID
+		 * GET /settings/mcp/:serverId/status
+		 */
+		getServerStatus: oc
+			.route({
+				method: "GET",
+				path: "/settings/mcp/{serverId}/status",
+				summary: "Get status of a specific MCP server",
+				tags: ["settings"],
+			})
+			.input(z.object({ serverId: McpServerIdSchema }))
+			.output(
+				z.object({
+					serverId: McpServerIdSchema,
+					enabled: z.boolean(),
+					readOnlyMode: z.boolean(),
+					hasCredentials: z.boolean(),
+					isReady: z.boolean(),
+					integrationType: z.string(),
+					toolFilter: z.array(z.string()).optional(),
+				}),
+			),
 	},
 };

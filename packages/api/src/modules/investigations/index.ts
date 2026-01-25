@@ -13,3 +13,13 @@ export type {
 	ToolExecution,
 } from "./investigations.service.js";
 export { InvestigationsService } from "./investigations.service.js";
+export {
+	InvestigationTriggerService,
+	type TriggerDecision,
+	type TriggerConfig,
+} from "./investigation-trigger.service.js";
+export {
+	InvestigationUpdateService,
+	UpdateStrategy,
+	type AlertAddedEvent,
+} from "./investigation-update.service.js";

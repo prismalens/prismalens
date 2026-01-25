@@ -5,7 +5,7 @@
  * Static provider metadata lives in @prismalens/config for frontend access.
  */
 
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config";
+import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 
 // Re-export from config for convenience
 export { LLM_PROVIDERS, type LLMProviderId };

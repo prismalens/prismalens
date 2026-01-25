@@ -10,23 +10,23 @@ import { z } from "zod";
  */
 export const skillsSchema = z.object({
 	// Per-subagent custom skill directories
-	CARTOGRAPHER_SKILLS_DIR: z
+	PRISMALENS_CARTOGRAPHER_SKILLS_DIR: z
 		.string()
 		.optional()
 		.describe("Custom skills directory for Cartographer subagent"),
 
-	DETECTIVE_SKILLS_DIR: z
+	PRISMALENS_DETECTIVE_SKILLS_DIR: z
 		.string()
 		.optional()
 		.describe("Custom skills directory for Detective subagent"),
 
-	SURGEON_SKILLS_DIR: z
+	PRISMALENS_SURGEON_SKILLS_DIR: z
 		.string()
 		.optional()
 		.describe("Custom skills directory for Surgeon subagent"),
 
 	// Additional skills directory (merged with built-in)
-	ADDITIONAL_SKILLS_DIR: z
+	PRISMALENS_ADDITIONAL_SKILLS_DIR: z
 		.string()
 		.optional()
 		.describe(
@@ -39,37 +39,37 @@ export const skillsSchema = z.object({
 	// =============================================================================
 
 	// Code Pathfinder MCP - Call graph analysis
-	MCP_CODE_PATHFINDER_ENABLED: z
+	PRISMALENS_MCP_CODE_PATHFINDER_ENABLED: z
 		.string()
 		.transform((val) => val === "true")
 		.default("false")
 		.describe("Enable Code Pathfinder MCP for call graph analysis"),
 
-	MCP_CODE_PATHFINDER_PROJECT_PATH: z
+	PRISMALENS_MCP_CODE_PATHFINDER_PROJECT_PATH: z
 		.string()
 		.optional()
 		.describe("Project path for Code Pathfinder analysis"),
 
 	// Code Index MCP - Multi-language AST indexing
-	MCP_CODE_INDEX_ENABLED: z
+	PRISMALENS_MCP_CODE_INDEX_ENABLED: z
 		.string()
 		.transform((val) => val === "true")
 		.default("false")
 		.describe("Enable Code Index MCP for multi-language AST analysis"),
 
-	MCP_CODE_INDEX_PROJECT_PATH: z
+	PRISMALENS_MCP_CODE_INDEX_PROJECT_PATH: z
 		.string()
 		.optional()
 		.describe("Project path for Code Index MCP"),
 
 	// mcp-ripgrep - Fast text search
-	MCP_RIPGREP_ENABLED: z
+	PRISMALENS_MCP_RIPGREP_ENABLED: z
 		.string()
 		.transform((val) => val === "true")
 		.default("false")
 		.describe("Enable mcp-ripgrep for fast pattern search"),
 
-	MCP_RIPGREP_BASE_DIR: z
+	PRISMALENS_MCP_RIPGREP_BASE_DIR: z
 		.string()
 		.optional()
 		.describe("Base directory for ripgrep searches"),

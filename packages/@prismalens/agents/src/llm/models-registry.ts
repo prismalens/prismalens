@@ -19,6 +19,7 @@ export interface ModelMetadata {
 	toolCall: boolean;
 	reasoning: boolean;
 	modalities: { input: string[]; output: string[] };
+	releaseDate?: string; // ISO date string for sorting (newest first)
 }
 
 // models.dev response structure: { "provider-id": { id, name, models: { "model-id": {...} } } }
@@ -30,6 +31,7 @@ interface ModelsDevModel {
 	tool_call?: boolean;
 	reasoning?: boolean;
 	modalities?: { input: string[]; output: string[] };
+	release_date?: string; // ISO date string
 }
 
 interface ModelsDevProvider {
@@ -70,6 +72,7 @@ function transformModelsData(data: ModelsDevResponse): ModelMetadata[] {
 				toolCall: model.tool_call ?? false,
 				reasoning: model.reasoning ?? false,
 				modalities: model.modalities || { input: ["text"], output: ["text"] },
+				releaseDate: model.release_date,
 			});
 		}
 	}

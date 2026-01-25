@@ -43,5 +43,10 @@
 	},
 	"dependencies": {
 		"better-auth": "^1.4.10"
+	},
+	"pnpm": {
+		"overrides": {
+			"vite": "^7.0.0"
+		}
 	}
 }

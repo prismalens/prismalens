@@ -324,25 +324,25 @@ export class MCPClientManager {
  * Create MCP client manager from environment configuration.
  */
 export function createMCPClientManager(envConfig: {
-	MCP_CODE_PATHFINDER_ENABLED?: boolean;
-	MCP_CODE_PATHFINDER_PROJECT_PATH?: string;
-	MCP_CODE_INDEX_ENABLED?: boolean;
-	MCP_CODE_INDEX_PROJECT_PATH?: string;
-	MCP_RIPGREP_ENABLED?: boolean;
-	MCP_RIPGREP_BASE_DIR?: string;
+	PRISMALENS_MCP_CODE_PATHFINDER_ENABLED?: boolean;
+	PRISMALENS_MCP_CODE_PATHFINDER_PROJECT_PATH?: string;
+	PRISMALENS_MCP_CODE_INDEX_ENABLED?: boolean;
+	PRISMALENS_MCP_CODE_INDEX_PROJECT_PATH?: string;
+	PRISMALENS_MCP_RIPGREP_ENABLED?: boolean;
+	PRISMALENS_MCP_RIPGREP_BASE_DIR?: string;
 }): MCPClientManager {
 	const config: MCPConfig = {
 		codePathfinder: {
-			enabled: envConfig.MCP_CODE_PATHFINDER_ENABLED ?? false,
-			projectPath: envConfig.MCP_CODE_PATHFINDER_PROJECT_PATH,
+			enabled: envConfig.PRISMALENS_MCP_CODE_PATHFINDER_ENABLED ?? false,
+			projectPath: envConfig.PRISMALENS_MCP_CODE_PATHFINDER_PROJECT_PATH,
 		},
 		codeIndex: {
-			enabled: envConfig.MCP_CODE_INDEX_ENABLED ?? false,
-			projectPath: envConfig.MCP_CODE_INDEX_PROJECT_PATH,
+			enabled: envConfig.PRISMALENS_MCP_CODE_INDEX_ENABLED ?? false,
+			projectPath: envConfig.PRISMALENS_MCP_CODE_INDEX_PROJECT_PATH,
 		},
 		ripgrep: {
-			enabled: envConfig.MCP_RIPGREP_ENABLED ?? false,
-			baseDir: envConfig.MCP_RIPGREP_BASE_DIR,
+			enabled: envConfig.PRISMALENS_MCP_RIPGREP_ENABLED ?? false,
+			baseDir: envConfig.PRISMALENS_MCP_RIPGREP_BASE_DIR,
 		},
 	};
 
@@ -354,12 +354,12 @@ export function createMCPClientManager(envConfig: {
  * Returns a manager that can be used to call tools.
  */
 export async function createMCPClients(envConfig: {
-	MCP_CODE_PATHFINDER_ENABLED?: boolean;
-	MCP_CODE_PATHFINDER_PROJECT_PATH?: string;
-	MCP_CODE_INDEX_ENABLED?: boolean;
-	MCP_CODE_INDEX_PROJECT_PATH?: string;
-	MCP_RIPGREP_ENABLED?: boolean;
-	MCP_RIPGREP_BASE_DIR?: string;
+	PRISMALENS_MCP_CODE_PATHFINDER_ENABLED?: boolean;
+	PRISMALENS_MCP_CODE_PATHFINDER_PROJECT_PATH?: string;
+	PRISMALENS_MCP_CODE_INDEX_ENABLED?: boolean;
+	PRISMALENS_MCP_CODE_INDEX_PROJECT_PATH?: string;
+	PRISMALENS_MCP_RIPGREP_ENABLED?: boolean;
+	PRISMALENS_MCP_RIPGREP_BASE_DIR?: string;
 }): Promise<MCPClientManager> {
 	const manager = createMCPClientManager(envConfig);
 	await manager.connectAll();

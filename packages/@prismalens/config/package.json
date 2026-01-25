@@ -13,6 +13,14 @@
 		"./browser": {
 			"types": "./dist/browser.d.ts",
 			"import": "./dist/browser.js"
+		},
+		"./llm": {
+			"types": "./dist/llm.d.ts",
+			"import": "./dist/llm.js"
+		},
+		"./mcp": {
+			"types": "./dist/mcp.d.ts",
+			"import": "./dist/mcp.js"
 		}
 	},
 	"scripts": {

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { StructuredTool } from "@langchain/core/tools";
 import {
 	createSkillsMiddleware,
@@ -9,6 +10,7 @@ import {
 } from "deepagents";
 import type { MCPClientManager } from "../../mcp/client.js";
 import {
+	ADVERSARY_SYSTEM_REMINDER,
 	CARTOGRAPHER_SYSTEM_REMINDER,
 	DETECTIVE_SYSTEM_REMINDER,
 	SURGEON_SYSTEM_REMINDER,
@@ -18,6 +20,7 @@ import {
 	type ToolDisclosureMiddleware,
 } from "../../middleware/tool-disclosure.js";
 import { createToolsForAgent } from "../../tools/factory.js";
+import { createAdversaryTools } from "../../tools/challenge.js";
 import { createSurgeonTools } from "../../tools/fix-proposal.js";
 import { createDetectiveTools } from "../../tools/hypothesis.js";
 import { getMCPToolsForAgent } from "../../tools/mcp/index.js";
@@ -52,6 +55,7 @@ export interface SubAgentConfig {
 		cartographer?: string;
 		detective?: string;
 		surgeon?: string;
+		adversary?: string;
 	};
 	/** Whether to enable skills middleware (default: true) */
 	enableSkills?: boolean;
@@ -72,13 +76,19 @@ export interface SubAgentConfig {
 	 * When provided, MCP tools (code-pathfinder, code-index, ripgrep) are added to subagents.
 	 */
 	mcpClientManager?: MCPClientManager;
+	/**
+	 * LangChain callbacks for tracing.
+	 * When provided, these callbacks are propagated to sub-agents for LangSmith visibility.
+	 * This enables nested traces showing sub-agent execution within the parent agent's trace.
+	 */
+	callbacks?: BaseCallbackHandler[];
 }
 
 // =============================================================================
 // SKILLS HELPER FUNCTIONS
 // =============================================================================
 
-type SubAgentName = "cartographer" | "detective" | "surgeon";
+type SubAgentName = "cartographer" | "detective" | "surgeon" | "adversary";
 
 /**
  * Get the built-in skills directory for a subagent.
@@ -93,7 +103,7 @@ function getBuiltinSkillsDir(subagentName: SubAgentName): string {
  * Get environment variable name for custom skills directory.
  */
 function getSkillsEnvVar(subagentName: SubAgentName): string {
-	return `${subagentName.toUpperCase()}_SKILLS_DIR`;
+	return `PRISMALENS_${subagentName.toUpperCase()}_SKILLS_DIR`;
 }
 
 /**
@@ -117,7 +127,7 @@ function getSkillsMiddlewareOptions(
 	}
 
 	// Add additional skills directory if set (shared across all agents)
-	const additionalDir = process.env.ADDITIONAL_SKILLS_DIR;
+	const additionalDir = process.env.PRISMALENS_ADDITIONAL_SKILLS_DIR;
 	if (additionalDir) {
 		const combinedPath = path.join(additionalDir, subagentName);
 		sources.push(combinedPath.split(path.sep).join("/"));
@@ -286,10 +296,18 @@ for specific analysis methods. To use a skill, read its SKILL.md file for detail
 
 Available skills:
 - **hypothesis-formation**: Form and validate root cause hypotheses with confidence levels
+- **change-correlation**: Correlate incidents with recent changes (60-90% of outages are caused by changes!)
+- **incident-similarity**: Find historically similar incidents to leverage past resolutions
 - **timeline-analysis**: Build chronological event timeline to identify causation chains
 - **pattern-correlation**: Cross-reference patterns across multiple data sources
 - **error-origin-trace**: (MCP) Trace errors back to their actual source across code
 - **cross-service-analysis**: (MCP) Analyze errors across multiple services to find cascade origins
+
+## CRITICAL: Check Changes First
+Industry data shows **60-90% of outages are caused by changes**. Before deep analysis:
+1. Use **correlate_with_changes** tool with recent deployments/config changes
+2. Calculate risk scores based on timing and change type
+3. High-risk changes (score 50+) are primary suspects
 
 ## Your Role
 - Receive context gathered by Cartographer
@@ -383,6 +401,8 @@ Available skills:
 - **code-fix**: Propose specific code changes with search/replace blocks
 - **rollback-proposal**: Recommend deployment rollbacks when appropriate
 - **config-change**: Recommend configuration changes (env vars, feature flags, thresholds)
+- **runbook-lookup**: Search runbooks for proven remediation procedures
+- **risk-assessment**: Assess change risk and determine required approvals
 
 ## Your Role
 - Receive the root cause hypothesis from Detective
@@ -427,12 +447,21 @@ For incidents that could have been detected earlier:
 - **medium**: Degraded but functional
 - **low**: Minor, edge case
 
+## IMPORTANT: Assess Risk Before Proposing
+
+Before finalizing any fix proposal:
+1. Use **lookup_runbook** to check for existing remediation procedures
+2. Use **assess_change_risk** to evaluate the proposed change
+3. Include risk level and required approvals in your recommendation
+
 ## Best Practices
 1. One recommendation per distinct issue
 2. Be specific - vague fixes aren't actionable
 3. Include test/verification steps
 4. Consider side effects and risks
-5. If unsure, recommend investigation first`;
+5. If unsure, recommend investigation first
+6. Check runbooks for proven solutions
+7. Always assess risk before recommending fixes`;
 
 /**
  * Create the Surgeon SubAgent - Fix proposer
@@ -458,10 +487,104 @@ export function createSurgeonSubAgent(config: SubAgentConfig): SubAgent {
 	return {
 		name: "surgeon",
 		description:
-			"Proposes fixes based on root cause analysis. Has skills for: code-fix, rollback-proposal, config-change. Use Surgeon after Detective has identified a likely root cause with sufficient confidence (70%+). Surgeon creates actionable recommendations and code change proposals for human review.",
+			"Proposes fixes based on root cause analysis. Has skills for: code-fix, rollback-proposal, config-change, runbook-lookup, risk-assessment. Use Surgeon after Detective has identified a likely root cause with sufficient confidence (70%+). Surgeon creates actionable recommendations, assesses change risk, searches runbooks for proven solutions, and prepares code change proposals for human review.",
 		systemPrompt,
 		tools,
 		model: config.models?.surgeon || process.env.SURGEON_MODEL,
+		middleware,
+	};
+}
+
+// =============================================================================
+// ADVERSARY SUBAGENT
+// =============================================================================
+
+const ADVERSARY_SYSTEM_PROMPT = `You are Adversary, a Devil's Advocate for strengthening incident investigations.
+
+Your job is to challenge hypotheses through Socratic questioning and evidence-based reasoning.
+
+## Your Skills
+You have access to specialized skills for challenging hypotheses. Each skill provides detailed instructions
+for specific challenge methods. To use a skill, read its SKILL.md file for detailed process and output format.
+
+Available skills:
+- **hypothesis-challenge**: Challenge hypotheses using Socratic questioning
+- **knowledge-search**: Search organizational knowledge for contradicting or supporting evidence
+
+## IMPORTANT: You Are NOT a Contrarian
+
+Your goal is to STRENGTHEN investigations, not to be argumentative. Only challenge when:
+1. Confidence is HIGH (>=80%) but evidence might be thin
+2. Evidence count is LOW (<=2) and conclusion might be premature
+3. You find specific issues through pattern matching or knowledge search
+
+## Your Approach
+
+### 1. Challenge Assumptions
+Question unstated premises in the hypothesis:
+- "What if the timing correlation is coincidental?"
+- "Is there evidence that rules out other causes?"
+- "Could this be a symptom rather than the root cause?"
+
+### 2. Identify Blind Spots
+Point out data or perspectives not considered:
+- "Was the database connection pool checked?"
+- "What about the upstream service's health?"
+- "Are there logs from the affected time period?"
+
+### 3. Propose Alternatives
+Suggest other explanations for the same symptoms:
+- Use pattern_match to find known incident patterns
+- Consider similar past incidents if available
+- Think about what else could cause these symptoms
+
+### 4. Stress Test
+Ask "What if X is wrong? What would we see?"
+- If it's a deployment issue, what would disprove that?
+- If it's a code bug, where else would symptoms appear?
+
+## Output Format
+
+You MUST use the challenge_hypothesis tool to record your findings:
+1. List specific challenges with type (assumption, blind_spot, alternative)
+2. Include evidence from knowledge sources when available
+3. Recommend confidence adjustment based on severity
+4. Propose refinements if you can improve the hypothesis
+
+## Tool Usage
+
+1. **pattern_match**: Always check error messages against known patterns first
+2. **challenge_hypothesis**: Record your challenges formally
+3. **refine_hypothesis**: If you can improve the hypothesis, propose refinement
+
+## Research Backing
+
+This approach is based on ACL 2024 research showing that selective challenge
+(challenging high-confidence hypotheses) prevents error entrenchment, while
+"questioning everything" can actually reduce accuracy.`;
+
+/**
+ * Create the Adversary SubAgent - Devil's Advocate for hypothesis challenge
+ */
+export function createAdversarySubAgent(config: SubAgentConfig): SubAgent {
+	const tools: StructuredTool[] = createAdversaryTools() as StructuredTool[];
+	const enableSkills = config.enableSkills !== false; // Default to true
+
+	// Create skills middleware if enabled
+	const middleware = enableSkills
+		? [createSkillsMiddleware(getSkillsMiddlewareOptions("adversary"))]
+		: undefined;
+
+	// Build system prompt with system reminder
+	const systemPrompt = ADVERSARY_SYSTEM_PROMPT + ADVERSARY_SYSTEM_REMINDER;
+
+	return {
+		name: "adversary",
+		description:
+			"Challenges hypotheses using Socratic questioning and evidence-based reasoning. Has skills for: hypothesis-challenge, knowledge-search. Use Adversary ONLY when Detective produces a high-confidence hypothesis (>=80%) or a hypothesis with thin evidence (<=2 items). Adversary strengthens investigations by identifying blind spots, questioning assumptions, and proposing alternatives. Do NOT use Adversary for every hypothesis - only for those that need scrutiny.",
+		systemPrompt,
+		tools,
+		model: config.models?.adversary || process.env.ADVERSARY_MODEL,
 		middleware,
 	};
 }
@@ -472,20 +595,31 @@ export function createSurgeonSubAgent(config: SubAgentConfig): SubAgent {
 
 /**
  * Create all SubAgents for the Commander
+ * Note: Adversary is optional and only included when requested
  */
-export function createSubAgents(config: SubAgentConfig): SubAgent[] {
-	return [
+export function createSubAgents(
+	config: SubAgentConfig,
+	options?: { includeAdversary?: boolean },
+): SubAgent[] {
+	const subagents = [
 		createCartographerSubAgent(config),
 		createDetectiveSubAgent(config),
 		createSurgeonSubAgent(config),
 	];
+
+	// Include Adversary only when explicitly requested
+	if (options?.includeAdversary) {
+		subagents.push(createAdversarySubAgent(config));
+	}
+
+	return subagents;
 }
 
 /**
  * Get SubAgent by name
  */
 export function getSubAgent(
-	name: "cartographer" | "detective" | "surgeon",
+	name: "cartographer" | "detective" | "surgeon" | "adversary",
 	config: SubAgentConfig,
 ): SubAgent {
 	switch (name) {
@@ -495,23 +629,9 @@ export function getSubAgent(
 			return createDetectiveSubAgent(config);
 		case "surgeon":
 			return createSurgeonSubAgent(config);
+		case "adversary":
+			return createAdversarySubAgent(config);
 		default:
 			throw new Error(`Unknown subagent: ${name}`);
 	}
 }
-
-// =============================================================================
-// LEGACY EXPORTS (for backward compatibility during migration)
-// =============================================================================
-
-// Legacy static subagents - use createSubAgents() instead for integration support
-export const cartographerSubagent = createCartographerSubAgent({
-	integrations: [],
-});
-export const detectiveSubagent = createDetectiveSubAgent({ integrations: [] });
-export const surgeonSubagent = createSurgeonSubAgent({ integrations: [] });
-export const subagents = [
-	cartographerSubagent,
-	detectiveSubagent,
-	surgeonSubagent,
-];

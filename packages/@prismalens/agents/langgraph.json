@@ -1,9 +1,8 @@
 {
-	"node_version": "24",
+	"node_version": "22",
 	"dependencies": ["."],
 	"graphs": {
-		"investigation": "./dist/graph/graph.js:investigationGraph",
-		"commander": "./dist/agents/commander/agent.js:graph"
+		"investigation": "./src/graph/studio.ts:graph"
 	},
 	"env": ".env"
 }

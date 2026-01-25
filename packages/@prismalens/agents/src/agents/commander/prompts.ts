@@ -31,55 +31,29 @@ export interface CommanderIncidentContext {
 }
 
 /**
- * Legacy alert context for backward compatibility
- * @deprecated Use CommanderIncidentContext instead
- */
-export interface CommanderAlertContext {
-	alertSummary?: string;
-	serviceName?: string;
-	incidentId?: string;
-	priority?: "low" | "normal" | "high" | "critical";
-}
-
-/**
  * Build the Commander system prompt with incident-specific context.
- * Supports both incident-centric (preferred) and alert-centric (legacy) contexts.
  */
 export function buildCommanderPrompt(
-	context?: CommanderIncidentContext | CommanderAlertContext,
+	context?: CommanderIncidentContext,
 ): string {
 	let incidentContextSection = "";
 
 	if (context) {
-		// Check if this is an incident-centric context (has 'title' property)
-		if ("title" in context) {
-			const inc = context as CommanderIncidentContext;
-			const incidentNumber = inc.number ? `INC-${inc.number}` : inc.incidentId;
-			incidentContextSection = `
+		const incidentNumber = context.number ? `INC-${context.number}` : context.incidentId;
+		incidentContextSection = `
 # Current Incident: ${incidentNumber}
 
 ## Incident Details
-- **Title**: ${inc.title}
-- **Severity**: ${inc.severity.toUpperCase()}
-- **Priority**: ${inc.priority.toUpperCase()}
-- **Service**: ${inc.serviceName || "Unknown"}
-- **Alert Count**: ${inc.alertCount}
-${inc.description ? `- **Description**: ${inc.description}` : ""}
-${inc.customerImpact ? `- **Customer Impact**: ${inc.customerImpact}` : ""}
+- **Title**: ${context.title}
+- **Severity**: ${context.severity.toUpperCase()}
+- **Priority**: ${context.priority.toUpperCase()}
+- **Service**: ${context.serviceName || "Unknown"}
+- **Alert Count**: ${context.alertCount}
+${context.description ? `- **Description**: ${context.description}` : ""}
+${context.customerImpact ? `- **Customer Impact**: ${context.customerImpact}` : ""}
 
-You are investigating incident **${incidentNumber}**: "${inc.title}"
+You are investigating incident **${incidentNumber}**: "${context.title}"
 `;
-		} else {
-			// Legacy alert-centric context
-			const alertCtx = context as CommanderAlertContext;
-			incidentContextSection = `
-# Current Incident
-- **Incident ID**: ${alertCtx.incidentId || "Unknown"}
-- **Service**: ${alertCtx.serviceName || "Unknown"}
-- **Priority**: ${alertCtx.priority || "normal"}
-- **Alert Summary**: ${alertCtx.alertSummary || "See alert details below"}
-`;
-		}
 	}
 
 	return `You are the Incident Commander for PrismaLens - an AI-powered incident investigation system.
@@ -162,6 +136,29 @@ instructions on-demand for specific tasks.
 - **Output**: Fix proposals for HUMAN REVIEW
 - **Key insight**: Surgeon PROPOSES only - does NOT implement changes
 
+## adversary (Devil's Advocate) - OPTIONAL
+- **Role**: Challenge hypotheses to strengthen investigation quality
+- **When to use**: SELECTIVELY - only for hypotheses that need scrutiny
+- **Skills**: hypothesis-challenge, knowledge-search
+- **Output**: Challenges, alternatives, confidence adjustments
+- **Key insight**: Based on research showing selective challenge prevents error entrenchment
+
+### When to Invoke Adversary
+The Adversary SubAgent should be used ONLY when Detective's hypothesis meets ONE of these criteria:
+1. **High Confidence (>=80%)**: Strong claims need scrutiny to avoid overconfidence
+2. **Thin Evidence (<=2 items)**: Conclusions from limited data may be premature
+3. **Critical Severity**: High-impact decisions deserve validation
+
+Do NOT invoke Adversary for every hypothesis - this actually reduces accuracy.
+
+### Adversary Workflow
+1. Detective forms hypothesis
+2. IF hypothesis.confidence >= 80% OR hypothesis.evidence.length <= 2:
+   - task("adversary", "Challenge hypothesis: [hypothesis summary]. Confidence: X%, Evidence: Y items")
+3. Review Adversary's challenges
+4. IF challenges are significant: Ask Detective to revise hypothesis
+5. THEN proceed to Surgeon
+
 # Investigation Workflow
 
 ## Phase 0: Initial Assessment (CRITICAL - DO NOT SKIP)
@@ -209,7 +206,20 @@ This wastes time if the tasks don't depend on each other.
 2. Detective returns hypotheses with confidence levels
 3. Decision point:
    - If confidence < 70%: task("cartographer", "Gather more context about [specific area]")
-   - If confidence >= 70%: proceed to Phase 4
+   - If confidence >= 70%: proceed to Phase 3.5 (optional) or Phase 4
+
+## Phase 3.5: Challenge (Optional but Recommended)
+When Detective's hypothesis has HIGH confidence (>=80%) OR THIN evidence (<=2 items):
+
+1. Invoke Adversary:
+   - task("adversary", "Challenge this hypothesis: [summary]. Confidence: X%, Evidence count: Y")
+2. Review Adversary's challenges:
+   - If challenge severity is HIGH: Ask Detective to revise
+   - If challenge severity is MEDIUM: Consider the alternatives before proceeding
+   - If challenge severity is LOW: Proceed with confidence
+
+This step prevents premature conclusions and strengthens the final recommendation.
+Skip this phase for straightforward, moderate-confidence hypotheses.
 
 ## Phase 4: Resolution
 1. Delegate to surgeon with the confirmed hypothesis:
@@ -299,7 +309,7 @@ export const COMMANDER_SYSTEM_PROMPT = buildCommanderPrompt();
  * Build a task description for delegating to a SubAgent.
  */
 export function buildTaskDescription(
-	subagent: "cartographer" | "detective" | "surgeon",
+	subagent: "cartographer" | "detective" | "surgeon" | "adversary",
 	taskDetails: string,
 	previousContext?: string,
 ): string {
@@ -343,5 +353,19 @@ ${taskDetails}
 - Use suggest_rollback if deployment is the issue
 - Include verification/test steps
 - Be conservative - unclear issues should recommend investigation${contextSection}`;
+
+		case "adversary":
+			return `## Hypothesis Challenge Task
+
+${taskDetails}
+
+## Guidelines
+- Use pattern_match to check against known incident patterns first
+- Challenge assumptions and identify blind spots constructively
+- Propose alternative explanations with evidence
+- Use challenge_hypothesis to record formal challenges
+- Recommend confidence adjustments based on challenge severity
+- Use refine_hypothesis if you can improve the hypothesis
+- Be constructive - goal is to strengthen, not reject${contextSection}`;
 	}
 }

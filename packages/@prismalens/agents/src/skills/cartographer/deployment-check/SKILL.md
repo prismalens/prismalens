@@ -1,6 +1,13 @@
 ---
 name: deployment-check
 description: Checks deployment status, health, and recent deployment history to identify deployment-related issues.
+capability: deployment-check
+integrations:
+  - render
+  - kubernetes
+  - aws-ecs
+  - heroku
+  - vercel
 ---
 
 # Deployment Check Skill
@@ -8,11 +15,18 @@ description: Checks deployment status, health, and recent deployment history to 
 ## Purpose
 Verify deployment status, health checks, and recent deployment history to identify if the incident is related to deployment changes.
 
-## Available Tools
-- `render_get_service_details(serviceId)` - Get service status and configuration
-- `render_list_deploys(serviceId)` - List recent deployments
-- `render_get_deploy_status(deployId)` - Check specific deployment status
-- `render_get_logs(serviceId, options)` - Get deployment logs
+## Capability-Based Tools
+This skill uses the **deployment-check** capability which automatically resolves to the appropriate integration:
+
+| Integration | Tools Available |
+|-------------|-----------------|
+| Render | `render_list_services`, `render_list_deploys`, `render_get_deploy` |
+| Kubernetes | `k8s_get_pods`, `k8s_describe_deployment`, `k8s_get_events` |
+| AWS ECS | `ecs_describe_services`, `ecs_list_tasks`, `ecs_describe_task` |
+| Heroku | `heroku_releases`, `heroku_dyno_status` |
+| Vercel | `vercel_list_deployments`, `vercel_get_deployment` |
+
+The system automatically selects tools based on the configured integration. You don't need to choose which one to use - just describe what you need.
 
 ## Process
 

@@ -14,6 +14,7 @@ export default defineConfig({
 			dbType === "postgresql"
 				? "prisma/pg/schema"
 				: "prisma/sqlite/schema",
+		seed: "tsx prisma/seed.ts",
 	},
 	datasource: {
 		url: getConfig().PRISMALENS_DB_URL,

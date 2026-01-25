@@ -19,15 +19,11 @@ export {
 
 // SubAgents
 export {
-	// Legacy exports
-	cartographerSubagent,
+	createAdversarySubAgent,
 	createCartographerSubAgent,
 	createDetectiveSubAgent,
 	createSubAgents,
 	createSurgeonSubAgent,
-	detectiveSubagent,
 	getSubAgent,
 	type SubAgentConfig,
-	subagents,
-	surgeonSubagent,
 } from "./subagents/index.js";

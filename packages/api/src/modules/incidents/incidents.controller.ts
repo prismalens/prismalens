@@ -2,6 +2,7 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { incidentsContract } from "@prismalens/contracts";
 import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 import { IncidentsService } from "./incidents.service.js";
@@ -12,6 +13,7 @@ export class IncidentsController {
 		private readonly incidentsService: IncidentsService,
 		private readonly investigationsService: InvestigationsService,
 		private readonly queueService: QueueService,
+		private readonly integrationsService: IntegrationsService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -124,6 +126,12 @@ export class IncidentsController {
 						incidentId: input.id,
 					});
 
+					// Fetch integrations for the service (decrypted credentials for agents)
+					const integrations =
+						await this.integrationsService.getIntegrationsForService(
+							incident.serviceId ?? undefined,
+						);
+
 					// Queue the investigation job
 					const jobId = await this.queueService.addInvestigationJob({
 						incidentId: input.id,
@@ -135,6 +143,7 @@ export class IncidentsController {
 							alertCount: incident.alertCount,
 							serviceName: incident.service?.name,
 						},
+						integrations,
 					});
 
 					return {

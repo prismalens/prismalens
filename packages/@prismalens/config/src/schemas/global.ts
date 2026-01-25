@@ -40,7 +40,7 @@ export const globalSchema = z.object({
 		.describe(
 			"Public URL for webhook callbacks (defaults to PRISMALENS_PUBLIC_URL if not set)",
 		),
-	DOMAIN: z
+	PRISMALENS_DOMAIN: z
 		.string()
 		.optional()
 		.describe(

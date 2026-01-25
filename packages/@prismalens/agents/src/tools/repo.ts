@@ -307,12 +307,6 @@ export function createRepoTools(options: ToolFactoryOptions): StructuredTool[] {
 	return tools;
 }
 
-// Legacy export for backward compatibility
-export const repoTools = createRepoTools({
-	agentName: "default",
-	integrations: [],
-});
-
 // =============================================================================
 // BUNDLE FACTORY EXPORTS
 // =============================================================================
@@ -337,7 +331,6 @@ export function createRepoFilesBundle(
 
 /**
  * Internal function to create tools with a base path.
- * Shared between legacy and bundle factory paths.
  */
 function createRepoToolsInternal(basePath: string): StructuredTool[] {
 	return [

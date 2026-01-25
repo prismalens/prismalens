@@ -107,8 +107,10 @@ function CommandCenter() {
 				</div>
 			</div>
 
-			{/* LLM Warning Banner */}
-			{!isLlmConfigured && <LLMWarningBanner />}
+			{/* LLM Warning Banner - only show when there are incidents to analyze */}
+			{!isLlmConfigured && activeIncidents.length > 0 && (
+				<LLMWarningBanner incidentCount={activeIncidents.length} />
+			)}
 
 			{/* Quick Stats Bar - All Clickable */}
 			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
