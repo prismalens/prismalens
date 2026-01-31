@@ -13,21 +13,14 @@
 
 // Re-export only the browser-safe parts from llm schema
 export {
-	anthropicConfigSchema,
-	type CommonLLMConfig,
-	// Zod schemas (zod is browser-safe)
-	commonLLMConfigSchema,
-	googleConfigSchema,
-	groqConfigSchema,
 	LLM_PROVIDERS,
 	LLM_PROVIDER_IDS,
-	type LLMConfig,
 	type LLMProviderId,
-	llmConfigSchema,
+	// Zod schemas (for provider ID validation only)
 	llmProviderIdSchema,
-	ollamaConfigSchema,
-	openaiConfigSchema,
-	openrouterConfigSchema,
+	// Helper functions
+	getApiKeyEnvVar,
+	getDocsUrl,
 } from "./schemas/llm.js";
 
 // Re-export only the browser-safe parts from mcp schema

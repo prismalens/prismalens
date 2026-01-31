@@ -97,6 +97,37 @@ export interface ExtendedExpectedOutput {
 
 	/** Expected recommendation types */
 	expectedRecommendationTypes?: Array<"code_fix" | "config_change" | "rollback" | "monitoring" | "investigation">;
+
+	// =========================================================================
+	// ENHANCED TRAJECTORY VALIDATION FIELDS
+	// =========================================================================
+
+	/**
+	 * Search terms the agent should search for during investigation.
+	 * Used by evaluateSearchRelevance() to validate the agent searched
+	 * for relevant information.
+	 *
+	 * @example ["NullPointerException", "UserService", "null check"]
+	 */
+	expectedSearchTerms?: string[];
+
+	/**
+	 * Files the agent should read during investigation.
+	 * Used by evaluateFileRelevance() to validate the agent examined
+	 * the correct source files.
+	 *
+	 * @example ["UserService.java", "UserController.java"]
+	 */
+	expectedFilesToRead?: string[];
+
+	/**
+	 * Regex patterns that should appear in tool arguments.
+	 * Used by evaluateEvidenceCapture() to validate the agent
+	 * captured relevant evidence patterns.
+	 *
+	 * @example ["line\\s*\\d+", "null.*check"]
+	 */
+	expectedEvidencePatterns?: string[];
 }
 
 // =============================================================================

@@ -46,7 +46,7 @@ const surgeonScenarios: Array<{
 // RECOMMENDATION QUALITY EVALUATIONS
 // =============================================================================
 
-ls.describe("Surgeon - Recommendation Quality", () => {
+ls.describe("[Agent] Surgeon › Recommendation Quality", () => {
 	ls.test(
 		"Produces actionable recommendations",
 		{
@@ -131,7 +131,7 @@ ls.describe("Surgeon - Recommendation Quality", () => {
 // MULTIPLE RECOMMENDATIONS EVALUATION
 // =============================================================================
 
-ls.describe("Surgeon - Recommendation Set Quality", () => {
+ls.describe("[Agent] Surgeon › Recommendation Set Quality", () => {
 	ls.test(
 		"Produces prioritized recommendation set",
 		{
@@ -212,7 +212,7 @@ ls.describe("Surgeon - Recommendation Set Quality", () => {
 // TRAJECTORY EVALUATIONS
 // =============================================================================
 
-ls.describe("Surgeon - Tool Usage Trajectory", () => {
+ls.describe("[Agent] Surgeon › Tool Usage Trajectory", () => {
 	ls.test(
 		"Does NOT form hypotheses",
 		{
@@ -276,7 +276,7 @@ ls.describe("Surgeon - Tool Usage Trajectory", () => {
 // SCENARIO-SPECIFIC FIX QUALITY
 // =============================================================================
 
-ls.describe("Surgeon - Scenario-Specific Fixes", () => {
+ls.describe("[Agent] Surgeon › Scenario-Specific Fixes", () => {
 	for (const { scenario, expectedFixType } of surgeonScenarios) {
 		ls.test(
 			`Appropriate fix type for: ${scenario.name}`,

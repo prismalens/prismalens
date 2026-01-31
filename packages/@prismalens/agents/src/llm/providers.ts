@@ -5,10 +5,14 @@
  * Static provider metadata lives in @prismalens/config for frontend access.
  */
 
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	getApiKeyEnvVar,
+	LLM_PROVIDERS,
+	type LLMProviderId,
+} from "@prismalens/config/llm";
 
 // Re-export from config for convenience
-export { LLM_PROVIDERS, type LLMProviderId };
+export { getApiKeyEnvVar, LLM_PROVIDERS, type LLMProviderId };
 
 export type ProviderMeta = (typeof LLM_PROVIDERS)[LLMProviderId];
 
@@ -29,14 +33,6 @@ export function getProviderMeta(providerId: string): ProviderMeta | undefined {
 export function requiresApiKey(providerId: string): boolean {
 	const meta = getProviderMeta(providerId);
 	return meta?.envVar !== null;
-}
-
-/**
- * Get the environment variable name for a provider's API key
- */
-export function getApiKeyEnvVar(providerId: string): string | null {
-	const meta = getProviderMeta(providerId);
-	return meta?.envVar ?? null;
 }
 
 /**

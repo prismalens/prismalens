@@ -5,7 +5,18 @@
  * Checks: evidence quality, confidence calibration, category accuracy.
  */
 
-import type { Hypothesis } from "../../src/types/state.js";
+/**
+ * Input type for hypothesis evaluation.
+ * Uses loose string types to accept both strict types from state.ts
+ * and loose types from studio.ts (LangGraph parser compatibility).
+ */
+export interface HypothesisInput {
+	claim: string;
+	confidence: number;
+	evidence: string[];
+	category?: string;
+	timestamp?: string;
+}
 
 // =============================================================================
 // TYPES
@@ -44,7 +55,7 @@ export interface HypothesisEvaluationOptions {
  * Evaluate a single hypothesis for quality.
  */
 export function evaluateHypothesis(
-	hypothesis: Hypothesis,
+	hypothesis: HypothesisInput,
 	options: HypothesisEvaluationOptions = {},
 ): HypothesisEvaluationResult {
 	const { expectedCategory, minConfidence = 0, minEvidence = 1 } = options;
@@ -128,12 +139,12 @@ export function evaluateHypothesis(
  * Evaluate multiple hypotheses and return aggregate score.
  */
 export function evaluateHypotheses(
-	hypotheses: Hypothesis[],
+	hypotheses: HypothesisInput[],
 	options: HypothesisEvaluationOptions = {},
 ): {
 	overallScore: number;
 	results: HypothesisEvaluationResult[];
-	bestHypothesis: Hypothesis | null;
+	bestHypothesis: HypothesisInput | null;
 } {
 	if (!hypotheses || hypotheses.length === 0) {
 		return {

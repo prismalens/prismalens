@@ -5,7 +5,7 @@
  */
 
 import { faker } from "@faker-js/faker";
-import type { AlertContext, IncidentContext } from "../../src/types/state.js";
+import type { AlertContext, IncidentContext, IntegrationContext, PreGatheredContext } from "../../src/types/state.js";
 
 // =============================================================================
 // SCENARIO DEFINITION
@@ -25,6 +25,12 @@ export interface ScenarioDefinition {
 		priority: "low" | "normal" | "high" | "critical";
 		incident: IncidentContext;
 		alerts: AlertContext[];
+		/** Pre-gathered context for ChangeTracker and other agents */
+		preGatheredContext?: PreGatheredContext;
+		/** Cloned repository paths (serviceId -> local path) for repo tools */
+		clonePaths?: Record<string, string>;
+		/** Integration contexts for API-based tools (GitHub, Render, etc.) */
+		integrations?: IntegrationContext[];
 	};
 	/** Expected outputs for assertions */
 	expected: {
@@ -34,6 +40,10 @@ export interface ScenarioDefinition {
 		shouldHaveRecommendations: boolean;
 		/** Optional: specific keywords that should appear in root cause */
 		rootCauseKeywords?: string[];
+		/** Expected tool calls for trajectory validation (clone scenarios) */
+		expectedToolCalls?: string[];
+		/** Forbidden tool calls for trajectory validation (non-clone scenarios) */
+		forbiddenToolCalls?: string[];
 	};
 }
 

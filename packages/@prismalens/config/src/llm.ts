@@ -1,12 +1,14 @@
 /**
  * @prismalens/config/llm
  *
- * Static LLM provider metadata and schemas.
+ * Static LLM provider metadata and helper functions.
  * This module contains NO environment-dependent code - safe for all contexts.
+ *
+ * LangChain handles config validation - we only provide UI metadata.
  *
  * @example
  * ```typescript
- * import { LLM_PROVIDERS, llmProviderIdSchema } from '@prismalens/config/llm';
+ * import { LLM_PROVIDERS, llmProviderIdSchema, getDocsUrl } from '@prismalens/config/llm';
  * ```
  */
 
@@ -15,17 +17,9 @@ export {
 	LLM_PROVIDERS,
 	LLM_PROVIDER_IDS,
 	type LLMProviderId,
-	// Zod schemas
+	// Zod schemas (for provider ID validation only)
 	llmProviderIdSchema,
-	commonLLMConfigSchema,
-	type CommonLLMConfig,
-	llmConfigSchema,
-	type LLMConfig,
-	// Provider-specific schemas
-	anthropicConfigSchema,
-	googleConfigSchema,
-	groqConfigSchema,
-	ollamaConfigSchema,
-	openaiConfigSchema,
-	openrouterConfigSchema,
+	// Helper functions
+	getApiKeyEnvVar,
+	getDocsUrl,
 } from "./schemas/llm.js";

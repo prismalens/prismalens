@@ -14,7 +14,7 @@ import type { Recommendation } from "../../src/types/state.js";
 // SCHEMA VALIDATION
 // =============================================================================
 
-ls.describe("Fix Proposal Tool - Schema", () => {
+ls.describe("[Tool] Fix Proposal › Schema", () => {
 	ls.test(
 		"Accepts complete recommendation",
 		{
@@ -114,7 +114,7 @@ ls.describe("Fix Proposal Tool - Schema", () => {
 // VERIFICATION STEPS
 // =============================================================================
 
-ls.describe("Fix Proposal Tool - Verification Steps", () => {
+ls.describe("[Tool] Fix Proposal › Verification Steps", () => {
 	ls.test(
 		"Good verification steps",
 		{
@@ -196,7 +196,7 @@ ls.describe("Fix Proposal Tool - Verification Steps", () => {
 // RISK ASSESSMENT
 // =============================================================================
 
-ls.describe("Fix Proposal Tool - Risk Assessment", () => {
+ls.describe("[Tool] Fix Proposal › Risk Assessment", () => {
 	const riskTestCases = [
 		{
 			name: "Low risk change",
@@ -305,7 +305,7 @@ ls.describe("Fix Proposal Tool - Risk Assessment", () => {
 // PRIORITY LEVELS
 // =============================================================================
 
-ls.describe("Fix Proposal Tool - Priority", () => {
+ls.describe("[Tool] Fix Proposal › Priority", () => {
 	const priorities: Recommendation["priority"][] = [
 		"critical",
 		"high",
@@ -347,7 +347,7 @@ ls.describe("Fix Proposal Tool - Priority", () => {
 // ACTIONABILITY
 // =============================================================================
 
-ls.describe("Fix Proposal Tool - Actionability", () => {
+ls.describe("[Tool] Fix Proposal › Actionability", () => {
 	ls.test(
 		"Actionable recommendation",
 		{

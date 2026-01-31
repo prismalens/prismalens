@@ -16,6 +16,19 @@ import {
 } from "../fixtures/incidents.js";
 
 // =============================================================================
+// MUTUAL EXCLUSIVITY: Forbidden tools for non-clone scenarios
+// =============================================================================
+// These scenarios do NOT provide clonePaths, so repo tools should NOT be called.
+// This ensures mutual exclusivity with clone scenarios.
+
+const FORBIDDEN_REPO_TOOLS = [
+	"repo_read_file",
+	"repo_list_directory",
+	"repo_search_text",
+	"repo_get_file_info",
+];
+
+// =============================================================================
 // EASY SCENARIOS (Clear infrastructure failures)
 // =============================================================================
 
@@ -87,6 +100,7 @@ export const nodeOOM: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["node", "memory", "eviction", "pressure"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );
@@ -157,6 +171,7 @@ export const diskFull: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["disk", "space", "volume", "full", "WAL"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );
@@ -231,6 +246,7 @@ export const networkPartition: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["network", "AZ", "partition", "connectivity", "packet"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );
@@ -303,6 +319,7 @@ export const loadBalancerIssue: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["load balancer", "health check", "ALB", "target", "502"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );
@@ -380,6 +397,7 @@ export const cloudThrottling: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["throttling", "S3", "rate limit", "AWS", "prefix"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );
@@ -451,6 +469,7 @@ export const dnsIssue: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["DNS", "cache", "TTL", "resolution", "CoreDNS"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );
@@ -532,6 +551,7 @@ export const multiFactorDegradation: ScenarioDefinition = createInfraScenario(
 			rootCauseCategory: "infrastructure",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["memory", "disk", "latency", "swap", "cascade"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	},
 );

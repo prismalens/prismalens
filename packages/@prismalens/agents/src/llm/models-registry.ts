@@ -136,38 +136,3 @@ export async function getModelsForProvider(
 	const models = await getModelsRegistry();
 	return models.filter((m) => m.provider === provider);
 }
-
-/**
- * Get models that support function/tool calling (required for agents)
- */
-export async function getAgentCompatibleModels(): Promise<ModelMetadata[]> {
-	const models = await getModelsRegistry();
-	return models.filter((m) => m.toolCall === true);
-}
-
-/**
- * Get model by ID
- */
-export async function getModelById(
-	modelId: string,
-): Promise<ModelMetadata | undefined> {
-	const models = await getModelsRegistry();
-	return models.find((m) => m.id === modelId);
-}
-
-/**
- * Get models with reasoning capabilities
- */
-export async function getReasoningModels(): Promise<ModelMetadata[]> {
-	const models = await getModelsRegistry();
-	return models.filter((m) => m.reasoning === true);
-}
-
-/**
- * Force refresh the cache
- */
-export async function refreshModelsCache(): Promise<ModelMetadata[]> {
-	cachedModels = null;
-	cacheTimestamp = 0;
-	return getModelsRegistry();
-}

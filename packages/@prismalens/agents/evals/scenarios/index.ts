@@ -12,6 +12,7 @@ export * from "./types.js";
 export * from "./code-bugs.scenarios.js";
 export * from "./config-issues.scenarios.js";
 export * from "./infrastructure.scenarios.js";
+export * from "./with-clone.scenarios.js";
 
 // =============================================================================
 // COMBINED EXPORTS
@@ -38,10 +39,18 @@ import {
 	hardInfraScenarios,
 } from "./infrastructure.scenarios.js";
 
+import {
+	cloneScenarios,
+	easyCloneScenarios,
+	mediumCloneScenarios,
+	hardCloneScenarios,
+} from "./with-clone.scenarios.js";
+
 import type { ScenarioDefinition } from "../fixtures/incidents.js";
 
 /**
- * All scenarios across all categories.
+ * All scenarios across all categories (excluding clone scenarios).
+ * Clone scenarios require special setup (clonePaths) and are exported separately.
  */
 export const allScenarios: ScenarioDefinition[] = [
 	...codeBugScenarios,
@@ -50,12 +59,30 @@ export const allScenarios: ScenarioDefinition[] = [
 ];
 
 /**
- * Scenarios grouped by difficulty.
+ * All scenarios including clone scenarios.
+ * Clone scenarios have clonePaths and expect repo_* tools.
+ */
+export const allScenariosWithClone: ScenarioDefinition[] = [
+	...allScenarios,
+	...cloneScenarios,
+];
+
+/**
+ * Scenarios grouped by difficulty (excluding clone scenarios).
  */
 export const scenariosByDifficulty = {
 	easy: [...easyCodeBugScenarios, ...easyConfigScenarios, ...easyInfraScenarios],
 	medium: [...mediumCodeBugScenarios, ...mediumConfigScenarios, ...mediumInfraScenarios],
 	hard: [...hardCodeBugScenarios, ...hardConfigScenarios, ...hardInfraScenarios],
+};
+
+/**
+ * Clone scenarios grouped by difficulty.
+ */
+export const cloneScenariosByDifficulty = {
+	easy: easyCloneScenarios,
+	medium: mediumCloneScenarios,
+	hard: hardCloneScenarios,
 };
 
 /**
@@ -65,6 +92,7 @@ export const scenariosByCategory = {
 	code: codeBugScenarios,
 	config: configIssueScenarios,
 	infrastructure: infrastructureScenarios,
+	clone: cloneScenarios,
 };
 
 /**

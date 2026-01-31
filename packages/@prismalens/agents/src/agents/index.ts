@@ -2,28 +2,18 @@
 // AGENTS INDEX
 // =============================================================================
 // Export all agent-related modules.
+//
+// All agents are LangGraph nodes that run ReAct agents internally.
+// Used by graph.ts for parallel execution and handoff-based routing.
 // =============================================================================
 
-// Commander Agent
-export {
-	type CommanderConfig,
-	createCommander,
-	createCommanderFromState,
-} from "./commander/agent.js";
+// Gatherer agents (can run in parallel)
+export { logGathererNode } from "./gatherers/log-gatherer.js";
+export { codeSearcherNode } from "./gatherers/code-searcher.js";
+export { changeTrackerNode } from "./gatherers/change-tracker.js";
 
-export {
-	buildCommanderPrompt,
-	buildTaskDescription,
-	COMMANDER_SYSTEM_PROMPT,
-} from "./commander/prompts.js";
+// Analysis agent
+export { detectiveNode } from "./analysis/detective.js";
 
-// SubAgents
-export {
-	createAdversarySubAgent,
-	createCartographerSubAgent,
-	createDetectiveSubAgent,
-	createSubAgents,
-	createSurgeonSubAgent,
-	getSubAgent,
-	type SubAgentConfig,
-} from "./subagents/index.js";
+// Fix agent
+export { surgeonNode } from "./fix/surgeon.js";

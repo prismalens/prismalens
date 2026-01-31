@@ -1,6 +1,175 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import { z } from "zod";
+import type {
+	LLMConfigWithOverrides,
+	LLMProviderConfig,
+} from "../llm/factory.js";
+
+// =============================================================================
+// SUPERVISOR PATTERN TYPES
+// =============================================================================
+// New types for the Supervisor Pattern architecture that replaces DeepAgents.
+// Enables parallel execution, handoff-based routing, and shared state.
+// =============================================================================
+
+/**
+ * Supervisor workflow phase
+ */
+export type SupervisorPhase =
+	| "gathering"        // Initial parallel gathering
+	| "analyzing"        // Detective forming hypothesis
+	| "targeted_gather"  // Additional gathering based on Detective's request
+	| "fixing"           // Surgeon proposing fixes
+	| "complete";        // Investigation complete
+
+/**
+ * Agent names for the Supervisor Pattern
+ */
+export type SupervisorAgentName =
+	| "log-gatherer"
+	| "code-searcher"
+	| "change-tracker"
+	| "detective"
+	| "surgeon";
+
+/**
+ * Finding from a gatherer agent
+ * All gatherers output findings with a common structure
+ */
+export interface Finding {
+	/** Which agent produced this finding */
+	source: "log-gatherer" | "code-searcher" | "change-tracker";
+	/** Type of finding */
+	type: "log" | "code" | "commit" | "deployment" | "error" | "metric" | "config";
+	/** Human-readable summary */
+	summary: string;
+	/** Detailed data (varies by type) */
+	details: unknown;
+	/** Relevance score 0-100 */
+	relevance: number;
+	/** When this finding relates to (if temporal) */
+	timestamp?: string;
+}
+
+/**
+ * Zod schema for Finding validation
+ */
+export const FindingSchema = z.object({
+	source: z.enum(["log-gatherer", "code-searcher", "change-tracker"]),
+	type: z.enum(["log", "code", "commit", "deployment", "error", "metric", "config"]),
+	summary: z.string(),
+	details: z.unknown(),
+	relevance: z.number().min(0).max(100),
+	timestamp: z.string().optional(),
+});
+
+/**
+ * Handoff request for agent-to-agent communication
+ * Detective uses this to request targeted gathering from a specific gatherer
+ */
+export interface HandoffRequest {
+	/** Target agent to invoke */
+	to: "log-gatherer" | "code-searcher" | "change-tracker";
+	/** Why this additional data is needed */
+	reason: string;
+	/** Specific query or context for the gatherer */
+	context: string;
+}
+
+/**
+ * Zod schema for HandoffRequest validation
+ */
+export const HandoffRequestSchema = z.object({
+	to: z.enum(["log-gatherer", "code-searcher", "change-tracker"]),
+	reason: z.string(),
+	context: z.string(),
+});
+
+/**
+ * Fix proposal from Surgeon agent
+ */
+export interface Fix {
+	/** Type of fix */
+	type: "code_change" | "config_change" | "rollback" | "monitoring";
+	/** Human-readable summary */
+	summary: string;
+	/** Confidence in the fix (0-100) */
+	confidence: number;
+	/** Code changes if applicable */
+	codeChanges?: Array<{
+		filePath: string;
+		searchBlock: string;
+		replaceBlock: string;
+		testCase: string;
+	}>;
+	/** Rollback target if applicable */
+	rollbackTarget?: {
+		service: string;
+		version: string;
+		reason: string;
+	};
+	/** Estimated effort */
+	effort?: "minutes" | "hours" | "days";
+}
+
+/**
+ * Zod schema for Fix validation
+ */
+export const FixSchema = z.object({
+	type: z.enum(["code_change", "config_change", "rollback", "monitoring"]),
+	summary: z.string(),
+	confidence: z.number().min(0).max(100),
+	codeChanges: z.array(z.object({
+		filePath: z.string(),
+		searchBlock: z.string(),
+		replaceBlock: z.string(),
+		testCase: z.string(),
+	})).optional(),
+	rollbackTarget: z.object({
+		service: z.string(),
+		version: z.string(),
+		reason: z.string(),
+	}).optional(),
+	effort: z.enum(["minutes", "hours", "days"]).optional(),
+});
+
+/**
+ * Clone decision for repository analysis
+ */
+export interface CloneDecision {
+	clone: boolean;
+	type?: "shallow" | "full";
+	reason: string;
+}
+
+/**
+ * Information about a cloned repository
+ */
+export interface ClonedRepoInfo {
+	/** Service ID this repo belongs to */
+	serviceId: string;
+	/** Human-readable service name */
+	serviceName?: string;
+	/** Repository URL that was cloned */
+	repoUrl: string;
+	/** Local filesystem path to the cloned repo */
+	clonePath: string;
+	/** Type of clone performed */
+	cloneType: "shallow" | "full";
+	/** When the repo was cloned */
+	timestamp: string;
+}
+
+/**
+ * Agent error (non-blocking)
+ */
+export interface AgentError {
+	agent: SupervisorAgentName;
+	error: string;
+	timestamp: string;
+	recoverable: boolean;
+}
 
 // =============================================================================
 // LANGGRAPH STATE ANNOTATION & ZOD SCHEMAS
@@ -514,6 +683,11 @@ export type PendingAlert = z.infer<typeof PendingAlertSchema>;
 /**
  * Main Investigation Graph State
  * This is the root state annotation shared across all nodes in the main graph.
+ *
+ * Note: LangGraph Studio may show a type portability warning for this annotation
+ * because it includes BaseMessage[] from @langchain/core. This is a known
+ * limitation of TypeScript declaration emit with LangGraph's type system
+ * and does not affect functionality.
  */
 export const InvestigationStateAnnotation = Annotation.Root({
 	// =========================================================================
@@ -563,6 +737,28 @@ export const InvestigationStateAnnotation = Annotation.Root({
 	integrations: Annotation<IntegrationContext[]>({
 		reducer: (x, y) => y ?? x,
 		default: () => [],
+	}),
+
+	// =========================================================================
+	// LLM Configuration
+	// =========================================================================
+
+	/**
+	 * LLM configuration for agents.
+	 * Must be provided by the caller (API/Worker).
+	 * No env var reading in agents package - caller passes complete config.
+	 *
+	 * Supports two formats:
+	 * 1. Simple: `LLMProviderConfig` - Same config for all agents
+	 * 2. Advanced: `LLMConfigWithOverrides` - Base config with per-agent overrides
+	 *
+	 * Commander and SubAgents will normalize and resolve agent-specific configs.
+	 */
+	llmConfig: Annotation<
+		LLMProviderConfig | LLMConfigWithOverrides | null
+	>({
+		reducer: (current, update) => update ?? current,
+		default: () => null,
 	}),
 
 	// =========================================================================
@@ -704,6 +900,112 @@ export const InvestigationStateAnnotation = Annotation.Root({
 		reducer: (x, y) => y ?? x,
 		default: () => 10,
 	}),
+
+	// =========================================================================
+	// Supervisor Pattern State (New Architecture)
+	// =========================================================================
+
+	/**
+	 * Current phase in the Supervisor workflow.
+	 * Replaces the linear DeepAgents flow with structured phases.
+	 */
+	phase: Annotation<SupervisorPhase>({
+		reducer: (_, update) => update,
+		default: () => "gathering",
+	}),
+
+	/**
+	 * Currently active agent in the Supervisor workflow.
+	 * Used for tracking and debugging.
+	 */
+	currentAgent: Annotation<SupervisorAgentName | undefined>({
+		reducer: (_, update) => update,
+		default: () => undefined,
+	}),
+
+	/**
+	 * Number of targeted gather iterations.
+	 * Limited to 2 to prevent infinite loops.
+	 */
+	gatherIterations: Annotation<number>({
+		reducer: (_, update) => update,
+		default: () => 0,
+	}),
+
+	/**
+	 * Findings from gatherer agents (append-only).
+	 * Each gatherer appends its findings to this array.
+	 */
+	findings: Annotation<Finding[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
+
+	/**
+	 * Handoff request from Detective to request targeted gathering.
+	 * Cleared after the targeted gather completes.
+	 */
+	handoffRequest: Annotation<HandoffRequest | undefined>({
+		reducer: (_, update) => update,
+		default: () => undefined,
+	}),
+
+	/**
+	 * Fix proposal from Surgeon agent.
+	 */
+	fix: Annotation<Fix | undefined>({
+		reducer: (_, update) => update,
+		default: () => undefined,
+	}),
+
+	/**
+	 * Paths to cloned repositories for code analysis.
+	 * Key is serviceId (or "primary" for single-repo scenarios).
+	 * Value is the local filesystem path to the cloned repo.
+	 *
+	 * Set by cloneIfNeeded node when repo cloning is required.
+	 * Multi-repo incidents (microservices) will have multiple entries.
+	 *
+	 * Example:
+	 * {
+	 *   "api-svc": "/tmp/prismalens-workspaces/inv-123/api-svc",
+	 *   "db-svc": "/tmp/prismalens-workspaces/inv-123/db-svc"
+	 * }
+	 */
+	clonePaths: Annotation<Record<string, string> | undefined>({
+		reducer: (_, update) => update,
+		default: () => undefined,
+	}),
+
+	/**
+	 * Detailed information about cloned repositories.
+	 * Provides richer metadata than clonePaths for debugging and observability.
+	 */
+	clonedRepos: Annotation<ClonedRepoInfo[] | undefined>({
+		reducer: (existing, update) => update || existing,
+		default: () => undefined,
+	}),
+
+	/**
+	 * Non-blocking errors from agents.
+	 * Investigation continues even if individual agents fail.
+	 */
+	agentErrors: Annotation<AgentError[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
+
+	/**
+	 * Gatherers that are structurally unavailable (not query failures).
+	 * Examples: code-searcher with no clone paths, log-gatherer with no integration.
+	 * These are permanently blocked from re-requests, unlike query failures.
+	 * Detective can still request the same gatherer with different queries if
+	 * the gatherer ran but found no results (that's not a structural failure).
+	 */
+	unavailableGatherers: Annotation<string[]>({
+		reducer: (prev, next) => [...new Set([...prev, ...next])],
+		default: () => [],
+	}),
 });
 
 /**
@@ -741,6 +1043,10 @@ export function createInitialState(jobData: {
 		primaryAlert: jobData.alerts?.[0] || null,
 		integrations: jobData.integrations || [],
 		status: "pending",
+		// Supervisor Pattern initial state
+		phase: "gathering",
+		gatherIterations: 0,
+		findings: [],
 	};
 }
 

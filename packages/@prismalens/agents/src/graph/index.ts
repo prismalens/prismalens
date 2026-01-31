@@ -5,10 +5,10 @@
 // =============================================================================
 
 // Investigation Graph
+// Note: buildInvestigationGraph and compileInvestigationGraph are internal to avoid
+// TypeScript declaration portability issues with LangGraph's complex types.
+// Use investigationGraph (for LangGraph Studio) or runInvestigation/resumeInvestigation (programmatic).
 export {
-	buildInvestigationGraph,
-	compileInvestigationGraph,
-	getStudioGraph,
 	investigationGraph,
 	resumeInvestigation,
 	runInvestigation,

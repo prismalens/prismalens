@@ -23,19 +23,12 @@ import {
 import type { ScenarioDefinition } from "../fixtures/incidents.js";
 
 // =============================================================================
-// DETECTIVE AGENT IMPORT (Lazy)
+// NOTE: Detective Agent Integration
 // =============================================================================
-
-type DetectiveAgent = Awaited<typeof import("../../src/agents/subagents/index.js")>["createDetective"];
-let createDetective: DetectiveAgent | null = null;
-
-async function getDetective(): Promise<DetectiveAgent> {
-	if (!createDetective) {
-		const mod = await import("../../src/agents/subagents/index.js");
-		createDetective = mod.createDetective;
-	}
-	return createDetective;
-}
+// The Detective agent is now a LangGraph node (detectiveNode) that requires
+// full InvestigationState. These tests validate the evaluator functions
+// using mock data. For full agent testing, use the graph-level evals.
+// =============================================================================
 
 // =============================================================================
 // TEST SCENARIOS (Subset for component testing)
@@ -51,7 +44,7 @@ const detectiveScenarios: ScenarioDefinition[] = [
 // HYPOTHESIS QUALITY EVALUATIONS
 // =============================================================================
 
-ls.describe("Detective - Hypothesis Formation", () => {
+ls.describe("[Agent] Detective › Hypothesis Formation", () => {
 	for (const scenario of detectiveScenarios) {
 		ls.test(
 			`Forms valid hypothesis for: ${scenario.name}`,
@@ -71,35 +64,29 @@ ls.describe("Detective - Hypothesis Formation", () => {
 					minConfidence: scenario.expected.minConfidence,
 				},
 			},
-			async ({ inputs, referenceOutputs }) => {
+			async ({ referenceOutputs }) => {
 				// Note: This is a placeholder for when Detective subagent
 				// can be invoked independently. For now we test the evaluator.
 
+				const expectedCategory = referenceOutputs?.expectedCategory ?? "code";
+				const minConfidence = referenceOutputs?.minConfidence ?? 50;
+
 				// Simulate a hypothesis the Detective might produce
+				// HypothesisInput expects evidence as string[] (not object[])
 				const mockHypothesis = {
-					id: `hyp-${scenario.name}`,
-					claim: `Based on the alerts and incident description, the root cause appears to be a ${referenceOutputs.expectedCategory} issue`,
+					claim: `Based on the alerts and incident description, the root cause appears to be a ${expectedCategory} issue`,
 					evidence: [
-						{
-							source: "alert",
-							content: scenario.input.alerts[0]?.message || "Alert data",
-							relevance: 0.9,
-						},
-						{
-							source: "incident",
-							content: scenario.input.incident.description,
-							relevance: 0.85,
-						},
+						`Alert: ${scenario.input.alerts[0]?.title || "Alert data"}`,
+						`Incident: ${scenario.input.incident.description || "No description"}`,
 					],
-					confidence: referenceOutputs.minConfidence + 10,
-					category: referenceOutputs.expectedCategory,
-					createdAt: new Date().toISOString(),
+					confidence: minConfidence + 10,
+					category: expectedCategory,
 				};
 
 				// Evaluate the hypothesis
 				const evalResult = evaluateHypothesis(mockHypothesis, {
-					expectedCategory: referenceOutputs.expectedCategory,
-					minConfidence: referenceOutputs.minConfidence,
+					expectedCategory,
+					minConfidence,
 					minEvidence: 1,
 				});
 
@@ -121,7 +108,7 @@ ls.describe("Detective - Hypothesis Formation", () => {
 // TRAJECTORY EVALUATIONS
 // =============================================================================
 
-ls.describe("Detective - Tool Usage Trajectory", () => {
+ls.describe("[Agent] Detective › Tool Usage Trajectory", () => {
 	ls.test(
 		"Uses form_hypothesis tool",
 		{
@@ -138,8 +125,10 @@ ls.describe("Detective - Tool Usage Trajectory", () => {
 				{ name: "form_hypothesis", args: { claim: "NPE in UserService" } },
 			];
 
+			const requiredTools = referenceOutputs?.requiredTools ?? ["form_hypothesis"];
+
 			const evalResult = evaluateTrajectory(mockToolCalls, {
-				requiredTools: referenceOutputs.requiredTools,
+				requiredTools,
 				forbiddenTools: ["propose_fix"], // Detective shouldn't propose fixes
 				maxToolCalls: 5,
 			});
@@ -192,7 +181,7 @@ ls.describe("Detective - Tool Usage Trajectory", () => {
 // CATEGORY CLASSIFICATION ACCURACY
 // =============================================================================
 
-ls.describe("Detective - Category Classification", () => {
+ls.describe("[Agent] Detective › Category Classification", () => {
 	const classificationScenarios = [
 		{ scenario: nullPointerException, expectedCategory: "code" },
 		{ scenario: raceCondition, expectedCategory: "code" },
@@ -217,15 +206,15 @@ ls.describe("Detective - Category Classification", () => {
 				// the Detective would classify it correctly.
 				// In practice, this would invoke the actual Detective agent.
 
+				const expectedCat = referenceOutputs?.expectedCategory ?? expectedCategory;
+
 				// For now, we validate the scenario definition is correct
-				expect(scenario.expected.rootCauseCategory).toBe(
-					referenceOutputs.expectedCategory,
-				);
+				expect(scenario.expected.rootCauseCategory).toBe(expectedCat);
 
 				ls.logOutputs({
 					scenarioCategory: scenario.expected.rootCauseCategory,
-					expectedCategory: referenceOutputs.expectedCategory,
-					match: scenario.expected.rootCauseCategory === referenceOutputs.expectedCategory,
+					expectedCategory: expectedCat,
+					match: scenario.expected.rootCauseCategory === expectedCat,
 				});
 			},
 		);

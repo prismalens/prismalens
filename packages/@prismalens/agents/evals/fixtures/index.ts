@@ -6,6 +6,7 @@
 
 export * from "./incidents.js";
 export * from "./integrations.js";
+export * from "./llm-config.js";
 
 // Re-export mocks for convenience
 export * from "../mocks/index.js";

@@ -5,7 +5,21 @@
  * Checks: actionability, completeness, risk assessment.
  */
 
-import type { Recommendation } from "../../src/types/state.js";
+/**
+ * Input type for recommendation evaluation.
+ * Uses loose string types to accept both strict types from state.ts
+ * and loose types from studio.ts (LangGraph parser compatibility).
+ */
+export interface RecommendationInput {
+	title: string;
+	description: string;
+	category?: string;
+	priority?: string;
+	urgency?: string;
+	verificationSteps?: string[];
+	riskScore?: number;
+	approvalLevel?: string;
+}
 
 // =============================================================================
 // TYPES
@@ -45,7 +59,7 @@ export interface RecommendationEvaluationOptions {
  * Evaluate a single recommendation.
  */
 export function evaluateRecommendation(
-	rec: Recommendation,
+	rec: RecommendationInput,
 	options: RecommendationEvaluationOptions = {},
 ): RecommendationEvaluationResult {
 	const {
@@ -140,7 +154,7 @@ export function evaluateRecommendation(
  * Evaluate multiple recommendations.
  */
 export function evaluateRecommendations(
-	recommendations: Recommendation[],
+	recommendations: RecommendationInput[],
 	options: RecommendationEvaluationOptions = {},
 ): {
 	overallScore: number;

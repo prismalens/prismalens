@@ -19,6 +19,8 @@ export {
 	AlertContextSchema,
 	type CodeChange,
 	CodeChangeSchema,
+	// Clone types
+	type ClonedRepoInfo,
 	// Helper functions
 	createInitialState,
 	getBestHypothesis,

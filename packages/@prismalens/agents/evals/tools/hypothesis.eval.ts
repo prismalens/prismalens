@@ -32,7 +32,7 @@ async function getFormHypothesisTool(): Promise<FormHypothesisTool> {
 // SCHEMA VALIDATION
 // =============================================================================
 
-ls.describe("Hypothesis Tool - Schema", () => {
+ls.describe("[Tool] Hypothesis › Schema", () => {
 	ls.test(
 		"Accepts valid hypothesis input",
 		{
@@ -119,7 +119,7 @@ ls.describe("Hypothesis Tool - Schema", () => {
 // EVIDENCE QUALITY
 // =============================================================================
 
-ls.describe("Hypothesis Tool - Evidence Quality", () => {
+ls.describe("[Tool] Hypothesis › Evidence Quality", () => {
 	const evidenceTestCases = [
 		{
 			name: "High quality evidence",
@@ -202,7 +202,7 @@ ls.describe("Hypothesis Tool - Evidence Quality", () => {
 // CONFIDENCE CALIBRATION
 // =============================================================================
 
-ls.describe("Hypothesis Tool - Confidence", () => {
+ls.describe("[Tool] Hypothesis › Confidence", () => {
 	ls.test(
 		"Confidence must be 0-100",
 		{
@@ -285,7 +285,7 @@ ls.describe("Hypothesis Tool - Confidence", () => {
 // CATEGORY VALIDATION
 // =============================================================================
 
-ls.describe("Hypothesis Tool - Categories", () => {
+ls.describe("[Tool] Hypothesis › Categories", () => {
 	const validCategories = ["code", "config", "infrastructure", "external", "unknown"];
 
 	for (const category of validCategories) {

@@ -34,6 +34,17 @@ export interface ToolFactoryOptions {
 	integrations: IntegrationContext[];
 	/** Force read-only mode (overrides agent permissions) */
 	readOnly?: boolean;
+	/**
+	 * Paths to cloned repositories for code analysis.
+	 * Key is serviceId (or "primary" for single-repo scenarios).
+	 * Value is the local filesystem path to the cloned repo.
+	 */
+	clonePaths?: Record<string, string>;
+	/**
+	 * Which repo is currently being searched.
+	 * If not specified, defaults to "primary" or the first available repo.
+	 */
+	activeRepoId?: string;
 }
 
 /**
@@ -81,8 +92,19 @@ const AGENT_TOOL_PERMISSIONS: Record<string, string[]> = {
 const READ_ONLY_AGENTS = new Set(["cartographer"]);
 
 /**
+ * Check if there are any cloned repositories available.
+ */
+export function hasClonedRepos(clonePaths?: Record<string, string>): boolean {
+	return !!clonePaths && Object.keys(clonePaths).length > 0;
+}
+
+/**
  * Create tools for a specific agent based on permissions and integrations.
  * Loads all permitted tools at once for the agent.
+ *
+ * IMPORTANT: Repo tools (repo_read_file, repo_search_text, etc.) are only
+ * created when clonePaths is provided and non-empty. Without cloned repos,
+ * these tools are skipped to prevent accidental reads from process.cwd().
  *
  * @example
  * // Create tools for cartographer with GitHub integration
@@ -91,18 +113,27 @@ const READ_ONLY_AGENTS = new Set(["cartographer"]);
  * ]);
  *
  * @example
- * // Create all tools for commander
- * const tools = createToolsForAgent('commander', integrations);
+ * // Create tools with cloned repos
+ * const tools = createToolsForAgent('cartographer', integrations, {
+ *   clonePaths: { 'api-svc': '/tmp/workspaces/inv-123/api-svc' }
+ * });
  */
 export function createToolsForAgent(
 	agentName: string,
 	integrations: IntegrationContext[],
+	options?: { clonePaths?: Record<string, string>; activeRepoId?: string },
 ): StructuredTool[] {
 	const permissions = AGENT_TOOL_PERMISSIONS[agentName] || [];
 	const readOnly = READ_ONLY_AGENTS.has(agentName);
 	const tools: StructuredTool[] = [];
 
 	for (const category of permissions) {
+		// Gate repo tools on having cloned repos
+		if (category === "repo" && !hasClonedRepos(options?.clonePaths)) {
+			logger.debug("Skipping repo tools - no cloned repos available", { agentName });
+			continue;
+		}
+
 		const factory = TOOL_REGISTRY[category];
 		if (!factory) {
 			logger.warn(`Unknown tool category: ${category}`);
@@ -119,6 +150,8 @@ export function createToolsForAgent(
 			agentName,
 			integrations: categoryIntegrations,
 			readOnly,
+			clonePaths: options?.clonePaths,
+			activeRepoId: options?.activeRepoId,
 		});
 
 		tools.push(...categoryTools);

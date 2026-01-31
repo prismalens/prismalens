@@ -17,7 +17,26 @@ import {
 	createAlert,
 	type ScenarioDefinition,
 } from "../fixtures/incidents.js";
+import {
+	createMockPreGatheredContext,
+	createMockDeployment,
+	createMockCommit,
+	createMockConfigChange,
+} from "../mocks/index.js";
 import type { ScenarioWithMocks } from "./types.js";
+
+// =============================================================================
+// MUTUAL EXCLUSIVITY: Forbidden tools for non-clone scenarios
+// =============================================================================
+// These scenarios do NOT provide clonePaths, so repo tools should NOT be called.
+// This ensures mutual exclusivity with clone scenarios.
+
+const FORBIDDEN_REPO_TOOLS = [
+	"repo_read_file",
+	"repo_list_directory",
+	"repo_search_text",
+	"repo_get_file_info",
+];
 
 // =============================================================================
 // EASY SCENARIOS (Clear config errors)
@@ -82,6 +101,57 @@ export const connectionPoolExhausted: ScenarioWithMocks = {
 					},
 				}),
 			],
+			// Pre-gathered context with config changes matching the GitHub mocks
+			preGatheredContext: createMockPreGatheredContext({
+				serviceName: "api-server",
+				recentChanges: {
+					// New analytics-service deployment that pushed total connections to 100
+					deployments: [
+						createMockDeployment({
+							id: "deploy-analytics-001",
+							service: "analytics-service",
+							version: "v1.0.0",
+							status: "success",
+							riskScore: 75,
+							riskFactors: [
+								"New service added to DB pool",
+								"Deployed 1 day before incident",
+								"Uses standard pool_size=20",
+							],
+							timestamp: "2024-01-14T10:00:00Z",
+						}),
+					],
+					// Config change that set pool_size to 20 for all services
+					commits: [
+						createMockCommit({
+							sha: "pool456",
+							message: "config: set default pool_size to 20 for better throughput",
+							author: "dba@example.com",
+							timestamp: "2024-01-10T14:00:00Z",
+							repository: "org/infrastructure",
+						}),
+					],
+					// Config changes showing the pool_size and max_connections settings
+					configChanges: [
+						createMockConfigChange({
+							key: "DB_POOL_SIZE",
+							oldValue: "10",
+							newValue: "20",
+							timestamp: "2024-01-10T14:30:00Z",
+							source: "config/database.yaml",
+						}),
+						createMockConfigChange({
+							key: "analytics-service.enabled",
+							oldValue: "false",
+							newValue: "true",
+							timestamp: "2024-01-14T09:30:00Z",
+							source: "docker-compose.yaml",
+						}),
+					],
+				},
+				includeLogPreview: true,
+				errorLogCount: 5,
+			}),
 		},
 		expected: {
 			status: "completed",
@@ -89,6 +159,7 @@ export const connectionPoolExhausted: ScenarioWithMocks = {
 			rootCauseCategory: "config",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["connection", "pool", "max_connections", "database"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -239,6 +310,7 @@ export const missingEnvVar: ScenarioWithMocks = {
 			rootCauseCategory: "config",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["JWT_SECRET", "environment", "variable", "missing"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -401,6 +473,7 @@ export const timeoutMisconfiguration: ScenarioWithMocks = {
 			rootCauseCategory: "config",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["timeout", "cascade", "retry", "hierarchy"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -550,6 +623,7 @@ export const resourceLimits: ScenarioWithMocks = {
 			rootCauseCategory: "config",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["memory", "limit", "CPU", "throttle", "resource"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -692,6 +766,7 @@ export const featureFlagIssue: ScenarioWithMocks = {
 			rootCauseCategory: "config",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["feature", "flag", "beta", "targeting", "enterprise"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -841,6 +916,7 @@ export const sslConfigIssue: ScenarioWithMocks = {
 			rootCauseCategory: "config",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["SSL", "certificate", "chain", "trust", "CA"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {

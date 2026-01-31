@@ -39,7 +39,12 @@ let prismaClient: unknown = null;
 
 beforeAll(async () => {
 	console.log("\n[Setup] Initializing eval environment...");
-	console.log(`[Setup] LLM Provider: ${process.env.PRISMALENS_LLM_PROVIDER || "not set"}`);
+	const provider = process.env.PRISMALENS_LLM_PROVIDER || "ollama";
+	const model = process.env.PRISMALENS_LLM_MODEL || "(provider default)";
+	console.log(`[Setup] LLM: provider=${provider}, model=${model}`);
+	if (provider === "ollama") {
+		console.log(`[Setup] Ollama URL: ${process.env.PRISMALENS_OLLAMA_BASE_URL || "http://localhost:11434"}`);
+	}
 	console.log(`[Setup] LangSmith Project: ${process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "not set"}`);
 
 	// Check for test database

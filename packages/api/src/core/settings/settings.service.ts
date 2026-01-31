@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Inject, forwardRef } from "@nestjs/common";
 import {
 	createLLM,
+	type LLMProviderConfig,
 	getModelsForProvider,
 	getModelsRegistry,
 } from "@prismalens/agents";
@@ -126,14 +127,17 @@ export class SettingsService {
 		dto: UpdateLlmDto,
 	): Promise<{ success: boolean; error?: string }> {
 		try {
-			// Create LLM instance with the provided config
-			const llm = createLLM({
+			// Create LLM config using new typed interface
+			const llmConfig = {
 				provider,
+				model: dto.model,
 				apiKey: dto.apiKey,
-				modelName: dto.model,
 				temperature: dto.temperature ?? 0,
 				maxTokens: dto.maxTokens ?? 100, // Limit tokens for test
-			});
+			} as LLMProviderConfig;
+
+			// Create LLM instance with the provided config
+			const llm = createLLM(llmConfig);
 
 			// Send a simple test message (LangChain accepts string input)
 			await llm.invoke('Reply with just "OK" to confirm connection.');
@@ -440,23 +444,23 @@ export class SettingsService {
 				testModel = providerMeta.suggestedModels[0];
 			}
 
-			// For Ollama, set base URL via env var if not already set
-			if (
-				provider === "ollama" &&
-				"defaultBaseUrl" in providerMeta &&
-				!process.env.PRISMALENS_OLLAMA_BASE_URL
-			) {
-				process.env.PRISMALENS_OLLAMA_BASE_URL = providerMeta.defaultBaseUrl;
-			}
+			// Build base config
+			const baseUrl = provider === "ollama"
+				? (process.env.PRISMALENS_OLLAMA_BASE_URL || "http://localhost:11434")
+				: undefined;
 
-			// Create LLM instance
-			const llm = createLLM({
+			// Create LLM config using new typed interface
+			const llmConfig = {
 				provider,
+				model: testModel,
 				apiKey,
-				modelName: testModel,
+				...(baseUrl && { baseUrl }),
 				temperature: 0,
 				maxTokens: 50,
-			});
+			} as LLMProviderConfig;
+
+			// Create LLM instance
+			const llm = createLLM(llmConfig);
 
 			// Send a simple test message
 			await llm.invoke('Reply with just "OK" to confirm connection.');

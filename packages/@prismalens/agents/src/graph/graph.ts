@@ -1,57 +1,78 @@
-import { HumanMessage } from "@langchain/core/messages";
+/**
+ * Investigation Graph - Supervisor Pattern
+ *
+ * LangGraph-native Supervisor Pattern for incident investigation.
+ * Key features:
+ *
+ * 1. Parallel execution via Send API
+ * 2. Handoff-based routing for agent iteration
+ * 3. Shared state across all agents
+ * 4. Unified LangGraph (no DeepAgents wrapper overhead)
+ *
+ * Graph Flow:
+ * ```
+ * START → validateIncident → preGather → cloneIfNeeded → supervisor ⟲ → writeToApi → END
+ *                ↓ (fail)                                     ↑
+ *            writeToApi                    ┌─────────────────┴──────────────────┐
+ *                                         │            Supervisor Loop           │
+ *                                         ├──────────────────────────────────────┤
+ *                                         │  Phase 1: Parallel Gather            │
+ *                                         │  ├─ log-gatherer    ─┐               │
+ *                                         │  ├─ code-searcher   ─┼→ supervisor   │
+ *                                         │  └─ change-tracker  ─┘               │
+ *                                         │                                       │
+ *                                         │  Phase 2: Analyze                     │
+ *                                         │  └─ detective → supervisor            │
+ *                                         │                                       │
+ *                                         │  Phase 3: Targeted Gather (optional)  │
+ *                                         │  └─ {gatherer} → supervisor           │
+ *                                         │                                       │
+ *                                         │  Phase 4: Fix (if confident)          │
+ *                                         │  └─ surgeon → supervisor              │
+ *                                         └──────────────────────────────────────┘
+ * ```
+ */
+
 import { END, START, StateGraph } from "@langchain/langgraph";
 import { Logger } from "@prismalens/logger";
-import { createCommanderFromState } from "../agents/commander/agent.js";
+
+// Agent nodes
+import { logGathererNode } from "../agents/gatherers/log-gatherer.js";
+import { codeSearcherNode } from "../agents/gatherers/code-searcher.js";
+import { changeTrackerNode } from "../agents/gatherers/change-tracker.js";
+import { detectiveNode } from "../agents/analysis/detective.js";
+import { surgeonNode } from "../agents/fix/surgeon.js";
+
+// Pre-processing nodes
+import { preGather } from "./nodes/pre-gathering/index.js";
+import { cloneIfNeededNode } from "./nodes/pre-gathering/clone.js";
+
+// Supervisor
 import {
-	getStoredHypotheses,
-	getStoredRecommendations,
-	resetHypothesisStore,
-	resetRecommendationStore,
-} from "../tools/index.js";
+	supervisorNode,
+	supervisorRoute,
+	findingsFromPreGathered,
+} from "./nodes/supervisor.js";
+
+// State and persistence
 import {
 	getBestHypothesis,
-	getIncidentDisplayInfo,
-	type Hypothesis,
 	type InvestigationState,
 	InvestigationStateAnnotation,
-	type PreGatheredContext,
-	type Recommendation,
 } from "../types/state.js";
 import {
 	getCheckpointer,
 	getInvocationConfig,
 } from "./persistence/checkpointer.js";
-import {
-	preGather,
-	getTopRiskyDeployments,
-	getTopSimilarIncidents,
-	CHANGE_RISK_THRESHOLDS,
-	SIMILARITY_THRESHOLDS,
-} from "./nodes/pre-gathering/index.js";
 
-// Create logger for the investigation graph
 const logger = new Logger({ context: "InvestigationGraph" });
 
 // =============================================================================
-// INVESTIGATION GRAPH
-// =============================================================================
-// LangGraph wrapper that provides:
-// - Alert validation node (checks incoming alerts)
-// - Pre-gather node (fetches context before commander - BigPanda pattern)
-// - Commander node (runs DeepAgent investigation)
-// - API writer node (persists results to database)
-// - PostgreSQL checkpointing for durability
-//
-// Graph Flow:
-// START → validateIncident → preGather → commander → writeToApi → END
-//                 ↓ (on failure)
-//            writeToApi → END
+// VALIDATION NODE
 // =============================================================================
 
 /**
  * Validation node - validates incident context.
- * This runs before the Commander to ensure we have valid input.
- * Requires an incident (incident-centric approach).
  */
 async function validateIncident(
 	state: InvestigationState,
@@ -79,7 +100,6 @@ async function validateIncident(
 		};
 	}
 
-	// Must have an incident (incident-centric approach)
 	if (!hasIncident) {
 		return {
 			status: "failed",
@@ -93,7 +113,6 @@ async function validateIncident(
 	// Calculate data quality scores
 	const dataQuality: Record<string, number> = {};
 
-	// Calculate incident quality score if incident is present
 	if (hasIncident) {
 		const inc = state.incident!;
 		let incidentScore = 0;
@@ -107,10 +126,8 @@ async function validateIncident(
 		if (inc.customerImpact) incidentScore += 5;
 		if (inc.correlationReason) incidentScore += 5;
 		dataQuality.incident = incidentScore;
-		logger.debug(`Incident quality score: ${incidentScore}%`);
 	}
 
-	// Calculate alert quality score if alerts are present
 	if (hasAlerts) {
 		const alertQualityScores = state.alerts.map((alert) => {
 			let score = 0;
@@ -124,11 +141,9 @@ async function validateIncident(
 			if (alert.triggeredAt) score += 5;
 			return score;
 		});
-
 		const avgQuality =
 			alertQualityScores.reduce((a, b) => a + b, 0) / alertQualityScores.length;
 		dataQuality.alerts = avgQuality;
-		logger.debug(`Alert quality score: ${avgQuality.toFixed(1)}%`);
 	}
 
 	return {
@@ -139,264 +154,110 @@ async function validateIncident(
 	};
 }
 
-/**
- * Commander node - runs the DeepAgent investigation.
- * This is where the actual investigation happens.
- * Uses incident context with correlated alerts for investigation.
- */
-async function runCommander(
-	state: InvestigationState,
-): Promise<Partial<InvestigationState>> {
-	logger.info(`Starting commander for investigation ${state.investigationId}`);
-
-	// Reset tool stores for fresh collection
-	resetHypothesisStore();
-	resetRecommendationStore();
-
-	try {
-		// Create Commander with state context
-		const commander = createCommanderFromState(state);
-
-		// Get incident display info (prefers incident, falls back to alerts)
-		const displayInfo = getIncidentDisplayInfo(state);
-		const incidentNumber = displayInfo.number
-			? `INC-${displayInfo.number}`
-			: displayInfo.incidentId;
-
-		// Build alert summaries for supporting context
-		const alertSummaries = state.alerts.length > 0
-			? state.alerts
-					.map(
-						(a) =>
-							`- [${a.severity?.toUpperCase()}] ${a.title}${a.description ? `: ${a.description}` : ""}`,
-					)
-					.join("\n")
-			: "No individual alerts - see incident details above";
-
-		// Build enriched context from pre-gathered data (BigPanda pattern)
-		const preGathered = state.preGatheredContext;
-		let enrichedContext = "";
-
-		if (preGathered) {
-			// High-risk change warning (BigPanda pattern: 60-90% of incidents are change-related)
-			const topChanges = getTopRiskyDeployments(
-				preGathered.recentChanges.deployments,
-				2,
-			);
-			if (topChanges.length > 0 && topChanges[0].riskScore >= CHANGE_RISK_THRESHOLDS.HIGH) {
-				enrichedContext += `
-## ⚠️ High-Risk Change Detected
-A deployment with **${topChanges[0].riskScore}% risk score** occurred recently.
-- **Factors**: ${topChanges[0].riskFactors.join(", ")}
-${topChanges[0].url ? `- **Details**: ${topChanges[0].url}` : ""}
-**Recommendation**: Investigate this change first - most incidents are change-related.
-`;
-			} else if (topChanges.length > 0) {
-				enrichedContext += `
-## 📋 Recent Changes
-${topChanges.length} recent deployment(s) found with risk scores: ${topChanges.map((c) => `${c.riskScore}%`).join(", ")}
-`;
-			}
-
-			// Similar incident hint (BigPanda 30% threshold)
-			const topSimilar = getTopSimilarIncidents(
-				preGathered.similarIncidents.incidents,
-				2,
-			);
-			if (topSimilar.length > 0 && topSimilar[0].similarity >= SIMILARITY_THRESHOLDS.HIGH) {
-				enrichedContext += `
-## 📋 Similar Past Incident Found
-INC-${topSimilar[0].number || topSimilar[0].incidentId} has **${topSimilar[0].similarity}% similarity**.
-${topSimilar[0].resolution ? `- **Resolution**: ${topSimilar[0].resolution}` : ""}
-${topSimilar[0].rootCause ? `- **Root Cause**: ${topSimilar[0].rootCause}` : ""}
-${topSimilar[0].timeToResolve ? `- **Time to Resolve**: ${Math.round(topSimilar[0].timeToResolve / 60)} minutes` : ""}
-`;
-			} else if (topSimilar.length > 0) {
-				enrichedContext += `
-## 📋 Possibly Related Incidents
-${topSimilar.length} incident(s) with similarity: ${topSimilar.map((s) => `${s.similarity}%`).join(", ")}
-`;
-			}
-
-			// Recurring pattern warning
-			if (preGathered.similarIncidents.patterns.length > 0) {
-				const topPattern = preGathered.similarIncidents.patterns[0];
-				enrichedContext += `
-## 🔄 Recurring Issue Detected
-Pattern "${topPattern.pattern}" has occurred **${topPattern.count} times** in the past 30 days.
-Last occurrence: ${topPattern.lastOccurrence}
-`;
-			}
-
-			// Metrics context
-			if (preGathered.metrics.alertVelocity > 1) {
-				enrichedContext += `
-## 📊 Alert Metrics
-- Alert velocity: **${preGathered.metrics.alertVelocity.toFixed(1)} alerts/minute**
-- Time since first alert: **${Math.round(preGathered.metrics.timeSinceFirstAlert / 60)} minutes**
-- Affected services: ${preGathered.metrics.affectedServices.join(", ") || "Unknown"}
-`;
-			}
-
-			// Pre-gathered quality indicator
-			const qualityPercent = (preGathered.gatheringMeta.qualityScore * 100).toFixed(0);
-			enrichedContext += `
-## 🔍 Pre-Gathered Context Quality: ${qualityPercent}%
-Sources queried: ${preGathered.gatheringMeta.sourcesQueried.join(", ")}
-${preGathered.gatheringMeta.errors.length > 0 ? `Note: Some sources had errors (${preGathered.gatheringMeta.errors.length})` : ""}
-`;
-		}
-
-		// Build the initial message for Commander (incident-centric)
-		const initialMessage = `
-# Incident Investigation Request
-
-## Incident: ${incidentNumber}
-- **Title**: ${displayInfo.title}
-- **Severity**: ${displayInfo.severity.toUpperCase()}
-- **Priority**: ${displayInfo.priority.toUpperCase()}
-- **Service**: ${displayInfo.serviceName || "Unknown"}
-- **Alert Count**: ${displayInfo.alertCount}
-${displayInfo.description ? `- **Description**: ${displayInfo.description}` : ""}
-${state.incident?.customerImpact ? `- **Customer Impact**: ${state.incident.customerImpact}` : ""}
-${state.incident?.correlationReason ? `- **Correlation**: ${state.incident.correlationReason}` : ""}
-${enrichedContext}
-## Investigation Metadata
-- **Investigation ID**: ${state.investigationId}
-
-## Associated Alerts (${state.alerts.length})
-${alertSummaries}
-
-## Available Context
-- Repository: ${state.primaryAlert?.repository || "Not specified"}
-- Triggered at: ${state.incident?.triggeredAt || state.primaryAlert?.triggeredAt || "Unknown"}
-
-## Your Task
-Investigate incident **${incidentNumber}** ("${displayInfo.title}") following the standard workflow:
-1. Use cartographer to gather context (logs, code, deployments)
-2. Use detective to analyze and form hypothesis
-3. Use surgeon to propose fixes if root cause is identified
-4. Compile your findings into a final report
-`;
-
-		// Invoke Commander
-		const result = await commander.invoke({
-			messages: [new HumanMessage(initialMessage)],
-		});
-
-		// Extract hypotheses and recommendations from tool stores
-		const hypotheses = getStoredHypotheses();
-		const recommendations = getStoredRecommendations();
-
-		// Find best hypothesis
-		const bestHypothesis =
-			hypotheses.length > 0
-				? hypotheses.reduce(
-						(best, h) => (h.confidence > (best?.confidence || 0) ? h : best),
-						null as Hypothesis | null,
-					)
-				: null;
-
-		// Extract final message content
-		const messages = result.messages || [];
-		const lastMessage = messages[messages.length - 1];
-		const summary =
-			typeof lastMessage?.content === "string" ? lastMessage.content : null;
-
-		logger.info(`Commander complete`, {
-			hypotheses: hypotheses.length,
-			recommendations: recommendations.length,
-		});
-
-		return {
-			messages: result.messages,
-			hypotheses,
-			recommendations,
-			summary,
-			rootCause: bestHypothesis?.claim || null,
-			rootCauseCategory: bestHypothesis?.category || null,
-			confidence: bestHypothesis?.confidence || null,
-			commanderResult: result,
-			agentProgression: { commander: true },
-			iterationCount: state.iterationCount + 1,
-		};
-	} catch (error: unknown) {
-		logger.error(`Commander failed`, error);
-
-		return {
-			status: "failed",
-			error: error instanceof Error ? error.message : "Commander failed unexpectedly",
-			agentProgression: { commander: false },
-		};
-	}
-}
+// =============================================================================
+// WRITE TO API NODE
+// =============================================================================
 
 /**
- * API writer node - persists investigation results to the database.
- * Called after Commander completes to save findings.
+ * API writer node - persists investigation results.
  */
 async function writeToApi(
 	state: InvestigationState,
 ): Promise<Partial<InvestigationState>> {
 	logger.debug(`Persisting results for investigation ${state.investigationId}`);
 
-	// In a real implementation, this would call the API to update:
-	// - Investigation status
-	// - Hypotheses/root cause
-	// - Recommendations
-	// - Agent executions
-	//
-	// For now, we just mark as complete. The actual API integration
-	// happens in the processor that calls this graph.
-
 	const bestHypothesis = getBestHypothesis(state);
 	const hasHighConfidence = bestHypothesis && bestHypothesis.confidence >= 70;
-	const hasRecommendations = state.recommendations.length > 0;
+	const hasFix = state.fix !== undefined;
 
 	// Determine final status
 	let status: InvestigationState["status"] = "completed";
-	let analysisMethod = "multi_agent_investigation";
+	let analysisMethod = "supervisor_pattern_investigation";
 
-	if (state.error) {
-		status = "failed";
-	} else if (!hasHighConfidence) {
-		analysisMethod = "inconclusive_analysis";
+	if (state.error || state.agentErrors.length > 0) {
+		// Check if any errors are non-recoverable
+		const hasCriticalError = state.agentErrors.some((e) => !e.recoverable);
+		if (state.error || hasCriticalError) {
+			status = "failed";
+		}
 	}
 
-	logger.info(`Final status: ${status}`, { confidence: bestHypothesis?.confidence || 0 });
+	if (status !== "failed") {
+		if (!hasHighConfidence) {
+			analysisMethod = "inconclusive_analysis";
+		} else if (hasFix) {
+			analysisMethod = "fix_proposed";
+		}
+	}
+
+	logger.info(`Final status: ${status}`, {
+		confidence: bestHypothesis?.confidence || 0,
+		findingsCount: state.findings.length,
+		hypothesesCount: state.hypotheses.length,
+		recommendationsCount: state.recommendations.length,
+		hasFix,
+	});
 
 	return {
 		status,
 		analysisMethod,
+		phase: "complete",
 		agentProgression: { apiWriter: true },
 	};
 }
 
+// =============================================================================
+// PRE-SUPERVISOR PREPARATION NODE
+// =============================================================================
+
 /**
- * Routing function - determines next node after validation.
+ * Prepare for supervisor - converts pre-gathered context to findings format.
+ * This bridges the pre-gather phase with the supervisor loop.
  */
+async function prepareSupervisor(
+	state: InvestigationState,
+): Promise<Partial<InvestigationState>> {
+	const hasClonedRepos = state.clonePaths && Object.keys(state.clonePaths).length > 0;
+
+	logger.info("Preparing for supervisor loop", {
+		investigationId: state.investigationId,
+		hasPreGatheredContext: !!state.preGatheredContext,
+		hasClonedRepos,
+		clonedServices: state.clonePaths ? Object.keys(state.clonePaths) : [],
+	});
+
+	// Convert pre-gathered context to findings
+	const initialFindings = findingsFromPreGathered(state);
+
+	return {
+		findings: initialFindings,
+		phase: "gathering",
+		currentAgent: undefined,
+		agentProgression: { prepareSupervisor: true },
+	};
+}
+
+// =============================================================================
+// ROUTING FUNCTIONS
+// =============================================================================
+
 function routeAfterValidation(state: InvestigationState): string {
 	if (state.status === "failed") {
-		return "writeToApi"; // Skip preGather and commander, go straight to API to record failure
+		return "writeToApi";
 	}
-	return "preGather"; // Proceed to pre-gathering phase
+	return "preGather";
 }
 
-/**
- * Routing function - determines next node after pre-gathering.
- */
-function routeAfterPreGather(state: InvestigationState): string {
-	// Always proceed to commander after pre-gathering
-	// Pre-gathering uses graceful degradation - even partial data is useful
-	return "commander";
+function routeAfterPreGather(_state: InvestigationState): string {
+	return "cloneIfNeeded";
 }
 
-/**
- * Routing function - determines next node after commander.
- */
-function routeAfterCommander(state: InvestigationState): string {
-	// Always go to API writer to persist results
-	return "writeToApi";
+function routeAfterClone(_state: InvestigationState): string {
+	return "prepareSupervisor";
+}
+
+function routeAfterPrepareSupervisor(_state: InvestigationState): string {
+	return "supervisor";
 }
 
 // =============================================================================
@@ -404,38 +265,79 @@ function routeAfterCommander(state: InvestigationState): string {
 // =============================================================================
 
 /**
- * Build the investigation graph.
+ * Build the investigation graph with Supervisor Pattern.
  *
  * Graph structure:
  * ```
- * START -> validateIncident -> preGather -> commander -> writeToApi -> END
- *              ↓ (on failure)
- *          writeToApi -> END
+ * START → validateIncident → preGather → cloneIfNeeded → prepareSupervisor → supervisor ⟲ → writeToApi → END
+ *              ↓ (fail)                                                            ↑
+ *          writeToApi                                               ┌──────────────┴──────────────┐
+ *                                                                   │      Supervisor Loop         │
+ *                                                                   │ (parallel gatherers, then    │
+ *                                                                   │  detective, then surgeon)    │
+ *                                                                   └─────────────────────────────┘
  * ```
  *
- * The preGather node runs before Commander to fetch context using parallel data fetching.
- * This follows the BigPanda enrichment pattern where 60-90% of incidents are change-related.
+ * @internal This function is not exported to avoid TypeScript declaration portability issues.
+ *           Use `investigationGraph` for LangGraph Studio or `runInvestigation()` for programmatic use.
  */
-export function buildInvestigationGraph() {
+function buildInvestigationGraph() {
 	const graph = new StateGraph(InvestigationStateAnnotation)
-		// Add nodes
+		// Pre-processing nodes
 		.addNode("validateIncident", validateIncident)
 		.addNode("preGather", preGather)
-		.addNode("commander", runCommander)
+		.addNode("cloneIfNeeded", cloneIfNeededNode)
+		.addNode("prepareSupervisor", prepareSupervisor)
+
+		// Supervisor node
+		.addNode("supervisor", supervisorNode)
+
+		// Gatherer agent nodes
+		.addNode("log-gatherer", logGathererNode)
+		.addNode("code-searcher", codeSearcherNode)
+		.addNode("change-tracker", changeTrackerNode)
+
+		// Analysis and fix agent nodes
+		.addNode("detective", detectiveNode)
+		.addNode("surgeon", surgeonNode)
+
+		// Output node
 		.addNode("writeToApi", writeToApi)
 
-		// Add edges
+		// Pre-processing edges
 		.addEdge(START, "validateIncident")
 		.addConditionalEdges("validateIncident", routeAfterValidation, {
 			preGather: "preGather",
 			writeToApi: "writeToApi",
 		})
 		.addConditionalEdges("preGather", routeAfterPreGather, {
-			commander: "commander",
+			cloneIfNeeded: "cloneIfNeeded",
 		})
-		.addConditionalEdges("commander", routeAfterCommander, {
-			writeToApi: "writeToApi",
+		.addConditionalEdges("cloneIfNeeded", routeAfterClone, {
+			prepareSupervisor: "prepareSupervisor",
 		})
+		.addConditionalEdges("prepareSupervisor", routeAfterPrepareSupervisor, {
+			supervisor: "supervisor",
+		})
+
+		// Supervisor routing (the heart of the pattern)
+		.addConditionalEdges("supervisor", supervisorRoute, {
+			"log-gatherer": "log-gatherer",
+			"code-searcher": "code-searcher",
+			"change-tracker": "change-tracker",
+			detective: "detective",
+			surgeon: "surgeon",
+			complete: "writeToApi",
+		})
+
+		// All agents return to supervisor
+		.addEdge("log-gatherer", "supervisor")
+		.addEdge("code-searcher", "supervisor")
+		.addEdge("change-tracker", "supervisor")
+		.addEdge("detective", "supervisor")
+		.addEdge("surgeon", "supervisor")
+
+		// Output
 		.addEdge("writeToApi", END);
 
 	return graph;
@@ -444,11 +346,10 @@ export function buildInvestigationGraph() {
 /**
  * Compile the investigation graph with PostgreSQL checkpointing.
  *
- * @example
- * const graph = await compileInvestigationGraph();
- * const result = await graph.invoke(initialState, getInvocationConfig(investigationId));
+ * @internal This function is not exported to avoid TypeScript declaration portability issues.
+ *           Use `runInvestigation()` or `resumeInvestigation()` for programmatic use.
  */
-export async function compileInvestigationGraph() {
+async function compileInvestigationGraph() {
 	const graph = buildInvestigationGraph();
 	const checkpointer = await getCheckpointer();
 
@@ -458,14 +359,16 @@ export async function compileInvestigationGraph() {
 }
 
 /**
- * Run a full investigation with checkpointing.
+ * Run a full investigation.
  *
  * @example
  * const result = await runInvestigation({
  *   investigationId: 'inv-123',
  *   incidentId: 'inc-456',
+ *   incident: { ... },
  *   alerts: [{ alertId: 'alert-1', title: '...', severity: 'high' }],
  *   integrations: [...],
+ *   llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
  * });
  */
 export async function runInvestigation(
@@ -482,16 +385,18 @@ export async function runInvestigation(
 
 	const result = await graph.invoke(initialState, config);
 
-	logger.info(`Investigation ${initialState.investigationId} completed`, { status: result.status });
+	logger.info(`Investigation ${initialState.investigationId} completed`, {
+		status: result.status,
+		phase: result.phase,
+		findingsCount: result.findings.length,
+		hypothesesCount: result.hypotheses.length,
+	});
 
 	return result as InvestigationState;
 }
 
 /**
- * Resume a previously started investigation from checkpoint.
- *
- * @example
- * const result = await resumeInvestigation('inv-123');
+ * Resume a previously started investigation.
  */
 export async function resumeInvestigation(
 	investigationId: string,
@@ -501,10 +406,12 @@ export async function resumeInvestigation(
 
 	logger.info(`Resuming investigation ${investigationId}`);
 
-	// Invoke with empty state - checkpointer will restore from last checkpoint
 	const result = await graph.invoke({}, config);
 
-	logger.info(`Investigation ${investigationId} resumed`, { status: result.status });
+	logger.info(`Investigation ${investigationId} resumed`, {
+		status: result.status,
+		phase: result.phase,
+	});
 
 	return result as InvestigationState;
 }
@@ -514,21 +421,10 @@ export async function resumeInvestigation(
 // =============================================================================
 
 /**
- * Default compiled graph for LangGraph Studio.
- * Note: This uses environment variables for configuration.
- */
-let _studioGraph: Awaited<ReturnType<typeof compileInvestigationGraph>> | null =
-	null;
-
-export async function getStudioGraph() {
-	if (!_studioGraph) {
-		_studioGraph = await compileInvestigationGraph();
-	}
-	return _studioGraph;
-}
-
-/**
- * Compiled graph for LangGraph Studio (langgraph.json points to this).
- * Uses in-memory checkpointing for Studio - no database required.
+ * Compiled graph for LangGraph Studio (uses in-memory checkpointing).
+ *
+ * Note: LangGraph Studio may show a type portability warning during compilation.
+ * This is a known limitation with LangGraph's complex generic types and doesn't
+ * affect functionality.
  */
 export const investigationGraph = buildInvestigationGraph().compile();

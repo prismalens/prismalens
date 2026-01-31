@@ -14,33 +14,74 @@ import {
 	extractToolCalls,
 	EXPECTED_INVESTIGATION_TRAJECTORY,
 } from "../evaluators/index.js";
+import { getTestLLMConfigWithOverrides } from "../fixtures/llm-config.js";
 import {
 	getSmokeTestScenarios,
 	scenariosByDifficulty,
 	allScenarios,
+	cloneScenariosByDifficulty,
 } from "../scenarios/index.js";
-import type { ScenarioDefinition } from "../fixtures/incidents.js";
+
+// Get the LLM config once for all tests (wrapped format for state compatibility)
+const llmConfig = getTestLLMConfigWithOverrides();
+
+// Configurable timeout for LLM operations (default 5 min, override with TEST_TIMEOUT_MS)
+const testTimeout = parseInt(process.env.TEST_TIMEOUT_MS || "300000", 10);
 
 // =============================================================================
 // GRAPH IMPORT (Lazy)
 // =============================================================================
 
-type Graph = Awaited<typeof import("../../src/graph/studio.js")>["graph"];
+type Graph = Awaited<typeof import("../../src/graph/graph.js")>["investigationGraph"];
 let graph: Graph | null = null;
 
 async function getGraph(): Promise<Graph> {
 	if (!graph) {
-		const mod = await import("../../src/graph/studio.js");
-		graph = mod.graph;
+		const mod = await import("../../src/graph/graph.js");
+		graph = mod.investigationGraph;
 	}
 	return graph;
+}
+
+// =============================================================================
+// HELPER: Build Graph Input
+// =============================================================================
+
+/**
+ * Build graph invocation payload from scenario input.
+ * Ensures all input fields are passed to the graph including:
+ * - preGatheredContext (for gatherer agents)
+ * - clonePaths (for repo tools)
+ * - integrations (for API-based tools)
+ */
+function buildGraphInput(inputs: {
+	investigationId: string;
+	incidentId: string;
+	priority: string;
+	incident: unknown;
+	alerts: unknown[];
+	preGatheredContext?: unknown;
+	clonePaths?: Record<string, string>;
+	integrations?: unknown[];
+}) {
+	return {
+		investigationId: inputs.investigationId,
+		incidentId: inputs.incidentId,
+		priority: inputs.priority,
+		incident: inputs.incident,
+		alerts: inputs.alerts,
+		preGatheredContext: inputs.preGatheredContext,
+		clonePaths: inputs.clonePaths,
+		integrations: inputs.integrations || [],
+		llmConfig,
+	};
 }
 
 // =============================================================================
 // SMOKE TEST (Quick validation)
 // =============================================================================
 
-ls.describe("Investigation - Smoke Test", () => {
+ls.describe("[E2E] Graph › Smoke Test", () => {
 	const smokeScenarios = getSmokeTestScenarios();
 
 	for (const scenario of smokeScenarios) {
@@ -56,14 +97,7 @@ ls.describe("Investigation - Smoke Test", () => {
 				console.log(`\n[Smoke] Running: ${scenario.name}`);
 				const startTime = Date.now();
 
-				const result = await g.invoke({
-					investigationId: inputs.investigationId,
-					incidentId: inputs.incidentId,
-					priority: inputs.priority,
-					incident: inputs.incident,
-					alerts: inputs.alerts,
-					integrations: [], // No integrations for smoke test
-				});
+				const result = await g.invoke(buildGraphInput(inputs));
 
 				const duration = Date.now() - startTime;
 				console.log(`[Smoke] Completed in ${duration}ms`);
@@ -79,13 +113,15 @@ ls.describe("Investigation - Smoke Test", () => {
 
 				// Basic assertions
 				expect(result.status).toBe(referenceOutputs.status);
-				expect(result.confidence).toBeGreaterThanOrEqual(0);
+				// confidence can be null if no hypotheses were formed - use ?? 0 to handle null
+				expect(result.confidence ?? 0).toBeGreaterThanOrEqual(0);
 
 				// Should produce some output
-				expect(result.hypotheses?.length || 0).toBeGreaterThan(0);
+				expect(result.hypotheses?.length ?? 0).toBeGreaterThan(0);
 
 				console.log(`[Smoke] PASS: ${scenario.name}`);
 			},
+			testTimeout,
 		);
 	}
 });
@@ -94,7 +130,7 @@ ls.describe("Investigation - Smoke Test", () => {
 // EASY SCENARIOS (High confidence required)
 // =============================================================================
 
-ls.describe("Investigation - Easy Scenarios", () => {
+ls.describe("[E2E] Graph › Easy Scenarios", () => {
 	const easyScenarios = scenariosByDifficulty.easy;
 
 	for (const scenario of easyScenarios) {
@@ -108,14 +144,7 @@ ls.describe("Investigation - Easy Scenarios", () => {
 				const g = await getGraph();
 
 				console.log(`\n[Easy] Running: ${scenario.name}`);
-				const result = await g.invoke({
-					investigationId: inputs.investigationId,
-					incidentId: inputs.incidentId,
-					priority: inputs.priority,
-					incident: inputs.incident,
-					alerts: inputs.alerts,
-					integrations: [],
-				});
+				const result = await g.invoke(buildGraphInput(inputs));
 
 				// Evaluate hypotheses
 				const hypothesisEval = evaluateHypotheses(result.hypotheses || [], {
@@ -137,7 +166,7 @@ ls.describe("Investigation - Easy Scenarios", () => {
 
 				// Stricter assertions for easy scenarios
 				expect(result.status).toBe(referenceOutputs.status);
-				expect(result.confidence).toBeGreaterThanOrEqual(
+				expect(result.confidence ?? 0).toBeGreaterThanOrEqual(
 					referenceOutputs.minConfidence,
 				);
 				expect(result.rootCauseCategory).toBe(referenceOutputs.rootCauseCategory);
@@ -147,6 +176,7 @@ ls.describe("Investigation - Easy Scenarios", () => {
 					expect(recEval.actionableCount).toBeGreaterThan(0);
 				}
 			},
+			testTimeout,
 		);
 	}
 });
@@ -155,7 +185,7 @@ ls.describe("Investigation - Easy Scenarios", () => {
 // MEDIUM SCENARIOS (Moderate confidence)
 // =============================================================================
 
-ls.describe("Investigation - Medium Scenarios", () => {
+ls.describe("[E2E] Graph › Medium Scenarios", () => {
 	const mediumScenarios = scenariosByDifficulty.medium;
 
 	for (const scenario of mediumScenarios) {
@@ -169,14 +199,7 @@ ls.describe("Investigation - Medium Scenarios", () => {
 				const g = await getGraph();
 
 				console.log(`\n[Medium] Running: ${scenario.name}`);
-				const result = await g.invoke({
-					investigationId: inputs.investigationId,
-					incidentId: inputs.incidentId,
-					priority: inputs.priority,
-					incident: inputs.incident,
-					alerts: inputs.alerts,
-					integrations: [],
-				});
+				const result = await g.invoke(buildGraphInput(inputs));
 
 				const hypothesisEval = evaluateHypotheses(result.hypotheses || [], {
 					expectedCategory: referenceOutputs.rootCauseCategory,
@@ -195,11 +218,12 @@ ls.describe("Investigation - Medium Scenarios", () => {
 
 				// Medium scenarios have more lenient assertions
 				expect(result.status).toBe(referenceOutputs.status);
-				expect(result.confidence).toBeGreaterThanOrEqual(
+				expect(result.confidence ?? 0).toBeGreaterThanOrEqual(
 					referenceOutputs.minConfidence * 0.8, // Allow 20% variance
 				);
 				expect(hypothesisEval.overallScore).toBeGreaterThanOrEqual(40);
 			},
+			testTimeout,
 		);
 	}
 });
@@ -208,7 +232,7 @@ ls.describe("Investigation - Medium Scenarios", () => {
 // HARD SCENARIOS (Lower confidence acceptable)
 // =============================================================================
 
-ls.describe("Investigation - Hard Scenarios", () => {
+ls.describe("[E2E] Graph › Hard Scenarios", () => {
 	const hardScenarios = scenariosByDifficulty.hard;
 
 	for (const scenario of hardScenarios) {
@@ -222,14 +246,7 @@ ls.describe("Investigation - Hard Scenarios", () => {
 				const g = await getGraph();
 
 				console.log(`\n[Hard] Running: ${scenario.name}`);
-				const result = await g.invoke({
-					investigationId: inputs.investigationId,
-					incidentId: inputs.incidentId,
-					priority: inputs.priority,
-					incident: inputs.incident,
-					alerts: inputs.alerts,
-					integrations: [],
-				});
+				const result = await g.invoke(buildGraphInput(inputs));
 
 				const hypothesisEval = evaluateHypotheses(result.hypotheses || []);
 				const recEval = evaluateRecommendations(result.recommendations || []);
@@ -254,6 +271,7 @@ ls.describe("Investigation - Hard Scenarios", () => {
 					`[Hard] Category: ${result.rootCauseCategory} (expected: ${referenceOutputs.rootCauseCategory}, match: ${categoryMatch})`,
 				);
 			},
+			testTimeout,
 		);
 	}
 });
@@ -262,7 +280,7 @@ ls.describe("Investigation - Hard Scenarios", () => {
 // ROOT CAUSE KEYWORD MATCHING
 // =============================================================================
 
-ls.describe("Investigation - Root Cause Keywords", () => {
+ls.describe("[E2E] Graph › Root Cause Keywords", () => {
 	// Only test scenarios with keyword expectations
 	const keywordScenarios = allScenarios.filter(
 		(s) => s.expected.rootCauseKeywords?.length,
@@ -281,14 +299,7 @@ ls.describe("Investigation - Root Cause Keywords", () => {
 			async ({ inputs, referenceOutputs }) => {
 				const g = await getGraph();
 
-				const result = await g.invoke({
-					investigationId: inputs.investigationId,
-					incidentId: inputs.incidentId,
-					priority: inputs.priority,
-					incident: inputs.incident,
-					alerts: inputs.alerts,
-					integrations: [],
-				});
+				const result = await g.invoke(buildGraphInput(inputs));
 
 				// Check if keywords appear in root cause or summary
 				const combinedText = [
@@ -315,6 +326,155 @@ ls.describe("Investigation - Root Cause Keywords", () => {
 				// At least 50% of keywords should appear
 				expect(matchRatio).toBeGreaterThanOrEqual(0.5);
 			},
+			testTimeout,
+		);
+	}
+});
+
+// =============================================================================
+// CLONE SCENARIOS (Repo Tools Required)
+// =============================================================================
+
+ls.describe("[E2E] Graph › Clone Scenarios", () => {
+	const allCloneScenarios = [
+		...cloneScenariosByDifficulty.easy,
+		...cloneScenariosByDifficulty.medium,
+		...cloneScenariosByDifficulty.hard,
+	];
+
+	for (const scenario of allCloneScenarios) {
+		ls.test(
+			`Clone: ${scenario.name}`,
+			{
+				inputs: scenario.input,
+				referenceOutputs: scenario.expected,
+			},
+			async ({ inputs, referenceOutputs }) => {
+				const g = await getGraph();
+
+				console.log(`\n[Clone] Running: ${scenario.name}`);
+				const startTime = Date.now();
+
+				const result = await g.invoke(buildGraphInput(inputs));
+
+				const duration = Date.now() - startTime;
+				console.log(`[Clone] Completed in ${duration}ms`);
+
+				// Extract tool calls for trajectory validation
+				const toolCalls = extractToolCalls(result);
+
+				// Evaluate trajectory - check repo tools were used
+				const trajectoryEval = evaluateTrajectory(toolCalls, {
+					requiredTools: referenceOutputs.expectedToolCalls || [],
+					forbiddenTools: referenceOutputs.forbiddenToolCalls || [],
+					maxToolCalls: 30,
+				});
+
+				// Evaluate hypotheses
+				const hypothesisEval = evaluateHypotheses(result.hypotheses || [], {
+					expectedCategory: referenceOutputs.rootCauseCategory,
+					minConfidence: referenceOutputs.minConfidence,
+				});
+
+				// Evaluate recommendations
+				const recEval = evaluateRecommendations(result.recommendations || []);
+
+				ls.logOutputs({
+					status: result.status,
+					confidence: result.confidence,
+					rootCauseCategory: result.rootCauseCategory,
+					hypothesisScore: hypothesisEval.overallScore,
+					recommendationScore: recEval.overallScore,
+					trajectoryScore: trajectoryEval.score,
+					requiredToolsCalled: trajectoryEval.requiredToolsCalled,
+					missingTools: trajectoryEval.missingTools,
+					calledTools: trajectoryEval.calledTools,
+					durationMs: duration,
+				});
+
+				// Basic assertions
+				expect(result.status).toBe(referenceOutputs.status);
+				expect(result.confidence ?? 0).toBeGreaterThanOrEqual(
+					referenceOutputs.minConfidence * 0.8, // Allow 20% variance
+				);
+
+				// Clone-specific: validate repo tools were called
+				if (referenceOutputs.expectedToolCalls?.length) {
+					expect(trajectoryEval.requiredToolsCalled).toBe(true);
+				}
+
+				// Validate no forbidden tools were called
+				if (referenceOutputs.forbiddenToolCalls?.length) {
+					const calledForbidden = referenceOutputs.forbiddenToolCalls.filter(
+						(t: string) => trajectoryEval.calledTools.includes(t),
+					);
+					expect(calledForbidden).toHaveLength(0);
+				}
+
+				// Should produce recommendations for code scenarios
+				if (referenceOutputs.shouldHaveRecommendations) {
+					expect(recEval.actionableCount).toBeGreaterThan(0);
+				}
+
+				console.log(`[Clone] PASS: ${scenario.name}`);
+			},
+			testTimeout,
+		);
+	}
+});
+
+// =============================================================================
+// TRAJECTORY VALIDATION (Non-Clone - Repo Tools Forbidden)
+// =============================================================================
+
+ls.describe("[E2E] Graph › Trajectory Validation", () => {
+	// Test that non-clone scenarios don't use repo tools
+	const nonCloneScenarios = allScenarios.filter(
+		(s) => s.expected.forbiddenToolCalls?.length,
+	);
+
+	for (const scenario of nonCloneScenarios.slice(0, 3)) {
+		// Limit to 3 for CI time
+		ls.test(
+			`NoRepoTools: ${scenario.name}`,
+			{
+				inputs: scenario.input,
+				referenceOutputs: {
+					forbiddenTools: scenario.expected.forbiddenToolCalls || [],
+				},
+			},
+			async ({ inputs, referenceOutputs }) => {
+				const g = await getGraph();
+
+				console.log(`\n[Trajectory] Running: ${scenario.name}`);
+				const result = await g.invoke(buildGraphInput(inputs));
+
+				// Extract tool calls
+				const toolCalls = extractToolCalls(result);
+
+				// Evaluate trajectory - check forbidden tools were NOT used
+				const trajectoryEval = evaluateTrajectory(toolCalls, {
+					forbiddenTools: referenceOutputs.forbiddenTools,
+					maxToolCalls: 25,
+				});
+
+				// Find any forbidden tools that were called
+				const calledForbidden = referenceOutputs.forbiddenTools.filter(
+					(t: string) => trajectoryEval.calledTools.includes(t),
+				);
+
+				ls.logOutputs({
+					status: result.status,
+					calledTools: trajectoryEval.calledTools,
+					forbiddenTools: referenceOutputs.forbiddenTools,
+					calledForbidden,
+					passed: calledForbidden.length === 0,
+				});
+
+				// Assert no forbidden tools were called
+				expect(calledForbidden).toHaveLength(0);
+			},
+			testTimeout,
 		);
 	}
 });
@@ -323,7 +483,7 @@ ls.describe("Investigation - Root Cause Keywords", () => {
 // PERFORMANCE BENCHMARKS
 // =============================================================================
 
-ls.describe("Investigation - Performance", () => {
+ls.describe("[E2E] Graph › Performance", () => {
 	ls.test(
 		"Completes within timeout",
 		{
@@ -339,10 +499,7 @@ ls.describe("Investigation - Performance", () => {
 			const g = await getGraph();
 
 			const startTime = Date.now();
-			const result = await g.invoke({
-				...inputs,
-				integrations: [],
-			});
+			const result = await g.invoke(buildGraphInput(inputs));
 			const duration = Date.now() - startTime;
 
 			ls.logOutputs({
@@ -355,5 +512,6 @@ ls.describe("Investigation - Performance", () => {
 			expect(duration).toBeLessThanOrEqual(referenceOutputs.maxDurationMs);
 			expect(result.status).not.toBe("failed");
 		},
+		testTimeout,
 	);
 });

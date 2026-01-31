@@ -1,4 +1,6 @@
 import {
+	forwardRef,
+	Inject,
 	Injectable,
 	Logger,
 	OnModuleDestroy,
@@ -15,6 +17,8 @@ import {
 import { EnvironmentVariables } from "@prismalens/config";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents } from "bullmq";
+import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
+import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
 
 /**
  * Integration context for worker (matches worker IntegrationContext)
@@ -73,7 +77,11 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	private queueEvents: QueueEvents | null = null;
 	private connection: ConnectionOptions | null = null;
 
-	constructor(private configService: ConfigService<EnvironmentVariables>) {
+	constructor(
+		private configService: ConfigService<EnvironmentVariables>,
+		@Inject(forwardRef(() => InvestigationsService))
+		private investigationsService: InvestigationsService,
+	) {
 		const config = this.configService.get("PRISMALENS_MODE");
 		this.workerMode = config;
 	}
@@ -233,15 +241,19 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			const input = this.buildExecutorInput(data);
 
 			// Execute in the background - don't block the HTTP response
-			// The investigation will update the database as it progresses
+			// Persist results to database when complete (like worker does)
 			this.executor.execute(input).then(
 				(result: InvestigationResult) => {
 					this.logger.log(
 						`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
 					);
+					// Persist results to database
+					this.persistResults(data, result);
 				},
 				(error: Error) => {
 					this.logger.error(`Investigation ${jobId} failed: ${error.message}`);
+					// Persist failure to database
+					this.persistFailure(data, error);
 				},
 			);
 
@@ -459,6 +471,81 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				return 4;
 			default:
 				return 3;
+		}
+	}
+
+	// =========================================================================
+	// RESULT PERSISTENCE (Regular Mode)
+	// =========================================================================
+	// These methods persist investigation results to the database when running
+	// in regular mode. This mirrors the behavior of packages/worker in queue mode.
+	// =========================================================================
+
+	/**
+	 * Persist investigation results to database (regular mode).
+	 * Mirrors the behavior of packages/worker which uses oRPC to persist results.
+	 */
+	private async persistResults(
+		data: InvestigationJobData,
+		result: InvestigationResult,
+	): Promise<void> {
+		try {
+			// Map agent result to API DTO format
+			const resultDto: InvestigationResultDto = {
+				summary: result.summary ?? undefined,
+				rootCause: result.rootCause ?? undefined,
+				rootCauseCategory: result.rootCauseCategory ?? undefined,
+				confidence:
+					result.confidence !== null ? result.confidence / 100 : undefined, // Convert 0-100 to 0-1
+				analysisMethod: result.analysisMethod ?? undefined,
+				error: result.error ?? undefined,
+				recommendations: result.recommendations.map((rec) => ({
+					title: rec.title,
+					description: rec.description,
+					priority: rec.priority,
+					category: rec.category,
+					urgency: rec.urgency,
+				})),
+			};
+
+			// Use the investigations service to persist results
+			await this.investigationsService.setResult(data.investigationId, resultDto);
+
+			this.logger.log(
+				`Persisted results for investigation ${data.investigationId}`,
+			);
+		} catch (error) {
+			const err = error as Error;
+			this.logger.error(
+				`Failed to persist results for investigation ${data.investigationId}: ${err.message}`,
+			);
+		}
+	}
+
+	/**
+	 * Persist investigation failure to database (regular mode).
+	 */
+	private async persistFailure(
+		data: InvestigationJobData,
+		error: Error,
+	): Promise<void> {
+		try {
+			// Update status to failed with error message
+			await this.investigationsService.updateStatusInternal(
+				data.investigationId,
+				"failed",
+				undefined,
+				error.message,
+			);
+
+			this.logger.log(
+				`Persisted failure for investigation ${data.investigationId}`,
+			);
+		} catch (e) {
+			const err = e as Error;
+			this.logger.error(
+				`Failed to persist failure for investigation ${data.investigationId}: ${err.message}`,
+			);
 		}
 	}
 }

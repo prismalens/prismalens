@@ -14,19 +14,47 @@ import type { ToolFactoryOptions } from "./factory.js";
 // =============================================================================
 
 /**
- * Get base path for repo tools from integrations or environment
+ * Get base path for repo tools from clonePaths.
+ *
+ * IMPORTANT: This function does NOT fall back to process.cwd().
+ * If no clonePaths are available, it returns undefined and
+ * repo tools should not be created (handled by factory.ts).
+ *
+ * @param options - Tool factory options with clonePaths
+ * @param repoId - Optional specific repo ID to get path for
+ * @returns The filesystem path or undefined if not available
  */
-function getBasePath(integrations: ToolFactoryOptions["integrations"]): string {
-	// Check integrations for configured repo paths
-	const repoIntegration = integrations.find(
+function getBasePath(
+	options: ToolFactoryOptions,
+	repoId?: string,
+): string | undefined {
+	// If clonePaths available, use them
+	if (options.clonePaths && Object.keys(options.clonePaths).length > 0) {
+		const targetRepo = repoId || options.activeRepoId || "primary";
+
+		// Try to get the specific repo path
+		if (options.clonePaths[targetRepo]) {
+			return options.clonePaths[targetRepo];
+		}
+
+		// Fall back to first available if "primary" not found
+		const firstKey = Object.keys(options.clonePaths)[0];
+		if (firstKey) {
+			return options.clonePaths[firstKey];
+		}
+	}
+
+	// Legacy: Check integrations for configured repo paths (explicit config)
+	const repoIntegration = options.integrations.find(
 		(i) => i.type.toLowerCase() === "repo",
 	);
 	if (repoIntegration?.config?.basePath) {
 		return repoIntegration.config.basePath as string;
 	}
 
-	// Fall back to environment variable or current directory
-	return process.env.REPO_BASE_PATH || process.cwd();
+	// NO FALLBACK TO cwd() - return undefined
+	// This prevents accidental reads from the project directory during evals
+	return undefined;
 }
 
 /**
@@ -47,9 +75,18 @@ function validatePath(basePath: string, targetPath: string): string {
 
 /**
  * Create local repository tools for an agent.
+ *
+ * IMPORTANT: Returns empty array if no basePath is available.
+ * The factory should gate this based on clonePaths presence.
  */
 export function createRepoTools(options: ToolFactoryOptions): StructuredTool[] {
-	const basePath = getBasePath(options.integrations);
+	const basePath = getBasePath(options);
+
+	// If no basePath available, return no tools
+	// This prevents accidental reads from process.cwd()
+	if (!basePath) {
+		return [];
+	}
 
 	const tools: StructuredTool[] = [
 		// Read file from local repository
@@ -314,18 +351,32 @@ export function createRepoTools(options: ToolFactoryOptions): StructuredTool[] {
 /**
  * Get base path from bundle context
  */
-function getBasePathFromContext(context: BundleExecutionContext): string {
-	return getBasePath(context.integrations);
+function getBasePathFromContext(context: BundleExecutionContext): string | undefined {
+	// Convert bundle context to factory options format
+	const options: ToolFactoryOptions = {
+		agentName: context.agentName,
+		integrations: context.integrations,
+		readOnly: context.readOnly,
+	};
+	return getBasePath(options);
 }
 
 /**
  * Create repo tools from bundle context.
  * Used by the progressive disclosure system.
+ *
+ * IMPORTANT: Returns empty array if no basePath is available.
  */
 export function createRepoFilesBundle(
 	context: BundleExecutionContext,
 ): StructuredTool[] {
 	const basePath = getBasePathFromContext(context);
+
+	// If no basePath available, return no tools
+	if (!basePath) {
+		return [];
+	}
+
 	return createRepoToolsInternal(basePath);
 }
 

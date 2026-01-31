@@ -2,7 +2,7 @@
 	"node_version": "22",
 	"dependencies": ["."],
 	"graphs": {
-		"investigation": "./src/graph/studio.ts:graph"
+		"investigation": "./src/graph/graph.ts:investigationGraph"
 	},
 	"env": ".env"
 }

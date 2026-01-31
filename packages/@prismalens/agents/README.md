@@ -644,12 +644,13 @@ PrismaLens uses a consistent naming convention for environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | **LLM Configuration** | | |
-| `PRISMALENS_LLM_PROVIDER` | LLM provider: `anthropic`, `openai`, `google`, `groq`, `openrouter`, `ollama` | `anthropic` |
+| `PRISMALENS_LLM_PROVIDER` | LLM provider: `anthropic`, `openai`, `google`, `groq`, `openrouter`, `nvidia`, `ollama` | `anthropic` |
 | `ANTHROPIC_API_KEY` | Anthropic API key | - |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `GOOGLE_API_KEY` | Google Gemini API key | - |
 | `GROQ_API_KEY` | Groq API key (free tier available) | - |
 | `OPENROUTER_API_KEY` | OpenRouter API key | - |
+| `NVIDIA_API_KEY` | NVIDIA NIM API key (free tier available) | - |
 | `OLLAMA_API_KEY` | Ollama Cloud API key (optional) | - |
 | `PRISMALENS_OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
 | **Model Overrides** | | |
@@ -684,6 +685,7 @@ For local development and testing, these free providers are available:
 | Provider | Free Tier Limits | Best For |
 |----------|------------------|----------|
 | **Groq** (recommended) | 30 req/min, 100K tokens/day | Fast inference, testing |
+| **NVIDIA NIM** | 40 req/min, unlimited tokens | Smart reasoning models |
 | **OpenRouter** | 50 req/day (1000 with $10 credits) | Multiple model access |
 | **Ollama** | Unlimited (local hardware) | Privacy, offline use |
 
@@ -691,6 +693,12 @@ To use Groq (free, fast):
 ```bash
 PRISMALENS_LLM_PROVIDER=groq
 GROQ_API_KEY=gsk_your_key_here
+```
+
+To use NVIDIA NIM (free, smart models):
+```bash
+PRISMALENS_LLM_PROVIDER=nvidia
+NVIDIA_API_KEY=nvapi-your-key-here
 ```
 
 ### SubAgent Configuration
@@ -797,8 +805,15 @@ packages/@prismalens/agents/
 │   │   ├── state.ts           # State definitions
 │   │   └── index.ts
 │   └── index.ts
-├── evals/
-│   └── investigation.eval.ts  # LangSmith E2E evaluations
+├── evals/                     # LangSmith E2E evaluations
+│   ├── graph/                 # [E2E] Graph tests
+│   ├── components/            # [Agent] Detective, Surgeon tests
+│   ├── tools/                 # [Tool] Hypothesis, Fix Proposal tests
+│   ├── evaluators/            # Custom evaluator functions
+│   ├── fixtures/              # Test data factories
+│   ├── mocks/                 # Integration mock infrastructure
+│   ├── scenarios/             # Test scenario definitions
+│   └── setup/                 # Vitest setup files
 ├── langgraph.json             # LangGraph Studio config
 ├── vitest.eval.config.ts      # E2E evaluation config
 └── package.json
@@ -1021,7 +1036,9 @@ import { createLLM } from "@prismalens/agents/llm";
 ```bash
 pnpm build        # Build package
 pnpm typecheck    # Type check
-pnpm eval         # Run LangSmith E2E evaluations
+pnpm eval         # Run all evaluations
+pnpm eval:smoke   # Quick smoke tests
+pnpm eval:e2e     # Full E2E graph tests
 ```
 
 ## Testing Strategy
@@ -1071,45 +1088,58 @@ This combination provides:
 ### Test Commands
 
 ```bash
-pnpm eval              # Run all E2E evaluations
+pnpm eval              # Run all evaluations
 pnpm eval:watch        # Watch mode for development
-pnpm eval:debug        # Run single scenario for debugging
-pnpm eval:components   # Run component-level tests only
-pnpm eval:graph        # Run full graph tests only
+pnpm eval:e2e          # [E2E] Graph tests only
+pnpm eval:agents       # [Agent] Detective, Surgeon tests only
+pnpm eval:tools        # [Tool] Hypothesis, Fix Proposal tests only
+pnpm eval:smoke        # Run smoke tests only (fastest)
 ```
 
 ### Test Structure
 
+Tests use hierarchical naming for better organization in VSCode's Vitest extension.
+
 ```
 evals/
-├── fixtures/                    # Test data factories
-│   ├── incidents.ts             # Incident/alert generators
-│   ├── integrations.ts          # Mock integration contexts
+├── graph/                            # [E2E] Full graph tests
+│   └── full-investigation.eval.ts    # [E2E] Graph › Smoke Test, Easy/Medium/Hard Scenarios
+├── components/                       # [Agent] Component-level tests
+│   ├── detective.eval.ts             # [Agent] Detective › Hypothesis Formation, Trajectory, Classification
+│   └── surgeon.eval.ts               # [Agent] Surgeon › Recommendation Quality, Risk Assessment
+├── tools/                            # [Tool] Tool unit tests
+│   ├── hypothesis.eval.ts            # [Tool] Hypothesis › Schema, Evidence, Confidence, Categories
+│   └── fix-proposal.eval.ts          # [Tool] Fix Proposal › Schema, Verification, Risk, Priority
+├── evaluators/                       # Custom evaluators
+│   ├── hypothesis.evaluator.ts       # Hypothesis quality scoring
+│   ├── trajectory.evaluator.ts       # Agent trajectory validation
+│   ├── recommendation.evaluator.ts   # Recommendation actionability
 │   └── index.ts
-├── mocks/                       # Integration mock infrastructure
-│   └── index.ts                 # GitHub + Render mocks (extensible)
-├── evaluators/                  # Custom evaluators
-│   ├── hypothesis.evaluator.ts  # Hypothesis quality scoring
-│   ├── trajectory.evaluator.ts  # Agent trajectory validation
-│   ├── recommendation.evaluator.ts
+├── fixtures/                         # Test data factories
+│   ├── incidents.ts                  # Incident/alert generators
 │   └── index.ts
-├── scenarios/                   # Test scenario definitions
-│   ├── types.ts                 # ScenarioWithMocks type
-│   ├── code-bugs.scenarios.ts   # NullPointer, type errors, etc.
-│   ├── config-issues.scenarios.ts
-│   ├── infrastructure.scenarios.ts
-│   └── index.ts
-├── components/                  # Component-level tests
-│   ├── cartographer.eval.ts     # Cartographer subagent
-│   ├── detective.eval.ts        # Detective subagent
-│   ├── surgeon.eval.ts          # Surgeon subagent
-│   └── pre-gather.eval.ts       # Pre-gathering node
-├── graph/                       # Full graph tests
-│   └── investigation.eval.ts    # E2E investigation flow
-└── tools/                       # Tool integration tests
-    ├── hypothesis-tools.eval.ts
-    └── fix-proposal-tools.eval.ts
+├── mocks/                            # Integration mock infrastructure
+│   └── index.ts                      # GitHub + Render mocks
+├── scenarios/                        # Test scenario definitions
+│   ├── types.ts                      # ScenarioWithMocks type
+│   ├── code-bugs.scenarios.ts        # NullPointer, type errors
+│   ├── config-issues.scenarios.ts    # DB connection, rate limits
+│   └── infrastructure.scenarios.ts   # Memory, CPU, disk
+└── setup/                            # Vitest setup
+    └── vitest.setup.ts
 ```
+
+### Test Naming Convention
+
+Tests use prefixes for hierarchy in test explorers:
+
+| Prefix | Category | Examples |
+|--------|----------|----------|
+| `[E2E] Graph ›` | Full investigation flow | Smoke Test, Easy Scenarios, Trajectory Validation |
+| `[Agent] Detective ›` | Detective subagent | Hypothesis Formation, Category Classification |
+| `[Agent] Surgeon ›` | Surgeon subagent | Recommendation Quality, Tool Usage Trajectory |
+| `[Tool] Hypothesis ›` | Hypothesis tool | Schema, Evidence Quality, Confidence |
+| `[Tool] Fix Proposal ›` | Fix proposal tool | Schema, Verification Steps, Risk Assessment |
 
 ### Test Categories
 
@@ -1427,16 +1457,17 @@ These env vars are **only used for seeding `test.db`**, not by the app directly.
 
 ### Component vs E2E Testing
 
-| Test Type | Scope | Integrations | Speed |
-|-----------|-------|--------------|-------|
-| **Component** (`evals/components/`) | Single subagent (Cartographer, Detective, Surgeon) | Optional mocks | Fast (~30s) |
-| **E2E Graph** (`evals/graph/`) | Full Commander → SubAgents flow | Real API calls | Slow (~3-5min) |
-| **Tool Tests** (`evals/tools/`) | Individual tool functions | None (unit tests) | Instant |
+| Test Type | Prefix | Scope | Speed |
+|-----------|--------|-------|-------|
+| **E2E Graph** | `[E2E] Graph ›` | Full Commander → SubAgents flow | Slow (~3-5min) |
+| **Agent Tests** | `[Agent] *` | Single subagent (Detective, Surgeon) | Fast (~30s) |
+| **Tool Tests** | `[Tool] *` | Individual tool functions | Instant |
 
 **When to use each:**
-- **Component tests**: Validating subagent prompts, skill usage, tool selection
-- **E2E tests**: Validating full investigation workflow with real data
-- **Tool tests**: Validating tool input/output schemas, state mutations
+- **`pnpm eval:e2e`**: Full investigation workflow with real data
+- **`pnpm eval:agents`**: Subagent prompts, skill usage, tool selection
+- **`pnpm eval:tools`**: Tool input/output schemas, state mutations
+- **`pnpm eval:smoke`**: Quick sanity check (fastest)
 
 ### Interpreting LangSmith Results
 

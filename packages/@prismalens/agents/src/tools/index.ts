@@ -15,6 +15,7 @@ export {
 	getAgentPermissions,
 	getManifestsDir,
 	getToolCategories,
+	hasClonedRepos,
 	isReadOnlyAgent,
 	registerToolCategory,
 	setAgentPermissions,
@@ -53,3 +54,13 @@ export {
 	// Note: AdversaryChallenge type is exported from types/index.ts
 } from "./challenge.js";
 export { createRepoTools } from "./repo.js";
+
+// Handoff tools for agent-to-agent communication (Supervisor Pattern)
+export {
+	createAnalyzeFindingsTool,
+	createCorrelateEventsTool,
+	createHandoffTools,
+	createRequestMoreDataTool,
+	getPendingHandoffRequest,
+	resetHandoffRequest,
+} from "./handoffs.js";

@@ -471,6 +471,19 @@ export function createGitHubCommits(
 }
 
 // =============================================================================
+// RE-EXPORTS FROM NEW MOCK FILES
+// =============================================================================
+
+// Pre-gathered context factories (deployments, commits, config changes)
+export * from "./pre-gathered.js";
+
+// Change scenario presets
+export * from "./change-scenarios.js";
+
+// Full PreGatheredContext factory
+export * from "./context-factory.js";
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 

@@ -18,6 +18,25 @@ import {
 	type ScenarioDefinition,
 } from "../fixtures/incidents.js";
 import type { ScenarioWithMocks } from "./types.js";
+import {
+	createMockPreGatheredContext,
+	createMockDeployment,
+	createMockCommit,
+	createRiskyCommit,
+} from "../mocks/index.js";
+
+// =============================================================================
+// MUTUAL EXCLUSIVITY: Forbidden tools for non-clone scenarios
+// =============================================================================
+// These scenarios do NOT provide clonePaths, so repo tools should NOT be called.
+// This ensures mutual exclusivity with clone scenarios.
+
+const FORBIDDEN_REPO_TOOLS = [
+	"repo_read_file",
+	"repo_list_directory",
+	"repo_search_text",
+	"repo_get_file_info",
+];
 
 // =============================================================================
 // EASY SCENARIOS (Clear stack traces, obvious errors)
@@ -82,6 +101,44 @@ export const nullPointerException: ScenarioWithMocks = {
 					},
 				}),
 			],
+			// Pre-gathered context for ChangeTracker agent
+			preGatheredContext: createMockPreGatheredContext({
+				serviceName: "api-server",
+				recentChanges: {
+					deployments: [
+						createMockDeployment({
+							id: "deploy-v231",
+							service: "api-server",
+							version: "v2.3.1",
+							status: "success",
+							riskScore: 75,
+							riskFactors: [
+								"deployed 30 minutes before incident",
+								"contains code changes to UserService",
+							],
+							timestamp: "2024-01-15T10:00:00Z",
+						}),
+					],
+					commits: [
+						createRiskyCommit({
+							sha: "abc123def",
+							message: "perf: remove redundant null check in getUser() for faster response time",
+							author: "developer@example.com",
+							timestamp: "2024-01-14T15:30:00Z",
+							repository: "org/api-server",
+						}),
+						createMockCommit({
+							sha: "def456ghi",
+							message: "feat: add user caching to reduce database load",
+							author: "developer@example.com",
+							timestamp: "2024-01-13T10:00:00Z",
+						}),
+					],
+					configChanges: [],
+				},
+				includeLogPreview: true,
+				includeStackTraces: true,
+			}),
 		},
 		expected: {
 			status: "completed",
@@ -89,6 +146,7 @@ export const nullPointerException: ScenarioWithMocks = {
 			rootCauseCategory: "code",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["NullPointer", "null", "getUser", "UserService"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -253,6 +311,7 @@ export const undefinedAccess: ScenarioWithMocks = {
 			rootCauseCategory: "code",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["undefined", "property", "customer", "id"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -394,6 +453,7 @@ export const memoryLeak: ScenarioWithMocks = {
 			rootCauseCategory: "code",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["memory", "leak", "heap", "GC"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -554,6 +614,7 @@ export const raceCondition: ScenarioWithMocks = {
 			rootCauseCategory: "code",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["concurrent", "race", "thread", "synchronization"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {
@@ -689,6 +750,7 @@ export const logicBug: ScenarioWithMocks = {
 			rootCauseCategory: "code",
 			shouldHaveRecommendations: true,
 			rootCauseKeywords: ["logic", "preference", "timezone", "bug"],
+			forbiddenToolCalls: FORBIDDEN_REPO_TOOLS,
 		},
 	}),
 	mocks: {

@@ -1,9 +1,10 @@
 import { BullModule } from "@nestjs/bullmq";
-import { type DynamicModule, Global, Logger, Module } from "@nestjs/common";
+import { type DynamicModule, Global, Logger, Module, forwardRef } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { getConfig } from "@prismalens/config";
 import * as fs from "fs";
 import * as IORedis from "ioredis";
+import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
 import { QueueService } from "./queue.service.js";
 
 const config = getConfig();
@@ -60,7 +61,10 @@ function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
 export class QueueModule {
 	static forRoot(): DynamicModule {
 		const workerMode = config.PRISMALENS_MODE;
-		const imports: any[] = [ConfigModule];
+		const imports: any[] = [
+			ConfigModule,
+			forwardRef(() => InvestigationsModule),
+		];
 
 		if (workerMode === "queue") {
 			logger.log("Queue mode: Initializing BullMQ with Redis connection");

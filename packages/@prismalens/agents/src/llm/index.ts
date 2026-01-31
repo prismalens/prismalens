@@ -1,25 +1,38 @@
 // =============================================================================
 // LLM INDEX
 // =============================================================================
-// Export LLM factory, providers, and model registry.
+// Export LLM factory, providers, model registry, and error handling.
 // =============================================================================
 
 export {
+	// Per-agent override types and utilities
+	type AgentLLMOverride,
+	type AgentName,
+	isConfigWithOverrides,
+	type LLMConfigWithOverrides,
+	normalizeConfig,
+	resolveAgentConfig,
+	wrapConfig,
+	// Provider config types
+	type AnthropicProviderConfig,
 	type BaseChatModel,
+	type ChatAnthropicInput,
+	type ChatGroqInput,
+	type ChatOllamaInput,
+	type ChatOpenAIFields,
 	createLLM,
-	createLLMFromStoredConfig,
-	getAgentConfig,
-	type LLMFactoryOptions,
-	registerAgentConfig,
+	type GoogleGenerativeAIChatInput,
+	type GoogleProviderConfig,
+	type GroqProviderConfig,
+	type LLMProviderConfig,
+	type OllamaProviderConfig,
+	type OpenAIProviderConfig,
+	type OpenRouterProviderConfig,
 } from "./factory.js";
 export {
-	getAgentCompatibleModels,
-	getModelById,
 	getModelsForProvider,
 	getModelsRegistry,
-	getReasoningModels,
 	type ModelMetadata,
-	refreshModelsCache,
 } from "./models-registry.js";
 export {
 	getApiKeyEnvVar,
@@ -32,3 +45,35 @@ export {
 	requiresApiKey,
 	SUPPORTED_PROVIDERS,
 } from "./providers.js";
+
+// Error handling
+export {
+	LLMError,
+	LLMErrorCode,
+	parseLLMError,
+	formatLLMError,
+	isLLMError,
+} from "./errors.js";
+
+// Model capabilities validation
+export {
+	type AgentRequirements,
+	AGENT_REQUIREMENTS,
+	clearModelCapabilitiesCache,
+	fetchModelCapabilities,
+	getModelInfo,
+	type ModelInfo,
+	type ModelsDevResponse,
+	type ProviderInfo,
+	summarizeModelCapabilities,
+	validateModelForAgent,
+	validateModelOrThrow,
+	type ValidationResult,
+} from "./model-capabilities.js";
+
+// Provider health checks
+export {
+	checkProviderHealth,
+	checkProviderHealthOrThrow,
+	type HealthCheckResult,
+} from "./health.js";

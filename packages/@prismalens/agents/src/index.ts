@@ -1,7 +1,7 @@
 // =============================================================================
 // @prismalens/agents
 // =============================================================================
-// PrismaLens Agent System - Hybrid DeepAgents + LangGraph for Incident Investigation
+// PrismaLens Agent System - LangGraph Supervisor Pattern for Incident Investigation
 //
 // This package provides the core agent infrastructure for investigating production
 // incidents. It can be used:
@@ -9,8 +9,9 @@
 // - As a dependency by packages/worker in queue mode (separate container)
 //
 // Architecture:
-// - DeepAgents provides Commander with write_todos planning and task SubAgent delegation
-// - LangGraph provides PostgresSaver persistence, alert validation, and API writer nodes
+// - LangGraph Supervisor Pattern with parallel gatherer agents
+// - Handoff-based routing for agent iteration (Detective → Gatherer → Detective)
+// - PostgreSQL checkpointing for durability and resumption
 // - Per-agent LLM configuration via environment variables
 // - Tool factory pattern for plug-and-play integrations
 // =============================================================================
