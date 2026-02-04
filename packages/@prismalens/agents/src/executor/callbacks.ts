@@ -323,7 +323,7 @@ export interface ExecutionTrackerCallbackOptions {
  * const callback = createExecutionTrackerCallback({
  *   tracker,
  *   metadata: {
- *     agentName: "cartographer",
+ *     agentName: "gatherer",
  *     agentRole: "context_gathering",
  *     parentAgent: "commander"
  *   }

@@ -480,7 +480,6 @@ export async function cloneIfNeededNode(
 		return {
 			clonePaths: undefined,
 			clonedRepos: undefined,
-			agentProgression: { cloneDecision: true },
 		};
 	}
 
@@ -501,8 +500,7 @@ export async function cloneIfNeededNode(
 			return {
 				clonePaths: undefined,
 				clonedRepos: undefined,
-				agentProgression: { cloneDecision: true },
-			};
+				};
 		}
 
 		// Single repo fallback (legacy behavior)
@@ -526,8 +524,7 @@ export async function cloneIfNeededNode(
 						recoverable: true,
 					},
 				],
-				agentProgression: { cloneDecision: true },
-			};
+				};
 		}
 
 		const clonePath = result.path as string; // Safe: success=true guarantees path exists
@@ -543,7 +540,6 @@ export async function cloneIfNeededNode(
 					timestamp: new Date().toISOString(),
 				},
 			],
-			agentProgression: { cloneDecision: true },
 		};
 	}
 
@@ -571,7 +567,6 @@ export async function cloneIfNeededNode(
 				timestamp: new Date().toISOString(),
 				recoverable: true,
 			})),
-			agentProgression: { cloneDecision: true },
 		};
 	}
 
@@ -583,7 +578,6 @@ export async function cloneIfNeededNode(
 	return {
 		clonePaths: result.clonePaths,
 		clonedRepos: result.clonedRepos,
-		agentProgression: { cloneDecision: true },
 	};
 }
 

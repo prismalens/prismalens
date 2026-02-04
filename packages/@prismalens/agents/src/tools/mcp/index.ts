@@ -490,8 +490,8 @@ export function getMCPToolsForAgent(
 	// All agents can use MCP tools for code analysis
 	// In the future, we might want to restrict some tools based on agent role
 	switch (agentName) {
-		case "cartographer":
-			// Cartographer gets all read-only analysis tools
+		case "gatherer":
+			// Gatherer gets all read-only analysis tools
 			return allTools;
 
 		case "detective":

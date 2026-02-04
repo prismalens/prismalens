@@ -14,9 +14,11 @@ export {
 } from "./tool-disclosure.js";
 
 export {
-	CARTOGRAPHER_SYSTEM_REMINDER,
+	GATHERER_SYSTEM_REMINDER,
 	DETECTIVE_SYSTEM_REMINDER,
 	SURGEON_SYSTEM_REMINDER,
 	getSystemReminder,
 	injectSystemReminder,
 } from "./system-reminders.js";
+
+// Todos removed - using simple findings-based routing instead

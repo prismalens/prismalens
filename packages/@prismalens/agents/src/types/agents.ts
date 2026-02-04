@@ -4,7 +4,7 @@ import { z } from "zod";
  * Canonical list of agent IDs in the PrismaLens investigation system.
  *
  * - commander: Main orchestrating agent (DeepAgents)
- * - cartographer: Read-only context gatherer (SubAgent)
+ * - gatherer: Read-only context gathering role (shared by log-gatherer, code-searcher, change-tracker)
  * - detective: Root cause analyzer (SubAgent)
  * - surgeon: Fix proposer (SubAgent)
  *
@@ -13,7 +13,7 @@ import { z } from "zod";
  */
 export const AGENT_IDS = [
 	"commander",
-	"cartographer",
+	"gatherer",
 	"detective",
 	"surgeon",
 ] as const;

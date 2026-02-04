@@ -21,7 +21,7 @@ Rollback is recommended when:
 - Code fix would take too long
 
 ### 2. Identify Target Version
-From Cartographer's findings:
+From Gatherer's findings:
 - Last known good deployment
 - Deployment before the problematic one
 - Verify it was stable

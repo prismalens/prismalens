@@ -53,7 +53,7 @@ ls.describe("[Agent] Detective › Hypothesis Formation", () => {
 					incident: scenario.input.incident,
 					alerts: scenario.input.alerts,
 					gatheredData: {
-						// Mock gathered data - would come from Cartographer in real flow
+						// Mock gathered data - would come from Gatherer in real flow
 						logsAnalysis: `Logs show ${scenario.input.incident.description}`,
 						codeSearchResults: [],
 						deploymentInfo: { recentDeploys: [] },

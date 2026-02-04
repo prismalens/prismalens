@@ -103,16 +103,28 @@ export function getThreadId(investigationId: string): string {
 
 /**
  * Get LangGraph invocation config with thread ID for persistence.
+ * Includes root-level trace configuration for LangSmith.
  *
  * @example
  * const config = getInvocationConfig('abc123');
  * const result = await graph.invoke(state, config);
  */
-export function getInvocationConfig(investigationId: string) {
+export function getInvocationConfig(
+	investigationId: string,
+	incidentId?: string,
+) {
 	return {
 		configurable: {
 			thread_id: getThreadId(investigationId),
 			checkpoint_ns: "prismalens",
+		},
+		// Root-level trace configuration for LangSmith
+		runName: `Investigation ${investigationId.slice(0, 8)}`,
+		tags: ["prismalens", "investigation", `inv:${investigationId}`],
+		metadata: {
+			investigationId,
+			...(incidentId && { incidentId }),
+			startedAt: new Date().toISOString(),
 		},
 	};
 }

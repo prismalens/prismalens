@@ -7,7 +7,8 @@
  * This is a LangGraph node that runs a ReAct agent internally.
  */
 
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
 import {
 	createLLM,
@@ -15,11 +16,14 @@ import {
 	resolveAgentConfig,
 } from "../../llm/factory.js";
 import { createToolsForAgent } from "../../tools/factory.js";
+import { createHandoffCompletionUpdate } from "../../graph/nodes/handoff-processor.js";
+import { buildTraceConfig, mergeTraceConfig } from "../../utils/tracing.js";
 import type {
 	Finding,
 	InvestigationState,
 	SupervisorPhase,
 } from "../../types/state.js";
+import { addFindingIds, validateLogFindings } from "../../utils/validation.js";
 
 const logger = new Logger({ context: "LogGatherer" });
 
@@ -72,11 +76,16 @@ Return your findings as structured data that can be analyzed by the Detective ag
  */
 export async function logGathererNode(
 	state: InvestigationState,
+	config?: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
+	// Build trace config for this node
+	const traceConfig = buildTraceConfig(state);
+
 	logger.info("Log Gatherer starting", {
 		investigationId: state.investigationId,
 		phase: state.phase,
 		hasHandoffRequest: !!state.handoffRequest,
+		runName: traceConfig.runName,
 	});
 
 	// Log-gatherer should only run for targeted requests from detective
@@ -87,7 +96,6 @@ export async function logGathererNode(
 		logger.warn("log-gatherer called outside targeted request context, skipping");
 		return {
 			handoffRequest: undefined,
-			agentProgression: { "log-gatherer": true },
 		};
 	}
 
@@ -108,28 +116,27 @@ export async function logGathererNode(
 			],
 			handoffRequest: undefined,
 			phase: "analyzing" as SupervisorPhase,
-			agentProgression: { "log-gatherer": false },
 		};
 	}
 
 	try {
 		// Resolve LLM config for this agent
 		const normalizedConfig = normalizeConfig(state.llmConfig);
-		const agentConfig = resolveAgentConfig(normalizedConfig, "cartographer");
+		const agentConfig = resolveAgentConfig(normalizedConfig, "gatherer");
 		const llm = createLLM(agentConfig);
 
 		// Create tools for log gathering
 		// Log gatherer typically uses API-based tools (Render, Datadog, etc.)
 		// but we pass clonePaths in case local log files need to be read
-		const tools = createToolsForAgent("cartographer", state.integrations, {
+		const tools = createToolsForAgent("gatherer", state.integrations, {
 			clonePaths: state.clonePaths,
 		});
 
-		// Create the ReAct agent
-		const agent = createReactAgent({
-			llm,
+		// Create the agent with todo list middleware
+		const agent = createAgent({
+			model: llm,
 			tools,
-			messageModifier: LOG_GATHERER_SYSTEM_PROMPT,
+			systemPrompt: LOG_GATHERER_SYSTEM_PROMPT,
 		});
 
 		// Build the input message with targeted query from detective
@@ -159,24 +166,47 @@ Focus specifically on the detective's query above. Search for:
 Please gather the requested log data and summarize your findings.
 `;
 
-		// Invoke the agent
-		const result = await agent.invoke({
-			messages: [{ role: "user", content: inputMessage }],
-		});
+		// Invoke the agent with trace config
+		const result = await agent.invoke(
+			{ messages: [{ role: "user", content: inputMessage }] },
+			mergeTraceConfig(config, traceConfig),
+		);
 
 		// Extract findings from agent response
-		const findings = extractFindingsFromAgentResult(result.messages, "log-gatherer");
+		const rawFindings = extractFindingsFromAgentResult(result.messages, "log-gatherer");
+		const windowLevel = state.validationWindowLevel || 1;
+
+		// Add IDs for correlation tracking
+		const findingsWithIds = addFindingIds(rawFindings);
+
+		// Validate findings
+		const validationResult = validateLogFindings(
+			findingsWithIds,
+			{
+				triggeredAt: state.incident?.triggeredAt,
+				serviceName: state.incident?.serviceName,
+			},
+			windowLevel,
+		);
 
 		logger.info("Log Gatherer complete", {
-			findingsCount: findings.length,
+			total: rawFindings.length,
+			valid: validationResult.valid.length,
+			filtered: validationResult.filtered.length,
+			windowLevel,
 		});
 
+		// Create handoff completion update for targeted gather
+		const handoffCompletion = createHandoffCompletionUpdate(
+			state,
+			`Found ${validationResult.valid.length} log findings`,
+			validationResult.valid.length,
+		);
+
 		return {
-			findings,
-			// Clear handoff request if this was a targeted gather
-			handoffRequest: undefined,
+			findings: validationResult.valid,
 			currentAgent: undefined,
-			agentProgression: { "log-gatherer": true },
+			...handoffCompletion,
 		};
 	} catch (error) {
 		logger.error("Log Gatherer failed", { error });
@@ -192,7 +222,6 @@ Please gather the requested log data and summarize your findings.
 			handoffRequest: undefined,
 			// Set phase to analyzing to avoid getting stuck in targeted_gather
 			phase: "analyzing" as SupervisorPhase,
-			agentProgression: { "log-gatherer": false },
 		};
 	}
 }

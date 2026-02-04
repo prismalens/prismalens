@@ -8,7 +8,8 @@
  * This is a LangGraph node that runs a ReAct agent internally.
  */
 
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
 import {
 	createLLM,
@@ -16,12 +17,15 @@ import {
 	resolveAgentConfig,
 } from "../../llm/factory.js";
 import { createToolsForAgent } from "../../tools/factory.js";
+import { createHandoffCompletionUpdate } from "../../graph/nodes/handoff-processor.js";
+import { buildTraceConfig, mergeTraceConfig } from "../../utils/tracing.js";
 import type {
 	DeploymentChange,
 	Finding,
 	InvestigationState,
 	SupervisorPhase,
 } from "../../types/state.js";
+import { addFindingIds, validateChangeFindings } from "../../utils/validation.js";
 
 const logger = new Logger({ context: "ChangeTracker" });
 
@@ -73,9 +77,14 @@ For each relevant change, report:
  */
 export async function changeTrackerNode(
 	state: InvestigationState,
+	config?: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
+	// Build trace config for this node
+	const traceConfig = buildTraceConfig(state);
+
 	logger.info("Change Tracker starting", {
 		investigationId: state.investigationId,
+		runName: traceConfig.runName,
 	});
 
 	// Check for LLM config
@@ -92,41 +101,68 @@ export async function changeTrackerNode(
 			],
 			handoffRequest: undefined,
 			phase: "analyzing" as SupervisorPhase,
-			agentProgression: { "change-tracker": false },
 		};
 	}
 
 	try {
+		// Get code files for correlation (from code-searcher findings)
+		const codeFiles = buildChangeContext(state).relevantFiles;
+		const windowLevel = state.validationWindowLevel || 1;
+
 		// First, try to use pre-gathered change context
 		const preGatheredFindings = extractFromPreGathered(state);
 		if (preGatheredFindings.length > 0) {
+			// Add IDs for correlation tracking
+			const findingsWithIds = addFindingIds(preGatheredFindings);
+
+			// Validate findings
+			const validationResult = validateChangeFindings(
+				findingsWithIds,
+				{
+					triggeredAt: state.incident?.triggeredAt,
+					serviceName: state.incident?.serviceName,
+					codeFiles,
+				},
+				windowLevel,
+			);
+
 			logger.info("Using pre-gathered change context", {
-				findingsCount: preGatheredFindings.length,
+				total: preGatheredFindings.length,
+				valid: validationResult.valid.length,
+				filtered: validationResult.filtered.length,
+				windowLevel,
 			});
+
+			// Create handoff completion update if this was a targeted gather
+			const handoffCompletion = createHandoffCompletionUpdate(
+				state,
+				`Found ${validationResult.valid.length} change findings (from pre-gathered context)`,
+				validationResult.valid.length,
+			);
+
 			return {
-				findings: preGatheredFindings,
-				handoffRequest: undefined,
+				findings: validationResult.valid,
 				currentAgent: undefined,
-				agentProgression: { "change-tracker": true },
+				...handoffCompletion,
 			};
 		}
 
 		// If no pre-gathered data, run the agent
 		const normalizedConfig = normalizeConfig(state.llmConfig);
-		const agentConfig = resolveAgentConfig(normalizedConfig, "cartographer");
+		const agentConfig = resolveAgentConfig(normalizedConfig, "gatherer");
 		const llm = createLLM(agentConfig);
 
 		// Create tools for change tracking (GitHub, GitLab, etc.)
 		// Pass clonePaths if available for local git history analysis
-		const tools = createToolsForAgent("cartographer", state.integrations, {
+		const tools = createToolsForAgent("gatherer", state.integrations, {
 			clonePaths: state.clonePaths,
 		});
 
-		// Create the ReAct agent
-		const agent = createReactAgent({
-			llm,
+		// Create the agent with todo list middleware
+		const agent = createAgent({
+			model: llm,
 			tools,
-			messageModifier: CHANGE_TRACKER_SYSTEM_PROMPT,
+			systemPrompt: CHANGE_TRACKER_SYSTEM_PROMPT,
 		});
 
 		// Build the input message
@@ -162,23 +198,47 @@ Rate each change by risk score and explain why it might be relevant.
 ${changeContext.relevantFiles.length > 0 ? "Boost risk scores for changes that touch the files identified by code analysis." : ""}
 `;
 
-		// Invoke the agent
-		const result = await agent.invoke({
-			messages: [{ role: "user", content: inputMessage }],
-		});
+		// Invoke the agent with trace config
+		const result = await agent.invoke(
+			{ messages: [{ role: "user", content: inputMessage }] },
+			mergeTraceConfig(config, traceConfig),
+		);
 
 		// Extract findings from agent response
-		const findings = extractFindingsFromAgentResult(result.messages, "change-tracker");
+		const rawFindings = extractFindingsFromAgentResult(result.messages, "change-tracker");
+
+		// Add IDs for correlation tracking
+		const findingsWithIds = addFindingIds(rawFindings);
+
+		// Validate findings
+		const validationResult = validateChangeFindings(
+			findingsWithIds,
+			{
+				triggeredAt: state.incident?.triggeredAt,
+				serviceName: state.incident?.serviceName,
+				codeFiles,
+			},
+			windowLevel,
+		);
 
 		logger.info("Change Tracker complete", {
-			findingsCount: findings.length,
+			total: rawFindings.length,
+			valid: validationResult.valid.length,
+			filtered: validationResult.filtered.length,
+			windowLevel,
 		});
 
+		// Create handoff completion update if this was a targeted gather
+		const handoffCompletion = createHandoffCompletionUpdate(
+			state,
+			`Found ${validationResult.valid.length} change findings`,
+			validationResult.valid.length,
+		);
+
 		return {
-			findings,
-			handoffRequest: undefined,
+			findings: validationResult.valid,
 			currentAgent: undefined,
-			agentProgression: { "change-tracker": true },
+			...handoffCompletion,
 		};
 	} catch (error) {
 		logger.error("Change Tracker failed", { error });
@@ -194,7 +254,6 @@ ${changeContext.relevantFiles.length > 0 ? "Boost risk scores for changes that t
 			handoffRequest: undefined,
 			// Set phase to analyzing to avoid getting stuck in targeted_gather
 			phase: "analyzing" as SupervisorPhase,
-			agentProgression: { "change-tracker": false },
 		};
 	}
 }

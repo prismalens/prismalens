@@ -115,7 +115,7 @@ export type LLMProviderConfig =
  */
 export type AgentName =
 	| "commander"
-	| "cartographer"
+	| "gatherer"
 	| "detective"
 	| "surgeon"
 	| "adversary";
@@ -131,8 +131,8 @@ export type AgentName =
  *   temperature: 0.3,
  * };
  *
- * // Override model for cartographer (faster model)
- * const cartographerOverride: AgentLLMOverride = {
+ * // Override model for gatherer (faster model)
+ * const gathererOverride: AgentLLMOverride = {
  *   model: "claude-3-5-haiku-20241022",
  *   temperature: 0,
  * };
@@ -170,7 +170,7 @@ export type AgentLLMOverride = Partial<LLMProviderConfig>;
  *     temperature: 0.1,
  *   },
  *   agentOverrides: {
- *     cartographer: { model: "claude-3-5-haiku-20241022", temperature: 0 },
+ *     gatherer: { model: "claude-3-5-haiku-20241022", temperature: 0 },
  *     detective: { temperature: 0.3 },
  *     surgeon: { provider: "ollama", model: "qwen3:14b", baseUrl: "http://localhost:11434" },
  *   }

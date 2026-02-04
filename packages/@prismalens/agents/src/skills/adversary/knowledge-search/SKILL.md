@@ -139,4 +139,4 @@ Focus on patterns:
 - RAG search depends on indexed content quality
 - MCP search depends on server availability
 - Pattern match is limited to built-in patterns
-- No tool provides real-time metrics (use Cartographer for that)
+- No tool provides real-time metrics (use Gatherer for that)

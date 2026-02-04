@@ -413,7 +413,7 @@ export function createChangeCorrelationTool(): StructuredTool {
 60-90% of outages are caused by changes.
 
 USE THIS TOOL:
-- After getting deployment history from Cartographer
+- After getting deployment history from Gatherer
 - To score which change most likely caused the incident
 - To identify timing correlations between changes and incidents
 

@@ -204,7 +204,7 @@ export const AGENT_REQUIREMENTS: Record<string, AgentRequirements> = {
 		requiresReasoning: true, // Commander benefits from reasoning
 		estimatedPromptTokens: 8000,
 	},
-	cartographer: {
+	gatherer: {
 		minContextWindow: 8000,
 		requiresTools: true,
 		estimatedPromptTokens: 3000,
@@ -250,7 +250,7 @@ export interface ValidationResult {
  *
  * @param provider - Provider name (anthropic, openai, etc.)
  * @param modelId - Model ID (claude-sonnet-4-20250514, etc.)
- * @param agentName - Agent name (commander, cartographer, etc.)
+ * @param agentName - Agent name (commander, gatherer, etc.)
  * @returns Validation result with errors and warnings
  */
 export async function validateModelForAgent(

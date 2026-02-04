@@ -6,10 +6,10 @@
 // =============================================================================
 
 /**
- * System reminder for Cartographer - Read-only context gatherer.
+ * System reminder for Gatherer - Read-only context gatherer.
  * Emphasizes read-only constraints and summarization requirements.
  */
-export const CARTOGRAPHER_SYSTEM_REMINDER = `
+export const GATHERER_SYSTEM_REMINDER = `
 <system-reminder>
 You are in READ-ONLY mode. You CANNOT modify files, make changes, or execute destructive operations.
 
@@ -96,11 +96,11 @@ IMPORTANT:
  * Get the system reminder for a specific subagent.
  */
 export function getSystemReminder(
-	subagentName: "cartographer" | "detective" | "surgeon" | "adversary",
+	subagentName: "gatherer" | "detective" | "surgeon" | "adversary",
 ): string {
 	switch (subagentName) {
-		case "cartographer":
-			return CARTOGRAPHER_SYSTEM_REMINDER;
+		case "gatherer":
+			return GATHERER_SYSTEM_REMINDER;
 		case "detective":
 			return DETECTIVE_SYSTEM_REMINDER;
 		case "surgeon":
@@ -118,7 +118,7 @@ export function getSystemReminder(
  */
 export function injectSystemReminder(
 	content: string,
-	subagentName: "cartographer" | "detective" | "surgeon" | "adversary",
+	subagentName: "gatherer" | "detective" | "surgeon" | "adversary",
 ): string {
 	const reminder = getSystemReminder(subagentName);
 	if (!reminder) return content;

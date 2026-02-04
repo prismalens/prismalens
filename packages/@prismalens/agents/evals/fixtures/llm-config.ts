@@ -181,7 +181,7 @@ function buildProviderConfig(
 
 const AGENTS = [
 	"commander",
-	"cartographer",
+	"gatherer",
 	"detective",
 	"surgeon",
 	"adversary",

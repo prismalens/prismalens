@@ -4,25 +4,57 @@
  * These tools enable agents to request additional data from other agents.
  * The handoff request is stored in state and processed by the Supervisor.
  *
+ * Supports generalized handoffs (any agent to any agent) with capability validation.
+ *
  * @example
  * // Detective requests more log data
- * const result = await requestMoreData.invoke({
- *   gatherer: "log-gatherer",
- *   query: "Get logs from 10 minutes before the incident",
+ * const result = await handoff.invoke({
+ *   to: "log-gatherer",
  *   reason: "Need to see what happened before the error started",
+ *   context: "Get logs from 10 minutes before the incident",
  * });
  */
 
 import { tool, type StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { HandoffRequest } from "../types/state.js";
+import type { HandoffRequest, HandoffAgentName } from "../types/state.js";
 
 // =============================================================================
-// HANDOFF REQUEST TOOL
+// HANDOFF SCHEMA
 // =============================================================================
 
 /**
- * Schema for the request_more_data tool
+ * All valid handoff target agents
+ */
+const HandoffTargetSchema = z.enum([
+	"log-gatherer",
+	"code-searcher",
+	"change-tracker",
+	"detective",
+	"adversary",
+	"surgeon",
+	"supervisor",
+	"gatherer-coordinator",
+]);
+
+/**
+ * Schema for the universal handoff tool
+ */
+const HandoffSchema = z.object({
+	to: HandoffTargetSchema.describe("Target agent to hand off to"),
+	reason: z.string().describe("Why this handoff is needed"),
+	context: z.string().describe("Specific query or context for the target agent"),
+	todoId: z.string().optional().describe("Related todo ID if task-driven"),
+	priority: z
+		.enum(["normal", "urgent"])
+		.optional()
+		.default("normal")
+		.describe("Priority of the handoff"),
+});
+
+/**
+ * Schema for the detective-specific request_more_data tool.
+ * Simpler than HandoffSchema - only gatherers, with query instead of context.
  */
 const RequestMoreDataSchema = z.object({
 	gatherer: z
@@ -35,6 +67,10 @@ const RequestMoreDataSchema = z.object({
 		.string()
 		.describe("Why this additional data is needed for the hypothesis"),
 });
+
+// =============================================================================
+// HANDOFF STORE
+// =============================================================================
 
 /**
  * Storage for the handoff request.
@@ -57,13 +93,114 @@ export function resetHandoffRequest(): void {
 }
 
 /**
+ * Set a handoff request programmatically (for use by graph nodes)
+ */
+export function setHandoffRequest(request: HandoffRequest): void {
+	pendingHandoffRequest = request;
+}
+
+// =============================================================================
+// UNIVERSAL HANDOFF TOOL
+// =============================================================================
+
+/**
+ * Create the universal handoff tool for any agent.
+ * This tool allows any agent to request handoff to any other agent.
+ *
+ * @param fromAgent - The agent using this tool (source of handoff)
+ */
+export function createHandoffTool(
+	fromAgent: HandoffAgentName,
+): StructuredTool {
+	return tool(
+		async (input) => {
+			try {
+				const validated = HandoffSchema.parse(input);
+
+				// Store the handoff request for the supervisor to process
+				pendingHandoffRequest = {
+					from: fromAgent,
+					to: validated.to as HandoffAgentName,
+					reason: validated.reason,
+					context: validated.context,
+					todoId: validated.todoId,
+					priority: validated.priority,
+				};
+
+				return JSON.stringify(
+					{
+						status: "handoff_requested",
+						from: fromAgent,
+						to: validated.to,
+						reason: validated.reason,
+						priority: validated.priority,
+						message: `Handoff to ${validated.to} recorded. The supervisor will route your request.`,
+						guidance:
+							validated.to === "supervisor"
+								? "Control returned to supervisor for orchestration."
+								: `The ${validated.to} will be invoked with your context.`,
+					},
+					null,
+					2,
+				);
+			} catch (error) {
+				if (error instanceof z.ZodError) {
+					return JSON.stringify({
+						status: "error",
+						error: "Invalid handoff request",
+						details: error.errors,
+					});
+				}
+				return JSON.stringify({
+					status: "error",
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		},
+		{
+			name: "handoff",
+			description: `Request handoff to another agent. Use this to delegate work or request assistance.
+
+AVAILABLE TARGETS:
+- log-gatherer: Fetch logs from observability platforms
+- code-searcher: Search codebase for patterns (requires cloned repos)
+- change-tracker: Get deployment/commit history
+- detective: Form hypotheses from findings
+- adversary: Challenge hypotheses, check scope alignment
+- surgeon: Propose fixes (requires hypothesis with ≥70% confidence)
+- gatherer-coordinator: Route to multiple gatherers
+- supervisor: Return control to orchestrator
+
+WHEN TO USE:
+- Need data from a specific gatherer
+- Need analysis from detective
+- Need hypothesis validation from adversary
+- Ready to propose a fix (hand to surgeon)
+- Task complete, return to supervisor
+
+EXAMPLE:
+handoff({
+  to: "adversary",
+  reason: "Validate hypothesis scope alignment",
+  context: "Check if the hypothesis addresses the original incident symptoms"
+})`,
+			schema: HandoffSchema,
+		},
+	);
+}
+
+// =============================================================================
+// DETECTIVE-SPECIFIC REQUEST MORE DATA TOOL
+// =============================================================================
+
+/**
  * Create the request_more_data tool for the Detective agent.
  *
- * This tool allows Detective to request additional context from gatherers
- * when the current findings are insufficient to form a confident hypothesis.
+ * This is a simplified handoff tool specifically for Detective to request
+ * additional data from gatherers. It has a simpler schema than the generic
+ * createHandoffTool (gatherer, query, reason vs to, context, reason, todoId, priority).
  *
- * The request is stored and the Supervisor will route to the appropriate
- * gatherer on the next iteration.
+ * Use createHandoffTool for other agents that need full handoff capabilities.
  */
 export function createRequestMoreDataTool(): StructuredTool {
 	return tool(
@@ -73,6 +210,7 @@ export function createRequestMoreDataTool(): StructuredTool {
 
 				// Store the handoff request for the supervisor to process
 				pendingHandoffRequest = {
+					from: "detective", // This tool is detective-specific
 					to: validated.gatherer,
 					reason: validated.reason,
 					context: validated.query,

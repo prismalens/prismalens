@@ -125,7 +125,7 @@ export function resolveCapabilityIntegration(
  *
  * @example
  * // If GitHub is configured, returns GitHub tools
- * const tools = createToolsForCapability("code-search", integrations, "cartographer", true);
+ * const tools = createToolsForCapability("code-search", integrations, "gatherer", true);
  */
 export function createToolsForCapability(
 	capabilityName: string,

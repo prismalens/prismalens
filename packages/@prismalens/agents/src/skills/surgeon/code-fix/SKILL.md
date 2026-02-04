@@ -20,7 +20,7 @@ From Detective's hypothesis:
 - What condition triggers it?
 
 ### 2. Locate the Code
-From Cartographer's findings:
+From Gatherer's findings:
 - File path and line numbers
 - Surrounding context
 - Related functions

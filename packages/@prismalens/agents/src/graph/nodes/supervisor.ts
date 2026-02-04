@@ -2,13 +2,19 @@
  * Supervisor Node for Investigation Graph
  *
  * The Supervisor is the central router that decides which agent to invoke next.
- * It replaces the DeepAgents Commander with a LangGraph-native pattern that
- * supports parallel execution, handoff-based routing, and shared state.
+ * Uses simple findings-based routing without todo tracking.
+ *
+ * Routing is based on:
+ * - Phase (gathering, analyzing, fixing)
+ * - Findings count (from gatherers)
+ * - Hypothesis presence (from detective)
+ * - Agent completion tracking via agentProgress
  *
  * @see https://langchain-ai.github.io/langgraphjs/concepts/multi_agent
  */
 
 import { Logger } from "@prismalens/logger";
+import { shouldChallengeHypothesis } from "../../agents/analysis/adversary.js";
 import type {
 	Finding,
 	IntegrationContext,
@@ -22,9 +28,6 @@ const logger = new Logger({ context: "Supervisor" });
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-
-/** Maximum number of targeted gather iterations to prevent infinite loops */
-const MAX_GATHER_ITERATIONS = 2;
 
 /** Confidence threshold for proceeding to fix phase */
 const FIX_CONFIDENCE_THRESHOLD = 70;
@@ -56,19 +59,40 @@ export function hasCodeIntegration(
 }
 
 /**
- * Get the best hypothesis from findings
+ * Check if state has any cloned repositories available.
+ */
+export function hasClonedRepos(
+	clonePaths: Record<string, string> | undefined,
+): boolean {
+	return !!clonePaths && Object.keys(clonePaths).length > 0;
+}
+
+/**
+ * Get the best hypothesis from state
  */
 function getBestHypothesisFromState(state: InvestigationState): {
 	confidence: number;
 	claim?: string;
 } | null {
-	if (state.hypotheses.length === 0) {
-		return null;
-	}
+	if (state.hypotheses.length === 0) return null;
 	return state.hypotheses.reduce(
 		(best, h) => (h.confidence > (best?.confidence || 0) ? h : best),
 		null as { confidence: number; claim?: string } | null,
 	);
+}
+
+/**
+ * Check if code-searcher has produced findings.
+ */
+function hasCodeSearcherFindings(findings: Finding[]): boolean {
+	return findings.some((f) => f.source === "code-searcher");
+}
+
+/**
+ * Check if change-tracker has produced findings.
+ */
+function hasChangeTrackerFindings(findings: Finding[]): boolean {
+	return findings.some((f) => f.source === "change-tracker");
 }
 
 // =============================================================================
@@ -79,9 +103,10 @@ function getBestHypothesisFromState(state: InvestigationState): {
  * Supervisor node - decides which agent to invoke next.
  * This node is called after each agent completes and routes to the next agent.
  *
- * IMPORTANT: Do NOT clear handoffRequest here! The routing function needs it
- * to decide which gatherer to dispatch to. The handoff request is cleared
- * by the targeted gatherer when it processes the request.
+ * Uses simple state-based routing:
+ * - Check findings to determine if gatherers have completed
+ * - Check hypotheses to determine if detective has completed
+ * - Route based on phase and available data
  */
 export async function supervisorNode(
 	state: InvestigationState,
@@ -94,24 +119,13 @@ export async function supervisorNode(
 		hasHandoffRequest: !!state.handoffRequest,
 	});
 
-	// The supervisor doesn't modify state - it's mainly for routing
-	// The actual routing happens in supervisorRoute
-	// Handoff request is cleared by the targeted gatherer, not here
+	// No state modifications needed - routing is handled by supervisorRoute
 	return {};
 }
 
 // =============================================================================
 // ROUTING FUNCTION
 // =============================================================================
-
-/**
- * Check if state has any cloned repositories available.
- */
-export function hasClonedRepos(
-	clonePaths: Record<string, string> | undefined,
-): boolean {
-	return !!clonePaths && Object.keys(clonePaths).length > 0;
-}
 
 /**
  * Supervisor routing function - determines which agent to invoke next.
@@ -122,103 +136,98 @@ export function hasClonedRepos(
  * - change-tracker uses code findings to correlate commits to files
  * - log-gatherer only runs for targeted requests from detective
  *
+ * ROUTING BASED ON:
+ * - Phase-based logic
+ * - Findings presence (gatherers done when they produce findings)
+ * - Hypothesis presence (detective done when hypothesis formed)
+ *
  * Returns:
  * - Single string for sequential execution
  * - "complete" to end the workflow
  */
-export function supervisorRoute(
-	state: InvestigationState,
-): string {
+export function supervisorRoute(state: InvestigationState): string {
 	const {
 		phase,
 		hypotheses,
+		findings,
 		gatherIterations,
 		handoffRequest,
 		clonePaths,
-		agentProgression,
-		unavailableGatherers = [],
+		adversaryChallenges,
 	} = state;
+
+	// Check agent completion via findings/state
+	const codeComplete = !hasClonedRepos(clonePaths) || hasCodeSearcherFindings(findings);
+	const changeComplete = hasChangeTrackerFindings(findings);
+	const adversaryComplete = adversaryChallenges.length > 0;
 
 	logger.info("Supervisor routing", {
 		phase,
-		findingsCount: state.findings.length,
+		findingsCount: findings.length,
 		hypothesesCount: hypotheses.length,
 		gatherIterations,
 		hasHandoffRequest: !!handoffRequest,
-		agentProgression,
+		codeComplete,
+		changeComplete,
+		adversaryComplete,
 	});
 
 	// ==========================================================================
 	// Phase 1: Sequential gathering (code-searcher → change-tracker)
-	// Log data comes from preGather, not log-gatherer.
 	// ==========================================================================
 	if (phase === "gathering") {
-		const codeComplete = agentProgression["code-searcher"] === true;
-		const changeComplete = agentProgression["change-tracker"] === true;
-
 		// 1. First: Code search (uses preGathered log data for patterns)
-		if (!codeComplete) {
-			if (hasClonedRepos(clonePaths)) {
-				logger.info("Dispatching to code-searcher (sequential)");
-				return "code-searcher";
-			}
-			// No clone paths - code-searcher is structurally unavailable
-			// Mark as unavailable and skip to change-tracker
-			logger.info("Skipping code-searcher (no clone paths)");
+		if (!codeComplete && hasClonedRepos(clonePaths)) {
+			logger.info("Dispatching to gatherer-coordinator for code-searcher");
+			return "gatherer-coordinator";
 		}
 
 		// 2. Second: Change tracking (uses code findings for file correlation)
 		if (!changeComplete) {
-			logger.info("Dispatching to change-tracker (sequential)");
-			return "change-tracker";
+			logger.info("Dispatching to gatherer-coordinator for change-tracker");
+			return "gatherer-coordinator";
 		}
 
-		// All gatherers complete → proceed to detective
-		logger.info("Sequential gathering complete, proceeding to detective", {
-			findingsCount: state.findings.length,
+		// All gatherers complete → proceed to quality gate
+		logger.info("Gathering complete, proceeding to quality gate", {
+			findingsCount: findings.length,
 		});
-		return "detective";
+		return "qualityGate";
 	}
 
 	// ==========================================================================
-	// Phase 2: Handle Detective's handoff request (targeted gather)
+	// Phase 2: Handle validated handoff request (targeted gather)
 	// ==========================================================================
-	// Check handoffRequest FIRST - when detective requests more data, it sets
-	// both phase="targeted_gather" AND handoffRequest. We dispatch to gatherer first.
-	if (handoffRequest && gatherIterations < MAX_GATHER_ITERATIONS) {
-		// Don't dispatch to structurally unavailable gatherers
-		if (unavailableGatherers.includes(handoffRequest.to)) {
-			logger.warn("Gatherer structurally unavailable, skipping", {
-				target: handoffRequest.to,
-				unavailableGatherers,
-			});
-			// Clear handoff and return to detective
-			return "detective";
-		}
-
-		logger.info("Dispatching to targeted gatherer", {
+	if (handoffRequest) {
+		logger.info("Dispatching validated handoff to gatherer-coordinator", {
 			target: handoffRequest.to,
 			reason: handoffRequest.reason,
 			iteration: gatherIterations,
 		});
-		return handoffRequest.to;
+		return "gatherer-coordinator";
 	}
 
 	// ==========================================================================
 	// Phase 3: After targeted gather completes, back to detective
 	// ==========================================================================
-	// Only reach here when phase is targeted_gather AND handoffRequest is cleared
-	// (i.e., the gatherer has completed and cleared the request)
 	if (phase === "targeted_gather") {
 		logger.info("Targeted gather complete, returning to detective");
 		return "detective";
 	}
 
 	// ==========================================================================
-	// Phase 4: After analysis, decide: fix or complete
+	// Phase 4: After analysis, decide: adversary, fix, or complete
 	// ==========================================================================
 	if (phase === "analyzing") {
 		const bestHypothesis = getBestHypothesisFromState(state);
+
+		// Check if Adversary should challenge the hypothesis (only once)
+		if (!adversaryComplete && shouldChallengeHypothesis(state)) {
+			logger.info("Routing to adversary for hypothesis challenge", {
+				confidence: bestHypothesis?.confidence,
+			});
+			return "adversary";
+		}
 
 		if (bestHypothesis && bestHypothesis.confidence >= FIX_CONFIDENCE_THRESHOLD) {
 			logger.info("High confidence hypothesis, proceeding to surgeon", {
@@ -253,23 +262,16 @@ export function supervisorRoute(
 // =============================================================================
 // AGENT NODE WRAPPERS
 // =============================================================================
-// These functions wrap the actual agent execution and update state.
-// They are called by the LangGraph nodes.
-// =============================================================================
 
 /**
  * Create findings from pre-gathered context.
- * Used when we already have data from the preGather node.
  */
 export function findingsFromPreGathered(state: InvestigationState): Finding[] {
 	const findings: Finding[] = [];
 	const preGathered = state.preGatheredContext;
 
-	if (!preGathered) {
-		return findings;
-	}
+	if (!preGathered) return findings;
 
-	// Convert recent changes to findings
 	for (const deployment of preGathered.recentChanges.deployments) {
 		findings.push({
 			source: "change-tracker",
@@ -287,12 +289,11 @@ export function findingsFromPreGathered(state: InvestigationState): Finding[] {
 			type: "commit",
 			summary: `Commit ${commit.sha.slice(0, 7)}: ${commit.message}`,
 			details: commit,
-			relevance: 50, // Default relevance for commits
+			relevance: 50,
 			timestamp: commit.timestamp,
 		});
 	}
 
-	// Convert log preview to findings
 	if (preGathered.logPreview?.errorLogs) {
 		for (const log of preGathered.logPreview.errorLogs.slice(0, 10)) {
 			findings.push({
@@ -321,10 +322,8 @@ export function getNextPhase(
 		case "log-gatherer":
 		case "code-searcher":
 		case "change-tracker":
-			// Gatherers either continue gathering or transition to analyzing
 			return hasHandoffRequest ? "targeted_gather" : "gathering";
 		case "detective":
-			// Detective either requests more data or completes analysis
 			return hasHandoffRequest ? "analyzing" : "analyzing";
 		case "surgeon":
 			return "fixing";

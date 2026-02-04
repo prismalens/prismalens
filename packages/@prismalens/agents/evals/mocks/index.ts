@@ -483,6 +483,9 @@ export * from "./change-scenarios.js";
 // Full PreGatheredContext factory
 export * from "./context-factory.js";
 
+// Timeline builder for dynamic timestamps
+export * from "./timeline.js";
+
 // =============================================================================
 // EXPORTS
 // =============================================================================

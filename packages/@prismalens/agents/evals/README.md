@@ -21,7 +21,7 @@ pnpm eval:tools                        # Tool tests
 ## What is Agent Evaluation?
 
 Agent evaluation tests whether the investigation agents correctly:
-1. **Gather context** - Cartographer finds relevant code, logs, and changes
+1. **Gather context** - Gatherer finds relevant code, logs, and changes
 2. **Form hypotheses** - Detective identifies root causes with confidence scores
 3. **Propose fixes** - Surgeon recommends actionable solutions
 
@@ -41,7 +41,7 @@ We use [LangSmith](https://smith.langchain.com) to track experiments, score outp
 ├─────────────────────────────────────────────────────────┤
 │                  Component Level                        │
 │         Individual subagent testing                     │
-│    Detective, Surgeon, Cartographer in isolation        │
+│    Detective, Surgeon, Gatherer in isolation        │
 ├─────────────────────────────────────────────────────────┤
 │                    Tool Level                           │
 │           Individual tool functions                     │
@@ -194,8 +194,8 @@ PRISMALENS_COMMANDER_PROVIDER=groq
 PRISMALENS_COMMANDER_MODEL=llama-3.3-70b-versatile
 PRISMALENS_DETECTIVE_PROVIDER=anthropic
 PRISMALENS_DETECTIVE_MODEL=claude-sonnet-4-20250514
-PRISMALENS_CARTOGRAPHER_PROVIDER=groq
-PRISMALENS_CARTOGRAPHER_MODEL=llama-3.3-70b-versatile
+PRISMALENS_GATHERER_PROVIDER=groq
+PRISMALENS_GATHERER_MODEL=llama-3.3-70b-versatile
 PRISMALENS_SURGEON_PROVIDER=ollama
 PRISMALENS_SURGEON_MODEL=qwen3-coder:30b
 
@@ -433,7 +433,7 @@ evaluateTrajectory(toolCalls, options) → {
 | Agent | Expected Tools | Forbidden Tools |
 |-------|---------------|-----------------|
 | Commander | task (delegation) | form_hypothesis, propose_fix |
-| Cartographer | github_search, get_file, render_logs | form_hypothesis, propose_fix |
+| Gatherer | github_search, get_file, render_logs | form_hypothesis, propose_fix |
 | Detective | form_hypothesis, evaluate_hypothesis | propose_fix |
 | Surgeon | propose_fix, validate_code_change | form_hypothesis |
 

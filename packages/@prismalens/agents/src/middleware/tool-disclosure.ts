@@ -86,13 +86,13 @@ export interface ToolDisclosureMiddlewareState {
  * @example
  * const middleware = createToolDisclosureMiddleware({
  *   integrations: [...],
- *   agentName: "cartographer",
+ *   agentName: "gatherer",
  *   readOnly: true,
  *   preEnabledBundles: ["github-code"],
  * });
  *
  * const subagent: SubAgent = {
- *   name: "cartographer",
+ *   name: "gatherer",
  *   systemPrompt: "...",
  *   tools: [], // Meta-tools added by middleware
  *   middleware: [middleware],
@@ -204,7 +204,7 @@ function createRegistryFromOptions(
  * @example
  * const middleware = createDefaultToolDisclosureMiddleware({
  *   integrations: [...],
- *   agentName: "cartographer",
+ *   agentName: "gatherer",
  * });
  */
 export function createDefaultToolDisclosureMiddleware(options: {

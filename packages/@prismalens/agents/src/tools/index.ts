@@ -60,7 +60,11 @@ export {
 	createAnalyzeFindingsTool,
 	createCorrelateEventsTool,
 	createHandoffTools,
+	createHandoffTool,
 	createRequestMoreDataTool,
 	getPendingHandoffRequest,
 	resetHandoffRequest,
+	setHandoffRequest,
 } from "./handoffs.js";
+
+// Todos removed - using simple findings-based routing instead

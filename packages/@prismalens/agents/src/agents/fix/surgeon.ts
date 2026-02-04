@@ -7,7 +7,8 @@
  * This is a LangGraph node that runs a ReAct agent internally.
  */
 
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
 import {
 	createLLM,
@@ -21,6 +22,7 @@ import {
 	resetRiskAssessmentStore,
 	resetRunbookStore,
 } from "../../tools/fix-proposal.js";
+import { buildTraceConfig, mergeTraceConfig } from "../../utils/tracing.js";
 import type {
 	Fix,
 	Hypothesis,
@@ -119,11 +121,16 @@ For incidents that could have been detected earlier:
  */
 export async function surgeonNode(
 	state: InvestigationState,
+	config?: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
+	// Build trace config for this node
+	const traceConfig = buildTraceConfig(state);
+
 	logger.info("Surgeon starting", {
 		investigationId: state.investigationId,
 		hypothesesCount: state.hypotheses.length,
 		confidence: state.confidence,
+		runName: traceConfig.runName,
 	});
 
 	// Check for LLM config
@@ -156,20 +163,21 @@ export async function surgeonNode(
 		// Create tools for the Surgeon
 		const tools = createSurgeonTools();
 
-		// Create the ReAct agent
-		const agent = createReactAgent({
-			llm,
+		// Create the agent with todo list middleware
+		const agent = createAgent({
+			model: llm,
 			tools,
-			messageModifier: SURGEON_SYSTEM_PROMPT,
+			systemPrompt: SURGEON_SYSTEM_PROMPT,
 		});
 
 		// Build the input message
 		const inputMessage = buildSurgeonInput(state);
 
-		// Invoke the agent
-		const result = await agent.invoke({
-			messages: [{ role: "user", content: inputMessage }],
-		});
+		// Invoke the agent with trace config
+		const result = await agent.invoke(
+			{ messages: [{ role: "user", content: inputMessage }] },
+			mergeTraceConfig(config, traceConfig),
+		);
 
 		// Extract recommendations from the store
 		const recommendations = getStoredRecommendations();
@@ -188,7 +196,6 @@ export async function surgeonNode(
 			fix,
 			recommendations,
 			currentAgent: undefined,
-			agentProgression: { surgeon: true },
 		};
 	} catch (error) {
 		logger.error("Surgeon failed", { error });
@@ -202,7 +209,6 @@ export async function surgeonNode(
 					recoverable: false,
 				},
 			],
-			agentProgression: { surgeon: false },
 		};
 	}
 }

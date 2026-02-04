@@ -23,7 +23,14 @@ import {
 	createMockDeployment,
 	createMockCommit,
 	createRiskyCommit,
+	createTimeline,
 } from "../mocks/index.js";
+
+// =============================================================================
+// TIMELINE: All timestamps relative to incident time
+// =============================================================================
+// This ensures validation windows align correctly regardless of when tests run.
+const timeline = createTimeline();
 
 // =============================================================================
 // MUTUAL EXCLUSIVITY: Forbidden tools for non-clone scenarios
@@ -69,6 +76,7 @@ export const nullPointerException: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "api-server",
 				alertCount: 3,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -97,7 +105,7 @@ export const nullPointerException: ScenarioWithMocks = {
 							"  at com.example.UserController.getProfile(UserController.java:28)\n" +
 							"  at sun.reflect.NativeMethodAccessorImpl.invoke0(Native)\n",
 						count: "1247",
-						first_seen: "2024-01-15T10:30:00Z",
+						first_seen: timeline.beforeMinutes(30), // 30 minutes before incident
 					},
 				}),
 			],
@@ -116,7 +124,7 @@ export const nullPointerException: ScenarioWithMocks = {
 								"deployed 30 minutes before incident",
 								"contains code changes to UserService",
 							],
-							timestamp: "2024-01-15T10:00:00Z",
+							timestamp: timeline.beforeMinutes(30), // 30 min before incident
 						}),
 					],
 					commits: [
@@ -124,14 +132,14 @@ export const nullPointerException: ScenarioWithMocks = {
 							sha: "abc123def",
 							message: "perf: remove redundant null check in getUser() for faster response time",
 							author: "developer@example.com",
-							timestamp: "2024-01-14T15:30:00Z",
+							timestamp: timeline.beforeHours(19), // ~19 hours before incident
 							repository: "org/api-server",
 						}),
 						createMockCommit({
 							sha: "def456ghi",
 							message: "feat: add user caching to reduce database load",
 							author: "developer@example.com",
-							timestamp: "2024-01-13T10:00:00Z",
+							timestamp: timeline.beforeDays(2), // 2 days before
 						}),
 					],
 					configChanges: [],
@@ -198,26 +206,26 @@ public class UserService {
 					sha: "abc123def",
 					message: "perf: remove redundant null check in getUser() for faster response time",
 					author: "developer@example.com",
-					date: "2024-01-14T15:30:00Z",
+					date: timeline.beforeHours(19), // 19 hours before incident
 				},
 				// Unrelated commits (noise)
 				{
 					sha: "def456ghi",
 					message: "feat: add user caching to reduce database load",
 					author: "developer@example.com",
-					date: "2024-01-13T10:00:00Z",
+					date: timeline.beforeDays(2), // 2 days before
 				},
 				{
 					sha: "ghi789jkl",
 					message: "docs: update API documentation for user endpoints",
 					author: "tech-writer@example.com",
-					date: "2024-01-12T14:00:00Z",
+					date: timeline.beforeDays(3), // 3 days before
 				},
 				{
 					sha: "jkl012mno",
 					message: "test: add integration tests for user service",
 					author: "qa@example.com",
-					date: "2024-01-11T09:00:00Z",
+					date: timeline.beforeDays(4), // 4 days before
 				},
 			],
 		},
@@ -225,25 +233,25 @@ public class UserService {
 			getLogs: [
 				// Primary error
 				{
-					timestamp: "2024-01-15T10:30:15Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "java.lang.NullPointerException at com.example.service.UserService.getUser(UserService.java:42)",
 				},
 				// Context
 				{
-					timestamp: "2024-01-15T10:30:14Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "info",
 					message: "Processing request GET /api/users/nonexistent-123",
 				},
 				// More context
 				{
-					timestamp: "2024-01-15T10:30:12Z",
+					timestamp: timeline.beforeMinutes(2), // 2 minutes before
 					level: "info",
 					message: "Cache miss for user nonexistent-123",
 				},
 				// Noise
 				{
-					timestamp: "2024-01-15T10:29:00Z",
+					timestamp: timeline.beforeMinutes(5), // 5 minutes before
 					level: "info",
 					message: "Health check passed",
 				},
@@ -253,7 +261,7 @@ public class UserService {
 					id: "srv-api-001",
 					name: "api-server",
 					status: "running",
-					lastDeployedAt: "2024-01-14T16:00:00Z",
+					lastDeployedAt: timeline.beforeMinutes(30), // deployed 30 min before incident
 					lastDeployStatus: "succeeded",
 				},
 			],
@@ -286,6 +294,7 @@ export const undefinedAccess: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "checkout-service",
 				alertCount: 2,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -353,25 +362,25 @@ export class OrderService {
 					sha: "xyz789abc",
 					message: "feat: add API order creation without customer requirement",
 					author: "api-dev@example.com",
-					date: "2024-01-14T11:00:00Z",
+					date: timeline.beforeHours(24), // 24 hours before incident
 				},
 				{
 					sha: "abc012def",
 					message: "refactor: move customer to optional field for B2B orders",
 					author: "api-dev@example.com",
-					date: "2024-01-13T16:00:00Z",
+					date: timeline.beforeDays(2), // 2 days before
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T09:45:30Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "TypeError: Cannot read property 'id' of undefined at OrderService.processOrder (order.ts:87)",
 				},
 				{
-					timestamp: "2024-01-15T09:45:29Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "info",
 					message: "Received POST /api/orders from API key: partner-api-key-123",
 				},
@@ -409,6 +418,7 @@ export const memoryLeak: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "api-server",
 				alertCount: 4,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -523,30 +533,30 @@ export function clearContext(requestId: string): void {
 					sha: "mem123abc",
 					message: "feat: add in-memory user cache for performance",
 					author: "perf-engineer@example.com",
-					date: "2024-01-10T10:00:00Z",
+					date: timeline.beforeDays(5), // 5 days before incident
 				},
 				{
 					sha: "mem456def",
 					message: "refactor: use singleton pattern for UserCache",
 					author: "perf-engineer@example.com",
-					date: "2024-01-09T14:00:00Z",
+					date: timeline.beforeDays(6), // 6 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T16:00:00Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "warn",
 					message: "Heap usage at 80%: 3.2GB / 4GB. GC frequency elevated.",
 				},
 				{
-					timestamp: "2024-01-15T12:00:00Z",
+					timestamp: timeline.beforeHours(4), // 4 hours before incident
 					level: "warn",
 					message: "Heap usage at 60%: 2.4GB / 4GB. Consider memory profiling.",
 				},
 				{
-					timestamp: "2024-01-15T08:00:00Z",
+					timestamp: timeline.beforeHours(8), // 8 hours before incident
 					level: "info",
 					message: "Service started. Initial heap: 512MB.",
 				},
@@ -581,6 +591,7 @@ export const raceCondition: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "order-service",
 				alertCount: 2,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -665,30 +676,30 @@ public class CartService {
 					sha: "race123",
 					message: "feat: add async cart updates for better UX",
 					author: "frontend-dev@example.com",
-					date: "2024-01-12T11:00:00Z",
+					date: timeline.beforeDays(3), // 3 days before incident
 				},
 				{
 					sha: "race456",
 					message: "perf: remove unnecessary locks from cart operations",
 					author: "perf-dev@example.com",
-					date: "2024-01-11T15:00:00Z",
+					date: timeline.beforeDays(4), // 4 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T14:30:45Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "ConcurrentModificationException in CartService.getItems",
 				},
 				{
-					timestamp: "2024-01-15T14:30:44Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "debug",
 					message: "Thread-A: Getting cart items for checkout",
 				},
 				{
-					timestamp: "2024-01-15T14:30:44Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "debug",
 					message: "Thread-B: Adding item to cart async",
 				},
@@ -728,6 +739,7 @@ export const logicBug: ScenarioWithMocks = {
 				serviceName: "user-service",
 				customerImpact: "Users losing customized settings, high support volume",
 				alertCount: 1,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -809,13 +821,13 @@ export class PreferenceService {
 					sha: "logic123",
 					message: "feat: add preference versioning to reset stale preferences",
 					author: "backend-dev@example.com",
-					date: "2024-01-08T09:00:00Z",
+					date: timeline.beforeDays(7), // 7 days before incident (last week)
 				},
 				{
 					sha: "logic456",
 					message: "fix: handle edge case where preferences are very old",
 					author: "backend-dev@example.com",
-					date: "2024-01-07T16:00:00Z",
+					date: timeline.beforeDays(8), // 8 days before incident
 				},
 			],
 		},
@@ -823,17 +835,17 @@ export class PreferenceService {
 			getLogs: [
 				// No errors! That's the problem - it's silent corruption
 				{
-					timestamp: "2024-01-15T05:00:00Z",
+					timestamp: timeline.beforeHours(6), // 6 hours before incident
 					level: "info",
 					message: "Preferences outdated, returning defaults for user-456",
 				},
 				{
-					timestamp: "2024-01-15T04:30:00Z",
+					timestamp: timeline.beforeHours(7), // 7 hours before incident
 					level: "info",
 					message: "User user-456 logged in from timezone America/Los_Angeles",
 				},
 				{
-					timestamp: "2024-01-15T04:00:00Z",
+					timestamp: timeline.beforeHours(8), // 8 hours before incident
 					level: "info",
 					message: "Preference check: lastModified=2023-12-31T23:00:00Z, default=2024-01-01T00:00:00Z",
 				},
@@ -870,6 +882,3 @@ export const mediumCodeBugScenarios = codeBugScenarios.filter(
 export const hardCodeBugScenarios = codeBugScenarios.filter(
 	(s) => s.difficulty === "hard",
 );
-
-// Legacy export for backwards compatibility
-export { nullPointerException as nullPointerExceptionScenario };

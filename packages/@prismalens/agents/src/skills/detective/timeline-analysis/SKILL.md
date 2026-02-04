@@ -20,7 +20,7 @@ Construct a detailed chronological timeline of events to identify the sequence o
 - **Last Known Good**: Most recent normal operation
 
 ### 2. Gather Timeline Events
-From Cartographer's findings, extract:
+From Gatherer's findings, extract:
 - Deployments with timestamps
 - Code commits and merges
 - Configuration changes

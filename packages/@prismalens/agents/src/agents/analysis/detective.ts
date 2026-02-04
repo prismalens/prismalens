@@ -7,7 +7,8 @@
  * This is a LangGraph node that runs a ReAct agent internally.
  */
 
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
 import {
 	createLLM,
@@ -24,6 +25,8 @@ import {
 	getStoredHypotheses,
 	resetHypothesisStore,
 } from "../../tools/index.js";
+import { handoffManager } from "../../utils/handoff-manager.js";
+import { buildTraceConfig, mergeTraceConfig } from "../../utils/tracing.js";
 import type {
 	Finding,
 	Hypothesis,
@@ -32,6 +35,64 @@ import type {
 } from "../../types/state.js";
 
 const logger = new Logger({ context: "Detective" });
+
+// =============================================================================
+// ADVERSARY DIALOGUE CONSTANTS
+// =============================================================================
+
+/** High confidence threshold that triggers adversary dialogue */
+const HIGH_CONFIDENCE_THRESHOLD = 85;
+
+/** Thin evidence threshold - trigger if evidence count is at or below this */
+const THIN_EVIDENCE_THRESHOLD = 2;
+
+// =============================================================================
+// ADVERSARY DIALOGUE LOGIC
+// =============================================================================
+
+/**
+ * Determine if detective should trigger direct dialogue with adversary.
+ *
+ * Triggers when:
+ * - High confidence hypothesis (>=85%) with thin evidence (<=2 items)
+ * - This is a potential "error entrenchment" scenario
+ * - Adversary challenge can validate or refine the hypothesis
+ *
+ * Skips when:
+ * - No hypothesis formed
+ * - Already low confidence (adversary won't help)
+ * - Strong evidence base (no need for challenge)
+ * - Already been challenged (adversaryComplete = true)
+ */
+function shouldTriggerAdversaryDialogue(
+	bestHypothesis: Hypothesis | null,
+	state: InvestigationState,
+): boolean {
+	// No hypothesis to challenge
+	if (!bestHypothesis) {
+		return false;
+	}
+
+	// Already been challenged - check adversaryChallenges array instead of agentProgression
+	if (state.adversaryChallenges.length > 0) {
+		return false;
+	}
+
+	const { confidence, evidence } = bestHypothesis;
+	const evidenceCount = evidence?.length || 0;
+
+	// High confidence with thin evidence = entrenchment risk
+	if (confidence >= HIGH_CONFIDENCE_THRESHOLD && evidenceCount <= THIN_EVIDENCE_THRESHOLD) {
+		logger.info("Triggering direct adversary dialogue", {
+			confidence,
+			evidenceCount,
+			reason: "High confidence with thin evidence",
+		});
+		return true;
+	}
+
+	return false;
+}
 
 // =============================================================================
 // SYSTEM PROMPT
@@ -111,11 +172,19 @@ If the current findings are insufficient, use **request_more_data** to ask a gat
  */
 export async function detectiveNode(
 	state: InvestigationState,
+	config?: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
+	const finalAnalysisOnly = state.finalAnalysisOnly || false;
+
+	// Build trace config for this node
+	const traceConfig = buildTraceConfig(state, finalAnalysisOnly ? "Final Analysis" : undefined);
+
 	logger.info("Detective starting", {
 		investigationId: state.investigationId,
 		findingsCount: state.findings.length,
 		gatherIterations: state.gatherIterations,
+		finalAnalysisOnly,
+		runName: traceConfig.runName,
 	});
 
 	// Check for LLM config
@@ -145,27 +214,35 @@ export async function detectiveNode(
 		const llm = createLLM(agentConfig);
 
 		// Create tools for the Detective
+		// In final analysis mode, only provide hypothesis tools (no data requests)
 		const hypothesisTools = createDetectiveTools();
-		const handoffTools = createHandoffTools();
-		const tools = [...hypothesisTools, ...handoffTools];
+		let tools = [...hypothesisTools];
 
-		// Create the ReAct agent
-		const agent = createReactAgent({
-			llm,
+		if (!finalAnalysisOnly) {
+			const handoffTools = createHandoffTools();
+			tools = [...hypothesisTools, ...handoffTools];
+		} else {
+			logger.info("Final analysis mode - handoff tools disabled");
+		}
+
+		// Create the agent with todo list middleware
+		const agent = createAgent({
+			model: llm,
 			tools,
-			messageModifier: DETECTIVE_SYSTEM_PROMPT,
+			systemPrompt: DETECTIVE_SYSTEM_PROMPT,
 		});
 
 		// Build the input message with findings
-		const inputMessage = buildDetectiveInput(state);
+		const inputMessage = buildDetectiveInput(state, finalAnalysisOnly);
 
-		// Invoke the agent
-		const result = await agent.invoke({
-			messages: [{ role: "user", content: inputMessage }],
-		});
+		// Invoke the agent with trace config
+		await agent.invoke(
+			{ messages: [{ role: "user", content: inputMessage }] },
+			mergeTraceConfig(config, traceConfig),
+		);
 
 		// Extract hypotheses from the hypothesis store
-		const hypotheses = getStoredHypotheses();
+		let hypotheses = getStoredHypotheses();
 
 		// Check for handoff request
 		const handoffRequest = getPendingHandoffRequest();
@@ -174,7 +251,24 @@ export async function detectiveNode(
 		let phase: SupervisorPhase = "analyzing";
 		let gatherIterations = state.gatherIterations;
 
-		if (handoffRequest) {
+		// In final analysis mode, always go to analyzing (ignore any handoff requests)
+		if (finalAnalysisOnly) {
+			// Add fallback hypothesis if no hypothesis formed in final analysis mode
+			if (hypotheses.length === 0) {
+				logger.warn("Final analysis mode: no hypothesis formed, adding fallback");
+				hypotheses = [{
+					claim: "Root cause could not be determined with available data",
+					confidence: 20,
+					evidence: state.findings.slice(0, 5).map(f => f.summary),
+					category: "unknown",
+					timestamp: new Date().toISOString(),
+				}];
+			}
+			logger.info("Final analysis complete, proceeding to analyzing phase", {
+				hypothesesCount: hypotheses.length,
+			});
+			// Clear any accidental handoff request (shouldn't happen since tools are hidden)
+		} else if (handoffRequest) {
 			phase = "targeted_gather";
 			gatherIterations = state.gatherIterations + 1;
 			logger.info("Detective requested more data", {
@@ -190,22 +284,34 @@ export async function detectiveNode(
 			null as Hypothesis | null,
 		);
 
+		// Check if we should trigger direct adversary challenge
+		// Conditions: high confidence (>=85%) with thin evidence (<=2)
+		const needsAdversaryChallenge = shouldTriggerAdversaryDialogue(
+			bestHypothesis,
+			state,
+		);
+
 		logger.info("Detective complete", {
 			hypothesesCount: hypotheses.length,
 			bestConfidence: bestHypothesis?.confidence,
 			hasHandoffRequest: !!handoffRequest,
+			needsAdversaryChallenge,
 		});
 
 		return {
 			phase,
 			hypotheses,
-			handoffRequest: handoffRequest || undefined,
+			// In final analysis mode, ignore any handoff request
+			handoffRequest: finalAnalysisOnly ? undefined : (handoffRequest || undefined),
 			gatherIterations,
 			rootCause: bestHypothesis?.claim || null,
 			rootCauseCategory: bestHypothesis?.category || null,
 			confidence: bestHypothesis?.confidence || null,
 			currentAgent: undefined,
-			agentProgression: { detective: true },
+			// Clear the final analysis flag
+			finalAnalysisOnly: false,
+			// Set flag for direct adversary dialogue
+			needsAdversaryChallenge,
 		};
 	} catch (error) {
 		logger.error("Detective failed", { error });
@@ -219,7 +325,6 @@ export async function detectiveNode(
 					recoverable: false,
 				},
 			],
-			agentProgression: { detective: false },
 		};
 	}
 }
@@ -227,8 +332,11 @@ export async function detectiveNode(
 /**
  * Build the input message for the Detective agent.
  * Includes incident context and all gathered findings.
+ *
+ * @param state Investigation state
+ * @param finalAnalysisOnly If true, detective MUST form hypotheses (no data requests)
  */
-function buildDetectiveInput(state: InvestigationState): string {
+function buildDetectiveInput(state: InvestigationState, finalAnalysisOnly: boolean = false): string {
 	const incidentInfo = state.incident || {
 		title: state.primaryAlert?.title || "Unknown",
 		description: state.primaryAlert?.description || "No description",
@@ -291,6 +399,31 @@ ${similarIncidents.map((i) => `- INC-${i.number || i.incidentId} (${i.similarity
 		}
 	}
 
+	// Build handoff visibility section (only if not in final analysis mode)
+	const handoffSection = finalAnalysisOnly ? "" : buildHandoffSection(state);
+
+	// Task instructions depend on mode
+	const taskSection = finalAnalysisOnly
+		? `## ⚠️ FINAL ANALYSIS MODE
+
+**You have reached the data gathering limit. You MUST now form your conclusions.**
+
+**REQUIRED**: Use the \`form_hypothesis\` tool to record your root cause analysis.
+- Even if evidence is incomplete, form your BEST hypothesis with available data
+- Assign an appropriate confidence level (lower if uncertain)
+- You CANNOT request more data - only hypothesis formation is available
+
+## Your Task
+1. Analyze ALL the findings gathered above
+2. **MUST**: Call \`form_hypothesis\` at least once with your best conclusion
+3. If uncertain, form multiple hypotheses with different confidence levels
+4. Provide your reasoning for each hypothesis`
+		: `## Your Task
+1. Analyze the findings above
+2. Form hypotheses about the root cause using the form_hypothesis tool
+3. If you need more information, use request_more_data (only from AVAILABLE gatherers)
+4. Provide your analysis and reasoning`;
+
 	return `
 # Incident Investigation
 
@@ -303,18 +436,77 @@ ${similarIncidents.map((i) => `- INC-${i.number || i.incidentId} (${i.similarity
 
 ${preGatheredHints}
 
+${handoffSection}
+
 ## Gathered Findings (${state.findings.length} total)
 ${findingsSummary || "No findings gathered yet."}
 
-## Gather Iteration
-This is iteration ${state.gatherIterations + 1}. You can request up to 2 additional gather operations if needed.
-
-## Your Task
-1. Analyze the findings above
-2. Form hypotheses about the root cause using the form_hypothesis tool
-3. If you need more information, use request_more_data (up to 2 times total)
-4. Provide your analysis and reasoning
+${taskSection}
 `;
+}
+
+/**
+ * Build handoff visibility section for detective prompt.
+ * Shows: available targets, unavailable targets with reasons, and denial history.
+ */
+function buildHandoffSection(state: InvestigationState): string {
+	const capabilities = {
+		clonePaths: !!state.clonePaths && Object.keys(state.clonePaths).length > 0,
+	};
+
+	// Get available and unavailable targets
+	const available = handoffManager.getAvailableTargets("detective", capabilities);
+	const unavailable = handoffManager.getUnavailableTargets("detective", capabilities);
+
+	// Get denial history and completions
+	const handoffHistory = state.handoffHistory || [];
+	const denials = handoffHistory.filter((h) => h.status === "denied");
+	const completions = handoffHistory.filter((h) => h.status === "completed");
+
+	let section = `## Data Request Capabilities\n\n`;
+
+	// Available gatherers
+	if (available.length > 0) {
+		section += `**Available Gatherers:**\n`;
+		section += available
+			.map((t) => `- **${t.to}**: ${t.description || "Available"}`)
+			.join("\n");
+		section += "\n\n";
+	}
+
+	// Unavailable gatherers (upfront constraint visibility)
+	if (unavailable.length > 0) {
+		section += `**⚠️ Unavailable Gatherers (DO NOT REQUEST):**\n`;
+		section += unavailable.map((t) => `- **${t.to}**: ${t.reason}`).join("\n");
+		section += `\n\n⚠️ **IMPORTANT**: Do NOT request data from unavailable gatherers. Form your hypothesis with current findings or request from available gatherers only.\n\n`;
+	}
+
+	// Previous denials (feedback from past requests)
+	if (denials.length > 0) {
+		const lastDenial = denials[denials.length - 1];
+		section += `**⚠️ Previous Request Denied:**\n`;
+		section += `Your request to **${lastDenial.to}** was denied: ${lastDenial.denialReason}\n`;
+		section += `You should form a hypothesis with current findings or request from a different gatherer.\n\n`;
+	}
+
+	// Completed handoffs (context about what data was already gathered)
+	if (completions.length > 0) {
+		section += `**Completed Data Requests:**\n`;
+		section += completions
+			.map(
+				(h) =>
+					`- **${h.to}**: ${h.resultSummary || "Completed"} (${h.findingsAdded || 0} findings added)`,
+			)
+			.join("\n");
+		section += "\n\n";
+	}
+
+	// Iteration info
+	const totalHandoffs = handoffHistory.length;
+	const remainingHandoffs = Math.max(0, 5 - totalHandoffs);
+	section += `**Gather Budget:** ${remainingHandoffs} more data requests allowed.\n`;
+
+	return section;
 }
 
 /**

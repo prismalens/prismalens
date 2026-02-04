@@ -5,6 +5,7 @@ import type {
 	LLMConfigWithOverrides,
 	LLMProviderConfig,
 } from "../llm/factory.js";
+import type { HandoffRecord } from "../utils/handoff-manager.js";
 
 // =============================================================================
 // SUPERVISOR PATTERN TYPES
@@ -31,13 +32,31 @@ export type SupervisorAgentName =
 	| "code-searcher"
 	| "change-tracker"
 	| "detective"
+	| "adversary"
 	| "surgeon";
+
+/**
+ * Validation metadata for a finding
+ * Added by validation layer after gatherer produces findings
+ */
+export interface FindingValidation {
+	/** Whether finding timestamp is within incident time window */
+	timeAligned: boolean;
+	/** Whether finding service matches incident service or dependencies */
+	serviceMatched: boolean;
+	/** IDs of other findings this correlates with */
+	correlatedWith: string[];
+	/** Validation warnings (not errors, finding is still used) */
+	warnings: string[];
+}
 
 /**
  * Finding from a gatherer agent
  * All gatherers output findings with a common structure
  */
 export interface Finding {
+	/** Unique ID for correlation tracking */
+	id?: string;
 	/** Which agent produced this finding */
 	source: "log-gatherer" | "code-searcher" | "change-tracker";
 	/** Type of finding */
@@ -50,40 +69,140 @@ export interface Finding {
 	relevance: number;
 	/** When this finding relates to (if temporal) */
 	timestamp?: string;
+	/** Validation metadata added by validation layer */
+	validation?: FindingValidation;
 }
+
+/**
+ * Zod schema for FindingValidation
+ */
+export const FindingValidationSchema = z.object({
+	timeAligned: z.boolean(),
+	serviceMatched: z.boolean(),
+	correlatedWith: z.array(z.string()),
+	warnings: z.array(z.string()),
+});
 
 /**
  * Zod schema for Finding validation
  */
 export const FindingSchema = z.object({
+	id: z.string().optional(),
 	source: z.enum(["log-gatherer", "code-searcher", "change-tracker"]),
 	type: z.enum(["log", "code", "commit", "deployment", "error", "metric", "config"]),
 	summary: z.string(),
 	details: z.unknown(),
 	relevance: z.number().min(0).max(100),
 	timestamp: z.string().optional(),
+	validation: FindingValidationSchema.optional(),
 });
 
 /**
- * Handoff request for agent-to-agent communication
- * Detective uses this to request targeted gathering from a specific gatherer
+ * Validation window level for progressive time expansion
+ * Level 1: Narrow window (fast, most relevant)
+ * Level 2: Medium window (broader search)
+ * Level 3: Wide window (maximum search)
+ */
+export type ValidationWindowLevel = 1 | 2 | 3;
+
+/**
+ * Cross-correlation result between findings from different gatherers
+ */
+export interface CorrelationResult {
+	/** Overlap between log findings and code findings (file mentions) */
+	logCodeOverlap: number;
+	/** Overlap between code findings and change findings (touched files) */
+	codeChangeOverlap: number;
+	/** Time correlation between changes and log errors */
+	changeTimeCorrelation: number;
+	/** Weighted overall correlation score (0-100) */
+	overallCorrelation: number;
+}
+
+/**
+ * Zod schema for CorrelationResult
+ */
+export const CorrelationResultSchema = z.object({
+	logCodeOverlap: z.number().min(0).max(100),
+	codeChangeOverlap: z.number().min(0).max(100),
+	changeTimeCorrelation: z.number().min(0).max(100),
+	overallCorrelation: z.number().min(0).max(100),
+});
+
+/**
+ * Extended data quality with correlation info
+ */
+export interface DataQualityInfo {
+	/** Incident context quality score */
+	incident?: number;
+	/** Alert data quality score */
+	alerts?: number;
+	/** Gathered findings quality score */
+	gathered?: number;
+	/** Pre-gathering quality score */
+	preGathering?: number;
+	/** Cross-correlation results */
+	correlations?: CorrelationResult;
+	/** Allow additional dynamic quality scores */
+	[key: string]: number | CorrelationResult | undefined;
+}
+
+/**
+ * All agents that can participate in handoffs.
+ * Includes orchestration agents (supervisor, gatherer-coordinator).
+ */
+export type HandoffAgentName =
+	| SupervisorAgentName
+	| "supervisor"
+	| "gatherer-coordinator";
+
+/**
+ * Handoff request for agent-to-agent communication.
+ * Generalized to support any-to-any handoffs with capability validation.
  */
 export interface HandoffRequest {
+	/** Agent initiating the handoff */
+	from: HandoffAgentName;
 	/** Target agent to invoke */
-	to: "log-gatherer" | "code-searcher" | "change-tracker";
-	/** Why this additional data is needed */
+	to: HandoffAgentName;
+	/** Why this handoff is needed */
 	reason: string;
-	/** Specific query or context for the gatherer */
+	/** Specific query or context for the target agent */
 	context: string;
+	/** Related todo ID if this handoff is task-driven */
+	todoId?: string;
+	/** Priority override for urgent handoffs */
+	priority?: "normal" | "urgent";
 }
 
 /**
  * Zod schema for HandoffRequest validation
  */
 export const HandoffRequestSchema = z.object({
-	to: z.enum(["log-gatherer", "code-searcher", "change-tracker"]),
+	from: z.enum([
+		"log-gatherer",
+		"code-searcher",
+		"change-tracker",
+		"detective",
+		"adversary",
+		"surgeon",
+		"supervisor",
+		"gatherer-coordinator",
+	]),
+	to: z.enum([
+		"log-gatherer",
+		"code-searcher",
+		"change-tracker",
+		"detective",
+		"adversary",
+		"surgeon",
+		"supervisor",
+		"gatherer-coordinator",
+	]),
 	reason: z.string(),
 	context: z.string(),
+	todoId: z.string().optional(),
+	priority: z.enum(["normal", "urgent"]).optional(),
 });
 
 /**
@@ -798,12 +917,6 @@ export const InvestigationStateAnnotation = Annotation.Root({
 	// Investigation Findings
 	// =========================================================================
 
-	/** Context gathered by Cartographer agent (legacy - for backwards compatibility) */
-	gatheredContext: Annotation<Record<string, unknown>>({
-		reducer: (current, update) => ({ ...current, ...update }),
-		default: () => ({}),
-	}),
-
 	/** Hypotheses formed by Detective agent */
 	hypotheses: Annotation<Hypothesis[]>({
 		reducer: (current, update) => [...current, ...update],
@@ -832,16 +945,28 @@ export const InvestigationStateAnnotation = Annotation.Root({
 		default: () => [],
 	}),
 
-	/** Progression tracking for each agent */
-	agentProgression: Annotation<Record<string, boolean>>({
+	/** Data quality scores from various sources */
+	dataQuality: Annotation<DataQualityInfo>({
 		reducer: (current, update) => ({ ...current, ...update }),
 		default: () => ({}),
 	}),
 
-	/** Data quality scores from various sources */
-	dataQuality: Annotation<Record<string, number>>({
-		reducer: (current, update) => ({ ...current, ...update }),
-		default: () => ({}),
+	/**
+	 * Validation window level for progressive time expansion.
+	 * Starts at 1, expands to 2 or 3 if insufficient data is found.
+	 */
+	validationWindowLevel: Annotation<ValidationWindowLevel>({
+		reducer: (_, update) => update,
+		default: () => 1,
+	}),
+
+	/**
+	 * Warning message if data quality is below threshold.
+	 * Set when proceeding with low-quality data.
+	 */
+	dataQualityWarning: Annotation<string | undefined>({
+		reducer: (_, update) => update,
+		default: () => undefined,
 	}),
 
 	/** Data sources used during investigation */
@@ -951,6 +1076,20 @@ export const InvestigationStateAnnotation = Annotation.Root({
 	}),
 
 	/**
+	 * History of all handoff requests with their lifecycle status.
+	 * Used for:
+	 * - Providing feedback to Detective about denied requests
+	 * - Progress-based termination decisions
+	 * - Observability and debugging
+	 *
+	 * @see HandoffRecord in utils/handoff-manager.ts
+	 */
+	handoffHistory: Annotation<HandoffRecord[]>({
+		reducer: (current, update) => [...current, ...update],
+		default: () => [],
+	}),
+
+	/**
 	 * Fix proposal from Surgeon agent.
 	 */
 	fix: Annotation<Fix | undefined>({
@@ -1005,6 +1144,57 @@ export const InvestigationStateAnnotation = Annotation.Root({
 	unavailableGatherers: Annotation<string[]>({
 		reducer: (prev, next) => [...new Set([...prev, ...next])],
 		default: () => [],
+	}),
+
+	/**
+	 * Final analysis mode flag.
+	 * When true, Detective MUST form hypotheses and CANNOT request more data.
+	 * Set when termination is triggered (max handoffs, no progress, etc.).
+	 * Ensures Detective analyzes collected data before completing.
+	 */
+	finalAnalysisOnly: Annotation<boolean>({
+		reducer: (_, update) => update,
+		default: () => false,
+	}),
+
+	// =========================================================================
+	// Detective ↔ Adversary Dialogue Flags
+	// =========================================================================
+
+	/**
+	 * When true, Detective requests adversary challenge (direct routing).
+	 * Triggers when high confidence (≥85%) with thin evidence (≤2 items).
+	 */
+	needsAdversaryChallenge: Annotation<boolean>({
+		reducer: (_, update) => update,
+		default: () => false,
+	}),
+
+	/**
+	 * When true, Adversary requests Detective refinement (direct routing).
+	 * Set when adversary identifies issues that need Detective to address.
+	 */
+	adversaryRequestsRefinement: Annotation<boolean>({
+		reducer: (_, update) => update,
+		default: () => false,
+	}),
+
+	/**
+	 * Timestamp of last scope alignment check by Adversary.
+	 * Used to determine when to invoke adversary for periodic scope checks.
+	 */
+	lastScopeCheck: Annotation<string | undefined>({
+		reducer: (_, update) => update,
+		default: () => undefined,
+	}),
+
+	/**
+	 * Flag indicating findings may be deviating from incident scope.
+	 * Set by quality gate when relevance score is low.
+	 */
+	shouldCheckScope: Annotation<boolean>({
+		reducer: (_, update) => update,
+		default: () => false,
 	}),
 });
 

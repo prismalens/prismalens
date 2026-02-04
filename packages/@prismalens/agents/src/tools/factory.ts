@@ -70,10 +70,11 @@ const AGENT_TOOL_PERMISSIONS: Record<string, string[]> = {
 	// Uses DeepAgent built-ins (write_todos, task) to delegate to subagents
 	commander: [],
 
-	// Cartographer is READ-ONLY - can gather context but not modify
+	// Gatherer role is READ-ONLY - can gather context but not modify
+	// Used by: log-gatherer, code-searcher, change-tracker
 	// Tools resolved based on configured integrations (GitHub/GitLab/local via MCP bundles)
 	// NOTE: github and render tools are now provided via MCP bundles, not direct tool creation
-	cartographer: ["repo"],
+	gatherer: ["repo"],
 
 	// Detective only has the hypothesis tool (added separately)
 	detective: [],
@@ -89,7 +90,7 @@ const AGENT_TOOL_PERMISSIONS: Record<string, string[]> = {
 /**
  * Agents that should be forced into read-only mode
  */
-const READ_ONLY_AGENTS = new Set(["cartographer"]);
+const READ_ONLY_AGENTS = new Set(["gatherer"]);
 
 /**
  * Check if there are any cloned repositories available.
@@ -107,14 +108,14 @@ export function hasClonedRepos(clonePaths?: Record<string, string>): boolean {
  * these tools are skipped to prevent accidental reads from process.cwd().
  *
  * @example
- * // Create tools for cartographer with GitHub integration
- * const tools = createToolsForAgent('cartographer', [
+ * // Create tools for gatherer role with GitHub integration
+ * const tools = createToolsForAgent('gatherer', [
  *   { type: 'github', connectionId: '...', credentials: {...}, config: {...} }
  * ]);
  *
  * @example
  * // Create tools with cloned repos
- * const tools = createToolsForAgent('cartographer', integrations, {
+ * const tools = createToolsForAgent('gatherer', integrations, {
  *   clonePaths: { 'api-svc': '/tmp/workspaces/inv-123/api-svc' }
  * });
  */
@@ -264,7 +265,7 @@ const DEFAULT_BUNDLE_DEFINITIONS: NativeBundleDefinition[] = [
  * const { tools, getState, setState } = createMetaTools(
  *   registry,
  *   integrations,
- *   "cartographer",
+ *   "gatherer",
  *   true
  * );
  */
@@ -325,7 +326,7 @@ export function createBundleRegistryWithWorkspace(
 			...AGENT_TOOL_PERMISSIONS,
 			// Add workspace permission to agents that can use it
 			commander: [...AGENT_TOOL_PERMISSIONS.commander, "workspace"],
-			cartographer: [...AGENT_TOOL_PERMISSIONS.cartographer, "workspace"],
+			gatherer: [...AGENT_TOOL_PERMISSIONS.gatherer, "workspace"],
 		},
 		readOnlyAgents: READ_ONLY_AGENTS,
 	});
@@ -364,7 +365,7 @@ export interface ProgressiveToolsOptions {
  *
  * @example
  * const { tools, registry, getState, setState } = createProgressiveTools({
- *   agentName: "cartographer",
+ *   agentName: "gatherer",
  *   integrations: [...],
  * });
  *

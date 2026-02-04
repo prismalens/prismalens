@@ -188,9 +188,9 @@ export const EXPECTED_INVESTIGATION_TRAJECTORY = {
 };
 
 /**
- * Expected trajectory for Cartographer subagent.
+ * Expected trajectory for Gatherer subagent.
  */
-export const EXPECTED_CARTOGRAPHER_TRAJECTORY = {
+export const EXPECTED_GATHERER_TRAJECTORY = {
 	requiredTools: [], // Will vary based on integrations available
 	forbiddenTools: ["form_hypothesis", "propose_fix"], // These are for other agents
 	maxToolCalls: 10,

@@ -32,7 +32,7 @@ Interactive debugging environment specifically for agent development.
 
 | Feature | Benefit for PrismaLens |
 |---------|------------------------|
-| **Time Travel Debugging** | Step through Commander → Cartographer → Detective → Surgeon execution, inspect state at any point |
+| **Time Travel Debugging** | Step through Commander → Gatherer → Detective → Surgeon execution, inspect state at any point |
 | **State Editing** | Modify investigation state mid-execution to test "what if" scenarios |
 | **Fork & Replay** | Branch from any checkpoint to try different agent responses |
 | **Visual Graph** | See your investigation flow as an interactive diagram |
@@ -173,7 +173,7 @@ Testing Pyramid
                     │    Evaluations      │    (2-3 scenarios)
                     └─────────────────────┘
                ┌─────────────────────────────────┐
-               │      SubAgent Evaluations       │  ← Cartographer, Detective, Surgeon
+               │      SubAgent Evaluations       │  ← Gatherer, Detective, Surgeon
                │      (Component Level)          │    (3-5 scenarios each)
                └─────────────────────────────────┘
           ┌─────────────────────────────────────────────┐
@@ -209,7 +209,7 @@ packages/@prismalens/agents/
 │   │   ├── infrastructure.scenarios.ts
 │   │   └── index.ts
 │   ├── components/                  # Component-level tests
-│   │   ├── cartographer.eval.ts     # Cartographer subagent
+│   │   ├── gatherer.eval.ts     # Gatherer subagent
 │   │   ├── detective.eval.ts        # Detective subagent
 │   │   ├── surgeon.eval.ts          # Surgeon subagent
 │   │   └── pre-gather.eval.ts       # Pre-gathering node
@@ -351,7 +351,7 @@ export const investigationTrajectoryEvaluator = createTrajectoryMatchEvaluator({
 
 // Expected trajectory for a successful investigation
 export const expectedInvestigationTrajectory = [
-  { tool: "task", args: { subagent: "cartographer" } },
+  { tool: "task", args: { subagent: "gatherer" } },
   { tool: "task", args: { subagent: "detective" } },
   // Surgeon only if confidence >= 70%
 ];
@@ -383,19 +383,19 @@ export function validateRecommendation(rec: Recommendation): EvaluationResult {
 
 ## Phase 4: Component-Level Tests
 
-### 4.1 Cartographer Subagent Tests
+### 4.1 Gatherer Subagent Tests
 
 ```typescript
-// evals/components/cartographer.eval.ts
+// evals/components/gatherer.eval.ts
 import * as ls from "langsmith/vitest";
 import { createSubAgents } from "../../src/agents/subagents";
 
-ls.describe("Cartographer SubAgent", () => {
+ls.describe("Gatherer SubAgent", () => {
   ls.test("gathers logs when deployment platform available", {
     inputs: { task: "Find recent deployment logs for api-server" },
   }, async ({ inputs }) => {
-    const { cartographer } = createSubAgents({ integrations: [mockRenderIntegration] });
-    const result = await cartographer.invoke({ messages: [{ role: "user", content: inputs.task }] });
+    const { gatherer } = createSubAgents({ integrations: [mockRenderIntegration] });
+    const result = await gatherer.invoke({ messages: [{ role: "user", content: inputs.task }] });
 
     ls.logOutputs({ toolsCalled: extractToolCalls(result), summary: result.messages.at(-1)?.content });
 
@@ -663,7 +663,7 @@ Weekly Quality Review
          ↓
 5. Improve based on patterns
    - Low hypothesis scores → improve Detective prompt
-   - Missing evidence → add more tools to Cartographer
+   - Missing evidence → add more tools to Gatherer
    - Bad recommendations → enhance Surgeon skills
 ```
 
@@ -744,7 +744,7 @@ This is useful for:
 4. [ ] Migrate existing scenarios to new structure
 
 ### Week 2: Component Tests
-5. [ ] Implement Cartographer evaluations (3-5 scenarios)
+5. [ ] Implement Gatherer evaluations (3-5 scenarios)
 6. [ ] Implement Detective evaluations (3-5 scenarios)
 7. [ ] Implement Surgeon evaluations (3-5 scenarios)
 8. [ ] Implement pre-gather node tests
@@ -1039,4 +1039,4 @@ After plan approval:
 1. Create the directory structure
 2. Install `agentevals` dependency
 3. Implement fixtures/factories
-4. Start with Cartographer component tests as proof of concept
+4. Start with Gatherer component tests as proof of concept

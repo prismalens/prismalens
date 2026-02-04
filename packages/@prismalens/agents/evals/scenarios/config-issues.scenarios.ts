@@ -22,8 +22,15 @@ import {
 	createMockDeployment,
 	createMockCommit,
 	createMockConfigChange,
+	createTimeline,
 } from "../mocks/index.js";
 import type { ScenarioWithMocks } from "./types.js";
+
+// =============================================================================
+// TIMELINE: All timestamps relative to incident time
+// =============================================================================
+// This ensures validation windows align correctly regardless of when tests run.
+const timeline = createTimeline();
 
 // =============================================================================
 // MUTUAL EXCLUSIVITY: Forbidden tools for non-clone scenarios
@@ -63,6 +70,7 @@ export const connectionPoolExhausted: ScenarioWithMocks = {
 				severity: "critical",
 				serviceName: "api-server",
 				alertCount: 5,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -118,7 +126,8 @@ export const connectionPoolExhausted: ScenarioWithMocks = {
 								"Deployed 1 day before incident",
 								"Uses standard pool_size=20",
 							],
-							timestamp: "2024-01-14T10:00:00Z",
+							// 25 hours before incident - just outside Level 1 (24h), inside Level 2 (72h)
+							timestamp: timeline.beforeHours(25),
 						}),
 					],
 					// Config change that set pool_size to 20 for all services
@@ -127,7 +136,8 @@ export const connectionPoolExhausted: ScenarioWithMocks = {
 							sha: "pool456",
 							message: "config: set default pool_size to 20 for better throughput",
 							author: "dba@example.com",
-							timestamp: "2024-01-10T14:00:00Z",
+							// 5 days before incident - inside Level 3 (168h)
+							timestamp: timeline.beforeDays(5),
 							repository: "org/infrastructure",
 						}),
 					],
@@ -137,14 +147,16 @@ export const connectionPoolExhausted: ScenarioWithMocks = {
 							key: "DB_POOL_SIZE",
 							oldValue: "10",
 							newValue: "20",
-							timestamp: "2024-01-10T14:30:00Z",
+							// 5 days before incident (same day as commit)
+							timestamp: timeline.beforeDays(5),
 							source: "config/database.yaml",
 						}),
 						createMockConfigChange({
 							key: "analytics-service.enabled",
 							oldValue: "false",
 							newValue: "true",
-							timestamp: "2024-01-14T09:30:00Z",
+							// 2 hours before incident - within Level 1 (24h)
+							timestamp: timeline.beforeHours(2),
 							source: "docker-compose.yaml",
 						}),
 					],
@@ -206,30 +218,30 @@ database:
 					sha: "pool123",
 					message: "feat: add analytics-service (5th service using DB pool)",
 					author: "infra@example.com",
-					date: "2024-01-14T09:00:00Z",
+					date: timeline.beforeHours(26), // 26 hours before incident
 				},
 				{
 					sha: "pool456",
 					message: "config: set default pool_size to 20 for better throughput",
 					author: "dba@example.com",
-					date: "2024-01-10T14:00:00Z",
+					date: timeline.beforeDays(5), // 5 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T11:30:00Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "FATAL: too many connections for role 'app_user' (max: 100)",
 				},
 				{
-					timestamp: "2024-01-15T11:29:55Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before incident
 					level: "error",
 					message: "Connection pool exhausted. 147 requests waiting. Timeout in 30s.",
 				},
 				{
-					timestamp: "2024-01-15T11:29:50Z",
+					timestamp: timeline.beforeMinutes(2), // 2 minutes before incident
 					level: "warn",
 					message: "Connection pool at 95% capacity: 19/20 connections in use",
 				},
@@ -243,7 +255,7 @@ database:
 					id: "srv-analytics",
 					name: "analytics-service",
 					status: "running",
-					lastDeployedAt: "2024-01-14T10:00:00Z",
+					lastDeployedAt: timeline.beforeHours(25), // 25 hours before incident
 					lastDeployStatus: "succeeded",
 				},
 			],
@@ -277,6 +289,7 @@ export const missingEnvVar: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "auth-service",
 				alertCount: 2,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -359,30 +372,30 @@ spec:
 					sha: "env123",
 					message: "security: migrate secrets to new vault path (breaking change)",
 					author: "security@example.com",
-					date: "2024-01-14T16:00:00Z",
+					date: timeline.beforeHours(16), // 16 hours before incident
 				},
 				{
 					sha: "env456",
 					message: "chore: update deployment manifests for new secrets structure",
 					author: "devops@example.com",
-					date: "2024-01-14T15:30:00Z",
+					date: timeline.beforeHours(17), // 17 hours before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T08:00:10Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "Error: JWT_SECRET environment variable is required",
 				},
 				{
-					timestamp: "2024-01-15T08:00:09Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "info",
 					message: "Loading configuration from environment...",
 				},
 				{
-					timestamp: "2024-01-15T08:00:08Z",
+					timestamp: timeline.beforeMinutes(2), // 2 minutes before
 					level: "info",
 					message: "Starting auth-service v2.4.0...",
 				},
@@ -392,7 +405,7 @@ spec:
 					id: "srv-auth",
 					name: "auth-service",
 					status: "failed",
-					lastDeployedAt: "2024-01-15T08:00:00Z",
+					lastDeployedAt: timeline.beforeMinutes(5), // 5 minutes before incident
 					lastDeployStatus: "failed",
 				},
 			],
@@ -429,6 +442,7 @@ export const timeoutMisconfiguration: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "api-gateway",
 				alertCount: 4,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -522,30 +536,30 @@ service:
 					sha: "timeout123",
 					message: "config: increase gateway timeout to handle slow requests",
 					author: "ops@example.com",
-					date: "2024-01-12T14:00:00Z",
+					date: timeline.beforeDays(3), // 3 days before incident
 				},
 				{
 					sha: "timeout456",
 					message: "fix: increase DB statement_timeout to prevent query kills",
 					author: "dba@example.com",
-					date: "2024-01-10T11:00:00Z",
+					date: timeline.beforeDays(5), // 5 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T14:00:30Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "504 Gateway Timeout: upstream service-a did not respond within 30s",
 				},
 				{
-					timestamp: "2024-01-15T14:00:29Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "warn",
 					message: "Request retry attempt 2/3 for /api/orders after timeout",
 				},
 				{
-					timestamp: "2024-01-15T14:00:00Z",
+					timestamp: timeline.beforeMinutes(2), // 2 minutes before
 					level: "warn",
 					message: "Request retry attempt 1/3 for /api/orders after timeout",
 				},
@@ -579,6 +593,7 @@ export const resourceLimits: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "worker-service",
 				alertCount: 3,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -669,30 +684,30 @@ NOTE: These limits were set before image processing feature was added.`,
 					sha: "resource123",
 					message: "feat: add image processing to worker service",
 					author: "feature-dev@example.com",
-					date: "2024-01-08T10:00:00Z",
+					date: timeline.beforeDays(7), // 7 days before incident
 				},
 				{
 					sha: "resource456",
 					message: "docs: add capacity planning guide for worker service",
 					author: "sre@example.com",
-					date: "2024-01-12T15:00:00Z",
+					date: timeline.beforeDays(3), // 3 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T13:30:00Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "Container killed: OOM (exit code 137). Memory limit: 512Mi, usage at kill: 512Mi",
 				},
 				{
-					timestamp: "2024-01-15T13:25:00Z",
+					timestamp: timeline.beforeMinutes(5), // 5 minutes before incident
 					level: "warn",
 					message: "CPU throttling detected: 67% of periods throttled (1204 total)",
 				},
 				{
-					timestamp: "2024-01-15T13:20:00Z",
+					timestamp: timeline.beforeMinutes(10), // 10 minutes before incident
 					level: "warn",
 					message: "Job 'image_processing_batch_42' timed out after 45s (expected: 15s)",
 				},
@@ -733,6 +748,7 @@ export const featureFlagIssue: ScenarioWithMocks = {
 				serviceName: "checkout-service",
 				customerImpact: "Enterprise users unable to complete checkout",
 				alertCount: 2,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -824,30 +840,30 @@ export async function processPayment(method: string, amount: number) {
 					sha: "ff123",
 					message: "feat: enable beta_checkout_v2 for enterprise users (A/B test)",
 					author: "pm@example.com",
-					date: "2024-01-14T10:00:00Z",
+					date: timeline.beforeHours(26), // 26 hours before incident (just outside Level 1)
 				},
 				{
 					sha: "ff456",
 					message: "feat: add checkout v2 with simplified payment options",
 					author: "checkout-team@example.com",
-					date: "2024-01-10T14:00:00Z",
+					date: timeline.beforeDays(5), // 5 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T12:00:05Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "PaymentMethodNotSupported: invoice_payment for user enterprise-user-123",
 				},
 				{
-					timestamp: "2024-01-15T12:00:04Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "info",
 					message: "Feature flag beta_checkout_v2 evaluated: true for user enterprise-user-123 (plan=enterprise)",
 				},
 				{
-					timestamp: "2024-01-15T12:00:03Z",
+					timestamp: timeline.beforeMinutes(2), // 2 minutes before
 					level: "info",
 					message: "Checkout initiated for user enterprise-user-123 with payment method: invoice",
 				},
@@ -883,6 +899,7 @@ export const sslConfigIssue: ScenarioWithMocks = {
 				severity: "high",
 				serviceName: "payment-service",
 				alertCount: 2,
+				triggeredAt: timeline.incident,
 			}),
 			alerts: [
 				createAlert({
@@ -970,30 +987,30 @@ echo "Remember to restart pods to apply new certificates"`,
 					sha: "ssl123",
 					message: "fix: add payment provider intermediate CA certificate",
 					author: "security@example.com",
-					date: "2024-01-10T09:00:00Z",
+					date: timeline.beforeDays(5), // 5 days before incident
 				},
 				{
 					sha: "ssl456",
 					message: "chore: update CA certificate bundle",
 					author: "ops@example.com",
-					date: "2024-01-09T14:00:00Z",
+					date: timeline.beforeDays(6), // 6 days before incident
 				},
 			],
 		},
 		render: {
 			getLogs: [
 				{
-					timestamp: "2024-01-15T15:30:00Z",
+					timestamp: timeline.beforeMinutes(0), // at incident time
 					level: "error",
 					message: "SSL handshake failed: unable to verify the first certificate (api.paymentprovider.com)",
 				},
 				{
-					timestamp: "2024-01-15T15:29:55Z",
+					timestamp: timeline.beforeMinutes(1), // 1 minute before
 					level: "info",
 					message: "Certificate chain: [leaf] -> [missing intermediate] -> [root]",
 				},
 				{
-					timestamp: "2024-01-15T15:29:50Z",
+					timestamp: timeline.beforeMinutes(2), // 2 minutes before
 					level: "info",
 					message: "Connecting to payment gateway: api.paymentprovider.com:443",
 				},
@@ -1003,25 +1020,25 @@ echo "Remember to restart pods to apply new certificates"`,
 					id: "srv-payment-1",
 					name: "payment-service-7d8f9",
 					status: "running",
-					lastDeployedAt: "2024-01-08T10:00:00Z",
+					lastDeployedAt: timeline.beforeDays(7), // deployed before cert update (stale)
 				},
 				{
 					id: "srv-payment-2",
 					name: "payment-service-9c4e2",
 					status: "running",
-					lastDeployedAt: "2024-01-08T10:00:00Z",
+					lastDeployedAt: timeline.beforeDays(7), // deployed before cert update (stale)
 				},
 				{
 					id: "srv-payment-3",
 					name: "payment-service-3a7b1",
 					status: "running",
-					lastDeployedAt: "2024-01-10T11:00:00Z",
+					lastDeployedAt: timeline.beforeDays(5), // deployed after cert update (good)
 				},
 				{
 					id: "srv-payment-4",
 					name: "payment-service-5f2d8",
 					status: "running",
-					lastDeployedAt: "2024-01-10T11:00:00Z",
+					lastDeployedAt: timeline.beforeDays(5), // deployed after cert update (good)
 				},
 			],
 		},
@@ -1057,7 +1074,3 @@ export const mediumConfigScenarios = configIssueScenarios.filter(
 export const hardConfigScenarios = configIssueScenarios.filter(
 	(s) => s.difficulty === "hard",
 );
-
-// Legacy exports for backwards compatibility
-export { connectionPoolExhausted as connectionPoolExhaustedScenario };
-export { timeoutMisconfiguration as timeoutMisconfigurationScenario };

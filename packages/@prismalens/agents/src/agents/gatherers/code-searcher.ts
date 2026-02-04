@@ -7,7 +7,8 @@
  * This is a LangGraph node that runs a ReAct agent internally.
  */
 
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
 import {
 	createLLM,
@@ -15,11 +16,14 @@ import {
 	resolveAgentConfig,
 } from "../../llm/factory.js";
 import { createToolsForAgent } from "../../tools/factory.js";
+import { createHandoffCompletionUpdate } from "../../graph/nodes/handoff-processor.js";
+import { buildTraceConfig, mergeTraceConfig } from "../../utils/tracing.js";
 import type {
 	Finding,
 	InvestigationState,
 	SupervisorPhase,
 } from "../../types/state.js";
+import { addFindingIds, validateCodeFindings } from "../../utils/validation.js";
 
 const logger = new Logger({ context: "CodeSearcher" });
 
@@ -74,13 +78,18 @@ Return structured findings:
  */
 export async function codeSearcherNode(
 	state: InvestigationState,
+	config?: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
 	const hasClonedRepos = state.clonePaths && Object.keys(state.clonePaths).length > 0;
+
+	// Build trace config for this node
+	const traceConfig = buildTraceConfig(state);
 
 	logger.info("Code Searcher starting", {
 		investigationId: state.investigationId,
 		clonePaths: state.clonePaths ? Object.keys(state.clonePaths) : [],
 		hasClonedRepos,
+		runName: traceConfig.runName,
 	});
 
 	// Check for clone paths - structural failure if missing
@@ -101,7 +110,6 @@ export async function codeSearcherNode(
 			unavailableGatherers: ["code-searcher"],
 			// Set phase to analyzing to skip retries
 			phase: "analyzing" as const,
-			agentProgression: { "code-searcher": false },
 		};
 	}
 
@@ -124,19 +132,19 @@ export async function codeSearcherNode(
 	try {
 		// Resolve LLM config for this agent
 		const normalizedConfig = normalizeConfig(state.llmConfig);
-		const agentConfig = resolveAgentConfig(normalizedConfig, "cartographer");
+		const agentConfig = resolveAgentConfig(normalizedConfig, "gatherer");
 		const llm = createLLM(agentConfig);
 
 		// Create tools for code searching (pass clonePaths to enable repo tools)
-		const tools = createToolsForAgent("cartographer", state.integrations, {
+		const tools = createToolsForAgent("gatherer", state.integrations, {
 			clonePaths: state.clonePaths,
 		});
 
-		// Create the ReAct agent
-		const agent = createReactAgent({
-			llm,
+		// Create the agent with todo list middleware
+		const agent = createAgent({
+			model: llm,
 			tools,
-			messageModifier: CODE_SEARCHER_SYSTEM_PROMPT,
+			systemPrompt: CODE_SEARCHER_SYSTEM_PROMPT,
 		});
 
 		// Build search context from preGathered logs and incident
@@ -186,23 +194,44 @@ Search for:
 Provide structured findings with file paths, line numbers, and relevance scores.
 `;
 
-		// Invoke the agent
-		const result = await agent.invoke({
-			messages: [{ role: "user", content: inputMessage }],
-		});
+		// Invoke the agent with trace config
+		const result = await agent.invoke(
+			{ messages: [{ role: "user", content: inputMessage }] },
+			mergeTraceConfig(config, traceConfig),
+		);
 
 		// Extract findings from agent response
-		const findings = extractFindingsFromAgentResult(result.messages, "code-searcher");
+		const rawFindings = extractFindingsFromAgentResult(result.messages, "code-searcher");
+
+		// Add IDs for correlation tracking
+		const findingsWithIds = addFindingIds(rawFindings);
+
+		// Validate findings - check file paths exist in clonePaths
+		const validationResult = validateCodeFindings(
+			findingsWithIds,
+			{
+				clonePaths: state.clonePaths || {},
+				errorPatterns: searchContext.errorPatterns,
+			},
+		);
 
 		logger.info("Code Searcher complete", {
-			findingsCount: findings.length,
+			total: rawFindings.length,
+			valid: validationResult.valid.length,
+			filtered: validationResult.filtered.length,
 		});
 
+		// Create handoff completion update if this was a targeted gather
+		const handoffCompletion = createHandoffCompletionUpdate(
+			state,
+			`Found ${validationResult.valid.length} code findings`,
+			validationResult.valid.length,
+		);
+
 		return {
-			findings,
-			handoffRequest: undefined,
+			findings: validationResult.valid,
 			currentAgent: undefined,
-			agentProgression: { "code-searcher": true },
+			...handoffCompletion,
 		};
 	} catch (error) {
 		logger.error("Code Searcher failed", { error });
@@ -219,7 +248,6 @@ Provide structured findings with file paths, line numbers, and relevance scores.
 			// Note: Don't add to unavailableGatherers - runtime errors might be recoverable
 			// Set phase to analyzing to avoid getting stuck in targeted_gather
 			phase: "analyzing" as SupervisorPhase,
-			agentProgression: { "code-searcher": false },
 		};
 	}
 }
