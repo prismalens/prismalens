@@ -14,7 +14,6 @@ import {
 	ExternalLink,
 	Info,
 	Loader2,
-	RotateCcw,
 	Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -46,6 +45,7 @@ import {
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import { ProviderModelSelector, type ProviderInfo } from "./ProviderModelSelector";
+import { AgentOverrideItem, type AgentMeta } from "./AgentOverrideItem";
 
 // Transform LLM_PROVIDERS from config into UI-friendly format
 const PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
@@ -59,12 +59,7 @@ const PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
 }));
 
 // Agent metadata for per-agent overrides
-const AGENTS: {
-	id: AgentId;
-	name: string;
-	description: string;
-	defaultTemp: number;
-}[] = [
+const AGENTS: AgentMeta[] = [
 	{
 		id: "commander",
 		name: "Commander",
@@ -72,8 +67,8 @@ const AGENTS: {
 		defaultTemp: 0.1,
 	},
 	{
-		id: "cartographer",
-		name: "Cartographer",
+		id: "gatherer",
+		name: "Gatherer",
 		description: "Gathers context and explores the system",
 		defaultTemp: 0,
 	},
@@ -491,125 +486,58 @@ export function AIProviderSettings() {
 							<div className="space-y-3">
 								{AGENTS.map((agent) => {
 									const override = settings?.agentOverrides?.[agent.id];
-									const isExpanded = expandedAgent === agent.id;
 									const agentProvider =
 										agentProviders[agent.id] ||
 										settings?.activeProvider ||
 										"anthropic";
-									const hasOverride =
-										override?.model || override?.temperature !== undefined;
 
 									return (
-										<Collapsible
+										<AgentOverrideItem
 											key={agent.id}
-											open={isExpanded}
-											onOpenChange={(open) =>
+											agent={agent}
+											override={override}
+											isExpanded={expandedAgent === agent.id}
+											onToggle={(open) =>
 												setExpandedAgent(open ? agent.id : null)
 											}
-											className="border rounded-lg"
-										>
-											<CollapsibleTrigger className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30 transition-colors rounded-lg">
-												<div className="flex-1 min-w-0">
-													<div className="flex items-center gap-2">
-														<h4 className="font-medium">{agent.name}</h4>
-														{hasOverride && (
-															<Badge variant="secondary" className="text-xs">
-																Custom
-															</Badge>
-														)}
-													</div>
-													<p className="text-xs text-muted-foreground mt-0.5">
-														{override?.model || "Use default"} · Temp:{" "}
-														{override?.temperature ?? agent.defaultTemp}
-													</p>
-												</div>
-												<ChevronDown
-													className={cn(
-														"h-4 w-4 text-muted-foreground transition-transform flex-shrink-0",
-														isExpanded && "rotate-180"
-													)}
-												/>
-											</CollapsibleTrigger>
-
-											<CollapsibleContent className="px-4 pb-4 space-y-4">
-												{/* Inline Provider/Model Selector */}
-												<ProviderModelSelector
-													providers={providerInfos}
-													models={allModels}
-													envStatus={envStatusMap}
-													selectedProvider={agentProvider}
-													selectedModel={override?.model || ""}
-													onProviderChange={(p) =>
-														setAgentProviders((prev) => ({
-															...prev,
-															[agent.id]: p,
-														}))
-													}
-													onModelChange={(model) => {
-														updateSettings.mutate({
-															agentOverrides: {
-																[agent.id]: {
-																	...override,
-																	model: model || undefined,
-																},
-															},
-														});
-													}}
-													compact
-												/>
-
-												{/* Temperature & Reset */}
-												<div className="flex items-center justify-between gap-4">
-													<div className="flex items-center gap-3 flex-1">
-														<Label className="text-sm whitespace-nowrap">
-															Temperature
-														</Label>
-														<Slider
-															value={[
-																override?.temperature ?? agent.defaultTemp,
-															]}
-															onValueChange={([temp]) => {
-																updateSettings.mutate({
-																	agentOverrides: {
-																		[agent.id]: {
-																			...override,
-																			temperature: temp,
-																		},
-																	},
-																});
-															}}
-															min={0}
-															max={2}
-															step={0.05}
-															className="flex-1 max-w-[200px]"
-														/>
-														<span className="text-sm text-muted-foreground w-10 text-right">
-															{(
-																override?.temperature ?? agent.defaultTemp
-															).toFixed(2)}
-														</span>
-													</div>
-
-													{hasOverride && (
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() => {
-																updateSettings.mutate({
-																	agentOverrides: {
-																		[agent.id]: undefined,
-																	},
-																});
-															}}
-															className="text-muted-foreground hover:text-foreground"
-														>
-															<RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-															Reset
-														</Button>
-													)}
-												</div>
-											</CollapsibleContent>
-										</Collapsible>
+											agentProvider={agentProvider}
+											onProviderChange={(p) =>
+												setAgentProviders((prev) => ({
+													...prev,
+													[agent.id]: p,
+												}))
+											}
+											onModelChange={(model) => {
+												updateSettings.mutate({
+													agentOverrides: {
+														[agent.id]: {
+															...override,
+															model: model || undefined,
+														},
+													},
+												});
+											}}
+											onTemperatureChange={(temp) => {
+												updateSettings.mutate({
+													agentOverrides: {
+														[agent.id]: {
+															...override,
+															temperature: temp,
+														},
+													},
+												});
+											}}
+											onReset={() => {
+												updateSettings.mutate({
+													agentOverrides: {
+														[agent.id]: undefined,
+													},
+												});
+											}}
+											providers={providerInfos}
+											models={allModels}
+											envStatus={envStatusMap}
+										/>
 									);
 								})}
 							</div>

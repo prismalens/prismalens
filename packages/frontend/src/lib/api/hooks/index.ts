@@ -37,6 +37,8 @@ export {
 	useCancelInvestigation,
 	useCreateInvestigation,
 	useInvestigation,
+	useInvestigationProgress,
+	useInvestigationProgressHistory,
 	useInvestigationStatus,
 	useInvestigations,
 	useInvestigationsByIncident,

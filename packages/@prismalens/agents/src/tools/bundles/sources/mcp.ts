@@ -10,7 +10,7 @@ import {
 } from "@prismalens/config";
 import { Logger } from "@prismalens/logger";
 import { z } from "zod";
-import type { IntegrationContext } from "../../../types/state.js";
+import type { IntegrationContext } from "../../../types/index.js";
 import {
 	appendRateLimitWarning,
 	createRateLimiter,

@@ -17,25 +17,16 @@
 
 import { tool, type StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { HandoffRequest, HandoffAgentName } from "../types/state.js";
+import { HANDOFF_AGENT_NAMES, type HandoffRequest, type HandoffAgentName } from "../types/index.js";
 
 // =============================================================================
 // HANDOFF SCHEMA
 // =============================================================================
 
 /**
- * All valid handoff target agents
+ * All valid handoff target agents (derived from canonical HANDOFF_AGENT_NAMES)
  */
-const HandoffTargetSchema = z.enum([
-	"log-gatherer",
-	"code-searcher",
-	"change-tracker",
-	"detective",
-	"adversary",
-	"surgeon",
-	"supervisor",
-	"gatherer-coordinator",
-]);
+const HandoffTargetSchema = z.enum(HANDOFF_AGENT_NAMES);
 
 /**
  * Schema for the universal handoff tool

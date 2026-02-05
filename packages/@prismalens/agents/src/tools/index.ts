@@ -46,11 +46,12 @@ export {
 // Challenge tools for Adversary
 export {
 	createAdversaryTools,
+	createChallengeContext,
 	createChallengeHypothesisTool,
 	createPatternMatchTool,
 	createRefineHypothesisTool,
 	getStoredChallenges,
-	resetChallengeStore,
+	type ChallengeContext,
 	// Note: AdversaryChallenge type is exported from types/index.ts
 } from "./challenge.js";
 export { createRepoTools } from "./repo.js";

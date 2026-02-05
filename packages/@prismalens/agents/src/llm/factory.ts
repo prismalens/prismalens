@@ -112,13 +112,18 @@ export type LLMProviderConfig =
 
 /**
  * Agent names that support LLM configuration overrides.
+ * NOTE: This is a legacy type for LLM override configuration.
+ * For the canonical agent names, see graph/metadata.ts
  */
-export type AgentName =
+export type LLMAgentName =
 	| "commander"
 	| "gatherer"
 	| "detective"
 	| "surgeon"
 	| "adversary";
+
+/** @deprecated Use LLMAgentName instead */
+export type AgentName = LLMAgentName;
 
 /**
  * Per-agent LLM override. Can override any LLMProviderConfig field.

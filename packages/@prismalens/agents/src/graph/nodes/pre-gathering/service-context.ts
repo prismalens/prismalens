@@ -7,7 +7,7 @@ import type {
 	ServiceContext,
 	ServiceHealthStatus,
 	ServiceInfo,
-} from "../../../types/state.js";
+} from "../../../types/index.js";
 import type { GatheringContext, GatherResult } from "./types.js";
 
 const logger = new Logger({ context: "PreGather:ServiceContext" });

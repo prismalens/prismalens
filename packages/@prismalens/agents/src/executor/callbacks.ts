@@ -2,7 +2,7 @@ import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type {
 	AgentExecutionRecord,
 	ToolExecutionRecord,
-} from "../types/state.js";
+} from "../types/index.js";
 
 // =============================================================================
 // EXECUTION TRACKER MIDDLEWARE

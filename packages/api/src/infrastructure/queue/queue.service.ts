@@ -10,15 +10,23 @@ import { ConfigService } from "@nestjs/config";
 import {
 	type IntegrationContext as AgentIntegrationContext,
 	type AlertContext,
+	type IncidentContext,
+	type InvestigationConfig,
 	InvestigationExecutor,
 	type InvestigationInput,
 	type InvestigationResult,
+	mapSeverity,
 } from "@prismalens/agents";
 import { EnvironmentVariables } from "@prismalens/config";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents } from "bullmq";
+import { AlertsService } from "../../modules/alerts/alerts.service.js";
+import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
+import { InvestigationSemaphore } from "./investigation-semaphore.js";
+import { DirectDataProvider } from "./direct-data-provider.js";
+import { safeParseJsonArray } from "./json-utils.js";
 
 /**
  * Integration context for worker (matches worker IntegrationContext)
@@ -56,6 +64,28 @@ export interface InvestigationJobResult {
 	error?: string;
 }
 
+// =============================================================================
+// QUEUE CONFIGURATION CONSTANTS
+// =============================================================================
+
+/** Maximum retry attempts for failed jobs */
+const JOB_MAX_ATTEMPTS = 3;
+
+/** Initial backoff delay in ms (exponential) */
+const JOB_BACKOFF_DELAY_MS = 1000;
+
+/** Keep last N completed jobs */
+const COMPLETED_JOB_RETENTION_COUNT = 100;
+
+/** Remove completed jobs older than 24 hours */
+const COMPLETED_JOB_RETENTION_AGE_S = 24 * 60 * 60;
+
+/** Keep last N failed jobs */
+const FAILED_JOB_RETENTION_COUNT = 50;
+
+/** Remove failed jobs older than 7 days */
+const FAILED_JOB_RETENTION_AGE_S = 7 * 24 * 60 * 60;
+
 /**
  * Queue service with dual-mode support:
  * - regular mode: Direct execution via @prismalens/agents (no Redis)
@@ -69,6 +99,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	// Regular mode: agent executor
 	private executor: InvestigationExecutor | null = null;
 
+	// Regular mode: concurrency control (optional)
+	private semaphore: InvestigationSemaphore | null = null;
+
 	// Queue mode resources (only initialized in queue mode)
 	private investigationQueue: Queue<
 		InvestigationJobData,
@@ -81,6 +114,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		private configService: ConfigService<EnvironmentVariables>,
 		@Inject(forwardRef(() => InvestigationsService))
 		private investigationsService: InvestigationsService,
+		@Inject(forwardRef(() => AlertsService))
+		private alertsService: AlertsService,
+		@Inject(forwardRef(() => IncidentsService))
+		private incidentsService: IncidentsService,
 	) {
 		const config = this.configService.get("PRISMALENS_MODE");
 		this.workerMode = config;
@@ -91,11 +128,36 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			this.logger.log(
 				"Regular mode: Investigations will run directly via @prismalens/agents",
 			);
+
+			// Initialize concurrency control if configured
+			const maxConcurrent = this.configService.get<number>(
+				"PRISMALENS_MAX_CONCURRENT_INVESTIGATIONS",
+			);
+			if (maxConcurrent !== undefined && maxConcurrent > 0) {
+				this.semaphore = new InvestigationSemaphore(maxConcurrent);
+				this.logger.log(
+					`Concurrency control enabled: max ${maxConcurrent} concurrent investigations`,
+				);
+			} else {
+				this.logger.log(
+					"Concurrency control disabled (unlimited concurrent investigations)",
+				);
+			}
+
+			// Create DataProvider for direct mode (uses NestJS services)
+			const dataProvider = new DirectDataProvider(
+				this.alertsService,
+				this.incidentsService,
+			);
+
 			this.executor = new InvestigationExecutor({
-				onProgress: async (investigationId, progress) => {
-					this.logger.debug(
-						`[${investigationId}] ${progress.phase}: ${progress.message}`,
-					);
+				dataProvider,
+				callbacks: {
+					onProgress: async (investigationId, progress) => {
+						this.logger.debug(
+							`[${investigationId}] ${progress.phase}: ${progress.message}`,
+						);
+					},
 				},
 			});
 			return;
@@ -115,18 +177,18 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			>("investigation", {
 				connection: this.connection,
 				defaultJobOptions: {
-					attempts: 3,
+					attempts: JOB_MAX_ATTEMPTS,
 					backoff: {
 						type: "exponential",
-						delay: 1000,
+						delay: JOB_BACKOFF_DELAY_MS,
 					},
 					removeOnComplete: {
-						count: 100,
-						age: 24 * 60 * 60, // 24 hours
+						count: COMPLETED_JOB_RETENTION_COUNT,
+						age: COMPLETED_JOB_RETENTION_AGE_S,
 					},
 					removeOnFail: {
-						count: 50,
-						age: 7 * 24 * 60 * 60, // 7 days
+						count: FAILED_JOB_RETENTION_COUNT,
+						age: FAILED_JOB_RETENTION_AGE_S,
 					},
 				},
 			});
@@ -221,6 +283,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	/**
 	 * Execute investigation directly using @prismalens/agents (regular mode).
 	 * This runs the investigation in-process without requiring a separate worker.
+	 *
+	 * When semaphore is configured, execution is synchronous (awaited) to prevent
+	 * in-memory queue buildup. Without semaphore, execution is fire-and-forget
+	 * for immediate HTTP response.
 	 */
 	private async executeDirectly(
 		data: InvestigationJobData,
@@ -237,25 +303,28 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				`Executing investigation ${jobId} directly via @prismalens/agents`,
 			);
 
-			// Build input for executor
-			const input = this.buildExecutorInput(data);
+			// Build input for executor (async - fetches incident)
+			const input = await this.buildExecutorInput(data);
 
-			// Execute in the background - don't block the HTTP response
-			// Persist results to database when complete (like worker does)
-			this.executor.execute(input).then(
-				(result: InvestigationResult) => {
-					this.logger.log(
-						`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
-					);
-					// Persist results to database
-					this.persistResults(data, result);
-				},
-				(error: Error) => {
-					this.logger.error(`Investigation ${jobId} failed: ${error.message}`);
-					// Persist failure to database
-					this.persistFailure(data, error);
-				},
-			);
+			// If semaphore is configured, use controlled execution (awaited)
+			if (this.semaphore) {
+				// Run with semaphore control — awaited for backpressure
+				await this.executeWithSemaphore(data, input, jobId);
+			} else {
+				// No semaphore: fire-and-forget execution
+				this.executor.execute(input).then(
+					(result: InvestigationResult) => {
+						this.logger.log(
+							`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
+						);
+						this.persistResults(data, result);
+					},
+					(error: Error) => {
+						this.logger.error(`Investigation ${jobId} failed: ${error.message}`);
+						this.persistFailure(data, error);
+					},
+				);
+			}
 
 			this.logger.log(`Investigation ${jobId} started successfully`);
 			return jobId;
@@ -267,11 +336,75 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	/**
-	 * Build executor input from job data.
+	 * Execute investigation with semaphore control.
+	 * Waits for a slot, runs the investigation, and releases the slot.
 	 */
-	private buildExecutorInput(
+	private async executeWithSemaphore(
+		data: InvestigationJobData,
+		input: InvestigationInput,
+		jobId: string,
+	): Promise<void> {
+		if (!this.semaphore || !this.executor) return;
+
+		try {
+			// Wait for a slot (may queue if at capacity)
+			await this.semaphore.acquire(data.investigationId);
+
+			this.logger.log(
+				`Semaphore acquired for ${jobId}, executing...`,
+			);
+
+			// Execute and await completion
+			const result = await this.executor.execute(input);
+			this.logger.log(
+				`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
+			);
+			await this.persistResults(data, result);
+		} catch (error) {
+			const err = error as Error;
+			this.logger.error(`Investigation ${jobId} failed: ${err.message}`);
+			await this.persistFailure(data, err);
+		} finally {
+			// Always release the slot
+			this.semaphore.release();
+			this.logger.debug(`Semaphore released for ${jobId}`);
+		}
+	}
+
+	/**
+	 * Build executor input from job data.
+	 * Now async to fetch incident context.
+	 */
+	private async buildExecutorInput(
 		jobData: InvestigationJobData,
-	): InvestigationInput {
+	): Promise<InvestigationInput> {
+		// Fetch incident context - REQUIRED for investigation
+		const incidentDb = await this.incidentsService.findById(jobData.incidentId);
+		if (!incidentDb) {
+			throw new Error(`Incident not found: ${jobData.incidentId}`);
+		}
+
+		// Map incident to IncidentContext
+		const tags = safeParseJsonArray(incidentDb.tags);
+
+		const incident: IncidentContext = {
+			incidentId: incidentDb.id,
+			number: incidentDb.number,
+			title: incidentDb.title,
+			description: incidentDb.description ?? undefined,
+			severity: incidentDb.severity as IncidentContext["severity"],
+			status: incidentDb.status as IncidentContext["status"],
+			priority: incidentDb.priority as IncidentContext["priority"],
+			serviceId: incidentDb.serviceId ?? undefined,
+			serviceName: incidentDb.service?.name ?? undefined,
+			correlationReason: incidentDb.correlationReason ?? undefined,
+			alertCount: incidentDb.alertCount ?? incidentDb._count?.alerts ?? 0,
+			triggeredAt: incidentDb.triggeredAt.toISOString(),
+			acknowledgedAt: incidentDb.acknowledgedAt?.toISOString(),
+			tags,
+			customerImpact: incidentDb.customerImpact ?? undefined,
+		};
+
 		// Convert alerts from job data to AlertContext
 		const alerts: AlertContext[] = (jobData.alerts || []).map(
 			(alertUnknown) => {
@@ -289,7 +422,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 					description:
 						(alert.description as string | undefined) ||
 						(alert.summary as string | undefined),
-					severity: this.mapSeverity(
+					severity: mapSeverity(
 						(alert.severity as string) || labels?.severity,
 					),
 					status: alert.status as AlertContext["status"],
@@ -319,52 +452,30 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			serviceOverrides: int.serviceOverrides,
 		}));
 
+		// Build LLM config from environment variables
+		// Future: Add settings-based LLM configuration for UI customization
+		const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
+		if (!apiKey) {
+			throw new Error(
+				"LLM API key not configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.",
+			);
+		}
+
+		const llmConfig: InvestigationConfig["llmConfig"] = {
+			provider: (process.env.LLM_PROVIDER as "anthropic" | "openai" | "ollama") || "anthropic",
+			model: process.env.LLM_MODEL || "claude-sonnet-4-20250514",
+			apiKey,
+		};
+
 		return {
 			investigationId: jobData.investigationId,
 			incidentId: jobData.incidentId,
+			incident,
 			priority: jobData.priority,
 			alerts,
 			integrations,
+			llmConfig,
 		};
-	}
-
-	/**
-	 * Map various severity formats to standard format.
-	 */
-	private mapSeverity(
-		severity: string | undefined,
-	): "critical" | "high" | "medium" | "low" | "info" {
-		if (!severity) return "medium";
-
-		const lower = severity.toLowerCase();
-
-		if (lower === "critical" || lower === "crit" || lower === "p1") {
-			return "critical";
-		}
-		if (
-			lower === "high" ||
-			lower === "error" ||
-			lower === "p2" ||
-			lower === "severe"
-		) {
-			return "high";
-		}
-		if (
-			lower === "medium" ||
-			lower === "warning" ||
-			lower === "warn" ||
-			lower === "p3"
-		) {
-			return "medium";
-		}
-		if (lower === "low" || lower === "minor" || lower === "p4") {
-			return "low";
-		}
-		if (lower === "info" || lower === "informational" || lower === "p5") {
-			return "info";
-		}
-
-		return "medium";
 	}
 
 	/**
@@ -459,6 +570,32 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		return { waiting, active, completed, failed };
 	}
 
+	/**
+	 * Get semaphore status for regular mode.
+	 * Returns null if semaphore is not configured.
+	 */
+	getSemaphoreStatus(): {
+		running: number;
+		queued: number;
+		maxConcurrent: number;
+		queuedInvestigations: Array<{ id: string; waitingMs: number }>;
+	} | null {
+		if (!this.semaphore) {
+			return null;
+		}
+		return this.semaphore.getStatus();
+	}
+
+	/**
+	 * Cancel a queued investigation (regular mode with semaphore only).
+	 */
+	cancelQueuedInvestigation(investigationId: string): boolean {
+		if (!this.semaphore) {
+			return false;
+		}
+		return this.semaphore.cancel(investigationId);
+	}
+
 	private getPriorityValue(priority?: string): number {
 		switch (priority) {
 			case "critical":
@@ -549,3 +686,4 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		}
 	}
 }
+

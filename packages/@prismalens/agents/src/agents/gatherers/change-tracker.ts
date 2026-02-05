@@ -24,7 +24,8 @@ import type {
 	Finding,
 	InvestigationState,
 	SupervisorPhase,
-} from "../../types/state.js";
+} from "../../types/index.js";
+import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 import { addFindingIds, validateChangeFindings } from "../../utils/validation.js";
 
 const logger = new Logger({ context: "ChangeTracker" });
@@ -87,9 +88,14 @@ export async function changeTrackerNode(
 		runName: traceConfig.runName,
 	});
 
+	// Get runtime config from RunnableConfig.configurable (NOT from state)
+	const runtimeConfig = getInvestigationConfigFromConfigurable(
+		config?.configurable as Record<string, unknown> | undefined,
+	);
+
 	// Check for LLM config
-	if (!state.llmConfig) {
-		logger.error("No LLM config provided");
+	if (!runtimeConfig?.llmConfig) {
+		logger.error("No LLM config provided in RunnableConfig.configurable");
 		return {
 			agentErrors: [
 				{
@@ -147,14 +153,15 @@ export async function changeTrackerNode(
 			};
 		}
 
-		// If no pre-gathered data, run the agent
-		const normalizedConfig = normalizeConfig(state.llmConfig);
+		// If no pre-gathered data, run the agent (using config from RunnableConfig)
+		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
 		const agentConfig = resolveAgentConfig(normalizedConfig, "gatherer");
 		const llm = createLLM(agentConfig);
 
 		// Create tools for change tracking (GitHub, GitLab, etc.)
 		// Pass clonePaths if available for local git history analysis
-		const tools = createToolsForAgent("gatherer", state.integrations, {
+		// Integrations come from runtime config, not state
+		const tools = createToolsForAgent("gatherer", runtimeConfig.integrations, {
 			clonePaths: state.clonePaths,
 		});
 

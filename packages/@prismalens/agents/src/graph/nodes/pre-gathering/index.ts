@@ -8,7 +8,10 @@
  * START → validateIncident → preGather → commander → writeToApi → END
  */
 
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { Logger } from "@prismalens/logger";
+import type { DataProvider } from "../../../types/data-provider.js";
+import { getInvestigationConfigFromConfigurable } from "../../../types/config.js";
 import type {
 	GatheredAlertsContext,
 	GatheredMetrics,
@@ -19,8 +22,8 @@ import type {
 	RecentChangesContext,
 	ServiceContext,
 	SimilarIncidentsContext,
-} from "../../../types/state.js";
-import { fetchFullAlerts } from "./alerts.js";
+} from "../../../types/index.js";
+import { organizeAndEnrichAlerts } from "./alerts.js";
 import { fetchRecentChanges, getTopRiskyDeployments } from "./changes.js";
 import { hasLoggingIntegration, previewLogs } from "./logs.js";
 import { calculateMetrics } from "./metrics.js";
@@ -71,7 +74,27 @@ async function withTimeout<T>(
 }
 
 /**
- * Calculate overall quality score based on data completeness
+ * Quality score dimension definition.
+ * Each dimension contributes a weighted score based on data presence and richness.
+ */
+interface QualityDimension {
+	/** Weight of this dimension (summed to calculate maxScore) */
+	weight: number;
+	/** Whether this dimension is included (e.g., logs only if integration exists) */
+	enabled: boolean;
+	/** Score for having the data structure present (partial credit) */
+	presentScore: number;
+	/** Additional score for having rich/populated data */
+	richScore: number;
+	/** Check if data structure is present */
+	isPresent: boolean;
+	/** Check if data is rich (has meaningful content) */
+	isRich: boolean;
+}
+
+/**
+ * Calculate overall quality score based on data completeness.
+ * Uses a data-driven approach: each source has a weight, a "present" score, and a "rich" score.
  */
 function calculateQualityScore(
 	alerts: GatheredAlertsContext | null,
@@ -82,61 +105,71 @@ function calculateQualityScore(
 	logs: LogPreviewContext | null,
 	hasLogging: boolean,
 ): number {
+	const dimensions: QualityDimension[] = [
+		{
+			weight: 30,
+			enabled: true,
+			presentScore: 15,
+			richScore: 15,
+			isPresent: alerts != null,
+			isRich: alerts != null && alerts.full.length > 0,
+		},
+		{
+			weight: 20,
+			enabled: true,
+			presentScore: 10,
+			richScore: 10,
+			isPresent: changes != null,
+			isRich: changes != null && (
+				changes.deployments.length > 0 ||
+				changes.commits.length > 0 ||
+				changes.configChanges.length > 0
+			),
+		},
+		{
+			weight: 15,
+			enabled: true,
+			presentScore: 7.5,
+			richScore: 7.5,
+			isPresent: similar != null,
+			isRich: similar != null && (similar.incidents.length > 0 || similar.patterns.length > 0),
+		},
+		{
+			weight: 15,
+			enabled: true,
+			presentScore: 7.5,
+			richScore: 7.5,
+			isPresent: service != null,
+			isRich: service != null && service.service != null,
+		},
+		{
+			weight: 10,
+			enabled: true,
+			presentScore: 10,
+			richScore: 0,
+			isPresent: metrics != null,
+			isRich: false,
+		},
+		{
+			weight: 10,
+			enabled: hasLogging,
+			presentScore: 5,
+			richScore: 5,
+			isPresent: logs != null,
+			isRich: logs != null && logs.errorLogs.length > 0,
+		},
+	];
+
 	let score = 0;
 	let maxScore = 0;
 
-	// Alerts (required, 30% weight)
-	maxScore += 30;
-	if (alerts && alerts.full.length > 0) {
-		score += 30;
-	} else if (alerts) {
-		score += 15; // Partial credit for having the structure
-	}
-
-	// Changes (important, 20% weight)
-	maxScore += 20;
-	if (changes) {
-		score += 10; // Base score for having the structure
-		if (
-			changes.deployments.length > 0 ||
-			changes.commits.length > 0 ||
-			changes.configChanges.length > 0
-		) {
-			score += 10;
-		}
-	}
-
-	// Similar incidents (helpful, 15% weight)
-	maxScore += 15;
-	if (similar) {
-		score += 7.5;
-		if (similar.incidents.length > 0 || similar.patterns.length > 0) {
-			score += 7.5;
-		}
-	}
-
-	// Service context (helpful, 15% weight)
-	maxScore += 15;
-	if (service) {
-		score += 7.5;
-		if (service.service) {
-			score += 7.5;
-		}
-	}
-
-	// Metrics (required, 10% weight)
-	maxScore += 10;
-	if (metrics) {
-		score += 10;
-	}
-
-	// Logs (optional based on integration, 10% weight)
-	if (hasLogging) {
-		maxScore += 10;
-		if (logs && logs.errorLogs.length > 0) {
-			score += 10;
-		} else if (logs) {
-			score += 5;
+	for (const dim of dimensions) {
+		if (!dim.enabled) continue;
+		maxScore += dim.weight;
+		if (dim.isRich) {
+			score += dim.presentScore + dim.richScore;
+		} else if (dim.isPresent) {
+			score += dim.presentScore;
 		}
 	}
 
@@ -196,15 +229,33 @@ function buildEmptyGatheredContext(
  *
  * Runs parallel data fetching with individual timeouts and graceful degradation.
  * Each fetch can fail independently - Commander proceeds with whatever was gathered.
+ *
+ * @param state - Current investigation state
+ * @param config - LangGraph runnable config containing dataProvider
  */
 export async function preGather(
 	state: InvestigationState,
+	config: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
 	const startTime = Date.now();
 	const errors: { source: string; error: string }[] = [];
 	const sourcesQueried: string[] = [];
 
 	logger.info(`Starting pre-gathering for investigation ${state.investigationId}`);
+
+	// Extract dataProvider from config
+	const dataProvider = config.configurable?.dataProvider as DataProvider | undefined;
+	if (!dataProvider) {
+		throw new Error(
+			"DataProvider not found in config.configurable. " +
+			"Ensure the executor passes dataProvider when invoking the graph."
+		);
+	}
+
+	// Extract runtime config (integrations come from config, not state)
+	const runtimeConfig = getInvestigationConfigFromConfigurable(
+		config.configurable as Record<string, unknown> | undefined,
+	);
 
 	// Build gathering context
 	const incidentTime = state.incident?.triggeredAt
@@ -216,6 +267,9 @@ export async function preGather(
 		incidentTime,
 		serviceId: state.incident?.serviceId,
 		repository: state.primaryAlert?.repository,
+		dataProvider,
+		// Integrations from runtime config, NOT from state (prevents checkpoint credential leaks)
+		integrations: runtimeConfig?.integrations || [],
 	};
 
 	// Check for logging integration early
@@ -231,9 +285,9 @@ export async function preGather(
 		logsResult,
 	] = await Promise.all([
 		withTimeout(
-			fetchFullAlerts(ctx),
+			organizeAndEnrichAlerts(ctx),
 			PRE_GATHER_TIMEOUTS.ALERTS,
-			"fetchFullAlerts",
+			"organizeAndEnrichAlerts",
 		).then((r) => {
 			sourcesQueried.push("alerts");
 			return r;
@@ -424,9 +478,6 @@ export async function preGather(
 		alerts: alerts?.full || state.alerts,
 		dataQuality: {
 			preGathering: qualityScore,
-		},
-		agentProgression: {
-			preGathering: true,
 		},
 		dataSourcesUsed: sourcesQueried,
 	};

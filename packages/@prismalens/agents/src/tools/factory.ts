@@ -2,7 +2,7 @@ import type { StructuredTool } from "@langchain/core/tools";
 import { Logger } from "@prismalens/logger";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { IntegrationContext } from "../types/state.js";
+import type { IntegrationContext } from "../types/index.js";
 import {
 	BundleRegistry,
 	createMCPBundleSource,

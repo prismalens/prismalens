@@ -21,7 +21,7 @@ import type {
 	InvestigationState,
 	SupervisorAgentName,
 	SupervisorPhase,
-} from "../../types/state.js";
+} from "../../types/index.js";
 
 const logger = new Logger({ context: "Supervisor" });
 
@@ -148,12 +148,12 @@ export async function supervisorNode(
 export function supervisorRoute(state: InvestigationState): string {
 	const {
 		phase,
-		hypotheses,
-		findings,
-		gatherIterations,
+		hypotheses = [],
+		findings = [],
+		gatherIterations = 0,
 		handoffRequest,
 		clonePaths,
-		adversaryChallenges,
+		adversaryChallenges = [],
 	} = state;
 
 	// Check agent completion via findings/state

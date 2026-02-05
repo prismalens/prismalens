@@ -24,6 +24,9 @@
  *                                         │  Phase 2: Analyze                     │
  *                                         │  └─ detective → supervisor            │
  *                                         │                                       │
+ *                                         │  Phase 2.5: Challenge (conditional)   │
+ *                                         │  └─ adversary → supervisor            │
+ *                                         │                                       │
  *                                         │  Phase 3: Targeted Gather (optional)  │
  *                                         │  └─ {gatherer} → supervisor           │
  *                                         │                                       │
@@ -41,6 +44,7 @@ import { logGathererNode } from "../agents/gatherers/log-gatherer.js";
 import { codeSearcherNode } from "../agents/gatherers/code-searcher.js";
 import { changeTrackerNode } from "../agents/gatherers/change-tracker.js";
 import { detectiveNode } from "../agents/analysis/detective.js";
+import { adversaryNode } from "../agents/analysis/adversary.js";
 import { surgeonNode } from "../agents/fix/surgeon.js";
 
 // Pre-processing nodes
@@ -54,12 +58,29 @@ import {
 	findingsFromPreGathered,
 } from "./nodes/supervisor.js";
 
+// Quality Gate
+import { qualityGateNode, qualityGateRoute } from "./nodes/quality-gate.js";
+
+// Handoff Processor
+import {
+	handoffProcessorNode,
+	handoffProcessorRoute,
+} from "./nodes/handoff-processor.js";
+
+// GathererCoordinator (sub-supervisor for gatherers)
+import {
+	gathererCoordinatorNode,
+	gathererCoordinatorRoute,
+} from "./nodes/gatherer-coordinator.js";
+
 // State and persistence
+import type { DataProvider } from "../types/data-provider.js";
+import type { InvestigationConfig } from "../types/config.js";
 import {
 	getBestHypothesis,
 	type InvestigationState,
 	InvestigationStateAnnotation,
-} from "../types/state.js";
+} from "../types/index.js";
 import {
 	getCheckpointer,
 	getInvocationConfig,
@@ -150,7 +171,6 @@ async function validateIncident(
 		primaryAlert,
 		status: "running",
 		dataQuality,
-		agentProgression: { validation: true },
 	};
 }
 
@@ -202,7 +222,6 @@ async function writeToApi(
 		status,
 		analysisMethod,
 		phase: "complete",
-		agentProgression: { apiWriter: true },
 	};
 }
 
@@ -233,7 +252,6 @@ async function prepareSupervisor(
 		findings: initialFindings,
 		phase: "gathering",
 		currentAgent: undefined,
-		agentProgression: { prepareSupervisor: true },
 	};
 }
 
@@ -257,6 +275,40 @@ function routeAfterClone(_state: InvestigationState): string {
 }
 
 function routeAfterPrepareSupervisor(_state: InvestigationState): string {
+	return "supervisor";
+}
+
+/**
+ * Route after detective: to processHandoff if requesting data, to adversary for dialogue, or back to supervisor.
+ */
+function routeAfterDetective(state: InvestigationState): string {
+	// If detective made a handoff request, route directly to processor
+	if (state.handoffRequest) {
+		logger.info("Routing detective to processHandoff for handoff validation");
+		return "processHandoff";
+	}
+
+	// Check if detective flagged for direct adversary dialogue
+	if (state.needsAdversaryChallenge) {
+		logger.info("Routing detective directly to adversary for dialogue");
+		return "adversary";
+	}
+
+	// Default: back to supervisor for orchestration
+	return "supervisor";
+}
+
+/**
+ * Route after adversary: back to detective for refinement, or to supervisor.
+ */
+function routeAfterAdversary(state: InvestigationState): string {
+	// Check if adversary requests detective to refine hypothesis
+	if (state.adversaryRequestsRefinement) {
+		logger.info("Routing adversary back to detective for refinement");
+		return "detective";
+	}
+
+	// Default: back to supervisor for orchestration
 	return "supervisor";
 }
 
@@ -292,6 +344,15 @@ function buildInvestigationGraph() {
 		// Supervisor node
 		.addNode("supervisor", supervisorNode)
 
+		// Quality gate node (validates findings before Detective)
+		.addNode("qualityGate", qualityGateNode)
+
+		// Handoff processor node (handles handoff validation and denial feedback)
+		.addNode("processHandoff", handoffProcessorNode)
+
+		// GathererCoordinator (sub-supervisor for gatherers)
+		.addNode("gatherer-coordinator", gathererCoordinatorNode)
+
 		// Gatherer agent nodes
 		.addNode("log-gatherer", logGathererNode)
 		.addNode("code-searcher", codeSearcherNode)
@@ -299,6 +360,7 @@ function buildInvestigationGraph() {
 
 		// Analysis and fix agent nodes
 		.addNode("detective", detectiveNode)
+		.addNode("adversary", adversaryNode)
 		.addNode("surgeon", surgeonNode)
 
 		// Output node
@@ -321,20 +383,56 @@ function buildInvestigationGraph() {
 		})
 
 		// Supervisor routing (the heart of the pattern)
+		// Note: Supervisor routes to gatherer-coordinator, not directly to gatherers
 		.addConditionalEdges("supervisor", supervisorRoute, {
-			"log-gatherer": "log-gatherer",
-			"code-searcher": "code-searcher",
-			"change-tracker": "change-tracker",
+			"gatherer-coordinator": "gatherer-coordinator",
+			processHandoff: "processHandoff",
+			qualityGate: "qualityGate",
 			detective: "detective",
+			adversary: "adversary",
 			surgeon: "surgeon",
 			complete: "writeToApi",
 		})
 
-		// All agents return to supervisor
-		.addEdge("log-gatherer", "supervisor")
-		.addEdge("code-searcher", "supervisor")
-		.addEdge("change-tracker", "supervisor")
-		.addEdge("detective", "supervisor")
+		// GathererCoordinator routes to individual gatherers or back to supervisor
+		.addConditionalEdges("gatherer-coordinator", gathererCoordinatorRoute, {
+			"log-gatherer": "log-gatherer",
+			"code-searcher": "code-searcher",
+			"change-tracker": "change-tracker",
+			processHandoff: "processHandoff",
+			supervisor: "supervisor",
+		})
+
+		// All gatherers return through gatherer-coordinator
+		.addEdge("log-gatherer", "gatherer-coordinator")
+		.addEdge("code-searcher", "gatherer-coordinator")
+		.addEdge("change-tracker", "gatherer-coordinator")
+
+		// Quality gate routes conditionally: to supervisor (re-gather) or detective (analyze)
+		.addConditionalEdges("qualityGate", qualityGateRoute, {
+			supervisor: "supervisor",
+			detective: "detective",
+		})
+
+		// Handoff processor routes: denied → detective (with feedback), valid → supervisor
+		.addConditionalEdges("processHandoff", handoffProcessorRoute, {
+			detective: "detective",
+			supervisor: "supervisor",
+		})
+
+		// Detective routes: to processHandoff for handoff requests, to adversary for dialogue, or back to supervisor
+		.addConditionalEdges("detective", routeAfterDetective, {
+			processHandoff: "processHandoff",
+			adversary: "adversary",
+			supervisor: "supervisor",
+		})
+
+		// Adversary routes: direct back to detective for refinement, or back to supervisor
+		.addConditionalEdges("adversary", routeAfterAdversary, {
+			detective: "detective",
+			supervisor: "supervisor",
+		})
+
 		.addEdge("surgeon", "supervisor")
 
 		// Output
@@ -361,25 +459,59 @@ async function compileInvestigationGraph() {
 /**
  * Run a full investigation.
  *
+ * @param initialState - Initial state for the investigation (data only, no credentials)
+ * @param dataProvider - Provider for fetching additional data during investigation
+ * @param runtimeConfig - Runtime config (llmConfig, integrations) - NOT checkpointed
+ *
  * @example
- * const result = await runInvestigation({
- *   investigationId: 'inv-123',
- *   incidentId: 'inc-456',
- *   incident: { ... },
- *   alerts: [{ alertId: 'alert-1', title: '...', severity: 'high' }],
- *   integrations: [...],
- *   llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
- * });
+ * const result = await runInvestigation(
+ *   {
+ *     investigationId: 'inv-123',
+ *     incidentId: 'inc-456',
+ *     incident: { ... },
+ *     alerts: [{ alertId: 'alert-1', title: '...', severity: 'high' }],
+ *   },
+ *   dataProvider,
+ *   {
+ *     llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
+ *     integrations: [...],
+ *     maxIterations: 10,
+ *     priority: 'normal',
+ *   },
+ * );
  */
 export async function runInvestigation(
 	initialState: Partial<InvestigationState>,
+	dataProvider: DataProvider,
+	runtimeConfig: InvestigationConfig,
 ): Promise<InvestigationState> {
 	if (!initialState.investigationId) {
 		throw new Error("investigationId is required");
 	}
 
+	if (!initialState.incidentId) {
+		throw new Error("incidentId is required");
+	}
+
+	if (!initialState.incident) {
+		throw new Error("incident context is required");
+	}
+
 	const graph = await compileInvestigationGraph();
-	const config = getInvocationConfig(initialState.investigationId);
+	const baseConfig = getInvocationConfig(
+		initialState.investigationId,
+		runtimeConfig,
+		initialState.incidentId,
+	);
+
+	// Merge dataProvider into configurable
+	const config = {
+		...baseConfig,
+		configurable: {
+			...baseConfig.configurable,
+			dataProvider,
+		},
+	};
 
 	logger.info(`Starting investigation ${initialState.investigationId}`);
 
@@ -397,12 +529,27 @@ export async function runInvestigation(
 
 /**
  * Resume a previously started investigation.
+ *
+ * @param investigationId - ID of the investigation to resume
+ * @param dataProvider - Provider for fetching additional data during investigation
+ * @param runtimeConfig - Runtime config (llmConfig, integrations) - REQUIRED for resume
  */
 export async function resumeInvestigation(
 	investigationId: string,
+	dataProvider: DataProvider,
+	runtimeConfig: InvestigationConfig,
 ): Promise<InvestigationState> {
 	const graph = await compileInvestigationGraph();
-	const config = getInvocationConfig(investigationId);
+	const baseConfig = getInvocationConfig(investigationId, runtimeConfig);
+
+	// Merge dataProvider into configurable
+	const config = {
+		...baseConfig,
+		configurable: {
+			...baseConfig.configurable,
+			dataProvider,
+		},
+	};
 
 	logger.info(`Resuming investigation ${investigationId}`);
 

@@ -32,7 +32,8 @@ import type {
 	Hypothesis,
 	InvestigationState,
 	SupervisorPhase,
-} from "../../types/state.js";
+} from "../../types/index.js";
+import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 
 const logger = new Logger({ context: "Detective" });
 
@@ -187,9 +188,14 @@ export async function detectiveNode(
 		runName: traceConfig.runName,
 	});
 
+	// Get runtime config from RunnableConfig.configurable (NOT from state)
+	const runtimeConfig = getInvestigationConfigFromConfigurable(
+		config?.configurable as Record<string, unknown> | undefined,
+	);
+
 	// Check for LLM config
-	if (!state.llmConfig) {
-		logger.error("No LLM config provided");
+	if (!runtimeConfig?.llmConfig) {
+		logger.error("No LLM config provided in RunnableConfig.configurable");
 		return {
 			phase: "complete" as SupervisorPhase,
 			agentErrors: [
@@ -208,8 +214,8 @@ export async function detectiveNode(
 	resetHandoffRequest();
 
 	try {
-		// Resolve LLM config for this agent
-		const normalizedConfig = normalizeConfig(state.llmConfig);
+		// Resolve LLM config for this agent (from config, not state)
+		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
 		const agentConfig = resolveAgentConfig(normalizedConfig, "detective");
 		const llm = createLLM(agentConfig);
 

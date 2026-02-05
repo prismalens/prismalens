@@ -60,6 +60,16 @@ export const globalSchema = z.object({
 		.describe(
 			"Allow any origin for webhook endpoints (for browser-based testing tools)",
 		),
+
+	// Investigation Concurrency (Regular Mode)
+	PRISMALENS_MAX_CONCURRENT_INVESTIGATIONS: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.optional()
+		.describe(
+			"Maximum concurrent investigations in regular mode. If not set, unlimited. Only applies when PRISMALENS_MODE=regular.",
+		),
 });
 
 export type GlobalConfig = z.infer<typeof globalSchema>;

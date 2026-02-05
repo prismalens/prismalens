@@ -6,6 +6,7 @@ import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { InvestigationTriggerService } from "./investigation-trigger.service.js";
 import { InvestigationUpdateService } from "./investigation-update.service.js";
+import { ProgressService } from "./progress.service.js";
 
 @Module({
 	imports: [ConfigModule, forwardRef(() => TimelineModule)],
@@ -14,12 +15,14 @@ import { InvestigationUpdateService } from "./investigation-update.service.js";
 		InvestigationsService,
 		InvestigationTriggerService,
 		InvestigationUpdateService,
+		ProgressService,
 		InternalGuard,
 	],
 	exports: [
 		InvestigationsService,
 		InvestigationTriggerService,
 		InvestigationUpdateService,
+		ProgressService,
 	],
 })
 export class InvestigationsModule {}

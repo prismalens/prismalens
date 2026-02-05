@@ -14,7 +14,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import type {
 	InvestigationState,
 	SupervisorAgentName,
-} from "../types/state.js";
+} from "../types/index.js";
 
 // =============================================================================
 // TYPES

@@ -7,7 +7,9 @@
 export {
 	// Per-agent override types and utilities
 	type AgentLLMOverride,
-	type AgentName,
+	type LLMAgentName,
+	/** @deprecated Use LLMAgentName instead to avoid conflict with graph/metadata AgentName */
+	type AgentName as LLMFactoryAgentName,
 	isConfigWithOverrides,
 	type LLMConfigWithOverrides,
 	normalizeConfig,

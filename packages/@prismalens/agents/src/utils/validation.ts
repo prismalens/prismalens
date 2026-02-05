@@ -17,7 +17,7 @@ import type {
 	FindingValidation,
 	IncidentContext,
 	ValidationWindowLevel,
-} from "../types/state.js";
+} from "../types/index.js";
 
 const logger = new Logger({ context: "Validation" });
 

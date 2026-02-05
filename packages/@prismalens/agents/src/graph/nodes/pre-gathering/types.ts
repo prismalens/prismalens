@@ -2,7 +2,8 @@
  * Types for pre-gathering operations
  */
 
-import type { InvestigationState } from "../../../types/state.js";
+import type { DataProvider } from "../../../types/data-provider.js";
+import type { IntegrationContext, InvestigationState } from "../../../types/index.js";
 
 /**
  * Timeout configuration for pre-gathering operations
@@ -80,4 +81,11 @@ export interface GatheringContext {
 	incidentTime: Date;
 	serviceId?: string;
 	repository?: string;
+	/** Data provider for fetching additional data during investigation */
+	dataProvider: DataProvider;
+	/**
+	 * Available integrations for tools (GitHub, Render, etc.).
+	 * Passed from RunnableConfig.configurable (NOT from state - prevents checkpoint leaks).
+	 */
+	integrations: IntegrationContext[];
 }

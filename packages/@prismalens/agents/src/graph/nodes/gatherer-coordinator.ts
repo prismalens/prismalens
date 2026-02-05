@@ -17,7 +17,7 @@ import { Logger } from "@prismalens/logger";
 import type {
 	Finding,
 	InvestigationState,
-} from "../../types/state.js";
+} from "../../types/index.js";
 import { hasClonedRepos } from "./supervisor.js";
 
 const logger = new Logger({ context: "GathererCoordinator" });

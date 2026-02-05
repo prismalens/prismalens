@@ -15,14 +15,17 @@ import { exec } from "node:child_process";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { Logger } from "@prismalens/logger";
 import type {
 	AlertContext,
 	CloneDecision,
 	ClonedRepoInfo,
 	IncidentContext,
+	IntegrationContext,
 	InvestigationState,
-} from "../../../types/state.js";
+} from "../../../types/index.js";
+import { getInvestigationConfigFromConfigurable } from "../../../types/config.js";
 
 const execAsync = promisify(exec);
 const logger = new Logger({ context: "CloneStrategy" });
@@ -466,11 +469,18 @@ export async function cleanupOldWorkspaces(): Promise<number> {
  */
 export async function cloneIfNeededNode(
 	state: InvestigationState,
+	config?: RunnableConfig,
 ): Promise<Partial<InvestigationState>> {
 	logger.info("Evaluating clone decision", {
 		investigationId: state.investigationId,
 		alertCount: state.alerts.length,
 	});
+
+	// Get runtime config for integrations (NOT from state - prevents checkpoint credential leaks)
+	const runtimeConfig = getInvestigationConfigFromConfigurable(
+		config?.configurable as Record<string, unknown> | undefined,
+	);
+	const integrations = runtimeConfig?.integrations || [];
 
 	// Get single-repo clone decision based on incident category
 	const decision = shouldCloneRepo(state.incident);
@@ -493,7 +503,7 @@ export async function cloneIfNeededNode(
 
 	// If no repos from alerts, fall back to primary alert or integration
 	if (multiRepoDecision.repos.length === 0) {
-		const repoUrl = getRepositoryUrl(state);
+		const repoUrl = getRepositoryUrl(state, integrations);
 
 		if (!repoUrl) {
 			logger.warn("No repository URL available, skipping clone");
@@ -582,16 +592,22 @@ export async function cloneIfNeededNode(
 }
 
 /**
- * Extract repository URL from state.
+ * Extract repository URL from state and integrations.
+ *
+ * @param state - Investigation state
+ * @param integrations - Integrations from RunnableConfig.configurable (NOT from state)
  */
-function getRepositoryUrl(state: InvestigationState): string | null {
+function getRepositoryUrl(
+	state: InvestigationState,
+	integrations: IntegrationContext[],
+): string | null {
 	// Try to get from primary alert
 	if (state.primaryAlert?.repository) {
 		return normalizeRepoUrl(state.primaryAlert.repository);
 	}
 
-	// Try to get from integrations
-	const githubIntegration = state.integrations.find(
+	// Try to get from integrations (passed from config, not state)
+	const githubIntegration = integrations.find(
 		(i) => i.type.toLowerCase() === "github",
 	);
 

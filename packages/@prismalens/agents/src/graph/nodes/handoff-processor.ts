@@ -22,7 +22,7 @@ import {
 import type {
 	InvestigationState,
 	SupervisorPhase,
-} from "../../types/state.js";
+} from "../../types/index.js";
 
 const logger = new Logger({ context: "HandoffProcessor" });
 

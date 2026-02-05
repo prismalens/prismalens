@@ -12,6 +12,7 @@ export * from "./event.js";
 export * from "./incident.js";
 export * from "./integration.js";
 export * from "./investigation.js";
+export * from "./investigation-progress.js";
 export * from "./recommendation.js";
 // Entity schemas
 export * from "./service.js";

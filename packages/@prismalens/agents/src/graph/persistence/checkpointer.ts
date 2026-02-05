@@ -1,33 +1,49 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+import type {
+	BaseCheckpointSaver,
+	Checkpoint,
+	CheckpointTuple,
+} from "@langchain/langgraph-checkpoint";
 import pg from "pg";
+import { resolve } from "node:path";
+import { getConfig } from "@prismalens/config";
+import { Logger } from "@prismalens/logger";
+import type { InvestigationConfig } from "../../types/config.js";
+
+const logger = new Logger({ context: "Checkpointer" });
 
 // =============================================================================
-// POSTGRESQL CHECKPOINTER FOR LANGGRAPH
+// CHECKPOINTER FOR LANGGRAPH (PostgreSQL + SQLite Support)
 // =============================================================================
-// Provides durable execution for LangGraph workflows using PostgreSQL.
-// Uses the same database as the API with a dedicated 'langgraph' schema.
+// Provides durable execution for LangGraph workflows using PostgreSQL or SQLite.
+// Uses the same database configuration as the API (@prismalens/config).
 //
 // Features:
+// - Auto-detects database type from PRISMALENS_DB_TYPE
 // - Singleton pattern for connection pooling
 // - Thread ID generation for investigations
 // - Resume support for failed investigations
+// - SQLite fallback for self-hosted users without PostgreSQL
 // =============================================================================
 
-let checkpointerInstance: PostgresSaver | null = null;
+let checkpointerInstance: BaseCheckpointSaver | null = null;
+let checkpointerInitPromise: Promise<BaseCheckpointSaver> | null = null;
 let poolInstance: pg.Pool | null = null;
 
 export interface CheckpointerConfig {
-	/** PostgreSQL connection string (defaults to DATABASE_URL env var) */
+	/** Override connection string (defaults to PRISMALENS_DB_URL) */
 	connectionString?: string;
-	/** Schema name for LangGraph tables (defaults to 'langgraph') */
+	/** Schema name for LangGraph tables (PostgreSQL only, defaults to 'langgraph') */
 	schema?: string;
-	/** Maximum pool connections (defaults to 10) */
+	/** Maximum pool connections (PostgreSQL only, defaults to 10) */
 	maxPoolSize?: number;
 }
 
 /**
- * Get or create the PostgresSaver checkpointer instance.
+ * Get or create the checkpointer instance.
  * Uses a singleton pattern to share the connection pool across invocations.
+ * Automatically selects PostgresSaver or SqliteSaver based on PRISMALENS_DB_TYPE.
  *
  * @example
  * const checkpointer = await getCheckpointer();
@@ -35,22 +51,56 @@ export interface CheckpointerConfig {
  */
 export async function getCheckpointer(
 	config?: CheckpointerConfig,
-): Promise<PostgresSaver> {
+): Promise<BaseCheckpointSaver> {
 	if (checkpointerInstance) {
 		return checkpointerInstance;
 	}
 
-	const connectionString = config?.connectionString || process.env.DATABASE_URL;
-	if (!connectionString) {
-		throw new Error(
-			"DATABASE_URL environment variable is required for PostgresSaver. " +
-				"Set it to your PostgreSQL connection string.",
+	// Promise-based lock: if initialization is already in progress, wait for it
+	if (checkpointerInitPromise) {
+		return checkpointerInitPromise;
+	}
+
+	checkpointerInitPromise = initializeCheckpointer(config);
+
+	try {
+		const instance = await checkpointerInitPromise;
+		checkpointerInstance = instance;
+		return instance;
+	} catch (error) {
+		// Reset promise so next call retries
+		checkpointerInitPromise = null;
+		throw error;
+	}
+}
+
+async function initializeCheckpointer(
+	config?: CheckpointerConfig,
+): Promise<BaseCheckpointSaver> {
+	// Use same config as Prisma (from @prismalens/config)
+	const appConfig = getConfig();
+	const dbType = appConfig.PRISMALENS_DB_TYPE;
+	const connectionString = config?.connectionString || appConfig.PRISMALENS_DB_URL;
+
+	if (dbType === "postgresql") {
+		return createPostgresCheckpointer(
+			connectionString,
+			config?.schema,
+			config?.maxPoolSize,
 		);
 	}
 
-	const schema = config?.schema || "langgraph";
-	const maxPoolSize = config?.maxPoolSize || 10;
+	return createSqliteCheckpointer(connectionString);
+}
 
+/**
+ * Create PostgreSQL checkpointer with connection pooling.
+ */
+async function createPostgresCheckpointer(
+	connectionString: string,
+	schema = "langgraph",
+	maxPoolSize = 10,
+): Promise<PostgresSaver> {
 	// Create connection pool
 	poolInstance = new pg.Pool({
 		connectionString,
@@ -74,19 +124,54 @@ export async function getCheckpointer(
 	}
 
 	// Create checkpointer with schema
-	checkpointerInstance = new PostgresSaver(poolInstance, {
+	const checkpointer = new PostgresSaver(poolInstance, {
 		schema,
-	} as any); // Type assertion due to potential version mismatch
+	} as { schema: string });
 
 	// Setup tables (creates them if they don't exist)
 	try {
-		await checkpointerInstance.setup();
+		await checkpointer.setup();
 	} catch (error) {
-		// Log but don't fail - tables might already exist
-		console.warn(`Checkpointer setup warning: ${error}`);
+		const errMsg = error instanceof Error ? error.message : String(error);
+		// Only swallow "already exists" errors — re-throw real errors
+		if (errMsg.includes("already exists") || errMsg.includes("duplicate")) {
+			logger.info("Checkpointer tables already exist");
+		} else {
+			throw error;
+		}
 	}
 
-	return checkpointerInstance;
+	return checkpointer;
+}
+
+/**
+ * Create SQLite checkpointer.
+ * Auto-creates tables on first use.
+ */
+async function createSqliteCheckpointer(
+	connectionString: string,
+): Promise<SqliteSaver> {
+	// SqliteSaver.fromConnString expects a file path, not a full connection string
+	// Extract the file path from the connection string if needed
+	let dbPath = connectionString;
+
+	// Handle Prisma-style SQLite URLs: file:./path/to/db.sqlite
+	if (connectionString.startsWith("file:")) {
+		dbPath = connectionString.replace(/^file:/, "");
+	}
+
+	// Validate path to prevent traversal attacks
+	const resolvedPath = resolve(dbPath);
+	const baseDir = resolve(process.cwd());
+	if (resolvedPath !== baseDir && !resolvedPath.startsWith(`${baseDir}/`)) {
+		throw new Error(
+			`SQLite path must be within the working directory: ${resolvedPath} is outside ${baseDir}`,
+		);
+	}
+
+	const checkpointer = SqliteSaver.fromConnString(resolvedPath);
+
+	return checkpointer;
 }
 
 /**
@@ -105,18 +190,36 @@ export function getThreadId(investigationId: string): string {
  * Get LangGraph invocation config with thread ID for persistence.
  * Includes root-level trace configuration for LangSmith.
  *
+ * IMPORTANT: Runtime config (llmConfig, integrations, maxIterations, priority)
+ * is passed via configurable but is NOT serialized to checkpoints.
+ * This prevents credentials from being persisted.
+ *
  * @example
- * const config = getInvocationConfig('abc123');
+ * const config = getInvocationConfig('abc123', {
+ *   llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
+ *   integrations: [...],
+ *   maxIterations: 10,
+ *   priority: 'normal',
+ * }, 'inc-456');
  * const result = await graph.invoke(state, config);
  */
 export function getInvocationConfig(
 	investigationId: string,
+	runtimeConfig?: InvestigationConfig,
 	incidentId?: string,
 ) {
 	return {
 		configurable: {
 			thread_id: getThreadId(investigationId),
 			checkpoint_ns: "prismalens",
+			// Runtime config - passed to nodes but NOT checkpointed
+			// (Checkpointers only serialize thread_id and checkpoint_ns)
+			...(runtimeConfig && {
+				llmConfig: runtimeConfig.llmConfig,
+				integrations: runtimeConfig.integrations,
+				maxIterations: runtimeConfig.maxIterations ?? 10,
+				priority: runtimeConfig.priority ?? "normal",
+			}),
 		},
 		// Root-level trace configuration for LangSmith
 		runName: `Investigation ${investigationId.slice(0, 8)}`,
@@ -205,17 +308,100 @@ export async function listCheckpoints(investigationId: string) {
  * });
  */
 export async function closeCheckpointer(): Promise<void> {
+	if (!checkpointerInstance) return;
+
+	// PostgresSaver has a pool that needs cleanup
 	if (poolInstance) {
 		await poolInstance.end();
 		poolInstance = null;
-		checkpointerInstance = null;
 	}
+
+	// SqliteSaver may have a close method depending on version
+	const instance = checkpointerInstance as Record<string, unknown>;
+	if ("close" in instance && typeof instance.close === "function") {
+		await (instance.close as () => Promise<void>)();
+	}
+
+	checkpointerInstance = null;
+	checkpointerInitPromise = null;
+}
+
+/**
+ * Reset the checkpointer instance (for testing).
+ * Does NOT close connections - use closeCheckpointer() for that.
+ */
+export function resetCheckpointer(): void {
+	checkpointerInstance = null;
+	checkpointerInitPromise = null;
+	poolInstance = null;
+}
+
+// =============================================================================
+// CHECKPOINT STATE HELPERS (Type-Safe Access)
+// =============================================================================
+
+/**
+ * Extract state from a checkpoint with proper typing.
+ * LangGraph stores state in channel_values, not a top-level 'values' property.
+ *
+ * @param checkpoint - The checkpoint or checkpoint tuple from getCheckpoint/listCheckpoints
+ * @returns The extracted state, or undefined if not available
+ *
+ * @example
+ * const checkpoint = await getCheckpoint('abc123');
+ * const state = getStateFromCheckpoint<InvestigationState>(checkpoint);
+ */
+export function getStateFromCheckpoint<T>(
+	checkpoint: Checkpoint | CheckpointTuple | null | undefined,
+): T | undefined {
+	if (!checkpoint) return undefined;
+
+	// CheckpointTuple has .checkpoint property, raw Checkpoint doesn't
+	const cp = "checkpoint" in checkpoint ? checkpoint.checkpoint : checkpoint;
+
+	// State is stored in channel_values under various possible keys
+	const channelValues = cp?.channel_values;
+	if (!channelValues) return undefined;
+
+	// Try common channel names used by LangGraph
+	// '__root__' is used for the root state channel
+	// Some implementations also use 'state' or store directly
+	const state =
+		channelValues["__root__"] ?? channelValues["state"] ?? channelValues;
+
+	return state as T | undefined;
+}
+
+/**
+ * Get checkpoint timestamp with proper typing.
+ *
+ * @param checkpoint - The checkpoint or checkpoint tuple
+ * @returns ISO timestamp string, or undefined if not available
+ *
+ * @example
+ * const checkpoint = await getCheckpoint('abc123');
+ * const ts = getCheckpointTimestamp(checkpoint);
+ * // Returns: '2024-01-15T10:30:00.000Z'
+ */
+export function getCheckpointTimestamp(
+	checkpoint: Checkpoint | CheckpointTuple | null | undefined,
+): string | undefined {
+	if (!checkpoint) return undefined;
+
+	// CheckpointTuple has .checkpoint property, raw Checkpoint doesn't
+	const cp = "checkpoint" in checkpoint ? checkpoint.checkpoint : checkpoint;
+
+	return cp?.ts;
 }
 
 // Graceful shutdown handling
 const shutdown = async () => {
-	console.log("[Checkpointer] Closing connections...");
-	await closeCheckpointer();
+	try {
+		logger.info("Closing connections...");
+		await closeCheckpointer();
+	} catch (error) {
+		logger.error("Error during checkpointer shutdown", { error });
+	}
 };
 
 process.on("SIGTERM", shutdown);

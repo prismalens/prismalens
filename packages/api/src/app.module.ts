@@ -4,6 +4,7 @@ import {
 	type NestModule,
 } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { REQUEST } from "@nestjs/core";
 // oRPC imports
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
@@ -90,6 +91,22 @@ const orpcLogger = new Logger({ context: "oRPC" });
 				],
 			}),
 			inject: [REQUEST],
+		}),
+
+		// Rate limiting
+		ThrottlerModule.forRoot({
+			throttlers: [
+				{
+					name: "short",
+					ttl: 1000,
+					limit: 10,
+				},
+				{
+					name: "medium",
+					ttl: 60000,
+					limit: 60,
+				},
+			],
 		}),
 
 		// Core

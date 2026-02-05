@@ -3,7 +3,7 @@
  */
 
 import { Logger } from "@prismalens/logger";
-import type { LogEntry, LogPreviewContext } from "../../../types/state.js";
+import type { LogEntry, LogPreviewContext } from "../../../types/index.js";
 import type { GatheringContext, GatherResult } from "./types.js";
 
 const logger = new Logger({ context: "PreGather:Logs" });
@@ -12,8 +12,8 @@ const logger = new Logger({ context: "PreGather:Logs" });
  * Check if logging integration is available
  */
 export function hasLoggingIntegration(ctx: GatheringContext): boolean {
-	const { state } = ctx;
-	return state.integrations.some(
+	// Integrations are now passed via context from RunnableConfig, not from state
+	return ctx.integrations.some(
 		(i) =>
 			i.type === "logging" ||
 			i.type === "loki" ||

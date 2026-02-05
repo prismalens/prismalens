@@ -6,7 +6,7 @@ import {
 	CodeChangeSchema,
 	type Recommendation,
 	RecommendationSchema,
-} from "../types/state.js";
+} from "../types/index.js";
 
 // =============================================================================
 // FIX PROPOSAL TOOL

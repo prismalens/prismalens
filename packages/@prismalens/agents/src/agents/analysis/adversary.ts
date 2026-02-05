@@ -22,8 +22,8 @@ import {
 } from "../../llm/factory.js";
 import {
 	createAdversaryTools,
+	createChallengeContext,
 	getStoredChallenges,
-	resetChallengeStore,
 	type AdversaryChallenge,
 } from "../../tools/challenge.js";
 import {
@@ -39,7 +39,8 @@ import {
 	type Hypothesis,
 	type InvestigationState,
 	type SupervisorPhase,
-} from "../../types/state.js";
+} from "../../types/index.js";
+import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 
 const logger = new Logger({ context: "Adversary" });
 
@@ -275,9 +276,14 @@ export async function adversaryNode(
 		runName: traceConfig.runName,
 	});
 
+	// Get runtime config from RunnableConfig.configurable (NOT from state)
+	const runtimeConfig = getInvestigationConfigFromConfigurable(
+		config?.configurable as Record<string, unknown> | undefined,
+	);
+
 	// Check for LLM config
-	if (!state.llmConfig) {
-		logger.error("No LLM config provided");
+	if (!runtimeConfig?.llmConfig) {
+		logger.error("No LLM config provided in RunnableConfig.configurable");
 		return {
 			phase: "complete" as SupervisorPhase,
 			agentErrors: [
@@ -298,18 +304,18 @@ export async function adversaryNode(
 		return {};
 	}
 
-	// Reset stores for fresh collection
-	resetChallengeStore();
+	// Create per-invocation context for challenge collection (no global state)
+	const challengeCtx = createChallengeContext();
 	resetOversightStore();
 
 	try {
-		// Resolve LLM config for this agent
-		const normalizedConfig = normalizeConfig(state.llmConfig);
+		// Resolve LLM config for this agent (from config, not state)
+		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
 		const agentConfig = resolveAgentConfig(normalizedConfig, "adversary");
 		const llm = createLLM(agentConfig);
 
 		// Create tools for the Adversary (challenge + oversight)
-		const challengeTools = createAdversaryTools();
+		const challengeTools = createAdversaryTools(challengeCtx);
 		const oversightTools = createOversightTools();
 		const tools = [...challengeTools, ...oversightTools];
 
@@ -329,8 +335,8 @@ export async function adversaryNode(
 			mergeTraceConfig(config, traceConfig),
 		);
 
-		// Extract challenges from the challenge store
-		const challenges = getStoredChallenges();
+		// Extract challenges from the per-invocation context
+		const challenges = getStoredChallenges(challengeCtx);
 
 		// Extract oversight results
 		const scopeAlignmentResults = getScopeAlignmentResults();

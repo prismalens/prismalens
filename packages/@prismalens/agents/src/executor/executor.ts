@@ -6,11 +6,14 @@ import {
 } from "../graph/index.js";
 import type {
 	AlertContext,
+	DataProvider,
 	Hypothesis,
+	IncidentContext,
 	IntegrationContext,
 	InvestigationState,
 	Recommendation,
 } from "../types/index.js";
+import type { InvestigationConfig } from "../types/config.js";
 import { ExecutionTracker } from "./callbacks.js";
 
 // =============================================================================
@@ -28,6 +31,8 @@ export interface InvestigationInput {
 	investigationId: string;
 	/** Incident ID this investigation belongs to */
 	incidentId: string;
+	/** Incident context - REQUIRED for investigation validation */
+	incident: IncidentContext;
 	/** Priority level */
 	priority?: "low" | "normal" | "high" | "critical";
 	/** Alerts to investigate */
@@ -36,6 +41,11 @@ export interface InvestigationInput {
 	integrations?: IntegrationContext[];
 	/** Maximum iterations before stopping */
 	maxIterations?: number;
+	/**
+	 * LLM configuration for agents.
+	 * REQUIRED - must be provided by the caller.
+	 */
+	llmConfig: InvestigationConfig["llmConfig"];
 }
 
 /**
@@ -93,12 +103,32 @@ export interface InvestigationCallbacks {
 }
 
 /**
+ * Options for creating an InvestigationExecutor
+ */
+export interface InvestigationExecutorOptions {
+	/**
+	 * Data provider for fetching additional data during investigation.
+	 * REQUIRED - agents need this to fetch alerts, incidents, etc.
+	 */
+	dataProvider: DataProvider;
+	/**
+	 * Optional callbacks for progress events
+	 */
+	callbacks?: InvestigationCallbacks;
+}
+
+/**
  * Investigation Executor - Main interface for running investigations
  *
  * @example
  * ```typescript
  * // In packages/api (regular mode)
- * const executor = new InvestigationExecutor();
+ * const executor = new InvestigationExecutor({
+ *   dataProvider: new DirectDataProvider(alertsService, incidentsService),
+ *   callbacks: {
+ *     onProgress: async (id, progress) => { ... },
+ *   },
+ * });
  * const result = await executor.execute({
  *   investigationId: 'inv-123',
  *   incidentId: 'inc-456',
@@ -108,18 +138,29 @@ export interface InvestigationCallbacks {
  *
  * // In packages/worker (queue mode)
  * const executor = new InvestigationExecutor({
- *   onProgress: async (id, progress) => {
- *     await job.updateProgress(progress);
+ *   dataProvider: new WorkerDataProvider(api),
+ *   callbacks: {
+ *     onProgress: async (id, progress) => {
+ *       await job.updateProgress(progress);
+ *     },
  *   },
  * });
  * ```
  */
 export class InvestigationExecutor {
 	private callbacks: InvestigationCallbacks;
+	private dataProvider: DataProvider;
 	private tracker: ExecutionTracker;
 
-	constructor(callbacks: InvestigationCallbacks = {}) {
-		this.callbacks = callbacks;
+	constructor(options: InvestigationExecutorOptions) {
+		if (!options.dataProvider) {
+			throw new Error(
+				"DataProvider is required. Provide a DataProvider implementation " +
+				"(e.g., DirectDataProvider for API, WorkerDataProvider for worker)."
+			);
+		}
+		this.dataProvider = options.dataProvider;
+		this.callbacks = options.callbacks || {};
 		this.tracker = new ExecutionTracker();
 	}
 
@@ -128,6 +169,21 @@ export class InvestigationExecutor {
 	 */
 	async execute(input: InvestigationInput): Promise<InvestigationResult> {
 		const startTime = Date.now();
+
+		// Validate required config
+		if (!input.llmConfig) {
+			throw new Error(
+				"llmConfig is required. Provide LLM configuration for agents.",
+			);
+		}
+
+		// Build runtime config (NOT checkpointed)
+		const config: InvestigationConfig = {
+			llmConfig: input.llmConfig,
+			integrations: input.integrations || [],
+			maxIterations: input.maxIterations ?? 10,
+			priority: input.priority ?? "normal",
+		};
 
 		try {
 			// Notify start
@@ -146,20 +202,28 @@ export class InvestigationExecutor {
 					phase: "resuming",
 					message: "Resuming from checkpoint",
 				});
-				state = await resumeInvestigation(input.investigationId);
+				state = await resumeInvestigation(
+					input.investigationId,
+					this.dataProvider,
+					config,
+				);
 			} else {
 				await this.callbacks.onProgress?.(input.investigationId, {
 					phase: "running",
 					message: "Running investigation",
 				});
-				state = await runInvestigation({
+				// Build initial state (only data, no config)
+				const initialState = {
 					investigationId: input.investigationId,
 					incidentId: input.incidentId,
-					priority: input.priority || "normal",
+					incident: input.incident,
 					alerts: input.alerts,
-					integrations: input.integrations || [],
-					maxIterations: input.maxIterations || 10,
-				});
+				};
+				state = await runInvestigation(
+					initialState,
+					this.dataProvider,
+					config,
+				);
 			}
 
 			const executionTimeMs = Date.now() - startTime;
@@ -215,8 +279,14 @@ export class InvestigationExecutor {
 
 	/**
 	 * Resume a paused investigation
+	 *
+	 * @param investigationId - ID of the investigation to resume
+	 * @param config - Runtime config (credentials, limits) - REQUIRED for resume
 	 */
-	async resume(investigationId: string): Promise<InvestigationResult> {
+	async resume(
+		investigationId: string,
+		config: InvestigationConfig,
+	): Promise<InvestigationResult> {
 		const startTime = Date.now();
 
 		try {
@@ -226,7 +296,11 @@ export class InvestigationExecutor {
 				message: "Resuming investigation",
 			});
 
-			const state = await resumeInvestigation(investigationId);
+			const state = await resumeInvestigation(
+				investigationId,
+				this.dataProvider,
+				config,
+			);
 			const executionTimeMs = Date.now() - startTime;
 
 			const result: InvestigationResult = {
@@ -282,23 +356,6 @@ export class InvestigationExecutor {
 	}
 }
 
-/**
- * Create a singleton executor instance
- */
-let defaultExecutor: InvestigationExecutor | null = null;
-
-export function getDefaultExecutor(): InvestigationExecutor {
-	if (!defaultExecutor) {
-		defaultExecutor = new InvestigationExecutor();
-	}
-	return defaultExecutor;
-}
-
-/**
- * Execute an investigation using the default executor
- */
-export async function executeInvestigation(
-	input: InvestigationInput,
-): Promise<InvestigationResult> {
-	return getDefaultExecutor().execute(input);
-}
+// Note: Singleton functions (getDefaultExecutor, executeInvestigation) removed.
+// DataProvider is required, so callers must create their own executor instance
+// with the appropriate DataProvider for their mode (direct or queue).

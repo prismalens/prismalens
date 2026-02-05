@@ -3,7 +3,7 @@
  */
 
 import { Logger } from "@prismalens/logger";
-import type { GatheredMetrics } from "../../../types/state.js";
+import type { AlertContext, GatheredMetrics } from "../../../types/index.js";
 import { calculateAlertVelocity } from "./alerts.js";
 import type { GatheringContext, GatherResult } from "./types.js";
 

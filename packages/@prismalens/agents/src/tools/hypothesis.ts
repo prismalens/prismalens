@@ -1,7 +1,7 @@
 import type { StructuredTool } from "@langchain/core/tools";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { type Hypothesis, HypothesisSchema } from "../types/state.js";
+import { type Hypothesis, HypothesisSchema } from "../types/index.js";
 
 // =============================================================================
 // HYPOTHESIS TOOL

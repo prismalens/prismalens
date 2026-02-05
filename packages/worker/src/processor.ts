@@ -1,9 +1,18 @@
 import {
 	type InvestigationResult as AgentResult,
 	type AlertContext,
+	type AlertFetchRequest,
+	type AlertFetchResponse,
+	type DataProvider,
+	type IncidentContext,
 	type IntegrationContext,
+	type InvestigationConfig,
 	InvestigationExecutor,
 	type InvestigationInput,
+	type SimilarIncidentMatch,
+	type SimilarIncidentRequest,
+	type SimilarIncidentResponse,
+	mapSeverity,
 } from "@prismalens/agents";
 import { Logger, enrichContext } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
@@ -18,8 +27,158 @@ import type { InvestigationJobData, InvestigationResult } from "./types.js";
 // Uses the @prismalens/agents package for investigation execution.
 // =============================================================================
 
-// Create a singleton executor
-const executor = new InvestigationExecutor();
+// =============================================================================
+// WORKER DATA PROVIDER
+// =============================================================================
+// DataProvider implementation for queue mode.
+// Uses oRPC client to fetch data from the API.
+// =============================================================================
+
+/**
+ * DataProvider implementation for worker (queue) mode.
+ * Uses the oRPC client to fetch data from the API server.
+ */
+class WorkerDataProvider implements DataProvider {
+	private logger = new Logger({ context: "WorkerDataProvider" });
+
+	/**
+	 * Fetch alerts via oRPC API
+	 */
+	async fetchAlerts(request: AlertFetchRequest): Promise<AlertFetchResponse> {
+		try {
+			const alerts = await api.alerts.list({
+				incidentId: request.incidentId,
+				serviceId: request.serviceId,
+				limit: request.limit || 50,
+			});
+
+			// Filter by specific IDs if provided
+			let filteredAlerts = alerts;
+			if (request.alertIds && request.alertIds.length > 0) {
+				const idSet = new Set(request.alertIds);
+				filteredAlerts = alerts.filter((a: { id: string }) => idSet.has(a.id));
+			}
+
+			return {
+				alerts: filteredAlerts.map((a: Record<string, unknown>) =>
+					this.mapAlertToContext(a),
+				),
+				hasMore: alerts.length >= (request.limit || 50),
+			};
+		} catch (error) {
+			this.logger.error("Failed to fetch alerts via API", { error });
+			return { alerts: [], hasMore: false };
+		}
+	}
+
+	/**
+	 * Fetch a single incident via oRPC API
+	 */
+	async fetchIncident(incidentId: string): Promise<IncidentContext | null> {
+		try {
+			const incident = await api.incidents.get({ id: incidentId });
+			return this.mapIncidentToContext(incident);
+		} catch (error) {
+			this.logger.warn(`Failed to fetch incident ${incidentId}`, { error });
+			return null;
+		}
+	}
+
+	/**
+	 * Fetch similar incidents via oRPC API
+	 */
+	async fetchSimilarIncidents(
+		request: SimilarIncidentRequest,
+	): Promise<SimilarIncidentResponse> {
+		try {
+			// Fetch resolved/closed incidents from the same service
+			const incidents = await api.incidents.list({
+				serviceId: request.serviceId,
+				status: "resolved",
+				limit: request.limit || 10,
+			});
+
+			// Filter out the current incident and map to SimilarIncidentMatch
+			const similarIncidents: SimilarIncidentMatch[] = incidents
+				.filter((inc: { id: string }) => inc.id !== request.incidentId)
+				.map((inc: Record<string, unknown>) => this.mapToSimilarIncident(inc));
+
+			return { incidents: similarIncidents };
+		} catch (error) {
+			this.logger.warn("Failed to fetch similar incidents", { error });
+			return { incidents: [] };
+		}
+	}
+
+	/**
+	 * Map API alert response to AlertContext
+	 */
+	private mapAlertToContext(alert: Record<string, unknown>): AlertContext {
+		return {
+			alertId: alert.id as string,
+			title: (alert.title as string) || "Unknown Alert",
+			description: alert.description as string | undefined,
+			severity: (alert.severity as AlertContext["severity"]) || "medium",
+			status: alert.status as AlertContext["status"],
+			source: alert.source as string | undefined,
+			sourceUrl: alert.sourceUrl as string | undefined,
+			serviceId: alert.serviceId as string | undefined,
+			serviceName: alert.serviceName as string | undefined,
+			repository: alert.repository as string | undefined,
+			labels: alert.labels as Record<string, string> | undefined,
+			tags: alert.tags as string[] | undefined,
+			triggeredAt: alert.triggeredAt as string | undefined,
+			rawPayload: alert.rawPayload as Record<string, unknown> | undefined,
+		};
+	}
+
+	/**
+	 * Map API incident response to IncidentContext
+	 */
+	private mapIncidentToContext(
+		incident: Record<string, unknown>,
+	): IncidentContext {
+		return {
+			incidentId: incident.id as string,
+			number: (incident.number as number) || 0,
+			title: (incident.title as string) || "Unknown Incident",
+			description: incident.description as string | undefined,
+			severity: (incident.severity as IncidentContext["severity"]) || "medium",
+			status:
+				(incident.status as IncidentContext["status"]) || "investigating",
+			priority: (incident.priority as IncidentContext["priority"]) || "p3",
+			serviceId: incident.serviceId as string | undefined,
+			serviceName: incident.serviceName as string | undefined,
+			alertCount: (incident.alertCount as number) || 0,
+			triggeredAt: (incident.triggeredAt as string) || new Date().toISOString(),
+			acknowledgedAt: incident.acknowledgedAt as string | undefined,
+			tags: incident.tags as string[] | undefined,
+			customerImpact: incident.customerImpact as string | undefined,
+			affectedSystems: incident.affectedSystems as string[] | undefined,
+		};
+	}
+
+	/**
+	 * Map API incident to SimilarIncidentMatch
+	 */
+	private mapToSimilarIncident(
+		incident: Record<string, unknown>,
+	): SimilarIncidentMatch {
+		return {
+			incidentId: incident.id as string,
+			number: incident.number as number | undefined,
+			title: (incident.title as string) || "Unknown Incident",
+			rootCause: incident.rootCause as string | undefined,
+			resolution: incident.resolution as string | undefined,
+			resolvedAt: incident.resolvedAt as string | undefined,
+			similarity: 0, // TODO(#similarity): implement semantic similarity scoring
+		};
+	}
+}
+
+// Create a singleton dataProvider and executor
+const dataProvider = new WorkerDataProvider();
+const executor = new InvestigationExecutor({ dataProvider });
 
 // Create logger for processor
 const logger = new Logger({ context: "InvestigationProcessor" });
@@ -88,8 +247,8 @@ async function processJobInternal(
 			metadata: { investigationId: data.investigationId },
 		});
 
-		// 3. Build input for executor
-		const input = buildExecutorInput(data);
+		// 3. Build input for executor (async - fetches incident)
+		const input = await buildExecutorInput(data);
 
 		await job.updateProgress({
 			percent: 10,
@@ -170,8 +329,15 @@ async function processJobInternal(
 
 /**
  * Build executor input from job data.
+ * Now async to fetch incident context.
  */
-function buildExecutorInput(jobData: InvestigationJobData): InvestigationInput {
+async function buildExecutorInput(jobData: InvestigationJobData): Promise<InvestigationInput> {
+	// Fetch incident context via API - REQUIRED for investigation
+	const incidentData = await dataProvider.fetchIncident(jobData.incidentId);
+	if (!incidentData) {
+		throw new Error(`Incident not found: ${jobData.incidentId}`);
+	}
+
 	// Convert alerts from job data to AlertContext
 	const alerts: AlertContext[] = (jobData.alerts || []).map((alertUnknown) => {
 		const alert = alertUnknown as Record<string, unknown>;
@@ -215,12 +381,29 @@ function buildExecutorInput(jobData: InvestigationJobData): InvestigationInput {
 		}),
 	);
 
+	// Build LLM config from environment
+	// TODO: Make this configurable via settings
+	const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
+	if (!apiKey) {
+		throw new Error(
+			"LLM API key not configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.",
+		);
+	}
+
+	const llmConfig: InvestigationConfig["llmConfig"] = {
+		provider: (process.env.LLM_PROVIDER as "anthropic" | "openai" | "ollama") || "anthropic",
+		model: process.env.LLM_MODEL || "claude-sonnet-4-20250514",
+		apiKey,
+	};
+
 	return {
 		investigationId: jobData.investigationId,
 		incidentId: jobData.incidentId,
+		incident: incidentData,
 		priority: jobData.priority,
 		alerts,
 		integrations,
+		llmConfig,
 	};
 }
 
@@ -258,45 +441,6 @@ function buildResult(
 		agentExecutions: [], // Agent executions are tracked internally by the executor
 		error: agentResult.error || undefined,
 	};
-}
-
-/**
- * Map various severity formats to our standard format.
- */
-function mapSeverity(
-	severity: string | undefined,
-): "critical" | "high" | "medium" | "low" | "info" {
-	if (!severity) return "medium";
-
-	const lower = severity.toLowerCase();
-
-	if (lower === "critical" || lower === "crit" || lower === "p1") {
-		return "critical";
-	}
-	if (
-		lower === "high" ||
-		lower === "error" ||
-		lower === "p2" ||
-		lower === "severe"
-	) {
-		return "high";
-	}
-	if (
-		lower === "medium" ||
-		lower === "warning" ||
-		lower === "warn" ||
-		lower === "p3"
-	) {
-		return "medium";
-	}
-	if (lower === "low" || lower === "minor" || lower === "p4") {
-		return "low";
-	}
-	if (lower === "info" || lower === "informational" || lower === "p5") {
-		return "info";
-	}
-
-	return "medium";
 }
 
 /**

@@ -19,6 +19,10 @@ export const investigationKeys = {
 		orpc.investigations.list.key({ input: filters }),
 	detail: (id: string) => orpc.investigations.get.key({ input: { id } }),
 	status: (id: string) => orpc.investigations.getStatus.key({ input: { id } }),
+	progress: (id: string) =>
+		orpc.investigations.getProgress.key({ input: { id } }),
+	progressHistory: (id: string) =>
+		orpc.investigations.getProgressHistory.key({ input: { id } }),
 	byIncident: (incidentId: string) =>
 		orpc.investigations.list.key({ input: { incidentId } }),
 };
@@ -26,12 +30,16 @@ export const investigationKeys = {
 /**
  * Fetch list of investigations with optional filters
  */
+/** Default staleTime for investigation data (30 seconds) */
+const INVESTIGATION_STALE_TIME = 30_000;
+
 export function useInvestigations(params?: Partial<InvestigationQuery>) {
-	return useQuery(
-		orpc.investigations.list.queryOptions({
+	return useQuery({
+		...orpc.investigations.list.queryOptions({
 			input: params ?? {},
 		}),
-	);
+		staleTime: INVESTIGATION_STALE_TIME,
+	});
 }
 
 /**
@@ -43,6 +51,7 @@ export function useInvestigation(id: string) {
 			input: { id },
 		}),
 		enabled: !!id,
+		staleTime: INVESTIGATION_STALE_TIME,
 	});
 }
 
@@ -58,6 +67,7 @@ export function useInvestigationStatus(
 			input: { id },
 		}),
 		enabled: !!id,
+		staleTime: 5_000, // Shorter staleTime for status (frequently polled)
 		refetchInterval: options?.refetchInterval,
 	});
 }
@@ -71,6 +81,7 @@ export function useInvestigationsByIncident(incidentId: string) {
 			input: { incidentId },
 		}),
 		enabled: !!incidentId,
+		staleTime: INVESTIGATION_STALE_TIME,
 	});
 }
 
@@ -108,5 +119,50 @@ export function useCancelInvestigation() {
 				investigation,
 			);
 		},
+	});
+}
+
+/**
+ * Fetch investigation progress from LangGraph checkpoints.
+ * Polls while investigation is active, stops when completed/failed.
+ *
+ * @param id Investigation ID
+ * @param options.enabled Whether to enable the query (default: true)
+ * @param options.pollingInterval Polling interval in ms (default: 2000)
+ */
+export function useInvestigationProgress(
+	id: string,
+	options?: { enabled?: boolean; pollingInterval?: number },
+) {
+	return useQuery({
+		...orpc.investigations.getProgress.queryOptions({
+			input: { id },
+		}),
+		enabled: (options?.enabled ?? true) && !!id,
+		refetchInterval: (query) => {
+			// Stop polling when investigation completes
+			const status = query.state.data?.status;
+			if (status === "completed" || status === "failed") {
+				return false;
+			}
+			return options?.pollingInterval ?? 2000;
+		},
+	});
+}
+
+/**
+ * Fetch investigation progress history (all checkpoints).
+ * Useful for timeline/graph visualization.
+ */
+export function useInvestigationProgressHistory(
+	id: string,
+	options?: { enabled?: boolean },
+) {
+	return useQuery({
+		...orpc.investigations.getProgressHistory.queryOptions({
+			input: { id },
+		}),
+		enabled: (options?.enabled ?? true) && !!id,
+		staleTime: INVESTIGATION_STALE_TIME,
 	});
 }

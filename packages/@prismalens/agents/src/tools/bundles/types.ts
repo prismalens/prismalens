@@ -1,6 +1,6 @@
 import type { StructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { IntegrationContext } from "../../types/state.js";
+import type { IntegrationContext } from "../../types/index.js";
 
 // =============================================================================
 // TOOL BUNDLE TYPES

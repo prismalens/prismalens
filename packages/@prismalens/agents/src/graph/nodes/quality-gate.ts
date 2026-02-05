@@ -16,7 +16,7 @@ import type {
 	InvestigationState,
 	SupervisorPhase,
 	ValidationWindowLevel,
-} from "../../types/state.js";
+} from "../../types/index.js";
 import {
 	calculateDataQualityScore,
 	checkCrossCorrelation,

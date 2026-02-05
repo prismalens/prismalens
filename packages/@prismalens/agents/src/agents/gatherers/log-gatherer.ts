@@ -22,7 +22,8 @@ import type {
 	Finding,
 	InvestigationState,
 	SupervisorPhase,
-} from "../../types/state.js";
+} from "../../types/index.js";
+import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 import { addFindingIds, validateLogFindings } from "../../utils/validation.js";
 
 const logger = new Logger({ context: "LogGatherer" });
@@ -102,9 +103,14 @@ export async function logGathererNode(
 	// Get the targeted query from handoffRequest
 	const targetedQuery = state.handoffRequest?.context || "";
 
+	// Get runtime config from RunnableConfig.configurable (NOT from state)
+	const runtimeConfig = getInvestigationConfigFromConfigurable(
+		config?.configurable as Record<string, unknown> | undefined,
+	);
+
 	// Check for LLM config
-	if (!state.llmConfig) {
-		logger.error("No LLM config provided");
+	if (!runtimeConfig?.llmConfig) {
+		logger.error("No LLM config provided in RunnableConfig.configurable");
 		return {
 			agentErrors: [
 				{
@@ -120,15 +126,15 @@ export async function logGathererNode(
 	}
 
 	try {
-		// Resolve LLM config for this agent
-		const normalizedConfig = normalizeConfig(state.llmConfig);
+		// Resolve LLM config for this agent (from config, not state)
+		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
 		const agentConfig = resolveAgentConfig(normalizedConfig, "gatherer");
 		const llm = createLLM(agentConfig);
 
-		// Create tools for log gathering
+		// Create tools for log gathering (integrations from config, not state)
 		// Log gatherer typically uses API-based tools (Render, Datadog, etc.)
 		// but we pass clonePaths in case local log files need to be read
-		const tools = createToolsForAgent("gatherer", state.integrations, {
+		const tools = createToolsForAgent("gatherer", runtimeConfig.integrations, {
 			clonePaths: state.clonePaths,
 		});
 

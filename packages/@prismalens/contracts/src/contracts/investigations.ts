@@ -13,6 +13,8 @@ import {
 	InvestigationWithRelationsSchema,
 	UpdateInvestigationStatusSchema,
 	WriteInvestigationResultSchema,
+	InvestigationProgressSchema,
+	ProgressSnapshotSchema,
 } from "../schemas/index.js";
 
 export const investigationsContract = {
@@ -127,4 +129,32 @@ export const investigationsContract = {
 		})
 		.input(WriteInvestigationResultSchema)
 		.output(InvestigationWithRelationsSchema),
+
+	/**
+	 * Get investigation progress from LangGraph checkpoints
+	 * GET /investigations/:id/progress
+	 */
+	getProgress: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/progress",
+			summary: "Get real-time investigation progress from checkpoints",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationProgressSchema.nullable()),
+
+	/**
+	 * Get investigation progress history (all checkpoints)
+	 * GET /investigations/:id/progress/history
+	 */
+	getProgressHistory: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/progress/history",
+			summary: "Get investigation progress history for timeline",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(z.array(ProgressSnapshotSchema)),
 };

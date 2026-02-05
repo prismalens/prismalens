@@ -1,15 +1,20 @@
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { ThrottlerGuard } from "@nestjs/throttler";
+import type { AgentExecution, Investigation, Recommendation, ToolExecution } from "@prismalens/database";
 import { investigationsContract } from "@prismalens/contracts";
-import { InternalGuard } from "../../infrastructure/internal/guards/internal.guard.js";
 import { QueueService } from "../../infrastructure/queue/queue.service.js";
-import { InvestigationsService } from "./investigations.service.js";
+import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
+import { type InvestigationWithRelations, InvestigationsService } from "./investigations.service.js";
+import { ProgressService } from "./progress.service.js";
 
 @Controller()
+@UseGuards(ThrottlerGuard)
 export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,
 		private readonly queueService: QueueService,
+		private readonly progressService: ProgressService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -157,9 +162,9 @@ export class InvestigationsController {
 
 					// Map input to InternalInvestigationResultDto structure
 					// Note: The input is already validated by Zod schema in contract
-					const resultDto: any = {
+					const resultDto: InternalInvestigationResultDto = {
 						status: input.status,
-						incidentId: investigation.incidentId, // Ensure incidentId is consistent
+						incidentId: investigation.incidentId,
 						summary: input.summary,
 						rootCause: input.rootCause,
 						rootCauseCategory: input.rootCauseCategory,
@@ -184,17 +189,31 @@ export class InvestigationsController {
 					);
 				},
 			),
+
+			// GET /investigations/:id/progress - Get real-time progress from checkpoints
+			getProgress: implement(investigationsContract.getProgress).handler(
+				async ({ input }) => {
+					return this.progressService.getProgress(input.id);
+				},
+			),
+
+			// GET /investigations/:id/progress/history - Get progress history
+			getProgressHistory: implement(
+				investigationsContract.getProgressHistory,
+			).handler(async ({ input }) => {
+				return this.progressService.getProgressHistory(input.id);
+			}),
 		};
 	}
 
-	private serializeInvestigation(investigation: any): any {
+	private serializeInvestigation(investigation: Investigation) {
 		return {
 			...investigation,
 			summary: investigation.summary ?? null,
 			rootCause: investigation.rootCause ?? null,
-			impact: investigation.impact ?? null,
+			impact: (investigation as Record<string, unknown>).impact ?? null,
 			findings: investigation.findings
-				? JSON.parse(investigation.findings)
+				? JSON.parse(investigation.findings as string)
 				: null,
 			startedAt: investigation.startedAt?.toISOString() ?? null,
 			completedAt: investigation.completedAt?.toISOString() ?? null,
@@ -203,7 +222,7 @@ export class InvestigationsController {
 		};
 	}
 
-	private serializeInvestigationWithRelations(investigation: any): any {
+	private serializeInvestigationWithRelations(investigation: InvestigationWithRelations) {
 		const serialized = this.serializeInvestigation(investigation);
 
 		if (investigation.incident) {
@@ -218,7 +237,7 @@ export class InvestigationsController {
 
 		if (investigation.recommendations) {
 			serialized.recommendations = investigation.recommendations.map(
-				(r: any) => ({
+				(r: Recommendation) => ({
 					id: r.id,
 					title: r.title,
 					priority: r.priority,
@@ -230,7 +249,7 @@ export class InvestigationsController {
 		return serialized;
 	}
 
-	private serializeAgentExecution(execution: any): any {
+	private serializeAgentExecution(execution: AgentExecution & { toolExecutions: ToolExecution[] }) {
 		return {
 			...execution,
 			input: execution.input ? JSON.parse(execution.input) : null,
@@ -238,7 +257,7 @@ export class InvestigationsController {
 			error: execution.error ?? null,
 			startedAt: execution.startedAt?.toISOString(),
 			completedAt: execution.completedAt?.toISOString() ?? null,
-			tools: execution.tools?.map((t: any) => ({
+			tools: execution.toolExecutions?.map((t: ToolExecution) => ({
 				...t,
 				input: t.input ? JSON.parse(t.input) : null,
 				output: t.output ? JSON.parse(t.output) : null,

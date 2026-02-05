@@ -9,7 +9,7 @@ import type {
 	ConfigChange,
 	DeploymentChange,
 	RecentChangesContext,
-} from "../../../types/state.js";
+} from "../../../types/index.js";
 import {
 	CHANGE_RISK_THRESHOLDS,
 	TIME_WINDOWS,

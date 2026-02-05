@@ -1,5 +1,9 @@
 /**
- * Alert fetching for pre-gathering phase
+ * Alert organization and enrichment for pre-gathering phase
+ *
+ * Note: This function was previously named "fetchFullAlerts" which was misleading
+ * since it didn't fetch anything. It now properly fetches additional alerts via
+ * DataProvider when needed, and organizes them for analysis.
  */
 
 import { Logger } from "@prismalens/logger";
@@ -7,22 +11,75 @@ import type {
 	AlertContext,
 	AlertTimelineEvent,
 	GatheredAlertsContext,
-} from "../../../types/state.js";
+} from "../../../types/index.js";
 import type { GatheringContext, GatherResult } from "./types.js";
 
 const logger = new Logger({ context: "PreGather:Alerts" });
 
 /**
- * Fetch full alert details and organize them for analysis
+ * Minimum number of alerts before we try to fetch more.
+ * If we have fewer than this, we'll use dataProvider to get additional alerts.
  */
-export async function fetchFullAlerts(
+const MIN_ALERTS_THRESHOLD = 3;
+
+/**
+ * Maximum number of alerts to fetch via dataProvider
+ */
+const MAX_ALERTS_TO_FETCH = 10;
+
+/**
+ * Organize and enrich alerts for analysis.
+ *
+ * This function:
+ * 1. Fetches additional alerts via DataProvider if we have few alerts
+ * 2. Organizes alerts into a timeline
+ * 3. Groups alerts by service
+ * 4. Identifies the primary (most severe) alert
+ *
+ * @param ctx - Gathering context with state and dataProvider
+ * @returns Organized alert context for investigation
+ */
+export async function organizeAndEnrichAlerts(
 	ctx: GatheringContext,
 ): Promise<GatherResult<GatheredAlertsContext>> {
 	const startTime = Date.now();
 
 	try {
-		const { state } = ctx;
-		const alerts = state.alerts;
+		const { state, dataProvider } = ctx;
+		let alerts = [...state.alerts];
+
+		// If we have few alerts, try to fetch more from the incident
+		if (alerts.length < MIN_ALERTS_THRESHOLD && state.incidentId) {
+			logger.debug(
+				`Only ${alerts.length} alerts in state, fetching more via dataProvider`,
+			);
+
+			try {
+				const { alerts: additionalAlerts } = await dataProvider.fetchAlerts({
+					incidentId: state.incidentId,
+					limit: MAX_ALERTS_TO_FETCH,
+				});
+
+				// Merge without duplicates
+				const existingIds = new Set(alerts.map((a) => a.alertId));
+				let addedCount = 0;
+				for (const alert of additionalAlerts) {
+					if (!existingIds.has(alert.alertId)) {
+						alerts.push(alert);
+						addedCount++;
+					}
+				}
+
+				if (addedCount > 0) {
+					logger.debug(`Added ${addedCount} additional alerts via dataProvider`);
+				}
+			} catch (error) {
+				// Log but don't fail - we can proceed with existing alerts
+				logger.warn("Failed to fetch additional alerts via dataProvider", {
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
 
 		if (alerts.length === 0) {
 			logger.debug("No alerts to process");
@@ -61,7 +118,7 @@ export async function fetchFullAlerts(
 			groupedByService[serviceKey].push(alert);
 		}
 
-		// Primary alert is the first one or the most severe
+		// Primary alert is the most severe one
 		const severityOrder = ["critical", "high", "medium", "low", "info"];
 		const sortedAlerts = [...alerts].sort((a, b) => {
 			const aIndex = severityOrder.indexOf(a.severity);
@@ -88,7 +145,7 @@ export async function fetchFullAlerts(
 	} catch (error) {
 		const errorMessage =
 			error instanceof Error ? error.message : "Unknown error";
-		logger.error("Failed to fetch alerts", { error: errorMessage });
+		logger.error("Failed to organize alerts", { error: errorMessage });
 		return {
 			success: false,
 			data: null,

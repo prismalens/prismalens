@@ -1,6 +1,6 @@
 import type { StructuredTool } from "@langchain/core/tools";
 import { Logger } from "@prismalens/logger";
-import type { IntegrationContext } from "../types/state.js";
+import type { IntegrationContext } from "../types/index.js";
 import {
 	BundleRegistry,
 	createMetaTools,

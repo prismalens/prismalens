@@ -10,7 +10,7 @@ import type {
 	PastResolution,
 	SimilarIncidentMatch,
 	SimilarIncidentsContext,
-} from "../../../types/state.js";
+} from "../../../types/index.js";
 import {
 	SIMILARITY_THRESHOLDS,
 	TIME_WINDOWS,

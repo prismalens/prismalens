@@ -1,7 +1,7 @@
 import type { StructuredTool } from "@langchain/core/tools";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { Hypothesis } from "../types/state.js";
+import type { Hypothesis } from "../types/index.js";
 
 // =============================================================================
 // ADVERSARY CHALLENGE TOOLS
@@ -32,20 +32,26 @@ export interface AdversaryChallenge {
 	timestamp: string;
 }
 
-let challengeStore: AdversaryChallenge[] = [];
-
 /**
- * Reset the challenge store (call at start of each investigation)
+ * Per-invocation context for challenge collection.
+ * Passed to tool constructors to avoid module-level mutable state.
  */
-export function resetChallengeStore(): void {
-	challengeStore = [];
+export interface ChallengeContext {
+	challenges: AdversaryChallenge[];
 }
 
 /**
- * Get all stored challenges (call after agent completes)
+ * Create a fresh challenge context for each adversary invocation.
  */
-export function getStoredChallenges(): AdversaryChallenge[] {
-	return [...challengeStore];
+export function createChallengeContext(): ChallengeContext {
+	return { challenges: [] };
+}
+
+/**
+ * Get all stored challenges from a context (call after agent completes).
+ */
+export function getStoredChallenges(ctx: ChallengeContext): AdversaryChallenge[] {
+	return [...ctx.challenges];
 }
 
 /**
@@ -104,7 +110,7 @@ const ChallengeInputSchema = z.object({
  * Create the challenge_hypothesis tool for the Adversary agent.
  * This tool allows the Adversary to formally record challenges to hypotheses.
  */
-export function createChallengeHypothesisTool(): StructuredTool {
+export function createChallengeHypothesisTool(ctx: ChallengeContext): StructuredTool {
 	return tool(
 		async (input) => {
 			try {
@@ -115,7 +121,7 @@ export function createChallengeHypothesisTool(): StructuredTool {
 					timestamp: new Date().toISOString(),
 				};
 
-				challengeStore.push(challenge);
+				ctx.challenges = [...ctx.challenges, challenge];
 
 				// Calculate severity of challenges
 				const assumptionCount = validated.challenges.filter(
@@ -165,7 +171,7 @@ export function createChallengeHypothesisTool(): StructuredTool {
 									? "Notable challenges found. Consider investigating further before proceeding."
 									: "Minor challenges. Hypothesis appears reasonably solid.",
 						skillsUsed: validated.skillsUsed,
-						totalChallengesRecorded: challengeStore.length,
+						totalChallengesRecorded: ctx.challenges.length,
 					},
 					null,
 					2,
@@ -239,23 +245,33 @@ const RefinementInputSchema = z.object({
  * Create the refine_hypothesis tool for the Adversary agent.
  * This tool allows the Adversary to propose improvements to hypotheses.
  */
-export function createRefineHypothesisTool(): StructuredTool {
+export function createRefineHypothesisTool(ctx: ChallengeContext): StructuredTool {
 	return tool(
 		async (input) => {
 			try {
 				const validated = RefinementInputSchema.parse(input);
 
-				// Store refinement in the last challenge for this hypothesis
-				const lastChallenge = challengeStore
-					.filter((c) => c.hypothesisId === validated.hypothesisId)
+				// Find the last challenge for this hypothesis and update immutably
+				const lastIndex = ctx.challenges
+					.map((c, i) => (c.hypothesisId === validated.hypothesisId ? i : -1))
+					.filter((i) => i !== -1)
 					.pop();
 
-				if (lastChallenge) {
-					lastChallenge.refinedHypothesis = {
-						claim: validated.refinedClaim,
-						confidence: validated.refinedConfidence,
-						evidence: validated.additionalEvidence,
-					};
+				const lastChallenge = lastIndex !== undefined ? ctx.challenges[lastIndex] : undefined;
+
+				if (lastChallenge !== undefined && lastIndex !== undefined) {
+					ctx.challenges = ctx.challenges.map((c, i) =>
+						i === lastIndex
+							? {
+									...c,
+									refinedHypothesis: {
+										claim: validated.refinedClaim,
+										confidence: validated.refinedConfidence,
+										evidence: validated.additionalEvidence,
+									},
+								}
+							: c,
+					);
 				}
 
 				return JSON.stringify(
@@ -538,12 +554,13 @@ This tool provides quick insights from built-in patterns without external depend
 }
 
 /**
- * Create all challenge-related tools for Adversary agent
+ * Create all challenge-related tools for Adversary agent.
+ * Accepts a ChallengeContext for per-invocation isolation.
  */
-export function createAdversaryTools(): StructuredTool[] {
+export function createAdversaryTools(ctx: ChallengeContext): StructuredTool[] {
 	return [
-		createChallengeHypothesisTool(),
-		createRefineHypothesisTool(),
+		createChallengeHypothesisTool(ctx),
+		createRefineHypothesisTool(ctx),
 		createPatternMatchTool(),
 	];
 }
