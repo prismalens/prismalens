@@ -76,6 +76,10 @@ const AGENT_TOOL_PERMISSIONS: Record<string, string[]> = {
 	// NOTE: github and render tools are now provided via MCP bundles, not direct tool creation
 	gatherer: ["repo"],
 
+	// Pre-gatherer is READ-ONLY - headless MCP calls for deterministic data fetching
+	// Used by pre-gathering node for logs, commits, deployments via MCP
+	"pre-gatherer": ["github", "render", "gitlab"],
+
 	// Detective only has the hypothesis tool (added separately)
 	detective: [],
 
@@ -90,7 +94,7 @@ const AGENT_TOOL_PERMISSIONS: Record<string, string[]> = {
 /**
  * Agents that should be forced into read-only mode
  */
-const READ_ONLY_AGENTS = new Set(["gatherer"]);
+const READ_ONLY_AGENTS = new Set(["gatherer", "pre-gatherer"]);
 
 /**
  * Check if there are any cloned repositories available.

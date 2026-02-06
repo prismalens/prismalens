@@ -2,8 +2,13 @@
  * Types for pre-gathering operations
  */
 
+import type { BundleRegistry } from "../../../tools/bundles/registry.js";
 import type { DataProvider } from "../../../types/data-provider.js";
-import type { IntegrationContext, InvestigationState } from "../../../types/index.js";
+import type {
+	IntegrationContext,
+	IntegrationResolver,
+	InvestigationState,
+} from "../../../types/index.js";
 
 /**
  * Timeout configuration for pre-gathering operations
@@ -85,7 +90,17 @@ export interface GatheringContext {
 	dataProvider: DataProvider;
 	/**
 	 * Available integrations for tools (GitHub, Render, etc.).
-	 * Passed from RunnableConfig.configurable (NOT from state - prevents checkpoint leaks).
+	 * Resolved on-demand via integrationResolver (NOT from state - prevents checkpoint leaks).
 	 */
 	integrations: IntegrationContext[];
+	/**
+	 * Resolver for fetching integration contexts on-demand.
+	 * Encapsulates credentials in a closure — not serializable.
+	 */
+	integrationResolver?: IntegrationResolver;
+	/**
+	 * Bundle registry for headless MCP tool calls.
+	 * Used by logs, changes, and other modules that call MCP tools without an LLM agent.
+	 */
+	registry?: BundleRegistry;
 }

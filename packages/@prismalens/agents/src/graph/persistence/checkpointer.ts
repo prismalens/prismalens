@@ -124,6 +124,7 @@ async function createPostgresCheckpointer(
 	}
 
 	// Create checkpointer with schema
+	// @ts-expect-error PostgresSaver constructor signature changed in newer versions
 	const checkpointer = new PostgresSaver(poolInstance, {
 		schema,
 	} as { schema: string });
@@ -313,7 +314,7 @@ export async function closeCheckpointer(): Promise<void> {
 	}
 
 	// SqliteSaver may have a close method depending on version
-	const instance = checkpointerInstance as Record<string, unknown>;
+	const instance = checkpointerInstance as unknown as Record<string, unknown>;
 	if ("close" in instance && typeof instance.close === "function") {
 		await (instance.close as () => Promise<void>)();
 	}

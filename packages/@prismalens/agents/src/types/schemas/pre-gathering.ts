@@ -122,6 +122,16 @@ export const SimilarIncidentMatchSchema = z.object({
 	incidentId: z.string(),
 	number: z.number().optional(),
 	title: z.string().optional(),
+	/** Description for similarity scoring */
+	description: z.string().optional(),
+	/** Severity for similarity scoring */
+	severity: z.string().optional(),
+	/** Tags for similarity scoring */
+	tags: z.array(z.string()).optional(),
+	/** Service ID for similarity scoring */
+	serviceId: z.string().optional(),
+	/** Service name for similarity scoring */
+	serviceName: z.string().optional(),
 	/** Similarity score 0-100 (BigPanda uses 30% threshold) */
 	similarity: z.number().min(0).max(100),
 	/** How it was resolved (if resolved) */

@@ -133,17 +133,24 @@ export class DirectDataProvider implements DataProvider {
 	}
 
 	/**
-	 * Map database Incident to SimilarIncidentMatch
+	 * Map database Incident to SimilarIncidentMatch.
+	 * Includes description, tags, and severity for similarity scoring.
 	 */
 	private mapToSimilarIncident(
 		incident: IncidentWithRelations,
 	): SimilarIncidentMatch {
+		const tags = safeParseJsonArray(incident.tags);
+
 		return {
 			incidentId: incident.id,
 			number: incident.number,
 			title: incident.title,
-			// TODO(#similarity): Implement proper similarity scoring
-			similarity: 0,
+			description: incident.description ?? undefined,
+			severity: incident.severity ?? undefined,
+			tags: tags.length > 0 ? tags : undefined,
+			serviceId: incident.serviceId ?? undefined,
+			serviceName: incident.service?.name ?? undefined,
+			similarity: 0, // Computed by pre-gathering's calculateIncidentSimilarity
 			resolution: incident.status === "resolved" ? "Resolved" : undefined,
 			rootCause: undefined,
 			timeToResolve: incident.timeToResolve ?? undefined,

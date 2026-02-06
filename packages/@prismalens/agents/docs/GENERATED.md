@@ -1,6 +1,6 @@
 # @prismalens/agents - Generated Documentation
 
-> Auto-generated on 2026-02-03 | Regenerate: `pnpm docs:generate`
+> Auto-generated on 2026-02-06 | Regenerate: `pnpm docs:generate`
 
 **19 tools** | **20 skills** | **9 state fields**
 
@@ -177,7 +177,7 @@ graph TD;
 
 </details>
 
-### Gatherer (6)
+### Cartographer (6)
 
 `code-search` | `code-structure` | `dependency-trace` | `deployment-check` | `log-analysis` | `recent-commits`
 

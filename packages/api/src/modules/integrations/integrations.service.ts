@@ -849,4 +849,39 @@ export class IntegrationsService {
 			maskedCredentials,
 		};
 	}
+
+	/**
+	 * Fetch integration contexts by connection IDs with decrypted credentials.
+	 * Used by the internal API for worker credential isolation:
+	 * worker passes connectionIds → API decrypts and returns IntegrationContext[].
+	 */
+	async getIntegrationsByConnectionIds(
+		connectionIds: string[],
+	): Promise<IntegrationContext[]> {
+		if (connectionIds.length === 0) return [];
+
+		const connections = await this.prisma.integrationConnection.findMany({
+			where: {
+				id: { in: connectionIds },
+				status: "connected",
+			},
+			include: { definition: true },
+		});
+
+		return connections.map((conn) => {
+			const credentials = this.credentialsService.decrypt<
+				Record<string, unknown>
+			>(conn.credentials);
+			const config = conn.config
+				? (JSON.parse(conn.config) as Record<string, unknown>)
+				: {};
+
+			return {
+				type: conn.definition.name,
+				connectionId: conn.id,
+				credentials,
+				config,
+			};
+		});
+	}
 }

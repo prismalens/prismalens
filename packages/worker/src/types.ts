@@ -11,7 +11,10 @@ export interface InvestigationJobData {
 	investigationId: string;
 	priority?: "low" | "normal" | "high" | "critical";
 	context?: Record<string, unknown>;
+	/** @deprecated Use connectionIds instead - credentials should not be in Redis */
 	integrations?: IntegrationContext[];
+	/** Connection IDs for integration credentials - worker fetches on-demand */
+	connectionIds?: string[];
 	incidentData?: Record<string, unknown>;
 	alerts?: unknown[];
 }

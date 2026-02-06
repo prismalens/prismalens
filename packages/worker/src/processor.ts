@@ -17,6 +17,7 @@ import {
 import { Logger, enrichContext } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { Job } from "bullmq";
+import { config as workerConfig } from "./config.js";
 import { api } from "./orpc-client.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
@@ -159,7 +160,8 @@ class WorkerDataProvider implements DataProvider {
 	}
 
 	/**
-	 * Map API incident to SimilarIncidentMatch
+	 * Map API incident to SimilarIncidentMatch.
+	 * Includes description, tags, and severity for similarity scoring.
 	 */
 	private mapToSimilarIncident(
 		incident: Record<string, unknown>,
@@ -168,20 +170,74 @@ class WorkerDataProvider implements DataProvider {
 			incidentId: incident.id as string,
 			number: incident.number as number | undefined,
 			title: (incident.title as string) || "Unknown Incident",
+			description: incident.description as string | undefined,
+			severity: incident.severity as string | undefined,
+			tags: incident.tags as string[] | undefined,
+			serviceId: incident.serviceId as string | undefined,
+			serviceName: incident.serviceName as string | undefined,
 			rootCause: incident.rootCause as string | undefined,
 			resolution: incident.resolution as string | undefined,
 			resolvedAt: incident.resolvedAt as string | undefined,
-			similarity: 0, // TODO(#similarity): implement semantic similarity scoring
+			timeToResolve: incident.timeToResolve as number | undefined,
+			similarity: 0, // Computed by pre-gathering's calculateIncidentSimilarity
 		};
 	}
 }
 
-// Create a singleton dataProvider and executor
+// Module-level singletons (order matters: logger before functions that use it)
+const logger = new Logger({ context: "InvestigationProcessor" });
 const dataProvider = new WorkerDataProvider();
 const executor = new InvestigationExecutor({ dataProvider });
 
-// Create logger for processor
-const logger = new Logger({ context: "InvestigationProcessor" });
+/**
+ * Fetch integration credentials on-demand via internal API.
+ * Worker passes connectionIds → API decrypts and returns IntegrationContext[].
+ * SECURITY: Credentials only exist in-memory during execution, never in Redis.
+ */
+async function fetchIntegrationCredentials(
+	connectionIds: string[],
+): Promise<IntegrationContext[]> {
+	if (connectionIds.length === 0) return [];
+
+	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
+	if (!internalSecret) {
+		logger.warn("PRISMALENS_INTERNAL_SECRET not set — cannot fetch integration credentials");
+		return [];
+	}
+
+	const url = new URL("/internal/integrations/credentials", workerConfig.API_URL);
+	url.searchParams.set("connectionIds", connectionIds.join(","));
+
+	const response = await fetch(url.toString(), {
+		headers: {
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		signal: AbortSignal.timeout(10_000),
+	});
+
+	if (!response.ok) {
+		logger.error("Failed to fetch integration credentials", {
+			status: response.status,
+			statusText: response.statusText,
+		});
+		return [];
+	}
+
+	const data = (await response.json()) as Array<{
+		type: string;
+		connectionId: string;
+		credentials: Record<string, unknown>;
+		config: Record<string, unknown>;
+	}>;
+
+	return data.map((item) => ({
+		type: item.type,
+		connectionId: item.connectionId,
+		credentials: item.credentials,
+		config: item.config,
+	}));
+}
 
 /**
  * Process an investigation job from the queue.
@@ -225,7 +281,7 @@ async function processJobInternal(
 	enrichContext({
 		context: {
 			alert_count: data.alerts?.length ?? 0,
-			integration_count: data.integrations?.length ?? 0,
+			connection_count: data.connectionIds?.length ?? 0,
 			priority: data.priority,
 		},
 	});
@@ -368,17 +424,10 @@ async function buildExecutorInput(jobData: InvestigationJobData): Promise<Invest
 		};
 	});
 
-	// Convert integrations
-	const integrations: IntegrationContext[] = (jobData.integrations || []).map(
-		(int) => ({
-			type: int.type,
-			connectionId: int.connectionId,
-			credentials: int.credentials as Record<string, unknown>,
-			config: int.config as Record<string, unknown>,
-			serviceOverrides: int.serviceOverrides as
-				| Record<string, unknown>
-				| undefined,
-		}),
+	// Fetch integration credentials on-demand via internal API.
+	// Queue mode passes connectionIds (not decrypted credentials) in the BullMQ payload.
+	const integrations: IntegrationContext[] = await fetchIntegrationCredentials(
+		jobData.connectionIds ?? [],
 	);
 
 	// Build LLM config from environment

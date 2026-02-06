@@ -3,7 +3,10 @@
  */
 
 import { Logger } from "@prismalens/logger";
-import type { AlertContext, GatheredMetrics } from "../../../types/index.js";
+import type {
+	GatheredMetrics,
+	SimilarIncidentsContext,
+} from "../../../types/index.js";
 import { calculateAlertVelocity } from "./alerts.js";
 import type { GatheringContext, GatherResult } from "./types.js";
 
@@ -18,7 +21,7 @@ export async function calculateMetrics(
 	const startTime = Date.now();
 
 	try {
-		const { state, incidentTime } = ctx;
+		const { state } = ctx;
 		const alerts = state.alerts;
 		const incident = state.incident;
 
@@ -55,11 +58,9 @@ export async function calculateMetrics(
 		}
 		const affectedServices = Array.from(affectedServicesSet);
 
-		// TODO: Calculate MTTA and MTTR from similar incidents when IncidentSimilarity is implemented
+		// MTTA/MTTR will be enriched post-parallel via enrichMetricsWithSimilarIncidents
 		const mtta: number | null = null;
 		const mttr: number | null = null;
-
-		// TODO: Get similar incident count from IncidentSimilarity table
 		const similarIncidentCount = 0;
 
 		logger.debug("Calculated metrics", {
@@ -91,4 +92,42 @@ export async function calculateMetrics(
 			durationMs: Date.now() - startTime,
 		};
 	}
+}
+
+/**
+ * Enrich metrics with MTTA/MTTR computed from similar incidents.
+ * Called after both metrics and similar-incidents have resolved (post-parallel).
+ */
+export function enrichMetricsWithSimilarIncidents(
+	metrics: GatheredMetrics,
+	similarIncidents: SimilarIncidentsContext | null,
+): GatheredMetrics {
+	if (!similarIncidents || similarIncidents.incidents.length === 0) {
+		return metrics;
+	}
+
+	// Compute average timeToResolve (MTTR) from similar incidents
+	const resolvedIncidents = similarIncidents.incidents.filter(
+		(i) => i.timeToResolve != null && i.timeToResolve > 0,
+	);
+
+	let mttr: number | null = null;
+	if (resolvedIncidents.length > 0) {
+		const totalResolveTime = resolvedIncidents.reduce(
+			(sum, i) => sum + (i.timeToResolve ?? 0),
+			0,
+		);
+		mttr = Math.round(totalResolveTime / resolvedIncidents.length);
+	}
+
+	// MTTA is not available from current schema (incidents don't store acknowledgedAt
+	// in SimilarIncidentMatch), but we set it from metrics if available
+	const mtta = metrics.mtta;
+
+	return {
+		...metrics,
+		mtta,
+		mttr,
+		similarIncidentCount: similarIncidents.incidents.length,
+	};
 }

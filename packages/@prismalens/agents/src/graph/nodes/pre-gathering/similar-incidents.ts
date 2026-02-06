@@ -186,8 +186,9 @@ export function guessRootCauseCategory(incident: {
 }
 
 /**
- * Fetch similar incidents from historical data
- * Currently returns empty data - will be populated when IncidentSimilarity table is implemented
+ * Fetch similar incidents from historical data via DataProvider.
+ * Applies calculateIncidentSimilarity() to compute real scores,
+ * extracts patterns via guessRootCauseCategory(), and builds resolutions.
  */
 export async function fetchSimilarIncidents(
 	ctx: GatheringContext,
@@ -195,7 +196,7 @@ export async function fetchSimilarIncidents(
 	const startTime = Date.now();
 
 	try {
-		const { state, incidentTime } = ctx;
+		const { state } = ctx;
 		const currentIncident = state.incident;
 
 		if (!currentIncident) {
@@ -216,20 +217,110 @@ export async function fetchSimilarIncidents(
 			serviceId: currentIncident.serviceId,
 		});
 
-		// TODO: Query IncidentSimilarity table and Incident table when implemented
-		// For now, return empty arrays - this will be populated when:
-		// 1. IncidentSimilarity model is added to the database
-		// 2. Similarity calculation runs on incident creation/update
+		// Fetch candidates from DataProvider (resolved/closed incidents from same service)
+		const response = await ctx.dataProvider.fetchSimilarIncidents({
+			incidentId: currentIncident.incidentId,
+			serviceId: currentIncident.serviceId,
+			limit: 20,
+		});
 
-		const incidents: SimilarIncidentMatch[] = [];
-		const patterns: IncidentPattern[] = [];
-		const resolutions: PastResolution[] = [];
+		// Apply real similarity scoring to each candidate
+		const scoredIncidents: SimilarIncidentMatch[] = response.incidents.map(
+			(candidate) => {
+				const similarity = calculateIncidentSimilarity(
+					{
+						title: currentIncident.title,
+						description: currentIncident.description,
+						serviceId: currentIncident.serviceId,
+						serviceName: currentIncident.serviceName,
+						severity: currentIncident.severity,
+						tags: currentIncident.tags,
+					},
+					{
+						title: candidate.title ?? "",
+						description: candidate.description,
+						serviceId: candidate.serviceId,
+						serviceName: candidate.serviceName,
+						severity: candidate.severity,
+						tags: candidate.tags,
+						rootCauseCategory:
+							candidate.rootCause ??
+							guessRootCauseCategory({
+								title: candidate.title ?? "",
+								description: candidate.description,
+								tags: candidate.tags,
+							}) ??
+							undefined,
+					},
+				);
 
-		// Sort by similarity score (highest first)
-		incidents.sort((a, b) => b.similarity - a.similarity);
+				return { ...candidate, similarity };
+			},
+		);
+
+		// Filter by MEDIUM threshold (30%) and sort by score descending
+		const incidents = scoredIncidents
+			.filter((i) => i.similarity >= SIMILARITY_THRESHOLDS.MEDIUM)
+			.sort((a, b) => b.similarity - a.similarity);
+
+		// Extract patterns from matching incidents using guessRootCauseCategory
+		const patternCounts = new Map<
+			string,
+			{ count: number; lastOccurrence: string; serviceName?: string }
+		>();
+		for (const inc of incidents) {
+			const category = guessRootCauseCategory({
+				title: inc.title ?? "",
+				description: inc.description,
+				tags: inc.tags,
+			});
+			if (category) {
+				const existing = patternCounts.get(category);
+				const occurrence = inc.resolvedAt ?? new Date().toISOString();
+				if (existing) {
+					existing.count += 1;
+					if (occurrence > existing.lastOccurrence) {
+						existing.lastOccurrence = occurrence;
+					}
+				} else {
+					patternCounts.set(category, {
+						count: 1,
+						lastOccurrence: occurrence,
+						serviceName: inc.serviceName,
+					});
+				}
+			}
+		}
+
+		const patterns: IncidentPattern[] = Array.from(
+			patternCounts.entries(),
+		).map(([pattern, data]) => ({
+			pattern,
+			count: data.count,
+			lastOccurrence: data.lastOccurrence,
+			serviceName: data.serviceName,
+		}));
+
+		// Build resolutions from incidents that have resolution or timeToResolve
+		const resolutions: PastResolution[] = incidents
+			.filter((i) => i.resolution || i.timeToResolve)
+			.map((i) => ({
+				incidentId: i.incidentId,
+				summary: i.resolution ?? `Resolved: ${i.title ?? "Unknown"}`,
+				timeToResolve: i.timeToResolve ?? 0,
+				rootCauseCategory:
+					i.rootCause ??
+					guessRootCauseCategory({
+						title: i.title ?? "",
+						description: i.description,
+						tags: i.tags,
+					}) ??
+					undefined,
+			}));
 
 		logger.debug("Found similar incidents", {
-			count: incidents.length,
+			candidates: response.incidents.length,
+			aboveThreshold: incidents.length,
 			patternsCount: patterns.length,
 			resolutionsCount: resolutions.length,
 		});

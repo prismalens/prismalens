@@ -10,11 +10,13 @@
 
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { Logger } from "@prismalens/logger";
+import { createDefaultBundleRegistry } from "../../../tools/factory.js";
 import type { DataProvider } from "../../../types/data-provider.js";
 import type {
 	GatheredAlertsContext,
 	GatheredMetrics,
 	GatheringMeta,
+	IntegrationResolver,
 	InvestigationState,
 	LogPreviewContext,
 	PreGatheredContext,
@@ -25,7 +27,7 @@ import type {
 import { organizeAndEnrichAlerts } from "./alerts.js";
 import { fetchRecentChanges, getTopRiskyDeployments } from "./changes.js";
 import { hasLoggingIntegration, previewLogs } from "./logs.js";
-import { calculateMetrics } from "./metrics.js";
+import { calculateMetrics, enrichMetricsWithSimilarIncidents } from "./metrics.js";
 import { fetchServiceContext } from "./service-context.js";
 import {
 	fetchSimilarIncidents,
@@ -256,14 +258,32 @@ export async function preGather(
 		? new Date(state.incident.triggeredAt)
 		: new Date();
 
+	// Extract integration resolver from configurable (closure — not serializable)
+	const integrationResolver = config.configurable?.integrationResolver as IntegrationResolver | undefined;
+
+	// Resolve integrations on-demand for pre-gathering
+	let integrations = [] as import("../../../types/index.js").IntegrationContext[];
+	if (integrationResolver) {
+		try {
+			integrations = await integrationResolver.resolve();
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "Unknown error";
+			logger.warn("Failed to resolve integrations for pre-gathering", { error: msg });
+		}
+	}
+
+	// Create or reuse bundle registry for headless MCP calls
+	const registry = createDefaultBundleRegistry();
+
 	const ctx: GatheringContext = {
 		state,
 		incidentTime,
 		serviceId: state.incident?.serviceId,
 		repository: state.primaryAlert?.repository,
 		dataProvider,
-		// Integrations resolved on-demand - credentials never pass through LangGraph
-		integrations: [],
+		integrations,
+		integrationResolver,
+		registry,
 	};
 
 	// Check for logging integration early
@@ -372,6 +392,11 @@ export async function preGather(
 		errors.push({ source: "metrics", error: metricsResult.result.error || "Unknown error" });
 	} else if (metricsResult.result?.data) {
 		metrics = metricsResult.result.data;
+	}
+
+	// Post-parallel enrichment: compute MTTA/MTTR from similar incidents
+	if (metrics && similar) {
+		metrics = enrichMetricsWithSimilarIncidents(metrics, similar);
 	}
 
 	let logs: LogPreviewContext | null = null;
