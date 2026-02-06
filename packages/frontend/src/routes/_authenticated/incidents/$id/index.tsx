@@ -13,7 +13,7 @@ import {
 } from "@/components/incidents";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCreateTimelineEntry, useLlmConfigs, useTimeline } from "@/lib/api/hooks";
+import { useCreateTimelineEntry, useLlmSettings, useTimeline } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/")({
@@ -26,8 +26,8 @@ function IncidentDetailPage() {
 	const queryClient = useQueryClient();
 
 	// Check if LLM is configured
-	const { data: llmConfigs } = useLlmConfigs();
-	const isLlmConfigured = !!llmConfigs?.activeProvider;
+	const { data: llmSettings } = useLlmSettings();
+	const isLlmConfigured = !!llmSettings?.activeProvider;
 
 	// Fetch incident details
 	const {

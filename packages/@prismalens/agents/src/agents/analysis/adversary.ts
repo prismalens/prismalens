@@ -15,11 +15,7 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
-import {
-	createLLM,
-	normalizeConfig,
-	resolveAgentConfig,
-} from "../../llm/factory.js";
+import { createAgentLLM } from "../../llm/factory.js";
 import {
 	createAdversaryTools,
 	createChallengeContext,
@@ -38,9 +34,7 @@ import {
 	getBestHypothesis,
 	type Hypothesis,
 	type InvestigationState,
-	type SupervisorPhase,
 } from "../../types/index.js";
-import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 
 const logger = new Logger({ context: "Adversary" });
 
@@ -276,27 +270,6 @@ export async function adversaryNode(
 		runName: traceConfig.runName,
 	});
 
-	// Get runtime config from RunnableConfig.configurable (NOT from state)
-	const runtimeConfig = getInvestigationConfigFromConfigurable(
-		config?.configurable as Record<string, unknown> | undefined,
-	);
-
-	// Check for LLM config
-	if (!runtimeConfig?.llmConfig) {
-		logger.error("No LLM config provided in RunnableConfig.configurable");
-		return {
-			phase: "complete" as SupervisorPhase,
-			agentErrors: [
-				{
-					agent: "adversary",
-					error: "No LLM configuration provided for Adversary",
-					timestamp: new Date().toISOString(),
-					recoverable: false,
-				},
-			],
-		};
-	}
-
 	// Get the best hypothesis to challenge
 	const bestHypothesis = getBestHypothesis(state);
 	if (!bestHypothesis) {
@@ -309,10 +282,7 @@ export async function adversaryNode(
 	resetOversightStore();
 
 	try {
-		// Resolve LLM config for this agent (from config, not state)
-		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
-		const agentConfig = resolveAgentConfig(normalizedConfig, "adversary");
-		const llm = createLLM(agentConfig);
+		const llm = createAgentLLM("adversary", { temperature: 0.1 });
 
 		// Create tools for the Adversary (challenge + oversight)
 		const challengeTools = createAdversaryTools(challengeCtx);

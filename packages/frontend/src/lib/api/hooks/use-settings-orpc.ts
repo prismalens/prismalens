@@ -8,104 +8,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 
-/**
- * Query key factory for settings
- * Uses oRPC's built-in key generation for consistency
- */
-export const settingsKeys = {
-	all: () => orpc.settings.key(),
-	llm: {
-		all: () => orpc.settings.llm.key(),
-		list: () => orpc.settings.llm.list.key(),
-		detail: (provider: string) =>
-			orpc.settings.llm.get.key({ input: { provider } }),
-	},
-};
-
-/**
- * Fetch all LLM provider configurations
- */
-export function useLlmConfigs() {
-	return useQuery(
-		orpc.settings.llm.list.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Fetch LLM configuration for a specific provider
- */
-export function useLlmConfig(provider: string) {
-	return useQuery({
-		...orpc.settings.llm.get.queryOptions({
-			input: { provider },
-		}),
-		enabled: !!provider,
-	});
-}
-
-/**
- * Update LLM configuration for a provider
- */
-export function useUpdateLlmConfig() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.llm.update.mutationOptions(),
-		onSuccess: (_data, variables) => {
-			queryClient.invalidateQueries({ queryKey: settingsKeys.llm.list() });
-			queryClient.invalidateQueries({
-				queryKey: settingsKeys.llm.detail(variables.provider),
-			});
-		},
-	});
-}
-
-/**
- * Delete LLM configuration for a provider
- */
-export function useDeleteLlmConfig() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.llm.delete.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: settingsKeys.llm.list() });
-		},
-	});
-}
-
-/**
- * Test LLM connection with provided credentials
- * Does not modify any data, just validates the connection
- */
-export function useTestLlmConnection() {
-	return useMutation({
-		...orpc.settings.llm.test.mutationOptions(),
-	});
-}
-
-/**
- * Set the active LLM provider
- */
-export function useSetActiveLlmProvider() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.llm.setActive.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: settingsKeys.llm.list() });
-		},
-	});
-}
-
 // =============================================================================
-// COMPREHENSIVE LLM CONFIGURATION (ENV-ONLY API KEYS)
+// COMPREHENSIVE LLM CONFIGURATION
 // =============================================================================
 
 /**
- * Query key factory for new LLM settings
+ * Query key factory for LLM settings
  */
 export const llmSettingsKeys = {
 	envStatus: () => orpc.settings.llm.getEnvStatus.key(),
@@ -170,6 +78,59 @@ export function useLlmModels(provider?: string) {
 export function useTestLlmConnectionWithEnv() {
 	return useMutation({
 		...orpc.settings.llm.testConnection.mutationOptions(),
+	});
+}
+
+// =============================================================================
+// LLM CREDENTIAL MANAGEMENT
+// =============================================================================
+
+/**
+ * Query key factory for credential status
+ */
+export const llmCredentialKeys = {
+	status: () => orpc.settings.llm.getCredentialStatus.key(),
+};
+
+/**
+ * Fetch credential status for all providers
+ * Shows which providers have DB keys, env keys, or neither
+ */
+export function useLlmCredentialStatus() {
+	return useQuery(
+		orpc.settings.llm.getCredentialStatus.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Save an encrypted LLM API key for a provider
+ */
+export function useSaveLlmCredential() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.llm.saveCredential.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: llmCredentialKeys.status() });
+			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.envStatus() });
+		},
+	});
+}
+
+/**
+ * Delete an LLM API key for a provider
+ */
+export function useDeleteLlmCredential() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.llm.deleteCredential.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: llmCredentialKeys.status() });
+			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.envStatus() });
+		},
 	});
 }
 

@@ -75,7 +75,7 @@ import {
 
 // State and persistence
 import type { DataProvider } from "../types/data-provider.js";
-import type { InvestigationConfig } from "../types/config.js";
+import type { InvestigationConfig, IntegrationResolver } from "../types/config.js";
 import {
 	getBestHypothesis,
 	type InvestigationState,
@@ -459,9 +459,15 @@ async function compileInvestigationGraph() {
 /**
  * Run a full investigation.
  *
+ * SECURITY: Only non-sensitive config (provider, model, maxIterations, priority)
+ * enters the LangGraph execution path. API keys are resolved from process.env
+ * by the LLM factory. Integration credentials are resolved on-demand via
+ * connectionIds. This prevents credential leaks via LangSmith traces,
+ * checkpoints, or error handlers.
+ *
  * @param initialState - Initial state for the investigation (data only, no credentials)
  * @param dataProvider - Provider for fetching additional data during investigation
- * @param runtimeConfig - Runtime config (llmConfig, integrations) - NOT checkpointed
+ * @param runtimeConfig - Runtime config (maxIterations, priority) - NO credentials
  *
  * @example
  * const result = await runInvestigation(
@@ -473,8 +479,6 @@ async function compileInvestigationGraph() {
  *   },
  *   dataProvider,
  *   {
- *     llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
- *     integrations: [...],
  *     maxIterations: 10,
  *     priority: 'normal',
  *   },
@@ -504,12 +508,23 @@ export async function runInvestigation(
 		initialState.incidentId,
 	);
 
-	// Merge dataProvider into configurable
+	// Build integration resolver (closure over credentials — not serializable)
+	const integrations = runtimeConfig.integrations || [];
+	const integrationResolver: IntegrationResolver = {
+		async resolve(connectionIds?: string[]) {
+			if (!connectionIds?.length) return integrations;
+			return integrations.filter((i) => connectionIds.includes(i.connectionId));
+		},
+	};
+
+	// Merge dataProvider + integrationResolver into configurable
+	// Both are class/object instances — not serializable, won't appear in traces
 	const config = {
 		...baseConfig,
 		configurable: {
 			...baseConfig.configurable,
 			dataProvider,
+			integrationResolver,
 		},
 	};
 
@@ -532,7 +547,7 @@ export async function runInvestigation(
  *
  * @param investigationId - ID of the investigation to resume
  * @param dataProvider - Provider for fetching additional data during investigation
- * @param runtimeConfig - Runtime config (llmConfig, integrations) - REQUIRED for resume
+ * @param runtimeConfig - Runtime config (maxIterations, priority) - NO credentials
  */
 export async function resumeInvestigation(
 	investigationId: string,
@@ -542,12 +557,22 @@ export async function resumeInvestigation(
 	const graph = await compileInvestigationGraph();
 	const baseConfig = getInvocationConfig(investigationId, runtimeConfig);
 
-	// Merge dataProvider into configurable
+	// Build integration resolver (closure over credentials — not serializable)
+	const integrations = runtimeConfig.integrations || [];
+	const integrationResolver: IntegrationResolver = {
+		async resolve(connectionIds?: string[]) {
+			if (!connectionIds?.length) return integrations;
+			return integrations.filter((i) => connectionIds.includes(i.connectionId));
+		},
+	};
+
+	// Merge dataProvider + integrationResolver into configurable
 	const config = {
 		...baseConfig,
 		configurable: {
 			...baseConfig.configurable,
 			dataProvider,
+			integrationResolver,
 		},
 	};
 

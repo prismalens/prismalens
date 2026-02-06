@@ -190,14 +190,14 @@ export function getThreadId(investigationId: string): string {
  * Get LangGraph invocation config with thread ID for persistence.
  * Includes root-level trace configuration for LangSmith.
  *
- * IMPORTANT: Runtime config (llmConfig, integrations, maxIterations, priority)
- * is passed via configurable but is NOT serialized to checkpoints.
- * This prevents credentials from being persisted.
+ * SECURITY: Only non-sensitive metadata is passed via configurable.
+ * API keys are resolved from process.env by the LLM factory.
+ * Integration credentials are resolved on-demand by tool factories.
+ * This prevents credentials from leaking via LangSmith traces, checkpoints,
+ * or error handlers.
  *
  * @example
  * const config = getInvocationConfig('abc123', {
- *   llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
- *   integrations: [...],
  *   maxIterations: 10,
  *   priority: 'normal',
  * }, 'inc-456');
@@ -212,14 +212,10 @@ export function getInvocationConfig(
 		configurable: {
 			thread_id: getThreadId(investigationId),
 			checkpoint_ns: "prismalens",
-			// Runtime config - passed to nodes but NOT checkpointed
-			// (Checkpointers only serialize thread_id and checkpoint_ns)
-			...(runtimeConfig && {
-				llmConfig: runtimeConfig.llmConfig,
-				integrations: runtimeConfig.integrations,
-				maxIterations: runtimeConfig.maxIterations ?? 10,
-				priority: runtimeConfig.priority ?? "normal",
-			}),
+			// Only non-sensitive runtime config — NO credentials
+			investigationId,
+			maxIterations: runtimeConfig?.maxIterations ?? 10,
+			priority: runtimeConfig?.priority ?? "normal",
 		},
 		// Root-level trace configuration for LangSmith
 		runName: `Investigation ${investigationId.slice(0, 8)}`,

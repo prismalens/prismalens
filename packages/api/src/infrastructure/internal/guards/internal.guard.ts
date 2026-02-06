@@ -6,6 +6,11 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
+import { createHash, timingSafeEqual } from "crypto";
+
+function sha256(value: string): Buffer {
+	return createHash("sha256").update(value, "utf8").digest();
+}
 
 @Injectable()
 export class InternalGuard implements CanActivate {
@@ -18,7 +23,16 @@ export class InternalGuard implements CanActivate {
 			"PRISMALENS_INTERNAL_SECRET",
 		);
 
-		if (!internalSecret || internalSecret !== configuredSecret) {
+		if (!internalSecret || !configuredSecret) {
+			throw new UnauthorizedException("Invalid internal secret");
+		}
+
+		// Hash both values to normalize length before timing-safe comparison.
+		// This prevents leaking the secret length via timing side-channel.
+		const secretHash = sha256(configuredSecret);
+		const providedHash = sha256(String(internalSecret));
+
+		if (!timingSafeEqual(secretHash, providedHash)) {
 			throw new UnauthorizedException("Invalid internal secret");
 		}
 

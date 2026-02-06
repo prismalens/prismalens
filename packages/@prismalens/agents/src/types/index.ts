@@ -37,8 +37,11 @@ export { AGENT_IDS, agentIdSchema, type AgentId } from "./agents.js";
 
 export {
 	type InvestigationConfig,
+	type ConfigurableMetadata,
+	type IntegrationResolver,
 	hasInvestigationConfig,
 	getInvestigationConfigFromConfigurable,
+	getRuntimeMetadataFromConfigurable,
 } from "./config.js";
 
 // =============================================================================

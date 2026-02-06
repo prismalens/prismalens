@@ -10,20 +10,16 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
-import {
-	createLLM,
-	normalizeConfig,
-	resolveAgentConfig,
-} from "../../llm/factory.js";
+import { createAgentLLM } from "../../llm/factory.js";
 import { createToolsForAgent } from "../../tools/factory.js";
 import { createHandoffCompletionUpdate } from "../../graph/nodes/handoff-processor.js";
 import { buildTraceConfig, mergeTraceConfig } from "../../utils/tracing.js";
 import type {
 	Finding,
+	IntegrationResolver,
 	InvestigationState,
 	SupervisorPhase,
 } from "../../types/index.js";
-import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 import { addFindingIds, validateLogFindings } from "../../utils/validation.js";
 
 const logger = new Logger({ context: "LogGatherer" });
@@ -103,38 +99,14 @@ export async function logGathererNode(
 	// Get the targeted query from handoffRequest
 	const targetedQuery = state.handoffRequest?.context || "";
 
-	// Get runtime config from RunnableConfig.configurable (NOT from state)
-	const runtimeConfig = getInvestigationConfigFromConfigurable(
-		config?.configurable as Record<string, unknown> | undefined,
-	);
-
-	// Check for LLM config
-	if (!runtimeConfig?.llmConfig) {
-		logger.error("No LLM config provided in RunnableConfig.configurable");
-		return {
-			agentErrors: [
-				{
-					agent: "log-gatherer",
-					error: "No LLM configuration provided",
-					timestamp: new Date().toISOString(),
-					recoverable: false,
-				},
-			],
-			handoffRequest: undefined,
-			phase: "analyzing" as SupervisorPhase,
-		};
-	}
-
 	try {
-		// Resolve LLM config for this agent (from config, not state)
-		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
-		const agentConfig = resolveAgentConfig(normalizedConfig, "gatherer");
-		const llm = createLLM(agentConfig);
+		const llm = createAgentLLM("gatherer", { temperature: 0.1 });
 
-		// Create tools for log gathering (integrations from config, not state)
-		// Log gatherer typically uses API-based tools (Render, Datadog, etc.)
-		// but we pass clonePaths in case local log files need to be read
-		const tools = createToolsForAgent("gatherer", runtimeConfig.integrations, {
+		// Resolve integrations on-demand via configurable resolver
+		const resolver = config?.configurable?.integrationResolver as IntegrationResolver | undefined;
+		const integrations = resolver ? await resolver.resolve() : [];
+
+		const tools = createToolsForAgent("gatherer", integrations, {
 			clonePaths: state.clonePaths,
 		});
 

@@ -1,12 +1,17 @@
 // =============================================================================
 // INVESTIGATION CONFIG
 // =============================================================================
-// Runtime configuration passed via RunnableConfig.configurable.
-// These values are NOT checkpointed to PostgreSQL, preventing credential leaks.
+// Runtime configuration for investigation execution.
+//
+// SECURITY: Credentials never enter the LangGraph execution path.
+// - API keys: resolved from process.env by the LLM factory
+// - Integration credentials: resolved on-demand by tool factories
+// - configurable only carries: investigationId, maxIterations, priority
 //
 // Separation principle:
-// - Config = "how to run" (credentials, limits, runtime settings)
+// - Config = "how to run" (limits, runtime settings)
 // - State = "what to process" (incident, alerts, findings, results)
+// - process.env = "with what credentials" (API keys, set by env bridge)
 // =============================================================================
 
 import type {
@@ -17,13 +22,17 @@ import type { IntegrationContext } from "./schemas/core.js";
 
 /**
  * Runtime configuration for investigation execution.
- * Passed via RunnableConfig.configurable, NOT stored in checkpoints.
+ * Used by the executor and queue service to configure investigations.
+ *
+ * SECURITY: This interface is used for constructing execution context,
+ * but llmConfig and integrations are NOT passed through LangGraph's
+ * RunnableConfig.configurable. API keys are resolved from process.env.
  *
  * @example
  * ```typescript
  * const config: InvestigationConfig = {
- *   llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4', apiKey: '...' },
- *   integrations: [{ type: 'github', connectionId: '...', credentials: {...}, config: {...} }],
+ *   llmConfig: { provider: 'anthropic', model: 'claude-sonnet-4' },
+ *   integrations: [{ type: 'github', connectionId: '...' }],
  *   maxIterations: 10,
  *   priority: 'high',
  * };
@@ -32,7 +41,8 @@ import type { IntegrationContext } from "./schemas/core.js";
 export interface InvestigationConfig {
 	/**
 	 * LLM configuration for agents.
-	 * Contains provider, model, and API key.
+	 * Contains provider and model selection.
+	 * API keys are resolved from process.env by the LLM factory.
 	 *
 	 * Supports two formats:
 	 * 1. Simple: `LLMProviderConfig` - Same config for all agents
@@ -42,7 +52,7 @@ export interface InvestigationConfig {
 
 	/**
 	 * Available integrations for tools (GitHub, Render, etc.).
-	 * Contains credentials that should NOT be checkpointed.
+	 * Credentials are resolved on-demand, not passed through LangGraph.
 	 */
 	integrations: IntegrationContext[];
 
@@ -62,46 +72,54 @@ export interface InvestigationConfig {
 const VALID_PRIORITIES = ["low", "normal", "high", "critical"] as const;
 
 /**
- * Type guard to check if config has required investigation config.
- * Validates structure of nested objects at runtime.
+ * Resolver for fetching integration contexts on-demand.
+ *
+ * SECURITY: Passed through configurable as a class instance (like DataProvider).
+ * Not serializable — credentials are encapsulated in the closure and will NOT
+ * appear in LangSmith traces, checkpoints, or error handlers.
+ *
+ * @example
+ * ```typescript
+ * // In agent nodes:
+ * const resolver = config?.configurable?.integrationResolver as IntegrationResolver | undefined;
+ * const integrations = resolver ? await resolver.resolve() : [];
+ * ```
  */
-export function hasInvestigationConfig(
-	configurable: Record<string, unknown> | undefined,
-): configurable is Record<string, unknown> & InvestigationConfig {
-	if (!configurable) return false;
-
-	// Validate llmConfig exists and has required shape
-	if (
-		!("llmConfig" in configurable) ||
-		configurable.llmConfig === null ||
-		typeof configurable.llmConfig !== "object"
-	) {
-		return false;
-	}
-
-	const llm = configurable.llmConfig as Record<string, unknown>;
-	if (typeof llm.provider !== "string" || typeof llm.model !== "string") {
-		return false;
-	}
-
-	// Validate integrations is an array
-	if (!("integrations" in configurable) || !Array.isArray(configurable.integrations)) {
-		return false;
-	}
-
-	return true;
+export interface IntegrationResolver {
+	/**
+	 * Resolve integration contexts for tool creation.
+	 * @param connectionIds - Optional filter by connection IDs. If empty/undefined, returns all.
+	 */
+	resolve(connectionIds?: string[]): Promise<IntegrationContext[]>;
 }
 
 /**
- * Extract InvestigationConfig from RunnableConfig.configurable.
- * Returns null if config is not present or incomplete.
- * Validates types at runtime instead of using unsafe `as` casts.
+ * Runtime metadata extracted from RunnableConfig.configurable.
+ * This is the ONLY data that passes through the LangGraph execution path.
+ * No credentials, no API keys, no integration secrets.
+ *
+ * Additionally, configurable carries non-serializable class instances
+ * (set during graph.invoke() in graph.ts — NOT checkpointed or traced):
+ * - `dataProvider: DataProvider` — for fetching alerts, incidents, etc.
+ * - `integrationResolver: IntegrationResolver` — for resolving integration credentials on-demand
  */
-export function getInvestigationConfigFromConfigurable(
+export interface ConfigurableMetadata {
+	investigationId?: string;
+	maxIterations: number;
+	priority: "low" | "normal" | "high" | "critical";
+}
+
+/**
+ * Extract non-sensitive runtime metadata from RunnableConfig.configurable.
+ *
+ * SECURITY: This function only extracts investigationId, maxIterations, and priority.
+ * No credentials are read from or expected in configurable.
+ */
+export function getRuntimeMetadataFromConfigurable(
 	configurable: Record<string, unknown> | undefined,
-): InvestigationConfig | null {
-	if (!hasInvestigationConfig(configurable)) {
-		return null;
+): ConfigurableMetadata {
+	if (!configurable) {
+		return { maxIterations: 10, priority: "normal" };
 	}
 
 	// maxIterations validation
@@ -116,15 +134,40 @@ export function getInvestigationConfigFromConfigurable(
 	const priority =
 		typeof rawPriority === "string" &&
 		(VALID_PRIORITIES as readonly string[]).includes(rawPriority)
-			? (rawPriority as InvestigationConfig["priority"])
+			? (rawPriority as ConfigurableMetadata["priority"])
 			: "normal";
 
+	// investigationId
+	const investigationId =
+		typeof configurable.investigationId === "string"
+			? configurable.investigationId
+			: undefined;
+
 	return {
-		llmConfig: configurable.llmConfig as
-			| LLMProviderConfig
-			| LLMConfigWithOverrides,
-		integrations: configurable.integrations as IntegrationContext[],
+		investigationId,
 		maxIterations,
 		priority,
 	};
+}
+
+/**
+ * @deprecated Use getRuntimeMetadataFromConfigurable instead.
+ * This function is kept for backward compatibility during migration.
+ * It now returns null since credentials are no longer in configurable.
+ */
+export function getInvestigationConfigFromConfigurable(
+	_configurable: Record<string, unknown> | undefined,
+): InvestigationConfig | null {
+	// Credentials are no longer passed through configurable.
+	// Agent nodes should use createLLM() directly (factory resolves from process.env).
+	return null;
+}
+
+/**
+ * @deprecated Use getRuntimeMetadataFromConfigurable instead.
+ */
+export function hasInvestigationConfig(
+	_configurable: Record<string, unknown> | undefined,
+): boolean {
+	return false;
 }

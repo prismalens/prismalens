@@ -8,6 +8,10 @@ const link = new RPCLink({
 	headers: () => ({
 		"Content-Type": "application/json",
 		"User-Agent": "prismalens-worker/0.1.0",
+		// Authenticate to internal API endpoints
+		...(process.env.PRISMALENS_INTERNAL_SECRET && {
+			"X-Internal-Secret": process.env.PRISMALENS_INTERNAL_SECRET,
+		}),
 	}),
 });
 

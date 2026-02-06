@@ -1,5 +1,5 @@
 import { Controller } from "@nestjs/common";
-import { Implement, implement, ORPCError } from "@orpc/nest";
+import { Implement, implement } from "@orpc/nest";
 import { settingsContract } from "@prismalens/contracts";
 import { SettingsService } from "./settings.service.js";
 
@@ -14,85 +14,6 @@ export class SettingsController {
 	@Implement(settingsContract.llm)
 	llm() {
 		return {
-			// GET /settings/llm - List all LLM configurations
-			list: implement(settingsContract.llm.list).handler(async () => {
-				return this.settingsService.getAllLlmConfigs();
-			}),
-
-			// GET /settings/llm/:provider - Get LLM config for a provider
-			get: implement(settingsContract.llm.get).handler(async ({ input }) => {
-				try {
-					return await this.settingsService.getLlmConfig(input.provider);
-				} catch (error) {
-					if (
-						error instanceof Error &&
-						error.message.includes("No configuration found")
-					) {
-						throw new ORPCError("NOT_FOUND", {
-							message: `No configuration found for provider: ${input.provider}`,
-						});
-					}
-					throw error;
-				}
-			}),
-
-			// PUT /settings/llm/:provider - Update LLM config for a provider
-			update: implement(settingsContract.llm.update).handler(
-				async ({ input }) => {
-					const { provider, ...config } = input;
-					const setting = await this.settingsService.updateLlmConfig(
-						provider,
-						config,
-					);
-					return this.serializeSetting(setting);
-				},
-			),
-
-			// DELETE /settings/llm/:provider - Delete LLM config for a provider
-			delete: implement(settingsContract.llm.delete).handler(
-				async ({ input }) => {
-					try {
-						await this.settingsService.deleteLlmConfig(input.provider);
-					} catch {
-						throw new ORPCError("NOT_FOUND", {
-							message: `No configuration found for provider: ${input.provider}`,
-						});
-					}
-				},
-			),
-
-			// POST /settings/llm/:provider/test - Test LLM connection
-			test: implement(settingsContract.llm.test).handler(async ({ input }) => {
-				const { provider, ...config } = input;
-				return this.settingsService.testLlmConnection(provider, config);
-			}),
-
-			// PUT /settings/llm/active - Set active LLM provider
-			setActive: implement(settingsContract.llm.setActive).handler(
-				async ({ input }) => {
-					try {
-						const setting = await this.settingsService.setActiveProvider(
-							input.provider,
-						);
-						return this.serializeSetting(setting);
-					} catch (error) {
-						if (
-							error instanceof Error &&
-							error.message.includes("not configured")
-						) {
-							throw new ORPCError("NOT_FOUND", {
-								message: `Provider ${input.provider} not configured`,
-							});
-						}
-						throw error;
-					}
-				},
-			),
-
-			// =====================================================================
-			// NEW: Comprehensive LLM Configuration (env-only API keys)
-			// =====================================================================
-
 			// GET /settings/llm/env-status - Get env var status for all providers
 			getEnvStatus: implement(settingsContract.llm.getEnvStatus).handler(
 				async () => {
@@ -128,6 +49,30 @@ export class SettingsController {
 						input.provider,
 						input.model,
 					);
+				},
+			),
+
+			// POST /settings/llm/credentials - Save encrypted API key
+			saveCredential: implement(settingsContract.llm.saveCredential).handler(
+				async ({ input }) => {
+					await this.settingsService.saveLlmCredential(input.provider, input.apiKey);
+					return { success: true };
+				},
+			),
+
+			// DELETE /settings/llm/credentials - Delete API key
+			deleteCredential: implement(settingsContract.llm.deleteCredential).handler(
+				async ({ input }) => {
+					await this.settingsService.deleteLlmCredential(input.provider);
+					return { success: true };
+				},
+			),
+
+			// GET /settings/llm/credential-status - Get credential status
+			getCredentialStatus: implement(settingsContract.llm.getCredentialStatus).handler(
+				async () => {
+					const providers = await this.settingsService.getLlmCredentialStatus();
+					return { providers };
 				},
 			),
 		};
@@ -233,15 +178,4 @@ export class SettingsController {
 		};
 	}
 
-	/**
-	 * Serialize setting record for API response
-	 * Converts Date objects to ISO strings
-	 */
-	private serializeSetting(setting: any): any {
-		return {
-			...setting,
-			createdAt: setting.createdAt?.toISOString(),
-			updatedAt: setting.updatedAt?.toISOString(),
-		};
-	}
 }

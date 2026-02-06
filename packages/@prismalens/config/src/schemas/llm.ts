@@ -132,12 +132,13 @@ export const llmProviderIdSchema = z.enum(LLM_PROVIDER_IDS);
 /**
  * LLM environment variables schema.
  *
- * API keys are stored in environment variables for security (never in DB).
+ * API keys can be provided via environment variables or saved encrypted in the DB via the UI.
+ * DB-stored keys take precedence and are loaded into process.env at startup.
  * Provider/model selection is stored in DB and managed via UI.
  *
  * @example
  * ```bash
- * # LLM Provider API Keys (security - never stored in DB)
+ * # LLM Provider API Keys (env var fallback - DB keys take precedence)
  * ANTHROPIC_API_KEY=sk-ant-...
  * OPENAI_API_KEY=sk-...
  * GOOGLE_API_KEY=AIza...
@@ -172,6 +173,12 @@ export type LLMEnvConfig = z.infer<typeof llmEnvSchema>;
 
 /**
  * Helper to get API key environment variable name for a provider.
+ *
+ * API keys can come from two sources (DB-saved key takes priority):
+ * 1. UI-saved encrypted key (AES-256-GCM) → loaded into process.env at startup
+ * 2. Environment variable set by Docker/K8s secrets manager
+ *
+ * The LLM factory resolves keys from process.env automatically.
  *
  * @param providerId - The provider ID
  * @returns The environment variable name for the API key

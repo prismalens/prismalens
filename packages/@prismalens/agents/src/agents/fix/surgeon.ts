@@ -10,11 +10,7 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { createAgent } from "langchain";
 import { Logger } from "@prismalens/logger";
-import {
-	createLLM,
-	normalizeConfig,
-	resolveAgentConfig,
-} from "../../llm/factory.js";
+import { createAgentLLM } from "../../llm/factory.js";
 import {
 	createSurgeonTools,
 	getStoredRecommendations,
@@ -30,7 +26,6 @@ import type {
 	Recommendation,
 	SupervisorPhase,
 } from "../../types/index.js";
-import { getInvestigationConfigFromConfigurable } from "../../types/config.js";
 
 const logger = new Logger({ context: "Surgeon" });
 
@@ -134,37 +129,13 @@ export async function surgeonNode(
 		runName: traceConfig.runName,
 	});
 
-	// Get runtime config from RunnableConfig.configurable (NOT from state)
-	const runtimeConfig = getInvestigationConfigFromConfigurable(
-		config?.configurable as Record<string, unknown> | undefined,
-	);
-
-	// Check for LLM config
-	if (!runtimeConfig?.llmConfig) {
-		logger.error("No LLM config provided in RunnableConfig.configurable");
-		return {
-			phase: "complete" as SupervisorPhase,
-			agentErrors: [
-				{
-					agent: "surgeon",
-					error: "No LLM configuration provided",
-					timestamp: new Date().toISOString(),
-					recoverable: false,
-				},
-			],
-		};
-	}
-
 	// Reset stores for fresh collection
 	resetRecommendationStore();
 	resetRiskAssessmentStore();
 	resetRunbookStore();
 
 	try {
-		// Resolve LLM config for this agent (from config, not state)
-		const normalizedConfig = normalizeConfig(runtimeConfig.llmConfig);
-		const agentConfig = resolveAgentConfig(normalizedConfig, "surgeon");
-		const llm = createLLM(agentConfig);
+		const llm = createAgentLLM("surgeon", { temperature: 0.1 });
 
 		// Create tools for the Surgeon
 		const tools = createSurgeonTools();

@@ -11,6 +11,38 @@ import type {
 // Collects execution metrics, timing, and results for the Investigation record.
 // =============================================================================
 
+// =============================================================================
+// CREDENTIAL SANITIZATION
+// =============================================================================
+// Strips credential-like patterns from error messages and tool outputs before
+// they are persisted to the database. This prevents upstream API errors that
+// echo tokens (e.g., "401: Invalid token ghp_xxx") from leaking secrets.
+// =============================================================================
+
+/**
+ * Sanitize a string by replacing credential-like patterns with masked versions.
+ * Applied to error messages and tool outputs before DB persistence.
+ */
+export function sanitizeErrorMessage(message: string): string {
+	return message
+		.replace(/ghp_[a-zA-Z0-9_]{36,}/g, "ghp_****")        // GitHub PAT
+		.replace(/ghu_[a-zA-Z0-9_]{36,}/g, "ghu_****")        // GitHub user token
+		.replace(/ghr_[a-zA-Z0-9_]{36,}/g, "ghr_****")        // GitHub refresh token
+		.replace(/gho_[a-zA-Z0-9_]{36,}/g, "gho_****")        // GitHub OAuth token
+		.replace(/github_pat_[a-zA-Z0-9_]{22,}/g, "github_pat_****") // GitHub fine-grained PAT
+		.replace(/sk-ant-[a-zA-Z0-9-]{20,}/g, "sk-ant-****")  // Anthropic key (before generic sk-)
+		.replace(/sk-[a-zA-Z0-9]{20,}/g, "sk-****")           // OpenAI/generic API key
+		.replace(/AKIA[A-Z0-9]{16}/g, "AKIA****")             // AWS access key
+		.replace(/glpat-[a-zA-Z0-9_-]{20,}/g, "glpat-****")   // GitLab PAT
+		.replace(/glptt-[a-zA-Z0-9_-]{20,}/g, "glptt-****")   // GitLab pipeline token
+		.replace(/xoxb-[a-zA-Z0-9-]+/g, "xoxb-****")          // Slack bot token
+		.replace(/xoxp-[a-zA-Z0-9-]+/g, "xoxp-****")          // Slack user token
+		.replace(/Bearer [a-zA-Z0-9._\-/+=]+/gi, "Bearer ****") // Bearer tokens in headers
+		.replace(/Basic [a-zA-Z0-9+/=]+/gi, "Basic ****")     // Basic auth
+		.replace(/gsk_[a-zA-Z0-9]{20,}/g, "gsk_****")         // Groq API key
+		.replace(/AIza[a-zA-Z0-9_-]{35,}/g, "AIza****");      // Google API key
+}
+
 export interface ExecutionTrackerOptions {
 	/** Called when an agent execution starts */
 	onAgentStart?: (agentName: string) => void;
@@ -237,7 +269,8 @@ export class ExecutionTrackerCallbackHandler extends BaseCallbackHandler {
 		this.tracker.recordToolExecution({
 			toolName,
 			status: "success",
-			result: output,
+			// Sanitize output in case upstream API response echoes credentials
+			result: sanitizeErrorMessage(output),
 			executionTimeMs,
 		});
 
@@ -257,7 +290,8 @@ export class ExecutionTrackerCallbackHandler extends BaseCallbackHandler {
 		this.tracker.recordToolExecution({
 			toolName,
 			status: "error",
-			error: err.message,
+			// Sanitize error — upstream APIs may echo tokens (e.g., "401: Invalid token ghp_xxx")
+			error: sanitizeErrorMessage(err.message),
 			executionTimeMs,
 		});
 

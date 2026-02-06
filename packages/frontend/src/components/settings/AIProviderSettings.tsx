@@ -37,9 +37,12 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
+	useDeleteLlmCredential,
+	useLlmCredentialStatus,
 	useLlmEnvStatus,
 	useLlmModels,
 	useLlmSettings,
+	useSaveLlmCredential,
 	useTestLlmConnectionWithEnv,
 	useUpdateLlmSettings,
 } from "@/lib/api/hooks";
@@ -90,8 +93,11 @@ export function AIProviderSettings() {
 	const { data: envStatus, isLoading: envLoading } = useLlmEnvStatus();
 	const { data: settings, isLoading: settingsLoading } = useLlmSettings();
 	const { data: modelsData, isLoading: modelsLoading } = useLlmModels();
+	const { data: credentialStatus } = useLlmCredentialStatus();
 	const updateSettings = useUpdateLlmSettings();
 	const testConnection = useTestLlmConnectionWithEnv();
+	const saveCredential = useSaveLlmCredential();
+	const deleteCredential = useDeleteLlmCredential();
 
 	// Local form state
 	const [selectedProvider, setSelectedProvider] =
@@ -108,6 +114,11 @@ export function AIProviderSettings() {
 	const [expandedAgent, setExpandedAgent] = useState<AgentId | null>(null);
 	const [agentProviders, setAgentProviders] = useState<Partial<Record<AgentId, string>>>({});
 
+	// Credential management state
+	const [apiKeyInput, setApiKeyInput] = useState("");
+	const [isUpdatingKey, setIsUpdatingKey] = useState(false);
+	const [credentialError, setCredentialError] = useState<string | null>(null);
+
 	// Test connection state
 	const [testStatus, setTestStatus] = useState<
 		"idle" | "testing" | "success" | "error"
@@ -117,6 +128,7 @@ export function AIProviderSettings() {
 	// Get provider metadata
 	const provider = PROVIDERS.find((p) => p.id === selectedProvider);
 	const providerEnvStatus = envStatus?.providers[selectedProvider];
+	const providerCredStatus = credentialStatus?.providers?.[selectedProvider];
 
 	// All models from registry
 	const allModels = modelsData?.models || [];
@@ -161,6 +173,9 @@ export function AIProviderSettings() {
 			setAdvancedOptions("");
 		}
 		setCustomModel("");
+		setApiKeyInput("");
+		setIsUpdatingKey(false);
+		setCredentialError(null);
 		setTestStatus("idle");
 		setTestError(null);
 	}, [selectedProvider, settings, provider]);
@@ -223,7 +238,8 @@ export function AIProviderSettings() {
 	};
 
 	const isLoading = envLoading || settingsLoading;
-	const canTest = providerEnvStatus?.isReady && (selectedModel || customModel);
+	const hasApiKey = providerEnvStatus?.isReady || (providerCredStatus != null && providerCredStatus.activeSource !== "none");
+	const canTest = hasApiKey && (selectedModel || customModel);
 	const canSave = selectedModel || customModel;
 
 	if (isLoading) {
@@ -238,22 +254,14 @@ export function AIProviderSettings() {
 
 	return (
 		<div className="space-y-6">
-			{/* Environment Variables Notice */}
+			{/* API Key Info */}
 			<Alert>
 				<Info className="h-4 w-4" />
-				<AlertTitle>API Keys via Environment Variables</AlertTitle>
+				<AlertTitle>API Key Management</AlertTitle>
 				<AlertDescription>
-					For security, API keys are configured via environment variables only.
-					Set the appropriate environment variable for your provider and restart
-					the application.
-					<a
-						href="https://github.com/prismalens-org/prismalens#environment-variables"
-						target="_blank"
-						rel="noopener noreferrer"
-						className="ml-1 text-primary hover:underline inline-flex items-center gap-1"
-					>
-						Learn more <ExternalLink className="h-3 w-3" />
-					</a>
+					API keys can be saved via the UI (encrypted with AES-256-GCM) or set
+					via environment variables (for Docker/K8s secrets). UI-saved keys take
+					priority.
 				</AlertDescription>
 			</Alert>
 
@@ -317,6 +325,132 @@ export function AIProviderSettings() {
 							/>
 						)}
 					</div>
+
+					{/* API Key Management */}
+					{!provider?.noApiKey && (
+						<div className="space-y-3 pt-4 border-t">
+							<Label>API Key</Label>
+							{credentialError && (
+								<div className="p-2 rounded bg-destructive/10 text-destructive text-sm">
+									{credentialError}
+								</div>
+							)}
+							{providerCredStatus?.activeSource === "db" && !isUpdatingKey ? (
+								<div className="flex items-center gap-3">
+									<Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+										<CheckCircle className="h-3 w-3 mr-1" />
+										Stored (encrypted)
+									</Badge>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => {
+											setIsUpdatingKey(true);
+											setApiKeyInput("");
+											setCredentialError(null);
+										}}
+									>
+										Update
+									</Button>
+									<Button
+										variant="ghost"
+										size="sm"
+										className="text-destructive hover:text-destructive"
+										onClick={() => {
+											if (!window.confirm("Remove the stored API key for this provider?")) return;
+											deleteCredential.mutate(
+												{ provider: selectedProvider },
+												{
+													onError: (err) =>
+														setCredentialError(
+															err instanceof Error ? err.message : "Failed to delete credential",
+														),
+												},
+											);
+										}}
+										disabled={deleteCredential.isPending}
+									>
+										{deleteCredential.isPending ? (
+											<Loader2 className="h-3 w-3 animate-spin" />
+										) : (
+											"Remove"
+										)}
+									</Button>
+								</div>
+							) : providerCredStatus?.activeSource === "env" && !isUpdatingKey ? (
+								<div className="flex items-center gap-3">
+									<Badge variant="secondary">
+										Using env var ({provider?.envVar})
+									</Badge>
+								</div>
+							) : null}
+							{(providerCredStatus?.activeSource === "none" || isUpdatingKey) && (
+								<div className="flex items-center gap-2">
+									<Input
+										type="password"
+										autoComplete="off"
+										aria-label={`API key for ${provider?.name ?? selectedProvider}`}
+										placeholder={isUpdatingKey ? "Enter new API key" : "Enter your API key"}
+										value={apiKeyInput}
+										onChange={(e) => setApiKeyInput(e.target.value)}
+									/>
+									<Button
+										size="sm"
+										onClick={() => {
+											if (!apiKeyInput) return;
+											setCredentialError(null);
+											saveCredential.mutate(
+												{ provider: selectedProvider, apiKey: apiKeyInput },
+												{
+													onSuccess: () => {
+														setApiKeyInput("");
+														setIsUpdatingKey(false);
+													},
+													onError: (err) =>
+														setCredentialError(
+															err instanceof Error ? err.message : "Failed to save credential",
+														),
+												},
+											);
+										}}
+										disabled={saveCredential.isPending || !apiKeyInput}
+									>
+										{saveCredential.isPending ? (
+											<Loader2 className="h-3 w-3 animate-spin" />
+										) : (
+											"Save"
+										)}
+									</Button>
+									{isUpdatingKey && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => {
+												setIsUpdatingKey(false);
+												setApiKeyInput("");
+												setCredentialError(null);
+											}}
+										>
+											Cancel
+										</Button>
+									)}
+								</div>
+							)}
+							{provider?.helpUrl && providerCredStatus?.activeSource === "none" && !isUpdatingKey && (
+								<p className="text-xs text-muted-foreground">
+									Get a key:{" "}
+									<a
+										href={provider.helpUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-primary hover:underline"
+									>
+										{provider.helpUrl}
+									</a>
+								</p>
+							)}
+						</div>
+					)}
 
 					{/* Configuration Options */}
 					<div className="space-y-4 pt-4 border-t">

@@ -6,67 +6,32 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AllInvestigationPoliciesSchema,
-	AllLlmConfigsResponseSchema,
 	DangerOperationResultSchema,
+	DeleteLlmCredentialSchema,
 	FactoryResetInputSchema,
 	InvestigationLimitsSchema,
 	InvestigationPolicySchema,
-	LlmConfigResponseSchema,
+	LlmCredentialStatusResponseSchema,
 	LlmEnvStatusResponseSchema,
 	LlmSettingsSchema,
 	McpServerIdSchema,
 	McpSettingsSchema,
 	McpStatusResponseSchema,
 	ModelsListResponseSchema,
-	ProviderParamSchema,
 	ResetDataInputSchema,
-	SetActiveProviderSchema,
-	SettingRecordSchema,
+	SaveLlmCredentialSchema,
 	TestLlmConnectionInputSchema,
 	TestLlmResultSchema,
 	TestMcpConnectionInputSchema,
 	TestMcpResultSchema,
 	UpdateInvestigationLimitsSchema,
 	UpdateInvestigationPolicySchema,
-	UpdateLlmConfigSchema,
 	UpdateLlmSettingsSchema,
 	UpdateMcpSettingsSchema,
 } from "../schemas/settings.js";
 
 export const settingsContract = {
 	llm: {
-		/**
-		 * List all LLM configurations
-		 * GET /settings/llm
-		 */
-		list: oc
-			.route({
-				method: "GET",
-				path: "/settings/llm",
-				summary: "List all LLM provider configurations",
-				tags: ["settings"],
-			})
-			.input(z.object({}))
-			.output(AllLlmConfigsResponseSchema),
-
-		// =====================================================================
-		// SPECIFIC ROUTES (must come before parameterized routes)
-		// =====================================================================
-
-		/**
-		 * Set active LLM provider
-		 * PUT /settings/llm/active
-		 */
-		setActive: oc
-			.route({
-				method: "PUT",
-				path: "/settings/llm/active",
-				summary: "Set the active LLM provider",
-				tags: ["settings"],
-			})
-			.input(SetActiveProviderSchema)
-			.output(SettingRecordSchema),
-
 		/**
 		 * Get environment variable status for all providers
 		 * GET /settings/llm/env-status
@@ -124,7 +89,7 @@ export const settingsContract = {
 			.output(ModelsListResponseSchema),
 
 		/**
-		 * Test LLM connection using env vars (no API key input)
+		 * Test LLM connection using env vars
 		 * POST /settings/llm/test-connection
 		 */
 		testConnection: oc
@@ -137,65 +102,47 @@ export const settingsContract = {
 			.input(TestLlmConnectionInputSchema)
 			.output(TestLlmResultSchema),
 
-		// =====================================================================
-		// PARAMETERIZED ROUTES (must come after specific routes)
-		// =====================================================================
-
 		/**
-		 * Get LLM configuration for a provider
-		 * GET /settings/llm/:provider
+		 * Save an encrypted LLM API key for a provider
+		 * POST /settings/llm/credentials
 		 */
-		get: oc
-			.route({
-				method: "GET",
-				path: "/settings/llm/{provider}",
-				summary: "Get LLM configuration for a provider",
-				tags: ["settings"],
-			})
-			.input(ProviderParamSchema)
-			.output(LlmConfigResponseSchema),
-
-		/**
-		 * Update LLM configuration for a provider
-		 * PUT /settings/llm/:provider
-		 */
-		update: oc
-			.route({
-				method: "PUT",
-				path: "/settings/llm/{provider}",
-				summary: "Update LLM configuration for a provider",
-				tags: ["settings"],
-			})
-			.input(ProviderParamSchema.merge(UpdateLlmConfigSchema))
-			.output(SettingRecordSchema),
-
-		/**
-		 * Delete LLM configuration for a provider
-		 * DELETE /settings/llm/:provider
-		 */
-		delete: oc
-			.route({
-				method: "DELETE",
-				path: "/settings/llm/{provider}",
-				summary: "Delete LLM configuration for a provider",
-				tags: ["settings"],
-			})
-			.input(ProviderParamSchema)
-			.output(z.void()),
-
-		/**
-		 * Test LLM connection
-		 * POST /settings/llm/:provider/test
-		 */
-		test: oc
+		saveCredential: oc
 			.route({
 				method: "POST",
-				path: "/settings/llm/{provider}/test",
-				summary: "Test LLM connection with provided credentials",
+				path: "/settings/llm/credentials",
+				summary: "Save an encrypted LLM API key for a provider",
 				tags: ["settings"],
 			})
-			.input(ProviderParamSchema.merge(UpdateLlmConfigSchema))
-			.output(TestLlmResultSchema),
+			.input(SaveLlmCredentialSchema)
+			.output(z.object({ success: z.boolean() })),
+
+		/**
+		 * Delete an LLM API key for a provider
+		 * DELETE /settings/llm/credentials
+		 */
+		deleteCredential: oc
+			.route({
+				method: "DELETE",
+				path: "/settings/llm/credentials",
+				summary: "Delete an LLM API key for a provider",
+				tags: ["settings"],
+			})
+			.input(DeleteLlmCredentialSchema)
+			.output(z.object({ success: z.boolean() })),
+
+		/**
+		 * Get credential status for all providers
+		 * GET /settings/llm/credential-status
+		 */
+		getCredentialStatus: oc
+			.route({
+				method: "GET",
+				path: "/settings/llm/credential-status",
+				summary: "Get credential status for all LLM providers",
+				tags: ["settings"],
+			})
+			.input(z.object({}))
+			.output(LlmCredentialStatusResponseSchema),
 	},
 
 	investigation: {

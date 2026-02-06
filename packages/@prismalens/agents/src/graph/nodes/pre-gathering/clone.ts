@@ -25,7 +25,6 @@ import type {
 	IntegrationContext,
 	InvestigationState,
 } from "../../../types/index.js";
-import { getInvestigationConfigFromConfigurable } from "../../../types/config.js";
 
 const execAsync = promisify(exec);
 const logger = new Logger({ context: "CloneStrategy" });
@@ -476,11 +475,8 @@ export async function cloneIfNeededNode(
 		alertCount: state.alerts.length,
 	});
 
-	// Get runtime config for integrations (NOT from state - prevents checkpoint credential leaks)
-	const runtimeConfig = getInvestigationConfigFromConfigurable(
-		config?.configurable as Record<string, unknown> | undefined,
-	);
-	const integrations = runtimeConfig?.integrations || [];
+	// Integrations resolved on-demand - credentials never pass through LangGraph
+	const integrations: IntegrationContext[] = [];
 
 	// Get single-repo clone decision based on incident category
 	const decision = shouldCloneRepo(state.incident);

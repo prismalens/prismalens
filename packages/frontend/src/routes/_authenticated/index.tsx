@@ -25,7 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useLlmConfigs } from "@/lib/api/hooks";
+import { useLlmSettings } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
@@ -38,8 +38,8 @@ function CommandCenter() {
 	const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
 
 	// Check if LLM is configured
-	const { data: llmConfigs } = useLlmConfigs();
-	const isLlmConfigured = !!llmConfigs?.activeProvider;
+	const { data: llmSettings } = useLlmSettings();
+	const isLlmConfigured = !!llmSettings?.activeProvider;
 
 	// Fetch active incidents (not resolved)
 	const { data: incidents = [], isLoading: incidentsLoading } = useQuery(

@@ -15,6 +15,7 @@ import {
 	InvestigationExecutor,
 	type InvestigationInput,
 	type InvestigationResult,
+	type LLMProviderConfig,
 	mapSeverity,
 } from "@prismalens/agents";
 import { EnvironmentVariables } from "@prismalens/config";
@@ -41,13 +42,20 @@ export interface IntegrationContext {
 
 /**
  * Job data for investigation queue (incident-centric)
+ *
+ * SECURITY: In queue mode, this payload is serialized to Redis.
+ * Never include decrypted credentials. Use connectionIds instead,
+ * and the worker fetches credentials on-demand via internal API.
  */
 export interface InvestigationJobData {
 	incidentId: string;
 	investigationId: string;
 	priority?: "low" | "normal" | "high" | "critical";
 	context?: Record<string, unknown>;
+	/** @deprecated Use connectionIds instead - credentials should not be in Redis */
 	integrations?: IntegrationContext[];
+	/** Connection IDs for integration credentials - worker fetches on-demand */
+	connectionIds?: string[];
 	incidentData?: Record<string, unknown>;
 	alerts?: unknown[];
 }
@@ -452,20 +460,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			serviceOverrides: int.serviceOverrides,
 		}));
 
-		// Build LLM config from environment variables
-		// Future: Add settings-based LLM configuration for UI customization
-		const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
-		if (!apiKey) {
-			throw new Error(
-				"LLM API key not configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.",
-			);
-		}
+		// LLM config: provider/model from env vars, API key resolved by LLM factory from process.env
+		const provider = (process.env.PRISMALENS_LLM_PROVIDER || "anthropic") as LLMProviderConfig["provider"];
+		const model = process.env.PRISMALENS_LLM_MODEL || "claude-sonnet-4-20250514";
 
-		const llmConfig: InvestigationConfig["llmConfig"] = {
-			provider: (process.env.LLM_PROVIDER as "anthropic" | "openai" | "ollama") || "anthropic",
-			model: process.env.LLM_MODEL || "claude-sonnet-4-20250514",
-			apiKey,
-		};
+		const llmConfig = {
+			provider,
+			model,
+		} as LLMProviderConfig;
 
 		return {
 			investigationId: jobData.investigationId,
@@ -480,6 +482,8 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * Enqueue job to Redis via BullMQ (queue mode).
+	 * SECURITY: Strips decrypted credentials from the payload.
+	 * Passes connectionIds instead — worker fetches on-demand via internal API.
 	 */
 	private async enqueueToRedis(
 		data: InvestigationJobData,
@@ -491,7 +495,12 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
 		const priority = this.getPriorityValue(data.priority);
 
-		const job = await this.investigationQueue.add("investigate", data, {
+		// Strip credentials from payload — pass connectionIds only
+		const { integrations, ...safeData } = data;
+		const connectionIds = integrations?.map((i) => i.connectionId) ?? data.connectionIds ?? [];
+		const jobPayload: InvestigationJobData = { ...safeData, connectionIds };
+
+		const job = await this.investigationQueue.add("investigate", jobPayload, {
 			priority,
 			jobId: `investigation-${data.investigationId}`,
 		});

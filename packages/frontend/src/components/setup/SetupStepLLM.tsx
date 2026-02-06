@@ -30,9 +30,9 @@ import {
 import { cn } from "@/lib/utils";
 import {
 	useMarkStepSkipped,
-	useSetActiveLlmProvider,
-	useTestLlmConnection,
-	useUpdateLlmConfig,
+	useSaveLlmCredential,
+	useTestLlmConnectionWithEnv,
+	useUpdateLlmSettings,
 } from "@/lib/api/hooks";
 
 // Transform LLM_PROVIDERS from config into UI-friendly format
@@ -73,14 +73,14 @@ export function SetupStepLLM({
 	const [testSuccess, setTestSuccess] = useState<boolean | null>(null);
 
 	// oRPC mutations
-	const updateConfig = useUpdateLlmConfig();
-	const setActive = useSetActiveLlmProvider();
-	const testConnection = useTestLlmConnection();
+	const updateSettings = useUpdateLlmSettings();
+	const saveCredential = useSaveLlmCredential();
+	const testConnection = useTestLlmConnectionWithEnv();
 	const markSkipped = useMarkStepSkipped();
 
 	const isLoading =
-		updateConfig.isPending ||
-		setActive.isPending ||
+		updateSettings.isPending ||
+		saveCredential.isPending ||
 		testConnection.isPending ||
 		markSkipped.isPending;
 
@@ -90,19 +90,10 @@ export function SetupStepLLM({
 		setError(null);
 		setTestSuccess(null);
 
-		if (!provider?.noApiKey && !apiKey) {
-			setError("API key is required");
-			return;
-		}
-
 		testConnection.mutate(
 			{
-				provider: selectedProvider,
-				apiKey: apiKey || undefined,
-				model: selectedModel,
-				baseUrl: provider?.baseUrlRequired
-					? provider.defaultBaseUrl || "http://localhost:11434"
-					: undefined,
+				provider: selectedProvider as Parameters<typeof testConnection.mutate>[0]["provider"],
+				model: selectedModel || undefined,
 			},
 			{
 				onSuccess: (data) => {
@@ -136,28 +127,29 @@ export function SetupStepLLM({
 	};
 
 	const handleSubmit = async () => {
-
 		setError(null);
 
-		if (!provider?.noApiKey && !apiKey) {
-			setError("API key is required");
-			onError?.("API key is required");
-			return;
-		}
-
 		try {
-			// Save the AI provider configuration
-			await updateConfig.mutateAsync({
-				provider: selectedProvider,
-				apiKey: apiKey || undefined,
-				model: selectedModel,
-				baseUrl: provider?.baseUrlRequired
-					? provider.defaultBaseUrl || "http://localhost:11434"
-					: undefined,
-			});
+			// Save API key via encrypted credential endpoint (if provided)
+			if (apiKey && !provider?.noApiKey) {
+				await saveCredential.mutateAsync({
+					provider: selectedProvider as Parameters<typeof saveCredential.mutateAsync>[0]["provider"],
+					apiKey,
+				});
+			}
 
-			// Set as active provider
-			await setActive.mutateAsync({ provider: selectedProvider });
+			// Save provider config and set as active
+			await updateSettings.mutateAsync({
+				activeProvider: selectedProvider as Parameters<typeof updateSettings.mutateAsync>[0]["activeProvider"],
+				providers: {
+					[selectedProvider]: {
+						model: selectedModel,
+						...(provider?.baseUrlRequired
+							? { baseUrl: provider.defaultBaseUrl || "http://localhost:11434" }
+							: {}),
+					},
+				},
+			});
 
 			onComplete();
 		} catch (err) {
@@ -321,7 +313,7 @@ export function SetupStepLLM({
 						onClick={() => handleSubmit()}
 						disabled={isLoading || (!provider?.noApiKey && !apiKey)}
 					>
-						{updateConfig.isPending || setActive.isPending ? (
+						{updateSettings.isPending ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 						) : (
 							<>

@@ -30,7 +30,10 @@ export const deploymentSchema = z.object({
 	PRISMALENS_INTERNAL_SECRET: z
 		.string()
 		.default("dev-secret-replace-in-prod")
-		.describe("Shared secret for internal API communication"),
+		.describe(
+			"Shared secret for internal API communication. " +
+				"Must be at least 32 characters in production (PRISMALENS_MODE=queue).",
+		),
 
 	// Authentication (Better Auth)
 	BETTER_AUTH_SECRET: z

@@ -31,8 +31,22 @@ worker.on("failed", (job, err) => {
 	logger.error(`Job ${job?.id} failed`, err);
 });
 
+// Mask Redis URL password for logging
+function maskRedisUrl(url: string): string {
+	try {
+		const parsed = new URL(url);
+		if (parsed.password) {
+			parsed.password = "****";
+		}
+		return parsed.toString();
+	} catch {
+		// If not a valid URL, mask anything after :// and before @
+		return url.replace(/:\/\/([^@]+)@/, "://****@");
+	}
+}
+
 logger.info(`Started processing queue: ${config.QUEUE_NAME}`);
-logger.info(`Redis URL: ${config.REDIS_URL}`);
+logger.info(`Redis URL: ${maskRedisUrl(config.REDIS_URL)}`);
 logger.info(`API URL: ${config.API_URL}`);
 
 // Graceful shutdown

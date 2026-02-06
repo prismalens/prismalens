@@ -22,65 +22,6 @@ import { z } from "zod";
 export const LlmProviderIdSchema = llmProviderIdSchema;
 export type LlmProviderId = LLMProviderId;
 
-// Provider param for routes
-export const ProviderParamSchema = z.object({
-	provider: z.string().min(1),
-});
-
-// Update LLM configuration schema
-export const UpdateLlmConfigSchema = z.object({
-	apiKey: z.string().optional(),
-	model: z.string().optional(),
-	baseUrl: z.string().url().optional(),
-	// Common LangChain config fields
-	temperature: z.number().min(0).max(2).optional(),
-	maxTokens: z.number().int().min(1).optional(),
-	topP: z.number().min(0).max(1).optional(),
-	// Provider-specific fields
-	topK: z.number().int().min(1).optional(),
-	frequencyPenalty: z.number().min(-2).max(2).optional(),
-	presencePenalty: z.number().min(-2).max(2).optional(),
-	stopSequences: z.array(z.string()).optional(),
-});
-export type UpdateLlmConfig = z.infer<typeof UpdateLlmConfigSchema>;
-
-// LLM config response (for single provider)
-export const LlmConfigResponseSchema = z.object({
-	apiKey: z.string(), // Always masked as "********"
-	model: z.string().optional(),
-	baseUrl: z.string().optional(),
-	temperature: z.number().optional(),
-	maxTokens: z.number().optional(),
-	topP: z.number().optional(),
-	topK: z.number().optional(),
-	frequencyPenalty: z.number().optional(),
-	presencePenalty: z.number().optional(),
-	stopSequences: z.array(z.string()).optional(),
-});
-export type LlmConfigResponse = z.infer<typeof LlmConfigResponseSchema>;
-
-// Provider summary (for list)
-export const LlmProviderSummarySchema = z.object({
-	provider: z.string(),
-	model: z.string().optional(),
-	hasApiKey: z.boolean(),
-	baseUrl: z.string().optional(),
-});
-export type LlmProviderSummary = z.infer<typeof LlmProviderSummarySchema>;
-
-// All LLM configs response
-export const AllLlmConfigsResponseSchema = z.object({
-	activeProvider: z.string().nullable(),
-	providers: z.array(LlmProviderSummarySchema),
-});
-export type AllLlmConfigsResponse = z.infer<typeof AllLlmConfigsResponseSchema>;
-
-// Set active provider schema
-export const SetActiveProviderSchema = z.object({
-	provider: z.string().min(1),
-});
-export type SetActiveProvider = z.infer<typeof SetActiveProviderSchema>;
-
 // Test connection result
 export const TestLlmResultSchema = z.object({
 	success: z.boolean(),
@@ -88,17 +29,44 @@ export const TestLlmResultSchema = z.object({
 });
 export type TestLlmResult = z.infer<typeof TestLlmResultSchema>;
 
-// Setting record (raw from DB)
-export const SettingRecordSchema = z.object({
-	id: z.string(),
-	key: z.string(),
-	value: z.string(),
-	type: z.string(),
-	category: z.string().nullable(),
-	createdAt: z.string(),
-	updatedAt: z.string(),
+// =============================================================================
+// LLM CREDENTIAL MANAGEMENT
+// =============================================================================
+
+/**
+ * Save LLM credential input - provider + API key
+ */
+export const SaveLlmCredentialSchema = z.object({
+	provider: llmProviderIdSchema,
+	apiKey: z.string().trim().min(8, "API key appears too short"),
 });
-export type SettingRecord = z.infer<typeof SettingRecordSchema>;
+export type SaveLlmCredential = z.infer<typeof SaveLlmCredentialSchema>;
+
+/**
+ * Delete LLM credential input
+ */
+export const DeleteLlmCredentialSchema = z.object({
+	provider: llmProviderIdSchema,
+});
+export type DeleteLlmCredential = z.infer<typeof DeleteLlmCredentialSchema>;
+
+/**
+ * Per-provider credential status
+ */
+export const LlmCredentialStatusSchema = z.object({
+	hasDbKey: z.boolean(),
+	hasEnvKey: z.boolean(),
+	activeSource: z.enum(["db", "env", "none"]),
+});
+export type LlmCredentialStatus = z.infer<typeof LlmCredentialStatusSchema>;
+
+/**
+ * Full credential status response (all providers)
+ */
+export const LlmCredentialStatusResponseSchema = z.object({
+	providers: z.record(llmProviderIdSchema, LlmCredentialStatusSchema),
+});
+export type LlmCredentialStatusResponse = z.infer<typeof LlmCredentialStatusResponseSchema>;
 
 // =============================================================================
 // INVESTIGATION POLICIES
@@ -268,7 +236,7 @@ export const DangerOperationResultSchema = z.object({
 export type DangerOperationResult = z.infer<typeof DangerOperationResultSchema>;
 
 // =============================================================================
-// COMPREHENSIVE LLM CONFIGURATION (ENV-ONLY API KEYS)
+// COMPREHENSIVE LLM CONFIGURATION
 // =============================================================================
 
 /**
@@ -286,7 +254,7 @@ export type AgentId = AgentIdType;
 
 /**
  * Per-provider configuration stored in DB
- * Note: API keys are NOT stored - they come from env vars only
+ * API keys are stored encrypted (AES-256-GCM) or provided via env vars
  */
 export const LlmProviderConfigSchema = z.object({
 	model: z.string(),

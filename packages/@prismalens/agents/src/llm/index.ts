@@ -22,6 +22,7 @@ export {
 	type ChatGroqInput,
 	type ChatOllamaInput,
 	type ChatOpenAIFields,
+	createAgentLLM,
 	createLLM,
 	type GoogleGenerativeAIChatInput,
 	type GoogleProviderConfig,

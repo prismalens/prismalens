@@ -15,11 +15,18 @@ export class SetupController {
 	 * Check if LLM is configured OR skipped
 	 */
 	private async checkLlmComplete(): Promise<boolean> {
-		// LLM is complete if configured
+		// LLM is complete if settings exist (has activeProvider set)
 		const configured = await this.prisma.setting.findUnique({
-			where: { key: "LLM_ACTIVE_PROVIDER" },
+			where: { key: "LLM_SETTINGS" },
 		});
-		if (configured) return true;
+		if (configured) {
+			try {
+				const settings = JSON.parse(configured.value);
+				if (settings.activeProvider) return true;
+			} catch {
+				// Invalid JSON — treat as not configured
+			}
+		}
 
 		// Or if explicitly skipped
 		const skipped = await this.prisma.setting.findUnique({

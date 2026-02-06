@@ -2,7 +2,7 @@
  * LLM Factory
  *
  * Creates LLM instances using LangChain's own types directly.
- * No env var reading inside factory - caller provides complete config.
+ * Auto-resolves API keys from process.env if not explicitly provided.
  *
  * Includes structured error handling and logging for visibility.
  *
@@ -27,6 +27,7 @@
  */
 
 import { Logger } from "@prismalens/logger";
+import { getApiKeyEnvVar, type LLMProviderId } from "@prismalens/config/llm";
 import { ChatAnthropic, type ChatAnthropicInput } from "@langchain/anthropic";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { LLMError, LLMErrorCode, parseLLMError } from "./errors.js";
@@ -283,8 +284,8 @@ export function normalizeConfig(
 /**
  * Creates an LLM instance from a provider config.
  *
- * Uses LangChain types directly - no env var reading.
- * Caller provides complete config including API keys.
+ * Uses LangChain types directly.
+ * Auto-resolves API keys from process.env via getApiKeyEnvVar() if not explicitly provided.
  *
  * @param config - Provider-specific configuration
  * @returns LangChain BaseChatModel instance
@@ -314,7 +315,18 @@ export function normalizeConfig(
  */
 export function createLLM(config: LLMProviderConfig): BaseChatModel {
 	// Strip provider field and pass rest to LangChain constructor
-	const { provider, ...restConfig } = config;
+	const { provider, ...initialRestConfig } = config;
+	let restConfig = initialRestConfig;
+
+	// Auto-resolve API key from process.env if not explicitly provided
+	const envVar = getApiKeyEnvVar(provider as LLMProviderId);
+	const existingKey = (restConfig as { apiKey?: string }).apiKey;
+	if (!existingKey && envVar) {
+		const envKey = process.env[envVar];
+		if (envKey) {
+			restConfig = { ...restConfig, apiKey: envKey } as typeof restConfig;
+		}
+	}
 
 	// Extract model name for logging (different field names per provider)
 	const model =
@@ -421,6 +433,51 @@ export function createLLM(config: LLMProviderConfig): BaseChatModel {
 
 		throw llmError;
 	}
+}
+
+// =============================================================================
+// AGENT-SPECIFIC FACTORY
+// =============================================================================
+
+/**
+ * Create an LLM instance for a specific agent node.
+ *
+ * Resolves provider/model from per-agent env vars first, then global env vars,
+ * then defaults. API keys are resolved by `createLLM()` from process.env.
+ *
+ * Env var resolution order:
+ * 1. `PRISMALENS_DETECTIVE_PROVIDER` / `PRISMALENS_DETECTIVE_MODEL` (per-agent)
+ * 2. `PRISMALENS_LLM_PROVIDER` / `PRISMALENS_LLM_MODEL` (global)
+ * 3. Defaults: "anthropic" / "claude-sonnet-4-20250514"
+ *
+ * @param agentName - Agent role (commander, gatherer, detective, surgeon, adversary)
+ * @param options - Additional LLM options (temperature, etc.)
+ * @returns LangChain BaseChatModel instance
+ *
+ * @example
+ * ```typescript
+ * const llm = createAgentLLM("detective", { temperature: 0.1 });
+ * const llm = createAgentLLM("gatherer"); // uses default temperature
+ * ```
+ */
+export function createAgentLLM(
+	agentName: LLMAgentName,
+	options: { temperature?: number } = {},
+): BaseChatModel {
+	const agentUpper = agentName.toUpperCase();
+
+	const provider = (
+		process.env[`PRISMALENS_${agentUpper}_PROVIDER`] ||
+		process.env.PRISMALENS_LLM_PROVIDER ||
+		"anthropic"
+	) as LLMProviderConfig["provider"];
+
+	const model =
+		process.env[`PRISMALENS_${agentUpper}_MODEL`] ||
+		process.env.PRISMALENS_LLM_MODEL ||
+		"claude-sonnet-4-20250514";
+
+	return createLLM({ provider, model, ...options });
 }
 
 // Re-export types for convenience

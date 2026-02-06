@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException, Inject, forwardRef } from "@nestjs/common";
+import { Injectable, NotFoundException, Inject, forwardRef, Logger } from "@nestjs/common";
 import {
 	createLLM,
 	type LLMProviderConfig,
 	getModelsForProvider,
 	getModelsRegistry,
 } from "@prismalens/agents";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import { LLM_PROVIDERS, getApiKeyEnvVar, type LLMProviderId } from "@prismalens/config/llm";
 import {
 	MCP_SERVERS,
 	type MCPServerId,
@@ -21,217 +21,27 @@ import type {
 	McpServerStatus,
 } from "@prismalens/contracts/schemas";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { UpdateLlmDto } from "./dto/update-llm.dto.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
+import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
 
 @Injectable()
 export class SettingsService {
+	private readonly logger = new Logger(SettingsService.name);
+
 	constructor(
 		private prisma: PrismaService,
 		@Inject(forwardRef(() => IntegrationsService))
 		private integrationsService: IntegrationsService,
+		@Inject(forwardRef(() => CredentialsService))
+		private credentialsService: CredentialsService,
 	) {}
 
-	private getProviderKey(provider: string) {
-		return `LLM_CONFIG_${provider.toUpperCase()}`;
-	}
-
-	async getAllLlmConfigs() {
-		// Fetch all settings that start with LLM_CONFIG_
-		const allSettings = await this.prisma.setting.findMany({
-			where: {
-				key: { startsWith: "LLM_CONFIG_" },
-			},
-		});
-
-		const activeSetting = await this.prisma.setting.findUnique({
-			where: { key: "LLM_ACTIVE_PROVIDER" },
-		});
-
-		return {
-			activeProvider: activeSetting
-				? JSON.parse(activeSetting.value).provider
-				: null,
-			providers: allSettings.map((s) => {
-				const providerName = s.key.replace("LLM_CONFIG_", "").toLowerCase();
-				const val = JSON.parse(s.value);
-				return {
-					provider: providerName,
-					model: val.model,
-					hasApiKey: !!val.apiKey, // Do not return raw API key
-					baseUrl: val.baseUrl,
-				};
-			}),
-		};
-	}
-
-	async getLlmConfig(provider: string) {
-		const key = this.getProviderKey(provider);
-		const setting = await this.prisma.setting.findUnique({
-			where: { key },
-		});
-
-		if (!setting) {
-			throw new NotFoundException(
-				`No configuration found for provider: ${provider}`,
-			);
-		}
-
-		const val = JSON.parse(setting.value);
-		// Mask API key for UI
-		return {
-			...val,
-			apiKey: "********",
-		};
-	}
-
-	async updateLlmConfig(provider: string, dto: UpdateLlmDto) {
-		const key = this.getProviderKey(provider);
-
-		// Store all LangChain config fields
-		const configValue: Record<string, unknown> = {
-			apiKey: dto.apiKey,
-			model: dto.model,
-			baseUrl: dto.baseUrl,
-			// Common LangChain fields
-			temperature: dto.temperature,
-			maxTokens: dto.maxTokens,
-			topP: dto.topP,
-			// Provider-specific fields
-			topK: dto.topK,
-			frequencyPenalty: dto.frequencyPenalty,
-			presencePenalty: dto.presencePenalty,
-			stopSequences: dto.stopSequences,
-		};
-
-		// Remove undefined values
-		const cleanedConfig = Object.fromEntries(
-			Object.entries(configValue).filter(([_, v]) => v !== undefined),
-		);
-
-		const value = JSON.stringify(cleanedConfig);
-
-		return this.prisma.setting.upsert({
-			where: { key },
-			update: { value, type: "json", category: "ai" },
-			create: { key, value, type: "json", category: "ai" },
-		});
-	}
-
-	/**
-	 * Test LLM connection by making a simple API call.
-	 * This validates the API key and model before saving.
-	 */
-	async testLlmConnection(
-		provider: string,
-		dto: UpdateLlmDto,
-	): Promise<{ success: boolean; error?: string }> {
-		try {
-			// Create LLM config using new typed interface
-			const llmConfig = {
-				provider,
-				model: dto.model,
-				apiKey: dto.apiKey,
-				temperature: dto.temperature ?? 0,
-				maxTokens: dto.maxTokens ?? 100, // Limit tokens for test
-			} as LLMProviderConfig;
-
-			// Create LLM instance with the provided config
-			const llm = createLLM(llmConfig);
-
-			// Send a simple test message (LangChain accepts string input)
-			await llm.invoke('Reply with just "OK" to confirm connection.');
-
-			return { success: true };
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : "Connection failed",
-			};
-		}
-	}
-
-	async deleteLlmConfig(provider: string) {
-		const key = this.getProviderKey(provider);
-
-		// Check if active
-		const activeSetting = await this.prisma.setting.findUnique({
-			where: { key: "LLM_ACTIVE_PROVIDER" },
-		});
-
-		if (
-			activeSetting &&
-			JSON.parse(activeSetting.value).provider === provider
-		) {
-			// Unset active if we are deleting it
-			await this.prisma.setting.delete({
-				where: { key: "LLM_ACTIVE_PROVIDER" },
-			});
-		}
-
-		return this.prisma.setting.delete({
-			where: { key },
-		});
-	}
-
-	async setActiveProvider(provider: string) {
-		// Verify config exists using count instead of findUnique to avoid fetching data
-		const key = this.getProviderKey(provider);
-		const count = await this.prisma.setting.count({ where: { key } });
-
-		if (count === 0) {
-			throw new NotFoundException(`Provider ${provider} not configured`);
-		}
-
-		return this.prisma.setting.upsert({
-			where: { key: "LLM_ACTIVE_PROVIDER" },
-			update: {
-				value: JSON.stringify({ provider }),
-				type: "json",
-				category: "ai",
-			},
-			create: {
-				key: "LLM_ACTIVE_PROVIDER",
-				value: JSON.stringify({ provider }),
-				type: "json",
-				category: "ai",
-			},
-		});
-	}
-
-	// INTERNAL method for Worker
-	async getActiveLlmConfigInternal() {
-		const activeSetting = await this.prisma.setting.findUnique({
-			where: { key: "LLM_ACTIVE_PROVIDER" },
-		});
-
-		if (!activeSetting) {
-			return null;
-		}
-
-		const provider = JSON.parse(activeSetting.value).provider;
-		const key = this.getProviderKey(provider);
-
-		const configSetting = await this.prisma.setting.findUnique({
-			where: { key },
-		});
-
-		if (!configSetting) {
-			return null;
-		}
-
-		const config = JSON.parse(configSetting.value);
-		return {
-			provider,
-			...config,
-		};
-	}
-
 	// =============================================================================
-	// COMPREHENSIVE LLM CONFIGURATION (ENV-ONLY API KEYS)
+	// LLM CONFIGURATION
 	// =============================================================================
 
-	private readonly LLM_SETTINGS_KEY = "LLM_SETTINGS_V2";
+	private readonly LLM_SETTINGS_KEY = "LLM_SETTINGS";
+	private readonly LLM_CREDENTIALS_KEY = "LLM_CREDENTIALS_ENCRYPTED";
 
 	/**
 	 * Default settings for a fresh install
@@ -403,7 +213,7 @@ export class SettingsService {
 			return { models };
 		} catch (error) {
 			// Return empty list on error
-			console.error("Failed to fetch models from registry:", error);
+			this.logger.error("Failed to fetch models from registry:", error);
 			return { models: [] };
 		}
 	}
@@ -471,6 +281,156 @@ export class SettingsService {
 				success: false,
 				error: error instanceof Error ? error.message : "Connection failed",
 			};
+		}
+	}
+
+	// =============================================================================
+	// LLM CREDENTIAL STORAGE + ENV BRIDGE
+	// =============================================================================
+
+	/**
+	 * Save an encrypted LLM API key for a provider.
+	 * The key is encrypted using AES-256-GCM and stored in the DB.
+	 * After saving, the key is immediately set in process.env so the
+	 * LLM factory can resolve it without restart.
+	 */
+	async saveLlmCredential(providerId: LLMProviderId, apiKey: string): Promise<void> {
+		// Decrypt existing credential map (or start fresh)
+		const existing = await this.getLlmCredentialMap(true);
+		const credMap = { ...existing, [providerId]: apiKey };
+
+		// Re-encrypt and upsert
+		const encrypted = this.credentialsService.encrypt(credMap);
+		await this.prisma.setting.upsert({
+			where: { key: this.LLM_CREDENTIALS_KEY },
+			update: { value: encrypted },
+			create: {
+				key: this.LLM_CREDENTIALS_KEY,
+				value: encrypted,
+				type: "encrypted",
+				category: "ai",
+			},
+		});
+
+		// Bridge to env — DB key wins over original env
+		const envVar = getApiKeyEnvVar(providerId);
+		if (envVar) {
+			process.env[envVar] = apiKey;
+		}
+	}
+
+	/**
+	 * Delete an encrypted LLM API key for a provider.
+	 */
+	async deleteLlmCredential(providerId: LLMProviderId): Promise<void> {
+		const existing = await this.getLlmCredentialMap();
+		const { [providerId]: _removed, ...credMap } = existing;
+
+		if (Object.keys(credMap).length === 0) {
+			// No credentials left — delete the row entirely
+			await this.prisma.setting.deleteMany({
+				where: { key: this.LLM_CREDENTIALS_KEY },
+			});
+		} else {
+			const encrypted = this.credentialsService.encrypt(credMap);
+			await this.prisma.setting.update({
+				where: { key: this.LLM_CREDENTIALS_KEY },
+				data: { value: encrypted },
+			});
+		}
+
+		// Remove from env
+		const envVar = getApiKeyEnvVar(providerId);
+		if (envVar) {
+			delete process.env[envVar];
+		}
+	}
+
+	/**
+	 * Load all encrypted LLM credentials from DB into process.env.
+	 * Called once on API startup. DB-stored keys take precedence over
+	 * pre-existing env vars (Docker/K8s secrets).
+	 */
+	async loadLlmCredentialsToEnv(): Promise<void> {
+		const credMap = await this.getLlmCredentialMap();
+		let loaded = 0;
+
+		for (const [providerId, apiKey] of Object.entries(credMap)) {
+			const envVar = getApiKeyEnvVar(providerId as LLMProviderId);
+			if (envVar && apiKey) {
+				process.env[envVar] = apiKey;
+				loaded++;
+			}
+		}
+
+		if (loaded > 0) {
+			this.logger.log(`Loaded ${loaded} encrypted LLM credential(s) into env`);
+		}
+	}
+
+	/**
+	 * Resolve the API key for a provider from process.env.
+	 * Returns null if no key is available.
+	 */
+	resolveApiKey(providerId: LLMProviderId): string | null {
+		const envVar = getApiKeyEnvVar(providerId);
+		if (!envVar) return null;
+		return process.env[envVar] ?? null;
+	}
+
+	/**
+	 * Get credential status for all providers.
+	 * Shows whether each provider has a DB-stored key, env-var key, or neither.
+	 */
+	async getLlmCredentialStatus(): Promise<
+		Record<string, { hasDbKey: boolean; hasEnvKey: boolean; activeSource: "db" | "env" | "none" }>
+	> {
+		const credMap = await this.getLlmCredentialMap();
+		const providerIds = Object.keys(LLM_PROVIDERS) as LLMProviderId[];
+		const result: Record<string, { hasDbKey: boolean; hasEnvKey: boolean; activeSource: "db" | "env" | "none" }> = {};
+
+		for (const id of providerIds) {
+			const hasDbKey = !!credMap[id];
+			const envVar = getApiKeyEnvVar(id);
+			// Check env but exclude keys we set from DB (we can't distinguish,
+			// but the DB key wins — so if DB key exists, source is "db")
+			const hasEnvKey = envVar ? !!process.env[envVar] : false;
+
+			let activeSource: "db" | "env" | "none" = "none";
+			if (hasDbKey) {
+				activeSource = "db";
+			} else if (hasEnvKey) {
+				activeSource = "env";
+			}
+
+			result[id] = { hasDbKey, hasEnvKey, activeSource };
+		}
+
+		return result;
+	}
+
+	/**
+	 * Decrypt the credential map from DB, or return empty object.
+	 *
+	 * @param throwOnError - If true, rethrow decryption errors instead of returning {}.
+	 *   Use true for write operations (save/delete) where silently losing keys is worse
+	 *   than surfacing the error. Use false (default) for reads (load, status).
+	 */
+	private async getLlmCredentialMap(throwOnError = false): Promise<Record<string, string>> {
+		const setting = await this.prisma.setting.findUnique({
+			where: { key: this.LLM_CREDENTIALS_KEY },
+		});
+
+		if (!setting) return {};
+
+		try {
+			return this.credentialsService.decrypt<Record<string, string>>(setting.value);
+		} catch (error) {
+			this.logger.error("Failed to decrypt LLM credentials", error);
+			if (throwOnError) {
+				throw new Error("Failed to decrypt existing LLM credentials. The encryption key may have changed.");
+			}
+			return {};
 		}
 	}
 

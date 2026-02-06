@@ -11,7 +11,6 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { Logger } from "@prismalens/logger";
 import type { DataProvider } from "../../../types/data-provider.js";
-import { getInvestigationConfigFromConfigurable } from "../../../types/config.js";
 import type {
 	GatheredAlertsContext,
 	GatheredMetrics,
@@ -252,11 +251,6 @@ export async function preGather(
 		);
 	}
 
-	// Extract runtime config (integrations come from config, not state)
-	const runtimeConfig = getInvestigationConfigFromConfigurable(
-		config.configurable as Record<string, unknown> | undefined,
-	);
-
 	// Build gathering context
 	const incidentTime = state.incident?.triggeredAt
 		? new Date(state.incident.triggeredAt)
@@ -268,8 +262,8 @@ export async function preGather(
 		serviceId: state.incident?.serviceId,
 		repository: state.primaryAlert?.repository,
 		dataProvider,
-		// Integrations from runtime config, NOT from state (prevents checkpoint credential leaks)
-		integrations: runtimeConfig?.integrations || [],
+		// Integrations resolved on-demand - credentials never pass through LangGraph
+		integrations: [],
 	};
 
 	// Check for logging integration early
