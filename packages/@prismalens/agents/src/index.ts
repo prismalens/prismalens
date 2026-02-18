@@ -1,30 +1,139 @@
+/**
+ * @prismalens/agents — Multi-agent investigation executor.
+ *
+ * This package provides a LangGraph-based investigation executor with:
+ * - Deterministic scout + LLM-driven supervisor routing
+ * - Skill-based tool progressive disclosure
+ * - Subgraph agents (analyst, resolver) with structured output
+ * - DataProvider injection for data source abstraction
+ * - Stream-only executor API with progress events
+ */
+
 // =============================================================================
-// @prismalens/agents
-// =============================================================================
-// PrismaLens Agent System - LangGraph Supervisor Pattern for Incident Investigation
-//
-// This package provides the core agent infrastructure for investigating production
-// incidents. It can be used:
-// - Directly by packages/api in regular mode (no separate worker process)
-// - As a dependency by packages/worker in queue mode (separate container)
-//
-// Architecture:
-// - LangGraph Supervisor Pattern with parallel gatherer agents
-// - Handoff-based routing for agent iteration (Detective → Gatherer → Detective)
-// - PostgreSQL checkpointing for durability and resumption
-// - Per-agent LLM configuration via environment variables
-// - Tool factory pattern for plug-and-play integrations
+// Executor
 // =============================================================================
 
-// Agents
-export * from "./agents/index.js";
-// Executor
-export * from "./executor/index.js";
-// Graph
-export * from "./graph/index.js";
+export { InvestigationExecutor } from "./executor/index.js"
+export type { InvestigationExecutorDeps } from "./executor/investigation-executor.js"
+
+// =============================================================================
+// Types - Contexts
+// =============================================================================
+
+export type {
+  IncidentContext,
+  AlertContext,
+  IntegrationContext,
+  SimilarIncidentMatch,
+} from "./types/contexts.js"
+
+// =============================================================================
+// Types - Inputs
+// =============================================================================
+
+export type {
+  InvestigationInput,
+  InvestigationConfig,
+  LLMProviderConfig,
+} from "./types/inputs.js"
+
+// =============================================================================
+// Types - Results
+// =============================================================================
+
+export type {
+  InvestigationResult,
+  Hypothesis,
+  Evidence,
+  Recommendation,
+} from "./types/results.js"
+
+// =============================================================================
+// Types - State
+// =============================================================================
+
+export type {
+  InvestigationState,
+  InvestigationPhase,
+  SupervisorPhase,
+  AgentName,
+  GraphNodeId,
+  GatheredData,
+  DataCoverage,
+  ProgressSnapshot,
+} from "./types/state.js"
+
+// =============================================================================
+// Types - Progress Events
+// =============================================================================
+
+export type {
+  InvestigationProgressEvent,
+  NodeCompleteEvent,
+  ProgressEvent,
+  PhaseChangeEvent,
+  HypothesisFormedEvent,
+  RecommendationAddedEvent,
+  StalledEvent,
+  CompletedEvent,
+} from "./types/progress.js"
+
+// =============================================================================
+// Providers
+// =============================================================================
+
+export type {
+  DataProvider,
+  AlertFetchRequest,
+  AlertFetchResponse,
+  SimilarIncidentRequest,
+  SimilarIncidentResponse,
+} from "./providers/index.js"
+
+export { StubDataProvider } from "./providers/index.js"
+
+// =============================================================================
 // LLM Factory
-export * from "./llm/index.js";
+// =============================================================================
+
+export { createLLM } from "./llm/index.js"
+
+// =============================================================================
 // Tools
-export * from "./tools/index.js";
-// Types
-export * from "./types/index.js";
+// =============================================================================
+
+export { ToolRegistry } from "./tools/index.js"
+export type { Skill, ToolBundle, ToolCategory } from "./tools/index.js"
+export { MCPClientManager } from "./tools/index.js"
+export type { MCPServerConfig } from "./tools/index.js"
+
+// =============================================================================
+// Utilities
+// =============================================================================
+
+export { mapSeverity } from "./utils/severity.js"
+export {
+  getCheckpoint,
+  listCheckpoints,
+  getStateFromCheckpoint,
+  getCheckpointTimestamp,
+  getBestHypothesis,
+} from "./utils/checkpoints.js"
+
+// =============================================================================
+// Model Registry (stubs for compatibility)
+// =============================================================================
+
+/**
+ * Get available models for a provider (stubbed)
+ */
+export async function getModelsForProvider(_provider: string): Promise<unknown[]> {
+  return []
+}
+
+/**
+ * Get complete models registry (stubbed)
+ */
+export async function getModelsRegistry(): Promise<unknown[]> {
+  return []
+}

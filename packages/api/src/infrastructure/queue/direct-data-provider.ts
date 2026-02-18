@@ -147,7 +147,7 @@ export class DirectDataProvider implements DataProvider {
 			title: incident.title,
 			description: incident.description ?? undefined,
 			severity: incident.severity ?? undefined,
-			tags: tags.length > 0 ? tags : undefined,
+			tags: tags && tags.length > 0 ? tags : undefined,
 			serviceId: incident.serviceId ?? undefined,
 			serviceName: incident.service?.name ?? undefined,
 			similarity: 0, // Computed by pre-gathering's calculateIncidentSimilarity

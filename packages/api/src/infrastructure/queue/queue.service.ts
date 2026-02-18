@@ -9,14 +9,10 @@ import {
 import { ConfigService } from "@nestjs/config";
 import {
 	type IntegrationContext as AgentIntegrationContext,
-	type AlertContext,
-	type IncidentContext,
-	type InvestigationConfig,
 	InvestigationExecutor,
 	type InvestigationInput,
 	type InvestigationResult,
 	type LLMProviderConfig,
-	mapSeverity,
 } from "@prismalens/agents";
 import { EnvironmentVariables } from "@prismalens/config";
 import type { ConnectionOptions } from "bullmq";
@@ -26,8 +22,6 @@ import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
 import { InvestigationSemaphore } from "./investigation-semaphore.js";
-import { DirectDataProvider } from "./direct-data-provider.js";
-import { safeParseJsonArray } from "./json-utils.js";
 
 /**
  * Integration context for worker (matches worker IntegrationContext)
@@ -152,22 +146,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				);
 			}
 
-			// Create DataProvider for direct mode (uses NestJS services)
-			const dataProvider = new DirectDataProvider(
-				this.alertsService,
-				this.incidentsService,
-			);
-
-			this.executor = new InvestigationExecutor({
-				dataProvider,
-				callbacks: {
-					onProgress: async (investigationId, progress) => {
-						this.logger.debug(
-							`[${investigationId}] ${progress.phase}: ${progress.message}`,
-						);
-					},
-				},
-			});
+			// Create executor for direct mode
+			// Note: DataProvider will be wired in when data-fetching nodes are added
+			this.executor = new InvestigationExecutor();
 			return;
 		}
 
@@ -311,8 +292,8 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				`Executing investigation ${jobId} directly via @prismalens/agents`,
 			);
 
-			// Build input for executor (async - fetches incident)
-			const input = await this.buildExecutorInput(data);
+			// Build input for executor
+			const input = this.buildExecutorInput(data);
 
 			// If semaphore is configured, use controlled execution (awaited)
 			if (this.semaphore) {
@@ -381,102 +362,35 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * Build executor input from job data.
-	 * Now async to fetch incident context.
+	 *
+	 * Simplified: scout fetches incident + alerts via DataProvider at runtime.
+	 * Only passes identifiers, config, and non-sensitive integration metadata.
 	 */
-	private async buildExecutorInput(
+	private buildExecutorInput(
 		jobData: InvestigationJobData,
-	): Promise<InvestigationInput> {
-		// Fetch incident context - REQUIRED for investigation
-		const incidentDb = await this.incidentsService.findById(jobData.incidentId);
-		if (!incidentDb) {
-			throw new Error(`Incident not found: ${jobData.incidentId}`);
-		}
-
-		// Map incident to IncidentContext
-		const tags = safeParseJsonArray(incidentDb.tags);
-
-		const incident: IncidentContext = {
-			incidentId: incidentDb.id,
-			number: incidentDb.number,
-			title: incidentDb.title,
-			description: incidentDb.description ?? undefined,
-			severity: incidentDb.severity as IncidentContext["severity"],
-			status: incidentDb.status as IncidentContext["status"],
-			priority: incidentDb.priority as IncidentContext["priority"],
-			serviceId: incidentDb.serviceId ?? undefined,
-			serviceName: incidentDb.service?.name ?? undefined,
-			correlationReason: incidentDb.correlationReason ?? undefined,
-			alertCount: incidentDb.alertCount ?? incidentDb._count?.alerts ?? 0,
-			triggeredAt: incidentDb.triggeredAt.toISOString(),
-			acknowledgedAt: incidentDb.acknowledgedAt?.toISOString(),
-			tags,
-			customerImpact: incidentDb.customerImpact ?? undefined,
-		};
-
-		// Convert alerts from job data to AlertContext
-		const alerts: AlertContext[] = (jobData.alerts || []).map(
-			(alertUnknown) => {
-				const alert = alertUnknown as Record<string, unknown>;
-				const labels = alert.labels as Record<string, string> | undefined;
-				return {
-					alertId:
-						(alert.id as string) ||
-						(alert.alertId as string) ||
-						`alert-${Date.now()}`,
-					title:
-						(alert.title as string) ||
-						(alert.alertname as string) ||
-						"Unknown Alert",
-					description:
-						(alert.description as string | undefined) ||
-						(alert.summary as string | undefined),
-					severity: mapSeverity(
-						(alert.severity as string) || labels?.severity,
-					),
-					status: alert.status as AlertContext["status"],
-					source: (alert.source as string) || labels?.source,
-					sourceUrl:
-						(alert.sourceUrl as string) || (alert.generatorURL as string),
-					serviceId: alert.serviceId as string | undefined,
-					serviceName: (alert.serviceName as string) || labels?.service,
-					repository: (alert.repository as string) || labels?.repository,
-					labels,
-					tags: alert.tags as string[] | undefined,
-					triggeredAt:
-						(alert.triggeredAt as string) || (alert.startsAt as string),
-					rawPayload: alert,
-				};
-			},
-		);
-
-		// Convert integrations
+	): InvestigationInput {
+		// Map integrations to agent IntegrationContext (non-sensitive metadata only)
 		const integrations: AgentIntegrationContext[] = (
 			jobData.integrations || []
 		).map((int) => ({
+			id: int.connectionId,
+			name: int.type,
 			type: int.type,
-			connectionId: int.connectionId,
-			credentials: int.credentials,
+			enabled: true,
 			config: int.config,
-			serviceOverrides: int.serviceOverrides,
 		}));
 
-		// LLM config: provider/model from env vars, API key resolved by LLM factory from process.env
+		// LLM config from env vars — API key resolved by LLM factory from process.env
 		const provider = (process.env.PRISMALENS_LLM_PROVIDER || "anthropic") as LLMProviderConfig["provider"];
 		const model = process.env.PRISMALENS_LLM_MODEL || "claude-sonnet-4-20250514";
-
-		const llmConfig = {
-			provider,
-			model,
-		} as LLMProviderConfig;
 
 		return {
 			investigationId: jobData.investigationId,
 			incidentId: jobData.incidentId,
-			incident,
-			priority: jobData.priority,
-			alerts,
+			config: {
+				llm: { provider, model },
+			},
 			integrations,
-			llmConfig,
 		};
 	}
 
@@ -637,10 +551,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	): Promise<void> {
 		try {
 			// Map agent result to API DTO format
+			const rootCauseCategory = result.rootCauseCategory as
+				| InvestigationResultDto["rootCauseCategory"]
+				| null;
 			const resultDto: InvestigationResultDto = {
 				summary: result.summary ?? undefined,
 				rootCause: result.rootCause ?? undefined,
-				rootCauseCategory: result.rootCauseCategory ?? undefined,
+				rootCauseCategory: rootCauseCategory ?? undefined,
 				confidence:
 					result.confidence !== null ? result.confidence / 100 : undefined, // Convert 0-100 to 0-1
 				analysisMethod: result.analysisMethod ?? undefined,
@@ -649,8 +566,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 					title: rec.title,
 					description: rec.description,
 					priority: rec.priority,
-					category: rec.category,
-					urgency: rec.urgency,
+					urgency: rec.type === "immediate" ? "immediate" : rec.type === "short_term" ? "short_term" : "long_term",
 				})),
 			};
 

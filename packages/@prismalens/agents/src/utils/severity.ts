@@ -1,49 +1,24 @@
 /**
- * Severity Mapping Utility
- *
- * Normalizes various severity string formats (AlertManager, PagerDuty, Datadog, etc.)
- * to the standard PrismaLens severity levels.
- *
- * Shared between API (queue.service.ts) and Worker (processor.ts).
+ * Severity mapping utilities
  */
-
-export type StandardSeverity = "critical" | "high" | "medium" | "low" | "info";
 
 /**
- * Map various severity formats to standard PrismaLens severity.
- *
- * Handles formats from: AlertManager, PagerDuty (p1-p5), Datadog, Sentry, etc.
+ * Map a severity string to a standard severity level
  */
-export function mapSeverity(severity: string | undefined): StandardSeverity {
-	if (!severity) return "medium";
+export function mapSeverity(severity?: string): "critical" | "high" | "medium" | "low" {
+  if (!severity) return "low"
 
-	const lower = severity.toLowerCase();
+  const normalized = severity.toLowerCase()
 
-	if (lower === "critical" || lower === "crit" || lower === "p1") {
-		return "critical";
-	}
-	if (
-		lower === "high" ||
-		lower === "error" ||
-		lower === "p2" ||
-		lower === "severe"
-	) {
-		return "high";
-	}
-	if (
-		lower === "medium" ||
-		lower === "warning" ||
-		lower === "warn" ||
-		lower === "p3"
-	) {
-		return "medium";
-	}
-	if (lower === "low" || lower === "minor" || lower === "p4") {
-		return "low";
-	}
-	if (lower === "info" || lower === "informational" || lower === "p5") {
-		return "info";
-	}
+  if (normalized.includes("critical") || normalized.includes("p1") || normalized.includes("sev1")) {
+    return "critical"
+  }
+  if (normalized.includes("high") || normalized.includes("p2") || normalized.includes("sev2")) {
+    return "high"
+  }
+  if (normalized.includes("medium") || normalized.includes("p3") || normalized.includes("sev3")) {
+    return "medium"
+  }
 
-	return "medium";
+  return "low"
 }

@@ -1,122 +1,156 @@
 # @prismalens/agents
 
-Multi-agent system for automated incident investigation using LangGraph.
+Minimal investigation executor with single dummy node for PrismaLens incident investigation.
 
-## Quick Start
+## Overview
 
-```typescript
-import { runInvestigation } from "@prismalens/agents/graph";
-
-const result = await runInvestigation({
-  investigationId: "inv-123",
-  incidentId: "inc-456",
-  incident: {
-    incidentId: "inc-456",
-    title: "High CPU usage in API server",
-    severity: "high",
-    priority: "p2",
-    serviceName: "api-server",
-    alertCount: 3,
-  },
-  alerts: [{ alertId: "alert-1", title: "CPU > 90%", severity: "high" }],
-  integrations: [...],
-  llmConfig: { provider: "anthropic", model: "claude-sonnet-4", apiKey: "..." },
-});
-
-console.log(result.hypotheses);      // Root cause hypotheses
-console.log(result.recommendations); // Fix proposals
-```
+This package provides a clean, minimal implementation of the investigation executor that maintains API compatibility with the previous complex implementation while providing a foundation for incremental feature development.
 
 ## Architecture
 
-LangGraph Supervisor Pattern with parallel gatherers and sequential analysis:
+### Current Implementation
 
+**Single-Node Graph:**
 ```
-START → validateIncident → preGather → cloneIfNeeded → supervisor ⟲ → writeToApi → END
-                                                            ↑
-                                        ┌───────────────────┴────────────────────┐
-                                        │           Supervisor Loop               │
-                                        ├─────────────────────────────────────────┤
-                                        │  Phase 1: Parallel Gather               │
-                                        │  ├─ log-gatherer    ─┐                  │
-                                        │  ├─ code-searcher   ─┼→ supervisor      │
-                                        │  └─ change-tracker  ─┘                  │
-                                        │                                          │
-                                        │  Phase 2: Analyze → detective            │
-                                        │  Phase 3: Fix → surgeon                  │
-                                        └─────────────────────────────────────────┘
+START → investigator (dummy) → END
 ```
 
-For detailed architecture including the auto-generated graph, tools, and skills, see **[docs/GENERATED.md](docs/GENERATED.md)**.
+The `investigator` node currently returns a placeholder result with:
+- Status: `completed`
+- Summary: "Investigation completed (dummy implementation)"
+- No root cause, hypotheses, or recommendations
+
+### Key Components
+
+1. **InvestigationExecutor** (`src/executor/investigation-executor.ts`)
+   - Main entry point for running investigations
+   - Creates simple LangGraph workflow
+   - Handles callbacks (onStart, onComplete, onError)
+   - Returns `InvestigationResult`
+
+2. **Type System** (`src/types/`)
+   - `contexts.ts` - IncidentContext, AlertContext, IntegrationContext
+   - `inputs.ts` - InvestigationInput, InvestigationConfig, LLMProviderConfig
+   - `results.ts` - InvestigationResult, Hypothesis, Recommendation
+   - `state.ts` - InvestigationState (LangGraph state)
+
+3. **LLM Factory** (`src/llm/factory.ts`)
+   - Creates chat models from provider configs
+   - Supports: Anthropic, OpenAI, Groq, Ollama, Google, OpenRouter
+   - Not currently used (reserved for future nodes)
+
+4. **Utilities** (`src/utils/`)
+   - `severity.ts` - mapSeverity function
+   - `checkpoints.ts` - Stubbed checkpoint functions (return null/empty)
+
+## Usage
+
+### Basic Example
+
+```typescript
+import { InvestigationExecutor } from "@prismalens/agents"
+
+// No configuration needed for minimal implementation
+const executor = new InvestigationExecutor()
+
+const result = await executor.execute({
+  investigationId: "inv-001",
+  incidentId: "inc-001",
+  incident: { /* IncidentContext */ },
+  alerts: [ /* AlertContext[] */ ],
+  integrations: [ /* IntegrationContext[] */ ],
+  config: {
+    llm: {
+      provider: "anthropic",
+      model: "claude-sonnet-4-5-20250929",
+      temperature: 0.2,
+    },
+  },
+})
+
+// Handle result
+if (result.status === "completed") {
+  console.log("Investigation completed:", result.summary)
+} else {
+  console.error("Investigation failed:", result.error)
+}
+
+await executor.close()
+```
+
+### API Compatibility
+
+This package maintains full API compatibility with the previous implementation:
+
+- ✅ All types match exactly (InvestigationInput, InvestigationResult, etc.)
+- ✅ InvestigationExecutor interface is identical
+- ✅ All exports from `@prismalens/agents` work as before
+- ✅ queue.service.ts requires no changes
+- ✅ settings.service.ts requires no changes
+- ✅ progress.service.ts requires no changes (checkpoint functions stubbed)
 
 ## Development
 
-```bash
-pnpm build           # Build package
-pnpm typecheck       # Type check
-pnpm docs:generate   # Regenerate docs from code
-```
-
-## Testing
-
-```bash
-pnpm eval            # Run all evaluations
-pnpm eval:smoke      # Quick smoke tests
-pnpm eval:e2e        # Full E2E graph tests
-pnpm eval:agents     # Agent tests only
-pnpm eval:tools      # Tool tests only
-```
-
-For test structure and naming conventions, see **[evals/README.md](evals/README.md)**.
-
-## Configuration
-
-### LLM Provider
-
-```bash
-PRISMALENS_LLM_PROVIDER=anthropic  # anthropic, openai, groq, nvidia, ollama
-ANTHROPIC_API_KEY=sk-...           # Provider API key
-```
-
-### Free Tier Options
-
-| Provider | Limits | Best For |
-|----------|--------|----------|
-| **Groq** | 30 req/min, 100K tokens/day | Fast inference, testing |
-| **NVIDIA NIM** | 40 req/min, unlimited | Smart reasoning |
-| **Ollama** | Unlimited (local) | Privacy, offline |
-
-### LangSmith Tracing
-
-```bash
-LANGSMITH_API_KEY=lsv2_...
-LANGSMITH_TRACING=true
-LANGCHAIN_PROJECT=prismalens-agents-dev
-```
-
-## Exports
-
-```typescript
-import { runInvestigation, resumeInvestigation } from "@prismalens/agents/graph";
-import { createLLM } from "@prismalens/agents/llm";
-import type { InvestigationState } from "@prismalens/agents/types";
-```
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| **[docs/GENERATED.md](docs/GENERATED.md)** | Auto-generated: Graph, Tools, Skills, State |
-| **[evals/README.md](evals/README.md)** | Testing strategy and eval commands |
-
-> **Note**: `docs/GENERATED.md` is auto-generated from code. Regenerate with `pnpm docs:generate`.
-
-## LangGraph Studio
-
-For interactive debugging with time-travel and state editing:
+### Build
 
 ```bash
 pnpm build
-pnpm studio
-# Open: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
 ```
+
+### Type-check
+
+```bash
+pnpm typecheck
+```
+
+### Watch Mode
+
+```bash
+pnpm dev
+```
+
+## Roadmap
+
+The following features can be added incrementally:
+
+1. **Pre-check Node** - Validate incident data, check for duplicates
+2. **Gatherer Node** - Fetch related metrics, logs, traces
+3. **Analyzer Node** - Generate hypotheses using LLM
+4. **Recommender Node** - Provide fix recommendations
+5. **Supervisor Pattern** - Coordinate multi-agent workflow
+6. **Checkpoint Support** - Enable pausing/resuming investigations
+7. **Tool Integration** - Add MCP tools for external data sources
+8. **Model Selection** - Dynamic model selection based on complexity
+
+## Backup
+
+The previous implementation has been preserved at:
+```
+packages/@prismalens/agents_old/
+```
+
+This can be referenced for:
+- Type definitions
+- Tool implementations
+- Prompt templates
+- Node logic
+- Supervisor patterns
+
+## Migration from Old Implementation
+
+No changes required in consuming packages:
+
+- API package works without modifications
+- Worker package works without modifications (if using agents)
+- All imports resolve correctly
+- All types are compatible
+
+## Notes
+
+- **No Configuration Required**: Constructor takes no parameters (reserved for future options)
+- **No LLM Calls**: The dummy node doesn't make any LLM calls yet
+- **No Checkpoint Support**: Checkpoint functions are stubbed (return null/empty)
+- **No Model Registry**: getModelsForProvider/getModelsRegistry are stubbed
+- **No Tools**: MCP tools integration not yet implemented
+- **No Supervisor**: No multi-agent coordination yet
+

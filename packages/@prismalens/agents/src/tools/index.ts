@@ -1,71 +1,57 @@
-// =============================================================================
-// TOOLS INDEX
-// =============================================================================
-// Central export for all tools. Use the factory pattern for integration-aware tools.
-// Progressive disclosure system available via bundles exports.
-// =============================================================================
+/**
+ * Tool system exports.
+ */
 
-// Factory exports (preferred for new code)
-export {
-	contextToFactoryOptions,
-	createDefaultBundleRegistry,
-	createProgressiveTools,
-	createToolsForAgent,
-	factoryOptionsToContext,
-	getAgentPermissions,
-	getManifestsDir,
-	getToolCategories,
-	hasClonedRepos,
-	isReadOnlyAgent,
-	registerToolCategory,
-	setAgentPermissions,
-	setReadOnlyAgent,
-	type ProgressiveToolsOptions,
-	type ToolFactoryOptions,
-} from "./factory.js";
+// Types
+export type { Skill, ToolBundle, ToolCategory } from "./types.js"
 
-// Bundle system exports
-export * from "./bundles/index.js";
-// Fix proposal tools for Surgeon
-export {
-	createProposeFixTool,
-	createSuggestRollbackTool,
-	createSurgeonTools,
-	createValidateCodeChangeTool,
-	getStoredRecommendations,
-	resetRecommendationStore,
-} from "./fix-proposal.js";
-// Hypothesis tools for Detective
-export {
-	createDetectiveTools,
-	createEvaluateHypothesisTool,
-	createHypothesisTool,
-	getStoredHypotheses,
-	resetHypothesisStore,
-} from "./hypothesis.js";
-// Challenge tools for Adversary
-export {
-	createAdversaryTools,
-	createChallengeContext,
-	createChallengeHypothesisTool,
-	createPatternMatchTool,
-	createRefineHypothesisTool,
-	getStoredChallenges,
-	type ChallengeContext,
-	// Note: AdversaryChallenge type is exported from types/index.ts
-} from "./challenge.js";
-export { createRepoTools } from "./repo.js";
+// Registry
+export { ToolRegistry } from "./registry.js"
 
-// Handoff tools for agent-to-agent communication (Supervisor Pattern)
+// Schemas
 export {
-	createAnalyzeFindingsTool,
-	createCorrelateEventsTool,
-	createHandoffTools,
-	createHandoffTool,
-	createRequestMoreDataTool,
-	getPendingHandoffRequest,
-	resetHandoffRequest,
-	setHandoffRequest,
-} from "./handoffs.js";
+  SupervisorDecisionSchema,
+  HypothesisFormationSchema,
+  EvidenceEvaluationSchema,
+  ChallengeResultSchema,
+  FixProposalSchema,
+  RiskAssessmentSchema,
+  GathererSummarySchema,
+} from "./schemas.js"
+export type {
+  SupervisorDecision,
+  HypothesisFormation,
+  EvidenceEvaluation,
+  ChallengeResult,
+  FixProposal,
+  RiskAssessment,
+  GathererSummary,
+} from "./schemas.js"
 
-// Todos removed - using simple findings-based routing instead
+// Skills
+export { loadSkills } from "./skills/index.js"
+export { logSkill, searchLogs, analyzeLogPatterns } from "./skills/log.js"
+export { codeSkill, searchCode, getFileContent } from "./skills/code.js"
+export {
+  changeSkill,
+  getRecentCommits,
+  getDeploymentHistory,
+} from "./skills/change.js"
+export {
+  precedentSkill,
+  searchSimilarResolutions,
+  lookupRunbook,
+} from "./skills/precedent.js"
+
+// Analyst tools
+export { searchSimilarIncidents } from "./analyst/search-similar-incidents.js"
+export { queryGatheredData } from "./analyst/query-gathered-data.js"
+export { retrievePostmortems } from "./analyst/retrieve-postmortems.js"
+
+// Resolver tools
+export { searchRunbooks } from "./resolver/search-runbooks.js"
+export { lookupPastResolutions } from "./resolver/lookup-past-resolutions.js"
+
+// MCP
+export { MCPClientManager } from "./mcp/index.js"
+export type { MCPServerConfig } from "./mcp/index.js"

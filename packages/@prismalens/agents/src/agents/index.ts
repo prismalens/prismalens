@@ -1,19 +1,33 @@
-// =============================================================================
-// AGENTS INDEX
-// =============================================================================
-// Export all agent-related modules.
-//
-// All agents are LangGraph nodes that run ReAct agents internally.
-// Used by graph.ts for parallel execution and handoff-based routing.
-// =============================================================================
+/**
+ * Agent factory exports.
+ *
+ * Each agent provides a factory function:
+ * - supervisorNode: Function node returning Command
+ * - createScoutNode(dataProvider): Simple function node
+ * - createGathererNode(integrations, mcpTools): Function node wrapping createReactAgent
+ * - createAnalystGraph(): Compiled subgraph
+ * - createResolverGraph(): Compiled subgraph
+ */
 
-// Gatherer agents (can run in parallel)
-export { logGathererNode } from "./gatherers/log-gatherer.js";
-export { codeSearcherNode } from "./gatherers/code-searcher.js";
-export { changeTrackerNode } from "./gatherers/change-tracker.js";
+// Supervisor
+export { supervisorNode } from "./supervisor/index.js"
+export {
+  compilePartialResult,
+  takeProgressSnapshot,
+  detectProgress,
+} from "./supervisor/index.js"
 
-// Analysis agent
-export { detectiveNode } from "./analysis/detective.js";
+// Scout
+export { createScoutNode } from "./scout/index.js"
 
-// Fix agent
-export { surgeonNode } from "./fix/surgeon.js";
+// Gatherer
+export { createGathererNode } from "./gatherer/index.js"
+export { GathererStateAnnotation } from "./gatherer/index.js"
+
+// Analyst
+export { createAnalystGraph, buildAnalystGraph } from "./analyst/index.js"
+export { AnalystStateAnnotation } from "./analyst/index.js"
+
+// Resolver
+export { createResolverGraph, buildResolverGraph } from "./resolver/index.js"
+export { ResolverStateAnnotation } from "./resolver/index.js"
