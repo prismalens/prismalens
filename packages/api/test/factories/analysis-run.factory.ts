@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker";
-import type { Investigation } from "../../prisma/generated/client.js";
+import type { Investigation } from "@prismalens/database";
 
 /**
  * Factory for Investigation (replaces AnalysisRun)
@@ -37,6 +37,11 @@ export class InvestigationFactory {
 			completedAt: null,
 			rawOutput: null,
 			error: null,
+			triggerType: null,
+			triggerReason: null,
+			preGatheringStartedAt: null,
+			preGatheringCompletedAt: null,
+			preGatheringQuality: null,
 			createdAt: faker.date.recent(),
 			updatedAt: faker.date.recent(),
 			...overrides,

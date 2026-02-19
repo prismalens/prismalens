@@ -1,6 +1,7 @@
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { contract } from "@prismalens/contracts";
+import type { ContractRouterClient } from "@orpc/contract";
+import type { Contract } from "@prismalens/contracts";
 import { config } from "./config.js";
 
 const link = new RPCLink({
@@ -15,4 +16,4 @@ const link = new RPCLink({
 	}),
 });
 
-export const api = createORPCClient<any>(link);
+export const api: ContractRouterClient<Contract> = createORPCClient(link);

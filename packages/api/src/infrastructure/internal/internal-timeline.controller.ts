@@ -7,6 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { Public } from '../../core/auth/public.decorator.js';
 import { TimelineService } from '../../modules/timeline/timeline.service.js';
 import { TimelineSource } from '../../shared/enums/index.js';
 import { CreateTimelineEntryDto } from './dto/index.js';
@@ -16,7 +17,9 @@ import { InternalGuard } from './guards/internal.guard.js';
  * Internal API for timeline operations.
  * Used by the Python worker to add timeline entries in real-time.
  * Protected by InternalGuard (requires X-Internal-Secret header).
+ * @Public() skips AuthGuard — InternalGuard handles auth via X-Internal-Secret.
  */
+@Public()
 @ApiExcludeController()
 @Controller('internal/timeline')
 @UseGuards(InternalGuard)

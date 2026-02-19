@@ -71,10 +71,10 @@ async function bootstrap() {
 
 	// Load encrypted LLM credentials from DB into process.env
 	// This must run early so LLM factories can resolve API keys from env
-	const settingsService = app.get(
-		(await import("./core/settings/settings.service.js")).SettingsService,
+	const llmSettingsService = app.get(
+		(await import("./core/settings/llm-settings.service.js")).LlmSettingsService,
 	);
-	await settingsService.loadLlmCredentialsToEnv();
+	await llmSettingsService.loadLlmCredentialsToEnv();
 
 	// Enable CORS for main API (restrictive - allowlist only)
 	// Webhooks have their own permissive CORS middleware applied in AppModule

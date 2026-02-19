@@ -432,8 +432,8 @@ model Setting {
   id          String   @id @default(uuid())
   key         String   @unique
   value       String // JSON
-  type        String   @default("string") // string, number, boolean, json
-  category    String? // general, correlation, ai, notifications
+  type        String   @default("string") // string, number, boolean, json, encrypted
+  category    String? // general, correlation, ai, notifications, setup
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

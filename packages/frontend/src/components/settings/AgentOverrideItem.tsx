@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentId } from "@prismalens/contracts/schemas";
+import type { AgentId, ModelMetadata } from "@prismalens/contracts/schemas";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ export interface AgentOverrideItemProps {
 	onTemperatureChange: (temp: number) => void;
 	onReset: () => void;
 	providers: ProviderInfo[];
-	models: Array<{ id: string; name: string; provider: string }>;
+	models: ModelMetadata[];
 	envStatus: Record<string, { isReady: boolean; envVarName?: string }>;
 }
 

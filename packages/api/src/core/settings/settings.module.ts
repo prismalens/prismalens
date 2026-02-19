@@ -3,11 +3,13 @@ import { PrismaModule } from "../prisma/prisma.module.js";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
 import { SettingsController } from "./settings.controller.js";
 import { SettingsService } from "./settings.service.js";
+import { LlmSettingsService } from "./llm-settings.service.js";
+import { McpSettingsService } from "./mcp-settings.service.js";
 
 @Module({
 	imports: [PrismaModule, forwardRef(() => IntegrationsModule)],
 	controllers: [SettingsController],
-	providers: [SettingsService],
-	exports: [SettingsService],
+	providers: [SettingsService, LlmSettingsService, McpSettingsService],
+	exports: [SettingsService, LlmSettingsService, McpSettingsService],
 })
 export class SettingsModule {}

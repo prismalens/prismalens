@@ -1,11 +1,33 @@
 import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
+import type { IntegrationConnection } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type {
 	AcceptBulkSuggestionsDto,
 	AcceptSuggestionDto,
 } from "./dto/index.js";
 import { ServiceDiscoveryService } from "./service-discovery.service.js";
+
+function createMockConnection(
+	overrides?: Partial<IntegrationConnection>,
+): IntegrationConnection {
+	return {
+		id: "conn-123",
+		definitionId: "def-github",
+		name: "My GitHub",
+		description: null,
+		isGlobal: true,
+		status: "connected" as IntegrationConnection["status"],
+		lastHealthCheck: null,
+		lastError: null,
+		authMethod: "api_key" as IntegrationConnection["authMethod"],
+		credentials: "{}",
+		config: null,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+		...overrides,
+	};
+}
 
 const mockPrismaService = {
 	integrationConnection: {
@@ -120,12 +142,9 @@ describe("ServiceDiscoveryService (BDD)", () => {
 
 	describe("discoverFromGitHub", () => {
 		it("should warn when no repositories configured", async () => {
-			const connection = {
-				id: "conn-123",
-				name: "My GitHub",
+			const connection = createMockConnection({
 				config: JSON.stringify({ repositories: [] }),
-				definition: { category: "code_source", name: "github" },
-			};
+			});
 
 			const result = await service.discoverFromGitHub(connection);
 
@@ -136,12 +155,9 @@ describe("ServiceDiscoveryService (BDD)", () => {
 		});
 
 		it("should create service suggestions from discovered repositories", async () => {
-			const connection = {
-				id: "conn-123",
-				name: "My GitHub",
+			const connection = createMockConnection({
 				config: JSON.stringify({ repositories: ["org/repo"] }),
-				definition: { category: "code_source", name: "github" },
-			};
+			});
 
 			mockPrismaService.serviceSuggestion.findFirst.mockResolvedValue(null);
 			mockPrismaService.serviceSuggestion.create.mockResolvedValue({
@@ -165,12 +181,9 @@ describe("ServiceDiscoveryService (BDD)", () => {
 		});
 
 		it("should update existing non-rejected suggestions", async () => {
-			const connection = {
-				id: "conn-123",
-				name: "My GitHub",
+			const connection = createMockConnection({
 				config: JSON.stringify({ repositories: ["org/repo"] }),
-				definition: { category: "code_source", name: "github" },
-			};
+			});
 
 			const existingSuggestion = {
 				id: "sugg-123",
@@ -204,12 +217,9 @@ describe("ServiceDiscoveryService (BDD)", () => {
 		});
 
 		it("should not update rejected or ignored suggestions", async () => {
-			const connection = {
-				id: "conn-123",
-				name: "My GitHub",
+			const connection = createMockConnection({
 				config: JSON.stringify({ repositories: ["org/repo"] }),
-				definition: { category: "code_source", name: "github" },
-			};
+			});
 
 			const rejectedSuggestion = {
 				id: "sugg-123",
@@ -240,12 +250,9 @@ describe("ServiceDiscoveryService (BDD)", () => {
 		});
 
 		it("should handle errors when discovering repositories", async () => {
-			const connection = {
-				id: "conn-123",
-				name: "My GitHub",
+			const connection = createMockConnection({
 				config: JSON.stringify({ repositories: ["org/repo1", "org/repo2"] }),
-				definition: { category: "code_source", name: "github" },
-			};
+			});
 
 			mockPrismaService.serviceSuggestion.findFirst.mockImplementation(() => {
 				throw new Error("DB Error");

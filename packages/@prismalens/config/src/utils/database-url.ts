@@ -4,7 +4,7 @@
  */
 
 import { join } from "path";
-import type { DatabaseConfig } from "../schemas/database.js";
+import type { DatabaseConfig } from "../env/database.js";
 import { getAppDataDir } from "./app-data.js";
 
 /**

@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { Public } from '../../core/auth/public.decorator.js';
 import { InvestigationsService } from '../../modules/investigations/investigations.service.js';
 import {
   InternalInvestigationResultDto,
@@ -21,7 +22,9 @@ import { InternalGuard } from './guards/internal.guard.js';
  * Internal API for investigation operations.
  * Used by the Python worker to update investigation status and write results.
  * Protected by InternalGuard (requires X-Internal-Secret header).
+ * @Public() skips AuthGuard — InternalGuard handles auth via X-Internal-Secret.
  */
+@Public()
 @ApiExcludeController()
 @Controller('internal/investigations')
 @UseGuards(InternalGuard)

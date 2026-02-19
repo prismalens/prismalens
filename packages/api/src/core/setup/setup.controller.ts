@@ -3,7 +3,12 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import { setupContract, type SetupStep } from "@prismalens/contracts";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { UsersService } from "../users/users.service.js";
+import { Public } from "../auth/public.decorator.js";
 
+// Public: setup runs before any user exists, so auth is not possible.
+// createOwner is self-guarding ("already set up" check).
+// markStepSkipped only toggles non-destructive "skipped" flags.
+@Public()
 @Controller()
 export class SetupController {
 	constructor(
@@ -57,7 +62,7 @@ export class SetupController {
 	@Implement(setupContract)
 	setup() {
 		return {
-			// GET /setup/status - Check if setup is complete
+			// GET /setup/status - Check if setup is complete (public: needed before login)
 			getStatus: implement(setupContract.getStatus).handler(async () => {
 				const ownerComplete = await this.usersService.isSetupComplete();
 				const llmComplete = await this.checkLlmComplete();

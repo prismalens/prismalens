@@ -6,6 +6,7 @@ import { EventsModule } from "../events/events.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { WebhooksController } from "./webhooks.controller.js";
 import { WebhooksService } from "./webhooks.service.js";
+import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
 
 @Module({
 	imports: [
@@ -16,7 +17,7 @@ import { WebhooksService } from "./webhooks.service.js";
 		IntegrationsModule,
 	],
 	controllers: [WebhooksController],
-	providers: [WebhooksService],
+	providers: [WebhooksService, WebhookSignatureGuard],
 	exports: [WebhooksService],
 })
 export class WebhooksModule {}

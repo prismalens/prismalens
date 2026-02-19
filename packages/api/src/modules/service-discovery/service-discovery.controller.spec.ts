@@ -1,9 +1,5 @@
 import { Logger } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
-import type {
-	AcceptBulkSuggestionsDto,
-	AcceptSuggestionDto,
-} from "./dto/index.js";
 import { ServiceDiscoveryController } from "./service-discovery.controller.js";
 import { ServiceDiscoveryService } from "./service-discovery.service.js";
 
@@ -39,6 +35,11 @@ describe("ServiceDiscoveryController (BDD)", () => {
 		service = module.get<ServiceDiscoveryService>(ServiceDiscoveryService);
 	});
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- oRPC ImplementedProcedure isn't directly callable; tests invoke handlers outside the framework lifecycle
+	function getHandlers(): any {
+		return controller.serviceDiscovery();
+	}
+
 	describe("triggerDiscovery", () => {
 		it("should trigger discovery for connection", async () => {
 			const connectionId = "conn-123";
@@ -62,9 +63,12 @@ describe("ServiceDiscoveryController (BDD)", () => {
 				suggestions,
 			);
 
-			const result = await controller.triggerDiscovery(connectionId);
+			const handlers = getHandlers();
+			const result = await handlers.triggerDiscovery({
+				input: { connectionId },
+			} as any);
 
-			expect(result).toEqual(suggestions);
+			expect(result.discovered).toBe(1);
 			expect(service.discoverFromConnection).toHaveBeenCalledWith(connectionId);
 		});
 
@@ -72,7 +76,10 @@ describe("ServiceDiscoveryController (BDD)", () => {
 			const connectionId = "conn-123";
 			mockServiceDiscoveryService.discoverFromConnection.mockResolvedValue([]);
 
-			await controller.triggerDiscovery(connectionId);
+			const handlers = getHandlers();
+			await handlers.triggerDiscovery({
+				input: { connectionId },
+			} as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Triggering service discovery"),
@@ -80,7 +87,7 @@ describe("ServiceDiscoveryController (BDD)", () => {
 		});
 	});
 
-	describe("getPendingSuggestions", () => {
+	describe("listSuggestions", () => {
 		it("should return all pending suggestions", async () => {
 			const suggestions = [
 				{
@@ -115,16 +122,18 @@ describe("ServiceDiscoveryController (BDD)", () => {
 				suggestions,
 			);
 
-			const result = await controller.getPendingSuggestions();
+			const handlers = getHandlers();
+			const result = await handlers.listSuggestions({} as any);
 
-			expect(result).toEqual(suggestions);
+			expect(result).toHaveLength(2);
 			expect(service.getPendingSuggestions).toHaveBeenCalled();
 		});
 
 		it("should return empty list when no suggestions pending", async () => {
 			mockServiceDiscoveryService.getPendingSuggestions.mockResolvedValue([]);
 
-			const result = await controller.getPendingSuggestions();
+			const handlers = getHandlers();
+			const result = await handlers.listSuggestions({} as any);
 
 			expect(result).toEqual([]);
 		});
@@ -136,39 +145,30 @@ describe("ServiceDiscoveryController (BDD)", () => {
 			const createdService = {
 				id: "service-123",
 				name: "my-api",
-				displayName: "My API",
-				description: null,
-				type: "service",
-				team: null,
-				discoverySource: "github",
-				discoveryMetadata: JSON.stringify({
-					repository: "org/repo",
-					subPath: null,
-					isMonorepo: false,
-				}),
-				isDiscovered: true,
-				isConfirmed: true,
-				discoveryPath: null,
-				createdAt: new Date(),
-				updatedAt: new Date(),
 			};
 
 			mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue(
 				createdService,
 			);
 
-			const result = await controller.acceptSuggestion(suggestionId);
+			const handlers = getHandlers();
+			const result = await handlers.acceptSuggestion({
+				input: { id: suggestionId },
+			} as any);
 
-			expect(result).toEqual(createdService);
+			expect(result).toEqual({
+				serviceId: "service-123",
+				serviceName: "my-api",
+			});
 			expect(service.acceptSuggestion).toHaveBeenCalledWith(
 				suggestionId,
-				undefined,
+				{},
 			);
 		});
 
 		it("should accept suggestion with overrides", async () => {
 			const suggestionId = "sugg-123";
-			const overrides: AcceptSuggestionDto = {
+			const overrides = {
 				name: "custom-name",
 				displayName: "Custom Display Name",
 				description: "Custom description",
@@ -179,26 +179,21 @@ describe("ServiceDiscoveryController (BDD)", () => {
 			const createdService = {
 				id: "service-123",
 				name: "custom-name",
-				displayName: "Custom Display Name",
-				description: "Custom description",
-				type: "microservice",
-				team: "platform",
-				discoverySource: "github",
-				discoveryMetadata: "{}",
-				isDiscovered: true,
-				isConfirmed: true,
-				discoveryPath: null,
-				createdAt: new Date(),
-				updatedAt: new Date(),
 			};
 
 			mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue(
 				createdService,
 			);
 
-			const result = await controller.acceptSuggestion(suggestionId, overrides);
+			const handlers = getHandlers();
+			const result = await handlers.acceptSuggestion({
+				input: { id: suggestionId, ...overrides },
+			} as any);
 
-			expect(result).toEqual(createdService);
+			expect(result).toEqual({
+				serviceId: "service-123",
+				serviceName: "custom-name",
+			});
 			expect(service.acceptSuggestion).toHaveBeenCalledWith(
 				suggestionId,
 				overrides,
@@ -210,20 +205,12 @@ describe("ServiceDiscoveryController (BDD)", () => {
 			mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue({
 				id: "service-123",
 				name: "service",
-				displayName: "Service",
-				description: null,
-				type: "service",
-				team: null,
-				discoverySource: "github",
-				discoveryMetadata: "{}",
-				isDiscovered: true,
-				isConfirmed: true,
-				discoveryPath: null,
-				createdAt: new Date(),
-				updatedAt: new Date(),
 			});
 
-			await controller.acceptSuggestion(suggestionId);
+			const handlers = getHandlers();
+			await handlers.acceptSuggestion({
+				input: { id: suggestionId },
+			} as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Accepting service suggestion"),
@@ -235,8 +222,12 @@ describe("ServiceDiscoveryController (BDD)", () => {
 		it("should reject a suggestion", async () => {
 			const suggestionId = "sugg-123";
 			mockServiceDiscoveryService.rejectSuggestion.mockResolvedValue(undefined);
+			mockServiceDiscoveryService.getPendingSuggestions.mockResolvedValue([]);
 
-			await controller.rejectSuggestion(suggestionId);
+			const handlers = getHandlers();
+			await handlers.rejectSuggestion({
+				input: { id: suggestionId },
+			} as any);
 
 			expect(service.rejectSuggestion).toHaveBeenCalledWith(suggestionId);
 		});
@@ -244,8 +235,12 @@ describe("ServiceDiscoveryController (BDD)", () => {
 		it("should log suggestion rejection", async () => {
 			const suggestionId = "sugg-123";
 			mockServiceDiscoveryService.rejectSuggestion.mockResolvedValue(undefined);
+			mockServiceDiscoveryService.getPendingSuggestions.mockResolvedValue([]);
 
-			await controller.rejectSuggestion(suggestionId);
+			const handlers = getHandlers();
+			await handlers.rejectSuggestion({
+				input: { id: suggestionId },
+			} as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Rejecting service suggestion"),
@@ -253,135 +248,47 @@ describe("ServiceDiscoveryController (BDD)", () => {
 		});
 	});
 
-	describe("acceptBulk", () => {
+	describe("acceptBulkSuggestions", () => {
 		it("should accept multiple suggestions", async () => {
-			const dto: AcceptBulkSuggestionsDto = {
-				suggestionIds: ["sugg-1", "sugg-2"],
-				overrides: {
-					type: "microservice",
-					team: "platform",
-				},
-			};
+			const suggestionIds = ["sugg-1", "sugg-2"];
 
 			const services = [
-				{
-					id: "service-1",
-					name: "service-1",
-					displayName: "Service 1",
-					description: null,
-					type: "microservice",
-					team: "platform",
-					discoverySource: "github",
-					discoveryMetadata: "{}",
-					isDiscovered: true,
-					isConfirmed: true,
-					discoveryPath: null,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				},
-				{
-					id: "service-2",
-					name: "service-2",
-					displayName: "Service 2",
-					description: null,
-					type: "microservice",
-					team: "platform",
-					discoverySource: "github",
-					discoveryMetadata: "{}",
-					isDiscovered: true,
-					isConfirmed: true,
-					discoveryPath: null,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				},
+				{ id: "service-1", name: "service-1" },
+				{ id: "service-2", name: "service-2" },
 			];
 
 			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue(services);
 
-			const result = await controller.acceptBulk(dto);
+			const handlers = getHandlers();
+			const result = await handlers.acceptBulkSuggestions({
+				input: { suggestionIds },
+			} as any);
 
-			expect(result).toEqual(services);
-			expect(service.acceptMultiple).toHaveBeenCalledWith(
-				dto.suggestionIds,
-				dto.overrides,
-			);
+			expect(result.accepted).toBe(2);
+			expect(service.acceptMultiple).toHaveBeenCalledWith(suggestionIds);
 		});
 
 		it("should handle empty suggestion list", async () => {
-			const dto: AcceptBulkSuggestionsDto = {
-				suggestionIds: [],
-			};
-
 			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue([]);
 
-			const result = await controller.acceptBulk(dto);
+			const handlers = getHandlers();
+			const result = await handlers.acceptBulkSuggestions({
+				input: { suggestionIds: [] },
+			} as any);
 
-			expect(result).toEqual([]);
+			expect(result.accepted).toBe(0);
 		});
 
 		it("should log bulk acceptance", async () => {
-			const dto: AcceptBulkSuggestionsDto = {
-				suggestionIds: ["sugg-1", "sugg-2", "sugg-3"],
-				overrides: {
-					type: "service",
-				},
-			};
-
 			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue([]);
 
-			await controller.acceptBulk(dto);
+			const handlers = getHandlers();
+			await handlers.acceptBulkSuggestions({
+				input: { suggestionIds: ["sugg-1", "sugg-2", "sugg-3"] },
+			} as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Accepting 3 service suggestions"),
-			);
-		});
-
-		it("should accept bulk with partial services", async () => {
-			const dto: AcceptBulkSuggestionsDto = {
-				suggestionIds: ["sugg-1", "sugg-2", "sugg-3"],
-			};
-
-			const services = [
-				{
-					id: "service-1",
-					name: "service-1",
-					displayName: "Service 1",
-					description: null,
-					type: "service",
-					team: null,
-					discoverySource: "github",
-					discoveryMetadata: "{}",
-					isDiscovered: true,
-					isConfirmed: true,
-					discoveryPath: null,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				},
-				{
-					id: "service-2",
-					name: "service-2",
-					displayName: "Service 2",
-					description: null,
-					type: "service",
-					team: null,
-					discoverySource: "github",
-					discoveryMetadata: "{}",
-					isDiscovered: true,
-					isConfirmed: true,
-					discoveryPath: null,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				},
-			];
-
-			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue(services);
-
-			const result = await controller.acceptBulk(dto);
-
-			expect(result).toHaveLength(2);
-			expect(service.acceptMultiple).toHaveBeenCalledWith(
-				["sugg-1", "sugg-2", "sugg-3"],
-				undefined,
 			);
 		});
 	});

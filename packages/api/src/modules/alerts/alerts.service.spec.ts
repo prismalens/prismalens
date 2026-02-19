@@ -41,19 +41,23 @@ describe("AlertsService (BDD)", () => {
 		it("should create alert with provided data", async () => {
 			const createDto: CreateAlertDto = {
 				source: "prometheus",
-				externalId: "ext-123",
+				sourceAlertId: "ext-123",
 				title: "Database issue",
 				description: "Slow query",
-				severity: "high",
+				severity: Severity.HIGH,
 				sourceUrl: "https://prometheus.io",
 				labels: { env: "prod" },
 			};
 
 			const expectedAlert = AlertFactory.create({
-				...createDto,
+				source: createDto.source,
+				externalId: createDto.sourceAlertId,
+				title: createDto.title,
+				description: createDto.description,
+				severity: createDto.severity as unknown as string,
 				status: "triggered",
-				dedupKey: expect.any(String),
-				fingerprint: expect.any(String),
+				dedupKey: expect.any(String) as unknown as string,
+				fingerprint: expect.any(String) as unknown as string,
 			});
 
 			// First call to findUnique for dedup check returns null (no duplicate)
@@ -97,7 +101,7 @@ describe("AlertsService (BDD)", () => {
 			const createDto: CreateAlertDto = {
 				source: "prometheus",
 				title: "Same alert",
-				severity: "high",
+				severity: Severity.HIGH,
 			};
 
 			const existingAlert = AlertFactory.create({

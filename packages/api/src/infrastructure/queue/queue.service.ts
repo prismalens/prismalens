@@ -300,19 +300,20 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				// Run with semaphore control — awaited for backpressure
 				await this.executeWithSemaphore(data, input, jobId);
 			} else {
-				// No semaphore: fire-and-forget execution
-				this.executor.execute(input).then(
-					(result: InvestigationResult) => {
+				// No semaphore: fire-and-forget execution with error boundary
+				void (async () => {
+					try {
+						const result = await this.executor!.execute(input);
 						this.logger.log(
 							`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
 						);
-						this.persistResults(data, result);
-					},
-					(error: Error) => {
-						this.logger.error(`Investigation ${jobId} failed: ${error.message}`);
-						this.persistFailure(data, error);
-					},
-				);
+						await this.persistResults(data, result);
+					} catch (error) {
+						const err = error as Error;
+						this.logger.error(`Investigation ${jobId} failed: ${err.message}`);
+						await this.persistFailure(data, err);
+					}
+				})();
 			}
 
 			this.logger.log(`Investigation ${jobId} started successfully`);

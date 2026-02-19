@@ -6,9 +6,10 @@ import {
 	type DataProvider,
 	type IncidentContext,
 	type IntegrationContext,
-	type InvestigationConfig,
 	InvestigationExecutor,
+	type InvestigationConfig,
 	type InvestigationInput,
+	type Recommendation,
 	type SimilarIncidentMatch,
 	type SimilarIncidentRequest,
 	type SimilarIncidentResponse,
@@ -19,6 +20,7 @@ import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { Job } from "bullmq";
 import { config as workerConfig } from "./config.js";
 import { api } from "./orpc-client.js";
+import { Secret } from "./secret.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
 // =============================================================================
@@ -55,8 +57,9 @@ class WorkerDataProvider implements DataProvider {
 
 			// Filter by specific IDs if provided
 			let filteredAlerts = alerts;
-			if (request.alertIds && request.alertIds.length > 0) {
-				const idSet = new Set(request.alertIds);
+			const alertIds = (request as AlertFetchRequest & { alertIds?: string[] }).alertIds;
+			if (alertIds && alertIds.length > 0) {
+				const idSet = new Set(alertIds);
 				filteredAlerts = alerts.filter((a: { id: string }) => idSet.has(a.id));
 			}
 
@@ -128,7 +131,7 @@ class WorkerDataProvider implements DataProvider {
 			repository: alert.repository as string | undefined,
 			labels: alert.labels as Record<string, string> | undefined,
 			tags: alert.tags as string[] | undefined,
-			triggeredAt: alert.triggeredAt as string | undefined,
+			triggeredAt: (alert.triggeredAt as string) || new Date().toISOString(),
 			rawPayload: alert.rawPayload as Record<string, unknown> | undefined,
 		};
 	}
@@ -232,10 +235,11 @@ async function fetchIntegrationCredentials(
 	}>;
 
 	return data.map((item) => ({
+		id: item.connectionId,
+		name: item.type,
 		type: item.type,
-		connectionId: item.connectionId,
-		credentials: item.credentials,
-		config: item.config,
+		enabled: true,
+		config: { ...item.config, credentials: new Secret(item.credentials) },
 	}));
 }
 
@@ -324,7 +328,7 @@ async function processJobInternal(
 			status: result.success ? "completed" : "failed",
 			summary: result.findings.summary,
 			rootCause: result.findings.rootCause,
-			rootCauseCategory: agentResult.rootCauseCategory,
+			rootCauseCategory: agentResult.rootCauseCategory ?? undefined,
 			confidence: result.findings.confidence,
 			dataQuality: result.findings.dataQuality,
 			agentProgression: result.findings.agentProgression,
@@ -366,7 +370,7 @@ async function processJobInternal(
 			// Add failure timeline entry
 			await api.timeline.create({
 				incidentId: data.incidentId,
-				type: "investigation_failed",
+				type: "investigation_completed",
 				title: "AI Investigation Failed",
 				description: errorMessage,
 				source: "ai_worker",
@@ -430,29 +434,19 @@ async function buildExecutorInput(jobData: InvestigationJobData): Promise<Invest
 		jobData.connectionIds ?? [],
 	);
 
-	// Build LLM config from environment
-	// TODO: Make this configurable via settings
-	const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
-	if (!apiKey) {
-		throw new Error(
-			"LLM API key not configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.",
-		);
-	}
-
-	const llmConfig: InvestigationConfig["llmConfig"] = {
-		provider: (process.env.LLM_PROVIDER as "anthropic" | "openai" | "ollama") || "anthropic",
-		model: process.env.LLM_MODEL || "claude-sonnet-4-20250514",
-		apiKey,
+	// Build LLM config from environment — API key resolved by LLM factory from process.env
+	const config: InvestigationConfig = {
+		llm: {
+			provider: (process.env.LLM_PROVIDER as "anthropic" | "openai" | "ollama") || "anthropic",
+			model: process.env.LLM_MODEL || "claude-sonnet-4-20250514",
+		},
 	};
 
 	return {
 		investigationId: jobData.investigationId,
 		incidentId: jobData.incidentId,
-		incident: incidentData,
-		priority: jobData.priority,
-		alerts,
+		config,
 		integrations,
-		llmConfig,
 	};
 }
 
@@ -478,13 +472,13 @@ function buildResult(
 			agentProgression: {}, // TODO: Add to AgentResult if needed
 			dataQuality: {}, // TODO: Add to AgentResult if needed
 		},
-		recommendations: agentResult.recommendations.map((rec) => ({
+		recommendations: agentResult.recommendations.map((rec: Recommendation) => ({
 			title: rec.title,
 			description: rec.description,
 			priority: rec.priority,
-			category: rec.category,
-			urgency: rec.urgency,
-			actionable: rec.actionable,
+			category: rec.category ?? "investigation",
+			urgency: rec.type,
+			actionable: rec.actionable ?? true,
 			estimatedEffort: rec.estimatedEffort,
 		})),
 		agentExecutions: [], // Agent executions are tracked internally by the executor

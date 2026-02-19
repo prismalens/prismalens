@@ -48,6 +48,15 @@ export const globalSchema = z.object({
 		),
 
 	// CORS / Security
+	PRISMALENS_WEBHOOK_SECRET: z
+		.string()
+		.min(16, "Webhook secret must be at least 16 characters")
+		.optional()
+		.describe(
+			"Optional shared secret for webhook HMAC-SHA256 signature verification. " +
+				"When set, incoming webhooks must include a valid X-Hub-Signature-256 header.",
+		),
+
 	PRISMALENS_CORS_ORIGIN: z
 		.string()
 		.optional()
@@ -72,4 +81,4 @@ export const globalSchema = z.object({
 		),
 });
 
-export type GlobalConfig = z.infer<typeof globalSchema>;
+export type ServerConfig = z.infer<typeof globalSchema>;

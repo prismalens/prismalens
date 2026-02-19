@@ -3,10 +3,15 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import type { AgentExecution, Investigation, Recommendation, ToolExecution } from "@prismalens/database";
 import { investigationsContract } from "@prismalens/contracts";
+import type { WorkflowStatus, RootCauseCategory, AgentName, AgentType as ContractAgentType, ExecutionStatus, ToolExecutionStatus, ToolCategory } from "@prismalens/contracts";
 import { QueueService } from "../../infrastructure/queue/queue.service.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
+import type { WorkflowStatus as DtoWorkflowStatus, RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
+import type { AgentExecutionDto } from "../../infrastructure/internal/dto/agent-execution.dto.js";
+import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
 import { type InvestigationWithRelations, InvestigationsService } from "./investigations.service.js";
 import { ProgressService } from "./progress.service.js";
+import { safeParseJsonObject, safeParseJsonArray } from "../../shared/utils/json-utils.js";
 
 @Controller()
 @UseGuards(ThrottlerGuard)
@@ -64,16 +69,14 @@ export class InvestigationsController {
 					const jobId = `investigation-${input.id}`;
 					const jobStatus = await this.queueService.getJobStatus(jobId);
 
-					if (!investigation && !jobStatus) {
+					if (!investigation) {
 						throw new ORPCError("NOT_FOUND", {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
 
 					return {
-						investigation: investigation
-							? this.serializeInvestigationWithRelations(investigation)
-							: null,
+						investigation: this.serializeInvestigation(investigation),
 						job: jobStatus
 							? {
 									id: jobId,
@@ -163,20 +166,20 @@ export class InvestigationsController {
 					// Map input to InternalInvestigationResultDto structure
 					// Note: The input is already validated by Zod schema in contract
 					const resultDto: InternalInvestigationResultDto = {
-						status: input.status,
+						status: input.status as DtoWorkflowStatus.COMPLETED | DtoWorkflowStatus.FAILED,
 						incidentId: investigation.incidentId,
 						summary: input.summary,
 						rootCause: input.rootCause,
-						rootCauseCategory: input.rootCauseCategory,
+						rootCauseCategory: input.rootCauseCategory as DtoRootCauseCategory | undefined,
 						confidence: input.confidence,
-						dataQuality: input.dataQuality,
-						agentProgression: input.agentProgression,
+						dataQuality: input.dataQuality as Record<string, number> | undefined,
+						agentProgression: input.agentProgression as Record<string, boolean> | undefined,
 						dataSourcesUsed: input.dataSourcesUsed,
 						analysisMethod: input.analysisMethod,
 						rawOutput: input.rawOutput,
 						error: input.error,
-						agentExecutions: input.agentExecutions,
-						recommendations: input.recommendations,
+						agentExecutions: input.agentExecutions as AgentExecutionDto[] | undefined,
+						recommendations: input.recommendations as RecommendationDto[] | undefined,
 					};
 
 					const updated =
@@ -208,62 +211,74 @@ export class InvestigationsController {
 
 	private serializeInvestigation(investigation: Investigation) {
 		return {
-			...investigation,
-			summary: investigation.summary ?? null,
-			rootCause: investigation.rootCause ?? null,
-			impact: (investigation as Record<string, unknown>).impact ?? null,
-			findings: investigation.findings
-				? JSON.parse(investigation.findings as string)
-				: null,
+			id: investigation.id,
+			incidentId: investigation.incidentId,
+			status: investigation.status as WorkflowStatus,
 			startedAt: investigation.startedAt?.toISOString() ?? null,
 			completedAt: investigation.completedAt?.toISOString() ?? null,
-			createdAt: investigation.createdAt?.toISOString(),
-			updatedAt: investigation.updatedAt?.toISOString(),
+			summary: investigation.summary ?? null,
+			rootCause: investigation.rootCause ?? null,
+			rootCauseCategory: (investigation.rootCauseCategory as RootCauseCategory | null) ?? null,
+			confidence: investigation.confidence ?? null,
+			dataQuality: safeParseJsonObject(investigation.dataQuality) ?? null,
+			analysisMethod: investigation.analysisMethod ?? null,
+			dataSourcesUsed: safeParseJsonArray(investigation.dataSourcesUsed) ?? null,
+			rawOutput: safeParseJsonObject(investigation.rawOutput) ?? null,
+			error: investigation.error ?? null,
+			agentProgression: safeParseJsonObject(investigation.agentProgression) ?? null,
+			createdAt: investigation.createdAt.toISOString(),
+			updatedAt: investigation.updatedAt.toISOString(),
 		};
 	}
 
 	private serializeInvestigationWithRelations(investigation: InvestigationWithRelations) {
-		const serialized = this.serializeInvestigation(investigation);
+		const base = this.serializeInvestigation(investigation);
 
-		if (investigation.incident) {
-			serialized.incident = {
-				id: investigation.incident.id,
-				number: investigation.incident.number,
-				title: investigation.incident.title,
-				status: investigation.incident.status,
-				severity: investigation.incident.severity,
-			};
-		}
-
-		if (investigation.recommendations) {
-			serialized.recommendations = investigation.recommendations.map(
-				(r: Recommendation) => ({
-					id: r.id,
-					title: r.title,
-					priority: r.priority,
-					status: r.status,
-				}),
-			);
-		}
-
-		return serialized;
+		return {
+			...base,
+			agentExecutions: investigation.agentExecutions
+				? investigation.agentExecutions.map((e) => this.serializeAgentExecution(e))
+				: undefined,
+			recommendations: investigation.recommendations
+				? investigation.recommendations.map((r: Recommendation) => ({
+						id: r.id,
+						title: r.title,
+						priority: r.priority,
+						status: r.status,
+					}))
+				: undefined,
+		};
 	}
 
 	private serializeAgentExecution(execution: AgentExecution & { toolExecutions: ToolExecution[] }) {
 		return {
-			...execution,
-			input: execution.input ? JSON.parse(execution.input) : null,
-			output: execution.output ? JSON.parse(execution.output) : null,
-			error: execution.error ?? null,
-			startedAt: execution.startedAt?.toISOString(),
+			id: execution.id,
+			investigationId: execution.investigationId,
+			agentName: execution.agentName as AgentName,
+			agentType: execution.agentType as ContractAgentType,
+			status: execution.status as ExecutionStatus,
+			startedAt: execution.startedAt?.toISOString() ?? null,
 			completedAt: execution.completedAt?.toISOString() ?? null,
-			tools: execution.toolExecutions?.map((t: ToolExecution) => ({
-				...t,
-				input: t.input ? JSON.parse(t.input) : null,
-				output: t.output ? JSON.parse(t.output) : null,
+			executionTimeMs: execution.executionTimeMs ?? null,
+			output: safeParseJsonObject(execution.output) ?? null,
+			confidence: execution.confidence ?? null,
+			inputTokens: execution.inputTokens ?? null,
+			outputTokens: execution.outputTokens ?? null,
+			error: execution.error ?? null,
+			createdAt: execution.createdAt.toISOString(),
+			toolExecutions: execution.toolExecutions?.map((t: ToolExecution) => ({
+				id: t.id,
+				agentExecutionId: t.agentExecutionId,
+				toolName: t.toolName,
+				toolCategory: (t.toolCategory as ToolCategory | null) ?? null,
+				arguments: safeParseJsonObject(t.arguments) ?? null,
+				result: safeParseJsonObject(t.result) ?? null,
+				status: t.status as ToolExecutionStatus,
+				executionTimeMs: t.executionTimeMs ?? null,
+				confidence: t.confidence ?? null,
+				dataQuality: t.dataQuality ?? null,
 				error: t.error ?? null,
-				startedAt: t.startedAt?.toISOString(),
-				completedAt: t.completedAt?.toISOString() ?? null,
+				executedAt: t.executedAt.toISOString(),
 			})),
 		};
 	}

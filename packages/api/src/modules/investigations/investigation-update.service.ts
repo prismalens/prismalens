@@ -7,9 +7,9 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
-import { PrismaService } from "../../database/prisma.service";
-import { InvestigationTriggerService } from "./investigation-trigger.service";
-import type { Alert, Incident, Investigation } from "@prisma/client";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { InvestigationTriggerService } from "./investigation-trigger.service.js";
+import type { Alert, Incident, Investigation } from "@prismalens/database";
 
 /**
  * Update strategy for new alerts during investigation

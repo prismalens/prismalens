@@ -5,7 +5,9 @@ import { ZodToJsonSchemaConverter } from '@orpc/zod'
 import { EnvironmentVariables } from '@prismalens/config'
 import { contract } from '@prismalens/contracts'
 import type { Response } from 'express'
+import { Public } from '../../core/auth/public.decorator.js'
 
+@Public()
 @Controller()
 export class OpenAPIController {
   private cachedSpec: object | null = null

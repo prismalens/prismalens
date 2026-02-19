@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '@prismalens/config';
+import { Public } from '../../../core/auth/public.decorator.js';
 import { OAuthService } from './oauth.service.js';
 import { IntegrationsService } from '../integrations.service.js';
 
@@ -44,6 +45,28 @@ export class OAuthController {
 
     // Default redirect URI to our callback endpoint
     const baseUrl = this.configService.get('PRISMALENS_PUBLIC_URL');
+
+    // Validate redirect_uri is same-origin when provided
+    if (redirectUri) {
+      if (!baseUrl) {
+        throw new BadRequestException(
+          'PRISMALENS_PUBLIC_URL must be configured to use custom redirect_uri',
+        );
+      }
+      try {
+        const allowed = new URL(baseUrl);
+        const requested = new URL(redirectUri);
+        if (requested.origin !== allowed.origin) {
+          throw new BadRequestException(
+            'redirect_uri must match the application origin',
+          );
+        }
+      } catch (e) {
+        if (e instanceof BadRequestException) throw e;
+        throw new BadRequestException('Invalid redirect_uri');
+      }
+    }
+
     const callbackUri = redirectUri || `${baseUrl}/api/integrations/oauth/${provider}/callback`;
 
     const authUrl = await this.oauthService.getAuthorizationUrl(
@@ -70,6 +93,7 @@ export class OAuthController {
    *
    * Redirects to frontend settings page with result query params.
    */
+  @Public()
   @Get(':provider/callback')
   @Redirect()
   async callback(
@@ -85,21 +109,22 @@ export class OAuthController {
 
     let frontendRedirect = defaultRedirect;
 
-    // Try to extract redirect URI from state
+    // Retrieve redirect URI from trusted server-side state store (not from untrusted base64)
     if (state) {
-      try {
-        const stateData = JSON.parse(Buffer.from(state, 'base64url').toString());
-        if (stateData.redirectUri) {
-          // The redirectUri in state points to our callback, but we stored
-          // the original frontend URL - extract the origin
-          const parsedUri = new URL(stateData.redirectUri);
-          // If the redirect_uri was the frontend URL (not our callback), use it
-          if (!parsedUri.pathname.includes('/api/integrations/oauth/')) {
-            frontendRedirect = stateData.redirectUri;
+      const storedRedirectUri = this.oauthService.getStoredRedirectUri(state);
+      if (storedRedirectUri && !storedRedirectUri.includes('/api/integrations/oauth/')) {
+        // Defense-in-depth: validate origin matches our app
+        try {
+          if (baseUrl) {
+            const allowed = new URL(baseUrl);
+            const requested = new URL(storedRedirectUri);
+            if (requested.origin === allowed.origin) {
+              frontendRedirect = storedRedirectUri;
+            }
           }
+        } catch {
+          // Invalid URL, use default redirect
         }
-      } catch {
-        // Invalid state, use default redirect
       }
     }
 

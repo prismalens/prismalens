@@ -13,8 +13,11 @@ import {
 	HttpCode,
 	HttpStatus,
 	Post,
+	UseGuards,
 } from "@nestjs/common";
 import { LicenseService, type LicenseState } from "./license.service.js";
+import { Public } from "../auth/public.decorator.js";
+import { InternalGuard } from "../../infrastructure/internal/guards/internal.guard.js";
 
 // =============================================================================
 // DTOs
@@ -112,8 +115,10 @@ export class LicenseController {
 	 * Internal endpoint for worker to get license state
 	 * GET /api/license/internal
 	 *
-	 * Note: This should be protected by internal auth in production
+	 * @Public() skips AuthGuard — InternalGuard handles auth via X-Internal-Secret.
 	 */
+	@Public()
+	@UseGuards(InternalGuard)
 	@Get("internal")
 	async getLicenseStateInternal(): Promise<{
 		tier: string;

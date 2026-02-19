@@ -15,8 +15,9 @@
  * - `llmProviderIdSchema` - Zod schema for provider IDs
  * - Provider-specific config schemas
  *
- * ### Browser-Safe (`@prismalens/config/browser`)
- * - Subset safe for frontend use (no Node.js dependencies)
+ * ### Agent Identity (`@prismalens/config/agents`)
+ * - `INVESTIGATION_AGENTS` - Agent identity registry
+ * - `agentIdSchema` - Zod schema for agent IDs
  *
  * @example
  * ```typescript
@@ -26,6 +27,9 @@
  *
  * // LLM metadata
  * import { LLM_PROVIDERS } from '@prismalens/config/llm';
+ *
+ * // Agent identity
+ * import { agentIdSchema } from '@prismalens/config/agents';
  * ```
  */
 
@@ -39,28 +43,31 @@ import {
 	loggingSchema,
 	queueSchema,
 	skillsSchema,
-} from "./schemas/index.js";
+} from "./env/index.js";
 import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
 import {
 	generateEncryptionKey,
 	getEncryptionKeyPath,
 	getOrCreateEncryptionKey,
+	getOrCreateInternalSecret,
+	getOrCreateAuthSecret,
 	isValidEncryptionKey,
 } from "./utils/encryption-key.js";
 
-export * from "./env.js";
-// Re-export all schemas
-export * from "./schemas/index.js";
+// Re-export env readers and all env schemas
+export * from "./env/index.js";
 
 // Re-export app data utilities
 export { getAppDataDir, ensureAppDataDir };
 
-// Re-export encryption key utilities
+// Re-export encryption key and secret utilities
 export {
 	generateEncryptionKey,
 	getEncryptionKeyPath,
 	getOrCreateEncryptionKey,
+	getOrCreateInternalSecret,
+	getOrCreateAuthSecret,
 	isValidEncryptionKey,
 };
 
@@ -97,12 +104,18 @@ let _config: GlobalConfig | null = null;
  */
 export function getConfig(): GlobalConfig {
 	if (!_config) {
-		// Auto-generate encryption key if not set (following n8n's _FILE suffix pattern)
+		// Resolve secrets before Zod validation (auto-generate and persist if not set)
 		if (
 			!process.env.PRISMALENS_ENCRYPTION_KEY &&
 			!process.env.PRISMALENS_ENCRYPTION_KEY_FILE
 		) {
 			process.env.PRISMALENS_ENCRYPTION_KEY = getOrCreateEncryptionKey();
+		}
+		if (!process.env.PRISMALENS_INTERNAL_SECRET) {
+			process.env.PRISMALENS_INTERNAL_SECRET = getOrCreateInternalSecret();
+		}
+		if (!process.env.PRISMALENS_AUTH_SECRET) {
+			process.env.PRISMALENS_AUTH_SECRET = getOrCreateAuthSecret();
 		}
 
 		const result = baseConfigSchema

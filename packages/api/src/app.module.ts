@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
-import { REQUEST } from "@nestjs/core";
+import { APP_GUARD, REQUEST } from "@nestjs/core";
 // oRPC imports
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
 import { experimental_RethrowHandlerPlugin as RethrowHandlerPlugin } from "@orpc/server/plugins";
@@ -23,7 +23,7 @@ declare module "@orpc/nest" {
 	}
 }
 
-import { AuthModule } from "./core/auth/auth.module.js";
+import { AuthModule, AuthGuard } from "./core/auth/index.js";
 import { LicenseModule } from "./core/license/license.module.js";
 // Core modules
 import { PrismaModule } from "./core/prisma/prisma.module.js";
@@ -142,6 +142,9 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		OpenAPIModule, // OpenAPI spec and documentation
 	],
 	controllers: [AppController],
+	providers: [
+		{ provide: APP_GUARD, useClass: AuthGuard },
+	],
 })
 export class AppModule implements NestModule {
 	configure(consumer: MiddlewareConsumer) {

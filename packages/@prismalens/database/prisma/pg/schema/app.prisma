@@ -274,6 +274,7 @@ enum SettingType {
   number // Numeric value
   boolean // Boolean value
   json // Complex JSON object
+  encrypted // Encrypted value (AES-256-GCM)
 }
 
 /// Setting categories
@@ -282,6 +283,7 @@ enum SettingCategory {
   correlation // Correlation settings
   ai // AI/LLM settings
   notifications // Notification settings
+  setup // Setup wizard settings
 }
 
 /// Investigation trigger types

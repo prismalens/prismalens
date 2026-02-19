@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/browser";
+import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import {
 	AlertCircle,
 	ArrowRight,

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ModelMetadata } from "@prismalens/contracts";
-import type { LLMProviderId } from "@prismalens/config/browser";
+import type { LLMProviderId } from "@prismalens/config/llm";
 import {
 	AlertCircle,
 	Check,

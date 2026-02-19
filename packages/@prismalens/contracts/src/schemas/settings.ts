@@ -8,7 +8,7 @@ import {
 import {
 	agentIdSchema,
 	type AgentId as AgentIdType,
-} from "@prismalens/agents/browser";
+} from "@prismalens/config/agents";
 import { z } from "zod";
 
 // =============================================================================

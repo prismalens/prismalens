@@ -29,19 +29,21 @@ export const deploymentSchema = z.object({
 		),
 	PRISMALENS_INTERNAL_SECRET: z
 		.string()
-		.default("dev-secret-replace-in-prod")
+		.min(32, "PRISMALENS_INTERNAL_SECRET must be at least 32 characters when set")
+		.optional()
 		.describe(
 			"Shared secret for internal API communication. " +
-				"Must be at least 32 characters in production (PRISMALENS_MODE=queue).",
+				"Auto-generated and persisted to ~/.prismalens/ if not set.",
 		),
 
 	// Authentication (Better Auth)
-	BETTER_AUTH_SECRET: z
+	PRISMALENS_AUTH_SECRET: z
 		.string()
-		.min(32)
-		.default("dev-secret-replace-in-production-min-32-chars")
+		.min(32, "PRISMALENS_AUTH_SECRET must be at least 32 characters when set")
+		.optional()
 		.describe(
-			"Secret key for Better Auth session signing. Generate with: openssl rand -base64 32",
+			"Secret for Better Auth session signing. " +
+				"Auto-generated and persisted to ~/.prismalens/ if not set.",
 		),
 
 	// SMTP Configuration (Optional - for email invitations)

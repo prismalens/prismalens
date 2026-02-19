@@ -1,77 +1,77 @@
-import { Controller } from "@nestjs/common";
-import { Implement, implement } from "@orpc/nest";
+import { Controller, UseGuards } from "@nestjs/common";
+import { ThrottlerGuard } from "@nestjs/throttler";
+import { Implement, implement, ORPCError } from "@orpc/nest";
 import { settingsContract } from "@prismalens/contracts";
+import type { ModelsListResponse } from "@prismalens/contracts/schemas";
+import { LlmSettingsService } from "./llm-settings.service.js";
+import { McpSettingsService } from "./mcp-settings.service.js";
 import { SettingsService } from "./settings.service.js";
 
+@UseGuards(ThrottlerGuard)
 @Controller()
 export class SettingsController {
-	constructor(private readonly settingsService: SettingsService) {}
+	constructor(
+		private readonly settingsService: SettingsService,
+		private readonly llmSettingsService: LlmSettingsService,
+		private readonly mcpSettingsService: McpSettingsService,
+	) {}
 
 	/**
 	 * Implement the settings contract for LLM configuration
-	 * All endpoints are type-safe with input validation via Zod
 	 */
 	@Implement(settingsContract.llm)
 	llm() {
 		return {
-			// GET /settings/llm/env-status - Get env var status for all providers
 			getEnvStatus: implement(settingsContract.llm.getEnvStatus).handler(
 				async () => {
-					return this.settingsService.getLlmEnvStatus();
+					return this.llmSettingsService.getLlmEnvStatus();
 				},
 			),
 
-			// GET /settings/llm/config - Get comprehensive LLM settings
 			getSettings: implement(settingsContract.llm.getSettings).handler(
 				async () => {
-					return this.settingsService.getLlmSettings();
+					return this.llmSettingsService.getLlmSettings();
 				},
 			),
 
-			// PATCH /settings/llm/config - Update LLM settings
 			updateSettings: implement(settingsContract.llm.updateSettings).handler(
 				async ({ input }) => {
-					return this.settingsService.updateLlmSettings(input);
+					return this.llmSettingsService.updateLlmSettings(input);
 				},
 			),
 
-			// GET /settings/llm/models - Get available models from registry
 			getModels: implement(settingsContract.llm.getModels).handler(
 				async ({ input }) => {
-					return this.settingsService.getAvailableModels(input.provider);
+					return this.llmSettingsService.getAvailableModels(input.provider) as Promise<ModelsListResponse>;
 				},
 			),
 
-			// POST /settings/llm/test-connection - Test connection using env vars
 			testConnection: implement(settingsContract.llm.testConnection).handler(
 				async ({ input }) => {
-					return this.settingsService.testLlmConnectionWithEnv(
+					return this.llmSettingsService.testLlmConnectionWithEnv(
 						input.provider,
 						input.model,
 					);
 				},
 			),
 
-			// POST /settings/llm/credentials - Save encrypted API key
 			saveCredential: implement(settingsContract.llm.saveCredential).handler(
 				async ({ input }) => {
-					await this.settingsService.saveLlmCredential(input.provider, input.apiKey);
+					await this.llmSettingsService.saveLlmCredential(input.provider, input.apiKey);
 					return { success: true };
 				},
 			),
 
-			// DELETE /settings/llm/credentials - Delete API key
 			deleteCredential: implement(settingsContract.llm.deleteCredential).handler(
 				async ({ input }) => {
-					await this.settingsService.deleteLlmCredential(input.provider);
+					await this.llmSettingsService.deleteLlmCredential(input.provider);
 					return { success: true };
 				},
 			),
 
-			// GET /settings/llm/credential-status - Get credential status
 			getCredentialStatus: implement(settingsContract.llm.getCredentialStatus).handler(
 				async () => {
-					const providers = await this.settingsService.getLlmCredentialStatus();
+					const providers = await this.llmSettingsService.getLlmCredentialStatus();
 					return { providers };
 				},
 			),
@@ -84,14 +84,12 @@ export class SettingsController {
 	@Implement(settingsContract.investigation)
 	investigation() {
 		return {
-			// GET /settings/investigation/policies
 			getPolicies: implement(
 				settingsContract.investigation.getPolicies,
 			).handler(async () => {
 				return this.settingsService.getInvestigationPolicies();
 			}),
 
-			// PUT /settings/investigation/policies/:tier
 			updatePolicy: implement(
 				settingsContract.investigation.updatePolicy,
 			).handler(async ({ input }) => {
@@ -99,14 +97,12 @@ export class SettingsController {
 				return this.settingsService.updateInvestigationPolicy(tier, policy);
 			}),
 
-			// GET /settings/investigation/limits
 			getLimits: implement(settingsContract.investigation.getLimits).handler(
 				async () => {
 					return this.settingsService.getInvestigationLimits();
 				},
 			),
 
-			// PUT /settings/investigation/limits
 			updateLimits: implement(
 				settingsContract.investigation.updateLimits,
 			).handler(async ({ input }) => {
@@ -121,16 +117,20 @@ export class SettingsController {
 	@Implement(settingsContract.danger)
 	danger() {
 		return {
-			// POST /settings/danger/reset-data
 			resetData: implement(settingsContract.danger.resetData).handler(
-				async () => {
+				async ({ input }) => {
+					if (input.confirmation !== "RESET") {
+						throw new ORPCError("BAD_REQUEST", { message: "Confirmation required" });
+					}
 					return this.settingsService.resetData();
 				},
 			),
 
-			// POST /settings/danger/factory-reset
 			factoryReset: implement(settingsContract.danger.factoryReset).handler(
-				async () => {
+				async ({ input }) => {
+					if (input.confirmation !== "FACTORY RESET") {
+						throw new ORPCError("BAD_REQUEST", { message: "Confirmation required" });
+					}
 					return this.settingsService.factoryReset();
 				},
 			),
@@ -143,39 +143,33 @@ export class SettingsController {
 	@Implement(settingsContract.mcp)
 	mcp() {
 		return {
-			// GET /settings/mcp - Get MCP settings
 			getSettings: implement(settingsContract.mcp.getSettings).handler(
 				async () => {
-					return this.settingsService.getMcpSettings();
+					return this.mcpSettingsService.getMcpSettings();
 				},
 			),
 
-			// PATCH /settings/mcp - Update MCP settings
 			updateSettings: implement(settingsContract.mcp.updateSettings).handler(
 				async ({ input }) => {
-					return this.settingsService.updateMcpSettings(input);
+					return this.mcpSettingsService.updateMcpSettings(input);
 				},
 			),
 
-			// GET /settings/mcp/status - Get MCP server status
 			getStatus: implement(settingsContract.mcp.getStatus).handler(async () => {
-				return this.settingsService.getMcpStatus();
+				return this.mcpSettingsService.getMcpStatus();
 			}),
 
-			// POST /settings/mcp/test - Test MCP connection
 			testConnection: implement(settingsContract.mcp.testConnection).handler(
 				async ({ input }) => {
-					return this.settingsService.testMcpConnection(input.serverId);
+					return this.mcpSettingsService.testMcpConnection(input.serverId);
 				},
 			),
 
-			// GET /settings/mcp/:serverId/status - Get specific server status
 			getServerStatus: implement(settingsContract.mcp.getServerStatus).handler(
 				async ({ input }) => {
-					return this.settingsService.getMcpServerStatus(input.serverId);
+					return this.mcpSettingsService.getMcpServerStatus(input.serverId);
 				},
 			),
 		};
 	}
-
 }

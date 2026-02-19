@@ -1,5 +1,12 @@
 import { randomBytes } from "crypto";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import {
+	closeSync,
+	constants,
+	existsSync,
+	openSync,
+	readFileSync,
+	writeSync,
+} from "fs";
 import { join } from "path";
 import { ensureAppDataDir, getAppDataDir } from "./app-data.js";
 
@@ -9,7 +16,7 @@ const KEY_LENGTH = 32; // 32 bytes = 64 hex chars
 /**
  * Get the path to the encryption key file.
  *
- * @returns Absolute path to ~/.prismalens/encryption-key
+ * @returns Absolute path to ~/.prismalens/PRISMALENS_ENCRYPTION_KEY_FILE
  */
 export function getEncryptionKeyPath(): string {
 	return join(getAppDataDir(), ENCRYPTION_KEY_FILE);
@@ -25,52 +32,86 @@ export function generateEncryptionKey(): string {
 }
 
 /**
+ * Generic secret resolver with file-based persistence.
+ *
+ * Priority order (following _FILE suffix convention for Docker/K8s):
+ * 1. Direct env var (e.g. PRISMALENS_AUTH_SECRET=...)
+ * 2. _FILE env var pointing to a file (e.g. PRISMALENS_AUTH_SECRET_FILE=/run/secrets/auth)
+ * 3. Auto-generated file in ~/.prismalens/ (created on first run)
+ *
+ * @param envName - Environment variable name (e.g. "PRISMALENS_AUTH_SECRET")
+ * @param defaultFileName - File name in ~/.prismalens/ for persistence
+ * @param length - Byte length for generated secret (default: 32 = 64 hex chars)
+ */
+function getOrCreateSecret(envName: string, defaultFileName: string, length = 32): string {
+	// 1. Direct env var
+	const direct = process.env[envName];
+	if (direct) return direct;
+
+	// 2. _FILE env var (Docker/K8s secrets pattern)
+	const filePathFromEnv = process.env[`${envName}_FILE`];
+	if (filePathFromEnv && existsSync(filePathFromEnv)) {
+		return readFileSync(filePathFromEnv, "utf-8").trim();
+	}
+
+	// 3. Check/create in ~/.prismalens/
+	const defaultPath = join(getAppDataDir(), defaultFileName);
+	if (existsSync(defaultPath)) {
+		return readFileSync(defaultPath, "utf-8").trim();
+	}
+
+	// Atomic creation: O_CREAT | O_EXCL fails if file already exists,
+	// preventing TOCTOU race between concurrent processes.
+	ensureAppDataDir();
+	const secret = randomBytes(length).toString("hex");
+	try {
+		const fd = openSync(
+			defaultPath,
+			constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+			0o600,
+		);
+		writeSync(fd, secret);
+		closeSync(fd);
+	} catch (err: unknown) {
+		if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+			// Another process created the file first — use their secret
+			return readFileSync(defaultPath, "utf-8").trim();
+		}
+		throw err;
+	}
+
+	process.stderr.write(`[prismalens] Generated ${envName} → ${defaultPath}\n`);
+	return secret;
+}
+
+/**
  * Get or create the encryption key.
  *
  * Priority order (following n8n's _FILE suffix convention):
  * 1. PRISMALENS_ENCRYPTION_KEY env var (direct value)
  * 2. PRISMALENS_ENCRYPTION_KEY_FILE env var (path to file)
- * 3. ~/.prismalens/encryption-key file (auto-created if missing)
+ * 3. ~/.prismalens/PRISMALENS_ENCRYPTION_KEY_FILE (auto-created if missing)
  *
  * @returns The 64-character hex encryption key
- * @example
- * // Auto-generates key if not set
- * const key = getOrCreateEncryptionKey();
- *
- * // Or use explicit env var:
- * // PRISMALENS_ENCRYPTION_KEY=<64-char-hex>
- *
- * // Or use file-based secret (Docker/K8s):
- * // PRISMALENS_ENCRYPTION_KEY_FILE=/run/secrets/encryption-key
  */
 export function getOrCreateEncryptionKey(): string {
-	// 1. Check direct env var
-	const directKey = process.env.PRISMALENS_ENCRYPTION_KEY;
-	if (directKey) {
-		return directKey;
-	}
+	return getOrCreateSecret("PRISMALENS_ENCRYPTION_KEY", ENCRYPTION_KEY_FILE);
+}
 
-	// 2. Check _FILE env var (Docker/K8s secrets pattern)
-	const filePathFromEnv = process.env.PRISMALENS_ENCRYPTION_KEY_FILE;
-	if (filePathFromEnv && existsSync(filePathFromEnv)) {
-		return readFileSync(filePathFromEnv, "utf-8").trim();
-	}
+/**
+ * Get or create the internal API secret.
+ * Used for worker-to-API communication via X-Internal-Secret header.
+ */
+export function getOrCreateInternalSecret(): string {
+	return getOrCreateSecret("PRISMALENS_INTERNAL_SECRET", "internal-secret.key");
+}
 
-	// 3. Check/create default file in .prismalens directory
-	const defaultKeyPath = getEncryptionKeyPath();
-
-	if (existsSync(defaultKeyPath)) {
-		return readFileSync(defaultKeyPath, "utf-8").trim();
-	}
-
-	// Generate and store new key
-	ensureAppDataDir();
-	const newKey = generateEncryptionKey();
-	writeFileSync(defaultKeyPath, newKey, { mode: 0o600 }); // Owner read/write only
-
-	console.log(`Generated new encryption key at: ${defaultKeyPath}`);
-
-	return newKey;
+/**
+ * Get or create the auth session secret.
+ * Used by Better Auth for session signing.
+ */
+export function getOrCreateAuthSecret(): string {
+	return getOrCreateSecret("PRISMALENS_AUTH_SECRET", "auth-secret.key");
 }
 
 /**

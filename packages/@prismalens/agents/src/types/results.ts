@@ -58,4 +58,6 @@ export interface Recommendation {
   estimatedEffort?: string
   tags?: string[]
   relatedHypothesisId?: string
+  category?: string
+  actionable?: boolean
 }

@@ -135,6 +135,16 @@ export class OAuthService {
 	}
 
 	/**
+	 * Peek at the stored redirect URI for a state token.
+	 * Returns null if state is invalid/expired.
+	 * Does NOT consume the state — handleCallback does that.
+	 */
+	getStoredRedirectUri(state: string): string | null {
+		const stored = this.stateStore.get(state);
+		return stored?.redirectUri ?? null;
+	}
+
+	/**
 	 * Exchange authorization code for tokens and create connection.
 	 */
 	async handleCallback(

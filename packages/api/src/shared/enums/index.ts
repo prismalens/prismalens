@@ -255,6 +255,7 @@ export enum SettingType {
 	NUMBER = "number",
 	BOOLEAN = "boolean",
 	JSON = "json",
+	ENCRYPTED = "encrypted",
 }
 
 /** Setting categories */
@@ -263,6 +264,7 @@ export enum SettingCategory {
 	CORRELATION = "correlation",
 	AI = "ai",
 	NOTIFICATIONS = "notifications",
+	SETUP = "setup",
 }
 
 // =============================================================================

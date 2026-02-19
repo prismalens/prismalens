@@ -1,6 +1,6 @@
 "use client";
 
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/browser";
+import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import type {
 	AgentId,
 	LlmProviderIdExtended,
@@ -64,27 +64,33 @@ const PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
 // Agent metadata for per-agent overrides
 const AGENTS: AgentMeta[] = [
 	{
-		id: "commander",
-		name: "Commander",
+		id: "supervisor",
+		name: "Supervisor",
 		description: "Orchestrates the investigation workflow",
 		defaultTemp: 0.1,
 	},
 	{
-		id: "gatherer",
-		name: "Gatherer",
-		description: "Gathers context and explores the system",
+		id: "scout",
+		name: "Scout",
+		description: "Initial alert validation and triage",
 		defaultTemp: 0,
 	},
 	{
-		id: "detective",
-		name: "Detective",
-		description: "Analyzes root cause of incidents",
+		id: "gatherer",
+		name: "Gatherer",
+		description: "Deep data collection from integrations",
+		defaultTemp: 0,
+	},
+	{
+		id: "analyst",
+		name: "Analyst",
+		description: "Root cause analysis and hypothesis generation",
 		defaultTemp: 0.2,
 	},
 	{
-		id: "surgeon",
-		name: "Surgeon",
-		description: "Generates remediation recommendations",
+		id: "resolver",
+		name: "Resolver",
+		description: "Remediation recommendations and fix suggestions",
 		defaultTemp: 0.1,
 	},
 ];

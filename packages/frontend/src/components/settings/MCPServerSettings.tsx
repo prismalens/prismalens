@@ -1,6 +1,6 @@
 "use client";
 
-import { MCP_SERVERS, type MCPServerId } from "@prismalens/config/browser";
+import { MCP_SERVERS, type MCPServerId } from "@prismalens/config/mcp";
 import {
 	AlertCircle,
 	CheckCircle,

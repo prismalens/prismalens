@@ -13,6 +13,7 @@
 	},
 	"dependencies": {
 		"@orpc/client": "^1.13.2",
+		"@orpc/contract": "^1.13.2",
 		"@prismalens/agents": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",

@@ -4,7 +4,7 @@ import { z } from "zod";
 // MCP SERVER METADATA
 // =============================================================================
 // Static metadata for each MCP server type.
-// Similar to LLM_PROVIDERS in schemas/llm.ts
+// Similar to LLM_PROVIDERS in providers/llm.ts
 // =============================================================================
 
 /**

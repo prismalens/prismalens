@@ -12,8 +12,8 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../database/prisma.service";
-import type { Incident, Service, Alert } from "@prisma/client";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+import type { Incident, Service, Alert } from "@prismalens/database";
 
 /**
  * Trigger decision result

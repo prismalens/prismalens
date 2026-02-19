@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker";
-import type { Recommendation } from "../../prisma/generated/client.js";
+import type { Recommendation } from "@prismalens/database";
 
 export class RecommendationFactory {
 	static create(overrides?: Partial<Recommendation>): Recommendation {

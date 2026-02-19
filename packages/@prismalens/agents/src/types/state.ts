@@ -12,6 +12,7 @@ import type {
 } from "./contexts.js"
 import type { InvestigationResult, Hypothesis, Recommendation } from "./results.js"
 import type { InvestigationConfig } from "./inputs.js"
+import type { AgentId } from "@prismalens/config/agents"
 
 /**
  * Investigation phase — detailed workflow stage.
@@ -30,8 +31,9 @@ export type SupervisorPhase = InvestigationPhase
 
 /**
  * Agent name — identifies which agent node is active.
+ * Derived from the config SSOT.
  */
-export type AgentName = "scout" | "gatherer" | "analyst" | "resolver" | "supervisor"
+export type AgentName = AgentId
 
 /**
  * Graph node ID — all possible node names in the investigation graph.

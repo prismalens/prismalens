@@ -5,12 +5,8 @@ import {
 	getStateFromCheckpoint,
 	getCheckpointTimestamp,
 	type InvestigationState,
-	type InvestigationPhase,
-	type AgentName,
-	type GraphNodeId,
 	getBestHypothesis,
 } from "@prismalens/agents";
-import type { SupervisorPhase } from "@prismalens/agents";
 import type {
 	InvestigationProgressType,
 	ProgressSnapshotType,
@@ -18,6 +14,54 @@ import type {
 	AgentExecutionRecordType,
 	HandoffRecordType,
 } from "@prismalens/contracts";
+
+/**
+ * Extended checkpoint state that may include fields populated at runtime
+ * by the supervisor but not declared on the base InvestigationState interface.
+ */
+interface CheckpointState extends InvestigationState {
+	status?: string;
+	currentAgent?: string;
+	gatherIterations?: number;
+	findings?: unknown[];
+	handoffHistory?: {
+		id: string;
+		traceId?: string;
+		from: string;
+		to: string;
+		reason: string;
+		context?: Record<string, unknown>;
+		status: "pending" | "dispatched" | "denied" | "completed" | "failed";
+		denialReason?: string;
+		requestedAt: string;
+		dispatchedAt?: string;
+		completedAt?: string;
+		resultSummary?: string;
+		findingsAdded?: number;
+	}[];
+	dataQuality?: {
+		incident?: number;
+		alerts?: number;
+		gathered?: number;
+		preGathering?: number;
+		correlations?: {
+			logCodeOverlap: number;
+			codeChangeOverlap: number;
+			changeTimeCorrelation: number;
+			overallCorrelation: number;
+		};
+	};
+	agentExecutions?: {
+		agentName: string;
+		startedAt?: string;
+		completedAt?: string;
+		status: "pending" | "running" | "completed" | "failed";
+		inputTokens?: number;
+		outputTokens?: number;
+		toolExecutions?: unknown[];
+		error?: string;
+	}[];
+}
 
 /**
  * Progress Service
@@ -55,18 +99,20 @@ export class ProgressService {
 		investigationId: string,
 	): Promise<ProgressSnapshotType[]> {
 		const checkpoints = await listCheckpoints(investigationId);
-		return checkpoints.map((cp) => this.mapCheckpointToSnapshot(cp));
+		return Promise.all(
+			checkpoints.map((cp) => this.mapCheckpointToSnapshot(cp)),
+		);
 	}
 
 	/**
 	 * Map a LangGraph checkpoint to InvestigationProgress format.
 	 */
-	private mapCheckpointToProgress(
+	private async mapCheckpointToProgress(
 		investigationId: string,
 		checkpoint: Awaited<ReturnType<typeof getCheckpoint>>,
-	): InvestigationProgressType {
+	): Promise<InvestigationProgressType> {
 		// Extract state from checkpoint using type-safe helper
-		const state = getStateFromCheckpoint<InvestigationState>(checkpoint);
+		const state = await getStateFromCheckpoint<CheckpointState>(checkpoint);
 
 		if (!state) {
 			// Return minimal progress if state is not available
@@ -98,7 +144,7 @@ export class ProgressService {
 		const phase = this.mapPhase(state.phase, state.status, state.currentAgent);
 
 		// Map current agent (currentAgent in state)
-		const currentAgent = state.currentAgent as AgentName | null ?? null;
+		const currentAgent = (state.currentAgent as string | null) ?? null;
 
 		// Determine current node from state
 		const currentNode = this.determineCurrentNode(state);
@@ -117,15 +163,15 @@ export class ProgressService {
 		);
 
 		// Get timestamp from checkpoint using type-safe helper
-		const ts = getCheckpointTimestamp(checkpoint);
+		const ts = await getCheckpointTimestamp(checkpoint);
 		const updatedAt = ts ?? new Date().toISOString();
 
 		return {
 			investigationId: state.investigationId ?? investigationId,
 			status,
 			phase,
-			currentNode,
-			currentAgent,
+			currentNode: currentNode as InvestigationProgressType["currentNode"],
+			currentAgent: currentAgent as InvestigationProgressType["currentAgent"],
 			gatherIterations: state.gatherIterations ?? 0,
 			findings: state.findings?.length ?? 0,
 			hypotheses: state.hypotheses?.length ?? 0,
@@ -140,20 +186,22 @@ export class ProgressService {
 	/**
 	 * Map a checkpoint to a snapshot for history/timeline.
 	 */
-	private mapCheckpointToSnapshot(
+	private async mapCheckpointToSnapshot(
 		checkpoint: Awaited<ReturnType<typeof listCheckpoints>>[number],
-	): ProgressSnapshotType {
+	): Promise<ProgressSnapshotType> {
 		// Use type-safe helpers to extract state and timestamp
-		const state = getStateFromCheckpoint<InvestigationState>(checkpoint);
+		const state = await getStateFromCheckpoint<CheckpointState>(checkpoint);
 		const bestHypothesis = state ? getBestHypothesis(state) : null;
-		const ts = getCheckpointTimestamp(checkpoint);
+		const ts = await getCheckpointTimestamp(checkpoint);
 
 		return {
 			timestamp: ts ?? new Date().toISOString(),
 			phase: state
 				? this.mapPhase(state.phase, state.status, state.currentAgent)
 				: "pre_gathering",
-			currentNode: state ? this.determineCurrentNode(state) : null,
+			currentNode: (state
+				? this.determineCurrentNode(state)
+				: null) as ProgressSnapshotType["currentNode"],
 			findings: state?.findings?.length ?? 0,
 			hypotheses: state?.hypotheses?.length ?? 0,
 			confidence: bestHypothesis?.confidence ?? null,
@@ -183,15 +231,15 @@ export class ProgressService {
 	}
 
 	/**
-	 * Map SupervisorPhase to InvestigationPhase.
-	 * SupervisorPhase doesn't include pre_gathering or challenging.
-	 * These are inferred from status and currentAgent.
+	 * Map SupervisorPhase to contract InvestigationPhase.
+	 * The agents package and contracts package use different phase enums;
+	 * this method bridges the two at runtime.
 	 */
 	private mapPhase(
-		phase: SupervisorPhase | undefined,
+		phase: string | undefined,
 		status: string | undefined,
 		currentAgent: string | undefined,
-	): InvestigationPhase {
+	): InvestigationProgressType["phase"] {
 		// If status is pending/validating, we're in pre_gathering
 		if (status === "pending" || status === "validating") {
 			return "pre_gathering";
@@ -202,17 +250,20 @@ export class ProgressService {
 			return "challenging";
 		}
 
-		// Otherwise, map SupervisorPhase directly
+		// Otherwise, map phase string directly
 		switch (phase) {
 			case "gathering":
 				return "gathering";
 			case "targeted_gather":
 				return "targeted_gather";
 			case "analyzing":
+			case "analysis":
 				return "analyzing";
 			case "fixing":
+			case "resolution":
 				return "fixing";
 			case "complete":
+			case "completed":
 				return "complete";
 			default:
 				return "pre_gathering";
@@ -223,26 +274,27 @@ export class ProgressService {
 	 * Determine current node from state.
 	 * This is inferred from phase and current agent.
 	 */
-	private determineCurrentNode(state: InvestigationState): GraphNodeId | null {
+	private determineCurrentNode(state: CheckpointState): string | null {
 		// If there's a current agent, that's the current node
 		if (state.currentAgent) {
-			return state.currentAgent as GraphNodeId;
+			return state.currentAgent;
 		}
 
 		// Otherwise, infer from phase
-		// Note: State uses SupervisorPhase which doesn't include pre_gathering/challenging
-		// Those phases are inferred from status (pending/validating) or currentAgent (adversary)
-		const phase = state.phase;
+		const phase = state.phase as string;
 		switch (phase) {
 			case "gathering":
 				return "gatherer-coordinator";
 			case "targeted_gather":
 				return "gatherer-coordinator";
 			case "analyzing":
+			case "analysis":
 				return "detective";
 			case "fixing":
+			case "resolution":
 				return "surgeon";
 			case "complete":
+			case "completed":
 				return "writeToApi";
 			default:
 				return "supervisor";
@@ -253,7 +305,7 @@ export class ProgressService {
 	 * Map handoff history to contract type.
 	 */
 	private mapHandoffHistory(
-		history: InvestigationState["handoffHistory"],
+		history: NonNullable<CheckpointState["handoffHistory"]>,
 	): HandoffRecordType[] {
 		if (!history) return [];
 
@@ -278,7 +330,7 @@ export class ProgressService {
 	 * Map data quality to contract type.
 	 */
 	private mapDataQuality(
-		quality: InvestigationState["dataQuality"],
+		quality: NonNullable<CheckpointState["dataQuality"]>,
 	): DataQualityInfoType | null {
 		if (!quality) return null;
 
@@ -303,7 +355,7 @@ export class ProgressService {
 	 * Maps from AgentExecutionRecord (agents schema) to AgentExecutionRecordType (contracts schema).
 	 */
 	private mapAgentExecutions(
-		executions: InvestigationState["agentExecutions"],
+		executions: NonNullable<CheckpointState["agentExecutions"]>,
 	): AgentExecutionRecordType[] {
 		if (!executions) return [];
 

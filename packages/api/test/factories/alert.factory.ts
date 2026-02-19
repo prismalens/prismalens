@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker";
-import type { Alert } from "../../prisma/generated/client.js";
+import type { Alert } from "@prismalens/database";
 
 export class AlertFactory {
 	static create(overrides?: Partial<Alert>): Alert {

@@ -32,4 +32,4 @@ export {
 	getMCPServerMetadata,
 	getAvailableMCPServers,
 	buildDefaultMCPConfig,
-} from "./schemas/mcp.js";
+} from "./providers/mcp.js";

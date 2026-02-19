@@ -8,6 +8,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
+import { Public } from "../../core/auth/public.decorator.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
 import { InternalGuard } from "./guards/internal.guard.js";
 
@@ -21,7 +22,9 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  *
  * SECURITY: This endpoint returns decrypted credentials.
  * Only accessible via X-Internal-Secret — never exposed publicly.
+ * @Public() skips AuthGuard (session-based) — InternalGuard handles auth via X-Internal-Secret.
  */
+@Public()
 @ApiExcludeController()
 @Controller("internal/integrations")
 @UseGuards(InternalGuard)

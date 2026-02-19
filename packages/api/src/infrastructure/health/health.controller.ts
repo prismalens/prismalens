@@ -2,6 +2,7 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ApiTags } from "@nestjs/swagger";
 import { EnvironmentVariables } from "@prismalens/config";
+import { Public } from "../../core/auth/public.decorator.js";
 
 interface HealthResponse {
 	status: "ok" | "degraded" | "error";
@@ -14,6 +15,7 @@ interface HealthResponse {
 	};
 }
 
+@Public()
 @ApiTags("health")
 @Controller("health")
 export class HealthController {

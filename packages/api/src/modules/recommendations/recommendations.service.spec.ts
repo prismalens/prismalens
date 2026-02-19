@@ -2,6 +2,7 @@ import { Logger } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { RecommendationFactory } from "../../../test/factories/index.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { RecommendationStatus } from "../../shared/enums/index.js";
 import type { UpdateRecommendationDto } from "./dto/index.js";
 import { RecommendationsService } from "./recommendations.service.js";
 
@@ -180,7 +181,7 @@ describe("RecommendationsService (BDD)", () => {
 	describe("update", () => {
 		it("should update and return recommendation", async () => {
 			const recId = "rec-123";
-			const updateDto: UpdateRecommendationDto = { status: "resolved" };
+			const updateDto: UpdateRecommendationDto = { status: RecommendationStatus.COMPLETED };
 			const updatedRec = RecommendationFactory.create({
 				id: recId,
 				...updateDto,
@@ -193,7 +194,7 @@ describe("RecommendationsService (BDD)", () => {
 			expect(result).toEqual(updatedRec);
 			expect(mockPrismaService.recommendation.update).toHaveBeenCalledWith({
 				where: { id: recId },
-				data: expect.objectContaining({ status: "resolved" }),
+				data: expect.objectContaining({ status: RecommendationStatus.COMPLETED }),
 			});
 		});
 
@@ -202,7 +203,7 @@ describe("RecommendationsService (BDD)", () => {
 				new Error("Not found"),
 			);
 
-			const result = await service.update("non-existent", { title: "Title" });
+			const result = await service.update("non-existent", { notes: "Some notes" });
 
 			expect(result).toBeNull();
 		});

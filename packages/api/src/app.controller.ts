@@ -1,7 +1,9 @@
 import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
+import { Public } from "./core/auth/public.decorator.js";
 
+@Public()
 @Controller()
 export class AppController {
 	constructor(

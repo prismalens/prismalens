@@ -27,12 +27,12 @@ export class AuthService implements OnModuleInit {
 			"http://localhost:3001",
 		);
 
-		const secret = this.configService.get<string>("BETTER_AUTH_SECRET");
+		const secret = this.configService.get<string>("PRISMALENS_AUTH_SECRET");
 		if (!secret) {
 			this.logger.error(
-				"BETTER_AUTH_SECRET is required. Generate with: openssl rand -base64 32",
+				"PRISMALENS_AUTH_SECRET is required. It should be auto-generated — check ~/.prismalens/",
 			);
-			throw new Error("BETTER_AUTH_SECRET environment variable is required");
+			throw new Error("PRISMALENS_AUTH_SECRET environment variable is required");
 		}
 
 		const isProduction = this.configService.get<string>("NODE_ENV") === "production";
@@ -83,10 +83,10 @@ export class AuthService implements OnModuleInit {
 			invitationId: string;
 			url: string;
 		}) => {
-			this.logger.log(`Sending invitation email to ${params.email}`);
+			this.logger.log(
+				`Invitation created for ${params.email} (URL returned in API response)`,
+			);
 			// TODO: Implement nodemailer integration
-			// For now, log the invitation URL
-			this.logger.log(`Invitation URL: ${params.url}`);
 		};
 	}
 }

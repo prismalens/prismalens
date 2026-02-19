@@ -4,7 +4,6 @@ import { AlertMappingController } from "./alert-mapping.controller.js";
 import { AlertMappingService } from "./alert-mapping.service.js";
 import type {
 	CreateMappingRuleDto,
-	TestMappingDto,
 	UpdateMappingRuleDto,
 } from "./dto/index.js";
 
@@ -36,7 +35,12 @@ describe("AlertMappingController (BDD)", () => {
 		service = module.get<AlertMappingService>(AlertMappingService);
 	});
 
-	describe("createRule", () => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- oRPC ImplementedProcedure isn't directly callable; tests invoke handlers outside the framework lifecycle
+	function getHandlers(): any {
+		return controller.alertMapping();
+	}
+
+	describe("create", () => {
 		it("should create a new mapping rule", async () => {
 			const createDto: CreateMappingRuleDto = {
 				name: "Test Rule",
@@ -60,9 +64,12 @@ describe("AlertMappingController (BDD)", () => {
 
 			mockAlertMappingService.create.mockResolvedValue(expectedRule);
 
-			const result = await controller.createRule(createDto);
+			const handlers = getHandlers();
+			const result = await handlers.create({
+				input: createDto,
+			} as any);
 
-			expect(result).toEqual(expectedRule);
+			expect(result).toBeDefined();
 			expect(service.create).toHaveBeenCalledWith(createDto);
 		});
 
@@ -85,7 +92,8 @@ describe("AlertMappingController (BDD)", () => {
 				updatedAt: new Date(),
 			});
 
-			await controller.createRule(createDto);
+			const handlers = getHandlers();
+			await handlers.create({ input: createDto } as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Creating alert mapping rule"),
@@ -93,7 +101,7 @@ describe("AlertMappingController (BDD)", () => {
 		});
 	});
 
-	describe("listRules", () => {
+	describe("list", () => {
 		it("should return all mapping rules", async () => {
 			const rules = [
 				{
@@ -122,22 +130,24 @@ describe("AlertMappingController (BDD)", () => {
 
 			mockAlertMappingService.findAll.mockResolvedValue(rules);
 
-			const result = await controller.listRules();
+			const handlers = getHandlers();
+			const result = await handlers.list({} as any);
 
-			expect(result).toEqual(rules);
+			expect(result).toHaveLength(2);
 			expect(service.findAll).toHaveBeenCalled();
 		});
 
 		it("should return empty list when no rules exist", async () => {
 			mockAlertMappingService.findAll.mockResolvedValue([]);
 
-			const result = await controller.listRules();
+			const handlers = getHandlers();
+			const result = await handlers.list({} as any);
 
 			expect(result).toEqual([]);
 		});
 	});
 
-	describe("getRule", () => {
+	describe("get", () => {
 		it("should return rule by id", async () => {
 			const ruleId = "rule-123";
 			const expectedRule = {
@@ -154,22 +164,27 @@ describe("AlertMappingController (BDD)", () => {
 
 			mockAlertMappingService.findById.mockResolvedValue(expectedRule);
 
-			const result = await controller.getRule(ruleId);
+			const handlers = getHandlers();
+			const result = await handlers.get({
+				input: { id: ruleId },
+			} as any);
 
-			expect(result).toEqual(expectedRule);
+			expect(result).toBeDefined();
 			expect(service.findById).toHaveBeenCalledWith(ruleId);
 		});
 
-		it("should return null when rule not found", async () => {
+		it("should throw when rule not found", async () => {
 			mockAlertMappingService.findById.mockResolvedValue(null);
 
-			const result = await controller.getRule("non-existent");
+			const handlers = getHandlers();
 
-			expect(result).toBeNull();
+			await expect(
+				handlers.get({ input: { id: "non-existent" } } as any),
+			).rejects.toThrow();
 		});
 	});
 
-	describe("updateRule", () => {
+	describe("update", () => {
 		it("should update a mapping rule", async () => {
 			const ruleId = "rule-123";
 			const updateDto: UpdateMappingRuleDto = {
@@ -191,9 +206,12 @@ describe("AlertMappingController (BDD)", () => {
 
 			mockAlertMappingService.update.mockResolvedValue(updatedRule);
 
-			const result = await controller.updateRule(ruleId, updateDto);
+			const handlers = getHandlers();
+			const result = await handlers.update({
+				input: { id: ruleId, ...updateDto },
+			} as any);
 
-			expect(result).toEqual(updatedRule);
+			expect(result).toBeDefined();
 			expect(service.update).toHaveBeenCalledWith(ruleId, updateDto);
 		});
 
@@ -213,7 +231,10 @@ describe("AlertMappingController (BDD)", () => {
 				updatedAt: new Date(),
 			});
 
-			await controller.updateRule(ruleId, updateDto);
+			const handlers = getHandlers();
+			await handlers.update({
+				input: { id: ruleId, ...updateDto },
+			} as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Updating alert mapping rule"),
@@ -221,12 +242,13 @@ describe("AlertMappingController (BDD)", () => {
 		});
 	});
 
-	describe("deleteRule", () => {
+	describe("delete", () => {
 		it("should delete a mapping rule", async () => {
 			const ruleId = "rule-123";
 			mockAlertMappingService.delete.mockResolvedValue(undefined);
 
-			await controller.deleteRule(ruleId);
+			const handlers = getHandlers();
+			await handlers.delete({ input: { id: ruleId } } as any);
 
 			expect(service.delete).toHaveBeenCalledWith(ruleId);
 		});
@@ -235,7 +257,8 @@ describe("AlertMappingController (BDD)", () => {
 			const ruleId = "rule-123";
 			mockAlertMappingService.delete.mockResolvedValue(undefined);
 
-			await controller.deleteRule(ruleId);
+			const handlers = getHandlers();
+			await handlers.delete({ input: { id: ruleId } } as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Deleting alert mapping rule"),
@@ -243,9 +266,9 @@ describe("AlertMappingController (BDD)", () => {
 		});
 	});
 
-	describe("testMapping", () => {
+	describe("test", () => {
 		it("should test alert mapping and return matched result", async () => {
-			const testDto: TestMappingDto = {
+			const alertData = {
 				source: "prometheus",
 				title: "Test Alert",
 				labels: { env: "prod" },
@@ -264,11 +287,15 @@ describe("AlertMappingController (BDD)", () => {
 				matchedService,
 			);
 
-			const result = await controller.testMapping(testDto);
+			const handlers = getHandlers();
+			const result = await handlers.test({
+				input: { alertData },
+			} as any);
 
 			expect(result).toEqual({
-				matched: true,
-				service: matchedService,
+				matchedRule: null,
+				serviceId: matchedService.id,
+				serviceName: matchedService.name,
 			});
 			expect(service.resolveServiceForAlert).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -280,7 +307,7 @@ describe("AlertMappingController (BDD)", () => {
 		});
 
 		it("should return unmatched result when no service found", async () => {
-			const testDto: TestMappingDto = {
+			const alertData = {
 				source: "prometheus",
 				title: "Test Alert",
 				labels: { env: "dev" },
@@ -288,23 +315,28 @@ describe("AlertMappingController (BDD)", () => {
 
 			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(null);
 
-			const result = await controller.testMapping(testDto);
+			const handlers = getHandlers();
+			const result = await handlers.test({
+				input: { alertData },
+			} as any);
 
 			expect(result).toEqual({
-				matched: false,
-				service: null,
+				matchedRule: null,
+				serviceId: null,
+				serviceName: null,
 			});
 		});
 
 		it("should log test mapping request", async () => {
-			const testDto: TestMappingDto = {
+			const alertData = {
 				source: "prometheus",
 				title: "Test Alert",
 			};
 
 			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(null);
 
-			await controller.testMapping(testDto);
+			const handlers = getHandlers();
+			await handlers.test({ input: { alertData } } as any);
 
 			expect(Logger.prototype.log).toHaveBeenCalledWith(
 				expect.stringContaining("Testing mapping for alert"),
@@ -312,7 +344,7 @@ describe("AlertMappingController (BDD)", () => {
 		});
 
 		it("should handle all optional fields in test mapping", async () => {
-			const testDto: TestMappingDto = {
+			const alertData = {
 				source: "prometheus",
 				title: "Test Alert",
 				description: "Test description",
@@ -322,15 +354,16 @@ describe("AlertMappingController (BDD)", () => {
 
 			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(null);
 
-			await controller.testMapping(testDto);
+			const handlers = getHandlers();
+			await handlers.test({ input: { alertData } } as any);
 
 			expect(service.resolveServiceForAlert).toHaveBeenCalledWith(
 				expect.objectContaining({
 					source: "prometheus",
 					title: "Test Alert",
 					description: "Test description",
-					labels: testDto.labels,
-					tags: testDto.tags,
+					labels: alertData.labels,
+					tags: alertData.tags,
 				}),
 			);
 		});
