@@ -2,10 +2,12 @@
  * Severity mapping utilities
  */
 
+import type { Severity } from "@prismalens/contracts/schemas"
+
 /**
  * Map a severity string to a standard severity level
  */
-export function mapSeverity(severity?: string): "critical" | "high" | "medium" | "low" {
+export function mapSeverity(severity?: string): Severity {
   if (!severity) return "low"
 
   const normalized = severity.toLowerCase()
@@ -18,6 +20,12 @@ export function mapSeverity(severity?: string): "critical" | "high" | "medium" |
   }
   if (normalized.includes("medium") || normalized.includes("p3") || normalized.includes("sev3")) {
     return "medium"
+  }
+  if (normalized.includes("low") || normalized.includes("p4") || normalized.includes("sev4")) {
+    return "low"
+  }
+  if (normalized.includes("info") || normalized.includes("informational")) {
+    return "info"
   }
 
   return "low"

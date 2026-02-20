@@ -106,6 +106,8 @@ export { ToolRegistry } from "./tools/index.js"
 export type { Skill, ToolBundle, ToolCategory } from "./tools/index.js"
 export { MCPClientManager } from "./tools/index.js"
 export type { MCPServerConfig } from "./tools/index.js"
+export { INVESTIGATION_PHASES } from "./tools/schemas.js"
+export type { InvestigationPhaseValue } from "./tools/schemas.js"
 
 // =============================================================================
 // Utilities
@@ -113,12 +115,24 @@ export type { MCPServerConfig } from "./tools/index.js"
 
 export { mapSeverity } from "./utils/severity.js"
 export {
+  mapHypothesisCategoryToDb,
+  mapAgentUrgencyToDb,
+  mapFixCategoryToDb,
+  mapToolCategoryToDb,
+} from "./utils/enum-maps.js"
+export {
   getCheckpoint,
   listCheckpoints,
   getStateFromCheckpoint,
   getCheckpointTimestamp,
   getBestHypothesis,
 } from "./utils/checkpoints.js"
+
+// =============================================================================
+// Agent Constants (re-exported from @prismalens/config/agents SSOT)
+// =============================================================================
+
+export { ROUTABLE_AGENT_IDS, type RoutableAgentId } from "@prismalens/config/agents"
 
 // =============================================================================
 // Model Registry (stubs for compatibility)

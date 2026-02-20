@@ -5,6 +5,20 @@
  * from state and decides routing via Command.
  */
 
+import { INVESTIGATION_AGENTS, ROUTABLE_AGENT_IDS } from "@prismalens/config/agents"
+
+/**
+ * Build the "Available Agents" section dynamically from the agent registry.
+ */
+function buildAgentDescriptions(): string {
+  const lines = ROUTABLE_AGENT_IDS.map((id) => {
+    const agent = INVESTIGATION_AGENTS[id]
+    return `- **${agent.id}**: ${agent.description}`
+  })
+  lines.push(`- **__end__**: Complete the investigation`)
+  return lines.join("\n")
+}
+
 /**
  * Supervisor system prompt template.
  * Parameterized by incident context for conditional strategy.
@@ -24,10 +38,7 @@ Your role is to orchestrate the investigation by routing to the appropriate agen
 - Phase: ${context.phase}
 
 ## Available Agents
-- **gatherer**: Collects additional data (logs, code, deployments, metrics)
-- **analyst**: Forms and evaluates root cause hypotheses
-- **resolver**: Proposes evidence-based remediation steps
-- **__end__**: Complete the investigation
+${buildAgentDescriptions()}
 
 ## Routing Rules
 1. Route to "gatherer" if more data is needed and data gaps exist
@@ -51,10 +62,7 @@ export const SUPERVISOR_PROMPT = `You are an incident investigation supervisor f
 Your role is to orchestrate the investigation by routing to the appropriate agent based on the current state of the investigation.
 
 ## Available Agents
-- **gatherer**: Collects additional data (logs, code, deployments, metrics)
-- **analyst**: Forms and evaluates root cause hypotheses
-- **resolver**: Proposes evidence-based remediation steps
-- **__end__**: Complete the investigation
+${buildAgentDescriptions()}
 
 ## Routing Rules
 1. Route to "gatherer" if more data is needed and data gaps exist

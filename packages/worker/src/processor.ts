@@ -477,7 +477,7 @@ function buildResult(
 			description: rec.description,
 			priority: rec.priority,
 			category: rec.category ?? "investigation",
-			urgency: rec.type,
+			urgency: rec.urgency,
 			actionable: rec.actionable ?? true,
 			estimatedEffort: rec.estimatedEffort,
 		})),

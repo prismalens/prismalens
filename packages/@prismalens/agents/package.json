@@ -29,6 +29,7 @@
     "@langchain/ollama": "^1.2.1",
     "@langchain/openai": "^1.2.1",
     "@prismalens/config": "workspace:*",
+    "@prismalens/contracts": "workspace:*",
     "@prismalens/logger": "workspace:*",
     "zod": "^3.25.76"
   },

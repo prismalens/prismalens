@@ -13,6 +13,7 @@ import { Command } from "@langchain/langgraph"
 import type { InvestigationState } from "../../types/state.js"
 import type { InvestigationResult } from "../../types/results.js"
 import type { ProgressSnapshot } from "../../types/state.js"
+import { mapHypothesisCategoryToDb } from "../../utils/enum-maps.js"
 
 /**
  * Compile a partial result from current state.
@@ -34,7 +35,9 @@ export function compilePartialResult(
       ? `Partial analysis: ${bestHypothesis.description}`
       : "Investigation completed with partial data",
     rootCause: bestHypothesis?.description ?? null,
-    rootCauseCategory: bestHypothesis?.category ?? null,
+    rootCauseCategory: bestHypothesis?.category
+      ? mapHypothesisCategoryToDb(bestHypothesis.category)
+      : null,
     confidence: bestHypothesis?.confidence ?? null,
     hypotheses: state.hypotheses,
     recommendations: state.recommendations,

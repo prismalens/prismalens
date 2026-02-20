@@ -63,6 +63,9 @@ importers:
       '@prismalens/config':
         specifier: workspace:*
         version: link:../config
+      '@prismalens/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@prismalens/logger':
         specifier: workspace:*
         version: link:../logger
@@ -117,9 +120,6 @@ importers:
       '@orpc/contract':
         specifier: ^1.0.0
         version: 1.13.2
-      '@prismalens/agents':
-        specifier: workspace:*
-        version: link:../agents
       '@prismalens/config':
         specifier: workspace:*
         version: link:../config

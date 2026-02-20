@@ -5,6 +5,13 @@
  * what DirectDataProvider and WorkerDataProvider actually map.
  */
 
+import type {
+  Severity,
+  AlertStatus,
+  IncidentStatus,
+  Priority,
+} from "@prismalens/contracts/schemas"
+
 /**
  * Incident context — matches DB Incident model fields.
  * Both DataProvider implementations map to this shape.
@@ -17,14 +24,9 @@ export interface IncidentContext {
   description?: string
 
   // Classification
-  severity: "critical" | "high" | "medium" | "low"
-  status:
-    | "triggered"
-    | "acknowledged"
-    | "investigating"
-    | "resolved"
-    | "closed"
-  priority: "p1" | "p2" | "p3" | "p4" | "p5"
+  severity: Severity
+  status: IncidentStatus
+  priority: Priority
 
   // Service context
   serviceId?: string
@@ -56,8 +58,8 @@ export interface AlertContext {
   description?: string
 
   // Classification
-  severity: "critical" | "high" | "medium" | "low"
-  status: "triggered" | "acknowledged" | "resolved"
+  severity: Severity
+  status: AlertStatus
 
   // Source
   source?: string

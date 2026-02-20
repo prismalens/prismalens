@@ -2,6 +2,7 @@
  * Common schemas shared across all entities
  * Includes enums, pagination, and utility schemas
  */
+import { AGENT_IDS } from "@prismalens/config/agents";
 import { z } from "zod";
 
 // =============================================================================
@@ -112,13 +113,7 @@ export const RootCauseCategorySchema = z.enum([
 	"unknown",
 ]);
 
-export const AgentNameSchema = z.enum([
-	"alert_agent",
-	"gatherer_agent",
-	"analyzer_agent",
-	"recommender_agent",
-	"log_retriever_agent",
-]);
+export const AgentNameSchema = z.enum(AGENT_IDS);
 
 export const AgentTypeSchema = z.enum(["llm", "sequential", "loop"]);
 
@@ -212,6 +207,7 @@ export const SettingTypeSchema = z.enum([
 	"number",
 	"boolean",
 	"json",
+	"encrypted",
 ]);
 
 export const SettingCategorySchema = z.enum([
@@ -219,6 +215,7 @@ export const SettingCategorySchema = z.enum([
 	"correlation",
 	"ai",
 	"notifications",
+	"setup",
 ]);
 
 // Integrations

@@ -567,7 +567,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 					title: rec.title,
 					description: rec.description,
 					priority: rec.priority,
-					urgency: rec.type === "immediate" ? "immediate" : rec.type === "short_term" ? "short_term" : "long_term",
+					urgency: rec.urgency,
 				})),
 			};
 

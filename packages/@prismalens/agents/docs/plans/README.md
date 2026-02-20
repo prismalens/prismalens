@@ -33,7 +33,7 @@ Alert Ingestion
 | Phase | File | Status | Summary | Dependencies |
 |-------|------|--------|---------|--------------|
 | 1 | [phase-1-scaffold.md](./phase-1-scaffold.md) | COMPLETED | Architecture scaffold: state, types, graph, executor, providers | None |
-| 0.5 | [phase-0.5-enum-sync.md](./phase-0.5-enum-sync.md) | PLANNED | Dynamic enum sync: Prisma -> contracts -> agents | Phase 1 |
+| 0.5 | [phase-0.5-enum-sync.md](./phase-0.5-enum-sync.md) | COMPLETED | Enum sync: contracts SSOT, agents imports, dynamic supervisor | Phase 1 |
 | 2 | [phase-2-scout.md](./phase-2-scout.md) | PLANNED | Scout node + type alignment + 8 ADRs | Phase 0.5 |
 | 3 | [phase-3-skills-tools.md](./phase-3-skills-tools.md) | PLANNED | Wire skills to real integrations + token tracking | Phase 2 |
 | 4 | [phase-4-gatherer.md](./phase-4-gatherer.md) | PLANNED | Gatherer agent (createReactAgent wrapper) | Phase 3 |
@@ -47,7 +47,7 @@ Alert Ingestion
 ```
 Phase 1 (DONE)
     |
-Phase 0.5 (enum sync)
+Phase 0.5 (DONE)
     |
 Phase 2 (scout + ADRs)
     |
@@ -90,13 +90,13 @@ Every phase plan is grounded against these monorepo files:
 
 ## Key Discrepancies Found
 
-1. **DB AgentName enum is stale**: `alert_agent`, `gatherer_agent`, `analyzer_agent`, `recommender_agent` -> needs update to `scout`, `gatherer`, `analyst`, `resolver`, `supervisor`
+1. ~~**DB AgentName enum is stale**~~: `alert_agent`, `gatherer_agent`, etc. — **Contracts fixed (Phase 0.5)**. Prisma PG enum still needs DB migration (deferred, no data in tables yet)
 2. **No ChangeEventsService**: Model exists, service doesn't -> must create in Phase 3
 3. **No Runbook models**: Resolver precedent = query `Investigation` table + `Service.metadata` JSON
 4. **No MCP models**: Reuse `IntegrationConnection` with `category: "mcp"` instead
-5. **Contracts schema completely stale**: References `validateIncident`, `preGather`, `detective`, `adversary`, `surgeon`
+5. ~~**Contracts schema completely stale**~~: `AgentNameSchema` fixed (Phase 0.5). `investigation-progress.ts` still stale — deferred to Phase 5
 6. **Frontend has no SSE**: Pure polling -> must build SSE from scratch in Phase 5
-7. **Agent Recommendation type vs DB Recommendation model**: Agent has `type: "immediate"|"short_term"|"long_term"`, DB has `category: RecommendationCategory` -> must reconcile
+7. ~~**Agent Recommendation type vs DB Recommendation model**~~: **Fixed (Phase 0.5)** — renamed `Recommendation.type` to `Recommendation.urgency`, consumers updated
 8. **Missing dependencies**: `vitest`, `@langchain/langgraph-checkpoint-postgres`, `@langchain/mcp-adapters`
 
 ## Conventions

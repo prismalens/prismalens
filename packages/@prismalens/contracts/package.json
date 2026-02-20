@@ -27,7 +27,6 @@
 	},
 	"dependencies": {
 		"@orpc/contract": "^1.0.0",
-		"@prismalens/agents": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"zod": "^3.24.0"
 	},

@@ -13,6 +13,9 @@
 export {
 	INVESTIGATION_AGENTS,
 	AGENT_IDS,
+	ROUTABLE_AGENT_IDS,
 	type AgentId,
+	type AgentRole,
+	type RoutableAgentId,
 	agentIdSchema,
 } from "./providers/agents.js";

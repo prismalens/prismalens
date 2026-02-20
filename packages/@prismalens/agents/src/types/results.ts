@@ -2,6 +2,13 @@
  * Output types from investigation executor
  */
 
+import type {
+  Severity,
+  RootCauseCategory,
+  RecommendationPriority,
+  Urgency,
+} from "@prismalens/contracts/schemas"
+
 /**
  * Complete investigation result
  */
@@ -10,7 +17,7 @@ export interface InvestigationResult {
   status: "completed" | "failed" | "timeout"
   summary: string | null
   rootCause: string | null
-  rootCauseCategory: string | null
+  rootCauseCategory: RootCauseCategory | null
   confidence: number | null
   hypotheses: Hypothesis[]
   recommendations: Recommendation[]
@@ -40,7 +47,7 @@ export interface Evidence {
   description: string
   source?: string
   timestamp?: Date
-  severity?: "critical" | "high" | "medium" | "low"
+  severity?: Severity
   metadata?: Record<string, unknown>
 }
 
@@ -49,8 +56,8 @@ export interface Evidence {
  */
 export interface Recommendation {
   id: string
-  type: "immediate" | "short_term" | "long_term"
-  priority: "critical" | "high" | "medium" | "low"
+  urgency: Urgency
+  priority: RecommendationPriority
   title: string
   description: string
   steps?: string[]
