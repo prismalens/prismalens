@@ -4,7 +4,6 @@
 
 export { InvestigationStateAnnotation } from "./state.js"
 export type { InvestigationState } from "./state.js"
-export { investigatorNode } from "./nodes.js"
 export {
   buildInvestigationGraph,
   investigationGraph,

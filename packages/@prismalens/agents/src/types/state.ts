@@ -38,13 +38,31 @@ export type AgentName = AgentId
 export type GraphNodeId = AgentName | "__start__" | "__end__"
 
 /**
- * Coverage assessment for gathered data quality gate.
+ * Per-source coverage metadata — reports what was fetched vs what's available.
+ */
+export interface SourceCoverage {
+  fetched: number
+  total: number | null // null = unknown (DataProvider didn't report total)
+  sampled: boolean // true if fetched < total
+}
+
+/**
+ * Rich coverage metadata — the scout's primary output.
+ * Reports per-source fetch counts, totals, sampling flags, and data completeness.
+ * The LLM-driven gatherer (Phase 3+) uses this to make targeted follow-up requests.
  */
 export interface DataCoverage {
-  sourcesQueried: string[]
-  sourcesWithData: string[]
-  temporalOverlap?: boolean
-  dataGaps: string[]
+  // Per-source coverage
+  incident: { found: boolean }
+  alerts: SourceCoverage
+  changeEvents: SourceCoverage | null // null = not queried (method missing or skipped)
+  similarIncidents: SourceCoverage | null // null = not queried
+
+  // Aggregated signals for LLM
+  services: { detected: string[]; count: number }
+  dataCompleteness: "complete" | "sampled" | "partial"
+  dataGaps: string[] // sources not queried or with no data
+  temporalOverlap: boolean // do alerts span a meaningful time range?
 }
 
 /**
@@ -56,6 +74,8 @@ export interface GatheredData {
   deployments?: unknown[]
   metrics?: unknown[]
   codeSearchResults?: unknown[]
+  changeEvents?: unknown[]
+  similarIncidents?: unknown[]
   coverage?: DataCoverage
 }
 

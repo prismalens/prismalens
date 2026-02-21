@@ -16,3 +16,5 @@ export {
   getCheckpointTimestamp,
   getBestHypothesis,
 } from "./checkpoints.js"
+export { safeFetch } from "./safe-fetch.js"
+export type { SafeFetchResult } from "./safe-fetch.js"

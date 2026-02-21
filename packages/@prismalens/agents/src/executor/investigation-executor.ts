@@ -2,7 +2,7 @@
  * Investigation executor — main entry point for running investigations.
  *
  * Builds the StateGraph, injects DataProvider, and provides stream-only API.
- * Phase 1: Keeps dummy graph working. Phase 5: Full multi-agent graph + streaming.
+ * Phase 2: scout → supervisor(stub). Phase 5: Full multi-agent graph + streaming.
  */
 
 import type { RunnableConfig } from "@langchain/core/runnables"
@@ -30,7 +30,7 @@ export interface InvestigationExecutorDeps {
 /**
  * Investigation executor — orchestrates the investigation workflow.
  *
- * Phase 1: Uses dummy graph with single investigator node.
+ * Phase 2: scout → supervisor(stub → __end__).
  * Phase 5: Full multi-agent graph with supervisor + streaming.
  */
 export class InvestigationExecutor {
@@ -46,6 +46,9 @@ export class InvestigationExecutor {
     this.graph = buildInvestigationGraph(graphDeps)
   }
 
+  /** Default timeout: 5 minutes */
+  private static readonly DEFAULT_TIMEOUT_MS = 300_000
+
   /**
    * Execute an investigation (legacy synchronous API).
    *
@@ -54,6 +57,11 @@ export class InvestigationExecutor {
    */
   async execute(input: InvestigationInput): Promise<InvestigationResult> {
     const startTime = Date.now()
+    const timeoutMs =
+      input.config.timeout ?? InvestigationExecutor.DEFAULT_TIMEOUT_MS
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
       const initialState = {
@@ -72,32 +80,39 @@ export class InvestigationExecutor {
         result: undefined,
       }
 
-      const finalState = await this.graph.invoke(initialState)
+      const finalState = await this.graph.invoke(initialState, {
+        signal: controller.signal,
+      })
 
       if (!finalState.result) {
         throw new Error("Graph completed without producing a result")
       }
 
-      const result = finalState.result
-      result.executionTimeMs = Date.now() - startTime
-
-      return result
+      return {
+        ...finalState.result,
+        executionTimeMs: Date.now() - startTime,
+      }
     } catch (error) {
       const err = error as Error
+      const isTimeout = controller.signal.aborted
 
       return {
         investigationId: input.investigationId,
-        status: "failed",
+        status: isTimeout ? "timeout" : "failed",
         summary: null,
         rootCause: null,
         rootCauseCategory: null,
         confidence: null,
         hypotheses: [],
         recommendations: [],
-        error: err.message,
+        error: isTimeout
+          ? `Investigation timed out after ${timeoutMs}ms`
+          : err.message,
         executionTimeMs: Date.now() - startTime,
         analysisMethod: null,
       }
+    } finally {
+      clearTimeout(timer)
     }
   }
 
@@ -119,6 +134,6 @@ export class InvestigationExecutor {
    * Close the executor and clean up resources.
    */
   async close(): Promise<void> {
-    // No resources to clean up in Phase 1
+    // No resources to clean up yet
   }
 }

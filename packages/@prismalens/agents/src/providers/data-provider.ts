@@ -13,6 +13,7 @@ import type {
   AlertContext,
   SimilarIncidentMatch,
 } from "../types/contexts.js"
+import type { ChangeEventType } from "@prismalens/contracts/schemas"
 
 /**
  * Request for fetching alerts associated with an incident.
@@ -50,6 +51,21 @@ export interface SimilarIncidentResponse {
 }
 
 /**
+ * Change event context — represents a deployment, config change, migration, etc.
+ * Used by the scout to correlate incidents with recent changes.
+ */
+export interface ChangeEventContext {
+  id: string
+  type: ChangeEventType
+  source: string
+  description: string | null
+  timestamp: string // ISO string
+  serviceId: string | null
+  metadata: Record<string, unknown> | null
+  riskScore: number | null
+}
+
+/**
  * DataProvider interface — injected into InvestigationExecutor.
  *
  * Consumers (API QueueService, Worker) implement this interface
@@ -74,6 +90,15 @@ export interface DataProvider {
   fetchSimilarIncidents?(
     request: SimilarIncidentRequest,
   ): Promise<SimilarIncidentResponse>
+
+  /**
+   * Fetch change events near the incident time window (optional).
+   * Returns deployments, config changes, migrations, etc.
+   */
+  fetchChangeEvents?(
+    incidentId: string,
+    timeRange?: { start: string; end: string },
+  ): Promise<ChangeEventContext[]>
 }
 
 /**
@@ -112,5 +137,9 @@ export class StubDataProvider implements DataProvider {
 
   async fetchSimilarIncidents(): Promise<SimilarIncidentResponse> {
     return { incidents: [] }
+  }
+
+  async fetchChangeEvents(): Promise<ChangeEventContext[]> {
+    return []
   }
 }

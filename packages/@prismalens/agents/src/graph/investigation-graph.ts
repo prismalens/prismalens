@@ -4,14 +4,14 @@
  * - investigationGraph(): Studio entry point (uses env vars + StubDataProvider)
  * - buildInvestigationGraph(): Shared builder (used by both Studio and Executor)
  *
- * Phase 1: Uses dummy investigator node. As agents are implemented in subsequent
- * phases, the graph progressively adds supervisor + all agent nodes.
+ * Phase 2: START → scout → supervisor(stub → __end__)
  */
 
 import { StateGraph } from "@langchain/langgraph"
 import { MemorySaver } from "@langchain/langgraph-checkpoint"
 import { InvestigationStateAnnotation } from "./state.js"
-import { investigatorNode } from "./nodes.js"
+import { createScoutNode } from "../agents/scout/index.js"
+import { supervisorNode } from "../agents/supervisor/node.js"
 import { StubDataProvider } from "../providers/data-provider.js"
 import type { DataProvider } from "../providers/data-provider.js"
 import type { IntegrationContext } from "../types/contexts.js"
@@ -29,18 +29,18 @@ export interface InvestigationGraphDeps {
 /**
  * Build the investigation graph.
  *
- * Phase 1: Simple START → investigator → END (dummy node).
- * Future phases add: scout → supervisor → {gatherer, analyst, resolver}.
+ * Phase 2: START → scout → supervisor(stub → __end__)
+ * The supervisor stub routes to __end__ with a compiled result via Command.
  */
 export function buildInvestigationGraph(deps: InvestigationGraphDeps) {
   const { checkpointer } = deps
 
-  // Phase 1: Simple dummy graph
-  // Future: Replace with full multi-agent graph
   const graph = new StateGraph(InvestigationStateAnnotation)
-    .addNode("investigator", investigatorNode)
-    .addEdge("__start__", "investigator")
-    .addEdge("investigator", "__end__")
+    .addNode("scout", createScoutNode(deps.dataProvider))
+    .addNode("supervisor", supervisorNode)
+    .addEdge("__start__", "scout")
+    .addEdge("scout", "supervisor")
+    // supervisor routes to __end__ via Command({ goto: "__end__" })
 
   return graph.compile({ checkpointer })
 }

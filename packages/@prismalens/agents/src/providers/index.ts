@@ -8,6 +8,7 @@ export type {
   AlertFetchResponse,
   SimilarIncidentRequest,
   SimilarIncidentResponse,
+  ChangeEventContext,
 } from "./data-provider.js"
 
 export { StubDataProvider } from "./data-provider.js"

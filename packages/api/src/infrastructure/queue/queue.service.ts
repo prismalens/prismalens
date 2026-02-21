@@ -22,6 +22,7 @@ import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
 import { InvestigationSemaphore } from "./investigation-semaphore.js";
+import { DirectDataProvider } from "./direct-data-provider.js";
 
 /**
  * Integration context for worker (matches worker IntegrationContext)
@@ -146,9 +147,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				);
 			}
 
-			// Create executor for direct mode
-			// Note: DataProvider will be wired in when data-fetching nodes are added
-			this.executor = new InvestigationExecutor();
+			// Create executor with DirectDataProvider for database access
+			const dataProvider = new DirectDataProvider(this.alertsService, this.incidentsService);
+			this.executor = new InvestigationExecutor({ dataProvider });
 			return;
 		}
 

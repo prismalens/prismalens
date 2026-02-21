@@ -2,6 +2,7 @@ import type {
 	AlertContext,
 	AlertFetchRequest,
 	AlertFetchResponse,
+	ChangeEventContext,
 	DataProvider,
 	IncidentContext,
 	SimilarIncidentMatch,
@@ -54,6 +55,17 @@ export class DirectDataProvider implements DataProvider {
 	async fetchIncident(incidentId: string): Promise<IncidentContext | null> {
 		const incident = await this.incidentsService.findById(incidentId);
 		return incident ? this.mapIncidentToContext(incident) : null;
+	}
+
+	/**
+	 * Fetch change events near the incident time window.
+	 * Stub: returns empty until ChangeEventsService is available.
+	 */
+	async fetchChangeEvents(
+		_incidentId: string,
+		_timeRange?: { start: string; end: string },
+	): Promise<ChangeEventContext[]> {
+		return [];
 	}
 
 	/**
@@ -127,6 +139,7 @@ export class DirectDataProvider implements DataProvider {
 			alertCount: incident.alertCount ?? incident._count?.alerts ?? 0,
 			triggeredAt: incident.triggeredAt.toISOString(),
 			acknowledgedAt: incident.acknowledgedAt?.toISOString(),
+			resolvedAt: incident.resolvedAt?.toISOString(),
 			tags,
 			customerImpact: incident.customerImpact ?? undefined,
 		};

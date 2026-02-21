@@ -60,6 +60,7 @@ export type {
   GraphNodeId,
   GatheredData,
   DataCoverage,
+  SourceCoverage,
   ProgressSnapshot,
 } from "./types/state.js"
 
@@ -88,6 +89,7 @@ export type {
   AlertFetchResponse,
   SimilarIncidentRequest,
   SimilarIncidentResponse,
+  ChangeEventContext,
 } from "./providers/index.js"
 
 export { StubDataProvider } from "./providers/index.js"
@@ -127,6 +129,8 @@ export {
   getCheckpointTimestamp,
   getBestHypothesis,
 } from "./utils/checkpoints.js"
+export { safeFetch } from "./utils/safe-fetch.js"
+export type { SafeFetchResult } from "./utils/safe-fetch.js"
 
 // =============================================================================
 // Agent Constants (re-exported from @prismalens/config/agents SSOT)

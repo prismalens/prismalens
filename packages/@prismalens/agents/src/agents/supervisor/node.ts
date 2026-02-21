@@ -53,10 +53,14 @@ export function compilePartialResult(
 export function takeProgressSnapshot(
   state: InvestigationState,
 ): ProgressSnapshot {
+  const coverage = state.gatheredData?.coverage
   return {
-    dataGaps: [...(state.dataGaps ?? [])],
+    dataGaps: coverage?.dataGaps ?? [...(state.dataGaps ?? [])],
     sourcesQueried: [
-      ...(state.gatheredData?.coverage?.sourcesQueried ?? []),
+      "incident",
+      "alerts",
+      ...(coverage?.changeEvents != null ? ["changeEvents"] : []),
+      ...(coverage?.similarIncidents != null ? ["similarIncidents"] : []),
     ],
     hypothesisCount: state.hypotheses.length,
     bestConfidence:
