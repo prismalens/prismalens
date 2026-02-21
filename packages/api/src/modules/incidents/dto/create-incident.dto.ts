@@ -1,3 +1,5 @@
+import { Priority, Severity } from "../../../shared/enums/index.js";
+
 /**
  * DTO for creating an incident
  */
@@ -8,11 +10,11 @@ export class CreateIncidentDto {
 	/** Detailed description */
 	description?: string;
 
-	/** Severity: critical, high, medium, low, info */
-	severity?: "critical" | "high" | "medium" | "low" | "info";
+	/** Severity level */
+	severity?: Severity;
 
-	/** Priority: p1, p2, p3, p4, p5 */
-	priority?: "p1" | "p2" | "p3" | "p4" | "p5";
+	/** Priority level */
+	priority?: Priority;
 
 	/** Primary affected service ID */
 	serviceId?: string;

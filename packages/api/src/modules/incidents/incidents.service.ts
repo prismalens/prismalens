@@ -66,10 +66,10 @@ export class IncidentsService {
     // Create timeline entry
     await this.timelineService.create({
       incidentId: incident.id,
-      type: TimelineEntryType.INCIDENT_CREATED,
+      type: TimelineEntryType.incident_created,
       title: 'Incident created',
       description: `Incident INC-${incident.number} was created`,
-      source: TimelineSource.SYSTEM,
+      source: TimelineSource.system,
     });
 
     return incident;
@@ -235,10 +235,10 @@ export class IncidentsService {
       if (dto.status && dto.status !== existing.status) {
         await this.timelineService.create({
           incidentId: id,
-          type: TimelineEntryType.STATUS_CHANGED,
+          type: TimelineEntryType.status_changed,
           title: 'Status changed',
           description: `Status changed from ${existing.status} to ${dto.status}`,
-          source: TimelineSource.SYSTEM,
+          source: TimelineSource.system,
           metadata: { previousStatus: existing.status, newStatus: dto.status },
         });
       }
@@ -281,10 +281,10 @@ export class IncidentsService {
 
       await this.timelineService.create({
         incidentId,
-        type: TimelineEntryType.ALERT_ADDED,
+        type: TimelineEntryType.alert_added,
         title: 'Alert added',
         description: `Alert "${alert?.title}" was correlated to this incident`,
-        source: TimelineSource.SYSTEM,
+        source: TimelineSource.system,
         metadata: { alertId },
       });
 
@@ -318,10 +318,10 @@ export class IncidentsService {
 
       await this.timelineService.create({
         incidentId,
-        type: TimelineEntryType.ALERT_REMOVED,
+        type: TimelineEntryType.alert_removed,
         title: 'Alert removed',
         description: `Alert was removed from this incident`,
-        source: TimelineSource.SYSTEM,
+        source: TimelineSource.system,
         metadata: { alertId },
       });
 

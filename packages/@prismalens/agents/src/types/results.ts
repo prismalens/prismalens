@@ -3,6 +3,8 @@
  */
 
 import type {
+  EffortEstimate,
+  RecommendationCategory,
   Severity,
   RootCauseCategory,
   RecommendationPriority,
@@ -62,9 +64,9 @@ export interface Recommendation {
   description: string
   steps?: string[]
   estimatedImpact?: string
-  estimatedEffort?: string
+  estimatedEffort?: EffortEstimate
   tags?: string[]
   relatedHypothesisId?: string
-  category?: string
+  category?: RecommendationCategory
   actionable?: boolean
 }

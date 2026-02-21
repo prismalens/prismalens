@@ -1,6 +1,12 @@
 import { Controller, Logger } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { integrationsContract } from "@prismalens/contracts";
+import type {
+	IntegrationDefinition,
+	IntegrationConnection,
+	IntegrationConnectionWithDefinition,
+	ServiceIntegration,
+} from "@prismalens/contracts/schemas";
 import type { CreateConnectionDto, UpdateConnectionDto } from "./dto/index.js";
 import { IntegrationsService } from "./integrations.service.js";
 
@@ -212,7 +218,7 @@ export class IntegrationsController {
 		};
 	}
 
-	private serializeDefinition(definition: any): any {
+	private serializeDefinition(definition: Record<string, any>): IntegrationDefinition {
 		return {
 			...definition,
 			capabilities: definition.capabilities
@@ -223,10 +229,10 @@ export class IntegrationsController {
 				: null,
 			createdAt: definition.createdAt?.toISOString(),
 			updatedAt: definition.updatedAt?.toISOString(),
-		};
+		} as unknown as IntegrationDefinition;
 	}
 
-	private serializeConnection(connection: any): any {
+	private serializeConnection(connection: Record<string, any>): IntegrationConnection {
 		return {
 			...connection,
 			credentials: "[ENCRYPTED]", // Always mask credentials
@@ -234,20 +240,20 @@ export class IntegrationsController {
 			createdAt: connection.createdAt?.toISOString(),
 			updatedAt: connection.updatedAt?.toISOString(),
 			lastTestedAt: connection.lastTestedAt?.toISOString() ?? null,
-		};
+		} as unknown as IntegrationConnection;
 	}
 
-	private serializeConnectionWithDefinition(connection: any): any {
-		const serialized = this.serializeConnection(connection);
+	private serializeConnectionWithDefinition(connection: Record<string, any>): IntegrationConnectionWithDefinition {
+		const serialized = this.serializeConnection(connection) as any;
 
 		if (connection.definition) {
 			serialized.definition = this.serializeDefinition(connection.definition);
 		}
 
-		return serialized;
+		return serialized as IntegrationConnectionWithDefinition;
 	}
 
-	private serializeServiceIntegration(serviceIntegration: any): any {
+	private serializeServiceIntegration(serviceIntegration: Record<string, any>): ServiceIntegration {
 		return {
 			...serviceIntegration,
 			config: serviceIntegration.config
@@ -255,6 +261,6 @@ export class IntegrationsController {
 				: null,
 			createdAt: serviceIntegration.createdAt?.toISOString(),
 			updatedAt: serviceIntegration.updatedAt?.toISOString(),
-		};
+		} as ServiceIntegration;
 	}
 }

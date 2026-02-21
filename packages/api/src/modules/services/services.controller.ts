@@ -2,6 +2,11 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { servicesContract } from "@prismalens/contracts";
 import type {
+	Service,
+	ServiceWithRelations,
+	ServiceDependency,
+} from "@prismalens/contracts/schemas";
+import type {
 	AddDependencyDto,
 	CreateServiceDto,
 	UpdateServiceDto,
@@ -158,7 +163,7 @@ export class ServicesController {
 		};
 	}
 
-	private serializeService(service: any): any {
+	private serializeService(service: Record<string, any>): Service {
 		return {
 			...service,
 			tags: service.tags ? JSON.parse(service.tags) : null,
@@ -168,11 +173,11 @@ export class ServicesController {
 				: null,
 			createdAt: service.createdAt?.toISOString(),
 			updatedAt: service.updatedAt?.toISOString(),
-		};
+		} as Service;
 	}
 
-	private serializeServiceWithRelations(service: any): any {
-		const serialized = this.serializeService(service);
+	private serializeServiceWithRelations(service: Record<string, any>): ServiceWithRelations {
+		const serialized = this.serializeService(service) as any;
 
 		if (service.dependencies) {
 			serialized.dependencies = service.dependencies.map((d: any) =>
@@ -186,13 +191,13 @@ export class ServicesController {
 			);
 		}
 
-		return serialized;
+		return serialized as ServiceWithRelations;
 	}
 
-	private serializeServiceDependency(dep: any): any {
+	private serializeServiceDependency(dep: Record<string, any>): ServiceDependency {
 		return {
 			...dep,
 			createdAt: dep.createdAt?.toISOString(),
-		};
+		} as ServiceDependency;
 	}
 }

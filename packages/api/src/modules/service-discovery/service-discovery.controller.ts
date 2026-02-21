@@ -1,6 +1,7 @@
 import { Controller, Logger } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { serviceDiscoveryContract } from "@prismalens/contracts";
+import type { ServiceSuggestion } from "@prismalens/contracts/schemas";
 import { ServiceDiscoveryService } from "./service-discovery.service.js";
 
 @Controller()
@@ -121,7 +122,7 @@ export class ServiceDiscoveryController {
 		};
 	}
 
-	private serializeSuggestion(suggestion: any): any {
+	private serializeSuggestion(suggestion: Record<string, any>): ServiceSuggestion {
 		return {
 			id: suggestion.id,
 			displayName: suggestion.displayName ?? null,
@@ -136,6 +137,6 @@ export class ServiceDiscoveryController {
 			suggestedName: suggestion.suggestedName ?? "",
 			isMonorepo: suggestion.isMonorepo ?? false,
 			subPath: suggestion.subPath ?? null,
-		};
+		} as ServiceSuggestion;
 	}
 }

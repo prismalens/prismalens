@@ -1,6 +1,7 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { eventsContract } from "@prismalens/contracts";
+import type { Event } from "@prismalens/contracts/schemas";
 import { EventsService } from "./events.service.js";
 
 @Controller()
@@ -41,13 +42,11 @@ export class EventsController {
 		};
 	}
 
-	private serializeEvent(event: any): any {
+	private serializeEvent(event: Record<string, any>): Event {
 		return {
 			...event,
-			rawPayload: event.rawPayload ? JSON.parse(event.rawPayload) : null,
 			receivedAt: event.receivedAt?.toISOString(),
-			processedAt: event.processedAt?.toISOString() ?? null,
-			createdAt: event.createdAt?.toISOString(),
-		};
+			eventTime: event.eventTime?.toISOString() ?? null,
+		} as Event;
 	}
 }

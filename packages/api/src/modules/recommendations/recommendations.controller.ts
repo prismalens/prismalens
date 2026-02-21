@@ -1,6 +1,10 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { recommendationsContract } from "@prismalens/contracts";
+import type {
+	Recommendation,
+	RecommendationWithRelations,
+} from "@prismalens/contracts/schemas";
 import type { UpdateRecommendationDto } from "./dto/index.js";
 import { RecommendationsService } from "./recommendations.service.js";
 
@@ -104,18 +108,18 @@ export class RecommendationsController {
 		};
 	}
 
-	private serializeRecommendation(rec: any): any {
+	private serializeRecommendation(rec: Record<string, any>): Recommendation {
 		return {
 			...rec,
 			metadata: rec.metadata ? JSON.parse(rec.metadata) : null,
 			createdAt: rec.createdAt?.toISOString(),
 			updatedAt: rec.updatedAt?.toISOString(),
 			completedAt: rec.completedAt?.toISOString() ?? null,
-		};
+		} as unknown as Recommendation;
 	}
 
-	private serializeRecommendationWithRelations(rec: any): any {
-		const serialized = this.serializeRecommendation(rec);
+	private serializeRecommendationWithRelations(rec: Record<string, any>): RecommendationWithRelations {
+		const serialized = this.serializeRecommendation(rec) as any;
 
 		if (rec.investigation) {
 			serialized.investigation = {
@@ -125,6 +129,6 @@ export class RecommendationsController {
 			};
 		}
 
-		return serialized;
+		return serialized as RecommendationWithRelations;
 	}
 }

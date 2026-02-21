@@ -44,7 +44,7 @@ describe("AlertsService (BDD)", () => {
 				sourceAlertId: "ext-123",
 				title: "Database issue",
 				description: "Slow query",
-				severity: Severity.HIGH,
+				severity: Severity.high,
 				sourceUrl: "https://prometheus.io",
 				labels: { env: "prod" },
 			};
@@ -101,7 +101,7 @@ describe("AlertsService (BDD)", () => {
 			const createDto: CreateAlertDto = {
 				source: "prometheus",
 				title: "Same alert",
-				severity: Severity.HIGH,
+				severity: Severity.high,
 			};
 
 			const existingAlert = AlertFactory.create({

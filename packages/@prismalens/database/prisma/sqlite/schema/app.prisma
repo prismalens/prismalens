@@ -579,8 +579,8 @@ model LicenseInfo {
 
   // License identification
   licenseKey  String? @unique // The license key from Keygen.sh
-  licenseType String  @default("none") // "none" | "perpetual" | "subscription"
-  tier        String  @default("free") // "free" | "free_plus" | "beginner" | "team" | "business" | "enterprise"
+  licenseType String  @default("none") // "none" | "subscription"
+  tier        String  @default("community") // "community" | "enterprise"
 
   // Validity and activation
   validUntil    DateTime? // null for perpetual, set for subscription

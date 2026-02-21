@@ -66,7 +66,7 @@ export class WebhooksService {
     const alert = await this.alertsService.create({
       title: dto.title,
       description: dto.description,
-      severity: dto.severity ?? Severity.MEDIUM,
+      severity: dto.severity ?? Severity.medium,
       source: dto.source ?? 'webhook',
       sourceUrl: dto.sourceUrl,
       sourceAlertId: dto.sourceEventId,
@@ -219,7 +219,7 @@ export class WebhooksService {
       return {
         title: `GitHub PR: ${dto.pull_request.title}`,
         description: dto.pull_request.body,
-        severity: Severity.INFO,
+        severity: Severity.info,
         sourceUrl: dto.pull_request.html_url,
         externalId: `github-pr-${dto.repository?.full_name}-${dto.pull_request.number}`,
       };
@@ -228,7 +228,7 @@ export class WebhooksService {
     return {
       title: `GitHub Event: ${dto.action ?? 'unknown'}`,
       description: `Event from ${dto.repository?.full_name ?? 'unknown repo'}`,
-      severity: Severity.INFO,
+      severity: Severity.info,
     };
   }
 
@@ -242,20 +242,20 @@ export class WebhooksService {
     const deployStatus = dto.deploy?.status ?? dto.type ?? 'unknown';
 
     let title: string;
-    let severity: Severity = Severity.INFO;
+    let severity: Severity = Severity.info;
 
     if (deployStatus === 'deploy_failed' || deployStatus === 'failed') {
       title = `Render Deploy Failed: ${serviceName}`;
-      severity = Severity.HIGH;
+      severity = Severity.high;
     } else if (deployStatus === 'deactivated') {
       title = `Render Service Deactivated: ${serviceName}`;
-      severity = Severity.HIGH;
+      severity = Severity.high;
     } else if (deployStatus === 'suspended') {
       title = `Render Service Suspended: ${serviceName}`;
-      severity = Severity.CRITICAL;
+      severity = Severity.critical;
     } else {
       title = `Render Event: ${serviceName} - ${deployStatus}`;
-      severity = Severity.LOW;
+      severity = Severity.low;
     }
 
     return {
@@ -271,33 +271,33 @@ export class WebhooksService {
   private mapGithubSeverity(severity: string | undefined): Severity {
     switch (severity?.toLowerCase()) {
       case 'critical':
-        return Severity.CRITICAL;
+        return Severity.critical;
       case 'high':
-        return Severity.HIGH;
+        return Severity.high;
       case 'medium':
       case 'moderate':
-        return Severity.MEDIUM;
+        return Severity.medium;
       case 'low':
-        return Severity.LOW;
+        return Severity.low;
       default:
-        return Severity.MEDIUM;
+        return Severity.medium;
     }
   }
 
   private inferSeverityFromLabels(labels?: Array<{ name: string }>): Severity {
-    if (!labels) return Severity.MEDIUM;
+    if (!labels) return Severity.medium;
 
     const labelNames = labels.map((l) => l.name.toLowerCase());
 
     if (labelNames.some((l) => l.includes('critical') || l.includes('urgent'))) {
-      return Severity.CRITICAL;
+      return Severity.critical;
     }
     if (labelNames.some((l) => l.includes('high') || l.includes('important'))) {
-      return Severity.HIGH;
+      return Severity.high;
     }
     if (labelNames.some((l) => l.includes('low') || l.includes('minor'))) {
-      return Severity.LOW;
+      return Severity.low;
     }
-    return Severity.MEDIUM;
+    return Severity.medium;
   }
 }

@@ -34,7 +34,8 @@ Alert Ingestion
 |-------|------|--------|---------|--------------|
 | 1 | [phase-1-scaffold.md](./phase-1-scaffold.md) | COMPLETED | Architecture scaffold: state, types, graph, executor, providers | None |
 | 0.5 | [phase-0.5-enum-sync.md](./phase-0.5-enum-sync.md) | COMPLETED | Enum sync: contracts SSOT, agents imports, dynamic supervisor | Phase 1 |
-| 2 | [phase-2-scout.md](./phase-2-scout.md) | PLANNED | Scout node + type alignment + 8 ADRs | Phase 0.5 |
+| 1.5 | [phase-1.5-contracts-ssot.md](./phase-1.5-contracts-ssot.md) | COMPLETED | Complete SSOT alignment: schemas, enums, serializers, license | Phase 0.5 |
+| 2 | [phase-2-scout.md](./phase-2-scout.md) | PLANNED | Scout node + type alignment | Phase 1.5 |
 | 3 | [phase-3-skills-tools.md](./phase-3-skills-tools.md) | PLANNED | Wire skills to real integrations + token tracking | Phase 2 |
 | 4 | [phase-4-gatherer.md](./phase-4-gatherer.md) | PLANNED | Gatherer agent (createReactAgent wrapper) | Phase 3 |
 | 5 | [phase-5-supervisor.md](./phase-5-supervisor.md) | PLANNED | Supervisor LLM routing + streaming + consumer migration | Phase 4, Phase 2 |
@@ -49,7 +50,9 @@ Phase 1 (DONE)
     |
 Phase 0.5 (DONE)
     |
-Phase 2 (scout + ADRs)
+Phase 1.5 (DONE)
+    |
+Phase 2 (scout)
     |
     +---> Phase 3 (skills/tools) ---> Phase 4 (gatherer) ---+
     |                                                        |
@@ -62,7 +65,7 @@ Phase 2 (scout + ADRs)
                                           Phase 6 (analyst)          Phase 7 (resolver)
 ```
 
-**Critical path**: 1 -> 0.5 -> 2 -> 3 -> 4 -> 5 (full graph working)
+**Critical path**: 1 -> 0.5 -> 1.5 -> 2 -> 3 -> 4 -> 5 (full graph working)
 
 **Parallel tracks**:
 - Phases 6 and 7 can start stubs early but need Phase 5 for full testing

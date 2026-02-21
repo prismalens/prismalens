@@ -78,16 +78,16 @@ export class WebhooksController {
 	): Severity | undefined {
 		switch (severityLabel?.toLowerCase()) {
 			case "critical":
-				return Severity.CRITICAL;
+				return Severity.critical;
 			case "high":
 			case "warning":
-				return Severity.HIGH;
+				return Severity.high;
 			case "medium":
-				return Severity.MEDIUM;
+				return Severity.medium;
 			case "low":
-				return Severity.LOW;
+				return Severity.low;
 			case "info":
-				return Severity.INFO;
+				return Severity.info;
 			default:
 				return undefined;
 		}

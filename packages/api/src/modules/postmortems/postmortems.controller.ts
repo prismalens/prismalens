@@ -1,6 +1,7 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { postmortemsContract } from "@prismalens/contracts";
+import type { PostmortemWithRelations } from "@prismalens/contracts/schemas";
 import type { CreatePostmortemDto, UpdatePostmortemDto } from "./dto/index.js";
 import { PostmortemsService } from "./postmortems.service.js";
 
@@ -75,7 +76,7 @@ export class PostmortemsController {
 		};
 	}
 
-	private serializePostmortem(postmortem: any): any {
+	private serializePostmortem(postmortem: Record<string, any>): PostmortemWithRelations {
 		const serialized: any = {
 			id: postmortem.id,
 			incidentId: postmortem.incidentId,

@@ -2,6 +2,7 @@
  * License Constants
  *
  * Defines feature flags and default values for Community and Enterprise editions.
+ * Types derived from @prismalens/contracts/schemas (SSOT).
  *
  * PHILOSOPHY:
  * - Community Edition: Honest, unlimited. No fake quotas or artificial limits.
@@ -9,6 +10,7 @@
  * - Enterprise Edition: SSO, audit logs, multi-tenancy, premium support.
  *   Feature-based differentiation, not quota-based.
  */
+import type { LicenseTier, LicenseType } from "@prismalens/contracts/schemas";
 
 // =============================================================================
 // LICENSE FEATURES (Enterprise-only)
@@ -49,25 +51,23 @@ export type LicenseFeature =
 // - COMMUNITY: Self-hosted, open-source, unlimited
 // - ENTERPRISE: SSO, audit logs, multi-tenancy, premium support
 
-export const LICENSE_TIERS = {
+export const LICENSE_TIERS: Record<Uppercase<LicenseTier>, LicenseTier> = {
 	COMMUNITY: "community",
 	ENTERPRISE: "enterprise",
 } as const;
 
-export type LicenseTierType =
-	(typeof LICENSE_TIERS)[keyof typeof LICENSE_TIERS];
+export type LicenseTierType = LicenseTier;
 
 // =============================================================================
 // LICENSE TYPES
 // =============================================================================
 
-export const LICENSE_TYPES = {
+export const LICENSE_TYPES: Record<Uppercase<LicenseType>, LicenseType> = {
 	NONE: "none", // Community Edition (no license key needed)
 	SUBSCRIPTION: "subscription", // Enterprise Edition
 } as const;
 
-export type LicenseTypeValue =
-	(typeof LICENSE_TYPES)[keyof typeof LICENSE_TYPES];
+export type LicenseTypeValue = LicenseType;
 
 // =============================================================================
 // TIER CONFIGURATIONS
@@ -79,13 +79,13 @@ export interface TierConfig {
 }
 
 export const TIER_CONFIGS: Record<LicenseTierType, TierConfig> = {
-	[LICENSE_TIERS.COMMUNITY]: {
+	community: {
 		features: [],
 		description:
 			"Open-source, self-hosted. Unlimited users, services, integrations, and investigations. No artificial limits.",
 	},
 
-	[LICENSE_TIERS.ENTERPRISE]: {
+	enterprise: {
 		features: [
 			LICENSE_FEATURES.SSO_SAML,
 			LICENSE_FEATURES.SSO_LDAP,

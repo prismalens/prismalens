@@ -6,7 +6,7 @@ import { investigationsContract } from "@prismalens/contracts";
 import type { WorkflowStatus, RootCauseCategory, AgentName, AgentType as ContractAgentType, ExecutionStatus, ToolExecutionStatus, ToolCategory } from "@prismalens/contracts";
 import { QueueService } from "../../infrastructure/queue/queue.service.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
-import type { WorkflowStatus as DtoWorkflowStatus, RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
+import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import type { AgentExecutionDto } from "../../infrastructure/internal/dto/agent-execution.dto.js";
 import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
 import { type InvestigationWithRelations, InvestigationsService } from "./investigations.service.js";
@@ -166,7 +166,7 @@ export class InvestigationsController {
 					// Map input to InternalInvestigationResultDto structure
 					// Note: The input is already validated by Zod schema in contract
 					const resultDto: InternalInvestigationResultDto = {
-						status: input.status as DtoWorkflowStatus.COMPLETED | DtoWorkflowStatus.FAILED,
+						status: input.status as "completed" | "failed",
 						incidentId: investigation.incidentId,
 						summary: input.summary,
 						rootCause: input.rootCause,

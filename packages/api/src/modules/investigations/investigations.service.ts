@@ -59,10 +59,10 @@ export class InvestigationsService {
     // Create timeline entry
     await this.timelineService.create({
       incidentId: dto.incidentId,
-      type: TimelineEntryType.INVESTIGATION_STARTED,
+      type: TimelineEntryType.investigation_started,
       title: 'Investigation started',
       description: 'AI investigation has been queued',
-      source: TimelineSource.SYSTEM,
+      source: TimelineSource.system,
       metadata: { investigationId: investigation.id },
     });
 
@@ -414,12 +414,12 @@ export class InvestigationsService {
       // Create timeline entry
       await this.timelineService.create({
         incidentId: investigation.incidentId,
-        type: TimelineEntryType.INVESTIGATION_COMPLETED,
+        type: TimelineEntryType.investigation_completed,
         title: result.error ? 'Investigation failed' : 'Investigation completed',
         description: result.error
           ? `Investigation failed: ${result.error}`
           : `Root cause identified with ${Math.round((result.confidence ?? 0) * 100)}% confidence`,
-        source: TimelineSource.AI_WORKER,
+        source: TimelineSource.ai_worker,
         metadata: {
           investigationId: id,
           rootCause: result.rootCause,

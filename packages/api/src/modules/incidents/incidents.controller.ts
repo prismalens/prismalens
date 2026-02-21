@@ -4,6 +4,11 @@ import { incidentsContract } from "@prismalens/contracts";
 import { QueueService } from "../../infrastructure/queue/queue.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import type { Incident as PrismaIncident } from "@prismalens/database";
+import type {
+	Incident,
+	IncidentWithRelations,
+} from "@prismalens/contracts/schemas";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 import { IncidentsService } from "./incidents.service.js";
 
@@ -212,21 +217,20 @@ export class IncidentsController {
 		}
 	}
 
-	private serializeIncident(incident: any): any {
+	private serializeIncident(incident: PrismaIncident): Incident {
 		return {
 			...incident,
 			tags: incident.tags ? JSON.parse(incident.tags) : null,
-			labels: incident.labels ? JSON.parse(incident.labels) : null,
 			triggeredAt: incident.triggeredAt?.toISOString(),
 			acknowledgedAt: incident.acknowledgedAt?.toISOString() ?? null,
 			resolvedAt: incident.resolvedAt?.toISOString() ?? null,
 			createdAt: incident.createdAt?.toISOString(),
 			updatedAt: incident.updatedAt?.toISOString(),
-		};
+		} as Incident;
 	}
 
-	private serializeIncidentWithRelations(incident: any): any {
-		const serialized = this.serializeIncident(incident);
+	private serializeIncidentWithRelations(incident: Record<string, any>): IncidentWithRelations {
+		const serialized = this.serializeIncident(incident as PrismaIncident) as any;
 
 		if (incident.service) {
 			serialized.service = {
@@ -253,6 +257,6 @@ export class IncidentsController {
 			}));
 		}
 
-		return serialized;
+		return serialized as IncidentWithRelations;
 	}
 }

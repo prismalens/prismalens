@@ -1,6 +1,7 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { correlationContract } from "@prismalens/contracts";
+import type { CorrelationRule } from "@prismalens/contracts/schemas";
 import { CorrelationService } from "./correlation.service.js";
 import type {
 	CreateCorrelationRuleDto,
@@ -96,12 +97,12 @@ export class CorrelationController {
 		};
 	}
 
-	private serializeRule(rule: any): any {
+	private serializeRule(rule: Record<string, any>): CorrelationRule {
 		return {
 			...rule,
-			conditions: rule.conditions ? JSON.parse(rule.conditions) : null,
+			matchCriteria: rule.conditions ? JSON.parse(rule.conditions) : (rule.matchCriteria ?? {}),
 			createdAt: rule.createdAt?.toISOString(),
 			updatedAt: rule.updatedAt?.toISOString(),
-		};
+		} as CorrelationRule;
 	}
 }

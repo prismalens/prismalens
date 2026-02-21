@@ -138,8 +138,8 @@ function LoadingState() {
  * </FeatureGate>
  *
  * // Require a minimum tier
- * <FeatureGate tier={LICENSE_TIERS.TEAM}>
- *   <TeamFeatures />
+ * <FeatureGate tier={LICENSE_TIERS.ENTERPRISE}>
+ *   <EnterpriseFeatures />
  * </FeatureGate>
  *
  * // Hide completely when not licensed
@@ -193,8 +193,8 @@ export function FeatureGate({
  *
  * @example
  * ```tsx
- * <TierGate tier={LICENSE_TIERS.BUSINESS}>
- *   <BusinessOnlyFeature />
+ * <TierGate tier={LICENSE_TIERS.ENTERPRISE}>
+ *   <EnterpriseOnlyFeature />
  * </TierGate>
  * ```
  */

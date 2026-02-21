@@ -24,14 +24,17 @@ import {
 	type LicenseFeature,
 	type LicenseTierType,
 	TIER_ORDER,
-	UNLIMITED_QUOTA,
 } from "./constants";
+
 import type {
 	ActivateLicenseRequest,
 	ActivateLicenseResponse,
 	LicenseContextValue,
 	LicenseStatus,
 } from "./types";
+
+/** Sentinel value: -1 means the quota is unlimited (no upper bound). */
+const UNLIMITED_QUOTA = -1;
 
 // =============================================================================
 // CONTEXT
@@ -191,7 +194,7 @@ export function LicenseProvider({ children }: LicenseProviderProps) {
 
 			// License info (defaults)
 			status: licenseData?.status ?? "none",
-			tier: (licenseData?.tier ?? LICENSE_TIERS.FREE) as LicenseTierType,
+			tier: (licenseData?.tier ?? LICENSE_TIERS.COMMUNITY) as LicenseTierType,
 			licenseType: licenseData?.licenseType ?? LICENSE_TYPES.NONE,
 			features: licenseData?.features ?? [],
 			quotas: licenseData?.quotas ?? {},

@@ -1,19 +1,31 @@
-# Phase 2: Scout + Type Alignment + ADRs
+# Phase 2: Scout Node + Type Alignment
 
 **Status**: PLANNED
-**Dependencies**: Phase 0.5 (enum sync)
+**Dependencies**: Phase 1.5 (contracts SSOT)
 **Estimated effort**: 2-3 days
 
 ## Goal
 
-Implement the scout node as a pure function (no LLM) that fetches incident data via DataProvider, enriches it with timeline analysis and service topology hints, and produces a coverage report. Also fix structural type gaps and document 8 architectural decision records.
+Implement the scout node as a pure function (no LLM) that fetches incident data via DataProvider, enriches it with timeline analysis and service topology hints, and produces a coverage report. Also fix structural type gaps in agent types.
 
 ## Prerequisites
 
-Phase 0.5 must be complete so that:
-- Agent types import from contracts (not hardcoded literals)
-- Enum values like `Severity`, `AlertStatus`, `IncidentStatus` are dynamic
-- Stale contracts schema (`investigation-progress.ts`) has been rewritten
+Phase 1.5 must be complete so that:
+- All domain enums derive from `@prismalens/contracts/schemas` (no duplicates)
+- `ChangeEventTypeSchema` exists in contracts (import for `ChangeEventContext.type`)
+- Serializer types are stable (scout's DataProvider mirrors API output shapes)
+- License model is unified (2-tier, no divergence)
+
+## Deferred Data Sources
+
+These real-data integrations are **not** in scope for Phase 2. The scout fetches whatever the DataProvider returns; wiring real integrations happens in Phase 3.
+
+| Source | Model/Service | Phase |
+|--------|--------------|-------|
+| Change events | `ChangeEvent` model (exists), no service yet | Phase 3 |
+| Log search | External via IntegrationConnection | Phase 3 |
+| Code search | External via IntegrationConnection | Phase 3 |
+| Metrics | External via IntegrationConnection | Phase 3 |
 
 ## Part 0: Schema Grounding
 
@@ -39,7 +51,7 @@ Both `DirectDataProvider` and `WorkerDataProvider` already map `resolvedAt` from
 ```typescript
 export interface ChangeEventContext {
   id: string
-  type: string
+  type: ChangeEventType  // from @prismalens/contracts/schemas
   source: string
   description: string
   timestamp: string
@@ -268,66 +280,6 @@ try {
 
 - Integration test: mock DataProvider, verify scout returns correct state updates
 - Error handling: one fetch fails, others succeed — scout continues
-
-## Part B: Architectural Decision Records (ADRs)
-
-### ADR-1: Alert Grouping Strategy
-
-**Decision**: Keep current 4-tier correlation architecture.
-
-**Enhancement**: Add configurable time windows (currently hardcoded 60min) and alert storm limiting.
-
-**Current tiers**:
-1. Rule-based: exact fingerprint match
-2. Service-based: same service, time window
-3. Source-based: same source/monitor
-4. LLM-based: semantic similarity
-
-**Future**: Add Tier 2.5 (topology-based cross-service correlation using `ServiceDependency` model).
-
-### ADR-2: Investigation Re-triggering
-
-**Decision**: NOTIFY strategy — when a new alert arrives for an in-progress investigation, add it to the investigation context without restarting.
-
-**Implementation**: `InvestigationTriggerService` already checks for active investigations. Enhancement: supervisor checks for new alerts when making routing decisions.
-
-### ADR-3: Context Rot
-
-**Decision**: Timestamp freshness check on gathered data. Deferred enforcement — log warnings but don't block investigation.
-
-**Implementation**: `isDataStale(gatheredData, maxAgeMs)` utility. Supervisor checks on each iteration. If data is stale and < 4 iterations, route to scout for refresh.
-
-### ADR-4: Budget/Cost Control
-
-**Decision**: Token budget tracking per investigation. Deferred to Phase 3 (TokenTracker utility).
-
-**Defaults**: 50K tokens for cloud LLMs, unlimited for Ollama.
-
-### ADR-5: Timeout Handling
-
-**Decision**: Two-level timeout system.
-
-1. **Investigation-level**: AbortSignal in executor (default 5min). Triggers `compilePartialResult()`.
-2. **Per-node**: `withTimeout()` wrapper (default 60s per node). Individual node failure doesn't crash investigation.
-
-### ADR-6: Concurrent Investigations
-
-**Decision**: Current design is correct — no changes needed.
-
-Multiple investigations run independently with separate graph instances, separate state, separate checkpoints. BullMQ handles queue concurrency.
-
-### ADR-7: Graceful Degradation
-
-**Decision**: `safeFetch()` pattern for all external data fetches.
-
-Every DataProvider call is wrapped in `safeFetch()`. On failure: log error, return fallback, add to `errors[]` in state. Investigation continues with available data.
-
-### ADR-8: Observability
-
-**Decision**: Structured logging now, full streaming later.
-
-Phase 2: Structured log events from scout node.
-Phase 5: Real LangGraph streaming with `["updates", "custom"]` modes + SSE endpoint.
 
 ## Files to Create/Modify
 

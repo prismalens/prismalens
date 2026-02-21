@@ -1,6 +1,8 @@
 import { Controller, forwardRef, Inject } from '@nestjs/common';
 import { Implement, implement, ORPCError } from '@orpc/nest';
 import { alertsContract } from '@prismalens/contracts';
+import type { Alert as PrismaAlert } from '@prismalens/database';
+import type { Alert, AlertWithRelations } from '@prismalens/contracts/schemas';
 import { CorrelationService } from '../correlation/correlation.service.js';
 import { AlertsService } from './alerts.service.js';
 import type { CreateAlertDto, UpdateAlertDto } from './dto/index.js';
@@ -144,7 +146,7 @@ export class AlertsController {
    * Serialize alert for API response
    * Converts Date objects to ISO strings
    */
-  private serializeAlert(alert: any): any {
+  private serializeAlert(alert: PrismaAlert): Alert {
     return {
       ...alert,
       tags: alert.tags ? JSON.parse(alert.tags) : null,
@@ -155,14 +157,14 @@ export class AlertsController {
       lastOccurrence: alert.lastOccurrence?.toISOString(),
       createdAt: alert.createdAt?.toISOString(),
       updatedAt: alert.updatedAt?.toISOString(),
-    };
+    } as Alert;
   }
 
   /**
    * Serialize alert with relations for API response
    */
-  private serializeAlertWithRelations(alert: any): any {
-    const serialized = this.serializeAlert(alert);
+  private serializeAlertWithRelations(alert: Record<string, any>): AlertWithRelations {
+    const serialized = this.serializeAlert(alert as PrismaAlert) as any;
 
     if (alert.service) {
       serialized.service = {
@@ -187,6 +189,6 @@ export class AlertsController {
       };
     }
 
-    return serialized;
+    return serialized as AlertWithRelations;
   }
 }

@@ -1,3 +1,5 @@
+import { RecommendationPriority, RootCauseCategory, Urgency } from "../../../shared/enums/index.js";
+
 /**
  * DTO for investigation result (sent by worker when complete)
  */
@@ -8,13 +10,8 @@ export class InvestigationResultDto {
 	/** Identified root cause */
 	rootCause?: string;
 
-	/** Root cause category: code, config, infrastructure, external, unknown */
-	rootCauseCategory?:
-		| "code"
-		| "config"
-		| "infrastructure"
-		| "external"
-		| "unknown";
+	/** Root cause category */
+	rootCauseCategory?: RootCauseCategory;
 
 	/** Confidence score (0.0 to 1.0) */
 	confidence?: number;
@@ -41,8 +38,8 @@ export class InvestigationResultDto {
 	recommendations?: Array<{
 		title: string;
 		description?: string;
-		priority?: "critical" | "high" | "medium" | "low";
+		priority?: RecommendationPriority;
 		category?: string;
-		urgency?: "immediate" | "short_term" | "long_term";
+		urgency?: Urgency;
 	}>;
 }

@@ -103,7 +103,7 @@ export class RecommendationsService {
 			};
 
 			// Track completion
-			if (dto.status === RecommendationStatus.COMPLETED) {
+			if (dto.status === RecommendationStatus.completed) {
 				updateData.completedAt = new Date();
 			}
 
@@ -120,11 +120,11 @@ export class RecommendationsService {
 	}
 
 	async complete(id: string): Promise<Recommendation | null> {
-		return this.update(id, { status: RecommendationStatus.COMPLETED });
+		return this.update(id, { status: RecommendationStatus.completed });
 	}
 
 	async dismiss(id: string): Promise<Recommendation | null> {
-		return this.update(id, { status: RecommendationStatus.REJECTED });
+		return this.update(id, { status: RecommendationStatus.rejected });
 	}
 
 	async count(options?: {

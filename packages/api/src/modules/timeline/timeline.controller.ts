@@ -1,6 +1,10 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { timelineContract } from "@prismalens/contracts";
+import type {
+	TimelineEntry,
+	TimelineEntryWithRelations,
+} from "@prismalens/contracts/schemas";
 import type { CreateTimelineEntryDto } from "./dto/index.js";
 import { TimelineService } from "./timeline.service.js";
 
@@ -55,16 +59,16 @@ export class TimelineController {
 		};
 	}
 
-	private serializeTimelineEntry(entry: any): any {
+	private serializeTimelineEntry(entry: Record<string, any>): TimelineEntry {
 		return {
 			...entry,
 			metadata: entry.metadata ? JSON.parse(entry.metadata) : null,
 			occurredAt: entry.occurredAt?.toISOString(),
-		};
+		} as TimelineEntry;
 	}
 
-	private serializeTimelineEntryWithRelations(entry: any): any {
-		const serialized = this.serializeTimelineEntry(entry);
+	private serializeTimelineEntryWithRelations(entry: Record<string, any>): TimelineEntryWithRelations {
+		const serialized = this.serializeTimelineEntry(entry) as any;
 
 		if (entry.user) {
 			serialized.user = {
@@ -75,6 +79,6 @@ export class TimelineController {
 			};
 		}
 
-		return serialized;
+		return serialized as TimelineEntryWithRelations;
 	}
 }

@@ -31,7 +31,7 @@ export class TimelineService {
 				title: dto.title,
 				description: dto.description,
 				metadata: dto.metadata ? JSON.stringify(dto.metadata) : null,
-				source: dto.source ?? TimelineSource.SYSTEM,
+				source: dto.source ?? TimelineSource.system,
 				userId: dto.userId,
 				occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : new Date(),
 			},
@@ -117,10 +117,10 @@ export class TimelineService {
 	): Promise<TimelineEntry> {
 		return this.create({
 			incidentId,
-			type: TimelineEntryType.COMMENT,
+			type: TimelineEntryType.comment,
 			title: "Comment added",
 			description: comment,
-			source: userId ? TimelineSource.USER : TimelineSource.SYSTEM,
+			source: userId ? TimelineSource.user : TimelineSource.system,
 			userId,
 		});
 	}

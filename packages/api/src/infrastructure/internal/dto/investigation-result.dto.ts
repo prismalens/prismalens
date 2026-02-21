@@ -21,14 +21,19 @@ import { RecommendationDto } from "./recommendation.dto.js";
 /**
  * Subset of WorkflowStatus for result status (only completed or failed)
  */
-type ResultStatus = WorkflowStatus.COMPLETED | WorkflowStatus.FAILED;
+type ResultStatus = Extract<WorkflowStatus, "completed" | "failed">;
+
+const ResultStatusEnum = {
+	completed: WorkflowStatus.completed,
+	failed: WorkflowStatus.failed,
+} as const;
 
 /**
  * DTO for full investigation result (sent by worker when complete)
  * This is used by the internal API to write all results atomically
  */
 export class InternalInvestigationResultDto {
-	@IsEnum(WorkflowStatus)
+	@IsEnum(ResultStatusEnum)
 	status!: ResultStatus;
 
 	@IsString()

@@ -1,13 +1,15 @@
+import { ToolCategory, ToolExecutionStatus } from "../../../shared/enums/index.js";
+
 /**
  * DTO for creating a tool execution record
  */
 export class CreateToolExecutionDto {
 	agentExecutionId!: string;
 	toolName!: string;
-	toolCategory?: "file" | "search" | "github" | "logs" | "analysis";
+	toolCategory?: ToolCategory;
 	arguments?: Record<string, unknown>;
 	result?: Record<string, unknown>;
-	status?: "pending" | "running" | "success" | "error";
+	status?: ToolExecutionStatus;
 	executionTimeMs?: number;
 	confidence?: number;
 	error?: string;

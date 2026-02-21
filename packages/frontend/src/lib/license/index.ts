@@ -8,16 +8,13 @@
 export {
 	FEATURE_DISPLAY_NAMES,
 	LICENSE_FEATURES,
-	LICENSE_QUOTAS,
 	LICENSE_TIERS,
 	LICENSE_TYPES,
 	type LicenseFeature,
-	type LicenseQuota,
 	type LicenseTierType,
 	type LicenseTypeValue,
 	TIER_DISPLAY_NAMES,
 	TIER_ORDER,
-	UNLIMITED_QUOTA,
 } from "./constants";
 // Context and hooks
 export {

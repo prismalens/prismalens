@@ -236,6 +236,20 @@ export const SuggestionStatusSchema = z.enum([
 	"ignored",
 ]);
 
+// Change Tracking
+export const ChangeEventTypeSchema = z.enum([
+	"deployment",
+	"config",
+	"migration",
+	"commit",
+	"rollback",
+]);
+
+// License
+export const LicenseTypeSchema = z.enum(["none", "subscription"]);
+
+export const LicenseTierSchema = z.enum(["community", "enterprise"]);
+
 // =============================================================================
 // PAGINATION & COMMON QUERY SCHEMAS
 // =============================================================================
@@ -309,4 +323,7 @@ export type SettingCategory = z.infer<typeof SettingCategorySchema>;
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
 export type AuthMethod = z.infer<typeof AuthMethodSchema>;
 export type SuggestionStatus = z.infer<typeof SuggestionStatusSchema>;
+export type ChangeEventType = z.infer<typeof ChangeEventTypeSchema>;
+export type LicenseType = z.infer<typeof LicenseTypeSchema>;
+export type LicenseTier = z.infer<typeof LicenseTierSchema>;
 export type Pagination = z.infer<typeof PaginationSchema>;

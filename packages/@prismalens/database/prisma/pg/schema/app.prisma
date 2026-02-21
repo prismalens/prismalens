@@ -1002,19 +1002,14 @@ model ServiceSuggestion {
 
 /// License type for determining validation and expiry behavior
 enum LicenseType {
-  none // Free tier, no license key
-  perpetual // Free+License tier, never expires
-  subscription // Paid tiers, time-limited
+  none // Community, no license key needed
+  subscription // Enterprise, time-limited
 }
 
 /// License tier for feature entitlements
 enum LicenseTier {
-  free // No license, basic quotas
-  free_plus // Perpetual license, extended quotas
-  beginner // Cloud-hosted subscription
-  team // Cloud-hosted, seat-based
-  business // Self-hosted subscription, SSO
-  enterprise // Full features, custom terms
+  community // Open-source, basic features
+  enterprise // Full features, SSO, advanced integrations
 }
 
 /// License information for the installation.
@@ -1026,7 +1021,7 @@ model LicenseInfo {
   // License identification
   licenseKey  String?     @unique // The license key from Keygen.sh
   licenseType LicenseType @default(none)
-  tier        LicenseTier @default(free)
+  tier        LicenseTier @default(community)
 
   // Validity and activation
   validUntil    DateTime? // null for perpetual, set for subscription

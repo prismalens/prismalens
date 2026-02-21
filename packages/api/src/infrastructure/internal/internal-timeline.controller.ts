@@ -39,7 +39,7 @@ export class InternalTimelineController {
       title: dto.title,
       description: dto.description,
       metadata: dto.metadata,
-      source: dto.source ?? TimelineSource.AI_WORKER,
+      source: dto.source ?? TimelineSource.ai_worker,
     });
   }
 }

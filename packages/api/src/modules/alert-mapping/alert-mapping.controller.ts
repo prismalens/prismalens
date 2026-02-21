@@ -1,6 +1,10 @@
 import { Controller, Logger } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { alertMappingContract } from "@prismalens/contracts";
+import type {
+	AlertMappingRule,
+	AlertMappingRuleWithService,
+} from "@prismalens/contracts/schemas";
 import { AlertMappingService } from "./alert-mapping.service.js";
 import type {
 	CreateMappingRuleDto,
@@ -93,17 +97,17 @@ export class AlertMappingController {
 		};
 	}
 
-	private serializeRule(rule: any): any {
+	private serializeRule(rule: Record<string, any>): AlertMappingRule {
 		return {
 			...rule,
-			conditions: rule.conditions ? JSON.parse(rule.conditions) : null,
+			matchCriteria: rule.conditions ? JSON.parse(rule.conditions) : (rule.matchCriteria ?? {}),
 			createdAt: rule.createdAt?.toISOString(),
 			updatedAt: rule.updatedAt?.toISOString(),
-		};
+		} as AlertMappingRule;
 	}
 
-	private serializeRuleWithService(rule: any): any {
-		const serialized = this.serializeRule(rule);
+	private serializeRuleWithService(rule: Record<string, any>): AlertMappingRuleWithService {
+		const serialized = this.serializeRule(rule) as any;
 
 		if (rule.service) {
 			serialized.service = {
@@ -114,6 +118,6 @@ export class AlertMappingController {
 			};
 		}
 
-		return serialized;
+		return serialized as AlertMappingRuleWithService;
 	}
 }

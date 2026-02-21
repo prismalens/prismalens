@@ -1,3 +1,14 @@
+import type {
+	AgentType,
+	EffortEstimate,
+	ExecutionStatus,
+	RecommendationCategory,
+	RecommendationPriority,
+	ToolCategory,
+	ToolExecutionStatus,
+	Urgency,
+} from "@prismalens/contracts/schemas";
+
 export interface IntegrationContext {
 	type: string;
 	connectionId: string;
@@ -9,6 +20,7 @@ export interface IntegrationContext {
 export interface InvestigationJobData {
 	incidentId: string;
 	investigationId: string;
+	/** BullMQ queue priority — not a domain enum */
 	priority?: "low" | "normal" | "high" | "critical";
 	context?: Record<string, unknown>;
 	/** @deprecated Use connectionIds instead - credentials should not be in Redis */
@@ -35,25 +47,25 @@ export interface InvestigationResult {
 	recommendations: Array<{
 		title: string;
 		description?: string;
-		priority?: string;
-		category?: string;
-		urgency?: string;
+		priority?: RecommendationPriority;
+		category?: RecommendationCategory;
+		urgency?: Urgency;
 		actionable?: boolean;
-		estimatedEffort?: string;
+		estimatedEffort?: EffortEstimate;
 	}>;
 	agentExecutions: Array<{
 		agentName: string;
-		agentType?: string;
-		status: string;
+		agentType?: AgentType;
+		status: ExecutionStatus;
 		startedAt?: string;
 		completedAt?: string;
 		executionTimeMs?: number;
 		toolExecutions: Array<{
 			toolName: string;
-			toolCategory?: string;
+			toolCategory?: ToolCategory;
 			arguments?: unknown;
 			result?: unknown;
-			status?: string;
+			status?: ToolExecutionStatus;
 			executionTimeMs?: number;
 			confidence?: number;
 		}>;

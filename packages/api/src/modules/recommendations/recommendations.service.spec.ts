@@ -181,7 +181,7 @@ describe("RecommendationsService (BDD)", () => {
 	describe("update", () => {
 		it("should update and return recommendation", async () => {
 			const recId = "rec-123";
-			const updateDto: UpdateRecommendationDto = { status: RecommendationStatus.COMPLETED };
+			const updateDto: UpdateRecommendationDto = { status: RecommendationStatus.completed };
 			const updatedRec = RecommendationFactory.create({
 				id: recId,
 				...updateDto,
@@ -194,7 +194,7 @@ describe("RecommendationsService (BDD)", () => {
 			expect(result).toEqual(updatedRec);
 			expect(mockPrismaService.recommendation.update).toHaveBeenCalledWith({
 				where: { id: recId },
-				data: expect.objectContaining({ status: RecommendationStatus.COMPLETED }),
+				data: expect.objectContaining({ status: RecommendationStatus.completed }),
 			});
 		});
 

@@ -37,6 +37,7 @@
 	"engines": {
 		"node": ">=24.0.0"
 	},
+	"sideEffects": false,
 	"files": [
 		"dist",
 		"src"
