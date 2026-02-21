@@ -42,7 +42,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentNodeData>) {
 			<Handle
 				type="target"
 				position={Position.Top}
-				className="w-3 h-3 !bg-slate-400"
+				className="w-3 h-3 !bg-zinc-400"
 			/>
 
 			{/* Header with icon and name */}
@@ -88,7 +88,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentNodeData>) {
 			<Handle
 				type="source"
 				position={Position.Bottom}
-				className="w-3 h-3 !bg-slate-400"
+				className="w-3 h-3 !bg-zinc-400"
 			/>
 		</div>
 	);

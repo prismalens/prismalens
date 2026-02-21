@@ -7,6 +7,7 @@
  */
 
 import type { AgentExecutionWithTools } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { Download, FileJson, Image } from "lucide-react";
 import { useCallback } from "react";
 import { useReactFlow, getRectOfNodes, getTransformForBounds } from "reactflow";
@@ -55,7 +56,7 @@ export function CanvasExportMenu({
 
 		try {
 			const dataUrl = await toPng(viewport, {
-				backgroundColor: "#f1f5f9", // slate-100
+				backgroundColor: chartColors.cardLight,
 				width: nodesBounds.width,
 				height: nodesBounds.height,
 				style: {

@@ -23,14 +23,14 @@ export function StartEndNode({ data }: NodeProps<StartEndNodeData>) {
 				"min-w-[80px] text-center font-medium text-sm",
 				isFailed
 					? "bg-red-100 border-red-400 text-red-700 dark:bg-red-950 dark:border-red-600 dark:text-red-300"
-					: "bg-slate-100 border-slate-400 text-slate-700 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300",
+					: "bg-zinc-100 border-zinc-400 text-zinc-700 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300",
 			)}
 		>
 			{!isStart && (
 				<Handle
 					type="target"
 					position={Position.Top}
-					className="w-2 h-2 !bg-slate-400"
+					className="w-2 h-2 !bg-zinc-400"
 				/>
 			)}
 			{data.label}
@@ -38,7 +38,7 @@ export function StartEndNode({ data }: NodeProps<StartEndNodeData>) {
 				<Handle
 					type="source"
 					position={Position.Bottom}
-					className="w-2 h-2 !bg-slate-400"
+					className="w-2 h-2 !bg-zinc-400"
 				/>
 			)}
 		</div>

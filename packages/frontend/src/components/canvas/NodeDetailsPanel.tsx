@@ -240,7 +240,7 @@ function ToolExecutionItem({ tool }: { tool: ToolExecution }) {
 				</button>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<div className="mt-1 ml-6 p-2 bg-slate-50 dark:bg-slate-900 rounded text-xs">
+				<div className="mt-1 ml-6 p-2 bg-zinc-50 dark:bg-zinc-900 rounded text-xs">
 					{tool.error && (
 						<div className="mb-2 text-destructive">
 							<strong>Error:</strong> {tool.error}
@@ -249,7 +249,7 @@ function ToolExecutionItem({ tool }: { tool: ToolExecution }) {
 					{tool.arguments && Object.keys(tool.arguments).length > 0 && (
 						<div className="mb-2">
 							<strong className="text-muted-foreground">Arguments:</strong>
-							<pre className="mt-1 p-2 bg-slate-100 dark:bg-slate-800 rounded overflow-x-auto">
+							<pre className="mt-1 p-2 bg-zinc-100 dark:bg-zinc-800 rounded overflow-x-auto">
 								{JSON.stringify(tool.arguments, null, 2)}
 							</pre>
 						</div>
@@ -257,7 +257,7 @@ function ToolExecutionItem({ tool }: { tool: ToolExecution }) {
 					{tool.result && Object.keys(tool.result).length > 0 && (
 						<div>
 							<strong className="text-muted-foreground">Result:</strong>
-							<pre className="mt-1 p-2 bg-slate-100 dark:bg-slate-800 rounded overflow-x-auto max-h-[200px]">
+							<pre className="mt-1 p-2 bg-zinc-100 dark:bg-zinc-800 rounded overflow-x-auto max-h-[200px]">
 								{JSON.stringify(tool.result, null, 2)}
 							</pre>
 						</div>

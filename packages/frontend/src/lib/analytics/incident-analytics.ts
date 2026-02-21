@@ -6,6 +6,7 @@
  */
 
 import type { Incident, IncidentWithRelations } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import {
 	format,
 	startOfDay,
@@ -61,11 +62,11 @@ export interface AnalyticsSummary {
 // =============================================================================
 
 export const SEVERITY_COLORS: Record<string, string> = {
-	critical: "#ef4444", // red-500
-	high: "#f97316", // orange-500
-	medium: "#eab308", // yellow-500
-	low: "#22c55e", // green-500
-	info: "#3b82f6", // blue-500
+	critical: chartColors.severity.critical,
+	high: chartColors.severity.high,
+	medium: chartColors.severity.medium,
+	low: chartColors.severity.low,
+	info: chartColors.severity.info,
 };
 
 // =============================================================================
@@ -267,7 +268,7 @@ export function groupIncidentsBySeverity(
 		.map((severity) => ({
 			name: severity.charAt(0).toUpperCase() + severity.slice(1),
 			value: severityCount.get(severity) ?? 0,
-			color: SEVERITY_COLORS[severity] ?? "#94a3b8",
+			color: SEVERITY_COLORS[severity] ?? chartColors.muted,
 		}));
 }
 

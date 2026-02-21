@@ -15,6 +15,7 @@ import {
 	YAxis,
 } from "recharts";
 import type { IncidentWithRelations } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { groupIncidentsByService, type BarChartDataPoint } from "@/lib/analytics";
 
@@ -98,7 +99,7 @@ export function ServiceDistributionChart({
 							/>
 							<Bar
 								dataKey="value"
-								fill="#8b5cf6"
+								fill={chartColors.secondary}
 								radius={[0, 4, 4, 0]}
 								onClick={(_, index) => handleClick(data[index])}
 								style={{ cursor: onServiceClick ? "pointer" : "default" }}

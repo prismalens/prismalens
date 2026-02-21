@@ -1,0 +1,50 @@
+{
+	"name": "@prismalens/design-tokens",
+	"version": "0.1.0",
+	"description": "Shared design tokens for PrismaLens brand identity (colors, fonts, animations)",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./colors": {
+			"types": "./dist/colors.d.ts",
+			"import": "./dist/colors.js"
+		},
+		"./fonts": {
+			"types": "./dist/fonts.d.ts",
+			"import": "./dist/fonts.js"
+		},
+		"./animations": {
+			"types": "./dist/animations.d.ts",
+			"import": "./dist/animations.js"
+		},
+		"./tokens.css": "./css/tokens.css",
+		"./tailwind-preset.css": "./css/tailwind-preset.css",
+		"./starlight.css": "./css/starlight.css",
+		"./preset": {
+			"require": "./preset.cjs"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"typescript": "^5.7.0"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"files": [
+		"dist",
+		"src",
+		"css",
+		"preset.cjs"
+	]
+}

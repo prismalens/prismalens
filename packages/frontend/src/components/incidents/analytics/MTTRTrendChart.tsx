@@ -16,6 +16,7 @@ import {
 	ReferenceLine,
 } from "recharts";
 import type { Incident } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -124,22 +125,22 @@ export function MTTRTrendChart({
 							{avgMTTR != null && (
 								<ReferenceLine
 									y={avgMTTR}
-									stroke="#94a3b8"
+									stroke={chartColors.muted}
 									strokeDasharray="5 5"
 									label={{
 										value: "Avg",
 										position: "right",
 										fontSize: 10,
-										fill: "#94a3b8",
+										fill: chartColors.muted,
 									}}
 								/>
 							)}
 							<Line
 								type="monotone"
 								dataKey="mttr"
-								stroke="#22c55e"
+								stroke={chartColors.success}
 								strokeWidth={2}
-								dot={{ r: 3, fill: "#22c55e" }}
+								dot={{ r: 3, fill: chartColors.success }}
 								activeDot={{ r: 5 }}
 							/>
 						</LineChart>

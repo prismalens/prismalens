@@ -50,7 +50,7 @@ export function StatusIndicator({
 		default:
 			return (
 				<Circle
-					className={cn(sizeClass, "text-slate-400", className)}
+					className={cn(sizeClass, "text-zinc-400", className)}
 				/>
 			);
 	}

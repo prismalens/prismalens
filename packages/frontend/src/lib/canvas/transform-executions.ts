@@ -341,6 +341,6 @@ export function getStatusColor(status: ExecutionStatus | "pending"): string {
 			return "text-red-500";
 		case "pending":
 		default:
-			return "text-slate-400";
+			return "text-zinc-400";
 	}
 }

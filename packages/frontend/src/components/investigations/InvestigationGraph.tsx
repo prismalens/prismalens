@@ -25,6 +25,7 @@ import type {
 	InvestigationProgressType,
 	ProgressSnapshotType,
 } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { useInvestigationProgress, useInvestigationProgressHistory } from "@/lib/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +35,7 @@ import { Loader2, CheckCircle, XCircle, Clock, PlayCircle } from "lucide-react";
 // Custom node component for investigation graph
 function InvestigationNode({ data }: { data: InvestigationNodeData }) {
 	const statusColors = {
-		pending: "bg-slate-200 border-slate-300",
+		pending: "bg-zinc-200 border-zinc-300",
 		running: "bg-blue-100 border-blue-400 animate-pulse",
 		completed: "bg-green-100 border-green-400",
 		skipped: "bg-gray-100 border-gray-300",
@@ -42,7 +43,7 @@ function InvestigationNode({ data }: { data: InvestigationNodeData }) {
 	};
 
 	const statusIcons = {
-		pending: <Clock className="h-4 w-4 text-slate-500" />,
+		pending: <Clock className="h-4 w-4 text-zinc-500" />,
 		running: <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
 		completed: <CheckCircle className="h-4 w-4 text-green-500" />,
 		skipped: <Clock className="h-4 w-4 text-gray-400" />,
@@ -50,7 +51,7 @@ function InvestigationNode({ data }: { data: InvestigationNodeData }) {
 	};
 
 	const typeColors = {
-		system: "text-slate-600",
+		system: "text-zinc-600",
 		orchestrator: "text-purple-600",
 		gatherer: "text-blue-600",
 		analyzer: "text-orange-600",
@@ -228,7 +229,7 @@ function buildGraphFromProgress(
 		...e,
 		type: "smoothstep",
 		animated: progress?.currentNode === e.source,
-		style: { stroke: "#94a3b8" },
+		style: { stroke: chartColors.muted },
 	}));
 
 	return { nodes, edges };
@@ -271,13 +272,13 @@ function InvestigationGraphInner({
 	const minimapNodeColor = useCallback((node: Node) => {
 		const data = node.data as InvestigationNodeData;
 		const colors = {
-			pending: "#e2e8f0",
-			running: "#93c5fd",
-			completed: "#86efac",
-			skipped: "#d1d5db",
-			failed: "#fca5a5",
+			pending: chartColors.node.default,
+			running: chartColors.node.active,
+			completed: chartColors.node.success,
+			skipped: chartColors.node.idle,
+			failed: chartColors.node.error,
 		};
-		return colors[data.status] || "#e2e8f0";
+		return colors[data.status] || chartColors.node.default;
 	}, []);
 
 	if (isLoading && !progress) {
@@ -341,7 +342,7 @@ function InvestigationGraphInner({
 						nodesDraggable={false}
 						nodesConnectable={false}
 					>
-						<Background color="#94a3b8" gap={16} />
+						<Background color={chartColors.muted} gap={16} />
 						<Controls showInteractive={false} />
 						<MiniMap nodeColor={minimapNodeColor} zoomable pannable />
 					</ReactFlow>

@@ -171,6 +171,12 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/@prismalens/design-tokens:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/@prismalens/logger:
     dependencies:
       '@prismalens/config':
@@ -412,6 +418,9 @@ importers:
       '@prismalens/contracts':
         specifier: workspace:*
         version: link:../@prismalens/contracts
+      '@prismalens/design-tokens':
+        specifier: workspace:*
+        version: link:../@prismalens/design-tokens
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)

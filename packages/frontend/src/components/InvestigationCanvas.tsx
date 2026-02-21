@@ -23,6 +23,7 @@ import type {
 	AgentExecutionWithTools,
 	WorkflowStatus,
 } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 
 import { AgentNode, CanvasExportMenu, StartEndNode } from "@/components/canvas";
 import { getAgentMiniMapColor, transformExecutionsToCanvas } from "@/lib/canvas";
@@ -85,17 +86,17 @@ function InvestigationCanvasInner({
 	// MiniMap node colors based on agent type (dynamic)
 	const minimapNodeColor = useCallback((node: Node) => {
 		if (node.type === "startEnd") {
-			return node.data.status === "failed" ? "#fecaca" : "#e2e8f0";
+			return node.data.status === "failed" ? chartColors.node.error : chartColors.node.default;
 		}
 		if (node.type === "agent" && node.data.agentName) {
 			return getAgentMiniMapColor(node.data.agentName);
 		}
-		return "#e2e8f0";
+		return chartColors.node.default;
 	}, []);
 
 	return (
 		<div
-			className={`relative w-full bg-slate-100 dark:bg-slate-800 rounded-lg ${
+			className={`relative w-full bg-zinc-100 dark:bg-zinc-800 rounded-lg ${
 				isMini ? "h-[200px]" : "h-[500px]"
 			}`}
 		>
@@ -140,7 +141,7 @@ function InvestigationCanvasInner({
 				nodesConnectable={false}
 				elementsSelectable={!isMini}
 			>
-				<Background color="#94a3b8" gap={isMini ? 12 : 16} />
+				<Background color={chartColors.muted} gap={isMini ? 12 : 16} />
 				{!isMini && <Controls />}
 				{!isMini && <MiniMap nodeColor={minimapNodeColor} zoomable pannable />}
 			</ReactFlow>

@@ -19,6 +19,7 @@
 		"@orpc/tanstack-query": "^1.13.2",
 		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
+		"@prismalens/design-tokens": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"@radix-ui/react-alert-dialog": "^1.1.15",
 		"@radix-ui/react-avatar": "^1.1.11",

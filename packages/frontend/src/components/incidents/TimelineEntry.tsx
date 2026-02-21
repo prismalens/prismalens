@@ -61,9 +61,9 @@ const entryStyles: Record<TimelineEntryType, EntryStyle> = {
 	},
 	alert_removed: {
 		icon: MinusCircle,
-		color: "text-slate-500",
-		bgColor: "bg-slate-50",
-		borderColor: "border-slate-200",
+		color: "text-zinc-500",
+		bgColor: "bg-zinc-50",
+		borderColor: "border-zinc-200",
 	},
 	status_changed: {
 		icon: RefreshCw,
@@ -109,9 +109,9 @@ const entryStyles: Record<TimelineEntryType, EntryStyle> = {
 	},
 	comment: {
 		icon: MessageSquare,
-		color: "text-slate-600",
-		bgColor: "bg-slate-50",
-		borderColor: "border-slate-200",
+		color: "text-zinc-600",
+		bgColor: "bg-zinc-50",
+		borderColor: "border-zinc-200",
 	},
 	postmortem_created: {
 		icon: FileText,
@@ -121,9 +121,9 @@ const entryStyles: Record<TimelineEntryType, EntryStyle> = {
 	},
 	custom: {
 		icon: PenLine,
-		color: "text-slate-600",
-		bgColor: "bg-slate-50",
-		borderColor: "border-slate-200",
+		color: "text-zinc-600",
+		bgColor: "bg-zinc-50",
+		borderColor: "border-zinc-200",
 	},
 };
 

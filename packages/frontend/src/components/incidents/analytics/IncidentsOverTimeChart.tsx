@@ -15,6 +15,7 @@ import {
 	YAxis,
 } from "recharts";
 import type { Incident } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { groupIncidentsByDate, type TimeSeriesDataPoint } from "@/lib/analytics";
@@ -75,8 +76,8 @@ export function IncidentsOverTimeChart({
 						<AreaChart data={data}>
 							<defs>
 								<linearGradient id="incidentGradient" x1="0" y1="0" x2="0" y2="1">
-									<stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-									<stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+									<stop offset="5%" stopColor={chartColors.primary} stopOpacity={0.3} />
+									<stop offset="95%" stopColor={chartColors.primary} stopOpacity={0} />
 								</linearGradient>
 							</defs>
 							<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -111,7 +112,7 @@ export function IncidentsOverTimeChart({
 							<Area
 								type="monotone"
 								dataKey="value"
-								stroke="#3b82f6"
+								stroke={chartColors.primary}
 								strokeWidth={2}
 								fill="url(#incidentGradient)"
 							/>
