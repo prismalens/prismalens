@@ -1,5 +1,19 @@
 # Phase 7: Resolver Subgraph
 
+> **REEVALUATION NEEDED (Phase 4.5 Decision)**
+>
+> The resolver will become a `createDeepAgent` node (decided during Phase 4.5 deep agent migration).
+> Shared infrastructure from the gatherer implementation will be reused:
+> - `createDeepAgentConfig("resolver")` for skill sources + backend + middleware
+> - `ToolGatingMiddleware` for progressive tool disclosure
+> - `skills/resolver/` directory for resolver-specific SKILL.md files (resolution playbooks, scaling, rollback)
+>
+> **Key questions to resolve after gatherer deep agent is working:**
+> - Replace `interrupt()` (graph-level pause) with deep agent HITL middleware (agent-loop pause)? Different UX and state semantics.
+> - How does the built-in `humanInTheLoopMiddleware` from deepagents interact with LangGraph's `interrupt()`?
+> - Performance impact of deep agent overhead on resolver nodes.
+> - Backend for generating fix scripts — use `FilesystemBackend` write capabilities?
+
 **Status**: PLANNED
 **Dependencies**: Phase 5 (supervisor routes to resolver), Phase 6 (analyst produces hypotheses)
 **Estimated effort**: 2-3 days

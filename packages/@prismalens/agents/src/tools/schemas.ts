@@ -171,7 +171,7 @@ export type RiskAssessment = z.infer<typeof RiskAssessmentSchema>
 // =============================================================================
 
 /**
- * Gatherer summary — structured output from createReactAgent responseFormat.
+ * Gatherer summary — structured output from createDeepAgent responseFormat.
  */
 export const GathererSummarySchema = z.object({
   dataSummary: z

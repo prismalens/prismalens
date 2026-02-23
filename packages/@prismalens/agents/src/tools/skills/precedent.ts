@@ -1,16 +1,12 @@
 /**
  * Precedent skill — tools for searching past resolutions and runbooks.
  *
- * Dual exports:
- * - precedentSkill: Full skill object (used by gatherer via loadSkills())
- * - searchSimilarResolutions, lookupRunbook: Individual tools
- *
- * Stub implementation — Phase 3 adds provider implementations.
+ * Individual tool exports used by gatherer (via skill loader) and resolver.
+ * Skill metadata is defined in skills/gatherer/precedent/SKILL.md.
  */
 
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
-import type { Skill } from "../types.js"
 
 /**
  * Search for similar past incident resolutions.
@@ -58,14 +54,3 @@ export const lookupRunbook = tool(
     }),
   },
 )
-
-/**
- * Precedent skill — bundles precedent tools with metadata.
- */
-export const precedentSkill: Skill = {
-  name: "precedent",
-  description: "Search past resolutions and runbooks for proven solutions",
-  category: "precedent",
-  tools: [searchSimilarResolutions, lookupRunbook],
-  requiredIntegrations: ["runbook", "confluence"],
-}

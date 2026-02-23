@@ -1,7 +1,7 @@
 # Phase 5: Supervisor + Streaming + Consumer Migration
 
 **Status**: PLANNED
-**Dependencies**: Phase 4 (gatherer works), Phase 2 (scout works, supervisor stubs compile partial result)
+**Dependencies**: Phase 4/4.5 (gatherer works via createDeepAgent), Phase 2 (scout works, supervisor stubs compile partial result)
 **Estimated effort**: 4-5 days (largest phase)
 
 ## Goal
@@ -217,10 +217,7 @@ export function buildInvestigationGraph(deps: InvestigationGraphDeps) {
     .addNode("supervisor", supervisorNode, {
       ends: ["gatherer", "analyst", "resolver", "__end__"],
     })
-    .addNode("gatherer", withTimeout(
-      createGathererNode(integrations, mcpTools ?? []),
-      60_000,
-    ))
+    .addNode("gatherer", createGathererNode(integrations, mcpTools ?? []))
     .addNode("analyst", createAnalystGraph())
     .addNode("resolver", createResolverGraph())
     .addEdge(START, "scout")

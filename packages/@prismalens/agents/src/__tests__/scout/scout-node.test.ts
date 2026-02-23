@@ -39,6 +39,7 @@ function makeState(overrides: Partial<InvestigationState> = {}): InvestigationSt
     iterations: 0,
     lastProgressSnapshot: null,
     errors: [],
+    skillsLoaded: [],
     incident: null,
     alerts: [],
     gatheredData: {},

@@ -13,10 +13,12 @@ import type {
 	AlertsService,
 	AlertWithRelations,
 } from "../../modules/alerts/alerts.service.js";
+import type { ChangeEventsService } from "../../modules/change-events/change-events.service.js";
 import type {
 	IncidentsService,
 	IncidentWithRelations,
 } from "../../modules/incidents/incidents.service.js";
+import { ChangeEventTypeSchema } from "@prismalens/contracts/schemas";
 import {
 	safeParseJsonArray,
 	safeParseJsonObject,
@@ -31,6 +33,7 @@ export class DirectDataProvider implements DataProvider {
 	constructor(
 		private readonly alertsService: AlertsService,
 		private readonly incidentsService: IncidentsService,
+		private readonly changeEventsService: ChangeEventsService,
 	) {}
 
 	/**
@@ -59,13 +62,40 @@ export class DirectDataProvider implements DataProvider {
 
 	/**
 	 * Fetch change events near the incident time window.
-	 * Stub: returns empty until ChangeEventsService is available.
 	 */
 	async fetchChangeEvents(
-		_incidentId: string,
-		_timeRange?: { start: string; end: string },
+		incidentId: string,
+		timeRange?: { start: string; end: string },
 	): Promise<ChangeEventContext[]> {
-		return [];
+		const parsedRange = timeRange
+			? {
+					start: this.parseDate(timeRange.start, "timeRange.start"),
+					end: this.parseDate(timeRange.end, "timeRange.end"),
+				}
+			: undefined;
+
+		const events = await this.changeEventsService.findByIncident(
+			incidentId,
+			parsedRange,
+		);
+		return events.map((e) => ({
+			id: e.id,
+			type: ChangeEventTypeSchema.parse(e.type),
+			source: e.source,
+			description: e.description ?? null,
+			timestamp: e.timestamp.toISOString(),
+			serviceId: e.serviceId ?? null,
+			metadata: safeParseJsonObject(e.metadata) ?? null,
+			riskScore: e.riskScore ?? null,
+		}));
+	}
+
+	private parseDate(iso: string, label: string): Date {
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) {
+			throw new Error(`Invalid ${label} date: ${iso}`);
+		}
+		return d;
 	}
 
 	/**

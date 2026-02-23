@@ -4,7 +4,7 @@
  * Each agent provides a factory function:
  * - supervisorNode: Function node returning Command
  * - createScoutNode(dataProvider): Simple function node
- * - createGathererNode(integrations, mcpTools): Function node wrapping createReactAgent
+ * - createGathererNode(integrations, mcpTools): Function node wrapping createDeepAgent
  * - createAnalystGraph(): Compiled subgraph
  * - createResolverGraph(): Compiled subgraph
  */

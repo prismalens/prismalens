@@ -4,6 +4,7 @@ import { ConfigModule } from "@nestjs/config";
 import { getConfig } from "@prismalens/config";
 import * as fs from "fs";
 import * as IORedis from "ioredis";
+import { ChangeEventsModule } from "../../modules/change-events/change-events.module.js";
 import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
 import { QueueService } from "./queue.service.js";
 
@@ -64,6 +65,7 @@ export class QueueModule {
 		const imports: any[] = [
 			ConfigModule,
 			forwardRef(() => InvestigationsModule),
+			ChangeEventsModule,
 		];
 
 		if (workerMode === "queue") {

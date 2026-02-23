@@ -1,16 +1,12 @@
 /**
  * Change skill — tools for tracking code changes and deployments.
  *
- * Dual exports:
- * - changeSkill: Full skill object (used by gatherer via loadSkills())
- * - getRecentCommits, getDeploymentHistory: Individual tools (used by scout)
- *
- * Stub implementation — Phase 3 adds GitHub/Render provider implementations.
+ * Individual tool exports used by gatherer (via skill loader) and scout.
+ * Skill metadata is defined in skills/gatherer/change/SKILL.md.
  */
 
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
-import type { Skill } from "../types.js"
 
 /**
  * Get recent commits for a service.
@@ -54,14 +50,3 @@ export const getDeploymentHistory = tool(
     }),
   },
 )
-
-/**
- * Change skill — bundles change tracking tools with metadata.
- */
-export const changeSkill: Skill = {
-  name: "change",
-  description: "Track code changes and deployment history",
-  category: "change",
-  tools: [getRecentCommits, getDeploymentHistory],
-  requiredIntegrations: ["github", "gitlab"],
-}

@@ -3,7 +3,7 @@
  *
  * This package provides a LangGraph-based investigation executor with:
  * - Deterministic scout + LLM-driven supervisor routing
- * - Skill-based tool progressive disclosure
+ * - Skill-based tool progressive disclosure via SKILL.md + ToolGatingMiddleware
  * - Subgraph agents (analyst, resolver) with structured output
  * - DataProvider injection for data source abstraction
  * - Stream-only executor API with progress events
@@ -104,12 +104,17 @@ export { createLLM } from "./llm/index.js"
 // Tools
 // =============================================================================
 
-export { ToolRegistry } from "./tools/index.js"
-export type { Skill, ToolBundle, ToolCategory } from "./tools/index.js"
+export type { SkillMetadata, PrismaLensSkillMetadata } from "./tools/index.js"
 export { MCPClientManager } from "./tools/index.js"
 export type { MCPServerConfig } from "./tools/index.js"
 export { INVESTIGATION_PHASES } from "./tools/schemas.js"
 export type { InvestigationPhaseValue } from "./tools/schemas.js"
+
+// =============================================================================
+// Middleware
+// =============================================================================
+
+export { createToolGatingMiddleware } from "./middleware/tool-gating-middleware.js"
 
 // =============================================================================
 // Utilities

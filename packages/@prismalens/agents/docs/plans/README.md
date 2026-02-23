@@ -24,7 +24,7 @@ Alert Ingestion
 
 - **Scout**: Function node (no LLM). Fetches incident + alerts via DataProvider, enriches with timeline/topology.
 - **Supervisor**: LLM routing node with deterministic guards. Uses `Command({ goto, update })` for routing.
-- **Gatherer**: `createReactAgent` wrapper with skill-based tools. Collects logs, code, deployments, metrics.
+- **Gatherer**: `createDeepAgent` wrapper with SKILL.md-based progressive tool disclosure. Collects logs, code, deployments, metrics.
 - **Analyst**: Subgraph with parallel hypothesis evaluation via `Send()`.
 - **Resolver**: Subgraph with precedent lookup and human-in-the-loop approval gates via `interrupt()`.
 
@@ -35,9 +35,9 @@ Alert Ingestion
 | 1 | [phase-1-scaffold.md](./phase-1-scaffold.md) | COMPLETED | Architecture scaffold: state, types, graph, executor, providers | None |
 | 0.5 | [phase-0.5-enum-sync.md](./phase-0.5-enum-sync.md) | COMPLETED | Enum sync: contracts SSOT, agents imports, dynamic supervisor | Phase 1 |
 | 1.5 | [phase-1.5-contracts-ssot.md](./phase-1.5-contracts-ssot.md) | COMPLETED | Complete SSOT alignment: schemas, enums, serializers, license | Phase 0.5 |
-| 2 | [phase-2-scout.md](./phase-2-scout.md) | PLANNED | Scout node + type alignment | Phase 1.5 |
-| 3 | [phase-3-skills-tools.md](./phase-3-skills-tools.md) | PLANNED | Wire skills to real integrations + token tracking | Phase 2 |
-| 4 | [phase-4-gatherer.md](./phase-4-gatherer.md) | PLANNED | Gatherer agent (createReactAgent wrapper) | Phase 3 |
+| 2 | [phase-2-scout.md](./phase-2-scout.md) | COMPLETED | Scout node + type alignment | Phase 1.5 |
+| 3 | [phase-3-skills-tools.md](./phase-3-skills-tools.md) | COMPLETED | load_skill progressive disclosure + ChangeEventsService | Phase 2 |
+| 4 | [phase-4-gatherer.md](./phase-4-gatherer.md) | COMPLETED | Gatherer agent (createReactAgent wrapper, all tools upfront) | Phase 3 |
 | 5 | [phase-5-supervisor.md](./phase-5-supervisor.md) | PLANNED | Supervisor LLM routing + streaming + consumer migration | Phase 4, Phase 2 |
 | 6 | [phase-6-analyst.md](./phase-6-analyst.md) | PLANNED | Analyst subgraph (hypothesis-driven) | Phase 5 |
 | 7 | [phase-7-resolver.md](./phase-7-resolver.md) | PLANNED | Resolver subgraph (precedent + approval) | Phase 5 |
@@ -94,13 +94,13 @@ Every phase plan is grounded against these monorepo files:
 ## Key Discrepancies Found
 
 1. ~~**DB AgentName enum is stale**~~: `alert_agent`, `gatherer_agent`, etc. — **Contracts fixed (Phase 0.5)**. Prisma PG enum still needs DB migration (deferred, no data in tables yet)
-2. **No ChangeEventsService**: Model exists, service doesn't -> must create in Phase 3
+2. ~~**No ChangeEventsService**~~: **Created (Phase 3)** — `ChangeEventsService` + `DirectDataProvider` wiring
 3. **No Runbook models**: Resolver precedent = query `Investigation` table + `Service.metadata` JSON
 4. **No MCP models**: Reuse `IntegrationConnection` with `category: "mcp"` instead
 5. ~~**Contracts schema completely stale**~~: `AgentNameSchema` fixed (Phase 0.5). `investigation-progress.ts` still stale — deferred to Phase 5
 6. **Frontend has no SSE**: Pure polling -> must build SSE from scratch in Phase 5
 7. ~~**Agent Recommendation type vs DB Recommendation model**~~: **Fixed (Phase 0.5)** — renamed `Recommendation.type` to `Recommendation.urgency`, consumers updated
-8. **Missing dependencies**: `vitest`, `@langchain/langgraph-checkpoint-postgres`, `@langchain/mcp-adapters`
+8. **Missing dependencies**: ~~`vitest`~~ (Phase 2), ~~`deepagents`, `langchain`~~ (Phase 4.5), Remaining: `@langchain/langgraph-checkpoint-postgres`, `@langchain/mcp-adapters`
 
 ## Conventions
 
@@ -130,9 +130,9 @@ Every phase must pass:
 |-------|------------------|-----|-------|
 | Scout | Function node | No | DataProvider methods |
 | Supervisor | Function node | Yes (structured output) | None (reads state) |
-| Gatherer | `createReactAgent` wrapper | Yes | Skills (log, code, change, precedent) + MCP |
-| Analyst | Subgraph (5 nodes) | Yes (3 LLM nodes) | Verification tools |
-| Resolver | Subgraph (4 nodes) | Yes (2 LLM nodes) | Precedent tools + `interrupt()` |
+| Gatherer | `createDeepAgent` wrapper with SKILL.md skills + ToolGatingMiddleware | Yes | Skills (log, code, change, precedent) + MCP — progressively disclosed |
+| Analyst | `createDeepAgent` (Phase 6 — planned) | Yes | Verification tools — via skills/analyst/ SKILL.md files |
+| Resolver | `createDeepAgent` (Phase 7 — planned) | Yes | Precedent tools + HITL — via skills/resolver/ SKILL.md files |
 
 ### State Architecture (5 Layers)
 

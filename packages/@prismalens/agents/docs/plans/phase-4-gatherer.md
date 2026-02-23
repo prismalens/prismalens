@@ -1,268 +1,153 @@
 # Phase 4: Gatherer Agent
 
-**Status**: PLANNED
-**Dependencies**: Phase 3 (tools return real data), Phase 2 (scout populates initial context)
-**Estimated effort**: 2-3 days
+**Status**: COMPLETED (updated Phase 4.5: deep agent migration)
+**Dependencies**: Phase 3 (skills + SKILL.md), Phase 2 (scout populates initial context)
 
 ## Goal
 
-Implement the gatherer as a `createReactAgent` wrapper with skill-based tools + LLM. The gatherer autonomously decides which tools to call, collects data, and produces a structured `GatheredData` summary.
+Implement the gatherer as a `createDeepAgent` wrapper with SKILL.md-based progressive tool disclosure. The gatherer autonomously decides which tools to call, collects data, and produces structured `GatheredData`.
 
-## Grounding Notes (DB Schema & API Truth)
+## Key Design Decision: Progressive Tool Disclosure via Deep Agents (Phase 4.5)
 
-| Claim | Actual Truth Source | Status |
-|-------|---------------------|--------|
-| LLM factory supports multiple providers | `createLLM()` supports 6 providers: anthropic, openai, groq, ollama, google, openrouter. API keys from env vars | Confirmed (`agents/src/llm/factory.ts`) |
-| Worker default LLM | `provider='anthropic'`, `model='claude-sonnet-4-20250514'` (from `worker/src/processor.ts`) | Confirmed |
-| vitest available for testing | Must be added in Phase 2 | Phase 2 dependency |
-| createReactAgent writes only to messages | LangGraph constraint: custom state channels readable via prompt, but only `messages` written | Confirmed (LangGraph docs) |
-| GathererStateAnnotation extends MessagesAnnotation | Already implemented with `incident`, `alerts`, `gatheredData` channels | Confirmed (`agents/src/agents/gatherer/state.ts`) |
-| gathererPrompt is parameterized | Both dynamic `gathererPrompt({...})` and static `GATHERER_PROMPT` exist | Confirmed (`agents/src/agents/gatherer/prompt.ts`) |
+**Original (Phase 4):** All 8 tools bound upfront with `createReactAgent` + informational `load_skill` tool.
 
-## Step 1: Implement extractGatheredData()
+**Updated (Phase 4.5):** Migrated to `createDeepAgent` from `deepagents` package with real tool gating:
+- **SKILL.md files** define skills with YAML frontmatter (`name`, `description`, `allowed-tools`, `metadata`)
+- **Built-in skills middleware** from deepagents injects skill summaries into system prompt and provides `read_file` via `FilesystemBackend`
+- **Custom ToolGatingMiddleware** enforces tool access — tools are hidden until the agent reads the corresponding SKILL.md
+- **`inferSkillsUsed`** replaced by `loadedSkillNames` closure (tracked by ToolGatingMiddleware)
+- **`load_skill` tool** deleted (replaced by backend `read_file` on SKILL.md paths)
 
-**Modify**: `agents/src/agents/gatherer/index.ts`
+Shared infrastructure (`createDeepAgentConfig`, `ToolGatingMiddleware`, SKILL.md format) will be reused by analyst (Phase 6) and resolver (Phase 7).
 
-Parse agent messages to extract structured data from tool call results:
+## API Decision: `createDeepAgent` (from `deepagents`)
 
-```typescript
-function extractGatheredData(
-  messages: BaseMessage[],
-  existingData: GatheredData
-): GatheredData {
-  const result: GatheredData = { ...existingData }
+`createDeepAgent` wraps `createAgent` from `langchain` with built-in prompt caching, tool patching, summarization, and 10K recursion limit. Returns `DeepAgent extends ReactAgent` — compatible with our `StateGraph` wrapper node. Accepts `BaseChatModel` instance for `model` parameter. `responseFormat` requires wrapping Zod schema with `toolStrategy()` from `langchain`.
 
-  for (const msg of messages) {
-    if (msg._getType() !== "tool") continue
+## Implementation
 
-    const toolMsg = msg as ToolMessage
-    const parsed = safeJsonParse(toolMsg.content)
-    if (!parsed) continue
+### Step 1: `extractGatheredData` — pure data extraction
 
-    switch (toolMsg.name) {
-      case "search_logs":
-        result.logs = [...(result.logs ?? []), ...(parsed.entries ?? [])]
-        break
-      case "get_recent_commits":
-      case "search_code":
-        result.commits = [...(result.commits ?? []), ...(parsed.results ?? [])]
-        result.codeSearchResults = [...(result.codeSearchResults ?? []), ...(parsed.results ?? [])]
-        break
-      case "get_recent_changes":
-        result.deployments = [...(result.deployments ?? []), ...(parsed.changes ?? [])]
-        break
-      case "search_precedents":
-        result.similarIncidents = [...(result.similarIncidents ?? []), ...(parsed.incidents ?? [])]
-        break
-    }
-  }
+**File**: `agents/src/agents/gatherer/index.ts`
 
-  return result
-}
+Static `TOOL_DATA_MAP` lookup table maps each tool name to a `GatheredData` field + expected data key:
+
+| Tool Name | GatheredData Field | Data Key |
+|-----------|-------------------|----------|
+| `search_logs` | `logs` | `logs` |
+| `analyze_log_patterns` | `logs` | `patterns` |
+| `search_code` | `codeSearchResults` | `results` |
+| `get_file_content` | `codeSearchResults` | `content` |
+| `get_recent_commits` | `commits` | `commits` |
+| `get_deployment_history` | `deployments` | `deployments` |
+| `search_similar_resolutions` | `similarIncidents` | `resolutions` |
+| `lookup_runbook` | `similarIncidents` | `runbook` |
+
+- Uses `isToolMessage()` from `@langchain/core/messages` for type-safe filtering
+- `safeJsonParse` handles string and pre-parsed object content
+- `load_skill` messages are deliberately not mapped (no data payload)
+- Merging is additive (append to existing arrays)
+
+### Step 2: `createGathererNode` — deep agent implementation
+
+```
+createGathererNode(integrations, mcpTools)
+  └─ outer closure (build time):
+       - createDeepAgentConfig("gatherer") → { skillsSources, backend, createMiddleware }
+       - loadSkillMetadata(integrations) → PrismaLensSkillMetadata[]
+       - buildSkillAllowedToolsMap(skills) → Map<skillName, toolNames[]>
+       - buildToolsFromIntegrations(integrations) → StructuredToolInterface[]
+  └─ returned async fn (per invocation):
+       1. Create fresh loadedSkillNames[] + ToolGatingMiddleware
+       2. Build systemPrompt from state.incident + state.gatheredData via gathererPrompt()
+       3. createDeepAgent({ model, tools, systemPrompt, skills, backend, middleware, responseFormat })
+       4. agent.invoke({ messages: [] }, { signal: config.signal })
+       5. extractGatheredData(result.messages, state.gatheredData)
+       6. Return { gatheredData, skillsLoaded: loadedSkillNames }
 ```
 
-Key considerations:
-- Scan all `ToolMessage` instances in the message array
-- Parse each by tool name to categorize into the correct GatheredData field
-- Merge with existing gatheredData (additive, not replacing)
-- Handle malformed tool responses gracefully (skip, don't crash)
+### Step 4: Wire gatherer into investigation graph
 
-## Step 2: Implement createGathererNode()
+**File**: `agents/src/graph/investigation-graph.ts`
 
-**Modify**: `agents/src/agents/gatherer/index.ts`
+- Added `mcpTools?: StructuredToolInterface[]` to `InvestigationGraphDeps`
+- Added gatherer node: `.addNode("gatherer", createGathererNode(...))`
+- Added supervisor `ends: ["gatherer", "__end__"]` so LangGraph knows gatherer is a valid Command destination
+- Added `gatherer → supervisor` edge
+- Updated Studio entry point to pass `mcpTools: []`
 
-```typescript
-import { createReactAgent } from "@langchain/langgraph/prebuilt"
-import type { RunnableConfig } from "@langchain/core/runnables"
-import type { StructuredToolInterface } from "@langchain/core/tools"
-import { createLLM } from "../../llm/factory.js"
-import { gathererPrompt } from "./prompt.js"
-import { GathererStateAnnotation } from "./state.js"
-import { GathererSummarySchema } from "../../tools/schemas.js"
+Gatherer is wired and reachable via Command, but the supervisor stub still routes to `__end__`. Phase 5 enables `Command({ goto: "gatherer" })`.
 
-export function createGathererNode(
-  integrations: IntegrationContext[],
-  mcpTools: StructuredToolInterface[] = [],
-) {
-  return async (state: InvestigationState, config: RunnableConfig) => {
-    // 1. Load skills based on active integrations
-    const skills = loadSkills(integrations)
-    const tools = [...skills.flatMap(s => s.tools), ...mcpTools]
+## Files Changed
 
-    // 2. Create the LLM from config (not hardcoded)
-    const llm = createLLM(state.config.llm)
-
-    // 3. Build dynamic prompt with incident context
-    const prompt = gathererPrompt({
-      incidentTitle: state.incident?.title ?? "Unknown",
-      severity: state.incident?.severity ?? "medium",
-      existingData: state.gatheredData?.coverage?.sourcesWithData ?? [],
-      dataGaps: state.dataGaps,
-    })
-
-    // 4. Create and invoke the ReAct agent
-    const agent = createReactAgent({
-      llm,
-      tools,
-      stateSchema: GathererStateAnnotation,
-      prompt,
-      responseFormat: GathererSummarySchema,
-    })
-
-    const result = await agent.invoke(
-      {
-        messages: [],
-        incident: state.incident,
-        alerts: state.alerts,
-        gatheredData: state.gatheredData,
-      },
-      config,  // Pass config through for credentials + tokenTracker
-    )
-
-    // 5. Extract structured data from messages
-    const gatheredData = extractGatheredData(result.messages, state.gatheredData)
-
-    // 6. Merge structured response into coverage
-    if (result.structuredResponse) {
-      gatheredData.coverage = {
-        ...(gatheredData.coverage ?? {}),
-        sourcesQueried: result.structuredResponse.sourcesQueried,
-        sourcesWithData: result.structuredResponse.sourcesWithData,
-        dataGaps: result.structuredResponse.dataGaps,
-      }
-    }
-
-    return { gatheredData }
-  }
-}
-```
-
-### Design Notes
-
-- `createReactAgent` handles the tool-calling loop internally (the LLM decides which tools to call and when to stop)
-- Custom state channels (`incident`, `alerts`, `gatheredData`) are readable by the prompt function but only `messages` is written by the agent
-- The wrapper function extracts structured data from messages after the agent completes
-- `responseFormat: GathererSummarySchema` forces a structured final summary from the LLM
-- Config is passed through so tools can access `configurable.credentials` and `configurable.tokenTracker`
-
-## Step 3: Per-node Timeout Wrapper
-
-**Create**: `agents/src/utils/node-timeout.ts`
-
-```typescript
-type NodeFunction<S> = (state: S, config: RunnableConfig) => Promise<Partial<S>>
-
-export function withTimeout<S>(
-  fn: NodeFunction<S>,
-  timeoutMs: number,
-): NodeFunction<S> {
-  return async (state: S, config: RunnableConfig) => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-
-    try {
-      return await fn(state, {
-        ...config,
-        signal: controller.signal,
-      })
-    } catch (error) {
-      if ((error as Error).name === "AbortError") {
-        // Return partial state on timeout rather than crashing
-        return {} as Partial<S>
-      }
-      throw error
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-}
-```
-
-Apply to gatherer:
-
-```typescript
-// In graph builder
-.addNode("gatherer", withTimeout(createGathererNode(integrations, mcpTools), 60_000))
-```
-
-Default: 60s per node. Configurable via `InvestigationConfig.nodeTimeout`.
-
-## Step 4: Wire Gatherer into Graph
-
-**Modify**: `agents/src/graph/investigation-graph.ts`
-
-```typescript
-const graph = new StateGraph(InvestigationStateAnnotation)
-  .addNode("scout", createScoutNode(deps.dataProvider))
-  .addNode("supervisor", supervisorNode)
-  .addNode("gatherer", withTimeout(
-    createGathererNode(deps.integrations, deps.mcpTools ?? []),
-    60_000,
-  ))
-  .addEdge("__start__", "scout")
-  .addEdge("scout", "supervisor")
-  .addEdge("gatherer", "supervisor")
-  // supervisor stub still routes to __end__ (Phase 5 adds full routing)
-```
-
-Note: In Phase 4, the supervisor stub still routes to `__end__`. The gatherer is wired into the graph but not reachable until Phase 5 enables LLM routing.
-
-## Step 5: Update InvestigationGraphDeps
-
-**Modify**: `agents/src/graph/investigation-graph.ts`
-
-```typescript
-export interface InvestigationGraphDeps {
-  dataProvider: DataProvider
-  integrations: IntegrationContext[]
-  checkpointer?: BaseCheckpointSaver
-  mcpTools?: StructuredToolInterface[]  // NEW
-}
-```
-
-## Files to Create/Modify
-
+### Phase 4 (original)
 | Action | File | Purpose |
 |--------|------|---------|
-| Modify | `agents/src/agents/gatherer/index.ts` | Implement createGathererNode + extractGatheredData |
-| Create | `agents/src/utils/node-timeout.ts` | Per-node timeout wrapper |
-| Modify | `agents/src/graph/investigation-graph.ts` | Wire gatherer node + update deps interface |
+| Modify | `agents/src/agents/gatherer/index.ts` | `extractGatheredData` + `createGathererNode` |
+| Modify | `agents/src/graph/investigation-graph.ts` | Wire gatherer node, add `mcpTools` to deps, supervisor `ends` |
+| Create | `agents/src/__tests__/gatherer/extract-gathered-data.test.ts` | Unit tests for data extraction |
+| Create | `agents/src/__tests__/gatherer/gatherer-node.test.ts` | Factory + graph compilation tests |
 
-## Tests
+### Phase 4.5 (deep agent migration)
+| Action | File | Purpose |
+|--------|------|---------|
+| Rewrite | `agents/src/agents/gatherer/index.ts` | `createDeepAgent` wrapper, removed `inferSkillsUsed` |
+| Rewrite | `agents/src/tools/skills/index.ts` | `loadSkillMetadata`, `buildSkillAllowedToolsMap`, `buildToolsFromIntegrations` |
+| Rewrite | `agents/src/tools/types.ts` | `PrismaLensSkillMetadata` (extends deepagents `SkillMetadata`) |
+| Modify | `agents/src/tools/skills/{log,code,change,precedent}.ts` | Removed `*Skill` object exports, kept tool exports |
+| Create | `agents/src/config/deep-agent-defaults.ts` | Shared deep agent config factory |
+| Create | `agents/src/middleware/tool-gating-middleware.ts` | Tool access enforcement middleware |
+| Create | `skills/gatherer/{log,code,change,precedent}/SKILL.md` | Skill definitions (YAML frontmatter + instructions) |
+| Create | `skills/{common,analyst,resolver}/` | Empty placeholder dirs for future deep agents |
+| Delete | `agents/src/tools/skills/load-skill.ts` | Replaced by backend `read_file` |
+| Delete | `agents/src/__tests__/tools/load-skill.test.ts` | Tests for deleted file |
+| Modify | `agents/src/tools/index.ts` | Updated exports |
+| Modify | `agents/src/index.ts` | Updated exports, added `createToolGatingMiddleware` |
+| Modify | `agents/src/__tests__/gatherer/extract-gathered-data.test.ts` | Removed `inferSkillsUsed` tests |
+| Create | `agents/src/__tests__/middleware/tool-gating-middleware.test.ts` | 16 tests for middleware |
+| Add dep | `agents/package.json` | `deepagents@^1.8.0`, `langchain@^1.2.25` |
 
-### Unit Tests
+## Tests: 78 total (across package)
 
-**Create**: `agents/src/__tests__/gatherer/extract-gathered-data.test.ts`
+### extract-gathered-data.test.ts (17 tests)
+- Empty messages → returns existingData unchanged (new object, not mutation)
+- `search_logs` → extracts to `logs` field
+- `analyze_log_patterns` → extracts to `logs` field
+- `search_code` → extracts to `codeSearchResults` field
+- `get_file_content` → extracts singular value to `codeSearchResults`
+- `get_recent_commits` → extracts to `commits` field
+- `get_deployment_history` → extracts to `deployments` field
+- `search_similar_resolutions` → extracts to `similarIncidents` field
+- Multiple tool messages → merges additively
+- Merges with existing data (append, not replace)
+- Malformed JSON → skips gracefully
+- Non-tool messages (AIMessage, HumanMessage) → skipped
+- Unknown tool messages → skipped (no data mapping)
+- Missing expected data key → skipped
+- Pre-parsed object content handled
 
-- Empty messages -> returns existingData unchanged
-- Single tool message (search_logs) -> extracts log entries
-- Multiple tool messages -> merges all results
-- Malformed tool response -> skips without crashing
-- Merging with existing data -> additive, not replacing
+### gatherer-node.test.ts (4 tests)
+- `createGathererNode` returns a function
+- Accepts integrations and mcpTools parameters
+- Returns function with no mcpTools parameter
+- Graph compiles successfully with gatherer node wired
 
-### Integration Tests
+### tool-gating-middleware.test.ts (16 tests)
+- `extractSkillNameFromPath`: standard paths, virtual paths, nested paths, edge cases
+- Gating logic: hides gated tools when no skills loaded
+- Gating logic: reveals tools after skill loaded
+- Gating logic: reveals all tools when all skills loaded
+- Gating logic: keeps non-gated tools always visible
+- Detection: detects skill load from `read_file` on SKILL.md
+- Detection: ignores non-SKILL.md reads
+- Detection: no duplicate skill names
+- Detection: works with `read` tool name
+- Detection: ignores non-read tool calls
 
-**Create**: `agents/src/__tests__/gatherer/gatherer-node.test.ts`
+## Not in Scope
 
-- Mock LLM (responds with tool calls then final answer)
-- StubDataProvider for integration context
-- Verify: gatherer produces structured gatheredData
-- Verify: GathererSummarySchema response format works
-
-### Timeout Tests
-
-**Create**: `agents/src/__tests__/utils/node-timeout.test.ts`
-
-- Fast function completes normally
-- Slow function aborts after deadline
-- AbortError returns empty partial state (not a crash)
-
-## Verification
-
-1. `pnpm typecheck` passes
-2. `pnpm test` passes
-3. Invoke gatherer node in isolation with mock LLM -> returns structured `gatheredData`
-4. `extractGatheredData` correctly parses tool messages into typed data
-5. Timeout wrapper correctly aborts long-running nodes
-6. Graph: `scout -> supervisor(stub -> __end__)` still works; gatherer is wired but not routed to yet
-7. `GathererSummarySchema` integration: structured response feeds into coverage
+- Per-node timeout wrapper (`withTimeout`) — executor's 5-min AbortController suffices
+- LLM integration tests — deferred to Phase 5
+- Supervisor routing to gatherer — Phase 5
+- Streaming — Phase 5
+- Analyst/Resolver deep agent migration — deferred to Phases 6/7 (reevaluation notes added)

@@ -3,10 +3,7 @@
  */
 
 // Types
-export type { Skill, ToolBundle, ToolCategory } from "./types.js"
-
-// Registry
-export { ToolRegistry } from "./registry.js"
+export type { SkillMetadata, PrismaLensSkillMetadata } from "./types.js"
 
 // Schemas
 export {
@@ -29,16 +26,18 @@ export type {
 } from "./schemas.js"
 
 // Skills
-export { loadSkills } from "./skills/index.js"
-export { logSkill, searchLogs, analyzeLogPatterns } from "./skills/log.js"
-export { codeSkill, searchCode, getFileContent } from "./skills/code.js"
 export {
-  changeSkill,
+  loadSkillMetadata,
+  buildSkillAllowedToolsMap,
+  buildToolsFromIntegrations,
+} from "./skills/index.js"
+export { searchLogs, analyzeLogPatterns } from "./skills/log.js"
+export { searchCode, getFileContent } from "./skills/code.js"
+export {
   getRecentCommits,
   getDeploymentHistory,
 } from "./skills/change.js"
 export {
-  precedentSkill,
   searchSimilarResolutions,
   lookupRunbook,
 } from "./skills/precedent.js"

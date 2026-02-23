@@ -52,6 +52,16 @@ export const InvestigationStateAnnotation = Annotation.Root({
   }),
 
   // =========================================================================
+  // Layer 2b: Skill tracking (gatherer progressive disclosure)
+  // Phase 4: gatherer wrapper writes skill names here after load_skill tool calls.
+  // The dedup reducer merges subgraph updates back into root state.
+  // =========================================================================
+  skillsLoaded: Annotation<string[]>({
+    reducer: (current, update) => [...new Set([...current, ...update])],
+    default: () => [],
+  }),
+
+  // =========================================================================
   // Layer 3: Gathered data (scout + gatherer populate)
   // =========================================================================
   incident: Annotation<IncidentContext | null>(),

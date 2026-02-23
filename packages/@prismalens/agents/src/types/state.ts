@@ -112,6 +112,9 @@ export interface InvestigationState {
   lastProgressSnapshot: ProgressSnapshot | null
   errors: string[]
 
+  // Layer 2b: Skill tracking (gatherer progressive disclosure)
+  skillsLoaded: string[]
+
   // Layer 3: Gathered data
   incident: IncidentContext | null
   alerts: AlertContext[]

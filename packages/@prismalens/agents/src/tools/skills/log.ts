@@ -1,16 +1,12 @@
 /**
  * Log skill — tools for searching and analyzing logs.
  *
- * Dual exports:
- * - logSkill: Full skill object (used by gatherer via loadSkills())
- * - searchLogs, analyzeLogPatterns: Individual tools (used by scout)
- *
- * Stub implementation — Phase 3 adds provider-specific implementations.
+ * Individual tool exports used by gatherer (via skill loader) and scout.
+ * Skill metadata is defined in skills/gatherer/log/SKILL.md.
  */
 
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
-import type { Skill } from "../types.js"
 
 /**
  * Search logs for a service within a time range.
@@ -58,14 +54,3 @@ export const analyzeLogPatterns = tool(
     }),
   },
 )
-
-/**
- * Log skill — bundles log tools with metadata.
- */
-export const logSkill: Skill = {
-  name: "log",
-  description: "Search and analyze application and infrastructure logs",
-  category: "log",
-  tools: [searchLogs, analyzeLogPatterns],
-  requiredIntegrations: [],
-}

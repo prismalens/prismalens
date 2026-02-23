@@ -1,5 +1,19 @@
 # Phase 6: Analyst Subgraph
 
+> **REEVALUATION NEEDED (Phase 4.5 Decision)**
+>
+> The analyst will become a `createDeepAgent` node (decided during Phase 4.5 deep agent migration).
+> Shared infrastructure from the gatherer implementation will be reused:
+> - `createDeepAgentConfig("analyst")` for skill sources + backend + middleware
+> - `ToolGatingMiddleware` for progressive tool disclosure
+> - `skills/analyst/` directory for analyst-specific SKILL.md files
+>
+> **Key questions to resolve after gatherer deep agent is working:**
+> - Does the analyst deep agent REPLACE the 5-node subgraph, or is it the entry node?
+> - How does `Send()` parallelism interact with deep agent middleware?
+> - Each analyst node uses `llm.withStructuredOutput()` (not tool-calling). Is a deep agent the right pattern for structured-output-only nodes?
+> - Performance impact of deep agent overhead on nodes that run multiple times per investigation.
+
 **Status**: PLANNED
 **Dependencies**: Phase 5 (supervisor routes to analyst when data is gathered)
 **Estimated effort**: 3-4 days

@@ -18,6 +18,7 @@ import { EnvironmentVariables } from "@prismalens/config";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents } from "bullmq";
 import { AlertsService } from "../../modules/alerts/alerts.service.js";
+import { ChangeEventsService } from "../../modules/change-events/change-events.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
@@ -121,6 +122,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		private alertsService: AlertsService,
 		@Inject(forwardRef(() => IncidentsService))
 		private incidentsService: IncidentsService,
+		private changeEventsService: ChangeEventsService,
 	) {
 		const config = this.configService.get("PRISMALENS_MODE");
 		this.workerMode = config;
@@ -148,7 +150,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			}
 
 			// Create executor with DirectDataProvider for database access
-			const dataProvider = new DirectDataProvider(this.alertsService, this.incidentsService);
+			const dataProvider = new DirectDataProvider(this.alertsService, this.incidentsService, this.changeEventsService);
 			this.executor = new InvestigationExecutor({ dataProvider });
 			return;
 		}

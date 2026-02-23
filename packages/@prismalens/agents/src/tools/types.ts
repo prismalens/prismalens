@@ -1,42 +1,24 @@
 /**
  * Tool system types for the agents package.
  *
- * Skills are bundles of related tools that auto-activate based on
- * configured integrations. Each skill provides tools for a specific
- * data domain (logs, code, changes, precedent).
+ * Uses SkillMetadata from deepagents (agentskills.io spec) as the base type.
+ * PrismaLensSkillMetadata extends it with parsed allowed-tools and
+ * requiredIntegrations from SKILL.md metadata section.
  */
 
-import type { StructuredToolInterface } from "@langchain/core/tools"
+import type { SkillMetadata } from "deepagents"
 
-/**
- * Tool category for organizing tools by purpose.
- */
-export type ToolCategory =
-  | "log"
-  | "code"
-  | "change"
-  | "precedent"
-  | "analyst"
-  | "resolver"
-  | "mcp"
+export type { SkillMetadata }
 
 /**
- * A skill is a bundle of related tools with metadata.
- * Skills auto-activate based on integration availability.
+ * Extended skill metadata with PrismaLens-specific fields.
+ *
+ * - parsedAllowedTools: tool names from SKILL.md `allowed-tools` (space-delimited → string[])
+ * - requiredIntegrations: integration types from SKILL.md `metadata.requiredIntegrations`
  */
-export interface Skill {
-  name: string
-  description: string
-  category: ToolCategory
-  tools: StructuredToolInterface[]
+export interface PrismaLensSkillMetadata extends Omit<SkillMetadata, "allowedTools"> {
+  /** Original space-delimited allowedTools string from SKILL.md (kept for reference) */
+  allowedTools?: string
+  parsedAllowedTools: string[]
   requiredIntegrations: string[]
-}
-
-/**
- * Tool bundle — a named collection of tools for a specific agent.
- */
-export interface ToolBundle {
-  name: string
-  tools: StructuredToolInterface[]
-  category: ToolCategory
 }

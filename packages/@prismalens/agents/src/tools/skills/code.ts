@@ -1,16 +1,12 @@
 /**
  * Code skill — tools for searching code and retrieving file contents.
  *
- * Dual exports:
- * - codeSkill: Full skill object (used by gatherer via loadSkills())
- * - searchCode, getFileContent: Individual tools (used by scout/analyst)
- *
- * Stub implementation — Phase 3 adds GitHub/GitLab provider implementations.
+ * Individual tool exports used by gatherer (via skill loader) and scout/analyst.
+ * Skill metadata is defined in skills/gatherer/code/SKILL.md.
  */
 
 import { tool } from "@langchain/core/tools"
 import { z } from "zod"
-import type { Skill } from "../types.js"
 
 /**
  * Search code across a repository.
@@ -60,14 +56,3 @@ export const getFileContent = tool(
     }),
   },
 )
-
-/**
- * Code skill — bundles code tools with metadata.
- */
-export const codeSkill: Skill = {
-  name: "code",
-  description: "Search code and retrieve file contents from repositories",
-  category: "code",
-  tools: [searchCode, getFileContent],
-  requiredIntegrations: ["github", "gitlab"],
-}
