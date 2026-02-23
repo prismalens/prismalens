@@ -2,18 +2,27 @@
  * Supervisor node — central orchestrator with Command routing.
  *
  * Responsibilities:
- * - Deterministic guards (budget, stall detection, ordering)
+ * - Safety guards (iteration budget, stall detection)
  * - LLM routing decision with structured output
  * - Progress tracking via ProgressSnapshot
+ * - Agent self-assessment reading for informed routing
  *
- * Stub implementation — Phase 5 adds full LLM routing.
+ * Phase 5A: Full LLM routing. No deterministic ordering guards —
+ * the LLM sees agent self-assessments and makes the routing decision.
  */
 
 import { Command } from "@langchain/langgraph"
-import type { InvestigationState } from "../../types/state.js"
+import type { LangGraphRunnableConfig } from "@langchain/langgraph"
+import type { InvestigationState, InvestigationPhase } from "../../types/state.js"
+import type { SimilarIncidentMatch } from "../../types/contexts.js"
 import type { InvestigationResult } from "../../types/results.js"
 import type { ProgressSnapshot } from "../../types/state.js"
 import { mapHypothesisCategoryToDb } from "../../utils/enum-maps.js"
+import { createLLM } from "../../llm/factory.js"
+import { SupervisorDecisionSchema } from "../../tools/schemas.js"
+import type { SupervisorDecision } from "../../tools/schemas.js"
+import { supervisorPrompt } from "./prompt.js"
+import { formatStateForSupervisor } from "./format.js"
 
 /**
  * Compile a partial result from current state.
@@ -82,13 +91,14 @@ export function detectProgress(
   const prev = state.lastProgressSnapshot
   const curr = takeProgressSnapshot(state)
 
-  const arraysEqual = (a: string[], b: string[]) =>
-    a.length === b.length && a.every((v, i) => v === b[i])
+  // Order-insensitive set equality — dataGaps ordering isn't guaranteed across iterations
+  const setsEqual = (a: string[], b: string[]) =>
+    a.length === b.length && new Set(a).size === new Set([...a, ...b]).size
 
   if (
-    arraysEqual(prev.dataGaps, curr.dataGaps) &&
+    setsEqual(prev.dataGaps, curr.dataGaps) &&
     curr.dataGaps.length > 0 &&
-    arraysEqual(prev.sourcesQueried, curr.sourcesQueried)
+    setsEqual(prev.sourcesQueried, curr.sourcesQueried)
   ) {
     return { stalled: true, reason: "data gaps unchanged after gatherer run" }
   }
@@ -97,7 +107,7 @@ export function detectProgress(
     prev.hypothesisCount === curr.hypothesisCount &&
     prev.bestConfidence === curr.bestConfidence &&
     prev.recommendationCount === curr.recommendationCount &&
-    arraysEqual(prev.sourcesQueried, curr.sourcesQueried)
+    setsEqual(prev.sourcesQueried, curr.sourcesQueried)
   ) {
     return {
       stalled: true,
@@ -112,27 +122,111 @@ export function detectProgress(
  * Check if state has a high-confidence similar incident match.
  */
 export function hasHighConfidenceSimilarIncident(
-  _state: InvestigationState,
+  state: InvestigationState,
 ): boolean {
-  // Stub: always returns false until similar incident matching is implemented
-  return false
+  const similar = state.gatheredData?.similarIncidents as
+    | SimilarIncidentMatch[]
+    | undefined
+  if (!similar || similar.length === 0) return false
+  return similar.some((s) => s.similarity > 0.8)
+}
+
+/** Phase mapping from routing target to investigation phase */
+const PHASE_MAP: Record<string, InvestigationPhase> = {
+  gatherer: "gathering",
+  analyst: "analysis",
+  resolver: "resolution",
+  __end__: "completed",
 }
 
 /**
  * Supervisor node — returns Command({ goto, update }).
  *
- * Stub: routes to __end__ with a dummy result.
- * Phase 5 implements full LLM routing with guards.
+ * Uses LLM with structured output to decide which agent to route to next.
+ * Safety guards (budget, stall) are termination conditions only.
  */
 export async function supervisorNode(
   state: InvestigationState,
+  config: LangGraphRunnableConfig,
 ): Promise<Command> {
-  // Stub: immediately complete
+  const maxIterations = state.config.maxIterations ?? 8
+
+  // --- Safety Guard 1: Iteration budget ---
+  if (state.iterations >= maxIterations) {
+    return new Command({
+      update: {
+        result: compilePartialResult(state),
+        phase: "completed" as const,
+      },
+      goto: "__end__",
+    })
+  }
+
+  // --- Safety Guard 2: Stall detection ---
+  const { stalled, reason } = detectProgress(state)
+  if (stalled) {
+    config.writer?.({ type: "stalled", reason })
+    return new Command({
+      update: {
+        result: compilePartialResult(state),
+        phase: "completed" as const,
+      },
+      goto: "__end__",
+    })
+  }
+
+  // --- LLM Routing Decision ---
+  let decision: SupervisorDecision
+  try {
+    const llm = createLLM(state.config.llm)
+    const structuredLlm = llm.withStructuredOutput(SupervisorDecisionSchema)
+
+    const stateContext = formatStateForSupervisor(state)
+    const prompt = supervisorPrompt({
+      incidentTitle: state.incident?.title ?? "Unknown",
+      severity: state.incident?.severity ?? "medium",
+      phase: state.phase,
+    })
+
+    decision = (await structuredLlm.invoke([
+      { role: "system", content: prompt },
+      { role: "user", content: stateContext },
+    ])) as SupervisorDecision
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return new Command({
+      update: {
+        result: compilePartialResult(state),
+        phase: "completed" as const,
+        errors: [`supervisor LLM failed: ${message}`],
+      },
+      goto: "__end__",
+    })
+  }
+
+  // --- Determine phase from routing target ---
+  const nextPhase = PHASE_MAP[decision.agent] ?? state.phase
+
+  // --- Emit progress event ---
+  config.writer?.({
+    type: "phase_change",
+    from: state.phase,
+    to: nextPhase,
+  })
+
+  // --- Build state update ---
+  const update: Record<string, unknown> = {
+    phase: nextPhase,
+    iterations: state.iterations + 1,
+    lastProgressSnapshot: takeProgressSnapshot(state),
+  }
+
+  if (decision.agent === "__end__") {
+    update.result = compilePartialResult(state)
+  }
+
   return new Command({
-    update: {
-      result: compilePartialResult(state),
-      phase: "completed" as const,
-    },
-    goto: "__end__",
+    update,
+    goto: decision.agent,
   })
 }

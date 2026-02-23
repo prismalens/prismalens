@@ -117,13 +117,13 @@ describe("buildCoverageReport", () => {
     expect(coverage.services.count).toBe(2)
   })
 
-  it("includes deferred sources in dataGaps", () => {
+  it("does not include deferred sources in dataGaps", () => {
     const coverage = buildCoverageReport(makeInput())
-    expect(coverage.dataGaps).toContain("logs")
-    expect(coverage.dataGaps).toContain("commits")
-    expect(coverage.dataGaps).toContain("deployments")
-    expect(coverage.dataGaps).toContain("metrics")
-    expect(coverage.dataGaps).toContain("codeSearchResults")
+    expect(coverage.dataGaps).not.toContain("logs")
+    expect(coverage.dataGaps).not.toContain("commits")
+    expect(coverage.dataGaps).not.toContain("deployments")
+    expect(coverage.dataGaps).not.toContain("metrics")
+    expect(coverage.dataGaps).not.toContain("codeSearchResults")
   })
 
   it("adds failed sources to dataGaps", () => {

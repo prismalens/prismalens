@@ -166,12 +166,25 @@ export function createGathererNode(
     if (gd.similarIncidents?.length) existingDataFields.push("similar incidents")
     if (gd.changeEvents?.length) existingDataFields.push("change events")
 
-    const systemPrompt = gathererPrompt({
-      incidentTitle: state.incident?.title ?? "Unknown",
-      severity: state.incident?.severity ?? "medium",
-      existingData: existingDataFields,
-      dataGaps: state.dataGaps ?? [],
-    })
+    // Build targeted gathering instructions from analyst's data requests
+    const dataRequests = state.lastAgentResponse?.dataRequests ?? []
+    const targetedInstructions =
+      dataRequests.length > 0
+        ? `\n\n## Targeted Data Requests\nThe analyst has specifically requested:\n${dataRequests
+            .map(
+              (r, i) =>
+                `${i + 1}. [${r.priority}] ${r.source}${r.targets ? ` for ${r.targets.join(", ")}` : ""}${r.query ? ` — query: "${r.query}"` : ""}\n   Reason: ${r.reasoning}`,
+            )
+            .join("\n")}\n\nPrioritize fulfilling these requests. Use the appropriate tools to fetch this data.`
+        : ""
+
+    const systemPrompt =
+      gathererPrompt({
+        incidentTitle: state.incident?.title ?? "Unknown",
+        severity: state.incident?.severity ?? "medium",
+        existingData: existingDataFields,
+        dataGaps: state.dataGaps ?? [],
+      }) + targetedInstructions
 
     try {
       // Create agent per invocation (LLM + prompt + middleware depend on state)
@@ -210,12 +223,38 @@ export function createGathererNode(
         }
       }
 
-      return { gatheredData, skillsLoaded: loadedSkillNames }
+      // Build self-assessment from structured response
+      const lastAgentResponse = {
+        agent: "gatherer" as const,
+        status:
+          structuredResponse && structuredResponse.dataGaps.length > 0
+            ? ("needs_more_data" as const)
+            : ("completed" as const),
+        summary: structuredResponse?.dataSummary ?? "Data gathering completed",
+        recommendation: "analyst" as const,
+        reasoning:
+          structuredResponse?.coverageAssessment ??
+          "Data collected, analyst should review",
+      }
+
+      return {
+        gatheredData,
+        skillsLoaded: loadedSkillNames,
+        lastAgentResponse,
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       return {
         gatheredData: gd,
         skillsLoaded: loadedSkillNames,
+        lastAgentResponse: {
+          agent: "gatherer" as const,
+          status: "blocked" as const,
+          summary: `Gatherer failed: ${message}`,
+          recommendation: "analyst" as const,
+          reasoning:
+            "Gatherer encountered an error. Analyst should proceed with available data.",
+        },
         errors: [`gatherer failed: ${message}`],
       }
     }

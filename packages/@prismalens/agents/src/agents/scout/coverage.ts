@@ -28,15 +28,6 @@ export interface CoverageInput {
   enrichments: ScoutEnrichments
 }
 
-/** Sources deferred to the LLM-driven gatherer (Phase 3+). */
-const DEFERRED_SOURCES = [
-  "logs",
-  "commits",
-  "deployments",
-  "metrics",
-  "codeSearchResults",
-]
-
 export function buildCoverageReport(input: CoverageInput): DataCoverage {
   const { incident, alerts, alertsTotal, changeEvents, similarIncidents, fetchResults, enrichments } = input
 
@@ -88,9 +79,6 @@ export function buildCoverageReport(input: CoverageInput): DataCoverage {
   } else if (!fetchResults.similarIncidentsSuccess || similarIncidents.length === 0) {
     dataGaps.push("similarIncidents")
   }
-
-  // Always include deferred sources as gaps
-  dataGaps.push(...DEFERRED_SOURCES)
 
   // Data completeness
   const anyFailure =

@@ -1,11 +1,13 @@
 /**
  * LangGraph state annotation for investigation.
  *
- * 4-layer state structure:
+ * 5-layer state structure:
  * Layer 1: Input (minimal identifiers + config)
  * Layer 2: Process control (supervisor manages via Command)
+ * Layer 2b: Skill tracking + agent communication
  * Layer 3: Gathered data (scout + gatherer populate)
- * Layer 4: Analysis results (append-only via reducers, subgraphs write directly)
+ * Layer 4: Data requests (analyst → supervisor → gatherer loop)
+ * Layer 5: Analysis results (append-only via reducers, subgraphs write directly)
  *
  * No `messages` channel in root state — agents write to typed channels.
  *
@@ -25,6 +27,8 @@ import type {
   InvestigationPhase,
   GatheredData,
   ProgressSnapshot,
+  AgentSelfAssessment,
+  AvailableDataSource,
 } from "../types/state.js"
 import type { InvestigationConfig } from "../types/inputs.js"
 
@@ -60,6 +64,14 @@ export const InvestigationStateAnnotation = Annotation.Root({
     reducer: (current, update) => [...new Set([...current, ...update])],
     default: () => [],
   }),
+
+  // =========================================================================
+  // Layer 2c: Agent communication
+  // lastAgentResponse: most recent agent's self-assessment (last-value semantics)
+  // availableDataSources: computed once at init from integrations (immutable)
+  // =========================================================================
+  lastAgentResponse: Annotation<AgentSelfAssessment | null>(),
+  availableDataSources: Annotation<AvailableDataSource[]>(),
 
   // =========================================================================
   // Layer 3: Gathered data (scout + gatherer populate)

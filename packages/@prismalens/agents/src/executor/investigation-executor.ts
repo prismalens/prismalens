@@ -17,6 +17,7 @@ import {
   buildInvestigationGraph,
   type InvestigationGraphDeps,
 } from "../graph/investigation-graph.js"
+import { computeAvailableDataSources } from "../tools/skills/index.js"
 
 /**
  * Dependencies for the investigation executor.
@@ -35,11 +36,14 @@ export interface InvestigationExecutorDeps {
  */
 export class InvestigationExecutor {
   private graph: ReturnType<typeof buildInvestigationGraph>
+  private integrations: IntegrationContext[]
 
   constructor(deps: InvestigationExecutorDeps = {}) {
+    this.integrations = deps.integrations ?? []
+
     const graphDeps: InvestigationGraphDeps = {
       dataProvider: deps.dataProvider ?? new StubDataProvider(),
-      integrations: deps.integrations ?? [],
+      integrations: this.integrations,
       checkpointer: deps.checkpointer,
     }
 
@@ -64,6 +68,10 @@ export class InvestigationExecutor {
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
+      const availableDataSources = computeAvailableDataSources(
+        input.integrations ?? this.integrations,
+      )
+
       const initialState = {
         investigationId: input.investigationId,
         incidentId: input.incidentId,
@@ -72,6 +80,8 @@ export class InvestigationExecutor {
         phase: "pre_gathering" as const,
         iterations: 0,
         lastProgressSnapshot: null,
+        lastAgentResponse: null,
+        availableDataSources,
         incident: null,
         alerts: [] as AlertContext[],
         gatheredData: {},

@@ -35,6 +35,9 @@ export type {
   GatheredData,
   DataCoverage,
   ProgressSnapshot,
+  DataRequest,
+  AgentSelfAssessment,
+  AvailableDataSource,
 } from "./state.js"
 
 // Progress

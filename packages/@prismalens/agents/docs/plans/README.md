@@ -8,19 +8,19 @@
 Alert Ingestion
       |
       v
-  [START] ──> [scout] ──> [supervisor] ──> [__end__]
-                              │   ^
-                              │   │
-                    ┌─────────┼───┤
-                    │         │   │
-                    v         v   │
-              [gatherer] [analyst] [resolver]
-                    │         │        │
-                    └─────────┴────────┘
-                         (loop back to supervisor)
+  [START] ──> [scout] ──> [analyst] ──> [supervisor] ──> [__end__]
+                                            │   ^
+                                   ┌────────┼───┤
+                                   v        v   │
+                             [gatherer] [analyst] [resolver]
+                                   │        │        │
+                                   └────────┴────────┘
+                                    (loop back to supervisor)
 ```
 
-**Graph topology**: `START -> scout -> supervisor -> {gatherer, analyst, resolver} -> supervisor -> ... -> __end__`
+**Graph topology**: `START -> scout -> analyst (deterministic) -> supervisor -> {gatherer, analyst, resolver, __end__} -> supervisor -> ... -> __end__`
+
+**Key design**: Scout collects internal PrismaLens data, then analyst does first-pass analysis and makes targeted data requests for the gatherer. The supervisor routes based on agent self-assessments.
 
 - **Scout**: Function node (no LLM). Fetches incident + alerts via DataProvider, enriches with timeline/topology.
 - **Supervisor**: LLM routing node with deterministic guards. Uses `Command({ goto, update })` for routing.
@@ -38,7 +38,9 @@ Alert Ingestion
 | 2 | [phase-2-scout.md](./phase-2-scout.md) | COMPLETED | Scout node + type alignment | Phase 1.5 |
 | 3 | [phase-3-skills-tools.md](./phase-3-skills-tools.md) | COMPLETED | load_skill progressive disclosure + ChangeEventsService | Phase 2 |
 | 4 | [phase-4-gatherer.md](./phase-4-gatherer.md) | COMPLETED | Gatherer agent (createReactAgent wrapper, all tools upfront) | Phase 3 |
-| 5 | [phase-5-supervisor.md](./phase-5-supervisor.md) | PLANNED | Supervisor LLM routing + streaming + consumer migration | Phase 4, Phase 2 |
+| 5A | [phase-5-supervisor.md](./phase-5-supervisor.md) | IN PROGRESS | Supervisor LLM routing + graph wiring + self-assessments | Phase 4.5 |
+| 5B | (planned) | PLANNED | Streaming (executor.stream(), config.writer) | Phase 5A |
+| 5C | (planned) | PLANNED | Consumer migration (API, Worker, SSE, Frontend) | Phase 5B |
 | 6 | [phase-6-analyst.md](./phase-6-analyst.md) | PLANNED | Analyst subgraph (hypothesis-driven) | Phase 5 |
 | 7 | [phase-7-resolver.md](./phase-7-resolver.md) | PLANNED | Resolver subgraph (precedent + approval) | Phase 5 |
 | 8 | [phase-8-mcp.md](./phase-8-mcp.md) | PLANNED | MCP tool discovery + user extensions | Phase 4, Phase 5 |

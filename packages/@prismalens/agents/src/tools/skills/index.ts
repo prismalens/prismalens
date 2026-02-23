@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url"
 import { listSkills } from "deepagents"
 import type { StructuredToolInterface } from "@langchain/core/tools"
 import type { IntegrationContext } from "../../types/contexts.js"
+import type { DataRequest, AvailableDataSource } from "../../types/state.js"
 import type { PrismaLensSkillMetadata } from "../types.js"
 import { searchLogs, analyzeLogPatterns } from "./log.js"
 import { searchCode, getFileContent } from "./code.js"
@@ -105,6 +106,59 @@ export function buildSkillAllowedToolsMap(
     map.set(skill.name, skill.parsedAllowedTools)
   }
   return map
+}
+
+/** Map from skill name to data source categories it provides */
+const SKILL_DATA_SOURCE_MAP: Record<
+  string,
+  { sources: DataRequest["source"][]; description: string }
+> = {
+  log: {
+    sources: ["logs"],
+    description: "Application and infrastructure logs",
+  },
+  code: {
+    sources: ["code"],
+    description: "Code search and file retrieval",
+  },
+  change: {
+    sources: ["commits", "deployments"],
+    description: "Git commits and deployment history",
+  },
+  precedent: {
+    sources: ["runbooks"],
+    description: "Runbooks and past resolutions",
+  },
+}
+
+/**
+ * Compute which data sources are available based on configured integrations.
+ * Uses the same skill filtering as the gatherer — if a skill's required
+ * integrations aren't satisfied, its data sources are unavailable.
+ */
+export function computeAvailableDataSources(
+  integrations: IntegrationContext[],
+): AvailableDataSource[] {
+  const availableSkills = loadSkillMetadata(integrations)
+  const sources: AvailableDataSource[] = []
+
+  for (const skill of availableSkills) {
+    const mapping = SKILL_DATA_SOURCE_MAP[skill.name]
+    if (!mapping) continue
+
+    const provider =
+      skill.requiredIntegrations.length === 0
+        ? "built-in"
+        : (integrations.find(
+            (i) => skill.requiredIntegrations.includes(i.type) && i.enabled,
+          )?.type ?? "unknown")
+
+    for (const source of mapping.sources) {
+      sources.push({ source, provider, description: mapping.description })
+    }
+  }
+
+  return sources
 }
 
 /**

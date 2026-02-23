@@ -1,8 +1,18 @@
 # Phase 5: Supervisor + Streaming + Consumer Migration
 
-**Status**: PLANNED
+**Status**: IN PROGRESS (Phase 5A)
 **Dependencies**: Phase 4/4.5 (gatherer works via createDeepAgent), Phase 2 (scout works, supervisor stubs compile partial result)
 **Estimated effort**: 4-5 days (largest phase)
+
+## Sub-Phase Split
+
+The original Phase 5 has been split into three sub-phases:
+
+- **Phase 5A** (IN PROGRESS): Supervisor LLM routing + full graph wiring + agent self-assessments + available data sources. Agents package only.
+- **Phase 5B** (PLANNED): Streaming implementation (`executor.stream()`, `config.writer()` events). Agents package only.
+- **Phase 5C** (PLANNED): Consumer migration (QueueService, Worker, SSE endpoint, frontend). API + Worker + Frontend + Contracts.
+
+The original Parts A-D below are superseded by the 5A/5B/5C split but kept as reference.
 
 ## Goal
 

@@ -125,7 +125,20 @@ export function createScoutNode(dataProvider: DataProvider) {
       .filter((r) => !r.success)
       .map((r) => r.error!)
 
-    // 8. Return state update
+    // 8. Build self-assessment
+    const services = topology?.relatedServices ?? []
+    const lastAgentResponse = {
+      agent: "scout" as const,
+      status: incidentResult.data ? ("completed" as const) : ("blocked" as const),
+      summary:
+        `Found ${alerts.length} alerts for incident "${incidentResult.data?.title ?? "unknown"}". ` +
+        `Services affected: ${services.length > 0 ? services.join(", ") : "unknown"}.`,
+      recommendation: "analyst" as const,
+      reasoning:
+        "Initial data collected from PrismaLens. Analyst should review alerts and determine what external data is needed.",
+    }
+
+    // 9. Return state update
     return {
       incident: incidentResult.data,
       alerts,
@@ -136,6 +149,7 @@ export function createScoutNode(dataProvider: DataProvider) {
         coverage,
       },
       phase: "gathering",
+      lastAgentResponse,
       errors,
     }
   }

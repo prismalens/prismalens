@@ -92,7 +92,63 @@ export interface ProgressSnapshot {
 }
 
 /**
- * Full investigation state — 4-layer structure.
+ * Structured data request from analyst to gatherer.
+ * Enables targeted data collection instead of blind gathering.
+ */
+export interface DataRequest {
+  /**
+   * What type of data is needed.
+   * Note: "metrics" has no built-in skill yet (planned for Phase 8 MCP tools).
+   * computeAvailableDataSources() won't produce it until a metrics skill exists.
+   */
+  source: "logs" | "code" | "commits" | "deployments" | "metrics" | "runbooks"
+  /** Which services/repos/systems to query */
+  targets?: string[]
+  /** Specific search terms or patterns */
+  query?: string
+  /** Time range if applicable */
+  timeRange?: { start: string; end: string }
+  /** How important this request is */
+  priority: "required" | "nice_to_have"
+  /** Why this data is needed for the investigation */
+  reasoning: string
+}
+
+/**
+ * Structured self-assessment returned by each agent after execution.
+ * The supervisor reads this to make informed routing decisions.
+ */
+export interface AgentSelfAssessment {
+  /** Which agent produced this assessment */
+  agent: string
+  /** What the agent accomplished */
+  status: "completed" | "needs_more_data" | "blocked" | "insufficient_context"
+  /** Human-readable summary of what was done */
+  summary: string
+  /** Agent's recommendation for what should happen next */
+  recommendation?: string
+  /** Targeted data requests for the gatherer */
+  dataRequests?: DataRequest[]
+  /** Brief reasoning for the recommendation */
+  reasoning: string
+}
+
+/**
+ * Describes a data source available to the gatherer.
+ * Computed once from integrations at graph init — the analyst reads this
+ * to know which DataRequest.source values are valid.
+ */
+export interface AvailableDataSource {
+  /** Data source category (matches DataRequest.source) */
+  source: DataRequest["source"]
+  /** Which integration provides this (e.g., "github", "built-in", "confluence") */
+  provider: string
+  /** Human description of what this source provides */
+  description: string
+}
+
+/**
+ * Full investigation state — 5-layer structure.
  *
  * Layer 1: Input (minimal identifiers + config)
  * Layer 2: Process control (supervisor manages via Command)
@@ -114,6 +170,10 @@ export interface InvestigationState {
 
   // Layer 2b: Skill tracking (gatherer progressive disclosure)
   skillsLoaded: string[]
+
+  // Layer 2c: Agent communication
+  lastAgentResponse: AgentSelfAssessment | null
+  availableDataSources: AvailableDataSource[]
 
   // Layer 3: Gathered data
   incident: IncidentContext | null

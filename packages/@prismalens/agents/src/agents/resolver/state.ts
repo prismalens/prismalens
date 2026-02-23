@@ -7,12 +7,12 @@
 
 import { Annotation } from "@langchain/langgraph"
 import type { Hypothesis, Recommendation } from "../../types/results.js"
-import type { GatheredData } from "../../types/state.js"
+import type { GatheredData, AgentSelfAssessment } from "../../types/state.js"
 
 /**
  * ResolverStateAnnotation — state for the resolver subgraph.
  *
- * Shared channels with parent: recommendations
+ * Shared channels with parent: recommendations, lastAgentResponse
  * Read from parent: hypotheses, gatheredData
  */
 export const ResolverStateAnnotation = Annotation.Root({
@@ -21,6 +21,7 @@ export const ResolverStateAnnotation = Annotation.Root({
     reducer: (current, update) => [...current, ...update],
     default: () => [],
   }),
+  lastAgentResponse: Annotation<AgentSelfAssessment | null>(),
 
   // Read from parent
   hypotheses: Annotation<Hypothesis[]>({
