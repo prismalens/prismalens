@@ -1,6 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Activity,
 	AlertCircle,
@@ -21,6 +21,9 @@ import type {
 } from "@prismalens/contracts";
 
 import { orpc } from "@/lib/api/orpc-client";
+import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
+import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
+import { InvestigationStreamPanel } from "@/components/investigation/InvestigationStreamPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +42,7 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 
 function InvestigationDetailPage() {
 	const { id: investigationId } = Route.useParams();
+	const queryClient = useQueryClient();
 
 	// Fetch investigation details
 	const {
@@ -51,15 +55,36 @@ function InvestigationDetailPage() {
 		orpc.investigations.get.queryOptions({ input: { id: investigationId } }),
 	)
 
-	// Fetch investigation status (includes job queue info)
+	const isActive =
+		investigation?.status === "running" ||
+		investigation?.status === "pending";
+
+	// SSE stream for real-time progress
+	const stream = useInvestigationStream(investigationId, {
+		enabled: isActive,
+	});
+
+	// When stream completes, refetch investigation data
+	useEffect(() => {
+		if (stream.status === "completed") {
+			queryClient.invalidateQueries({
+				queryKey: investigationKeys.detail(investigationId),
+			});
+			queryClient.invalidateQueries({
+				queryKey: investigationKeys.lists(),
+			});
+		}
+	}, [stream.status, investigationId, queryClient]);
+
+	// Fetch investigation status — polling fallback when SSE fails
 	const { data: statusData } = useQuery({
 		...orpc.investigations.getStatus.queryOptions({
 			input: { id: investigationId },
 		}),
 		enabled: !!investigation,
+		// Only poll if SSE is not streaming (fallback mode)
 		refetchInterval:
-			investigation?.status === "running" ||
-			investigation?.status === "pending"
+			isActive && stream.status === "error"
 				? 3000
 				: false,
 	})
@@ -142,8 +167,18 @@ function InvestigationDetailPage() {
 				</div>
 			</div>
 
-			{/* Progress bar for running investigations */}
-			{investigation.status === "running" && (
+			{/* Real-time stream panel for active investigations */}
+			{isActive && stream.status !== "error" && (
+				<InvestigationStreamPanel
+					tuples={stream.tuples}
+					currentNode={stream.currentNode}
+					latestMessage={stream.latestMessage}
+					status={stream.status}
+				/>
+			)}
+
+			{/* Polling fallback progress bar when SSE fails */}
+			{isActive && stream.status === "error" && (
 				<Card>
 					<CardContent className="py-4">
 						<div className="flex items-center justify-between mb-2">

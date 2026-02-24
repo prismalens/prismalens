@@ -14,7 +14,7 @@
 // =============================================================================
 
 export { InvestigationExecutor } from "./executor/index.js"
-export type { InvestigationExecutorDeps } from "./executor/investigation-executor.js"
+export type { InvestigationExecutorDeps, StreamTuple } from "./executor/investigation-executor.js"
 
 // =============================================================================
 // Types - Contexts
