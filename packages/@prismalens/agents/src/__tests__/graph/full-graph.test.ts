@@ -15,14 +15,12 @@ vi.mock("../../llm/factory.js", () => ({
         if (llmCallCount === 1) {
           return {
             agent: "gatherer",
-            phase: "gathering",
             reasoning: "Analyst needs external data",
           }
         }
         // Second supervisor call: end investigation
         return {
           agent: "__end__",
-          phase: "completed",
           reasoning: "Investigation complete",
         }
       }),
@@ -92,7 +90,6 @@ describe("full investigation graph", () => {
         maxIterations: 8,
       },
       integrations: [],
-      phase: "pre_gathering" as const,
       iterations: 0,
       lastProgressSnapshot: null,
       lastAgentResponse: null,
@@ -107,10 +104,9 @@ describe("full investigation graph", () => {
 
     const finalState = await graph.invoke(initialState)
 
-    // Graph should complete
+    // Graph should terminate with a result (stall detection ends it early)
     expect(finalState.result).toBeDefined()
-    expect(finalState.result.status).toBe("completed")
-    expect(finalState.phase).toBe("completed")
+    expect(finalState.result.status).toBe("failed")
 
     // LLM called once: first supervisor pass routes to gatherer.
     // Second supervisor pass detects stall (no new data/hypotheses) and exits without LLM.
@@ -137,7 +133,6 @@ describe("full investigation graph", () => {
         maxIterations: 8,
       },
       integrations: [],
-      phase: "pre_gathering" as const,
       iterations: 0,
       lastProgressSnapshot: null,
       lastAgentResponse: null,
@@ -165,7 +160,6 @@ describe("full investigation graph", () => {
       withStructuredOutput: vi.fn(() => ({
         invoke: vi.fn(async () => ({
           agent: "gatherer",
-          phase: "gathering",
           reasoning: "Need more data",
         })),
       })),
@@ -185,7 +179,6 @@ describe("full investigation graph", () => {
         maxIterations: 3,
       },
       integrations: [],
-      phase: "pre_gathering" as const,
       iterations: 0,
       lastProgressSnapshot: null,
       lastAgentResponse: null,
@@ -202,7 +195,6 @@ describe("full investigation graph", () => {
 
     // Should have been stopped by iteration budget
     expect(finalState.result).toBeDefined()
-    expect(finalState.phase).toBe("completed")
     // Should not exceed maxIterations significantly
     expect(finalState.iterations).toBeLessThanOrEqual(4)
   })

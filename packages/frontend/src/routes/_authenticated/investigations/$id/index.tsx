@@ -474,11 +474,6 @@ function AnalysisTab({
 								{investigation.rootCauseCategory && (
 									<Badge variant="outline">{investigation.rootCauseCategory}</Badge>
 								)}
-								{investigation.analysisMethod && (
-									<span className="text-muted-foreground">
-										Method: {investigation.analysisMethod}
-									</span>
-								)}
 							</div>
 						</div>
 					) : (

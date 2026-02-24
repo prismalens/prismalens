@@ -193,18 +193,12 @@ model Investigation {
   rootCauseCategory String? // code, config, infrastructure, external, unknown
   confidence        Float? // 0.0 to 1.0
   dataQuality       String? // JSON
-  analysisMethod    String?
   dataSourcesUsed   String? // JSON array
   rawOutput         String? // JSON
   error             String?
-  agentProgression  String? // JSON
+  langGraphThreadId String?   @unique // LangGraph checkpoint thread ID for resume/replay
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-
-  // Pre-gathering phase tracking (BigPanda pattern)
-  preGatheringStartedAt   DateTime?
-  preGatheringCompletedAt DateTime?
-  preGatheringQuality     Float? // 0.0 to 1.0
 
   // Trigger tracking
   triggerType   String? // manual, auto_critical, auto_tier, alert_threshold, scheduled, re_trigger

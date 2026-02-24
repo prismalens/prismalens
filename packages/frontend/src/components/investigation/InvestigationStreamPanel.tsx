@@ -199,11 +199,11 @@ function parseDisplayEvent(
 			};
 		}
 
-		if (type === "phase_change") {
+		if (type === "routing") {
 			return {
 				key: index,
 				icon: "activity",
-				message: `Phase: ${d.from} → ${d.to}`,
+				message: `Routing to ${d.agent}: ${d.reasoning}`,
 			};
 		}
 

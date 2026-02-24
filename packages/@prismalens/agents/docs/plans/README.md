@@ -38,9 +38,9 @@ Alert Ingestion
 | 2 | [phase-2-scout.md](./phase-2-scout.md) | COMPLETED | Scout node + type alignment | Phase 1.5 |
 | 3 | [phase-3-skills-tools.md](./phase-3-skills-tools.md) | COMPLETED | load_skill progressive disclosure + ChangeEventsService | Phase 2 |
 | 4 | [phase-4-gatherer.md](./phase-4-gatherer.md) | COMPLETED | Gatherer agent (createReactAgent wrapper, all tools upfront) | Phase 3 |
-| 5A | [phase-5-supervisor.md](./phase-5-supervisor.md) | IN PROGRESS | Supervisor LLM routing + graph wiring + self-assessments | Phase 4.5 |
-| 5B | (planned) | PLANNED | Streaming (executor.stream(), config.writer) | Phase 5A |
-| 5C | (planned) | PLANNED | Consumer migration (API, Worker, SSE, Frontend) | Phase 5B |
+| 5A | [phase-5-supervisor.md](./phase-5-supervisor.md) | COMPLETED | Supervisor LLM routing + graph wiring + self-assessments | Phase 4.5 |
+| 5B | [phase-5-supervisor.md](./phase-5-supervisor.md) | COMPLETED | Streaming (executor.stream(), SSE, frontend) | Phase 5A |
+| 5C-1 | [phase-5-supervisor.md](./phase-5-supervisor.md) | COMPLETED | Schema alignment + dead code cleanup | Phase 5B |
 | 6 | [phase-6-analyst.md](./phase-6-analyst.md) | PLANNED | Analyst subgraph (hypothesis-driven) | Phase 5 |
 | 7 | [phase-7-resolver.md](./phase-7-resolver.md) | PLANNED | Resolver subgraph (precedent + approval) | Phase 5 |
 | 8 | [phase-8-mcp.md](./phase-8-mcp.md) | PLANNED | MCP tool discovery + user extensions | Phase 4, Phase 5 |
@@ -140,7 +140,7 @@ Every phase must pass:
 
 ```
 Layer 1: Input        — investigationId, incidentId, config, integrations
-Layer 2: Control      — phase, iterations, lastProgressSnapshot, errors
+Layer 2: Control      — iterations, lastProgressSnapshot, errors
 Layer 3: Gathered     — incident, alerts, gatheredData (scout + gatherer populate)
 Layer 4: Data Requests — needsMoreData, dataGaps (analyst -> supervisor -> gatherer loop)
 Layer 5: Results      — hypotheses[], recommendations[] (append-only via reducers)

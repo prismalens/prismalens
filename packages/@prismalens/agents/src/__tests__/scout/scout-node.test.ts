@@ -35,7 +35,6 @@ function makeState(overrides: Partial<InvestigationState> = {}): InvestigationSt
     incidentId: "inc-1",
     config: { llm: { provider: "anthropic", model: "test" } },
     integrations: [],
-    phase: "pre_gathering",
     iterations: 0,
     lastProgressSnapshot: null,
     errors: [],
@@ -72,7 +71,6 @@ describe("createScoutNode", () => {
 
     expect(result.incident).toBeDefined()
     expect(result.alerts).toHaveLength(1)
-    expect(result.phase).toBe("gathering")
     expect(result.gatheredData?.coverage?.dataCompleteness).toBe("complete")
     expect(result.gatheredData?.coverage?.incident.found).toBe(true)
     expect(result.gatheredData?.coverage?.alerts.sampled).toBe(false)
@@ -140,7 +138,6 @@ describe("createScoutNode", () => {
     const scout = createScoutNode(provider)
     const result = await scout(makeState())
 
-    expect(result.phase).toBe("completed")
     expect(result.errors).toHaveLength(1)
     expect(result.errors![0]).toContain("Incident not found")
     // Should not have gatheredData

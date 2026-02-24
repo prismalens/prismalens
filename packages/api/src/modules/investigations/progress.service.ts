@@ -43,7 +43,6 @@ interface CheckpointState extends InvestigationState {
 		incident?: number;
 		alerts?: number;
 		gathered?: number;
-		preGathering?: number;
 		correlations?: {
 			logCodeOverlap: number;
 			codeChangeOverlap: number;
@@ -119,7 +118,6 @@ export class ProgressService {
 			return {
 				investigationId,
 				status: "pending",
-				phase: "pre_gathering",
 				currentNode: null,
 				currentAgent: null,
 				gatherIterations: 0,
@@ -138,10 +136,6 @@ export class ProgressService {
 
 		// Map status
 		const status = this.mapStatus(state.status);
-
-		// Map phase - convert SupervisorPhase to InvestigationPhase
-		// SupervisorPhase doesn't include pre_gathering/challenging (those are inferred)
-		const phase = this.mapPhase(state.phase, state.status, state.currentAgent);
 
 		// Map current agent (currentAgent in state)
 		const currentAgent = (state.currentAgent as string | null) ?? null;
@@ -169,7 +163,6 @@ export class ProgressService {
 		return {
 			investigationId: state.investigationId ?? investigationId,
 			status,
-			phase,
 			currentNode: currentNode as InvestigationProgressType["currentNode"],
 			currentAgent: currentAgent as InvestigationProgressType["currentAgent"],
 			gatherIterations: state.gatherIterations ?? 0,
@@ -196,9 +189,6 @@ export class ProgressService {
 
 		return {
 			timestamp: ts ?? new Date().toISOString(),
-			phase: state
-				? this.mapPhase(state.phase, state.status, state.currentAgent)
-				: "pre_gathering",
 			currentNode: (state
 				? this.determineCurrentNode(state)
 				: null) as ProgressSnapshotType["currentNode"],
@@ -231,74 +221,11 @@ export class ProgressService {
 	}
 
 	/**
-	 * Map SupervisorPhase to contract InvestigationPhase.
-	 * The agents package and contracts package use different phase enums;
-	 * this method bridges the two at runtime.
-	 */
-	private mapPhase(
-		phase: string | undefined,
-		status: string | undefined,
-		currentAgent: string | undefined,
-	): InvestigationProgressType["phase"] {
-		// If status is pending/validating, we're in pre_gathering
-		if (status === "pending" || status === "validating") {
-			return "pre_gathering";
-		}
-
-		// If current agent is adversary, we're in challenging phase
-		if (currentAgent === "adversary") {
-			return "challenging";
-		}
-
-		// Otherwise, map phase string directly
-		switch (phase) {
-			case "gathering":
-				return "gathering";
-			case "targeted_gather":
-				return "targeted_gather";
-			case "analyzing":
-			case "analysis":
-				return "analyzing";
-			case "fixing":
-			case "resolution":
-				return "fixing";
-			case "complete":
-			case "completed":
-				return "complete";
-			default:
-				return "pre_gathering";
-		}
-	}
-
-	/**
 	 * Determine current node from state.
-	 * This is inferred from phase and current agent.
+	 * Returns the current agent name, or "supervisor" as fallback.
 	 */
 	private determineCurrentNode(state: CheckpointState): string | null {
-		// If there's a current agent, that's the current node
-		if (state.currentAgent) {
-			return state.currentAgent;
-		}
-
-		// Otherwise, infer from phase
-		const phase = state.phase as string;
-		switch (phase) {
-			case "gathering":
-				return "gatherer-coordinator";
-			case "targeted_gather":
-				return "gatherer-coordinator";
-			case "analyzing":
-			case "analysis":
-				return "detective";
-			case "fixing":
-			case "resolution":
-				return "surgeon";
-			case "complete":
-			case "completed":
-				return "writeToApi";
-			default:
-				return "supervisor";
-		}
+		return state.currentAgent ?? "supervisor";
 	}
 
 	/**
@@ -338,7 +265,6 @@ export class ProgressService {
 			incident: quality.incident,
 			alerts: quality.alerts,
 			gathered: quality.gathered,
-			preGathering: quality.preGathering,
 			correlations: quality.correlations
 				? {
 						logCodeOverlap: quality.correlations.logCodeOverlap,

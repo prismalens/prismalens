@@ -84,30 +84,29 @@ graph.stream(state, { streamMode: ["tasks", "updates", "custom"] })
 
 ---
 
-## Phase 5C — Follow-up Cleanup (DEFERRED)
+## Phase 5C-1 — Schema Alignment + Dead Code Cleanup (COMPLETED)
 
-Items to address in a future phase:
+Completed items:
+- Removed dead `AgentName` Prisma enum (PG only)
+- Added `langGraphThreadId String? @unique` to `Investigation` model
+- Removed stale `Investigation` fields: `preGatheringStartedAt/CompletedAt/Quality`, `agentProgression`, `analysisMethod`
+- Derived contracts enums from config SSOT (`AgentNameSchema` from `AGENT_IDS`, `RoutableAgentNameSchema` from `ROUTABLE_AGENT_IDS`)
+- Removed stale `InvestigationPhaseSchema`, `GraphNodeIdSchema`, `SupervisorAgentNameSchema`
+- Removed `phase` from graph state, supervisor decision schema, and all consumers
+- Removed `analysisMethod` (was always `"multi-agent"` constant)
+- Deleted `mapPhase()` from ProgressService, simplified `determineCurrentNode()`
+- Deleted dead `InvestigationGraph.tsx` component (365 lines)
+- Replaced `phase_change` stream event with `routing` event (agent + reasoning)
+- Removed graph visualization schemas (only consumer was dead component)
 
-### DB Schema Cleanup
-- Remove dead enums: `AgentName`, `AgentType`, `ToolCategory` (not used by Phase 5 agents)
-- Add `langGraphThreadId String? @unique` to `Investigation` model (enables checkpoint replay)
-- Remove stale `Investigation` fields: `preGatheringStartedAt/CompletedAt/Quality`, `agentProgression`, `analysisMethod`
+## Phase 5C-2 — Checkpoint Persistence (DEFERRED)
 
-### Contracts/ProgressService Cleanup
-- Derive contracts enums from config SSOT (`GraphNodeIdSchema = agentIdSchema`)
-- Replace stale `InvestigationPhaseSchema` with config-derived schema
-- Simplify `ProgressService.mapPhase()` → `getCurrentNode()` using stream node names
-- Remove dead `InvestigationGraph.tsx` component (never imported in routes)
-
-### AgentExecution Population Strategy
-- Worker currently writes `agentExecutions: []` — no Phase 5 records exist
-- Decide: populate from stream events after completion, or from LangGraph checkpoint
-- Token tracking (`inputTokens`/`outputTokens`) needs a home — not in LangGraph checkpoints
-
-### Checkpoint Persistence
-- Implement real `getCheckpoint()` / `getCheckpointHistory()` (currently stubs returning null)
-- Connect PostgresSaver or SQLite checkpointer to graph
-- Enable investigation resume/replay via stored thread ID
+Remaining items:
+- Implement real `getCheckpoint()` / `getCheckpointHistory()` (currently stubs)
+- Connect `@langchain/langgraph-checkpoint-postgres` to graph
+- Populate `langGraphThreadId` on investigation start
+- AgentExecution population from stream events or checkpoints
+- Token tracking (`inputTokens`/`outputTokens`)
 
 ---
 

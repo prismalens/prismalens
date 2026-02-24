@@ -114,13 +114,14 @@ CREATE TABLE "investigations" (
     "rootCauseCategory" TEXT,
     "confidence" REAL,
     "dataQuality" TEXT,
-    "analysisMethod" TEXT,
     "dataSourcesUsed" TEXT,
     "rawOutput" TEXT,
     "error" TEXT,
-    "agentProgression" TEXT,
+    "langGraphThreadId" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    "triggerType" TEXT,
+    "triggerReason" TEXT,
     CONSTRAINT "investigations_incidentId_fkey" FOREIGN KEY ("incidentId") REFERENCES "incidents" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -494,6 +495,9 @@ CREATE INDEX "incidents_serviceId_idx" ON "incidents"("serviceId");
 
 -- CreateIndex
 CREATE INDEX "incidents_triggeredAt_idx" ON "incidents"("triggeredAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "investigations_langGraphThreadId_key" ON "investigations"("langGraphThreadId");
 
 -- CreateIndex
 CREATE INDEX "investigations_incidentId_idx" ON "investigations"("incidentId");

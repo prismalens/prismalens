@@ -24,7 +24,6 @@ import type {
 } from "../types/contexts.js"
 import type { InvestigationResult, Hypothesis, Recommendation } from "../types/results.js"
 import type {
-  InvestigationPhase,
   GatheredData,
   ProgressSnapshot,
   AgentSelfAssessment,
@@ -47,7 +46,6 @@ export const InvestigationStateAnnotation = Annotation.Root({
   // =========================================================================
   // Layer 2: Process control (supervisor manages via Command)
   // =========================================================================
-  phase: Annotation<InvestigationPhase>(),
   iterations: Annotation<number>(),
   lastProgressSnapshot: Annotation<ProgressSnapshot | null>(),
   errors: Annotation<string[]>({

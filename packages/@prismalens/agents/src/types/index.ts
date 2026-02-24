@@ -28,8 +28,6 @@ export type {
 // State
 export type {
   InvestigationState,
-  InvestigationPhase,
-  SupervisorPhase,
   AgentName,
   GraphNodeId,
   GatheredData,
@@ -45,9 +43,10 @@ export type {
   InvestigationProgressEvent,
   NodeCompleteEvent,
   ProgressEvent,
-  PhaseChangeEvent,
+  RoutingEvent,
   HypothesisFormedEvent,
   RecommendationAddedEvent,
   StalledEvent,
   CompletedEvent,
+  ErrorEvent,
 } from "./progress.js"

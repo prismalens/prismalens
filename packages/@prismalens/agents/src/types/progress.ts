@@ -13,11 +13,12 @@ import type { InvestigationResult } from "./results.js"
 export type InvestigationProgressEvent =
   | NodeCompleteEvent
   | ProgressEvent
-  | PhaseChangeEvent
+  | RoutingEvent
   | HypothesisFormedEvent
   | RecommendationAddedEvent
   | StalledEvent
   | CompletedEvent
+  | ErrorEvent
 
 /**
  * Emitted after a graph node completes execution.
@@ -38,12 +39,12 @@ export interface ProgressEvent {
 }
 
 /**
- * Emitted when the investigation transitions between phases.
+ * Emitted when the supervisor routes to a new agent.
  */
-export interface PhaseChangeEvent {
-  type: "phase_change"
-  from: string
-  to: string
+export interface RoutingEvent {
+  type: "routing"
+  agent: string
+  reasoning: string
 }
 
 /**
@@ -78,4 +79,13 @@ export interface StalledEvent {
 export interface CompletedEvent {
   type: "completed"
   result: InvestigationResult
+}
+
+/**
+ * Emitted when the investigation encounters an unrecoverable error.
+ */
+export interface ErrorEvent {
+  type: "error"
+  status: "timeout" | "failed"
+  message: string
 }

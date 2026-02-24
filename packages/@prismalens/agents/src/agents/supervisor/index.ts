@@ -9,5 +9,5 @@ export {
   detectProgress,
   hasHighConfidenceSimilarIncident,
 } from "./node.js"
-export { supervisorPrompt, SUPERVISOR_PROMPT } from "./prompt.js"
+export { supervisorPrompt } from "./prompt.js"
 export { formatStateForSupervisor } from "./format.js"

@@ -635,7 +635,6 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				rootCauseCategory: rootCauseCategory ?? undefined,
 				confidence:
 					result.confidence !== null ? result.confidence / 100 : undefined, // Convert 0-100 to 0-1
-				analysisMethod: result.analysisMethod ?? undefined,
 				error: result.error ?? undefined,
 				recommendations: result.recommendations.map((rec) => ({
 					title: rec.title,

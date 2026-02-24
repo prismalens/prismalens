@@ -148,15 +148,6 @@ enum RootCauseCategory {
   unknown // Could not determine
 }
 
-/// Agent names in the investigation workflow
-enum AgentName {
-  alert_agent // Validates and normalizes alert
-  gatherer_agent // Collects context (logs, code, etc.)
-  analyzer_agent // Analyzes root cause
-  recommender_agent // Generates recommendations
-  log_retriever_agent // Sub-agent for log collection
-}
-
 /// Agent types
 enum AgentType {
   llm // LLM-based agent
@@ -542,18 +533,12 @@ model Investigation {
   rootCauseCategory RootCauseCategory?
   confidence        Float? // Overall confidence score (0.0 to 1.0)
   dataQuality       String? // JSON: {"logs": 0.8, "code": 0.9, "metrics": 0.3}
-  analysisMethod    String? // Method used: "multi_agent_sequential"
   dataSourcesUsed   String? // JSON array: ["logs", "code", "github"]
   rawOutput         String? // Full agent workflow output (JSON) for debugging
   error             String? // Error message if status is "failed"
-  agentProgression  String? // JSON: {"alert_agent": true, "gatherer_agent": true, ...}
+  langGraphThreadId String?            @unique // LangGraph checkpoint thread ID for resume/replay
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
-
-  // Pre-gathering phase tracking (BigPanda pattern)
-  preGatheringStartedAt   DateTime?
-  preGatheringCompletedAt DateTime?
-  preGatheringQuality     Float? // 0.0 to 1.0
 
   // Trigger tracking
   triggerType   InvestigationTriggerType?

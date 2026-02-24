@@ -159,7 +159,7 @@ export function formatStateForSupervisor(state: InvestigationState): string {
   sections.push("")
   sections.push("## Process State")
   sections.push(
-    `Phase: ${state.phase}, Iteration: ${state.iterations}/${state.config.maxIterations ?? 8}`,
+    `Iteration: ${state.iterations}/${state.config.maxIterations ?? 8}`,
   )
   if (state.skillsLoaded.length > 0) {
     sections.push(`Skills loaded: ${state.skillsLoaded.join(", ")}`)

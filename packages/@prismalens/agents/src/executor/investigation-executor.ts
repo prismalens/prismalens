@@ -69,7 +69,6 @@ export class InvestigationExecutor {
       incidentId: input.incidentId,
       config: input.config,
       integrations: input.integrations ?? [],
-      phase: "pre_gathering" as const,
       iterations: 0,
       lastProgressSnapshot: null,
       lastAgentResponse: null,
@@ -128,7 +127,6 @@ export class InvestigationExecutor {
           ? `Investigation timed out after ${timeoutMs}ms`
           : err.message,
         executionTimeMs: Date.now() - startTime,
-        analysisMethod: null,
       }
     } finally {
       clearTimeout(timer)

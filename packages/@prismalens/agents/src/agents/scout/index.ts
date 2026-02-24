@@ -80,7 +80,6 @@ export function createScoutNode(dataProvider: DataProvider) {
     if (!incidentResult.data && incidentResult.success) {
       return {
         errors: [`Incident not found: ${state.incidentId}`],
-        phase: "completed",
       }
     }
 
@@ -148,7 +147,6 @@ export function createScoutNode(dataProvider: DataProvider) {
         similarIncidents: similarResult.data.incidents,
         coverage,
       },
-      phase: "gathering",
       lastAgentResponse,
       errors,
     }

@@ -25,7 +25,6 @@ export interface InvestigationResult {
   recommendations: Recommendation[]
   error: string | null
   executionTimeMs: number
-  analysisMethod: string | null
 }
 
 /**

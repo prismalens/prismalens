@@ -2,69 +2,24 @@
  * Investigation Progress Schemas
  *
  * Zod schemas for investigation progress tracking.
- * Derives from @prismalens/agents metadata to ensure consistency.
+ * Derives from @prismalens/config/agents SSOT for agent names.
  */
 
+import { ROUTABLE_AGENT_IDS } from "@prismalens/config/agents";
 import { z } from "zod";
+import { AgentNameSchema } from "./common.js";
 
 // =============================================================================
-// PHASE & NODE SCHEMAS
+// AGENT NAME SCHEMAS (SSOT-derived)
 // =============================================================================
 
 /**
- * Investigation phase schema.
- * Matches INVESTIGATION_PHASES from @prismalens/agents/graph/metadata.
+ * Routable agent name schema — agents the supervisor can route to.
+ * Derived from config SSOT ROUTABLE_AGENT_IDS.
  */
-export const InvestigationPhaseSchema = z.enum([
-	"pre_gathering",
-	"gathering",
-	"targeted_gather",
-	"analyzing",
-	"challenging",
-	"fixing",
-	"complete",
-]);
+export const RoutableAgentNameSchema = z.enum(ROUTABLE_AGENT_IDS);
 
-export type InvestigationPhaseType = z.infer<typeof InvestigationPhaseSchema>;
-
-/**
- * Graph node ID schema.
- * Matches GRAPH_NODES from @prismalens/agents/graph/metadata.
- */
-export const GraphNodeIdSchema = z.enum([
-	"validateIncident",
-	"preGather",
-	"cloneIfNeeded",
-	"prepareSupervisor",
-	"supervisor",
-	"qualityGate",
-	"processHandoff",
-	"gatherer-coordinator",
-	"log-gatherer",
-	"code-searcher",
-	"change-tracker",
-	"detective",
-	"adversary",
-	"surgeon",
-	"writeToApi",
-]);
-
-export type GraphNodeIdType = z.infer<typeof GraphNodeIdSchema>;
-
-/**
- * Agent name schema.
- * Matches AGENT_NAMES from @prismalens/agents/graph/metadata.
- */
-export const SupervisorAgentNameSchema = z.enum([
-	"log-gatherer",
-	"code-searcher",
-	"change-tracker",
-	"detective",
-	"adversary",
-	"surgeon",
-]);
-
-export type SupervisorAgentNameType = z.infer<typeof SupervisorAgentNameSchema>;
+export type RoutableAgentNameType = z.infer<typeof RoutableAgentNameSchema>;
 
 // =============================================================================
 // PROGRESS STATUS
@@ -132,7 +87,6 @@ export const DataQualityInfoSchema = z
 		incident: z.number().optional(),
 		alerts: z.number().optional(),
 		gathered: z.number().optional(),
-		preGathering: z.number().optional(),
 		correlations: CorrelationResultSchema.optional(),
 	})
 	.catchall(z.union([z.number(), CorrelationResultSchema, z.undefined()]));
@@ -169,9 +123,8 @@ export type AgentExecutionRecordType = z.infer<typeof AgentExecutionRecordSchema
 export const InvestigationProgressSchema = z.object({
 	investigationId: z.string(),
 	status: InvestigationProgressStatusSchema,
-	phase: InvestigationPhaseSchema,
-	currentNode: GraphNodeIdSchema.nullable(),
-	currentAgent: SupervisorAgentNameSchema.nullable(),
+	currentNode: AgentNameSchema.nullable(),
+	currentAgent: AgentNameSchema.nullable(),
 	gatherIterations: z.number(),
 	findings: z.number(),
 	hypotheses: z.number(),
@@ -193,68 +146,10 @@ export type InvestigationProgressType = z.infer<typeof InvestigationProgressSche
  */
 export const ProgressSnapshotSchema = z.object({
 	timestamp: z.string(),
-	phase: InvestigationPhaseSchema,
-	currentNode: GraphNodeIdSchema.nullable(),
+	currentNode: AgentNameSchema.nullable(),
 	findings: z.number(),
 	hypotheses: z.number(),
 	confidence: z.number().nullable(),
 });
 
 export type ProgressSnapshotType = z.infer<typeof ProgressSnapshotSchema>;
-
-// =============================================================================
-// GRAPH VISUALIZATION
-// =============================================================================
-
-/**
- * Node status for visualization.
- */
-export const NodeStatusSchema = z.enum([
-	"pending",
-	"running",
-	"completed",
-	"skipped",
-	"failed",
-]);
-
-/**
- * Graph node state for visualization.
- */
-export const GraphNodeStateSchema = z.object({
-	id: GraphNodeIdSchema,
-	status: NodeStatusSchema,
-	startedAt: z.string().optional(),
-	completedAt: z.string().optional(),
-	error: z.string().optional(),
-	findingsProduced: z.number().optional(),
-});
-
-/**
- * Edge status for visualization.
- */
-export const EdgeStatusSchema = z.enum(["pending", "active", "completed"]);
-
-/**
- * Graph edge state for visualization.
- */
-export const GraphEdgeStateSchema = z.object({
-	from: GraphNodeIdSchema,
-	to: GraphNodeIdSchema,
-	label: z.string().optional(),
-	status: EdgeStatusSchema,
-	traversedAt: z.string().optional(),
-});
-
-/**
- * Full graph visualization state.
- */
-export const GraphVisualizationStateSchema = z.object({
-	nodes: z.array(GraphNodeStateSchema),
-	edges: z.array(GraphEdgeStateSchema),
-	activeNodeId: GraphNodeIdSchema.nullable(),
-	phase: InvestigationPhaseSchema,
-});
-
-export type GraphVisualizationStateType = z.infer<
-	typeof GraphVisualizationStateSchema
->;

@@ -67,21 +67,11 @@ export class InternalInvestigationResultDto {
 	@IsObject()
 	dataQuality?: Record<string, number>;
 
-	/** Which agents completed */
-	@IsOptional()
-	@IsObject()
-	agentProgression?: Record<string, boolean>;
-
 	/** Data sources used in analysis */
 	@IsOptional()
 	@IsArray()
 	@IsString({ each: true })
 	dataSourcesUsed?: string[];
-
-	/** Analysis method description */
-	@IsOptional()
-	@IsString()
-	analysisMethod?: string;
 
 	/** Raw output from agents */
 	@IsOptional()

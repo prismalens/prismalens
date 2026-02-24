@@ -122,7 +122,12 @@ AI-driven analysis of an incident. Each investigation runs the multi-agent workf
 | `rootCauseCategory` | RootCauseCategory? | See [RootCauseCategory](#rootcausecategory) |
 | `confidence` | float? | Confidence score (0.0 to 1.0) |
 | `dataQuality` | JSON | Quality scores per data source |
-| `agentProgression` | JSON | Which agents completed |
+| `dataSourcesUsed` | JSON | Array of data source names used |
+| `rawOutput` | string? | Full agent workflow output (JSON) for debugging |
+| `error` | string? | Error message if status is "failed" |
+| `langGraphThreadId` | string? | **Unique** LangGraph checkpoint thread ID for resume/replay |
+| `triggerType` | InvestigationTriggerType? | How this investigation was triggered |
+| `triggerReason` | string? | Human-readable trigger reason |
 
 ### Service
 Monitored components - "what can break". Used for topology-based correlation.
@@ -579,16 +584,6 @@ Status for service suggestions.
   "code": 0.9,
   "metrics": 0.3,
   "github": 0.7
-}
-```
-
-### Investigation Agent Progression
-```json
-{
-  "alert_agent": true,
-  "gatherer_agent": true,
-  "analyzer_agent": true,
-  "recommender_agent": false
 }
 ```
 

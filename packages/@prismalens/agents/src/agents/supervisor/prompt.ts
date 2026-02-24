@@ -26,7 +26,6 @@ function buildAgentDescriptions(): string {
 export function supervisorPrompt(context: {
   incidentTitle: string
   severity: string
-  phase: string
 }): string {
   return `You are an incident investigation supervisor for PrismaLens.
 
@@ -35,7 +34,6 @@ Your role is to orchestrate the investigation by routing to the appropriate agen
 ## Current Investigation
 - Title: ${context.incidentTitle}
 - Severity: ${context.severity}
-- Phase: ${context.phase}
 
 ## Available Agents
 ${buildAgentDescriptions()}
@@ -69,25 +67,5 @@ scout provided. Only route to gatherer when data requests target available sourc
 6. If budget exhausted or stalled → route to "__end__"
 
 ## Decision Format
-Respond with the next agent to route to, the current phase, and brief reasoning.`
+Respond with the next agent to route to and brief reasoning.`
 }
-
-/**
- * Static supervisor prompt for simple cases.
- */
-export const SUPERVISOR_PROMPT = `You are an incident investigation supervisor for PrismaLens.
-
-Your role is to orchestrate the investigation by routing to the appropriate agent based on the current state and the previous agent's self-assessment.
-
-## Available Agents
-${buildAgentDescriptions()}
-
-## Routing Rules
-1. If previous agent has data requests for available sources → route to "gatherer"
-2. If new data was collected and analyst hasn't analyzed it → route to "analyst"
-3. If high-confidence hypothesis exists → route to "resolver"
-4. If investigation is complete with recommendations → route to "__end__"
-5. If budget exhausted or stalled → route to "__end__"
-
-## Decision Format
-Respond with the next agent to route to, the current phase, and brief reasoning.`

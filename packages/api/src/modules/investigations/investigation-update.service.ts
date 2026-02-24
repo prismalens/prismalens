@@ -168,39 +168,19 @@ export class InvestigationUpdateService {
 	}
 
 	/**
-	 * Notify investigation of new alerts via pendingAlerts
+	 * Notify investigation of new alerts.
 	 */
 	async notifyInvestigation(
 		investigation: Investigation,
 		event: AlertAddedEvent,
 	): Promise<void> {
-		this.logger.log(
-			`Notifying investigation ${investigation.id} of alert ${event.alertId}`,
+		this.logger.warn(
+			`Investigation ${investigation.id} received alert ${event.alertId} ` +
+			`(severity: ${event.alert.severity}) — notification not yet implemented (Phase 5C-2)`,
 		);
-
-		// TODO: Update checkpointer state with pendingAlerts when LangGraph integration is complete
-		// For now, update investigation metadata
-		const existingProgression = investigation.agentProgression
-			? JSON.parse(investigation.agentProgression)
-			: {};
-
-		const pendingAlerts = existingProgression.pendingAlerts || [];
-		pendingAlerts.push({
-			alertId: event.alertId,
-			title: event.alert.title,
-			severity: event.alert.severity,
-			addedAt: new Date().toISOString(),
-		});
-
-		await this.prisma.investigation.update({
-			where: { id: investigation.id },
-			data: {
-				agentProgression: JSON.stringify({
-					...existingProgression,
-					pendingAlerts,
-				}),
-			},
-		});
+		this.logger.debug(`Alert ${event.alertId} title: ${event.alert.title}`);
+		// TODO(Phase-5C-2): When checkpoint persistence is implemented,
+		// inject pendingAlerts into LangGraph checkpoint state.
 	}
 
 	/**

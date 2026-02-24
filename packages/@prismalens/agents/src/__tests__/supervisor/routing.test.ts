@@ -59,7 +59,6 @@ function makeState(
       maxIterations: 8,
     },
     integrations: [],
-    phase: "gathering",
     iterations: 0,
     lastProgressSnapshot: null,
     lastAgentResponse: null,
@@ -85,7 +84,6 @@ function makeConfig(): LangGraphRunnableConfig {
 
 function mockLLMResponse(decision: {
   agent: string
-  phase: string
   reasoning: string
 }) {
   const mockModel = {
@@ -115,7 +113,8 @@ describe("supervisorNode", () => {
     const { goto, update } = extractCommand(result)
     expect(goto).toEqual(["__end__"])
     expect(update.result).toBeDefined()
-    expect(update.phase).toBe("completed")
+    const investigationResult = update.result as Record<string, unknown>
+    expect(investigationResult.status).toBe("failed")
     // LLM should NOT be called
     expect(createLLM).not.toHaveBeenCalled()
   })
@@ -151,6 +150,8 @@ describe("supervisorNode", () => {
     const { goto, update } = extractCommand(result)
     expect(goto).toEqual(["__end__"])
     expect(update.result).toBeDefined()
+    const investigationResult = update.result as Record<string, unknown>
+    expect(investigationResult.status).toBe("failed")
     // Writer should emit stalled event
     expect(config.writer).toHaveBeenCalledWith(
       expect.objectContaining({ type: "stalled" }),
@@ -160,7 +161,6 @@ describe("supervisorNode", () => {
   it("routes to gatherer when LLM decides", async () => {
     mockLLMResponse({
       agent: "gatherer",
-      phase: "gathering",
       reasoning: "Need more data",
     })
 
@@ -171,7 +171,6 @@ describe("supervisorNode", () => {
 
     const { goto, update } = extractCommand(result)
     expect(goto).toEqual(["gatherer"])
-    expect(update.phase).toBe("gathering")
     expect(update.iterations).toBe(1)
     expect(update.lastProgressSnapshot).toBeDefined()
   })
@@ -179,7 +178,6 @@ describe("supervisorNode", () => {
   it("routes to analyst when LLM decides", async () => {
     mockLLMResponse({
       agent: "analyst",
-      phase: "analysis",
       reasoning: "Data collected, analyze",
     })
 
@@ -188,15 +186,13 @@ describe("supervisorNode", () => {
 
     const result = await supervisorNode(state, config)
 
-    const { goto, update } = extractCommand(result)
+    const { goto } = extractCommand(result)
     expect(goto).toEqual(["analyst"])
-    expect(update.phase).toBe("analysis")
   })
 
   it("routes to resolver when LLM decides", async () => {
     mockLLMResponse({
       agent: "resolver",
-      phase: "resolution",
       reasoning: "High confidence hypothesis",
     })
 
@@ -205,15 +201,13 @@ describe("supervisorNode", () => {
 
     const result = await supervisorNode(state, config)
 
-    const { goto, update } = extractCommand(result)
+    const { goto } = extractCommand(result)
     expect(goto).toEqual(["resolver"])
-    expect(update.phase).toBe("resolution")
   })
 
   it("compiles result when routing to __end__", async () => {
     mockLLMResponse({
       agent: "__end__",
-      phase: "completed",
       reasoning: "Investigation complete",
     })
 
@@ -238,29 +232,27 @@ describe("supervisorNode", () => {
     expect(investigationResult.status).toBe("completed")
   })
 
-  it("emits phase_change event", async () => {
+  it("emits routing event", async () => {
     mockLLMResponse({
       agent: "analyst",
-      phase: "analysis",
       reasoning: "Analyze data",
     })
 
-    const state = makeState({ phase: "gathering" })
+    const state = makeState()
     const config = makeConfig()
 
     await supervisorNode(state, config)
 
     expect(config.writer).toHaveBeenCalledWith({
-      type: "phase_change",
-      from: "gathering",
-      to: "analysis",
+      type: "routing",
+      agent: "analyst",
+      reasoning: "Analyze data",
     })
   })
 
   it("increments iterations", async () => {
     mockLLMResponse({
       agent: "gatherer",
-      phase: "gathering",
       reasoning: "More data",
     })
 
@@ -276,7 +268,6 @@ describe("supervisorNode", () => {
   it("updates lastProgressSnapshot", async () => {
     mockLLMResponse({
       agent: "analyst",
-      phase: "analysis",
       reasoning: "Analyze",
     })
 
@@ -314,6 +305,18 @@ describe("compilePartialResult", () => {
     const state = makeState({ errors: ["fetch failed", "timeout"] })
     const result = compilePartialResult(state)
     expect(result.error).toBe("fetch failed; timeout")
+  })
+
+  it("defaults to completed status", () => {
+    const state = makeState()
+    const result = compilePartialResult(state)
+    expect(result.status).toBe("completed")
+  })
+
+  it("accepts custom status parameter", () => {
+    const state = makeState()
+    const result = compilePartialResult(state, "failed")
+    expect(result.status).toBe("failed")
   })
 })
 

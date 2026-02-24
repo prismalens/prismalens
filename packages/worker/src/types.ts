@@ -39,9 +39,7 @@ export interface InvestigationResult {
 		rootCause?: string;
 		summary?: string;
 		confidence?: number;
-		analysisMethod?: string;
 		dataSourcesUsed?: string[];
-		agentProgression?: Record<string, unknown>;
 		dataQuality?: Record<string, unknown>;
 	};
 	recommendations: Array<{

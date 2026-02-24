@@ -19,14 +19,8 @@ export class InvestigationResultDto {
 	/** Data quality scores per source */
 	dataQuality?: Record<string, number>;
 
-	/** Which agents completed */
-	agentProgression?: Record<string, boolean>;
-
 	/** Data sources used in analysis */
 	dataSourcesUsed?: string[];
-
-	/** Analysis method description */
-	analysisMethod?: string;
 
 	/** Raw output from agents */
 	rawOutput?: Record<string, unknown>;

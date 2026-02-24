@@ -384,9 +384,7 @@ async function processJobInternal(
 			rootCauseCategory: agentResult.rootCauseCategory ?? undefined,
 			confidence: result.findings.confidence,
 			dataQuality: result.findings.dataQuality,
-			agentProgression: result.findings.agentProgression,
 			dataSourcesUsed: result.findings.dataSourcesUsed,
-			analysisMethod: result.findings.analysisMethod,
 			error: result.error,
 			agentExecutions: [], // Agent executions are tracked internally
 			recommendations: result.recommendations.map((rec) => ({
@@ -520,10 +518,8 @@ function buildResult(
 			rootCause: agentResult.rootCause || undefined,
 			summary: agentResult.summary || undefined,
 			confidence: agentResult.confidence || undefined,
-			analysisMethod: agentResult.analysisMethod || undefined,
-			dataSourcesUsed: [], // TODO: Add to AgentResult if needed
-			agentProgression: {}, // TODO: Add to AgentResult if needed
-			dataQuality: {}, // TODO: Add to AgentResult if needed
+			dataSourcesUsed: [], // TODO(Phase-5C-2): populate from InvestigationResult.dataSourcesUsed
+			dataQuality: {}, // TODO(Phase-5C-2): populate from InvestigationResult.dataQuality
 		},
 		recommendations: agentResult.recommendations.map((rec: Recommendation) => ({
 			title: rec.title,

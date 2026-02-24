@@ -13,18 +13,6 @@ import type {
 import type { InvestigationResult, Hypothesis, Recommendation } from "./results.js"
 import type { InvestigationConfig } from "./inputs.js"
 import type { AgentId } from "@prismalens/config/agents"
-import type { InvestigationPhaseValue } from "../tools/schemas.js"
-
-/**
- * Investigation phase — detailed workflow stage.
- * Derived from the INVESTIGATION_PHASES constant in tools/schemas.ts.
- */
-export type InvestigationPhase = InvestigationPhaseValue
-
-/**
- * Supervisor phase — alias for InvestigationPhase (used in supervisor routing).
- */
-export type SupervisorPhase = InvestigationPhase
 
 /**
  * Agent name — identifies which agent node is active.
@@ -163,7 +151,6 @@ export interface InvestigationState {
   integrations: IntegrationContext[]
 
   // Layer 2: Process control
-  phase: InvestigationPhase
   iterations: number
   lastProgressSnapshot: ProgressSnapshot | null
   errors: string[]

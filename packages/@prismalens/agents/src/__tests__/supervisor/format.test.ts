@@ -31,7 +31,6 @@ function makeState(
       maxIterations: 8,
     },
     integrations: [],
-    phase: "gathering",
     iterations: 1,
     lastProgressSnapshot: null,
     lastAgentResponse: null,
@@ -177,9 +176,9 @@ describe("formatStateForSupervisor", () => {
 
   it("renders process state with iteration count", () => {
     const result = formatStateForSupervisor(
-      makeState({ iterations: 3, phase: "analysis" }),
+      makeState({ iterations: 3 }),
     )
-    expect(result).toContain("Phase: analysis, Iteration: 3/8")
+    expect(result).toContain("Iteration: 3/8")
   })
 
   it("does NOT dump raw gatheredData fields", () => {

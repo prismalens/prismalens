@@ -239,9 +239,7 @@ export class InvestigationsService {
             rootCauseCategory: dto.rootCauseCategory,
             confidence: dto.confidence,
             dataQuality: dto.dataQuality ? JSON.stringify(dto.dataQuality) : null,
-            agentProgression: dto.agentProgression ? JSON.stringify(dto.agentProgression) : null,
             dataSourcesUsed: dto.dataSourcesUsed ? JSON.stringify(dto.dataSourcesUsed) : null,
-            analysisMethod: dto.analysisMethod,
             rawOutput: dto.rawOutput ? JSON.stringify(dto.rawOutput) : null,
             error: dto.error,
             status: dto.status,
@@ -367,64 +365,73 @@ export class InvestigationsService {
 
       if (!investigation) return null;
 
-      // Update investigation with results
-      await this.prisma.investigation.update({
-        where: { id },
-        data: {
-          summary: result.summary,
-          rootCause: result.rootCause,
-          rootCauseCategory: result.rootCauseCategory,
-          confidence: result.confidence,
-          dataQuality: result.dataQuality ? JSON.stringify(result.dataQuality) : null,
-          agentProgression: result.agentProgression ? JSON.stringify(result.agentProgression) : null,
-          dataSourcesUsed: result.dataSourcesUsed ? JSON.stringify(result.dataSourcesUsed) : null,
-          analysisMethod: result.analysisMethod,
-          rawOutput: result.rawOutput ? JSON.stringify(result.rawOutput) : null,
-          error: result.error,
-          status: result.error ? 'failed' : 'completed',
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
-
-      // Create recommendations if provided
-      if (result.recommendations && result.recommendations.length > 0) {
-        await this.prisma.recommendation.createMany({
-          data: result.recommendations.map((rec) => ({
-            investigationId: id,
-            title: rec.title,
-            description: rec.description,
-            priority: rec.priority ?? 'medium',
-            category: rec.category,
-            urgency: rec.urgency,
-            status: 'pending',
-          })),
+      // Use transaction for atomic writes
+      await this.prisma.$transaction(async (tx) => {
+        // 1. Update investigation with results
+        await tx.investigation.update({
+          where: { id },
+          data: {
+            summary: result.summary,
+            rootCause: result.rootCause,
+            rootCauseCategory: result.rootCauseCategory,
+            confidence: result.confidence,
+            dataQuality: result.dataQuality ? JSON.stringify(result.dataQuality) : null,
+            dataSourcesUsed: result.dataSourcesUsed ? JSON.stringify(result.dataSourcesUsed) : null,
+            rawOutput: result.rawOutput ? JSON.stringify(result.rawOutput) : null,
+            error: result.error,
+            status: result.error ? 'failed' : 'completed',
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          },
         });
-      }
 
-      // Update incident status
-      await this.prisma.incident.update({
-        where: { id: investigation.incidentId },
-        data: {
-          status: result.error ? 'triggered' : 'identified',
-          updatedAt: new Date(),
-        },
-      });
+        // 2. Create recommendations if provided
+        if (result.recommendations && result.recommendations.length > 0) {
+          await tx.recommendation.createMany({
+            data: result.recommendations.map((rec) => ({
+              investigationId: id,
+              title: rec.title,
+              description: rec.description,
+              priority: rec.priority ?? 'medium',
+              category: rec.category,
+              urgency: rec.urgency,
+              status: 'pending',
+            })),
+          });
+        }
 
-      // Create timeline entry
-      await this.timelineService.create({
-        incidentId: investigation.incidentId,
-        type: TimelineEntryType.investigation_completed,
-        title: result.error ? 'Investigation failed' : 'Investigation completed',
-        description: result.error
+        // 3. Update incident status (only if not already resolved/closed)
+        await tx.incident.updateMany({
+          where: {
+            id: investigation.incidentId,
+            status: { notIn: ['resolved', 'closed'] },
+          },
+          data: {
+            status: result.error ? 'triggered' : 'identified',
+            updatedAt: new Date(),
+          },
+        });
+
+        // 4. Create timeline entry
+        const timelineTitle = result.error ? 'Investigation failed' : 'Investigation completed';
+        const timelineDescription = result.error
           ? `Investigation failed: ${result.error}`
-          : `Root cause identified with ${Math.round((result.confidence ?? 0) * 100)}% confidence`,
-        source: TimelineSource.ai_worker,
-        metadata: {
-          investigationId: id,
-          rootCause: result.rootCause,
-          confidence: result.confidence,
-        },
+          : `Root cause identified with ${Math.round((result.confidence ?? 0) * 100)}% confidence`;
+
+        await tx.timelineEntry.create({
+          data: {
+            incidentId: investigation.incidentId,
+            type: result.error ? 'investigation_failed' : 'investigation_completed',
+            title: timelineTitle,
+            description: timelineDescription,
+            source: 'ai_worker',
+            metadata: JSON.stringify({
+              investigationId: id,
+              rootCause: result.rootCause,
+              confidence: result.confidence,
+            }),
+          },
+        });
       });
 
       this.logger.log(`Set result for investigation ${id}`);

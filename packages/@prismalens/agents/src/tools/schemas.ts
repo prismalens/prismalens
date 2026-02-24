@@ -12,16 +12,6 @@ import { ROUTABLE_AGENT_IDS } from "@prismalens/config/agents"
 // Supervisor Schemas
 // =============================================================================
 
-export const INVESTIGATION_PHASES = [
-  "pre_gathering",
-  "gathering",
-  "analysis",
-  "resolution",
-  "completed",
-] as const
-
-export type InvestigationPhaseValue = (typeof INVESTIGATION_PHASES)[number]
-
 /**
  * Supervisor routing decision — which agent to invoke next.
  */
@@ -29,9 +19,6 @@ export const SupervisorDecisionSchema = z.object({
   agent: z
     .enum([...ROUTABLE_AGENT_IDS, "__end__"])
     .describe("Next agent to route to"),
-  phase: z
-    .enum(INVESTIGATION_PHASES)
-    .describe("Current investigation phase"),
   reasoning: z
     .string()
     .describe("Brief explanation for routing decision"),

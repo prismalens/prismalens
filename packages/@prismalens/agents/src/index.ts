@@ -54,8 +54,6 @@ export type {
 
 export type {
   InvestigationState,
-  InvestigationPhase,
-  SupervisorPhase,
   AgentName,
   GraphNodeId,
   GatheredData,
@@ -72,11 +70,12 @@ export type {
   InvestigationProgressEvent,
   NodeCompleteEvent,
   ProgressEvent,
-  PhaseChangeEvent,
+  RoutingEvent,
   HypothesisFormedEvent,
   RecommendationAddedEvent,
   StalledEvent,
   CompletedEvent,
+  ErrorEvent,
 } from "./types/progress.js"
 
 // =============================================================================
@@ -107,8 +106,6 @@ export { createLLM } from "./llm/index.js"
 export type { SkillMetadata, PrismaLensSkillMetadata } from "./tools/index.js"
 export { MCPClientManager } from "./tools/index.js"
 export type { MCPServerConfig } from "./tools/index.js"
-export { INVESTIGATION_PHASES } from "./tools/schemas.js"
-export type { InvestigationPhaseValue } from "./tools/schemas.js"
 
 // =============================================================================
 // Middleware

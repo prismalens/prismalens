@@ -13,7 +13,7 @@
 
 import { Command } from "@langchain/langgraph"
 import type { LangGraphRunnableConfig } from "@langchain/langgraph"
-import type { InvestigationState, InvestigationPhase } from "../../types/state.js"
+import type { InvestigationState } from "../../types/state.js"
 import type { SimilarIncidentMatch } from "../../types/contexts.js"
 import type { InvestigationResult } from "../../types/results.js"
 import type { ProgressSnapshot } from "../../types/state.js"
@@ -30,6 +30,7 @@ import { formatStateForSupervisor } from "./format.js"
  */
 export function compilePartialResult(
   state: InvestigationState,
+  status: InvestigationResult["status"] = "completed",
 ): InvestigationResult {
   const bestHypothesis = state.hypotheses.length > 0
     ? state.hypotheses.reduce((best, h) =>
@@ -39,7 +40,7 @@ export function compilePartialResult(
 
   return {
     investigationId: state.investigationId,
-    status: "completed",
+    status,
     summary: bestHypothesis
       ? `Partial analysis: ${bestHypothesis.description}`
       : "Investigation completed with partial data",
@@ -52,7 +53,6 @@ export function compilePartialResult(
     recommendations: state.recommendations,
     error: state.errors.length > 0 ? state.errors.join("; ") : null,
     executionTimeMs: 0,
-    analysisMethod: "multi-agent",
   }
 }
 
@@ -131,14 +131,6 @@ export function hasHighConfidenceSimilarIncident(
   return similar.some((s) => s.similarity > 0.8)
 }
 
-/** Phase mapping from routing target to investigation phase */
-const PHASE_MAP: Record<string, InvestigationPhase> = {
-  gatherer: "gathering",
-  analyst: "analysis",
-  resolver: "resolution",
-  __end__: "completed",
-}
-
 /**
  * Supervisor node — returns Command({ goto, update }).
  *
@@ -155,8 +147,7 @@ export async function supervisorNode(
   if (state.iterations >= maxIterations) {
     return new Command({
       update: {
-        result: compilePartialResult(state),
-        phase: "completed" as const,
+        result: compilePartialResult(state, "failed"),
       },
       goto: "__end__",
     })
@@ -168,8 +159,7 @@ export async function supervisorNode(
     config.writer?.({ type: "stalled", reason })
     return new Command({
       update: {
-        result: compilePartialResult(state),
-        phase: "completed" as const,
+        result: compilePartialResult(state, "failed"),
       },
       goto: "__end__",
     })
@@ -185,7 +175,6 @@ export async function supervisorNode(
     const prompt = supervisorPrompt({
       incidentTitle: state.incident?.title ?? "Unknown",
       severity: state.incident?.severity ?? "medium",
-      phase: state.phase,
     })
 
     decision = (await structuredLlm.invoke([
@@ -196,27 +185,22 @@ export async function supervisorNode(
     const message = error instanceof Error ? error.message : String(error)
     return new Command({
       update: {
-        result: compilePartialResult(state),
-        phase: "completed" as const,
+        result: compilePartialResult(state, "failed"),
         errors: [`supervisor LLM failed: ${message}`],
       },
       goto: "__end__",
     })
   }
 
-  // --- Determine phase from routing target ---
-  const nextPhase = PHASE_MAP[decision.agent] ?? state.phase
-
-  // --- Emit progress event ---
+  // --- Emit routing event ---
   config.writer?.({
-    type: "phase_change",
-    from: state.phase,
-    to: nextPhase,
+    type: "routing",
+    agent: decision.agent,
+    reasoning: decision.reasoning,
   })
 
   // --- Build state update ---
   const update: Record<string, unknown> = {
-    phase: nextPhase,
     iterations: state.iterations + 1,
     lastProgressSnapshot: takeProgressSnapshot(state),
   }
