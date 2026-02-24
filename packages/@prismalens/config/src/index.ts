@@ -43,7 +43,9 @@ import {
 	loggingSchema,
 	queueSchema,
 	skillsSchema,
+	workerSchema,
 } from "./env/index.js";
+import { redisSchema } from "./env/queue.js";
 import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
 import {
@@ -54,6 +56,7 @@ import {
 	getOrCreateAuthSecret,
 	isValidEncryptionKey,
 } from "./utils/encryption-key.js";
+import { buildRedisUrl, buildRedisOptions } from "./utils/redis-url.js";
 
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
@@ -70,6 +73,10 @@ export {
 	getOrCreateAuthSecret,
 	isValidEncryptionKey,
 };
+
+// Re-export Redis utilities
+export { buildRedisUrl, buildRedisOptions };
+export type { RedisConnectionOptions } from "./utils/redis-url.js";
 
 /**
  * Composed global configuration schema.
@@ -182,3 +189,46 @@ export function resetConfig(): void {
 }
 
 export type EnvironmentVariables = z.infer<typeof baseConfigSchema>;
+
+// =============================================================================
+// WORKER CONFIGURATION
+// =============================================================================
+// Separate config getter for the worker process.
+// Validates only Redis + worker schemas (not the full API config).
+// =============================================================================
+
+const workerConfigSchema = redisSchema.merge(workerSchema);
+export type WorkerEnvironmentVariables = z.infer<typeof workerConfigSchema>;
+
+let _workerConfig: WorkerEnvironmentVariables | null = null;
+
+/**
+ * Get validated worker configuration.
+ * Validates Redis + worker env vars only (not the full API schema).
+ *
+ * @throws {Error} If validation fails with details about invalid/missing vars
+ */
+export function getWorkerConfig(): WorkerEnvironmentVariables {
+	if (!_workerConfig) {
+		const result = workerConfigSchema.safeParse(process.env);
+		if (!result.success) {
+			console.error("\n❌ Worker configuration validation failed:\n");
+			result.error.issues.forEach((issue) => {
+				const path = issue.path.join(".");
+				console.error(`  • ${path}: ${issue.message}`);
+			});
+			throw new Error(
+				"Invalid worker configuration. Check environment variables.",
+			);
+		}
+		_workerConfig = result.data;
+	}
+	return _workerConfig;
+}
+
+/**
+ * Reset cached worker config. Useful for testing.
+ */
+export function resetWorkerConfig(): void {
+	_workerConfig = null;
+}

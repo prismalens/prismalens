@@ -7,3 +7,4 @@ export * from "./logging.js";
 export * from "./llm.js";
 export * from "./langsmith.js";
 export * from "./skills.js";
+export * from "./worker.js";

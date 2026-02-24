@@ -26,15 +26,16 @@ echo "Configuration:"
 echo "  - Edition: ${PRISMALENS_EDITION:-COMMUNITY}"
 echo "  - Concurrency: ${PRISMALENS_WORKER_CONCURRENCY:-1}"
 
-if [ -n "$PRISMALENS_REDIS_URL" ]; then
-  echo "  - Redis: Connected"
+if [ -n "$REDIS_URL" ] || [ -n "$PRISMALENS_REDIS_URL" ]; then
+  echo "  - ERROR: REDIS_URL / PRISMALENS_REDIS_URL are no longer supported."
+  echo "           Set PRISMALENS_REDIS_HOST and PRISMALENS_REDIS_PORT instead."
+  exit 1
+fi
+
+if [ -n "$PRISMALENS_REDIS_HOST" ]; then
+  echo "  - Redis: ${PRISMALENS_REDIS_HOST}:${PRISMALENS_REDIS_PORT:-6379}"
 else
-  if [ -n "$REDIS_URL" ]; then
-    export PRISMALENS_REDIS_URL="$REDIS_URL"
-    echo "  - Redis: Connected (from REDIS_URL)"
-  else
-    echo "  - Redis: Not configured (will fail to start)"
-  fi
+  echo "  - Redis: Using defaults (localhost:6379)"
 fi
 
 if [ -n "$GOOGLE_API_KEY" ] || [ -n "$PRISMALENS_GOOGLE_API_KEY" ]; then

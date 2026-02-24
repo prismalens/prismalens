@@ -1,8 +1,7 @@
 import { BullModule } from "@nestjs/bullmq";
 import { type DynamicModule, Global, Logger, Module, forwardRef } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { getConfig } from "@prismalens/config";
-import * as fs from "fs";
+import { getConfig, buildRedisOptions } from "@prismalens/config";
 import * as IORedis from "ioredis";
 import { ChangeEventsModule } from "../../modules/change-events/change-events.module.js";
 import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
@@ -16,21 +15,6 @@ const logger = new Logger("QueueModule");
  * Only called when PRISMALENS_WORKER_MODE === 'queue'.
  */
 function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
-	const redisOptions: IORedis.RedisOptions = {
-		host: config.PRISMALENS_REDIS_HOST,
-		port: config.PRISMALENS_REDIS_PORT,
-		username: config.PRISMALENS_REDIS_USERNAME || undefined,
-		password: config.PRISMALENS_REDIS_PASSWORD || undefined,
-		db: config.PRISMALENS_REDIS_DB,
-	};
-
-	if (config.PRISMALENS_REDIS_TLS) {
-		redisOptions.tls = {};
-		if (config.PRISMALENS_REDIS_CA) {
-			redisOptions.tls.ca = fs.readFileSync(config.PRISMALENS_REDIS_CA);
-		}
-	}
-
 	if (config.PRISMALENS_REDIS_CLUSTER_NODES) {
 		const nodes = config.PRISMALENS_REDIS_CLUSTER_NODES.split(",").map(
 			(node) => {
@@ -38,17 +22,10 @@ function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
 				return { host, port: parseInt(port, 10) };
 			},
 		);
-		return new IORedis.Cluster(nodes, {
-			redisOptions: {
-				...redisOptions,
-				password: redisOptions.password,
-				username: redisOptions.username,
-				tls: redisOptions.tls,
-			},
-		});
+		const opts = buildRedisOptions(config);
+		return new IORedis.Cluster(nodes, { redisOptions: opts });
 	}
-
-	return new IORedis.Redis(redisOptions);
+	return new IORedis.Redis(buildRedisOptions(config));
 }
 
 /**

@@ -13,15 +13,18 @@ import {
 	type InvestigationInput,
 	type InvestigationResult,
 	type LLMProviderConfig,
+	type StreamTuple,
 } from "@prismalens/agents";
-import { EnvironmentVariables } from "@prismalens/config";
+import { EnvironmentVariables, buildRedisUrl, getConfig } from "@prismalens/config";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents } from "bullmq";
+import { Redis } from "ioredis";
 import { AlertsService } from "../../modules/alerts/alerts.service.js";
 import { ChangeEventsService } from "../../modules/change-events/change-events.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
+import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 import { InvestigationSemaphore } from "./investigation-semaphore.js";
 import { DirectDataProvider } from "./direct-data-provider.js";
 
@@ -114,6 +117,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	private queueEvents: QueueEvents | null = null;
 	private connection: ConnectionOptions | null = null;
 
+	// Queue mode: Redis subscriber for stream relay
+	private redisSubscriber: import("ioredis").Redis | null = null;
+
 	constructor(
 		private configService: ConfigService<EnvironmentVariables>,
 		@Inject(forwardRef(() => InvestigationsService))
@@ -123,6 +129,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		@Inject(forwardRef(() => IncidentsService))
 		private incidentsService: IncidentsService,
 		private changeEventsService: ChangeEventsService,
+		private streamRelay: StreamRelayService,
 	) {
 		const config = this.configService.get("PRISMALENS_MODE");
 		this.workerMode = config;
@@ -159,8 +166,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		this.logger.log("Queue mode: Initializing BullMQ queue");
 
 		try {
-			// Build Redis URL from config
-			const redisUrl = this.buildRedisUrl();
+			const redisUrl = buildRedisUrl(getConfig());
 			this.connection = { url: redisUrl };
 
 			this.investigationQueue = new Queue<
@@ -198,6 +204,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				this.logger.error(`Investigation job ${jobId} failed: ${failedReason}`);
 			});
 
+			// Initialize Redis subscriber for stream relay (reuse redisUrl from above)
+			this.redisSubscriber = new Redis(redisUrl, {
+				maxRetriesPerRequest: null,
+			});
+			this.redisSubscriber.on("message", (channel: string, message: string) => {
+				this.handleRedisStreamMessage(channel, message);
+			});
+
 			this.logger.log("Queue service initialized with Redis");
 		} catch (error) {
 			this.logger.error(
@@ -206,28 +220,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		}
 	}
 
-	private buildRedisUrl(): string {
-		const PRISMALENS_REDIS_HOST = this.configService.get<EnvironmentVariables>(
-			"PRISMALENS_REDIS_HOST",
-		);
-		const PRISMALENS_REDIS_PASSWORD =
-			this.configService.get<EnvironmentVariables>("PRISMALENS_REDIS_PASSWORD");
-		const PRISMALENS_REDIS_PORT = this.configService.get<EnvironmentVariables>(
-			"PRISMALENS_REDIS_PORT",
-		);
-		const PRISMALENS_REDIS_DB = this.configService.get<EnvironmentVariables>(
-			"PRISMALENS_REDIS_DB",
-		);
-		const auth = PRISMALENS_REDIS_PASSWORD
-			? `:${PRISMALENS_REDIS_PASSWORD}@`
-			: "";
-		return `redis://${auth}${PRISMALENS_REDIS_HOST}:${PRISMALENS_REDIS_PORT}/${PRISMALENS_REDIS_DB}`;
-	}
-
 	async onModuleDestroy() {
 		// Close executor connections (regular mode)
 		if (this.executor) {
 			await this.executor.close();
+		}
+		// Close Redis subscriber (queue mode)
+		if (this.redisSubscriber) {
+			await this.redisSubscriber.quit();
 		}
 		// Close queue connections (queue mode)
 		if (this.queueEvents) {
@@ -274,7 +274,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * Execute investigation directly using @prismalens/agents (regular mode).
-	 * This runs the investigation in-process without requiring a separate worker.
+	 * Uses executor.stream() to feed real-time events to StreamRelayService.
 	 *
 	 * When semaphore is configured, execution is synchronous (awaited) to prevent
 	 * in-memory queue buildup. Without semaphore, execution is fire-and-forget
@@ -300,23 +300,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
 			// If semaphore is configured, use controlled execution (awaited)
 			if (this.semaphore) {
-				// Run with semaphore control — awaited for backpressure
 				await this.executeWithSemaphore(data, input, jobId);
 			} else {
 				// No semaphore: fire-and-forget execution with error boundary
-				void (async () => {
-					try {
-						const result = await this.executor!.execute(input);
-						this.logger.log(
-							`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
-						);
-						await this.persistResults(data, result);
-					} catch (error) {
-						const err = error as Error;
-						this.logger.error(`Investigation ${jobId} failed: ${err.message}`);
-						await this.persistFailure(data, err);
-					}
-				})();
+				void this.streamAndPersist(data, input, jobId);
 			}
 
 			this.logger.log(`Investigation ${jobId} started successfully`);
@@ -329,8 +316,65 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	/**
+	 * Stream an investigation, feeding events to StreamRelayService
+	 * and persisting the final result.
+	 */
+	private async streamAndPersist(
+		data: InvestigationJobData,
+		input: InvestigationInput,
+		jobId: string,
+	): Promise<void> {
+		const executor = this.executor;
+		if (!executor) {
+			this.logger.error("Executor was destroyed before streaming could start");
+			return;
+		}
+
+		try {
+			let lastResult: InvestigationResult | null = null;
+
+			for await (const chunk of executor.stream(input)) {
+				this.streamRelay.emit(data.investigationId, chunk as StreamTuple);
+
+				// Extract final result from "updates" mode — look for result field
+				const [mode, eventData] = chunk as [string, Record<string, unknown>];
+				if (mode === "updates" && eventData) {
+					// Updates come as { nodeName: { ...stateUpdate } }
+					for (const nodeUpdate of Object.values(eventData)) {
+						const update = nodeUpdate as Record<string, unknown>;
+						if (update?.result) {
+							lastResult = update.result as InvestigationResult;
+						}
+					}
+				}
+			}
+
+			this.streamRelay.complete(data.investigationId);
+
+			if (lastResult) {
+				this.logger.log(
+					`Investigation ${jobId} completed: ${lastResult.status}, confidence: ${lastResult.confidence}%`,
+				);
+				await this.persistResults(data, lastResult);
+			} else {
+				// Fallback: stream completed but no result extracted — run execute()
+				this.logger.warn(
+					`Investigation ${jobId} stream finished without result, using execute() fallback`,
+				);
+				const result = await executor.execute(input);
+				await this.persistResults(data, result);
+			}
+		} catch (error) {
+			const err = error as Error;
+			this.logger.error(`Investigation ${jobId} failed: ${err.message}`);
+			this.streamRelay.complete(data.investigationId);
+			await this.persistFailure(data, err);
+		}
+	}
+
+	/**
 	 * Execute investigation with semaphore control.
-	 * Waits for a slot, runs the investigation, and releases the slot.
+	 * Waits for a slot, runs the investigation via streaming, and releases the slot.
 	 */
 	private async executeWithSemaphore(
 		data: InvestigationJobData,
@@ -340,25 +384,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		if (!this.semaphore || !this.executor) return;
 
 		try {
-			// Wait for a slot (may queue if at capacity)
 			await this.semaphore.acquire(data.investigationId);
-
-			this.logger.log(
-				`Semaphore acquired for ${jobId}, executing...`,
-			);
-
-			// Execute and await completion
-			const result = await this.executor.execute(input);
-			this.logger.log(
-				`Investigation ${jobId} completed: ${result.status}, confidence: ${result.confidence}%`,
-			);
-			await this.persistResults(data, result);
-		} catch (error) {
-			const err = error as Error;
-			this.logger.error(`Investigation ${jobId} failed: ${err.message}`);
-			await this.persistFailure(data, err);
+			this.logger.log(`Semaphore acquired for ${jobId}, executing...`);
+			await this.streamAndPersist(data, input, jobId);
 		} finally {
-			// Always release the slot
 			this.semaphore.release();
 			this.logger.debug(`Semaphore released for ${jobId}`);
 		}
@@ -422,6 +451,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			priority,
 			jobId: `investigation-${data.investigationId}`,
 		});
+
+		// Subscribe to Redis pub/sub for stream relay to SSE clients
+		this.subscribeToRedisStream(data.investigationId);
 
 		this.logger.log(
 			`Added investigation job ${job.id} for incident ${data.incidentId}`,
@@ -521,6 +553,45 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			return false;
 		}
 		return this.semaphore.cancel(investigationId);
+	}
+
+	/**
+	 * Handle incoming Redis pub/sub messages for stream relay (queue mode).
+	 */
+	private handleRedisStreamMessage(channel: string, message: string): void {
+		// Channel format: investigation:events:{investigationId}
+		const prefix = "investigation:events:";
+		if (!channel.startsWith(prefix)) return;
+
+		const investigationId = channel.slice(prefix.length);
+
+		try {
+			const event = JSON.parse(message) as StreamTuple;
+
+			if (event[0] === "__done__") {
+				this.streamRelay.complete(investigationId);
+				this.redisSubscriber?.unsubscribe(channel).catch((err) => {
+					this.logger.warn(`Failed to unsubscribe from ${channel}: ${(err as Error).message}`);
+				});
+			} else {
+				this.streamRelay.emit(investigationId, event);
+			}
+		} catch {
+			this.logger.warn(`Failed to parse Redis stream message on ${channel}`);
+		}
+	}
+
+	/**
+	 * Subscribe to Redis pub/sub channel for an investigation (queue mode).
+	 * Called when a job is enqueued so the API can relay events to SSE clients.
+	 */
+	private subscribeToRedisStream(investigationId: string): void {
+		if (!this.redisSubscriber) return;
+
+		const channel = `investigation:events:${investigationId}`;
+		this.redisSubscriber.subscribe(channel).catch((err) => {
+			this.logger.error(`Failed to subscribe to ${channel}: ${(err as Error).message}`);
+		});
 	}
 
 	private getPriorityValue(priority?: string): number {

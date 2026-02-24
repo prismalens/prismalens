@@ -13,12 +13,14 @@ import {
 	type SimilarIncidentMatch,
 	type SimilarIncidentRequest,
 	type SimilarIncidentResponse,
+	type StreamTuple,
 	mapSeverity,
 } from "@prismalens/agents";
 import { Logger, enrichContext } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { Job } from "bullmq";
-import { config as workerConfig } from "./config.js";
+import { Redis } from "ioredis";
+import { config as workerConfig, redisUrl } from "./config.js";
 import { api } from "./orpc-client.js";
 import { Secret } from "./secret.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
@@ -192,6 +194,20 @@ const logger = new Logger({ context: "InvestigationProcessor" });
 const dataProvider = new WorkerDataProvider();
 const executor = new InvestigationExecutor({ dataProvider });
 
+// Redis publisher for streaming events to API
+const redisPublisher = new Redis(redisUrl, {
+	maxRetriesPerRequest: null,
+});
+
+/** Node-to-percent mapping for BullMQ backward compat */
+const NODE_PROGRESS: Record<string, number> = {
+	scout: 10,
+	analyst: 30,
+	gatherer: 50,
+	resolver: 75,
+	supervisor: 90,
+};
+
 /**
  * Fetch integration credentials on-demand via internal API.
  * Worker passes connectionIds → API decrypts and returns IntegrationContext[].
@@ -208,7 +224,7 @@ async function fetchIntegrationCredentials(
 		return [];
 	}
 
-	const url = new URL("/internal/integrations/credentials", workerConfig.API_URL);
+	const url = new URL("/internal/integrations/credentials", workerConfig.PRISMALENS_WORKER_API_URL);
 	url.searchParams.set("connectionIds", connectionIds.join(","));
 
 	const response = await fetch(url.toString(), {
@@ -311,12 +327,49 @@ async function processJobInternal(
 		const input = await buildExecutorInput(data);
 
 		await job.updateProgress({
-			percent: 10,
+			percent: 5,
 			message: "Starting investigation...",
 		});
 
-		// 4. Run investigation via executor
-		const agentResult = await executor.execute(input);
+		// 4. Stream investigation via executor, publishing events to Redis
+		const channel = `investigation:events:${data.investigationId}`;
+		let agentResult: AgentResult | null = null;
+
+		for await (const chunk of executor.stream(input)) {
+			// Publish raw tuple to Redis for API relay
+			await redisPublisher.publish(channel, JSON.stringify(chunk));
+
+			// Extract progress info for BullMQ backward compat
+			const [mode, eventData] = chunk as [string, Record<string, unknown>];
+
+			// "tasks" mode finish events contain result — use for progress tracking
+			if (mode === "tasks" && eventData?.result) {
+				const name = eventData.name as string | undefined;
+				if (name) {
+					const percent = NODE_PROGRESS[name] ?? 50;
+					await job.updateProgress({ percent, message: `${name} completed` });
+				}
+			}
+
+			// Extract final result from "updates" mode
+			if (mode === "updates" && eventData) {
+				for (const nodeUpdate of Object.values(eventData)) {
+					const update = nodeUpdate as Record<string, unknown>;
+					if (update?.result) {
+						agentResult = update.result as AgentResult;
+					}
+				}
+			}
+		}
+
+		// Signal stream completion to Redis
+		await redisPublisher.publish(channel, JSON.stringify(["__done__", {}]));
+
+		// If no result from stream, fall back to execute()
+		if (!agentResult) {
+			logger.warn(`Stream finished without result for job ${job.id}, using execute() fallback`);
+			agentResult = await executor.execute(input);
+		}
 
 		await job.updateProgress({ percent: 90, message: "Persisting results..." });
 
@@ -487,8 +540,9 @@ function buildResult(
 }
 
 /**
- * Graceful shutdown - close executor connections
+ * Graceful shutdown - close executor and Redis publisher connections
  */
 export async function closeProcessor(): Promise<void> {
 	await executor.close();
+	await redisPublisher.quit();
 }
