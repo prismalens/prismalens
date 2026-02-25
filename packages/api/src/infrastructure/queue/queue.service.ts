@@ -14,10 +14,12 @@ import {
 	type InvestigationResult,
 	type LLMProviderConfig,
 	type StreamTuple,
+	ExecutionTracker,
 } from "@prismalens/agents";
-import { EnvironmentVariables, buildRedisUrl, getConfig } from "@prismalens/config";
+import { type EnvironmentVariables, buildRedisUrl, getConfig } from "@prismalens/config";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents } from "bullmq";
+import crypto from "node:crypto";
 import { Redis } from "ioredis";
 import { AlertsService } from "../../modules/alerts/alerts.service.js";
 import { ChangeEventsService } from "../../modules/change-events/change-events.service.js";
@@ -25,6 +27,7 @@ import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import type { InvestigationResultDto } from "../../modules/investigations/dto/investigation-result.dto.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { CheckpointerProvider } from "../../core/checkpointer/checkpointer.provider.js";
 import { InvestigationSemaphore } from "./investigation-semaphore.js";
 import { DirectDataProvider } from "./direct-data-provider.js";
 
@@ -130,6 +133,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		private incidentsService: IncidentsService,
 		private changeEventsService: ChangeEventsService,
 		private streamRelay: StreamRelayService,
+		private checkpointerProvider: CheckpointerProvider,
 	) {
 		const config = this.configService.get("PRISMALENS_MODE");
 		this.workerMode = config;
@@ -156,9 +160,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				);
 			}
 
-			// Create executor with DirectDataProvider for database access
+			// Create executor with DirectDataProvider and shared checkpointer
 			const dataProvider = new DirectDataProvider(this.alertsService, this.incidentsService, this.changeEventsService);
-			this.executor = new InvestigationExecutor({ dataProvider });
+			const checkpointer = this.checkpointerProvider.get() ?? undefined;
+			this.executor = new InvestigationExecutor({ dataProvider, checkpointer });
 			return;
 		}
 
@@ -331,15 +336,39 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		}
 
 		try {
-			let lastResult: InvestigationResult | null = null;
+			// Generate thread ID for checkpoint persistence
+			const threadId = crypto.randomUUID();
+			await this.investigationsService.updateStatusInternal(
+				data.investigationId,
+				"running",
+				undefined,
+				undefined,
+				threadId,
+			);
 
-			for await (const chunk of executor.stream(input)) {
+			let lastResult: InvestigationResult | null = null;
+			const tracker = new ExecutionTracker();
+			const runnableConfig = { configurable: { thread_id: threadId } };
+
+			for await (const chunk of executor.stream(input, runnableConfig)) {
 				this.streamRelay.emit(data.investigationId, chunk as StreamTuple);
 
-				// Extract final result from "updates" mode — look for result field
 				const [mode, eventData] = chunk as [string, Record<string, unknown>];
+
+				// Track agent execution timing from "tasks" events
+				if (mode === "tasks") {
+					const taskId = eventData?.id as string | undefined;
+					const name = eventData?.name as string | undefined;
+					if (taskId && name && !eventData?.result) {
+						tracker.onTaskStart(taskId, name);
+					}
+					if (taskId && eventData?.result) {
+						tracker.onTaskComplete(taskId, eventData?.error as string | undefined);
+					}
+				}
+
+				// Extract final result from "updates" mode
 				if (mode === "updates" && eventData) {
-					// Updates come as { nodeName: { ...stateUpdate } }
 					for (const nodeUpdate of Object.values(eventData)) {
 						const update = nodeUpdate as Record<string, unknown>;
 						if (update?.result) {
@@ -355,14 +384,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				this.logger.log(
 					`Investigation ${jobId} completed: ${lastResult.status}, confidence: ${lastResult.confidence}%`,
 				);
-				await this.persistResults(data, lastResult);
+				await this.persistResults(data, lastResult, tracker);
 			} else {
-				// Fallback: stream completed but no result extracted — run execute()
 				this.logger.warn(
 					`Investigation ${jobId} stream finished without result, using execute() fallback`,
 				);
-				const result = await executor.execute(input);
-				await this.persistResults(data, result);
+				const result = await executor.execute(input, runnableConfig);
+				await this.persistResults(data, result, tracker);
 			}
 		} catch (error) {
 			const err = error as Error;
@@ -623,6 +651,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	private async persistResults(
 		data: InvestigationJobData,
 		result: InvestigationResult,
+		tracker?: ExecutionTracker,
 	): Promise<void> {
 		try {
 			// Map agent result to API DTO format
@@ -646,6 +675,23 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
 			// Use the investigations service to persist results
 			await this.investigationsService.setResult(data.investigationId, resultDto);
+
+			// Persist tracked agent executions
+			if (tracker) {
+				for (const exec of tracker.getExecutions()) {
+					const agentExec = await this.investigationsService.createAgentExecution({
+						investigationId: data.investigationId,
+						agentName: exec.agentName,
+					});
+					await this.investigationsService.updateAgentExecution(agentExec.id, {
+						status: exec.status as "running" | "completed" | "failed",
+						startedAt: new Date(exec.startedAt),
+						completedAt: exec.completedAt ? new Date(exec.completedAt) : undefined,
+						executionTimeMs: exec.executionTimeMs,
+						error: exec.error,
+					});
+				}
+			}
 
 			this.logger.log(
 				`Persisted results for investigation ${data.investigationId}`,

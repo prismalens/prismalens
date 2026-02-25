@@ -14,6 +14,8 @@ import type {
 	AgentExecutionRecordType,
 	HandoffRecordType,
 } from "@prismalens/contracts";
+import { CheckpointerProvider } from "../../core/checkpointer/checkpointer.provider.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 /**
  * Extended checkpoint state that may include fields populated at runtime
@@ -72,6 +74,11 @@ interface CheckpointState extends InvestigationState {
 export class ProgressService {
 	private readonly logger = new Logger(ProgressService.name);
 
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly checkpointerProvider: CheckpointerProvider,
+	) {}
+
 	/**
 	 * Get current progress of an investigation.
 	 * Returns null if no checkpoint exists (investigation hasn't started).
@@ -79,10 +86,19 @@ export class ProgressService {
 	async getProgress(
 		investigationId: string,
 	): Promise<InvestigationProgressType | null> {
-		const checkpoint = await getCheckpoint(investigationId);
+		const checkpointer = this.checkpointerProvider.get();
+		const threadId = await this.getThreadId(investigationId);
+		if (!threadId || !checkpointer) {
+			this.logger.debug(
+				`No checkpoint available for investigation ${investigationId}`,
+			);
+			return null;
+		}
+
+		const checkpoint = await getCheckpoint(checkpointer, threadId);
 		if (!checkpoint) {
 			this.logger.debug(
-				`No checkpoint found for investigation ${investigationId}`,
+				`No checkpoint found for investigation ${investigationId} (thread ${threadId})`,
 			);
 			return null;
 		}
@@ -97,10 +113,25 @@ export class ProgressService {
 	async getProgressHistory(
 		investigationId: string,
 	): Promise<ProgressSnapshotType[]> {
-		const checkpoints = await listCheckpoints(investigationId);
+		const checkpointer = this.checkpointerProvider.get();
+		const threadId = await this.getThreadId(investigationId);
+		if (!threadId || !checkpointer) return [];
+
+		const checkpoints = await listCheckpoints(checkpointer, threadId);
 		return Promise.all(
 			checkpoints.map((cp) => this.mapCheckpointToSnapshot(cp)),
 		);
+	}
+
+	/**
+	 * Look up the LangGraph thread ID for an investigation.
+	 */
+	private async getThreadId(investigationId: string): Promise<string | null> {
+		const investigation = await this.prisma.investigation.findUnique({
+			where: { id: investigationId },
+			select: { langGraphThreadId: true },
+		});
+		return investigation?.langGraphThreadId ?? null;
 	}
 
 	/**
@@ -108,13 +139,11 @@ export class ProgressService {
 	 */
 	private async mapCheckpointToProgress(
 		investigationId: string,
-		checkpoint: Awaited<ReturnType<typeof getCheckpoint>>,
+		checkpoint: NonNullable<Awaited<ReturnType<typeof getCheckpoint>>>,
 	): Promise<InvestigationProgressType> {
-		// Extract state from checkpoint using type-safe helper
-		const state = await getStateFromCheckpoint<CheckpointState>(checkpoint);
+		const state = getStateFromCheckpoint<CheckpointState>(checkpoint);
 
 		if (!state) {
-			// Return minimal progress if state is not available
 			return {
 				investigationId,
 				status: "pending",
@@ -131,33 +160,18 @@ export class ProgressService {
 			};
 		}
 
-		// Get best hypothesis for confidence
 		const bestHypothesis = getBestHypothesis(state);
-
-		// Map status
 		const status = this.mapStatus(state.status);
-
-		// Map current agent (currentAgent in state)
 		const currentAgent = (state.currentAgent as string | null) ?? null;
-
-		// Determine current node from state
 		const currentNode = this.determineCurrentNode(state);
-
-		// Map handoff history
 		const handoffHistory = this.mapHandoffHistory(state.handoffHistory ?? []);
-
-		// Map data quality
 		const dataQuality = state.dataQuality
 			? this.mapDataQuality(state.dataQuality)
 			: null;
-
-		// Map agent executions
 		const agentExecutions = this.mapAgentExecutions(
 			state.agentExecutions ?? [],
 		);
-
-		// Get timestamp from checkpoint using type-safe helper
-		const ts = await getCheckpointTimestamp(checkpoint);
+		const ts = getCheckpointTimestamp(checkpoint);
 		const updatedAt = ts ?? new Date().toISOString();
 
 		return {
@@ -179,13 +193,12 @@ export class ProgressService {
 	/**
 	 * Map a checkpoint to a snapshot for history/timeline.
 	 */
-	private async mapCheckpointToSnapshot(
-		checkpoint: Awaited<ReturnType<typeof listCheckpoints>>[number],
-	): Promise<ProgressSnapshotType> {
-		// Use type-safe helpers to extract state and timestamp
-		const state = await getStateFromCheckpoint<CheckpointState>(checkpoint);
+	private mapCheckpointToSnapshot(
+		checkpoint: NonNullable<Awaited<ReturnType<typeof getCheckpoint>>>,
+	): ProgressSnapshotType {
+		const state = getStateFromCheckpoint<CheckpointState>(checkpoint);
 		const bestHypothesis = state ? getBestHypothesis(state) : null;
-		const ts = await getCheckpointTimestamp(checkpoint);
+		const ts = getCheckpointTimestamp(checkpoint);
 
 		return {
 			timestamp: ts ?? new Date().toISOString(),
@@ -278,7 +291,6 @@ export class ProgressService {
 
 	/**
 	 * Map agent executions to contract type.
-	 * Maps from AgentExecutionRecord (agents schema) to AgentExecutionRecordType (contracts schema).
 	 */
 	private mapAgentExecutions(
 		executions: NonNullable<CheckpointState["agentExecutions"]>,
@@ -286,33 +298,28 @@ export class ProgressService {
 		if (!executions) return [];
 
 		return executions.map((exec) => ({
-			// Map agentName to agentId (contracts use agentId)
 			agentId: exec.agentName,
 			startedAt: exec.startedAt ?? new Date().toISOString(),
 			completedAt: exec.completedAt,
-			// Map status (agents schema has "pending" but contracts only allow running/completed/failed)
 			status: this.mapExecutionStatus(exec.status),
-			// Map token fields (combine input+output tokens)
 			tokensUsed:
 				exec.inputTokens != null || exec.outputTokens != null
 					? (exec.inputTokens ?? 0) + (exec.outputTokens ?? 0)
 					: undefined,
-			// Map toolExecutions count to toolCalls
 			toolCalls: exec.toolExecutions?.length,
-			findingsProduced: undefined, // Not available in agents schema
+			findingsProduced: undefined,
 			error: exec.error,
 		}));
 	}
 
 	/**
 	 * Map execution status from agents schema to contracts schema.
-	 * Agents schema includes "pending" but contracts only allow running/completed/failed.
 	 */
 	private mapExecutionStatus(
 		status: "pending" | "running" | "completed" | "failed",
 	): "running" | "completed" | "failed" {
 		if (status === "pending") {
-			return "running"; // Treat pending as running for UI
+			return "running";
 		}
 		return status;
 	}

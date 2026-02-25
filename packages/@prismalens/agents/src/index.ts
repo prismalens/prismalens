@@ -131,6 +131,10 @@ export {
   getCheckpointTimestamp,
   getBestHypothesis,
 } from "./utils/checkpoints.js"
+export { createCheckpointer } from "./utils/checkpointer-factory.js"
+export type { CheckpointerOptions } from "./utils/checkpointer-factory.js"
+export { ExecutionTracker } from "./utils/execution-tracker.js"
+export type { TrackedExecution } from "./utils/execution-tracker.js"
 export { safeFetch } from "./utils/safe-fetch.js"
 export type { SafeFetchResult } from "./utils/safe-fetch.js"
 

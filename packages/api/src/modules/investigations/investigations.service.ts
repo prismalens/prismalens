@@ -181,6 +181,7 @@ export class InvestigationsService {
     status: string,
     startedAt?: Date,
     error?: string,
+    langGraphThreadId?: string,
   ): Promise<Investigation | null> {
     try {
       const updateData: Record<string, unknown> = {
@@ -200,6 +201,10 @@ export class InvestigationsService {
 
       if (error) {
         updateData.error = error;
+      }
+
+      if (langGraphThreadId) {
+        updateData.langGraphThreadId = langGraphThreadId;
       }
 
       return await this.prisma.investigation.update({

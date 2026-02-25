@@ -155,6 +155,7 @@ export const UpdateInvestigationStatusSchema = z.object({
 	id: z.string().uuid(),
 	status: WorkflowStatusSchema,
 	error: z.string().optional(),
+	langGraphThreadId: z.string().uuid().optional(),
 });
 
 export const CreateToolExecutionInputSchema = z.object({

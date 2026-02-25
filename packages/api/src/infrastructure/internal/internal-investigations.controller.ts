@@ -48,6 +48,7 @@ export class InternalInvestigationsController {
       dto.status,
       dto.startedAt ? new Date(dto.startedAt) : undefined,
       dto.error,
+      dto.langGraphThreadId,
     );
 
     if (!investigation) {

@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from "class-validator";
 import { WorkflowStatus } from "../../../shared/enums/index.js";
 
 /**
@@ -15,4 +15,8 @@ export class UpdateInvestigationStatusDto {
 	@IsOptional()
 	@IsString()
 	error?: string;
+
+	@IsOptional()
+	@IsUUID()
+	langGraphThreadId?: string;
 }

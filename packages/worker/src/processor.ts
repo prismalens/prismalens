@@ -13,12 +13,19 @@ import {
 	type SimilarIncidentMatch,
 	type SimilarIncidentRequest,
 	type SimilarIncidentResponse,
-	type StreamTuple,
 	mapSeverity,
+	createCheckpointer,
+	ExecutionTracker,
 } from "@prismalens/agents";
+import {
+	buildCheckpointerUrl,
+	getCheckpointerSchema,
+	databaseSchema,
+} from "@prismalens/config";
 import { Logger, enrichContext } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { Job } from "bullmq";
+import crypto from "node:crypto";
 import { Redis } from "ioredis";
 import { config as workerConfig, redisUrl } from "./config.js";
 import { api } from "./orpc-client.js";
@@ -192,7 +199,33 @@ class WorkerDataProvider implements DataProvider {
 // Module-level singletons (order matters: logger before functions that use it)
 const logger = new Logger({ context: "InvestigationProcessor" });
 const dataProvider = new WorkerDataProvider();
-const executor = new InvestigationExecutor({ dataProvider });
+
+// Lazy executor init — PostgresSaver.setup() is async, so we can't create at module level.
+// Uses promise-based mutex to prevent duplicate initialization from concurrent jobs.
+let _executorPromise: Promise<InvestigationExecutor> | null = null;
+
+function getExecutor(): Promise<InvestigationExecutor> {
+	if (!_executorPromise) {
+		_executorPromise = initExecutor();
+	}
+	return _executorPromise;
+}
+
+async function initExecutor(): Promise<InvestigationExecutor> {
+	const dbConfig = databaseSchema.parse(process.env);
+	const connectionString = buildCheckpointerUrl(dbConfig);
+	const schema = dbConfig.PRISMALENS_DB_TYPE === "postgresql"
+		? getCheckpointerSchema(dbConfig)
+		: undefined;
+
+	const checkpointer = await createCheckpointer({
+		dbType: dbConfig.PRISMALENS_DB_TYPE,
+		connectionString,
+		schema,
+	});
+
+	return new InvestigationExecutor({ dataProvider, checkpointer });
+}
 
 // Redis publisher for streaming events to API
 const redisPublisher = new Redis(redisUrl, {
@@ -307,10 +340,12 @@ async function processJobInternal(
 	});
 
 	try {
-		// 1. Update status to running
+		// 1. Generate thread ID and update status to running
+		const threadId = crypto.randomUUID();
 		await api.investigations.updateStatus({
 			id: data.investigationId,
 			status: "running",
+			langGraphThreadId: threadId,
 		});
 
 		// 2. Add timeline entry
@@ -324,6 +359,7 @@ async function processJobInternal(
 		});
 
 		// 3. Build input for executor (async - fetches incident)
+		const executor = await getExecutor();
 		const input = await buildExecutorInput(data);
 
 		await job.updateProgress({
@@ -334,20 +370,28 @@ async function processJobInternal(
 		// 4. Stream investigation via executor, publishing events to Redis
 		const channel = `investigation:events:${data.investigationId}`;
 		let agentResult: AgentResult | null = null;
+		const tracker = new ExecutionTracker();
 
-		for await (const chunk of executor.stream(input)) {
+		for await (const chunk of executor.stream(input, { configurable: { thread_id: threadId } })) {
 			// Publish raw tuple to Redis for API relay
 			await redisPublisher.publish(channel, JSON.stringify(chunk));
 
 			// Extract progress info for BullMQ backward compat
 			const [mode, eventData] = chunk as [string, Record<string, unknown>];
 
-			// "tasks" mode finish events contain result — use for progress tracking
-			if (mode === "tasks" && eventData?.result) {
-				const name = eventData.name as string | undefined;
-				if (name) {
-					const percent = NODE_PROGRESS[name] ?? 50;
-					await job.updateProgress({ percent, message: `${name} completed` });
+			// "tasks" mode — track agent execution timing
+			if (mode === "tasks") {
+				const taskId = eventData?.id as string | undefined;
+				const name = eventData?.name as string | undefined;
+				if (taskId && name && !eventData?.result) {
+					tracker.onTaskStart(taskId, name);
+				}
+				if (taskId && eventData?.result) {
+					tracker.onTaskComplete(taskId, eventData?.error as string | undefined);
+					if (name) {
+						const percent = NODE_PROGRESS[name] ?? 50;
+						await job.updateProgress({ percent, message: `${name} completed` });
+					}
 				}
 			}
 
@@ -368,13 +412,14 @@ async function processJobInternal(
 		// If no result from stream, fall back to execute()
 		if (!agentResult) {
 			logger.warn(`Stream finished without result for job ${job.id}, using execute() fallback`);
-			agentResult = await executor.execute(input);
+			agentResult = await executor.execute(input, { configurable: { thread_id: threadId } });
 		}
 
 		await job.updateProgress({ percent: 90, message: "Persisting results..." });
 
-		// 5. Submit results to API
+		// 5. Submit results to API (with tracked agent executions)
 		const result = buildResult(data, agentResult);
+		const trackedExecutions = tracker.getExecutions();
 
 		await api.investigations.writeResult({
 			id: data.investigationId,
@@ -386,7 +431,14 @@ async function processJobInternal(
 			dataQuality: result.findings.dataQuality,
 			dataSourcesUsed: result.findings.dataSourcesUsed,
 			error: result.error,
-			agentExecutions: [], // Agent executions are tracked internally
+			agentExecutions: trackedExecutions.map((exec) => ({
+				agentName: exec.agentName,
+				status: exec.status,
+				startedAt: exec.startedAt,
+				completedAt: exec.completedAt,
+				executionTimeMs: exec.executionTimeMs,
+				error: exec.error,
+			})),
 			recommendations: result.recommendations.map((rec) => ({
 				title: rec.title,
 				description: rec.description,
@@ -539,6 +591,9 @@ function buildResult(
  * Graceful shutdown - close executor and Redis publisher connections
  */
 export async function closeProcessor(): Promise<void> {
-	await executor.close();
+	if (_executorPromise) {
+		const executor = await _executorPromise;
+		await executor.close();
+	}
 	await redisPublisher.quit();
 }

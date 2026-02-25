@@ -1,50 +1,62 @@
 /**
  * Checkpoint utilities for investigation state management.
  *
- * Provides helpers for reading checkpoints, extracting state, and
- * finding the best hypothesis from investigation state.
+ * Provides helpers for reading checkpoints from a BaseCheckpointSaver,
+ * extracting state, and finding the best hypothesis.
  */
 
+import type { BaseCheckpointSaver, CheckpointTuple } from "@langchain/langgraph-checkpoint"
 import type { Hypothesis } from "../types/results.js"
 
 /**
- * Get the latest checkpoint for an investigation.
- * Stub: returns null until checkpointer is integrated.
+ * Get the latest checkpoint for a thread.
+ * Returns the most recent CheckpointTuple or null if none exists.
  */
 export async function getCheckpoint(
-  _investigationId: string,
-): Promise<unknown | null> {
-  return null
+  checkpointer: BaseCheckpointSaver,
+  threadId: string,
+): Promise<CheckpointTuple | null> {
+  const config = { configurable: { thread_id: threadId } }
+  const tuple = await checkpointer.getTuple(config)
+  return tuple ?? null
 }
 
 /**
- * List all checkpoints for an investigation.
- * Stub: returns empty array until checkpointer is integrated.
+ * List all checkpoints for a thread (most recent first).
  */
 export async function listCheckpoints(
-  _investigationId: string,
-): Promise<unknown[]> {
-  return []
+  checkpointer: BaseCheckpointSaver,
+  threadId: string,
+): Promise<CheckpointTuple[]> {
+  const config = { configurable: { thread_id: threadId } }
+  const tuples: CheckpointTuple[] = []
+  for await (const tuple of checkpointer.list(config)) {
+    tuples.push(tuple)
+  }
+  return tuples
 }
 
 /**
- * Get state from a checkpoint.
- * Stub: returns null until checkpointer is integrated.
+ * Extract channel_values (i.e. the graph state) from a CheckpointTuple.
+ * Returns null if the tuple has no checkpoint or no channel_values.
  */
-export async function getStateFromCheckpoint<T>(
-  _checkpoint: unknown,
-): Promise<T | null> {
-  return null
+export function getStateFromCheckpoint<T>(
+  tuple: CheckpointTuple | null,
+): T | null {
+  if (!tuple?.checkpoint) return null
+  const values = tuple.checkpoint.channel_values as unknown as T | undefined
+  return values ?? null
 }
 
 /**
- * Get timestamp from a checkpoint.
- * Stub: returns null until checkpointer is integrated.
+ * Extract the timestamp from a CheckpointTuple.
+ * Returns the checkpoint's `ts` field or null.
  */
-export async function getCheckpointTimestamp(
-  _checkpoint: unknown,
-): Promise<string | null> {
-  return null
+export function getCheckpointTimestamp(
+  tuple: CheckpointTuple | null,
+): string | null {
+  if (!tuple?.checkpoint) return null
+  return tuple.checkpoint.ts ?? null
 }
 
 /**

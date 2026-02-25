@@ -57,6 +57,10 @@ import {
 	isValidEncryptionKey,
 } from "./utils/encryption-key.js";
 import { buildRedisUrl, buildRedisOptions } from "./utils/redis-url.js";
+import {
+	buildCheckpointerUrl,
+	getCheckpointerSchema,
+} from "./utils/checkpointer-url.js";
 
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
@@ -77,6 +81,9 @@ export {
 // Re-export Redis utilities
 export { buildRedisUrl, buildRedisOptions };
 export type { RedisConnectionOptions } from "./utils/redis-url.js";
+
+// Re-export checkpointer utilities
+export { buildCheckpointerUrl, getCheckpointerSchema };
 
 /**
  * Composed global configuration schema.

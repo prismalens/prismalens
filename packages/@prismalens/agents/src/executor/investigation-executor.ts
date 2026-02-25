@@ -87,7 +87,7 @@ export class InvestigationExecutor {
    *
    * Kept for backward compatibility. New consumers should use stream().
    */
-  async execute(input: InvestigationInput): Promise<InvestigationResult> {
+  async execute(input: InvestigationInput, config?: RunnableConfig): Promise<InvestigationResult> {
     const startTime = Date.now()
     const timeoutMs =
       input.config.timeout ?? InvestigationExecutor.DEFAULT_TIMEOUT_MS
@@ -99,7 +99,9 @@ export class InvestigationExecutor {
       const initialState = this.buildInitialState(input)
 
       const finalState = await this.graph.invoke(initialState, {
+        ...config,
         signal: controller.signal,
+        configurable: { ...config?.configurable },
       })
 
       if (!finalState.result) {

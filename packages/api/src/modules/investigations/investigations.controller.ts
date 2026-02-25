@@ -146,6 +146,7 @@ export class InvestigationsController {
 						input.status,
 						undefined,
 						input.error,
+						input.langGraphThreadId,
 					);
 					return this.serializeInvestigation(updated || investigation);
 				},
