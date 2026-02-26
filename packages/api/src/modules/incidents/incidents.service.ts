@@ -15,9 +15,15 @@ export type IncidentWithRelations = Incident & {
     status: string;
     summary: string | null;
     rootCause: string | null;
+    rootCauseCategory: string | null;
     confidence: number | null;
     createdAt: Date;
   }>;
+  postmortem?: {
+    summary: string | null;
+    whatHappened: string | null;
+    whyItHappened: string | null;
+  } | null;
   _count?: {
     alerts: number;
     investigations: number;
@@ -94,6 +100,7 @@ export class IncidentsService {
             status: true,
             summary: true,
             rootCause: true,
+            rootCauseCategory: true,
             confidence: true,
             createdAt: true,
           },
@@ -125,6 +132,7 @@ export class IncidentsService {
             status: true,
             summary: true,
             rootCause: true,
+            rootCauseCategory: true,
             confidence: true,
             createdAt: true,
           },
@@ -167,6 +175,23 @@ export class IncidentsService {
         },
         service: {
           select: { id: true, name: true, displayName: true },
+        },
+        investigations: {
+          where: { status: 'completed' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            summary: true,
+            rootCause: true,
+            rootCauseCategory: true,
+            confidence: true,
+            createdAt: true,
+          },
+        },
+        postmortem: {
+          select: { summary: true, whatHappened: true, whyItHappened: true },
         },
         _count: {
           select: { alerts: true, investigations: true },

@@ -14,7 +14,7 @@
 > - Performance impact of deep agent overhead on resolver nodes.
 > - Backend for generating fix scripts — use `FilesystemBackend` write capabilities?
 
-**Status**: PLANNED
+**Status**: COMPLETED
 **Dependencies**: Phase 5 (supervisor routes to resolver), Phase 6 (analyst produces hypotheses)
 **Estimated effort**: 2-3 days
 

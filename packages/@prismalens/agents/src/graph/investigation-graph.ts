@@ -14,8 +14,8 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint"
 import { InvestigationStateAnnotation } from "./state.js"
 import { createScoutNode } from "../agents/scout/index.js"
 import { createGathererNode } from "../agents/gatherer/index.js"
-import { createAnalystGraph } from "../agents/analyst/index.js"
-import { createResolverGraph } from "../agents/resolver/index.js"
+import { createAnalystNode } from "../agents/analyst/index.js"
+import { createResolverNode } from "../agents/resolver/index.js"
 import { supervisorNode } from "../agents/supervisor/node.js"
 import { StubDataProvider } from "../providers/data-provider.js"
 import type { DataProvider } from "../providers/data-provider.js"
@@ -52,8 +52,8 @@ export function buildInvestigationGraph(deps: InvestigationGraphDeps) {
       "gatherer",
       createGathererNode(deps.integrations, deps.mcpTools ?? []),
     )
-    .addNode("analyst", createAnalystGraph())
-    .addNode("resolver", createResolverGraph())
+    .addNode("analyst", createAnalystNode(deps.integrations, deps.mcpTools ?? []))
+    .addNode("resolver", createResolverNode(deps.integrations, deps.mcpTools ?? []))
     // START → scout → analyst (deterministic first pass, no supervisor)
     .addEdge("__start__", "scout")
     .addEdge("scout", "analyst")

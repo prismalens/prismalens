@@ -14,7 +14,7 @@
 > - Each analyst node uses `llm.withStructuredOutput()` (not tool-calling). Is a deep agent the right pattern for structured-output-only nodes?
 > - Performance impact of deep agent overhead on nodes that run multiple times per investigation.
 
-**Status**: PLANNED
+**Status**: COMPLETED
 **Dependencies**: Phase 5 (supervisor routes to analyst when data is gathered)
 **Estimated effort**: 3-4 days
 

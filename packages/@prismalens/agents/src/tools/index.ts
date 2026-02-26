@@ -8,20 +8,14 @@ export type { SkillMetadata, PrismaLensSkillMetadata } from "./types.js"
 // Schemas
 export {
   SupervisorDecisionSchema,
-  HypothesisFormationSchema,
-  EvidenceEvaluationSchema,
-  ChallengeResultSchema,
-  FixProposalSchema,
-  RiskAssessmentSchema,
+  AnalystOutputSchema,
+  ResolverOutputSchema,
   GathererSummarySchema,
 } from "./schemas.js"
 export type {
   SupervisorDecision,
-  HypothesisFormation,
-  EvidenceEvaluation,
-  ChallengeResult,
-  FixProposal,
-  RiskAssessment,
+  AnalystOutput,
+  ResolverOutput,
   GathererSummary,
 } from "./schemas.js"
 

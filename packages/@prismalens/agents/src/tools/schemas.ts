@@ -27,17 +27,22 @@ export const SupervisorDecisionSchema = z.object({
 export type SupervisorDecision = z.infer<typeof SupervisorDecisionSchema>
 
 // =============================================================================
-// Analyst Schemas
+// Analyst Deep Agent Schema
 // =============================================================================
 
 /**
- * Hypothesis formation — analyst forms root cause hypotheses.
+ * Analyst structured output — deep agent produces hypotheses with evidence.
+ *
+ * The `verified` flag on evidence distinguishes tool-produced evidence
+ * (verified: true) from LLM reasoning (verified: false). Currently all
+ * evidence is inferred. When verification tools are added (source control,
+ * sandbox), tool results will be marked verified: true and weighted more
+ * heavily by the deterministic scoring formula.
  */
-export const HypothesisFormationSchema = z.object({
+export const AnalystOutputSchema = z.object({
   hypotheses: z.array(
     z.object({
-      title: z.string(),
-      description: z.string(),
+      description: z.string().describe("Root cause hypothesis"),
       category: z.enum([
         "code_bug",
         "config_change",
@@ -46,69 +51,47 @@ export const HypothesisFormationSchema = z.object({
         "deployment",
         "unknown",
       ]),
-      initialConfidence: z.number().min(0).max(1),
-      expectedEvidence: z
-        .array(z.string())
-        .describe("What evidence would confirm/deny this"),
+      confidence: z.number().min(0).max(1).describe("LLM's initial confidence estimate"),
+      evidence: z.array(
+        z.object({
+          description: z.string(),
+          direction: z.enum(["supporting", "contradicting"]),
+          strength: z.enum(["strong", "moderate", "weak"]),
+          verified: z.boolean().describe("true only if produced by a tool call"),
+          source: z.string().describe("Where this evidence came from"),
+        }),
+      ),
+      contradictions: z.array(z.string()),
+      reasoning: z.string(),
     }),
   ),
+  dataGaps: z
+    .array(z.string())
+    .describe("Missing data that would improve analysis"),
+  analysisSummary: z.string(),
+  confidenceAssessment: z
+    .string()
+    .describe("Honest assessment of overall confidence level"),
 })
 
-export type HypothesisFormation = z.infer<typeof HypothesisFormationSchema>
-
-/**
- * Evidence evaluation — analyst evaluates evidence per hypothesis.
- */
-export const EvidenceEvaluationSchema = z.object({
-  hypothesisTitle: z.string(),
-  supportingEvidence: z.array(
-    z.object({
-      description: z.string(),
-      strength: z.enum(["strong", "moderate", "weak"]),
-    }),
-  ),
-  contradictingEvidence: z.array(
-    z.object({
-      description: z.string(),
-      strength: z.enum(["strong", "moderate", "weak"]),
-    }),
-  ),
-  updatedConfidence: z.number().min(0).max(1),
-  needsMoreData: z.boolean(),
-  dataGaps: z.array(z.string()).optional(),
-})
-
-export type EvidenceEvaluation = z.infer<typeof EvidenceEvaluationSchema>
-
-/**
- * Challenge result — analyst searches for contradictions.
- */
-export const ChallengeResultSchema = z.object({
-  contradictions: z.array(
-    z.object({
-      hypothesisTitle: z.string(),
-      contradiction: z.string(),
-      severity: z.enum(["critical", "moderate", "minor"]),
-    }),
-  ),
-  confidenceAdjustments: z.array(
-    z.object({
-      hypothesisTitle: z.string(),
-      adjustment: z.number(),
-    }),
-  ),
-})
-
-export type ChallengeResult = z.infer<typeof ChallengeResultSchema>
+export type AnalystOutput = z.infer<typeof AnalystOutputSchema>
 
 // =============================================================================
-// Resolver Schemas
+// Resolver Deep Agent Schema
 // =============================================================================
 
 /**
- * Fix proposal — resolver proposes remediation steps.
+ * Resolver structured output — combined recommendations with inline risk.
+ *
+ * Merges fix proposal + risk assessment into a single schema. Enum values
+ * are aligned with DB contracts (RecommendationCategory, Urgency, EffortEstimate).
+ *
+ * Each recommendation includes:
+ * - Fix proposal fields (title, description, category, priority, urgency, steps)
+ * - Risk assessment fields (riskLevel, blastRadius, reversibility)
+ * - Provenance flag (precedentBased) for historical vs novel tracking
  */
-export const FixProposalSchema = z.object({
+export const ResolverOutputSchema = z.object({
   recommendations: z.array(
     z.object({
       title: z.string(),
@@ -117,41 +100,34 @@ export const FixProposalSchema = z.object({
         "code_fix",
         "config_change",
         "rollback",
-        "infrastructure",
-        "escalation",
+        "monitoring",
+        "investigation",
       ]),
       priority: z.enum(["critical", "high", "medium", "low"]),
-      urgency: z.enum(["immediate", "next_hour", "next_day", "backlog"]),
+      urgency: z.enum(["immediate", "short_term", "long_term"]),
       steps: z.array(z.string()),
+      estimatedEffort: z.enum(["minutes", "hours", "days"]),
       precedentBased: z
         .boolean()
-        .describe("Grounded in past resolution or novel approach"),
-    }),
-  ),
-})
-
-export type FixProposal = z.infer<typeof FixProposalSchema>
-
-/**
- * Risk assessment — resolver evaluates risk of proposed fix.
- */
-export const RiskAssessmentSchema = z.object({
-  assessments: z.array(
-    z.object({
-      recommendationTitle: z.string(),
+        .describe("true if grounded in a past resolution, false if novel approach"),
       riskLevel: z.enum(["critical", "high", "medium", "low"]),
-      blastRadius: z.string(),
+      blastRadius: z
+        .string()
+        .describe("What systems/users could be affected"),
       reversibility: z.enum([
         "fully_reversible",
         "partially_reversible",
         "irreversible",
       ]),
-      requiresApproval: z.boolean(),
     }),
   ),
+  summary: z.string().describe("Brief summary of recommended approach"),
+  approachAssessment: z
+    .string()
+    .describe("Honest assessment of the recommended approach and its limitations"),
 })
 
-export type RiskAssessment = z.infer<typeof RiskAssessmentSchema>
+export type ResolverOutput = z.infer<typeof ResolverOutputSchema>
 
 // =============================================================================
 // Gatherer Schemas

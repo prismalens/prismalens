@@ -5,8 +5,8 @@
  * - supervisorNode: Function node returning Command
  * - createScoutNode(dataProvider): Simple function node
  * - createGathererNode(integrations, mcpTools): Function node wrapping createDeepAgent
- * - createAnalystGraph(): Compiled subgraph
- * - createResolverGraph(): Compiled subgraph
+ * - createAnalystNode(integrations, mcpTools): Function node wrapping createDeepAgent
+ * - createResolverNode(integrations, mcpTools): Function node wrapping createDeepAgent
  */
 
 // Supervisor
@@ -25,9 +25,9 @@ export { createGathererNode } from "./gatherer/index.js"
 export { GathererStateAnnotation } from "./gatherer/index.js"
 
 // Analyst
-export { createAnalystGraph, buildAnalystGraph } from "./analyst/index.js"
-export { AnalystStateAnnotation } from "./analyst/index.js"
+export { createAnalystNode } from "./analyst/index.js"
+export { scoreHypothesis, extractAnalystResults } from "./analyst/index.js"
 
 // Resolver
-export { createResolverGraph, buildResolverGraph } from "./resolver/index.js"
-export { ResolverStateAnnotation } from "./resolver/index.js"
+export { createResolverNode } from "./resolver/index.js"
+export { extractResolverResults } from "./resolver/index.js"

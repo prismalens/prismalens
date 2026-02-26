@@ -188,9 +188,11 @@ class WorkerDataProvider implements DataProvider {
 			serviceId: incident.serviceId as string | undefined,
 			serviceName: incident.serviceName as string | undefined,
 			rootCause: incident.rootCause as string | undefined,
+			rootCauseCategory: incident.rootCauseCategory as string | undefined,
 			resolution: incident.resolution as string | undefined,
 			resolvedAt: incident.resolvedAt as string | undefined,
 			timeToResolve: incident.timeToResolve as number | undefined,
+			postmortemSummary: incident.postmortemSummary as string | undefined,
 			similarity: 0, // Computed by pre-gathering's calculateIncidentSimilarity
 		};
 	}

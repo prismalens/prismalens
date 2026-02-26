@@ -183,6 +183,17 @@ export class DirectDataProvider implements DataProvider {
 		incident: IncidentWithRelations,
 	): SimilarIncidentMatch {
 		const tags = safeParseJsonArray(incident.tags);
+		const latestInvestigation = incident.investigations?.[0];
+		const postmortem = incident.postmortem;
+
+		// Build postmortem summary from available fields
+		const postmortemParts = [
+			postmortem?.summary,
+			postmortem?.whatHappened,
+			postmortem?.whyItHappened,
+		].filter(Boolean);
+		const postmortemSummary =
+			postmortemParts.length > 0 ? postmortemParts.join(" | ") : undefined;
 
 		return {
 			incidentId: incident.id,
@@ -195,7 +206,9 @@ export class DirectDataProvider implements DataProvider {
 			serviceName: incident.service?.name ?? undefined,
 			similarity: 0, // Computed by pre-gathering's calculateIncidentSimilarity
 			resolution: incident.status === "resolved" ? "Resolved" : undefined,
-			rootCause: undefined,
+			rootCause: latestInvestigation?.rootCause ?? undefined,
+			rootCauseCategory: latestInvestigation?.rootCauseCategory ?? undefined,
+			postmortemSummary,
 			timeToResolve: incident.timeToResolve ?? undefined,
 			resolvedAt: incident.resolvedAt?.toISOString(),
 		};

@@ -102,10 +102,12 @@ export interface SimilarIncidentMatch {
   title: string
   similarity: number
   rootCause?: string
+  rootCauseCategory?: string
   resolution?: string
   timeToResolve?: number
   resolvedAt?: string
   matchedAlerts?: string[]
+  postmortemSummary?: string
 
   // Extra fields mapped by consumers
   number?: number

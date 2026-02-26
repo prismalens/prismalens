@@ -21,11 +21,11 @@ import { searchSimilarResolutions, lookupRunbook } from "./precedent.js"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /**
- * Resolve the gatherer skills directory.
- * Located at packages/@prismalens/agents/skills/gatherer/
+ * Resolve the skills directory for a given agent.
+ * Located at packages/@prismalens/agents/skills/{agentName}/
  */
-function getGathererSkillsDir(): string {
-  return resolve(__dirname, "../../../skills/gatherer")
+function getSkillsDir(agentName: string): string {
+  return resolve(__dirname, `../../../skills/${agentName}`)
 }
 
 /**
@@ -60,17 +60,19 @@ function hasIntegration(
 /**
  * Load skill metadata from SKILL.md files, filtered by available integrations.
  *
- * Reads SKILL.md files from the gatherer skills directory using deepagents
+ * Reads SKILL.md files from the agent's skills directory using deepagents
  * `listSkills`, parses `allowed-tools` and `metadata.requiredIntegrations`,
  * and returns only skills whose required integrations are satisfied.
  *
  * @param integrations - Active integration contexts for filtering
+ * @param agentName - Agent name to resolve skills directory (default: "gatherer")
  * @returns Array of PrismaLensSkillMetadata for available skills
  */
 export function loadSkillMetadata(
   integrations: IntegrationContext[],
+  agentName = "gatherer",
 ): PrismaLensSkillMetadata[] {
-  const skillsDir = getGathererSkillsDir()
+  const skillsDir = getSkillsDir(agentName)
   const rawSkills = listSkills({ projectSkillsDir: skillsDir })
 
   return rawSkills
