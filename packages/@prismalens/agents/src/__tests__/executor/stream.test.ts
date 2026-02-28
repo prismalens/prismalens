@@ -50,13 +50,32 @@ vi.mock("deepagents", () => ({
     readFile: vi.fn(),
     listFiles: vi.fn().mockReturnValue([]),
   })),
+  LocalShellBackend: {
+    create: vi.fn(async () => ({
+      id: "mock-backend",
+      lsInfo: vi.fn(),
+      read: vi.fn(),
+      readRaw: vi.fn(),
+      grepRaw: vi.fn(),
+      globInfo: vi.fn(),
+      write: vi.fn(),
+      edit: vi.fn(),
+      execute: vi.fn(),
+    })),
+  },
+  CompositeBackend: vi.fn().mockImplementation((defaultBackend: unknown) => defaultBackend),
 }))
 
 vi.mock("langchain", () => ({
   toolStrategy: vi.fn(() => ({})),
-  createMiddleware: vi.fn((_opts: unknown) => ({
-    name: "MockMiddleware",
-  })),
+}))
+
+// Mock workspace module
+vi.mock("../../config/workspace.js", () => ({
+  createWorkspaceDir: vi.fn(async () => "/tmp/test-workspace"),
+  injectSpecFiles: vi.fn(async () => {}),
+  cleanupWorkspaceDir: vi.fn(async () => {}),
+  getWorkspacePath: vi.fn(() => "/tmp/test-workspace"),
 }))
 
 function createTestInput(overrides?: Partial<InvestigationInput>): InvestigationInput {

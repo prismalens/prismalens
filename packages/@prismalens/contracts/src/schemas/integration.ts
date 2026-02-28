@@ -20,6 +20,7 @@ export const IntegrationDefinitionSchema = z.object({
 	category: z.string(), // monitoring, code_source, knowledge_base
 	authType: z.string(), // api_key, oauth2, both
 	configSchema: z.record(z.unknown()).nullable(),
+	credentialSchema: z.record(z.unknown()).nullable().optional(),
 	iconUrl: z.string().nullable(),
 	docsUrl: z.string().nullable(),
 	maxConnectionsCE: z.number().int().nullable(),
@@ -53,24 +54,14 @@ export const CreateConnectionSchema = z.object({
 	name: z.string().min(1),
 	description: z.string().optional(),
 	authMethod: AuthMethodSchema,
-	credentials: z.object({
-		apiKey: z.string().optional(),
-		accessToken: z.string().optional(),
-		refreshToken: z.string().optional(),
-	}),
+	credentials: z.record(z.string(), z.string()),
 	config: z.record(z.unknown()).optional(),
 });
 
 export const UpdateConnectionSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
-	credentials: z
-		.object({
-			apiKey: z.string().optional(),
-			accessToken: z.string().optional(),
-			refreshToken: z.string().optional(),
-		})
-		.optional(),
+	credentials: z.record(z.string(), z.string()).optional(),
 	config: z.record(z.unknown()).optional(),
 });
 

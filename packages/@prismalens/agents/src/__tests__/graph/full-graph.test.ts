@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { buildInvestigationGraph } from "../../graph/investigation-graph.js"
 import { StubDataProvider } from "../../providers/data-provider.js"
-import type { AlertContext } from "../../types/contexts.js"
+import type { AlertContext, IntegrationWithCredentials } from "../../types/contexts.js"
 
 // Track LLM invocation count for counter-based mock routing
 let llmCallCount = 0
@@ -47,15 +47,36 @@ vi.mock("deepagents", () => ({
     readFile: vi.fn(),
     listFiles: vi.fn().mockReturnValue([]),
   })),
+  LocalShellBackend: {
+    create: vi.fn(async () => ({
+      id: "mock-backend",
+      lsInfo: vi.fn(),
+      read: vi.fn(),
+      readRaw: vi.fn(),
+      grepRaw: vi.fn(),
+      globInfo: vi.fn(),
+      write: vi.fn(),
+      edit: vi.fn(),
+      execute: vi.fn(),
+    })),
+  },
+  CompositeBackend: vi.fn().mockImplementation((defaultBackend: unknown) => defaultBackend),
 }))
 
-// Mock langchain (toolStrategy + createMiddleware used by tool-gating-middleware)
+// Mock langchain (toolStrategy used by agents)
 vi.mock("langchain", () => ({
   toolStrategy: vi.fn(() => ({})),
-  createMiddleware: vi.fn((_opts: unknown) => ({
-    name: "MockMiddleware",
-  })),
 }))
+
+// Mock workspace module
+vi.mock("../../config/workspace.js", () => ({
+  createWorkspaceDir: vi.fn(async () => "/tmp/test-workspace"),
+  injectSpecFiles: vi.fn(async () => {}),
+  cleanupWorkspaceDir: vi.fn(async () => {}),
+  getWorkspacePath: vi.fn(() => "/tmp/test-workspace"),
+}))
+
+const emptyIntegrations: IntegrationWithCredentials[] = []
 
 describe("full investigation graph", () => {
   beforeEach(() => {
@@ -63,10 +84,10 @@ describe("full investigation graph", () => {
     vi.clearAllMocks()
   })
 
-  it("compiles with all nodes wired", () => {
-    const graph = buildInvestigationGraph({
+  it("compiles with all nodes wired", async () => {
+    const graph = await buildInvestigationGraph({
       dataProvider: new StubDataProvider(),
-      integrations: [],
+      integrations: emptyIntegrations,
       mcpTools: [],
     })
     expect(graph).toBeDefined()
@@ -76,9 +97,9 @@ describe("full investigation graph", () => {
   it("executes scout → analyst → supervisor → gatherer → supervisor → __end__", async () => {
     const dataProvider = new StubDataProvider()
 
-    const graph = buildInvestigationGraph({
+    const graph = await buildInvestigationGraph({
       dataProvider,
-      integrations: [],
+      integrations: emptyIntegrations,
       mcpTools: [],
     })
 
@@ -119,9 +140,9 @@ describe("full investigation graph", () => {
     // Make the LLM immediately end on first call
     llmCallCount = 1 // Skip to "end" response
 
-    const graph = buildInvestigationGraph({
+    const graph = await buildInvestigationGraph({
       dataProvider,
-      integrations: [],
+      integrations: emptyIntegrations,
       mcpTools: [],
     })
 
@@ -165,9 +186,9 @@ describe("full investigation graph", () => {
       })),
     } as never)
 
-    const graph = buildInvestigationGraph({
+    const graph = await buildInvestigationGraph({
       dataProvider: new StubDataProvider(),
-      integrations: [],
+      integrations: emptyIntegrations,
       mcpTools: [],
     })
 

@@ -3,8 +3,9 @@
  *
  * This package provides a LangGraph-based investigation executor with:
  * - Deterministic scout + LLM-driven supervisor routing
- * - Skill-based tool progressive disclosure via SKILL.md + ToolGatingMiddleware
- * - Subgraph agents (analyst, resolver) with structured output
+ * - Skill-based progressive disclosure via SKILL.md files (deepagents native)
+ * - Generic http_request tool with per-agent method allowlists
+ * - Shared workspace via LocalShellBackend/CompositeBackend
  * - DataProvider injection for data source abstraction
  * - Stream-only executor API with progress events
  */
@@ -24,6 +25,7 @@ export type {
   IncidentContext,
   AlertContext,
   IntegrationContext,
+  IntegrationWithCredentials,
   SimilarIncidentMatch,
 } from "./types/contexts.js"
 
@@ -104,26 +106,29 @@ export { createLLM } from "./llm/index.js"
 // =============================================================================
 
 export type { SkillMetadata, PrismaLensSkillMetadata } from "./tools/index.js"
-export { MCPClientManager } from "./tools/index.js"
-export type { MCPServerConfig } from "./tools/index.js"
+export { createHttpRequestTool } from "./tools/index.js"
 
 // =============================================================================
-// Middleware
+// Integration Registry
 // =============================================================================
 
-export { createToolGatingMiddleware } from "./middleware/tool-gating-middleware.js"
+export {
+  resolveIntegration,
+  computeAvailableDataSources,
+  buildIntegrationEnvVars,
+  resolveGitAuth,
+} from "./providers/integration-registry.js"
+export type {
+  IntegrationAdapter,
+  ResolvedIntegration,
+} from "./providers/integration-registry.js"
+export { getAdapter } from "./providers/adapters/index.js"
 
 // =============================================================================
 // Utilities
 // =============================================================================
 
 export { mapSeverity } from "./utils/severity.js"
-export {
-  mapHypothesisCategoryToDb,
-  mapAgentUrgencyToDb,
-  mapFixCategoryToDb,
-  mapToolCategoryToDb,
-} from "./utils/enum-maps.js"
 export {
   getCheckpoint,
   listCheckpoints,
@@ -135,8 +140,6 @@ export { createCheckpointer } from "./utils/checkpointer-factory.js"
 export type { CheckpointerOptions } from "./utils/checkpointer-factory.js"
 export { ExecutionTracker } from "./utils/execution-tracker.js"
 export type { TrackedExecution } from "./utils/execution-tracker.js"
-export { safeFetch } from "./utils/safe-fetch.js"
-export type { SafeFetchResult } from "./utils/safe-fetch.js"
 
 // =============================================================================
 // Agent Constants (re-exported from @prismalens/config/agents SSOT)
@@ -144,20 +147,3 @@ export type { SafeFetchResult } from "./utils/safe-fetch.js"
 
 export { ROUTABLE_AGENT_IDS, type RoutableAgentId } from "@prismalens/config/agents"
 
-// =============================================================================
-// Model Registry (stubs for compatibility)
-// =============================================================================
-
-/**
- * Get available models for a provider (stubbed)
- */
-export async function getModelsForProvider(_provider: string): Promise<unknown[]> {
-  return []
-}
-
-/**
- * Get complete models registry (stubbed)
- */
-export async function getModelsRegistry(): Promise<unknown[]> {
-  return []
-}

@@ -1,43 +1,28 @@
 import { describe, it, expect } from "vitest"
 import { createAnalystNode } from "../../agents/analyst/index.js"
-import { buildInvestigationGraph } from "../../graph/investigation-graph.js"
-import { StubDataProvider } from "../../providers/data-provider.js"
-import type { IntegrationContext } from "../../types/contexts.js"
+import type { BackendProtocol } from "deepagents"
 
-const githubIntegration: IntegrationContext = {
-  id: "gh-1",
-  name: "GitHub",
-  type: "github",
-  enabled: true,
-  config: {},
-}
+const mockBackend = {} as BackendProtocol
+const mockHttpRequestTool = { name: "http_request" } as never
 
 describe("createAnalystNode", () => {
   it("returns a function", () => {
-    const node = createAnalystNode([])
-    expect(typeof node).toBe("function")
-  })
-
-  it("accepts integrations and mcpTools parameters", () => {
-    const node = createAnalystNode([githubIntegration], [])
-    expect(typeof node).toBe("function")
-  })
-
-  it("returns a function with no mcpTools parameter", () => {
-    const node = createAnalystNode([])
-    expect(typeof node).toBe("function")
-  })
-})
-
-describe("investigation graph with analyst node", () => {
-  it("compiles successfully with analyst node wired", () => {
-    const graph = buildInvestigationGraph({
-      dataProvider: new StubDataProvider(),
-      integrations: [],
+    const node = createAnalystNode({
+      backend: mockBackend,
+      httpRequestTool: mockHttpRequestTool,
       mcpTools: [],
+      skills: ["/skills/analyst/"],
     })
+    expect(typeof node).toBe("function")
+  })
 
-    expect(graph).toBeDefined()
-    expect(typeof graph.invoke).toBe("function")
+  it("accepts all dependency parameters", () => {
+    const node = createAnalystNode({
+      backend: mockBackend,
+      httpRequestTool: mockHttpRequestTool,
+      mcpTools: [],
+      skills: ["/skills/common/", "/skills/analyst/"],
+    })
+    expect(typeof node).toBe("function")
   })
 })

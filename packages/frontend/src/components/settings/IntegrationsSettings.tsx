@@ -54,10 +54,12 @@ import {
 	useUpdateIntegrationConnection,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
+import { parseCredentialSchema, validateCredentials } from "@/lib/credential-schema";
+import { DynamicCredentialForm } from "./DynamicCredentialForm";
 
-// Integration icon helper
-function getIntegrationIcon(integrationId: string) {
-	switch (integrationId) {
+// Integration icon helper — uses definition.name (not UUID id)
+function getIntegrationIcon(name: string) {
+	switch (name) {
 		case "github":
 			return <Github className="h-5 w-5" />;
 		case "slack":
@@ -121,7 +123,9 @@ export function IntegrationsSettings() {
 		null,
 	);
 	const [connectionName, setConnectionName] = useState("");
+	const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
 	const [configFields, setConfigFields] = useState<Record<string, string>>({});
+	const [showCredErrors, setShowCredErrors] = useState(false);
 	const [testingConnectionId, setTestingConnectionId] = useState<string | null>(
 		null,
 	);
@@ -161,16 +165,13 @@ export function IntegrationsSettings() {
 				type: "success",
 				message: `Successfully connected to ${oauth}!`,
 			});
-			// Refetch connections to show the new one
 			refetchConnections();
-			// Clear message after 5 seconds
 			setTimeout(() => setOauthMessage(null), 5000);
 		} else if (status === "error") {
 			setOauthMessage({
 				type: "error",
 				message: errorDescription || error || `Failed to connect to ${oauth}`,
 			});
-			// Clear message after 10 seconds
 			setTimeout(() => setOauthMessage(null), 10000);
 		}
 	}, [refetchConnections]);
@@ -187,17 +188,18 @@ export function IntegrationsSettings() {
 		setTimeout(() => setCopiedUrl(null), 2000);
 	};
 
+	const getDefinitionById = (id: string) =>
+		definitions?.find((d) => d.id === id);
+
 	const handleAddIntegration = (definitionId: string) => {
 		const definition = definitions?.find((d) => d.id === definitionId);
 		if (!definition) return;
 
 		// For OAuth integrations, redirect to OAuth flow
 		if (definition.authType === "oauth2") {
-			const name = `${definition.name} Connection`;
-			// Build the OAuth authorize URL with name and redirect_uri
-			// The redirect_uri should be the settings page (current page without query params)
+			const name = `${definition.displayName} Connection`;
 			const currentUrl = new URL(window.location.href);
-			currentUrl.search = ""; // Clear any existing query params
+			currentUrl.search = "";
 			const redirectUri = currentUrl.toString();
 
 			const authorizeUrl =
@@ -211,8 +213,10 @@ export function IntegrationsSettings() {
 
 		// For API key integrations, show config dialog
 		setSelectedDefinition(definitionId);
-		setConnectionName(`${definition.name} Connection`);
+		setConnectionName(`${definition.displayName} Connection`);
+		setCredentialValues({});
 		setConfigFields({});
+		setShowCredErrors(false);
 		setShowAddDialog(false);
 		setShowConfigDialog(true);
 	};
@@ -224,39 +228,53 @@ export function IntegrationsSettings() {
 		setSelectedConnection(connectionId);
 		setSelectedDefinition(connection.definitionId);
 		setConnectionName(connection.name);
-		// Note: We don't prefill sensitive config fields
+		setCredentialValues({});
 		setConfigFields({});
+		setShowCredErrors(false);
 		setShowConfigDialog(true);
 	};
 
 	const handleSaveConnection = async () => {
 		if (!selectedDefinition) return;
 
+		const definition = getDefinitionById(selectedDefinition);
+		const credSchema = parseCredentialSchema(
+			definition?.credentialSchema as string | null | undefined,
+		);
+
+		// Validate credentials if creating new (editing doesn't require re-entering credentials)
+		if (!selectedConnection && definition?.authType !== "oauth2") {
+			if (!credSchema) {
+				// No credential schema defined — cannot create connection without knowing required fields
+				return;
+			}
+			const errors = validateCredentials(credSchema, credentialValues);
+			if (Object.keys(errors).length > 0) {
+				setShowCredErrors(true);
+				return;
+			}
+		}
+
 		try {
 			if (selectedConnection) {
 				// Update existing
+				const hasNewCredentials = Object.values(credentialValues).some(
+					(v) => v.trim() !== "",
+				);
 				await updateConnection.mutateAsync({
 					id: selectedConnection,
 					name: connectionName,
-					credentials:
-						configFields.token || configFields.password
-							? { apiKey: configFields.token || configFields.password }
-							: undefined,
-					config: configFields,
+					credentials: hasNewCredentials ? credentialValues : undefined,
+					config: Object.keys(configFields).length > 0 ? configFields : undefined,
 				});
 			} else {
-				// Create new - requires authMethod and credentials
+				// Create new
 				await createConnection.mutateAsync({
 					definitionId: selectedDefinition,
 					name: connectionName,
 					authMethod: "api_key",
-					credentials: {
-						apiKey:
-							configFields.token ||
-							configFields.password ||
-							configFields.webhookUrl,
-					},
-					config: configFields,
+					credentials: credentialValues,
+					config: Object.keys(configFields).length > 0 ? configFields : undefined,
 				});
 			}
 			setShowConfigDialog(false);
@@ -303,14 +321,17 @@ export function IntegrationsSettings() {
 		setSelectedDefinition(null);
 		setSelectedConnection(null);
 		setConnectionName("");
+		setCredentialValues({});
 		setConfigFields({});
+		setShowCredErrors(false);
 	};
 
-	const getDefinitionById = (id: string) =>
-		definitions?.find((d) => d.id === id);
 	const selectedDef = selectedDefinition
 		? getDefinitionById(selectedDefinition)
 		: null;
+	const selectedCredSchema = parseCredentialSchema(
+		selectedDef?.credentialSchema as string | null | undefined,
+	);
 
 	if (defsLoading || connsLoading) {
 		return (
@@ -448,7 +469,7 @@ export function IntegrationsSettings() {
 									>
 										<div className="flex items-center gap-4">
 											<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-												{getIntegrationIcon(connection.definitionId)}
+												{getIntegrationIcon(definition?.name ?? "")}
 											</div>
 											<div>
 												<div className="flex items-center gap-2">
@@ -456,7 +477,7 @@ export function IntegrationsSettings() {
 													<ConnectionStatusBadge status={connection.status} />
 												</div>
 												<p className="text-sm text-muted-foreground">
-													{definition?.name} •{" "}
+													{definition?.displayName} •{" "}
 													{definition?.authType === "oauth2"
 														? "OAuth"
 														: "API Key"}
@@ -553,10 +574,10 @@ export function IntegrationsSettings() {
 								className="w-full flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
 							>
 								<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-									{getIntegrationIcon(def.id)}
+									{getIntegrationIcon(def.name)}
 								</div>
 								<div className="flex-1">
-									<p className="font-medium">{def.name}</p>
+									<p className="font-medium">{def.displayName}</p>
 									<p className="text-sm text-muted-foreground">
 										{def.description}
 									</p>
@@ -581,7 +602,8 @@ export function IntegrationsSettings() {
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>
-							{selectedConnection ? "Edit" : "Configure"} {selectedDef?.name}
+							{selectedConnection ? "Edit" : "Configure"}{" "}
+							{selectedDef?.displayName}
 						</DialogTitle>
 						<DialogDescription>{selectedDef?.description}</DialogDescription>
 					</DialogHeader>
@@ -596,115 +618,15 @@ export function IntegrationsSettings() {
 							/>
 						</div>
 
-						{/* Dynamic config fields based on integration */}
-						{selectedDefinition === "prometheus" && (
-							<>
-								<div className="space-y-2">
-									<Label htmlFor="baseUrl">Prometheus URL *</Label>
-									<Input
-										id="baseUrl"
-										value={configFields.baseUrl || ""}
-										onChange={(e) =>
-											setConfigFields({ ...configFields, baseUrl: e.target.value })
-										}
-										placeholder="http://prometheus:9090"
-									/>
-								</div>
-								<div className="space-y-2">
-									<Label htmlFor="username">Username (optional)</Label>
-									<Input
-										id="username"
-										value={configFields.username || ""}
-										onChange={(e) =>
-											setConfigFields({ ...configFields, username: e.target.value })
-										}
-										placeholder="Basic auth username"
-									/>
-								</div>
-								<div className="space-y-2">
-									<Label htmlFor="password">
-										Password / API Key (optional)
-									</Label>
-									<Input
-										id="password"
-										type="password"
-										value={configFields.password || ""}
-										onChange={(e) =>
-											setConfigFields({ ...configFields, password: e.target.value })
-										}
-										placeholder="Basic auth password or API key"
-									/>
-								</div>
-							</>
-						)}
-
-						{selectedDefinition === "slack" &&
+						{/* Dynamic credential fields from credentialSchema */}
+						{selectedCredSchema &&
 							selectedDef?.authType !== "oauth2" && (
-								<>
-									<div className="space-y-2">
-										<Label htmlFor="webhookUrl">Webhook URL *</Label>
-										<Input
-											id="webhookUrl"
-											value={configFields.webhookUrl || ""}
-											onChange={(e) =>
-												setConfigFields({
-													...configFields,
-													webhookUrl: e.target.value,
-												})
-											}
-											placeholder="https://hooks.slack.com/services/..."
-										/>
-									</div>
-									<div className="space-y-2">
-										<Label htmlFor="defaultChannel">Default Channel</Label>
-										<Input
-											id="defaultChannel"
-											value={configFields.defaultChannel || ""}
-											onChange={(e) =>
-												setConfigFields({
-													...configFields,
-													defaultChannel: e.target.value,
-												})
-											}
-											placeholder="#incidents"
-										/>
-									</div>
-								</>
-							)}
-
-						{selectedDefinition === "github" &&
-							selectedDef?.authType !== "oauth2" && (
-								<>
-									<div className="space-y-2">
-										<Label htmlFor="token">Personal Access Token *</Label>
-										<Input
-											id="token"
-											type="password"
-											value={configFields.token || ""}
-											onChange={(e) =>
-												setConfigFields({ ...configFields, token: e.target.value })
-											}
-											placeholder="ghp_..."
-										/>
-										<p className="text-xs text-muted-foreground">
-											Requires repo scope for private repositories
-										</p>
-									</div>
-									<div className="space-y-2">
-										<Label htmlFor="organization">Organization</Label>
-										<Input
-											id="organization"
-											value={configFields.organization || ""}
-											onChange={(e) =>
-												setConfigFields({
-													...configFields,
-													organization: e.target.value,
-												})
-											}
-											placeholder="your-org"
-										/>
-									</div>
-								</>
+								<DynamicCredentialForm
+									schema={selectedCredSchema}
+									values={credentialValues}
+									onChange={setCredentialValues}
+									showErrors={showCredErrors}
+								/>
 							)}
 					</div>
 					<DialogFooter>

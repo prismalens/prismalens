@@ -4,6 +4,8 @@
  * Provides hypotheses from the analyst, similar incident resolutions,
  * and gathered data context. Instructs the resolver to follow the
  * remediation SKILL.md for structured recommendation generation.
+ *
+ * Includes workspace tool nudges for validation via execute, testing, etc.
  */
 
 export interface ResolverPromptContext {
@@ -16,10 +18,6 @@ export interface ResolverPromptContext {
 
 /**
  * Build the resolver system prompt from investigation context.
- *
- * The resolver receives analyst hypotheses and gathered data, then
- * uses the remediation SKILL.md to structure its recommendations.
- * No custom tools — pure LLM reasoning. Tools added later.
  */
 export function resolverPrompt(context: ResolverPromptContext): string {
   return `You are a remediation specialist for an incident investigation in PrismaLens.
@@ -45,6 +43,16 @@ Read your remediation skill first, then follow its structured approach:
 2. Check similar incidents for proven resolutions
 3. Propose 2-5 actionable recommendations ordered by urgency
 4. Assess risk for each recommendation
+5. Validate your recommendations using workspace tools
+
+## Workspace Tools
+You have workspace access. Use it to validate recommendations before proposing them.
+
+- Write code to test your proposed fixes before recommending them
+- Run the project's test suite to verify fixes don't break existing functionality
+- Write a minimal script that validates each recommendation is feasible
+- Use \`http_request\` to check current service state before recommending changes
+- Check the OpenAPI specs in \`/workspace/specs/\` for available API endpoints
 
 ## Critical Rules
 - Prefer proven solutions (precedentBased: true) over novel approaches
@@ -56,12 +64,3 @@ Read your remediation skill first, then follow its structured approach:
 - Be honest about risk — irreversible actions should be flagged clearly
 - If root cause confidence is low, prioritize safe/reversible actions first`
 }
-
-/**
- * Static resolver prompt for testing / simple cases.
- */
-export const RESOLVER_PROMPT = `You are a remediation specialist for an incident investigation in PrismaLens.
-
-Propose evidence-based remediation steps grounded in precedent.
-Tag recommendations as historical (proven) or novel (new approach).
-Assess risk and prefer reversible actions.`

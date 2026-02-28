@@ -35,6 +35,20 @@ export async function seedIntegrationDefinitions(
 					},
 				},
 			}),
+			credentialSchema: JSON.stringify({
+				type: "object",
+				required: ["apiKey"],
+				properties: {
+					apiKey: {
+						type: "string",
+						title: "Personal Access Token",
+						format: "password",
+						placeholder: "ghp_...",
+						description:
+							"Classic PAT or fine-grained token with repo scope",
+					},
+				},
+			}),
 			iconUrl:
 				"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
 			docsUrl: "https://docs.github.com/en/rest",
@@ -56,10 +70,6 @@ export async function seedIntegrationDefinitions(
 						type: "string",
 						description: "Prometheus server URL (e.g., http://prometheus:9090)",
 					},
-					username: {
-						type: "string",
-						description: "Basic auth username (optional)",
-					},
 					defaultStep: {
 						type: "string",
 						default: "1m",
@@ -72,8 +82,62 @@ export async function seedIntegrationDefinitions(
 					},
 				},
 			}),
+			credentialSchema: JSON.stringify({
+				type: "object",
+				properties: {
+					username: {
+						type: "string",
+						title: "Username",
+						placeholder: "admin",
+					},
+					apiKey: {
+						type: "string",
+						title: "Password / API Key",
+						format: "password",
+					},
+				},
+			}),
 			iconUrl: "https://prometheus.io/assets/prometheus_logo_grey.svg",
 			docsUrl: "https://prometheus.io/docs/prometheus/latest/querying/api/",
+			isEnabled: true,
+		},
+		{
+			name: "render",
+			displayName: "Render",
+			description:
+				"Connect to Render.com for service logs, deployment history, and infrastructure monitoring during incident investigation.",
+			category: "monitoring",
+			authType: "api_key",
+			maxConnectionsCE: 1,
+			configSchema: JSON.stringify({
+				type: "object",
+				properties: {
+					baseUrl: {
+						type: "string",
+						default: "https://api.render.com",
+						description: "Render API base URL",
+					},
+					serviceIds: {
+						type: "array",
+						items: { type: "string" },
+						description: "List of Render service IDs to monitor (e.g., srv-abc123)",
+					},
+				},
+			}),
+			credentialSchema: JSON.stringify({
+				type: "object",
+				required: ["apiKey"],
+				properties: {
+					apiKey: {
+						type: "string",
+						title: "API Key",
+						format: "password",
+						placeholder: "rnd_...",
+					},
+				},
+			}),
+			iconUrl: "https://render.com/favicon.ico",
+			docsUrl: "https://docs.render.com/api",
 			isEnabled: true,
 		},
 		{
@@ -92,10 +156,6 @@ export async function seedIntegrationDefinitions(
 						description:
 							"Default Slack channel for notifications (e.g., #incidents)",
 					},
-					webhookUrl: {
-						type: "string",
-						description: "Slack webhook URL for simple notifications",
-					},
 					mentionUsers: {
 						type: "array",
 						items: { type: "string" },
@@ -105,6 +165,19 @@ export async function seedIntegrationDefinitions(
 						type: "boolean",
 						default: true,
 						description: "Include investigation summary in notifications",
+					},
+				},
+			}),
+			credentialSchema: JSON.stringify({
+				type: "object",
+				required: ["apiKey"],
+				properties: {
+					apiKey: {
+						type: "string",
+						title: "Bot Token",
+						format: "password",
+						placeholder: "xoxb-...",
+						description: "Slack bot token with chat:write scope",
 					},
 				},
 			}),
@@ -127,6 +200,7 @@ export async function seedIntegrationDefinitions(
 				authType: def.authType,
 				maxConnectionsCE: def.maxConnectionsCE,
 				configSchema: def.configSchema,
+				credentialSchema: def.credentialSchema,
 				iconUrl: def.iconUrl,
 				docsUrl: def.docsUrl,
 				isEnabled: def.isEnabled,

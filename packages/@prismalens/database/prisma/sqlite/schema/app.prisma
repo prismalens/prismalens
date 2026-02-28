@@ -448,6 +448,7 @@ model IntegrationDefinition {
   category         String // monitoring | code_source | knowledge_base
   authType         String // api_key, oauth2, both
   configSchema     String? // JSON Schema for config fields
+  credentialSchema String? // JSON Schema describing credential fields for frontend + validation
   oauthConfig      String? // Encrypted JSON: { clientId, clientSecret, scopes, authUrl, tokenUrl }
   iconUrl          String?
   docsUrl          String?
@@ -472,7 +473,7 @@ model IntegrationConnection {
   lastHealthCheck DateTime?
   lastError       String?
   authMethod      String // api_key, oauth2
-  credentials     String // Encrypted JSON: { apiKey } or { accessToken, refreshToken, expiresAt }
+  credentials     String // Encrypted JSON — shape defined by IntegrationDefinition.credentialSchema
   config          String? // JSON: baseUrl, org, etc.
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

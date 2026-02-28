@@ -5,7 +5,7 @@ import {
 	type AlertFetchResponse,
 	type DataProvider,
 	type IncidentContext,
-	type IntegrationContext,
+	type IntegrationWithCredentials,
 	InvestigationExecutor,
 	type InvestigationConfig,
 	type InvestigationInput,
@@ -29,7 +29,6 @@ import crypto from "node:crypto";
 import { Redis } from "ioredis";
 import { config as workerConfig, redisUrl } from "./config.js";
 import { api } from "./orpc-client.js";
-import { Secret } from "./secret.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
 // =============================================================================
@@ -250,7 +249,7 @@ const NODE_PROGRESS: Record<string, number> = {
  */
 async function fetchIntegrationCredentials(
 	connectionIds: string[],
-): Promise<IntegrationContext[]> {
+): Promise<IntegrationWithCredentials[]> {
 	if (connectionIds.length === 0) return [];
 
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
@@ -290,7 +289,8 @@ async function fetchIntegrationCredentials(
 		name: item.type,
 		type: item.type,
 		enabled: true,
-		config: { ...item.config, credentials: new Secret(item.credentials) },
+		config: item.config,
+		credentials: item.credentials,
 	}));
 }
 
@@ -535,7 +535,7 @@ async function buildExecutorInput(jobData: InvestigationJobData): Promise<Invest
 
 	// Fetch integration credentials on-demand via internal API.
 	// Queue mode passes connectionIds (not decrypted credentials) in the BullMQ payload.
-	const integrations: IntegrationContext[] = await fetchIntegrationCredentials(
+	const integrations: IntegrationWithCredentials[] = await fetchIntegrationCredentials(
 		jobData.connectionIds ?? [],
 	);
 

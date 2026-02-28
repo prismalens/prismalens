@@ -2,10 +2,11 @@
  * Input types for investigation executor.
  *
  * Simplified: only incidentId + config. Scout fetches incident + alerts
- * via DataProvider at runtime. Credentials flow through RunnableConfig.configurable.
+ * via DataProvider at runtime. Credentials flow through IntegrationWithCredentials
+ * and are bound into http_request tool + workspace env at graph build time.
  */
 
-import type { IntegrationContext } from "./contexts.js"
+import type { IntegrationWithCredentials } from "./contexts.js"
 
 /**
  * Complete input to the investigation executor.
@@ -15,7 +16,7 @@ export interface InvestigationInput {
   investigationId: string
   incidentId: string
   config: InvestigationConfig
-  integrations: IntegrationContext[]
+  integrations: IntegrationWithCredentials[]
 }
 
 /**

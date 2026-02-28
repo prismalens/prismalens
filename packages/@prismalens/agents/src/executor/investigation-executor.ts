@@ -1,8 +1,9 @@
 /**
  * Investigation executor — main entry point for running investigations.
  *
- * Builds the StateGraph, injects DataProvider, and provides stream + invoke APIs.
- * Phase 5B: Real LangGraph streaming with ["tasks", "updates", "custom"] modes.
+ * Graph-per-investigation: each investigation creates a fresh graph with
+ * its own workspace directory, backend, and http_request tool bindings.
+ * Workspace is cleaned up after the investigation completes.
  */
 
 import type { RunnableConfig } from "@langchain/core/runnables"
@@ -10,13 +11,18 @@ import type { InvestigationInput } from "../types/inputs.js"
 import type { InvestigationResult } from "../types/results.js"
 import type { DataProvider } from "../providers/data-provider.js"
 import { StubDataProvider } from "../providers/data-provider.js"
-import type { AlertContext, IntegrationContext } from "../types/contexts.js"
+import type { AlertContext } from "../types/contexts.js"
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint"
 import {
   buildInvestigationGraph,
   type InvestigationGraphDeps,
 } from "../graph/investigation-graph.js"
-import { computeAvailableDataSources } from "../tools/skills/index.js"
+import { computeAvailableDataSources } from "../providers/integration-registry.js"
+import {
+  createWorkspaceDir,
+  injectSpecFiles,
+  cleanupWorkspaceDir,
+} from "../config/workspace.js"
 
 /** Raw LangGraph stream tuple: [mode, data] */
 export type StreamTuple = [string, unknown]
@@ -26,31 +32,27 @@ export type StreamTuple = [string, unknown]
  */
 export interface InvestigationExecutorDeps {
   dataProvider?: DataProvider
-  integrations?: IntegrationContext[]
   checkpointer?: BaseCheckpointSaver
 }
 
 /**
  * Investigation executor — orchestrates the investigation workflow.
  *
+ * Graph-per-investigation architecture: each stream()/execute() call builds
+ * a fresh graph with workspace and http_request tool bound to the specific
+ * investigation's integrations and credentials.
+ *
  * Provides two APIs:
  * - execute(): Synchronous invoke (backward compat)
  * - stream(): Real LangGraph streaming with native [mode, data] tuples
  */
 export class InvestigationExecutor {
-  private graph: ReturnType<typeof buildInvestigationGraph>
-  private integrations: IntegrationContext[]
+  private dataProvider: DataProvider
+  private checkpointer?: BaseCheckpointSaver
 
   constructor(deps: InvestigationExecutorDeps = {}) {
-    this.integrations = deps.integrations ?? []
-
-    const graphDeps: InvestigationGraphDeps = {
-      dataProvider: deps.dataProvider ?? new StubDataProvider(),
-      integrations: this.integrations,
-      checkpointer: deps.checkpointer,
-    }
-
-    this.graph = buildInvestigationGraph(graphDeps)
+    this.dataProvider = deps.dataProvider ?? new StubDataProvider()
+    this.checkpointer = deps.checkpointer
   }
 
   /** Default timeout: 5 minutes */
@@ -61,14 +63,19 @@ export class InvestigationExecutor {
    */
   private buildInitialState(input: InvestigationInput) {
     const availableDataSources = computeAvailableDataSources(
-      input.integrations ?? this.integrations,
+      input.integrations,
     )
+
+    // Strip apiKey from LLM config before it enters graph state.
+    // Graph state is serialized by checkpointers — API keys must not be persisted.
+    const { apiKey: _apiKey, ...safeLlmConfig } = input.config.llm
+    const safeConfig = { ...input.config, llm: safeLlmConfig }
 
     return {
       investigationId: input.investigationId,
       incidentId: input.incidentId,
-      config: input.config,
-      integrations: input.integrations ?? [],
+      config: safeConfig,
+      integrations: input.integrations,
       iterations: 0,
       lastProgressSnapshot: null,
       lastAgentResponse: null,
@@ -80,6 +87,24 @@ export class InvestigationExecutor {
       dataGaps: [] as string[],
       result: undefined,
     }
+  }
+
+  /**
+   * Build a fresh graph for an investigation with workspace and credentials.
+   */
+  private async buildGraphForInvestigation(input: InvestigationInput) {
+    // Create workspace and inject spec files
+    const workspaceDir = await createWorkspaceDir(input.investigationId)
+    await injectSpecFiles(workspaceDir, input.integrations)
+
+    const graphDeps: InvestigationGraphDeps = {
+      dataProvider: this.dataProvider,
+      integrations: input.integrations,
+      checkpointer: this.checkpointer,
+      workspaceDir,
+    }
+
+    return buildInvestigationGraph(graphDeps)
   }
 
   /**
@@ -96,9 +121,10 @@ export class InvestigationExecutor {
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
+      const graph = await this.buildGraphForInvestigation(input)
       const initialState = this.buildInitialState(input)
 
-      const finalState = await this.graph.invoke(initialState, {
+      const finalState = await graph.invoke(initialState, {
         ...config,
         signal: controller.signal,
         configurable: { ...config?.configurable },
@@ -132,6 +158,7 @@ export class InvestigationExecutor {
       }
     } finally {
       clearTimeout(timer)
+      await cleanupWorkspaceDir(input.investigationId)
     }
   }
 
@@ -155,9 +182,10 @@ export class InvestigationExecutor {
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
+      const graph = await this.buildGraphForInvestigation(input)
       const initialState = this.buildInitialState(input)
 
-      const streamIterable = await this.graph.stream(initialState, {
+      const streamIterable = await graph.stream(initialState, {
         ...config,
         signal: controller.signal,
         streamMode: ["tasks", "updates", "custom"],
@@ -181,6 +209,7 @@ export class InvestigationExecutor {
       ]
     } finally {
       clearTimeout(timer)
+      await cleanupWorkspaceDir(input.investigationId)
     }
   }
 
@@ -188,6 +217,6 @@ export class InvestigationExecutor {
    * Close the executor and clean up resources.
    */
   async close(): Promise<void> {
-    // No resources to clean up yet
+    // No persistent resources to clean up
   }
 }

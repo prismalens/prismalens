@@ -7,6 +7,7 @@ export type {
   IncidentContext,
   AlertContext,
   IntegrationContext,
+  IntegrationWithCredentials,
   SimilarIncidentMatch,
 } from "./contexts.js"
 

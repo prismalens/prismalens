@@ -1,161 +1,51 @@
 /**
- * Gatherer agent — createDeepAgent wrapper with skill-based progressive tool disclosure.
+ * Gatherer agent — createDeepAgent wrapper for data collection.
  *
- * Wraps createDeepAgent in a function node. The deep agent uses SKILL.md files
- * for progressive content disclosure and ToolGatingMiddleware for tool access
- * enforcement. Tools are hidden until the agent reads the corresponding SKILL.md.
+ * Uses http_request tool for API calls and workspace backend (execute, grep,
+ * read_file) for programmatic data processing. No custom middleware — the
+ * deepagents library handles progressive disclosure via SKILL.md files.
  *
  * Flow:
- * 1. Built-in skills middleware injects skill summaries into system prompt
- * 2. ToolGatingMiddleware hides all gated tools initially
- * 3. Agent reads SKILL.md via backend → ToolGatingMiddleware unlocks those tools
- * 4. Agent uses unlocked tools → results extracted into gatheredData
+ * 1. Agent reads SKILL.md files to learn about available integrations
+ * 2. Agent calls http_request to fetch data from external APIs
+ * 3. Agent optionally writes scripts and runs them via execute for batch operations
+ * 4. Structured response (GathererSummarySchema) captures what was gathered
  */
 
 import { createDeepAgent } from "deepagents"
 import { toolStrategy } from "langchain"
-import { isToolMessage } from "@langchain/core/messages"
 import type { BaseMessage } from "@langchain/core/messages"
 import type { RunnableConfig } from "@langchain/core/runnables"
 import type { StructuredToolInterface } from "@langchain/core/tools"
+import type { BackendProtocol } from "deepagents"
 import { createLLM } from "../../llm/factory.js"
-import {
-  loadSkillMetadata,
-  buildSkillAllowedToolsMap,
-  buildToolsFromIntegrations,
-} from "../../tools/skills/index.js"
 import { GathererSummarySchema } from "../../tools/schemas.js"
 import type { GathererSummary } from "../../tools/schemas.js"
 import { gathererPrompt } from "./prompt.js"
-import { createDeepAgentConfig } from "../../config/deep-agent-defaults.js"
-import type { InvestigationState, GatheredData } from "../../types/state.js"
-import type { IntegrationContext } from "../../types/contexts.js"
-
-export { GathererStateAnnotation } from "./state.js"
-export type { GathererState } from "./state.js"
-export { gathererPrompt, GATHERER_PROMPT } from "./prompt.js"
+import type { InvestigationState } from "../../types/state.js"
 
 /**
- * Array-typed fields of GatheredData that tools can populate.
- * The `coverage` and `metrics`/`changeEvents` fields are NOT tool-populated:
- * - `coverage` is set by the scout node
- * - `metrics` and `changeEvents` are populated by the scout via DataProvider
+ * Dependencies for creating the gatherer node.
  */
-type ToolPopulatedField = "logs" | "commits" | "deployments" | "codeSearchResults" | "similarIncidents"
-
-/**
- * Static map from tool name to GatheredData field and expected data key.
- * Adding a new tool is a single line addition.
- */
-const TOOL_DATA_MAP: Record<string, { field: ToolPopulatedField; dataKey: string }> = {
-  search_logs:                { field: "logs",              dataKey: "logs" },
-  analyze_log_patterns:       { field: "logs",              dataKey: "patterns" },
-  search_code:                { field: "codeSearchResults", dataKey: "results" },
-  get_file_content:           { field: "codeSearchResults", dataKey: "content" },
-  get_recent_commits:         { field: "commits",           dataKey: "commits" },
-  get_deployment_history:     { field: "deployments",       dataKey: "deployments" },
-  search_similar_resolutions: { field: "similarIncidents",  dataKey: "resolutions" },
-  lookup_runbook:             { field: "similarIncidents",  dataKey: "runbook" },
-}
-
-/**
- * Safely parse JSON from tool message content.
- * Handles both string and pre-parsed object content.
- */
-function safeJsonParse(content: unknown): Record<string, unknown> | null {
-  if (content != null && typeof content === "object" && !Array.isArray(content)) {
-    return content as Record<string, unknown>
-  }
-  if (typeof content !== "string") return null
-  try {
-    const parsed = JSON.parse(content)
-    if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Append data to an array-typed field of GatheredData.
- */
-function appendToField(
-  target: GatheredData,
-  field: ToolPopulatedField,
-  existing: unknown[],
-  data: unknown,
-): void {
-  ;(target as Record<string, unknown>)[field] = Array.isArray(data)
-    ? [...existing, ...data]
-    : [...existing, data]
-}
-
-/**
- * Extract structured gatheredData from agent messages.
- *
- * Scans ToolMessage instances, parses content by tool name,
- * and merges additively into the existing GatheredData.
- */
-export function extractGatheredData(
-  messages: BaseMessage[],
-  existingData: GatheredData,
-): GatheredData {
-  const result: GatheredData = { ...existingData }
-
-  for (const msg of messages) {
-    if (!isToolMessage(msg)) continue
-
-    const toolName = msg.name
-    if (!toolName) continue
-
-    const mapping = TOOL_DATA_MAP[toolName]
-    if (!mapping) continue
-
-    const parsed = safeJsonParse(msg.content)
-    if (!parsed) continue
-
-    const data = parsed[mapping.dataKey]
-    if (data == null) continue
-
-    const existing = (result[mapping.field] as unknown[] | undefined) ?? []
-    appendToField(result, mapping.field, existing, data)
-  }
-
-  return result
+export interface GathererNodeDeps {
+  backend: BackendProtocol
+  httpRequestTool: StructuredToolInterface
+  mcpTools: StructuredToolInterface[]
+  skills: string[]
 }
 
 /**
  * Create the gatherer function node.
  *
- * Loads skills + builds tool maps at build time (closure). Creates a
- * createDeepAgent per invocation since LLM config and systemPrompt
- * depend on runtime state. ToolGatingMiddleware enforces progressive
- * tool disclosure based on which SKILL.md files the agent reads.
- *
- * @param integrations - Active integration contexts for skill loading
- * @param mcpTools - Additional MCP tools to bind alongside skill tools
+ * @param deps - Backend, tools, and skills paths from the investigation graph
  */
-export function createGathererNode(
-  integrations: IntegrationContext[],
-  mcpTools: StructuredToolInterface[] = [],
-) {
-  // Build-time: load skill metadata, build tool maps, create config
-  const agentConfig = createDeepAgentConfig("gatherer")
-  const skills = loadSkillMetadata(integrations)
-  const skillAllowedTools = buildSkillAllowedToolsMap(skills)
-  const customTools = buildToolsFromIntegrations(integrations)
-  const allAvailableTools = [...customTools, ...mcpTools]
+export function createGathererNode(deps: GathererNodeDeps) {
+  const { backend, httpRequestTool, mcpTools, skills } = deps
 
   return async (
     state: InvestigationState,
     config?: RunnableConfig,
   ): Promise<Partial<InvestigationState>> => {
-    // Per-invocation: fresh loaded skills tracker + middleware
-    const loadedSkillNames: string[] = []
-    const middleware = agentConfig.createMiddleware(loadedSkillNames, skillAllowedTools)
-
     // Build systemPrompt from incident context
     const gd = state.gatheredData ?? {}
     const existingDataFields: string[] = []
@@ -175,7 +65,7 @@ export function createGathererNode(
               (r, i) =>
                 `${i + 1}. [${r.priority}] ${r.source}${r.targets ? ` for ${r.targets.join(", ")}` : ""}${r.query ? ` — query: "${r.query}"` : ""}\n   Reason: ${r.reasoning}`,
             )
-            .join("\n")}\n\nPrioritize fulfilling these requests. Use the appropriate tools to fetch this data.`
+            .join("\n")}\n\nPrioritize fulfilling these requests. Use http_request or execute scripts to fetch this data.`
         : ""
 
     const systemPrompt =
@@ -187,18 +77,15 @@ export function createGathererNode(
       }) + targetedInstructions
 
     try {
-      // Create agent per invocation (LLM + prompt + middleware depend on state)
       const agent = createDeepAgent({
         model: createLLM(state.config.llm),
-        tools: allAvailableTools,
+        tools: [httpRequestTool, ...mcpTools],
         systemPrompt,
-        skills: agentConfig.skillsSources,
-        backend: agentConfig.backend,
-        middleware,
+        skills,
+        backend,
         responseFormat: toolStrategy(GathererSummarySchema),
       })
 
-      // Invoke agent with empty messages (system prompt provides context)
       // Two-step assertion avoids TS2589 "excessively deep" from createDeepAgent generics
       const invokeAgent = agent as unknown as {
         invoke(
@@ -211,17 +98,8 @@ export function createGathererNode(
         config ? { signal: config.signal } : undefined,
       )
 
-      // Extract structured data from tool messages
-      const gatheredData = extractGatheredData(result.messages, gd)
-
-      // Merge structured response dataGaps into existing coverage
+      // Structured response provides the gatherer's summary
       const structuredResponse = result.structuredResponse as GathererSummary | undefined
-      if (structuredResponse?.dataGaps && gatheredData.coverage) {
-        gatheredData.coverage = {
-          ...gatheredData.coverage,
-          dataGaps: structuredResponse.dataGaps,
-        }
-      }
 
       // Build self-assessment from structured response
       const lastAgentResponse = {
@@ -238,15 +116,13 @@ export function createGathererNode(
       }
 
       return {
-        gatheredData,
-        skillsLoaded: loadedSkillNames,
+        gatheredData: gd,
         lastAgentResponse,
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       return {
         gatheredData: gd,
-        skillsLoaded: loadedSkillNames,
         lastAgentResponse: {
           agent: "gatherer" as const,
           status: "blocked" as const,

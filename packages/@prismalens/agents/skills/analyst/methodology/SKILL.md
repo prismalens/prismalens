@@ -1,6 +1,6 @@
 ---
 name: methodology
-description: Root cause analysis methodology — form hypotheses, evaluate evidence, challenge
+description: Root cause analysis methodology — form hypotheses, evaluate evidence, investigate code, challenge
 allowed-tools:
 ---
 
@@ -29,7 +29,20 @@ Consider these evidence sources:
 - Change events: deployments, config changes near incident time
 - Similar incidents: past root causes and resolutions
 
-## 3. Challenge Hypotheses
+## 3. Code Investigation
+
+Use workspace tools to gather verified evidence:
+
+- **Clone the repository** into `/workspace/` if code analysis is needed
+- **Search code** for error strings, affected function names, config keys using `grep`
+- **Read suspicious files** to understand the code path that triggered the error
+- **Check recent changes**: compare code before/after a suspect commit
+- **Write analysis scripts** for batch operations (e.g., scanning multiple files for a pattern)
+
+Evidence produced by tools (grep matches, script output) is `verified: true`
+and weighted more heavily by the scoring formula.
+
+## 4. Challenge Hypotheses
 
 Actively search for contradictions to avoid confirmation bias:
 - Temporal inconsistency: does the timeline support the causal chain?
@@ -37,8 +50,9 @@ Actively search for contradictions to avoid confirmation bias:
 - Missing expected evidence: if hypothesis X were true, what should we see that we don't?
 - Alternative explanations: could the same evidence support a different root cause?
 
-## 4. Produce Results
+## 5. Produce Results
 
 Report all hypotheses with confidence scores, evidence (with verified flags),
 contradictions, data gaps, and a summary assessment.
 Be honest about confidence — unverified hypotheses should have low confidence.
+With verified evidence from tool use, higher confidence is justified.

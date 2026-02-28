@@ -1,6 +1,6 @@
 ---
 name: remediation
-description: Evidence-based remediation — propose fixes grounded in precedent, assess risk
+description: Evidence-based remediation — propose fixes grounded in precedent, validate, assess risk
 allowed-tools:
 ---
 
@@ -36,7 +36,18 @@ For each recommendation:
 
 Order recommendations by urgency — immediate actions first.
 
-## 4. Assess Risk Per Recommendation
+## 4. Validate Recommendations
+
+Use workspace tools to verify feasibility before finalizing:
+
+- **Write a test script** that checks if the proposed fix would work
+- **Apply the fix** in the workspace and run the project's test suite
+- **Check service state** via `http_request` to confirm the current situation
+- **Run a minimal validation** — even a quick sanity check adds confidence
+
+Note validation results in your recommendation steps.
+
+## 5. Assess Risk Per Recommendation
 
 For each recommendation, evaluate:
 - **Risk level**: critical/high/medium/low — what could go wrong?
@@ -45,9 +56,10 @@ For each recommendation, evaluate:
 
 High-risk + irreversible = flag clearly. Prefer reversible actions.
 
-## 5. Honest Assessment
+## 6. Honest Assessment
 
 Be transparent about limitations:
 - If root cause confidence is low, say so
 - If recommending novel approaches (no precedent), acknowledge higher uncertainty
 - If the fix addresses symptoms but not root cause, note it
+- If validation passed, note it — this increases recommendation confidence

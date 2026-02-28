@@ -83,7 +83,7 @@ export interface AlertContext {
 
 /**
  * Integration context — non-sensitive configuration only.
- * Credentials are passed via RunnableConfig.configurable, NOT in state.
+ * Used in graph state where credentials must not be serialized.
  */
 export interface IntegrationContext {
   id: string
@@ -91,6 +91,17 @@ export interface IntegrationContext {
   type: string
   enabled: boolean
   config: Record<string, unknown>
+}
+
+/**
+ * Integration context with decrypted credentials.
+ *
+ * Bridges queue service data (DB credentials) to the agents package.
+ * Used at graph build time to create http_request tool + workspace env vars.
+ * Never serialized to graph state or checkpoints.
+ */
+export interface IntegrationWithCredentials extends IntegrationContext {
+  credentials: Record<string, unknown>
 }
 
 /**

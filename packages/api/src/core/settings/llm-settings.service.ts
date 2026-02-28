@@ -2,8 +2,6 @@ import { Injectable, Inject, forwardRef, Logger } from "@nestjs/common";
 import {
 	createLLM,
 	type LLMProviderConfig,
-	getModelsForProvider,
-	getModelsRegistry,
 } from "@prismalens/agents";
 import { LLM_PROVIDERS, getApiKeyEnvVar, type LLMProviderId } from "@prismalens/config/llm";
 import type {
@@ -176,18 +174,8 @@ export class LlmSettingsService {
 		return updated;
 	}
 
-	async getAvailableModels(provider?: string) {
-		try {
-			if (provider) {
-				const models = await getModelsForProvider(provider);
-				return { models };
-			}
-			const models = await getModelsRegistry();
-			return { models };
-		} catch (error) {
-			this.logger.error("Failed to fetch models from registry:", error);
-			return { models: [] };
-		}
+	async getAvailableModels(_provider?: string) {
+		return { models: [] };
 	}
 
 	async testLlmConnectionWithEnv(

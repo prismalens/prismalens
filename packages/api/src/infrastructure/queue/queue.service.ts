@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
-	type IntegrationContext as AgentIntegrationContext,
+	type IntegrationWithCredentials,
 	InvestigationExecutor,
 	type InvestigationInput,
 	type InvestigationResult,
@@ -30,17 +30,7 @@ import { StreamRelayService } from "../../modules/investigations/stream-relay.se
 import { CheckpointerProvider } from "../../core/checkpointer/checkpointer.provider.js";
 import { InvestigationSemaphore } from "./investigation-semaphore.js";
 import { DirectDataProvider } from "./direct-data-provider.js";
-
-/**
- * Integration context for worker (matches worker IntegrationContext)
- */
-export interface IntegrationContext {
-	type: string;
-	connectionId: string;
-	credentials: Record<string, unknown>;
-	config: Record<string, unknown>;
-	serviceOverrides?: Record<string, unknown>;
-}
+import type { IntegrationContext } from "../../modules/integrations/integrations.service.js";
 
 /**
  * Job data for investigation queue (incident-centric)
@@ -54,9 +44,9 @@ export interface InvestigationJobData {
 	investigationId: string;
 	priority?: "low" | "normal" | "high" | "critical";
 	context?: Record<string, unknown>;
-	/** @deprecated Use connectionIds instead - credentials should not be in Redis */
+	/** Regular mode: integrations with decrypted credentials for direct execution */
 	integrations?: IntegrationContext[];
-	/** Connection IDs for integration credentials - worker fetches on-demand */
+	/** Queue mode: connection IDs — worker fetches credentials on-demand */
 	connectionIds?: string[];
 	incidentData?: Record<string, unknown>;
 	alerts?: unknown[];
@@ -424,14 +414,16 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	/**
 	 * Build executor input from job data.
 	 *
-	 * Simplified: scout fetches incident + alerts via DataProvider at runtime.
-	 * Only passes identifiers, config, and non-sensitive integration metadata.
+	 * Passes integrations with credentials so the agents package can:
+	 * - Bind http_request tool with auth headers
+	 * - Set workspace env vars for execute scripts
+	 * Credentials are never serialized to graph state or checkpoints.
 	 */
 	private buildExecutorInput(
 		jobData: InvestigationJobData,
 	): InvestigationInput {
-		// Map integrations to agent IntegrationContext (non-sensitive metadata only)
-		const integrations: AgentIntegrationContext[] = (
+		// Map integrations with credentials for http_request tool + workspace env
+		const integrations: IntegrationWithCredentials[] = (
 			jobData.integrations || []
 		).map((int) => ({
 			id: int.connectionId,
@@ -439,6 +431,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			type: int.type,
 			enabled: true,
 			config: int.config,
+			credentials: int.credentials,
 		}));
 
 		// LLM config from env vars — API key resolved by LLM factory from process.env
