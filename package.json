@@ -12,7 +12,7 @@
 		"postinstall": "pnpm rebuild better-sqlite3 2>/dev/null || true",
 		"build": "turbo run build",
 		"build:dist": "pnpm --filter prismalens build",
-		"dev": "if [ \"$PRISMALENS_MODE\" = \"queue\" ]; then turbo run dev; else turbo run dev --filter=!@prismalens/worker; fi",
+		"dev": "turbo run dev",
 		"dev:api": "turbo run dev --filter=@prismalens/api",
 		"dev:frontend": "turbo run dev --filter=@prismalens/frontend",
 		"lint": "turbo run lint",

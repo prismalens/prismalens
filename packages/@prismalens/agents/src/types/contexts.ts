@@ -2,7 +2,7 @@
  * Core context types for incident investigation.
  *
  * These types align with the database schema (app.prisma) and match
- * what DirectDataProvider and WorkerDataProvider actually map.
+ * what WorkerDataProvider actually maps.
  */
 
 import type {
@@ -106,7 +106,7 @@ export interface IntegrationWithCredentials extends IntegrationContext {
 
 /**
  * Similar incident match from historical data.
- * Includes fields mapped by both DirectDataProvider and WorkerDataProvider.
+ * Includes fields mapped by WorkerDataProvider.
  */
 export interface SimilarIncidentMatch {
   incidentId: string

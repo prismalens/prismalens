@@ -6,8 +6,8 @@
  *
  * Requires:
  * - LANGSMITH_API_KEY — LangSmith API key
- * - LLM_PROVIDER — e.g., "anthropic" (no default)
- * - LLM_MODEL — e.g., "claude-haiku-4-5-20251001" (no default)
+ * - PRISMALENS_LLM_PROVIDER — e.g., "anthropic" (no default)
+ * - PRISMALENS_LLM_MODEL — e.g., "claude-haiku-4-5-20251001" (no default)
  * - ANTHROPIC_API_KEY (or provider-specific key)
  *
  * Run:

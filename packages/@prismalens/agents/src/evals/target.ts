@@ -10,11 +10,11 @@
 
 import { randomUUID } from "node:crypto"
 import { InvestigationExecutor } from "../executor/investigation-executor.js"
-import { buildIntegrationsFromEnv } from "../providers/integration-registry.js"
 import type { DataProvider } from "../providers/data-provider.js"
+import { buildIntegrationsFromEnv } from "../providers/integration-registry.js"
 import type { IntegrationWithCredentials } from "../types/contexts.js"
-import type { InvestigationResult } from "../types/results.js"
 import type { InvestigationInput, LLMProviderConfig } from "../types/inputs.js"
+import type { InvestigationResult } from "../types/results.js"
 
 /**
  * Output shape returned by the eval target for evaluators to consume.
@@ -34,19 +34,19 @@ interface EvalTargetOptions {
 
 /**
  * Build LLM config from environment variables.
- * Requires LLM_PROVIDER and LLM_MODEL — no defaults.
+ * Requires PRISMALENS_LLM_PROVIDER and PRISMALENS_LLM_MODEL — no defaults.
  */
 export function buildLLMConfig(): LLMProviderConfig {
-  const provider = process.env.LLM_PROVIDER
-  const model = process.env.LLM_MODEL
+  const provider = process.env.PRISMALENS_LLM_PROVIDER
+  const model = process.env.PRISMALENS_LLM_MODEL
 
   if (!provider || !model) {
     throw new Error(
-      "LLM_PROVIDER and LLM_MODEL env vars are required for evals (no defaults)",
+      "PRISMALENS_LLM_PROVIDER and PRISMALENS_LLM_MODEL env vars are required for evals (no defaults)",
     )
   }
 
-  const baseURL = process.env.LLM_BASE_URL
+  const baseURL = process.env.PRISMALENS_LLM_BASE_URL
 
   return {
     provider: provider as LLMProviderConfig["provider"],

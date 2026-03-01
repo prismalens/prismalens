@@ -254,8 +254,7 @@ async function fetchIntegrationCredentials(
 
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
 	if (!internalSecret) {
-		logger.warn("PRISMALENS_INTERNAL_SECRET not set — cannot fetch integration credentials");
-		return [];
+		throw new Error("PRISMALENS_INTERNAL_SECRET not set — cannot fetch integration credentials");
 	}
 
 	const url = new URL("/internal/integrations/credentials", workerConfig.PRISMALENS_WORKER_API_URL);
@@ -292,6 +291,44 @@ async function fetchIntegrationCredentials(
 		config: item.config,
 		credentials: item.credentials,
 	}));
+}
+
+/**
+ * Fetch LLM configuration from the API.
+ * Returns the active provider, model, and API key env var.
+ * SECURITY: API key only lives in-memory during execution.
+ */
+async function fetchLlmConfig(): Promise<{
+	provider: string | null;
+	model: string | null;
+	credentials: Record<string, string>;
+}> {
+	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
+	if (!internalSecret) {
+		throw new Error("PRISMALENS_INTERNAL_SECRET not set — cannot fetch LLM config");
+	}
+
+	const url = new URL("/internal/settings/llm-credentials", workerConfig.PRISMALENS_WORKER_API_URL);
+
+	const response = await fetch(url.toString(), {
+		headers: {
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		signal: AbortSignal.timeout(10_000),
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`Failed to fetch LLM config from API: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	return response.json() as Promise<{
+		provider: string | null;
+		model: string | null;
+		credentials: Record<string, string>;
+	}>;
 }
 
 /**
@@ -341,6 +378,9 @@ async function processJobInternal(
 		},
 	});
 
+	// Track env vars set for LLM credentials — restored in finally block
+	const previousEnv: Record<string, string | undefined> = {};
+
 	try {
 		// 1. Generate thread ID and update status to running
 		const threadId = crypto.randomUUID();
@@ -360,9 +400,16 @@ async function processJobInternal(
 			metadata: { investigationId: data.investigationId },
 		});
 
-		// 3. Build input for executor (async - fetches incident)
+		// 3. Build input for executor (async - fetches incident + LLM config)
 		const executor = await getExecutor();
-		const input = await buildExecutorInput(data);
+		const { input, llmCredentials } = await buildExecutorInput(data);
+
+		// Set LLM API keys in process.env so LangChain SDKs can resolve them.
+		// Saved/restored in finally block to avoid leaking between jobs.
+		for (const [key, value] of Object.entries(llmCredentials)) {
+			previousEnv[key] = process.env[key];
+			process.env[key] = value;
+		}
 
 		await job.updateProgress({
 			percent: 5,
@@ -489,14 +536,27 @@ async function processJobInternal(
 		}
 
 		throw error;
+	} finally {
+		// Restore process.env to prevent credential leakage between jobs
+		for (const [key, prevValue] of Object.entries(previousEnv)) {
+			if (prevValue === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = prevValue;
+			}
+		}
 	}
 }
 
 /**
  * Build executor input from job data.
- * Now async to fetch incident context.
+ * Returns the investigation input plus LLM credentials for env management.
+ * Caller is responsible for setting/cleaning up process.env with the credentials.
  */
-async function buildExecutorInput(jobData: InvestigationJobData): Promise<InvestigationInput> {
+async function buildExecutorInput(jobData: InvestigationJobData): Promise<{
+	input: InvestigationInput;
+	llmCredentials: Record<string, string>;
+}> {
 	// Fetch incident context via API - REQUIRED for investigation
 	const incidentData = await dataProvider.fetchIncident(jobData.incidentId);
 	if (!incidentData) {
@@ -533,25 +593,42 @@ async function buildExecutorInput(jobData: InvestigationJobData): Promise<Invest
 		};
 	});
 
-	// Fetch integration credentials on-demand via internal API.
-	// Queue mode passes connectionIds (not decrypted credentials) in the BullMQ payload.
-	const integrations: IntegrationWithCredentials[] = await fetchIntegrationCredentials(
-		jobData.connectionIds ?? [],
-	);
+	// Fetch integration credentials and LLM config in parallel via internal API.
+	// Both are independent calls — no need to serialize them.
+	const [integrations, llmConfig] = await Promise.all([
+		fetchIntegrationCredentials(jobData.connectionIds ?? []),
+		fetchLlmConfig(),
+	]);
 
-	// Build LLM config from environment — API key resolved by LLM factory from process.env
+	if (!llmConfig?.provider || !llmConfig?.model) {
+		throw new Error(
+			"LLM not configured: no active provider/model found. " +
+			"Configure via Settings UI or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL env vars.",
+		);
+	}
+
+	if (!llmConfig.credentials || Object.keys(llmConfig.credentials).length === 0) {
+		throw new Error(
+			`LLM API key not configured for provider "${llmConfig.provider}". ` +
+			"Configure via Settings UI or set the provider's API key env var.",
+		);
+	}
+
 	const config: InvestigationConfig = {
 		llm: {
-			provider: (process.env.LLM_PROVIDER as "anthropic" | "openai" | "ollama") || "anthropic",
-			model: process.env.LLM_MODEL || "claude-sonnet-4-20250514",
+			provider: llmConfig.provider as InvestigationConfig["llm"]["provider"],
+			model: llmConfig.model,
 		},
 	};
 
 	return {
-		investigationId: jobData.investigationId,
-		incidentId: jobData.incidentId,
-		config,
-		integrations,
+		input: {
+			investigationId: jobData.investigationId,
+			incidentId: jobData.incidentId,
+			config,
+			integrations,
+		},
+		llmCredentials: llmConfig.credentials,
 	};
 }
 

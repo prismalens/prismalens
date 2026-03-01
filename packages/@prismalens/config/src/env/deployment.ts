@@ -72,13 +72,6 @@ export const deploymentSchema = z.object({
 		.preprocess((val) => val === "true" || val === true, z.boolean())
 		.default(true)
 		.describe("Use TLS for SMTP connection (default: true)"),
-
-	PRISMALENS_MODE: z
-		.enum(["regular", "queue"])
-		.default("regular")
-		.describe(
-			"Investigation mode: regular (no Redis, HTTP dispatch) or queue (Redis-backed BullMQ)",
-		),
 });
 
 export type DeploymentConfig = z.infer<typeof deploymentSchema>;

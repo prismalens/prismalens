@@ -1,8 +1,7 @@
 /**
  * DataProvider interface — abstraction for fetching incident data.
  *
- * Two implementations exist outside this package:
- * - DirectDataProvider (API package): Direct database access via NestJS services
+ * Implementation:
  * - WorkerDataProvider (Worker package): oRPC calls to the API
  *
  * Scout node uses DataProvider to fetch incident + alerts at investigation start.

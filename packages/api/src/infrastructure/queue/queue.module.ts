@@ -1,69 +1,57 @@
-import { BullModule } from "@nestjs/bullmq";
-import { type DynamicModule, Global, Logger, Module, forwardRef } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
-import { getConfig, buildRedisOptions } from "@prismalens/config";
-import * as IORedis from "ioredis";
-import { ChangeEventsModule } from "../../modules/change-events/change-events.module.js";
-import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
-import { QueueService } from "./queue.service.js";
+import { BullModule } from '@nestjs/bullmq';
+import {
+  type DynamicModule,
+  Global,
+  Logger,
+  Module,
+  forwardRef,
+} from '@nestjs/common';
+import { buildRedisOptions, getConfig } from '@prismalens/config';
+import * as IORedis from 'ioredis';
+import { InvestigationsModule } from '../../modules/investigations/investigations.module.js';
+import { QueueService } from './queue.service.js';
 
 const config = getConfig();
-const logger = new Logger("QueueModule");
+const logger = new Logger('QueueModule');
 
 /**
- * Build Redis connection for queue mode.
- * Only called when PRISMALENS_WORKER_MODE === 'queue'.
+ * Build Redis connection for BullMQ.
  */
 function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
-	if (config.PRISMALENS_REDIS_CLUSTER_NODES) {
-		const nodes = config.PRISMALENS_REDIS_CLUSTER_NODES.split(",").map(
-			(node) => {
-				const [host, port] = node.split(":");
-				return { host, port: parseInt(port, 10) };
-			},
-		);
-		const opts = buildRedisOptions(config);
-		return new IORedis.Cluster(nodes, { redisOptions: opts });
-	}
-	return new IORedis.Redis(buildRedisOptions(config));
+  if (config.PRISMALENS_REDIS_CLUSTER_NODES) {
+    const nodes = config.PRISMALENS_REDIS_CLUSTER_NODES.split(',').map(
+      (node) => {
+        const [host, port] = node.split(':');
+        return { host, port: parseInt(port, 10) };
+      },
+    );
+    const opts = buildRedisOptions(config);
+    return new IORedis.Cluster(nodes, { redisOptions: opts });
+  }
+  return new IORedis.Redis(buildRedisOptions(config));
 }
 
 /**
- * Queue module with conditional BullMQ import based on worker mode.
- *
- * - regular mode: Direct execution via @prismalens/agents (no Redis)
- * - queue mode: Uses BullMQ with Redis for job queuing
+ * Queue module — always initializes BullMQ with Redis.
+ * Redis is a hard dependency for investigation job processing.
  */
 @Global()
 @Module({})
 export class QueueModule {
-	static forRoot(): DynamicModule {
-		const workerMode = config.PRISMALENS_MODE;
-		const imports: any[] = [
-			ConfigModule,
-			forwardRef(() => InvestigationsModule),
-			ChangeEventsModule,
-		];
+  static forRoot(): DynamicModule {
+    logger.log('Initializing BullMQ with Redis connection');
+    const redisConnection = buildRedisConnection();
 
-		if (workerMode === "queue") {
-			logger.log("Queue mode: Initializing BullMQ with Redis connection");
-			const redisConnection = buildRedisConnection();
-			imports.push(
-				BullModule.forRoot({
-					connection: redisConnection,
-				}),
-			);
-		} else {
-			logger.log(
-				"Regular mode: Using @prismalens/agents directly (no Redis required)",
-			);
-		}
-
-		return {
-			module: QueueModule,
-			imports,
-			providers: [QueueService],
-			exports: [QueueService],
-		};
-	}
+    return {
+      module: QueueModule,
+      imports: [
+        forwardRef(() => InvestigationsModule),
+        BullModule.forRoot({
+          connection: redisConnection,
+        }),
+      ],
+      providers: [QueueService],
+      exports: [QueueService],
+    };
+  }
 }

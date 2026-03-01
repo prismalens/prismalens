@@ -3,8 +3,10 @@
 # Access: http://localhost:5367
 #
 # Note: For active development, prefer running services separately:
-#   Terminal 1: pnpm dev:frontend (http://localhost:3000)
+#   Terminal 1: redis-server
 #   Terminal 2: pnpm dev:api (http://localhost:3001)
+#   Terminal 3: pnpm dev:worker
+#   Terminal 4: pnpm dev:frontend (http://localhost:3000)
 
 services:
   # Caddy reverse proxy - unified entry point on port 5367
@@ -37,6 +39,21 @@ services:
     networks:
       - prismalens
 
+  # Redis — required for BullMQ job queue
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - prismalens
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # NestJS API backend (development mode)
   api:
     build:
@@ -49,12 +66,41 @@ services:
       - NODE_ENV=development
       - PRISMALENS_PORT=3001
       - PRISMALENS_HOST=0.0.0.0
+      - PRISMALENS_REDIS_HOST=redis
+      - PRISMALENS_INTERNAL_SECRET=${PRISMALENS_INTERNAL_SECRET}
       - DATABASE_URL=${DATABASE_URL:-file:./prismalens.db}
     volumes:
       - ./packages/api/src:/app/packages/api/src:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - prismalens
+
+  # BullMQ worker (development mode)
+  worker:
+    build:
+      context: .
+      dockerfile: docker/images/worker/Dockerfile
+      target: dev
+    environment:
+      - NODE_ENV=development
+      - PRISMALENS_REDIS_HOST=redis
+      - PRISMALENS_WORKER_API_URL=http://api:3001/api
+      - PRISMALENS_INTERNAL_SECRET=${PRISMALENS_INTERNAL_SECRET}
+    volumes:
+      - ./packages/worker/src:/app/packages/worker/src:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
     networks:
       - prismalens
 
 networks:
   prismalens:
     driver: bridge
+
+volumes:
+  redis_data:
