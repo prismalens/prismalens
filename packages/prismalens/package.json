@@ -53,15 +53,10 @@
 		"@prismalens/config": "workspace:*",
 		"chalk": "^5.3.0",
 		"commander": "^13.0.0",
-		"dotenv": "^16.4.7",
-		"ora": "^8.1.1",
-		"semver": "^7.6.0",
-		"source-map-support": "^0.5.21"
+		"ora": "^8.1.1"
 	},
 	"devDependencies": {
 		"@types/node": "^22.10.2",
-		"@types/semver": "^7.5.8",
-		"@types/source-map-support": "^0.5.10",
 		"tsup": "^8.3.5",
 		"tsx": "^4.19.2",
 		"typescript": "^5.7.2"

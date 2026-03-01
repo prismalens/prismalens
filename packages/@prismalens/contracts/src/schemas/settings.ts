@@ -16,8 +16,7 @@ import { z } from "zod";
 // =============================================================================
 
 /**
- * Provider ID schema - imported from @prismalens/config
- * Re-exported for backwards compatibility
+ * Provider ID schema - canonical re-export from @prismalens/config
  */
 export const LlmProviderIdSchema = llmProviderIdSchema;
 export type LlmProviderId = LLMProviderId;
@@ -240,13 +239,6 @@ export type DangerOperationResult = z.infer<typeof DangerOperationResultSchema>;
 // =============================================================================
 
 /**
- * Extended provider IDs - imported from @prismalens/config
- * (Same as LlmProviderIdSchema, kept for backwards compatibility)
- */
-export const LlmProviderIdExtendedSchema = llmProviderIdSchema;
-export type LlmProviderIdExtended = LLMProviderId;
-
-/**
  * Agent IDs for per-agent overrides - imported from @prismalens/agents
  */
 export const AgentIdSchema = agentIdSchema;
@@ -280,8 +272,8 @@ export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
  * Full LLM settings structure stored in DB
  */
 export const LlmSettingsSchema = z.object({
-	activeProvider: LlmProviderIdExtendedSchema.nullable(),
-	providers: z.record(LlmProviderIdExtendedSchema, LlmProviderConfigSchema),
+	activeProvider: LlmProviderIdSchema.nullable(),
+	providers: z.record(LlmProviderIdSchema, LlmProviderConfigSchema),
 	agentOverrides: z
 		.record(AgentIdSchema, AgentOverrideConfigSchema)
 		.optional(),
@@ -302,7 +294,7 @@ export type LlmProviderEnvStatus = z.infer<typeof LlmProviderEnvStatusSchema>;
  * Full environment status response
  */
 export const LlmEnvStatusResponseSchema = z.object({
-	providers: z.record(LlmProviderIdExtendedSchema, LlmProviderEnvStatusSchema),
+	providers: z.record(LlmProviderIdSchema, LlmProviderEnvStatusSchema),
 	activeEnvProvider: z.string().nullable(), // From LLM_PROVIDER env var
 });
 export type LlmEnvStatusResponse = z.infer<typeof LlmEnvStatusResponseSchema>;
@@ -311,9 +303,9 @@ export type LlmEnvStatusResponse = z.infer<typeof LlmEnvStatusResponseSchema>;
  * Update LLM settings input
  */
 export const UpdateLlmSettingsSchema = z.object({
-	activeProvider: LlmProviderIdExtendedSchema.optional(),
+	activeProvider: LlmProviderIdSchema.optional(),
 	providers: z
-		.record(LlmProviderIdExtendedSchema, LlmProviderConfigSchema.partial())
+		.record(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
 		.optional(),
 	agentOverrides: z
 		.record(AgentIdSchema, AgentOverrideConfigSchema)
@@ -358,7 +350,7 @@ export type ModelsListResponse = z.infer<typeof ModelsListResponseSchema>;
  * Test LLM connection input - uses env var for API key
  */
 export const TestLlmConnectionInputSchema = z.object({
-	provider: LlmProviderIdExtendedSchema,
+	provider: LlmProviderIdSchema,
 	model: z.string().optional(),
 });
 export type TestLlmConnectionInput = z.infer<typeof TestLlmConnectionInputSchema>;

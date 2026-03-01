@@ -42,6 +42,27 @@ Use workspace tools to gather verified evidence:
 Evidence produced by tools (grep matches, script output) is `verified: true`
 and weighted more heavily by the scoring formula.
 
+### Code Investigation Workflow
+
+1. Clone → `execute("git clone <url> /workspace/repo")`
+2. Search → `grep("ConnectionTimeout|ECONNREFUSED", "/workspace/repo/src")`
+3. Read → `read_file("/workspace/repo/src/config/database.ts")`
+4. Script → `write_file("/workspace/analyze.py", ...)` then `execute("python3 /workspace/analyze.py")`
+
+### Best Practices
+
+- **Grep broadly, then narrow**: Start with broad error strings, drill into specific files
+- **Use scripts for batch work**: Write Python/Node scripts for operations needing many tool calls
+- **Keep output small**: Scripts should filter/aggregate results, not dump raw data
+- **Check gatherer scripts**: `ls("/skills/gatherer/")` for reusable script templates
+
+### Web Research
+
+Use `web_search` and `web_browse` to find known issues and documentation:
+- Search for error messages to find matching GitHub issues or Stack Overflow answers
+- Browse documentation pages for configuration options or known limitations
+- Cross-reference findings with gathered data to strengthen or weaken hypotheses
+
 ## 4. Challenge Hypotheses
 
 Actively search for contradictions to avoid confirmation bias:

@@ -14,7 +14,6 @@ import { z } from "zod";
  * OPENAI_API_KEY=sk-...
  * GOOGLE_API_KEY=AIza...
  * GROQ_API_KEY=gsk_...
- * OPENROUTER_API_KEY=sk-or-...
  *
  * # Ollama configuration (optional)
  * PRISMALENS_OLLAMA_BASE_URL=http://localhost:11434
@@ -26,8 +25,6 @@ export const llmEnvSchema = z.object({
 	OPENAI_API_KEY: z.string().optional().describe("OpenAI API key"),
 	GOOGLE_API_KEY: z.string().optional().describe("Google Gemini API key"),
 	GROQ_API_KEY: z.string().optional().describe("Groq API key"),
-	OPENROUTER_API_KEY: z.string().optional().describe("OpenRouter API key"),
-	NVIDIA_API_KEY: z.string().optional().describe("NVIDIA NIM API key"),
 	OLLAMA_API_KEY: z
 		.string()
 		.optional()

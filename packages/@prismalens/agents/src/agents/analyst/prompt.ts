@@ -8,7 +8,7 @@
  * Includes workspace tool nudges for code investigation via execute, grep, etc.
  */
 
-export interface AnalystPromptContext {
+interface AnalystPromptContext {
   incidentTitle: string
   severity: string
   gatheredDataSummary: string

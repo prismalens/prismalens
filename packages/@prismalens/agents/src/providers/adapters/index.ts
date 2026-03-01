@@ -20,3 +20,11 @@ const ADAPTERS = new Map<string, IntegrationAdapter>([
 export function getAdapter(type: string): IntegrationAdapter | undefined {
   return ADAPTERS.get(type)
 }
+
+/**
+ * Get all registered adapters.
+ * Used by buildIntegrationsFromEnv to iterate all adapters.
+ */
+export function getAllAdapters(): IntegrationAdapter[] {
+  return [...ADAPTERS.values()]
+}

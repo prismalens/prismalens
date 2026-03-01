@@ -81,35 +81,6 @@ export const LLM_PROVIDERS = {
 			"mixtral-8x7b-32768",
 		],
 	},
-	openrouter: {
-		id: "openrouter",
-		name: "OpenRouter",
-		helpUrl: "https://openrouter.ai/keys",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/openai", // Uses OpenAI-compatible API
-		envVar: "OPENROUTER_API_KEY",
-		free: true,
-		defaultBaseUrl: "https://openrouter.ai/api/v1",
-		suggestedModels: [
-			"meta-llama/llama-3.3-70b-instruct:free",
-			"google/gemini-2.0-flash-exp:free",
-			"mistralai/mistral-small-3.1-24b-instruct:free",
-		],
-	},
-	nvidia: {
-		id: "nvidia",
-		name: "NVIDIA NIM",
-		helpUrl: "https://build.nvidia.com",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/openai", // Uses OpenAI-compatible API
-		envVar: "NVIDIA_API_KEY",
-		free: true, // 40 req/min free tier
-		defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
-		// Only models with tool_call support (verified via models.dev)
-		suggestedModels: [
-			"z-ai/glm4.7", // tools + reasoning + 204k context
-			"nvidia/llama-3.1-nemotron-70b-instruct", // tool-capable
-			"moonshotai/kimi-k2.5", // tools + reasoning
-		],
-	},
 } as const;
 
 export type LLMProviderId = keyof typeof LLM_PROVIDERS;

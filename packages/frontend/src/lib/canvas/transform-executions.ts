@@ -19,7 +19,6 @@ import {
 	CheckCircle,
 	Cog,
 	Database,
-	Lightbulb,
 	Search,
 	Stethoscope,
 } from "lucide-react";
@@ -124,12 +123,6 @@ const KNOWN_AGENT_OVERRIDES: Record<string, Partial<AgentStyle>> = {
 	runCommander: { displayName: "Run Commander", icon: Brain },
 	writeToApi: { displayName: "Save Results", icon: Database },
 
-	// Legacy agents (for backwards compatibility with old data)
-	alert_agent: { displayName: "Alert Validator", icon: AlertCircle },
-	gatherer_agent: { displayName: "Context Gatherer", icon: Search },
-	analyzer_agent: { displayName: "Root Cause Analyzer", icon: Brain },
-	recommender_agent: { displayName: "Recommender", icon: Lightbulb },
-	log_retriever_agent: { displayName: "Log Retriever", icon: Database },
 };
 
 /**

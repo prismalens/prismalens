@@ -12,12 +12,10 @@ import { mkdir, cp, rm } from "node:fs/promises"
 import { resolve, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { getAdapter } from "../providers/adapters/index.js"
+import { getGraphConfig } from "./env.js"
 import type { IntegrationWithCredentials } from "../types/contexts.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-
-/** Base directory for all investigation workspaces */
-const WORKSPACE_BASE = "/tmp/prismalens-investigations"
 
 /** Package-level specs directory containing OpenAPI spec files */
 const SPECS_SOURCE_DIR = resolve(__dirname, "../../specs")
@@ -32,7 +30,8 @@ export function getWorkspacePath(investigationId: string): string {
       "Invalid investigationId: must contain only alphanumeric, dash, or underscore characters",
     )
   }
-  return resolve(WORKSPACE_BASE, investigationId, "workspace")
+  const workspaceBase = getGraphConfig().PRISMALENS_WORKSPACE_BASE
+  return resolve(workspaceBase, investigationId, "workspace")
 }
 
 /**
@@ -55,7 +54,8 @@ export async function injectSpecFiles(
   workspaceDir: string,
   integrations: IntegrationWithCredentials[],
 ): Promise<void> {
-  if (!workspaceDir.startsWith(WORKSPACE_BASE)) {
+  const workspaceBase = getGraphConfig().PRISMALENS_WORKSPACE_BASE
+  if (!workspaceDir.startsWith(workspaceBase)) {
     throw new Error("workspaceDir must be within the workspace base directory")
   }
   const specsDir = resolve(workspaceDir, "specs")

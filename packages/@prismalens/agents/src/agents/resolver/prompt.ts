@@ -8,7 +8,7 @@
  * Includes workspace tool nudges for validation via execute, testing, etc.
  */
 
-export interface ResolverPromptContext {
+interface ResolverPromptContext {
   incidentTitle: string
   severity: string
   hypothesesContext: string

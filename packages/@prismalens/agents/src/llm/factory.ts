@@ -1,92 +1,130 @@
 /**
- * LLM factory for creating chat models from provider configurations
+ * LLM factory — type-safe discriminated union configs + per-agent overrides.
+ *
+ * Each provider variant carries LangChain's native input type, enabling
+ * cast-free spread into the constructor. Exhaustive switch ensures
+ * compile-time failure when a new provider is added to the union.
  */
 
+import { ChatAnthropic, type ChatAnthropicInput } from "@langchain/anthropic"
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
-import { ChatAnthropic } from "@langchain/anthropic"
-import { ChatOpenAI } from "@langchain/openai"
-import { ChatGroq } from "@langchain/groq"
-import { ChatOllama } from "@langchain/ollama"
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
-import type { LLMProviderConfig } from "../types/index.js"
+import { ChatGoogleGenerativeAI, type GoogleGenerativeAIChatInput } from "@langchain/google-genai"
+import { ChatGroq, type ChatGroqInput } from "@langchain/groq"
+import { ChatOllama, type ChatOllamaInput } from "@langchain/ollama"
+import { ChatOpenAI, type ChatOpenAIFields } from "@langchain/openai"
+
+import { getGraphConfig } from "../config/env.js"
+
+// ── Discriminated Union Config ──────────────────────────────────────
+
+export type AnthropicProviderConfig = { provider: "anthropic" } & ChatAnthropicInput
+export type OpenAIProviderConfig = { provider: "openai" } & ChatOpenAIFields
+export type GoogleProviderConfig = { provider: "google" } & GoogleGenerativeAIChatInput
+export type GroqProviderConfig = { provider: "groq" } & ChatGroqInput
+export type OllamaProviderConfig = { provider: "ollama" } & ChatOllamaInput
+
+export type LLMProviderConfig =
+  | AnthropicProviderConfig
+  | OpenAIProviderConfig
+  | GoogleProviderConfig
+  | GroqProviderConfig
+  | OllamaProviderConfig
+
+// ── Per-Agent Override ──────────────────────────────────────────────
+
+/** Minimal override fields for per-agent LLM tuning (no provider switching). */
+export interface AgentLLMOverride {
+  model?: string
+  temperature?: number
+}
 
 /**
- * Create a chat model from provider configuration
+ * Resolve the LLM for a specific agent, applying per-agent overrides.
+ *
+ * Only model and temperature can be overridden per-agent. Provider switching
+ * is intentionally not supported (would require different API keys).
+ */
+export function resolveAgentLLM(
+  baseConfig: LLMProviderConfig,
+  agentOverride?: AgentLLMOverride,
+): BaseChatModel {
+  if (!agentOverride) return createLLM(baseConfig)
+
+  const merged = {
+    ...baseConfig,
+    ...(agentOverride.model && { model: agentOverride.model }),
+    ...(agentOverride.temperature != null && { temperature: agentOverride.temperature }),
+  }
+  return createLLM(merged as LLMProviderConfig)
+}
+
+// ── Factory ─────────────────────────────────────────────────────────
+
+/**
+ * Create a chat model from a discriminated provider config.
+ *
+ * - Defaults (temperature, maxTokens, maxRetries) are sourced from env via getGraphConfig()
+ * - API keys are resolved from process.env (loaded from DB or Docker secrets at startup)
+ * - Exhaustive switch ensures compile-time failure for unhandled providers
  */
 export function createLLM(config: LLMProviderConfig): BaseChatModel {
+  const cfg = getGraphConfig()
+  const maxRetries = cfg.PRISMALENS_LLM_MAX_RETRIES
+  const defaultTemp = cfg.PRISMALENS_LLM_TEMPERATURE
+  const defaultMaxTokens = cfg.PRISMALENS_LLM_MAX_TOKENS
+
   switch (config.provider) {
-    case "anthropic":
+    case "anthropic": {
+      const { provider: _, ...rest } = config
       return new ChatAnthropic({
-        model: config.model,
-        apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
-        temperature: config.temperature ?? 0.2,
-        maxTokens: config.maxTokens ?? 4096,
-        topP: config.topP,
-        topK: config.topK,
-        stopSequences: config.stopSequences,
+        ...rest,
+        temperature: rest.temperature ?? defaultTemp,
+        maxTokens: rest.maxTokens ?? defaultMaxTokens,
+        maxRetries,
       })
+    }
 
-    case "openai":
+    case "openai": {
+      const { provider: _, ...rest } = config
       return new ChatOpenAI({
-        model: config.model,
-        apiKey: config.apiKey || process.env.OPENAI_API_KEY,
-        temperature: config.temperature ?? 0.2,
-        maxTokens: config.maxTokens ?? 4096,
-        topP: config.topP,
-        frequencyPenalty: config.frequencyPenalty,
-        presencePenalty: config.presencePenalty,
-        stop: config.stopSequences,
+        ...rest,
+        temperature: rest.temperature ?? defaultTemp,
+        maxTokens: rest.maxTokens ?? defaultMaxTokens,
+        maxRetries,
       })
+    }
 
-    case "groq":
-      return new ChatGroq({
-        model: config.model,
-        apiKey: config.apiKey || process.env.GROQ_API_KEY,
-        temperature: config.temperature ?? 0.2,
-        maxTokens: config.maxTokens ?? 4096,
-        topP: config.topP,
-        frequencyPenalty: config.frequencyPenalty,
-        presencePenalty: config.presencePenalty,
-        stop: config.stopSequences,
-      })
-
-    case "ollama":
-      return new ChatOllama({
-        model: config.model,
-        baseUrl: config.baseURL || process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-        temperature: config.temperature ?? 0.2,
-        topP: config.topP,
-        topK: config.topK,
-        stop: config.stopSequences,
-      })
-
-    case "google":
+    case "google": {
+      const { provider: _, ...rest } = config
       return new ChatGoogleGenerativeAI({
-        model: config.model,
-        apiKey: config.apiKey || process.env.GOOGLE_API_KEY,
-        temperature: config.temperature ?? 0.2,
-        maxOutputTokens: config.maxTokens ?? 4096,
-        topP: config.topP,
-        topK: config.topK,
-        stopSequences: config.stopSequences,
+        ...rest,
+        temperature: rest.temperature ?? defaultTemp,
+        maxOutputTokens: rest.maxOutputTokens ?? defaultMaxTokens,
+        maxRetries,
       })
+    }
 
-    case "openrouter":
-      return new ChatOpenAI({
-        model: config.model,
-        apiKey: config.apiKey || process.env.OPENROUTER_API_KEY,
-        configuration: {
-          baseURL: config.baseURL || "https://openrouter.ai/api/v1",
-        },
-        temperature: config.temperature ?? 0.2,
-        maxTokens: config.maxTokens ?? 4096,
-        topP: config.topP,
-        frequencyPenalty: config.frequencyPenalty,
-        presencePenalty: config.presencePenalty,
-        stop: config.stopSequences,
+    case "groq": {
+      const { provider: _, ...rest } = config
+      return new ChatGroq({
+        ...rest,
+        temperature: rest.temperature ?? defaultTemp,
+        maxTokens: rest.maxTokens ?? defaultMaxTokens,
+        maxRetries,
       })
+    }
 
-    default:
-      throw new Error(`Unsupported LLM provider: ${config.provider}`)
+    case "ollama": {
+      const { provider: _, ...rest } = config
+      return new ChatOllama({
+        ...rest,
+        temperature: rest.temperature ?? defaultTemp,
+      })
+    }
+
+    default: {
+      const _exhaustive: never = config
+      throw new Error(`Unsupported LLM provider: ${(_exhaustive as LLMProviderConfig).provider}`)
+    }
   }
 }

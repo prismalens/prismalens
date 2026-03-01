@@ -22,8 +22,14 @@ import { createAnalystNode } from "../agents/analyst/index.js"
 import { createResolverNode } from "../agents/resolver/index.js"
 import { supervisorNode } from "../agents/supervisor/node.js"
 import { StubDataProvider } from "../providers/data-provider.js"
-import { buildIntegrationEnvVars } from "../providers/integration-registry.js"
+import {
+  buildIntegrationEnvVars,
+  buildIntegrationsFromEnv,
+} from "../providers/integration-registry.js"
+import { getGraphConfig, getAgentBudget } from "../config/env.js"
+import { isRetryableError } from "../llm/retry.js"
 import { createHttpRequestTool } from "../tools/http-request.js"
+import { createWebBrowseTool } from "../tools/web-browse.js"
 import type { DataProvider } from "../providers/data-provider.js"
 import type { IntegrationWithCredentials } from "../types/contexts.js"
 import type { StructuredToolInterface } from "@langchain/core/tools"
@@ -44,6 +50,8 @@ export interface InvestigationGraphDeps {
   mcpTools?: StructuredToolInterface[]
   /** Pre-created workspace dir path. If provided, LocalShellBackend uses it. */
   workspaceDir?: string
+  /** Optional SearchApi API key. When set, web_search tool is added to analyst + resolver. */
+  searchApiKey?: string
 }
 
 /**
@@ -60,12 +68,38 @@ export interface InvestigationGraphDeps {
  */
 export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
   const { checkpointer, integrations, mcpTools = [] } = deps
+  const cfg = getGraphConfig()
 
-  // Build per-agent http_request tools with appropriate method restrictions:
-  //   gatherer: GET + POST (POST needed for query-style APIs like Prometheus)
-  //   analyst/resolver: GET only (investigation & validation are read-only)
-  const gathererHttpTool = createHttpRequestTool(integrations, { allowedMethods: ["GET", "POST"] })
-  const readOnlyHttpTool = createHttpRequestTool(integrations, { allowedMethods: ["GET"] })
+  // Per-agent budgets (registry-driven, env-overridable)
+  const gathererBudget = getAgentBudget("gatherer")
+  const analystBudget = getAgentBudget("analyst")
+  const resolverBudget = getAgentBudget("resolver")
+
+  // Build per-agent http_request tools with appropriate method restrictions.
+  // Each agent gets its own tool instance so budget counters are independent.
+  const gathererHttpTool = createHttpRequestTool(integrations, {
+    allowedMethods: ["GET", "POST"],
+    maxRequests: gathererBudget.httpBudget,
+  })
+  const analystHttpTool = createHttpRequestTool(integrations, {
+    allowedMethods: ["GET"],
+    maxRequests: analystBudget.httpBudget,
+  })
+  const resolverHttpTool = createHttpRequestTool(integrations, {
+    allowedMethods: ["GET"],
+    maxRequests: resolverBudget.httpBudget,
+  })
+
+  // Web tools for analyst + resolver (research known issues, read documentation).
+  // Separate instances per agent so budgets are independent.
+  const analystWebTools: StructuredToolInterface[] = [createWebBrowseTool({ maxUses: analystBudget.webBudget })]
+  const resolverWebTools: StructuredToolInterface[] = [createWebBrowseTool({ maxUses: resolverBudget.webBudget })]
+
+  if (deps.searchApiKey) {
+    const { SearchApi } = await import("@langchain/community/tools/searchapi")
+    analystWebTools.push(new SearchApi(deps.searchApiKey, { engine: "google" }))
+    resolverWebTools.push(new SearchApi(deps.searchApiKey, { engine: "google" }))
+  }
 
   // Build backend stack
   const backend = await createBackend(integrations, deps.workspaceDir)
@@ -76,37 +110,52 @@ export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
   const analystSkillsPath = "/skills/analyst/"
   const resolverSkillsPath = "/skills/resolver/"
 
+  // Shared retry policy for LLM-driven nodes (supervisor, gatherer, analyst, resolver).
+  // Applied per-node via addNode options — scout is deterministic (no retry needed).
+  const retryPolicy = {
+    maxAttempts: cfg.PRISMALENS_GRAPH_RETRY_MAX_ATTEMPTS,
+    initialInterval: cfg.PRISMALENS_GRAPH_RETRY_INITIAL_INTERVAL_MS,
+    backoffFactor: cfg.PRISMALENS_GRAPH_RETRY_BACKOFF_FACTOR,
+    jitter: true,
+    retryOn: isRetryableError,
+  }
+
+  // Assemble per-agent tool arrays:
+  //   gatherer: http_request (read+write) + MCP tools — NO web tools
+  //   analyst:  http_request (read-only) + web_browse + web_search + MCP tools
+  //   resolver: http_request (read-only) + web_browse + web_search + MCP tools
   const graph = new StateGraph(InvestigationStateAnnotation)
     .addNode("scout", createScoutNode(deps.dataProvider))
     .addNode("supervisor", supervisorNode, {
       ends: ["gatherer", "analyst", "resolver", "__end__"],
+      retryPolicy,
     })
     .addNode(
       "gatherer",
       createGathererNode({
         backend,
-        httpRequestTool: gathererHttpTool,
-        mcpTools,
+        tools: [gathererHttpTool, ...mcpTools],
         skills: [commonSkillsPath, gathererSkillsPath],
       }),
+      { retryPolicy },
     )
     .addNode(
       "analyst",
       createAnalystNode({
         backend,
-        httpRequestTool: readOnlyHttpTool,
-        mcpTools,
+        tools: [analystHttpTool, ...analystWebTools, ...mcpTools],
         skills: [commonSkillsPath, analystSkillsPath],
       }),
+      { retryPolicy },
     )
     .addNode(
       "resolver",
       createResolverNode({
         backend,
-        httpRequestTool: readOnlyHttpTool,
-        mcpTools,
+        tools: [resolverHttpTool, ...resolverWebTools, ...mcpTools],
         skills: [commonSkillsPath, resolverSkillsPath],
       }),
+      { retryPolicy },
     )
     // START → scout → analyst (deterministic first pass, no supervisor)
     .addEdge("__start__", "scout")
@@ -183,7 +232,7 @@ export async function investigationGraph() {
 
   return buildInvestigationGraph({
     dataProvider,
-    integrations: [],
+    integrations: buildIntegrationsFromEnv(),
     mcpTools: [],
     checkpointer,
   })

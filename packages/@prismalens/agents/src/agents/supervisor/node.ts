@@ -14,11 +14,11 @@
 import { Command } from "@langchain/langgraph"
 import type { LangGraphRunnableConfig } from "@langchain/langgraph"
 import type { InvestigationState } from "../../types/state.js"
-import type { SimilarIncidentMatch } from "../../types/contexts.js"
 import type { InvestigationResult } from "../../types/results.js"
 import type { ProgressSnapshot } from "../../types/state.js"
 import { mapHypothesisCategoryToDb } from "../../utils/enum-maps.js"
-import { createLLM } from "../../llm/factory.js"
+import { resolveAgentLLM } from "../../llm/factory.js"
+import { getGraphConfig } from "../../config/env.js"
 import { SupervisorDecisionSchema } from "../../tools/schemas.js"
 import type { SupervisorDecision } from "../../tools/schemas.js"
 import { supervisorPrompt } from "./prompt.js"
@@ -28,7 +28,7 @@ import { formatStateForSupervisor } from "./format.js"
  * Compile a partial result from current state.
  * Produces maximally useful output even when investigation is incomplete.
  */
-export function compilePartialResult(
+function compilePartialResult(
   state: InvestigationState,
   status: InvestigationResult["status"] = "completed",
 ): InvestigationResult {
@@ -59,7 +59,7 @@ export function compilePartialResult(
 /**
  * Take a progress snapshot for stall detection.
  */
-export function takeProgressSnapshot(
+function takeProgressSnapshot(
   state: InvestigationState,
 ): ProgressSnapshot {
   const coverage = state.gatheredData?.coverage
@@ -83,7 +83,7 @@ export function takeProgressSnapshot(
 /**
  * Detect whether the investigation has made forward progress.
  */
-export function detectProgress(
+function detectProgress(
   state: InvestigationState,
 ): { stalled: boolean; reason?: string } {
   if (!state.lastProgressSnapshot) return { stalled: false }
@@ -119,19 +119,6 @@ export function detectProgress(
 }
 
 /**
- * Check if state has a high-confidence similar incident match.
- */
-export function hasHighConfidenceSimilarIncident(
-  state: InvestigationState,
-): boolean {
-  const similar = state.gatheredData?.similarIncidents as
-    | SimilarIncidentMatch[]
-    | undefined
-  if (!similar || similar.length === 0) return false
-  return similar.some((s) => s.similarity > 0.8)
-}
-
-/**
  * Supervisor node — returns Command({ goto, update }).
  *
  * Uses LLM with structured output to decide which agent to route to next.
@@ -141,7 +128,7 @@ export async function supervisorNode(
   state: InvestigationState,
   config: LangGraphRunnableConfig,
 ): Promise<Command> {
-  const maxIterations = state.config.maxIterations ?? 8
+  const maxIterations = state.config.maxIterations ?? getGraphConfig().PRISMALENS_MAX_ITERATIONS
 
   // --- Safety Guard 1: Iteration budget ---
   if (state.iterations >= maxIterations) {
@@ -168,7 +155,7 @@ export async function supervisorNode(
   // --- LLM Routing Decision ---
   let decision: SupervisorDecision
   try {
-    const llm = createLLM(state.config.llm)
+    const llm = resolveAgentLLM(state.config.llm, state.config.agentOverrides?.["supervisor"])
     const structuredLlm = llm.withStructuredOutput(SupervisorDecisionSchema)
 
     const stateContext = formatStateForSupervisor(state)

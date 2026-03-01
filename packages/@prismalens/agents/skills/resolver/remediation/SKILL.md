@@ -47,6 +47,29 @@ Use workspace tools to verify feasibility before finalizing:
 
 Note validation results in your recommendation steps.
 
+### Validation Workflow
+
+1. Write validation script:
+   ```
+   write_file("/workspace/validate-fix.py", "...")
+   execute("python3 /workspace/validate-fix.py")
+   ```
+2. Run existing tests: `execute("cd /workspace/repo && npm test 2>&1 | tail -20")`
+3. Apply patch and verify: `execute("cd /workspace/repo && git diff HEAD~1 -- src/config.ts")`
+
+### Best Practices
+
+- **Test before recommending**: Validate that your fix actually works when possible
+- **Keep scripts focused**: One script per validation, with clear PASS/FAIL output
+- **Time-box validation**: A quick sanity check is better than none
+
+### Web Research
+
+Use `web_search` and `web_browse` to find fix documentation and precedent:
+- Search for known fixes for the identified root cause
+- Browse official docs for correct configuration values or migration guides
+- Look for regression reports related to proposed fixes
+
 ## 5. Assess Risk Per Recommendation
 
 For each recommendation, evaluate:

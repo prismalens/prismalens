@@ -6,11 +6,6 @@
  * 2. Maps hypotheses to InvestigationState types
  * 3. Produces an AgentSelfAssessment with routing recommendation
  *
- * Scoring formula:
- *   Supporting:  verified strong=5, moderate=3, weak=2 | inferred strong=2, moderate=1, weak=0.5
- *   Contradicting: verified strong=-4, moderate=-2.5, weak=-1.5 | inferred strong=-1, moderate=-0.5, weak=-0.25
- *   adjustedConfidence = clamp(baseConfidence + normalizedScore, 0, 1)
- *
  * Routing:
  *   HIGH (>0.7): recommend "resolver"
  *   MEDIUM (0.4-0.7): recommend "resolver" (best-effort with available data)
@@ -38,10 +33,6 @@ const CONTRADICTING_WEIGHTS: Record<string, Record<string, number>> = {
   inferred: { strong: -1, moderate: -0.5, weak: -0.25 },
 }
 
-/**
- * Max possible score for normalization.
- * Assumes 5 pieces of strong verified supporting evidence.
- */
 const MAX_SCORE = 5 * SUPPORTING_WEIGHTS.verified.strong
 
 // ---------------------------------------------------------------------------
@@ -54,11 +45,7 @@ interface EvidenceItem {
   verified: boolean
 }
 
-/**
- * Score a single hypothesis based on its evidence.
- * Returns the adjusted confidence (clamped 0-1).
- */
-export function scoreHypothesis(
+function scoreHypothesis(
   baseConfidence: number,
   evidence: EvidenceItem[],
 ): number {

@@ -19,4 +19,8 @@ export const githubAdapter: IntegrationAdapter = {
       "https://x-access-token:{{credentials.apiKey|credentials.accessToken}}@github.com",
   },
   testRequest: { path: "/user" },
+  fromEnv: {
+    credentials: { apiKey: "GITHUB_TOKEN" },
+    config: { baseUrl: "GITHUB_BASE_URL" },
+  },
 }

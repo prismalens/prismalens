@@ -14,6 +14,7 @@
 
 import type { DataProvider } from "../../providers/data-provider.js"
 import type { InvestigationState } from "../../types/state.js"
+import { getScoutConfig } from "../../config/env.js"
 import { safeFetch } from "../../utils/safe-fetch.js"
 import { sampleAlerts } from "./sampling.js"
 import {
@@ -24,10 +25,6 @@ import {
 import { buildCoverageReport } from "./coverage.js"
 import type { ScoutEnrichments } from "./types.js"
 
-const ALERT_LIMIT = 50
-const CHANGE_EVENT_WINDOW_HOURS = 4
-const SIMILAR_INCIDENT_LIMIT = 5
-
 /**
  * Create the scout function node.
  *
@@ -37,6 +34,11 @@ export function createScoutNode(dataProvider: DataProvider) {
   return async (
     state: InvestigationState,
   ): Promise<Partial<InvestigationState>> => {
+    const scoutCfg = getScoutConfig()
+    const alertLimit = scoutCfg.PRISMALENS_SCOUT_ALERT_LIMIT
+    const changeWindowHours = scoutCfg.PRISMALENS_SCOUT_CHANGE_WINDOW_HOURS
+    const similarLimit = scoutCfg.PRISMALENS_SCOUT_SIMILAR_LIMIT
+
     // 1. Parallel fetch all sources via safeFetch
     const [incidentResult, alertsResult, changeEventsResult, similarResult] =
       await Promise.all([
@@ -49,7 +51,7 @@ export function createScoutNode(dataProvider: DataProvider) {
           () =>
             dataProvider.fetchAlerts({
               incidentId: state.incidentId,
-              limit: ALERT_LIMIT,
+              limit: alertLimit,
             }),
           { alerts: [], hasMore: false },
           "fetchAlerts",
@@ -58,7 +60,7 @@ export function createScoutNode(dataProvider: DataProvider) {
           () =>
             dataProvider.fetchChangeEvents?.(state.incidentId, {
               start: new Date(
-                Date.now() - CHANGE_EVENT_WINDOW_HOURS * 3_600_000,
+                Date.now() - changeWindowHours * 3_600_000,
               ).toISOString(),
               end: new Date().toISOString(),
             }) ?? Promise.resolve([]),
@@ -69,7 +71,7 @@ export function createScoutNode(dataProvider: DataProvider) {
           () =>
             dataProvider.fetchSimilarIncidents?.({
               incidentId: state.incidentId,
-              limit: SIMILAR_INCIDENT_LIMIT,
+              limit: similarLimit,
             }) ?? Promise.resolve({ incidents: [] }),
           { incidents: [] },
           "fetchSimilarIncidents",
@@ -84,7 +86,7 @@ export function createScoutNode(dataProvider: DataProvider) {
     }
 
     // 3. Sample alerts if over limit
-    const alerts = sampleAlerts(alertsResult.data.alerts, ALERT_LIMIT)
+    const alerts = sampleAlerts(alertsResult.data.alerts, alertLimit)
 
     // 4. Compute enrichments
     const timeline = computeAlertTimeline(alerts)

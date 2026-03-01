@@ -7,6 +7,7 @@
  */
 
 import type { RunnableConfig } from "@langchain/core/runnables"
+import { getGraphConfig } from "../config/env.js"
 import type { InvestigationInput } from "../types/inputs.js"
 import type { InvestigationResult } from "../types/results.js"
 import type { DataProvider } from "../providers/data-provider.js"
@@ -43,7 +44,7 @@ export interface InvestigationExecutorDeps {
  * investigation's integrations and credentials.
  *
  * Provides two APIs:
- * - execute(): Synchronous invoke (backward compat)
+ * - execute(): Synchronous invoke (fallback when stream yields no result)
  * - stream(): Real LangGraph streaming with native [mode, data] tuples
  */
 export class InvestigationExecutor {
@@ -55,8 +56,10 @@ export class InvestigationExecutor {
     this.checkpointer = deps.checkpointer
   }
 
-  /** Default timeout: 5 minutes */
-  private static readonly DEFAULT_TIMEOUT_MS = 300_000
+  /** Default timeout from env (PRISMALENS_INVESTIGATION_TIMEOUT_MS, default 5 min) */
+  private get defaultTimeoutMs(): number {
+    return getGraphConfig().PRISMALENS_INVESTIGATION_TIMEOUT_MS
+  }
 
   /**
    * Build the initial state for graph execution.
@@ -66,15 +69,10 @@ export class InvestigationExecutor {
       input.integrations,
     )
 
-    // Strip apiKey from LLM config before it enters graph state.
-    // Graph state is serialized by checkpointers — API keys must not be persisted.
-    const { apiKey: _apiKey, ...safeLlmConfig } = input.config.llm
-    const safeConfig = { ...input.config, llm: safeLlmConfig }
-
     return {
       investigationId: input.investigationId,
       incidentId: input.incidentId,
-      config: safeConfig,
+      config: input.config,
       integrations: input.integrations,
       iterations: 0,
       lastProgressSnapshot: null,
@@ -110,12 +108,12 @@ export class InvestigationExecutor {
   /**
    * Execute an investigation synchronously via graph.invoke().
    *
-   * Kept for backward compatibility. New consumers should use stream().
+   * Used as a fallback when stream() finishes without producing a result.
    */
   async execute(input: InvestigationInput, config?: RunnableConfig): Promise<InvestigationResult> {
     const startTime = Date.now()
     const timeoutMs =
-      input.config.timeout ?? InvestigationExecutor.DEFAULT_TIMEOUT_MS
+      input.config.timeout ?? this.defaultTimeoutMs
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -177,7 +175,7 @@ export class InvestigationExecutor {
     config?: RunnableConfig,
   ): AsyncGenerator<StreamTuple> {
     const timeoutMs =
-      input.config.timeout ?? InvestigationExecutor.DEFAULT_TIMEOUT_MS
+      input.config.timeout ?? this.defaultTimeoutMs
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 

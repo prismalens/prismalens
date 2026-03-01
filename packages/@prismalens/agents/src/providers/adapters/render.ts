@@ -13,4 +13,8 @@ export const renderAdapter: IntegrationAdapter = {
     RENDER_BASE_URL: "{{config.baseUrl}}",
   },
   testRequest: { path: "/v1/owners" },
+  fromEnv: {
+    credentials: { apiKey: "RENDER_API_KEY" },
+    config: { baseUrl: "RENDER_BASE_URL" },
+  },
 }

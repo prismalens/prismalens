@@ -15,33 +15,22 @@ import { createDeepAgent } from "deepagents"
 import { toolStrategy } from "langchain"
 import type { BaseMessage } from "@langchain/core/messages"
 import type { RunnableConfig } from "@langchain/core/runnables"
-import type { StructuredToolInterface } from "@langchain/core/tools"
-import type { BackendProtocol } from "deepagents"
-import { createLLM } from "../../llm/factory.js"
+import { resolveAgentLLM } from "../../llm/factory.js"
 import { AnalystOutputSchema } from "../../tools/schemas.js"
 import { analystPrompt } from "./prompt.js"
 import { formatGatheredDataSummary, formatSimilarIncidents } from "./format.js"
 import { extractAnalystResults } from "./extract.js"
 import type { InvestigationState } from "../../types/state.js"
 import type { SimilarIncidentMatch } from "../../types/contexts.js"
-
-/**
- * Dependencies for creating the analyst node.
- */
-export interface AnalystNodeDeps {
-  backend: BackendProtocol
-  httpRequestTool: StructuredToolInterface
-  mcpTools: StructuredToolInterface[]
-  skills: string[]
-}
+import type { AgentNodeDeps } from "../types.js"
 
 /**
  * Create the analyst function node.
  *
  * @param deps - Backend, tools, and skills paths from the investigation graph
  */
-export function createAnalystNode(deps: AnalystNodeDeps) {
-  const { backend, httpRequestTool, mcpTools, skills } = deps
+export function createAnalystNode(deps: AgentNodeDeps) {
+  const { backend, tools, skills } = deps
 
   return async (
     state: InvestigationState,
@@ -60,8 +49,8 @@ export function createAnalystNode(deps: AnalystNodeDeps) {
 
     try {
       const agent = createDeepAgent({
-        model: createLLM(state.config.llm),
-        tools: [httpRequestTool, ...mcpTools],
+        model: resolveAgentLLM(state.config.llm, state.config.agentOverrides?.["analyst"]),
+        tools,
         systemPrompt,
         skills,
         backend,

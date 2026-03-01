@@ -1,10 +1,7 @@
 "use client";
 
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
-import type {
-	AgentId,
-	LlmProviderIdExtended,
-} from "@prismalens/contracts/schemas";
+import type { AgentId } from "@prismalens/contracts/schemas";
 import {
 	AlertCircle,
 	Bot,
@@ -107,7 +104,7 @@ export function AIProviderSettings() {
 
 	// Local form state
 	const [selectedProvider, setSelectedProvider] =
-		useState<LlmProviderIdExtended>("anthropic");
+		useState<LLMProviderId>("anthropic");
 	const [selectedModel, setSelectedModel] = useState("");
 	const [customModel, setCustomModel] = useState("");
 	const [temperature, setTemperature] = useState(0.1);
@@ -322,7 +319,7 @@ export function AIProviderSettings() {
 								selectedProvider={selectedProvider}
 								selectedModel={selectedModel}
 								customModel={customModel}
-								onProviderChange={(p) => setSelectedProvider(p as LlmProviderIdExtended)}
+								onProviderChange={(p) => setSelectedProvider(p as LLMProviderId)}
 								onModelChange={(model) => {
 									setSelectedModel(model);
 									setCustomModel("");

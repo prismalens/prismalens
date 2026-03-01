@@ -11,6 +11,7 @@
 
 import { z } from "zod"
 import { StructuredTool } from "@langchain/core/tools"
+import { getGraphConfig } from "../config/env.js"
 import type { IntegrationWithCredentials } from "../types/contexts.js"
 import { resolveIntegration } from "../providers/integration-registry.js"
 import type { ResolvedIntegration } from "../providers/integration-registry.js"
@@ -93,11 +94,27 @@ function buildUrl(
   return url.toString()
 }
 
-/** Max request body size in characters */
-const MAX_BODY_SIZE = 10_000
+/** Default limits for http_request tool (from env or Zod defaults) */
+function getDefaultLimits() {
+  const cfg = getGraphConfig()
+  return {
+    maxBodySize: cfg.PRISMALENS_HTTP_MAX_BODY_SIZE,
+    requestTimeoutMs: cfg.PRISMALENS_HTTP_TIMEOUT_MS,
+    maxResponseSize: cfg.PRISMALENS_HTTP_MAX_RESPONSE_SIZE,
+  }
+}
 
-/** HTTP request timeout in milliseconds */
-const REQUEST_TIMEOUT_MS = 30_000
+/**
+ * Configurable limits for HTTP requests.
+ */
+export interface HttpRequestLimits {
+  /** Max request body size in characters (default 10_000) */
+  maxBodySize?: number
+  /** HTTP request timeout in milliseconds (default 30_000) */
+  requestTimeoutMs?: number
+  /** Max response size in characters before truncation (default 50_000) */
+  maxResponseSize?: number
+}
 
 /**
  * Options for creating an http_request tool instance.
@@ -109,6 +126,23 @@ export interface HttpRequestToolOptions {
    * Use ["GET", "POST"] for agents that need query-style POST APIs (e.g., Prometheus).
    */
   allowedMethods?: HttpMethod[]
+
+  /**
+   * Allowed path prefixes per integration type.
+   * If set for a given integration type, only paths starting with one of the
+   * prefixes are permitted. Uses `startsWith` — simple, auditable, no regex.
+   * Empty map or absent = all paths allowed (open by default).
+   */
+  allowedPaths?: Record<string, string[]>
+
+  /**
+   * Request budget. 0 = unlimited (default).
+   * Counter resets naturally per-investigation (graph-per-investigation pattern).
+   */
+  maxRequests?: number
+
+  /** Override default limits for body size, timeout, and response size. */
+  limits?: HttpRequestLimits
 }
 
 /**
@@ -136,7 +170,37 @@ export function createHttpRequestTool(
 
   const availableIntegrations = [...resolvedMap.keys()].join(", ")
 
-  return new HttpRequestTool(resolvedMap, availableIntegrations, allowedMethods)
+  // Build allowed paths map
+  const allowedPaths = new Map<string, string[]>()
+  if (options.allowedPaths) {
+    for (const [type, prefixes] of Object.entries(options.allowedPaths)) {
+      allowedPaths.set(type, prefixes)
+    }
+  }
+
+  // Resolve limits with defaults from env
+  const defaults = getDefaultLimits()
+  const limits = {
+    maxBodySize: options.limits?.maxBodySize ?? defaults.maxBodySize,
+    requestTimeoutMs: options.limits?.requestTimeoutMs ?? defaults.requestTimeoutMs,
+    maxResponseSize: options.limits?.maxResponseSize ?? defaults.maxResponseSize,
+  }
+
+  return new HttpRequestTool(
+    resolvedMap,
+    availableIntegrations,
+    allowedMethods,
+    allowedPaths,
+    options.maxRequests ?? 0,
+    limits,
+  )
+}
+
+/** Resolved limits with all defaults applied */
+interface ResolvedLimits {
+  maxBodySize: number
+  requestTimeoutMs: number
+  maxResponseSize: number
 }
 
 class HttpRequestTool extends StructuredTool {
@@ -146,31 +210,45 @@ class HttpRequestTool extends StructuredTool {
 
   private resolvedMap: Map<string, ResolvedIntegration>
   private allowedMethods: Set<string>
+  private allowedPaths: Map<string, string[]>
+  private maxRequests: number
+  private requestCount = 0
+  private limits: ResolvedLimits
 
   constructor(
     resolvedMap: Map<string, ResolvedIntegration>,
     availableIntegrations: string,
     allowedMethods: HttpMethod[],
+    allowedPaths: Map<string, string[]>,
+    maxRequests: number,
+    limits: ResolvedLimits,
   ) {
     super()
     this.resolvedMap = resolvedMap
     this.allowedMethods = new Set(allowedMethods)
+    this.allowedPaths = allowedPaths
+    this.maxRequests = maxRequests
+    this.limits = limits
+
     const methodsList = allowedMethods.join(", ")
+    const budgetNote = maxRequests > 0 ? ` Budget: ${maxRequests} requests.` : ""
     this.description =
       `Make authenticated HTTP requests to external APIs. ` +
       `Available integrations: ${availableIntegrations || "none"}. ` +
-      `Allowed methods: ${methodsList}. ` +
+      `Allowed methods: ${methodsList}.${budgetNote} ` +
       `Auth is injected automatically — never include credentials in requests. ` +
       `Check the OpenAPI spec in /workspace/specs/ for available endpoints.`
   }
 
   async _call(input: HttpRequestInput): Promise<string> {
+    // 1. Method check (cheapest validation — no I/O)
     if (!this.allowedMethods.has(input.method)) {
       return JSON.stringify({
         error: `Method ${input.method} is not allowed. Allowed methods: ${[...this.allowedMethods].join(", ")}`,
       })
     }
 
+    // 2. Integration lookup
     const resolved = this.resolvedMap.get(input.integration)
     if (!resolved) {
       return JSON.stringify({
@@ -180,6 +258,29 @@ class HttpRequestTool extends StructuredTool {
 
     try {
       const resolvedPath = substitutePath(input.path, input.pathParams)
+
+      // 3. Path prefix check — after substitution, before buildUrl
+      const pathPrefixes = this.allowedPaths.get(input.integration)
+      if (pathPrefixes && pathPrefixes.length > 0) {
+        const allowed = pathPrefixes.some((prefix) =>
+          resolvedPath.startsWith(prefix),
+        )
+        if (!allowed) {
+          return JSON.stringify({
+            error: `Path "${resolvedPath}" is not allowed for integration "${input.integration}". ` +
+              `Allowed prefixes: ${pathPrefixes.join(", ")}`,
+          })
+        }
+      }
+
+      // 4. Budget check — after validation, before network call
+      if (this.maxRequests > 0 && this.requestCount >= this.maxRequests) {
+        return JSON.stringify({
+          error: `Request budget exhausted (${this.maxRequests} requests). No more API calls allowed.`,
+        })
+      }
+      this.requestCount++
+
       const url = buildUrl(resolved.baseUrl, resolvedPath, input.queryParams)
 
       // Build set of auth header names to strip from agent input (case-insensitive)
@@ -207,9 +308,9 @@ class HttpRequestTool extends StructuredTool {
       let bodyStr: string | undefined
       if (input.body && ["POST", "PUT", "PATCH"].includes(input.method)) {
         bodyStr = JSON.stringify(input.body)
-        if (bodyStr.length > MAX_BODY_SIZE) {
+        if (bodyStr.length > this.limits.maxBodySize) {
           return JSON.stringify({
-            error: `Request body too large: ${bodyStr.length} chars (max ${MAX_BODY_SIZE})`,
+            error: `Request body too large: ${bodyStr.length} chars (max ${this.limits.maxBodySize})`,
           })
         }
         headers["Content-Type"] = "application/json"
@@ -219,15 +320,14 @@ class HttpRequestTool extends StructuredTool {
         method: input.method,
         headers,
         body: bodyStr,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.limits.requestTimeoutMs),
       })
 
       const text = await response.text()
 
       // Truncate very large responses to keep context manageable
-      const MAX_RESPONSE_SIZE = 50_000
-      const truncated = text.length > MAX_RESPONSE_SIZE
-        ? text.slice(0, MAX_RESPONSE_SIZE) + "\n...[truncated]"
+      const truncated = text.length > this.limits.maxResponseSize
+        ? text.slice(0, this.limits.maxResponseSize) + "\n...[truncated]"
         : text
 
       if (!response.ok) {

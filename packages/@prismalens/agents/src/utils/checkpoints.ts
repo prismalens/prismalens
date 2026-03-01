@@ -65,27 +65,13 @@ export function getCheckpointTimestamp(
  * Accepts either:
  * - Hypothesis[] directly
  * - An object with a `hypotheses` property (e.g., InvestigationState)
- * - Any value (returns null for backward compat with old stub)
  *
  * Returns the hypothesis with the highest confidence score, or null.
  */
 export function getBestHypothesis(
-  input: Hypothesis[] | { hypotheses?: Hypothesis[] } | unknown,
+  input: Hypothesis[] | { hypotheses?: Hypothesis[] },
 ): Hypothesis | null {
-  let hypotheses: Hypothesis[]
-
-  if (Array.isArray(input)) {
-    hypotheses = input
-  } else if (
-    input &&
-    typeof input === "object" &&
-    "hypotheses" in input &&
-    Array.isArray((input as { hypotheses: unknown }).hypotheses)
-  ) {
-    hypotheses = (input as { hypotheses: Hypothesis[] }).hypotheses
-  } else {
-    return null
-  }
+  const hypotheses = Array.isArray(input) ? input : (input.hypotheses ?? [])
 
   if (hypotheses.length === 0) return null
 

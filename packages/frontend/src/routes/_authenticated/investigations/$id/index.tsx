@@ -316,32 +316,17 @@ function AgentExecutionsTab({
 		)
 	}
 
-	const agentIcons: Record<string, React.ReactNode> = {
-		alert_agent: <AlertCircle className="h-5 w-5 text-red-500" />,
-		gatherer_agent: <Search className="h-5 w-5 text-blue-500" />,
-		analyzer_agent: <Brain className="h-5 w-5 text-purple-500" />,
-		recommender_agent: <Lightbulb className="h-5 w-5 text-green-500" />,
-	}
-
-	const agentColors: Record<string, string> = {
-		alert_agent: "border-l-red-500",
-		gatherer_agent: "border-l-blue-500",
-		analyzer_agent: "border-l-purple-500",
-		recommender_agent: "border-l-green-500",
-	}
-
 	return (
         <div className="space-y-4">
             {agentExecutions.map((agent) => (
 				<Card
 					key={agent.id}
-					className={`border-l-4 ${agentColors[agent.agentName] || "border-l-gray-500"}`}
+					className="border-l-4 border-l-gray-500"
 				>
 					<CardHeader className="pb-2">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-3">
-								{agentIcons[agent.agentName] || (
-									<Brain className="h-5 w-5 text-gray-500" />
+								<Brain className="h-5 w-5 text-gray-500" />
 								)}
 								<div>
 									<CardTitle className="text-base capitalize">

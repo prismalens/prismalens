@@ -36,7 +36,6 @@ export type {
 export type {
   InvestigationInput,
   InvestigationConfig,
-  LLMProviderConfig,
 } from "./types/inputs.js"
 
 // =============================================================================
@@ -99,14 +98,19 @@ export { StubDataProvider } from "./providers/index.js"
 // LLM Factory
 // =============================================================================
 
-export { createLLM } from "./llm/index.js"
+export { createLLM, resolveAgentLLM, isRetryableError } from "./llm/index.js"
+export type { LLMProviderConfig, AgentLLMOverride } from "./llm/index.js"
 
 // =============================================================================
 // Tools
 // =============================================================================
 
 export type { SkillMetadata, PrismaLensSkillMetadata } from "./tools/index.js"
-export { createHttpRequestTool } from "./tools/index.js"
+export { createHttpRequestTool, createWebBrowseTool, isDomainAllowed } from "./tools/index.js"
+export type { HttpRequestToolOptions, HttpRequestLimits, WebBrowseToolOptions, DomainFilter } from "./tools/index.js"
+
+// Agent shared types
+export type { AgentNodeDeps } from "./agents/types.js"
 
 // =============================================================================
 // Integration Registry
@@ -116,13 +120,14 @@ export {
   resolveIntegration,
   computeAvailableDataSources,
   buildIntegrationEnvVars,
+  buildIntegrationsFromEnv,
   resolveGitAuth,
 } from "./providers/integration-registry.js"
 export type {
   IntegrationAdapter,
   ResolvedIntegration,
 } from "./providers/integration-registry.js"
-export { getAdapter } from "./providers/adapters/index.js"
+export { getAdapter, getAllAdapters } from "./providers/adapters/index.js"
 
 // =============================================================================
 // Utilities

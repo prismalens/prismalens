@@ -233,7 +233,7 @@ const redisPublisher = new Redis(redisUrl, {
 	maxRetriesPerRequest: null,
 });
 
-/** Node-to-percent mapping for BullMQ backward compat */
+/** Node-to-percent mapping for BullMQ job progress reporting */
 const NODE_PROGRESS: Record<string, number> = {
 	scout: 10,
 	analyst: 30,
@@ -378,7 +378,7 @@ async function processJobInternal(
 			// Publish raw tuple to Redis for API relay
 			await redisPublisher.publish(channel, JSON.stringify(chunk));
 
-			// Extract progress info for BullMQ backward compat
+			// Extract progress info for BullMQ job progress reporting
 			const [mode, eventData] = chunk as [string, Record<string, unknown>];
 
 			// "tasks" mode — track agent execution timing

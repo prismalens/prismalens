@@ -17,7 +17,7 @@ import type { IntegrationWithCredentials } from "../types/contexts.js"
 import type { AvailableDataSource, DataRequest } from "../types/state.js"
 import { resolveTemplate, resolveTemplateMap } from "./template.js"
 import type { TemplateContext } from "./template.js"
-import { getAdapter } from "./adapters/index.js"
+import { getAdapter, getAllAdapters } from "./adapters/index.js"
 
 // ============================================================================
 // Adapter Interface — pure data, no functions
@@ -45,6 +45,16 @@ export interface IntegrationAdapter {
 
   /** Git clone auth — only for code_source integrations */
   readonly gitAuth?: GitAuthConfig
+
+  /**
+   * Declarative env var → credential/config mapping for standalone usage.
+   * Enables `buildIntegrationsFromEnv()` to construct IntegrationWithCredentials
+   * from environment variables (Studio, evals, CLI) without DB access.
+   */
+  readonly fromEnv?: {
+    credentials: Record<string, string>  // { fieldName: "ENV_VAR_NAME" }
+    config?: Record<string, string>      // { fieldName: "ENV_VAR_NAME" }
+  }
 }
 
 /**
@@ -224,4 +234,62 @@ export function resolveGitAuth(
 
   const resolved = resolveTemplate(adapter.gitAuth.cloneUrlTemplate, ctx)
   return resolved || null
+}
+
+/**
+ * Build IntegrationWithCredentials[] from environment variables.
+ *
+ * Iterates all registered adapters, reads env vars per adapter.fromEnv,
+ * and constructs integrations for adapters that have at least one credential present.
+ * Used by Studio and evals to get integrations without DB access.
+ */
+export function buildIntegrationsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): IntegrationWithCredentials[] {
+  const integrations: IntegrationWithCredentials[] = []
+
+  for (const adapter of getAllAdapters()) {
+    if (!adapter.fromEnv) continue
+
+    // Read credentials from env — skip adapter if no credentials found
+    const credentials: Record<string, unknown> = {}
+    let hasCredential = false
+
+    for (const [field, envVar] of Object.entries(adapter.fromEnv.credentials)) {
+      const value = env[envVar]
+      if (value) {
+        credentials[field] = value
+        hasCredential = true
+      }
+    }
+
+    if (!hasCredential) continue
+
+    // Read optional config from env
+    const config: Record<string, unknown> = {}
+    if (adapter.fromEnv.config) {
+      for (const [field, envVar] of Object.entries(adapter.fromEnv.config)) {
+        const value = env[envVar]
+        if (value) {
+          config[field] = value
+        }
+      }
+    }
+
+    // Use adapter default base URL if not provided via env
+    if (!config.baseUrl) {
+      config.baseUrl = adapter.defaultBaseUrl
+    }
+
+    integrations.push({
+      id: `standalone-${adapter.type}`,
+      name: `${adapter.type} (env)`,
+      type: adapter.type,
+      enabled: true,
+      config,
+      credentials,
+    })
+  }
+
+  return integrations
 }

@@ -16,31 +16,20 @@ import { createDeepAgent } from "deepagents"
 import { toolStrategy } from "langchain"
 import type { BaseMessage } from "@langchain/core/messages"
 import type { RunnableConfig } from "@langchain/core/runnables"
-import type { StructuredToolInterface } from "@langchain/core/tools"
-import type { BackendProtocol } from "deepagents"
-import { createLLM } from "../../llm/factory.js"
+import { resolveAgentLLM } from "../../llm/factory.js"
 import { GathererSummarySchema } from "../../tools/schemas.js"
 import type { GathererSummary } from "../../tools/schemas.js"
 import { gathererPrompt } from "./prompt.js"
 import type { InvestigationState } from "../../types/state.js"
-
-/**
- * Dependencies for creating the gatherer node.
- */
-export interface GathererNodeDeps {
-  backend: BackendProtocol
-  httpRequestTool: StructuredToolInterface
-  mcpTools: StructuredToolInterface[]
-  skills: string[]
-}
+import type { AgentNodeDeps } from "../types.js"
 
 /**
  * Create the gatherer function node.
  *
  * @param deps - Backend, tools, and skills paths from the investigation graph
  */
-export function createGathererNode(deps: GathererNodeDeps) {
-  const { backend, httpRequestTool, mcpTools, skills } = deps
+export function createGathererNode(deps: AgentNodeDeps) {
+  const { backend, tools, skills } = deps
 
   return async (
     state: InvestigationState,
@@ -78,8 +67,8 @@ export function createGathererNode(deps: GathererNodeDeps) {
 
     try {
       const agent = createDeepAgent({
-        model: createLLM(state.config.llm),
-        tools: [httpRequestTool, ...mcpTools],
+        model: resolveAgentLLM(state.config.llm, state.config.agentOverrides?.["gatherer"]),
+        tools,
         systemPrompt,
         skills,
         backend,

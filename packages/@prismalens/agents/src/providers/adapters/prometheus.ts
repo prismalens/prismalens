@@ -15,4 +15,8 @@ export const prometheusAdapter: IntegrationAdapter = {
     PROMETHEUS_BASE_URL: "{{config.baseUrl}}",
   },
   testRequest: { path: "/api/v1/status/buildinfo" },
+  fromEnv: {
+    credentials: { username: "PROMETHEUS_USERNAME", apiKey: "PROMETHEUS_PASSWORD" },
+    config: { baseUrl: "PROMETHEUS_BASE_URL" },
+  },
 }

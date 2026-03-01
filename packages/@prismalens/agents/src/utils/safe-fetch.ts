@@ -5,7 +5,7 @@
  * one failure crashing the entire investigation.
  */
 
-export interface SafeFetchResult<T> {
+interface SafeFetchResult<T> {
   data: T
   success: boolean
   error?: string

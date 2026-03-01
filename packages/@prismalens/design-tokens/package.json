@@ -24,10 +24,7 @@
 		},
 		"./tokens.css": "./css/tokens.css",
 		"./tailwind-preset.css": "./css/tailwind-preset.css",
-		"./starlight.css": "./css/starlight.css",
-		"./preset": {
-			"require": "./preset.cjs"
-		}
+		"./starlight.css": "./css/starlight.css"
 	},
 	"scripts": {
 		"build": "tsc",
@@ -44,7 +41,6 @@
 	"files": [
 		"dist",
 		"src",
-		"css",
-		"preset.cjs"
+		"css"
 	]
 }

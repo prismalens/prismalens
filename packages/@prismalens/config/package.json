@@ -30,7 +30,6 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"dotenv": "^16.4.0",
 		"zod": "^3.23.0"
 	},
 	"devDependencies": {
