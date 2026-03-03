@@ -14,6 +14,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint"
 import { LocalShellBackend, FilesystemBackend, CompositeBackend } from "deepagents"
 import type { BackendProtocol } from "deepagents"
 import { resolve, dirname } from "node:path"
+import { access } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { InvestigationStateAnnotation } from "./state.js"
 import { createScoutNode } from "../agents/scout/index.js"
@@ -26,6 +27,7 @@ import {
   buildIntegrationEnvVars,
   buildIntegrationsFromEnv,
 } from "../providers/integration-registry.js"
+import { OpenApiToolkit } from "../tools/openapi-toolkit.js"
 import { getGraphConfig, getAgentBudget } from "../config/env.js"
 import { isRetryableError } from "../llm/retry.js"
 import { createHttpRequestTool } from "../tools/http-request.js"
@@ -40,6 +42,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Package-level skills directory */
 const SKILLS_DIR = resolve(__dirname, "../../skills")
 
+/** Package-level specs directory containing bundled OpenAPI spec files */
+const SPECS_DIR = resolve(__dirname, "../../specs")
+
 /**
  * Dependencies for building the investigation graph.
  */
@@ -52,6 +57,45 @@ export interface InvestigationGraphDeps {
   workspaceDir?: string
   /** Optional SearchApi API key. When set, web_search tool is added to analyst + resolver. */
   searchApiKey?: string
+}
+
+/**
+ * Build OpenAPI spec discovery tools for each integration.
+ *
+ * Resolution order (Phase 1):
+ *   1. integration.specUrl → fetch from URL
+ *   2. bundled spec at specs/{type}-openapi.json → load from file
+ *   3. none → skip (agent falls back to SKILL.md examples)
+ *
+ * Non-fatal: a failed toolkit creation is logged but doesn't block the graph.
+ */
+async function buildSpecTools(
+  integrations: IntegrationWithCredentials[],
+): Promise<StructuredToolInterface[]> {
+  const tools: StructuredToolInterface[] = []
+  const seen = new Set<string>()
+
+  for (const integration of integrations) {
+    if (seen.has(integration.type)) continue
+    seen.add(integration.type)
+
+    try {
+      if (integration.specUrl) {
+        const tk = await OpenApiToolkit.create({ name: integration.type, specUrl: integration.specUrl })
+        tools.push(...tk.tools)
+        continue
+      }
+
+      const specPath = resolve(SPECS_DIR, `${integration.type}-openapi.json`)
+      await access(specPath)
+      const tk = await OpenApiToolkit.create({ name: integration.type, specPath })
+      tools.push(...tk.tools)
+    } catch {
+      // Non-fatal — agent falls back to SKILL.md examples
+    }
+  }
+
+  return tools
 }
 
 /**
@@ -101,6 +145,9 @@ export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
     resolverWebTools.push(new SearchApi(deps.searchApiKey, { engine: "google" }))
   }
 
+  // Build OpenAPI spec discovery tools (shared across all agents)
+  const specTools = await buildSpecTools(integrations)
+
   // Build backend stack
   const backend = await createBackend(integrations, deps.workspaceDir)
 
@@ -121,9 +168,9 @@ export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
   }
 
   // Assemble per-agent tool arrays:
-  //   gatherer: http_request (read+write) + MCP tools — NO web tools
-  //   analyst:  http_request (read-only) + web_browse + web_search + MCP tools
-  //   resolver: http_request (read-only) + web_browse + web_search + MCP tools
+  //   gatherer: http_request (read+write) + spec routes + MCP tools — NO web tools
+  //   analyst:  http_request (read-only) + spec routes + web_browse + web_search + MCP tools
+  //   resolver: http_request (read-only) + spec routes + web_browse + web_search + MCP tools
   const graph = new StateGraph(InvestigationStateAnnotation)
     .addNode("scout", createScoutNode(deps.dataProvider))
     .addNode("supervisor", supervisorNode, {
@@ -134,7 +181,7 @@ export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
       "gatherer",
       createGathererNode({
         backend,
-        tools: [gathererHttpTool, ...mcpTools],
+        tools: [gathererHttpTool, ...specTools, ...mcpTools],
         skills: [commonSkillsPath, gathererSkillsPath],
       }),
       { retryPolicy },
@@ -143,7 +190,7 @@ export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
       "analyst",
       createAnalystNode({
         backend,
-        tools: [analystHttpTool, ...analystWebTools, ...mcpTools],
+        tools: [analystHttpTool, ...specTools, ...analystWebTools, ...mcpTools],
         skills: [commonSkillsPath, analystSkillsPath],
       }),
       { retryPolicy },
@@ -152,7 +199,7 @@ export async function buildInvestigationGraph(deps: InvestigationGraphDeps) {
       "resolver",
       createResolverNode({
         backend,
-        tools: [resolverHttpTool, ...resolverWebTools, ...mcpTools],
+        tools: [resolverHttpTool, ...specTools, ...resolverWebTools, ...mcpTools],
         skills: [commonSkillsPath, resolverSkillsPath],
       }),
       { retryPolicy },
@@ -200,6 +247,7 @@ async function createBackend(
   // Workspace backend: execute scripts, read/write workspace files
   const workspaceBackend = await LocalShellBackend.create({
     rootDir: workspaceDir,
+    virtualMode: true,
     inheritEnv: false,
     env: {
       PATH: "/usr/local/bin:/usr/bin:/bin",

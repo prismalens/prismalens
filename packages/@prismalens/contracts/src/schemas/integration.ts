@@ -23,6 +23,7 @@ export const IntegrationDefinitionSchema = z.object({
 	credentialSchema: z.record(z.unknown()).nullable().optional(),
 	iconUrl: z.string().nullable(),
 	docsUrl: z.string().nullable(),
+	specUrl: z.string().nullable(),
 	maxConnectionsCE: z.number().int().nullable(),
 	isEnabled: z.boolean(),
 	createdAt: DateStringSchema,

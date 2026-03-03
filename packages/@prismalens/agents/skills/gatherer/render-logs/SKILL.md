@@ -52,10 +52,9 @@ http_request({
 3. **Check deployments**: List recent deploys — look for deployments shortly before incident
 4. **Cross-reference**: Match deploy timestamps with error log onset times
 
-## API Reference
+## API Discovery
 
-See `/workspace/specs/render-openapi.json` for full endpoint documentation.
-Use `grep` to search the spec for specific endpoints.
+For endpoints beyond the quick reference above, use `render_routes` to discover all available API endpoints and their parameters.
 
 ## Script Templates
 

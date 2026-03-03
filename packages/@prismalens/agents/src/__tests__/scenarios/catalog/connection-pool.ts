@@ -105,13 +105,7 @@ export const CONNECTION_POOL: ScenarioDefinition = {
   ],
 
   httpMocks: [
-    {
-      integration: "render",
-      pathPattern: "/v1/services",
-      responseBody: buildServicesResponse([
-        { id: "srv-orders", name: "order-service", status: "deployed" },
-      ]),
-    },
+    // Specific routes FIRST — general "/v1/services" string pattern is greedy (startsWith)
     {
       integration: "render",
       pathPattern: /\/v1\/services\/srv-orders\/deploys/,
@@ -153,6 +147,14 @@ export const CONNECTION_POOL: ScenarioDefinition = {
             "WARN DB_POOL_SIZE is set to 10. Previous value was 100.",
           level: "warn",
         },
+      ]),
+    },
+    // General route LAST — string pattern uses startsWith, would capture specific paths
+    {
+      integration: "render",
+      pathPattern: "/v1/services",
+      responseBody: buildServicesResponse([
+        { id: "srv-orders", name: "order-service", status: "deployed" },
       ]),
     },
   ],

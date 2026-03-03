@@ -130,13 +130,7 @@ export const FEATURE_FLAG: ScenarioDefinition = {
   ],
 
   httpMocks: [
-    {
-      integration: "render",
-      pathPattern: "/v1/services",
-      responseBody: buildServicesResponse([
-        { id: "srv-checkout", name: "checkout-service" },
-      ]),
-    },
+    // Specific routes FIRST — general "/v1/services" string pattern is greedy (startsWith)
     {
       integration: "render",
       pathPattern: /\/v1\/services\/srv-checkout\/logs/,
@@ -171,6 +165,14 @@ export const FEATURE_FLAG: ScenarioDefinition = {
             "ERROR TypeError: Cannot read properties of undefined (reading 'applyDiscount') — flag 'new-discount-engine' active",
           level: "error",
         },
+      ]),
+    },
+    // General route LAST — string pattern uses startsWith, would capture specific paths
+    {
+      integration: "render",
+      pathPattern: "/v1/services",
+      responseBody: buildServicesResponse([
+        { id: "srv-checkout", name: "checkout-service" },
       ]),
     },
     {

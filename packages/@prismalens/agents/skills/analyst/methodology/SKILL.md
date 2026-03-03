@@ -33,7 +33,7 @@ Consider these evidence sources:
 
 Use workspace tools to gather verified evidence:
 
-- **Clone the repository** into `/workspace/` if code analysis is needed
+- **Clone the repository** into the workspace if code analysis is needed
 - **Search code** for error strings, affected function names, config keys using `grep`
 - **Read suspicious files** to understand the code path that triggered the error
 - **Check recent changes**: compare code before/after a suspect commit
@@ -44,10 +44,10 @@ and weighted more heavily by the scoring formula.
 
 ### Code Investigation Workflow
 
-1. Clone → `execute("git clone <url> /workspace/repo")`
-2. Search → `grep("ConnectionTimeout|ECONNREFUSED", "/workspace/repo/src")`
-3. Read → `read_file("/workspace/repo/src/config/database.ts")`
-4. Script → `write_file("/workspace/analyze.py", ...)` then `execute("python3 /workspace/analyze.py")`
+1. Clone → `execute("git clone <url> /repo")`
+2. Search → `grep("ConnectionTimeout|ECONNREFUSED", "/repo/src")`
+3. Read → `read_file("/repo/src/config/database.ts")`
+4. Script → `write_file("/analyze.py", ...)` then `execute("python3 /analyze.py")`
 
 ### Best Practices
 

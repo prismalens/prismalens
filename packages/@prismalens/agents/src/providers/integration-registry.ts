@@ -31,7 +31,6 @@ import { getAdapter, getAllAdapters } from "./adapters/index.js"
 export interface IntegrationAdapter {
   readonly type: string
   readonly defaultBaseUrl: string
-  readonly specFileName?: string
   readonly dataSources: DataRequest["source"][]
 
   /** Declarative auth injection — templates resolved at runtime */

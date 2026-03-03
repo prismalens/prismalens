@@ -61,10 +61,9 @@ http_request({
 3. **Diff analysis**: Compare the last known good state to current — what changed?
 4. **CI status**: Check recent workflow runs for test failures or deployment issues
 
-## API Reference
+## API Discovery
 
-See `/workspace/specs/github-openapi.json` for full endpoint documentation.
-Use `grep` to search the spec for specific endpoints.
+For endpoints beyond the quick reference above, use `github_routes` to discover all available API endpoints and their parameters.
 
 ## Script Templates
 

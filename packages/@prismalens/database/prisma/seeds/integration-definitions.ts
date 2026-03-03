@@ -52,6 +52,7 @@ export async function seedIntegrationDefinitions(
 			iconUrl:
 				"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
 			docsUrl: "https://docs.github.com/en/rest",
+			specUrl: null,
 			isEnabled: true,
 		},
 		{
@@ -99,6 +100,7 @@ export async function seedIntegrationDefinitions(
 			}),
 			iconUrl: "https://prometheus.io/assets/prometheus_logo_grey.svg",
 			docsUrl: "https://prometheus.io/docs/prometheus/latest/querying/api/",
+			specUrl: null,
 			isEnabled: true,
 		},
 		{
@@ -138,6 +140,7 @@ export async function seedIntegrationDefinitions(
 			}),
 			iconUrl: "https://render.com/favicon.ico",
 			docsUrl: "https://docs.render.com/api",
+			specUrl: null,
 			isEnabled: true,
 		},
 		{
@@ -184,6 +187,7 @@ export async function seedIntegrationDefinitions(
 			iconUrl:
 				"https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
 			docsUrl: "https://api.slack.com/messaging/webhooks",
+			specUrl: null,
 			isEnabled: true,
 		},
 	];
@@ -203,6 +207,7 @@ export async function seedIntegrationDefinitions(
 				credentialSchema: def.credentialSchema,
 				iconUrl: def.iconUrl,
 				docsUrl: def.docsUrl,
+				specUrl: def.specUrl,
 				isEnabled: def.isEnabled,
 			},
 			create: def,

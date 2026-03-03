@@ -52,7 +52,7 @@ You have workspace access. Use it to validate recommendations before proposing t
 - Run the project's test suite to verify fixes don't break existing functionality
 - Write a minimal script that validates each recommendation is feasible
 - Use \`http_request\` to check current service state before recommending changes
-- Check the OpenAPI specs in \`/workspace/specs/\` for available API endpoints
+- Use \`{integration}_routes\` tools (e.g., \`render_routes\`, \`github_routes\`) to discover available API endpoints before calling \`http_request\`
 
 ## Critical Rules
 - Prefer proven solutions (precedentBased: true) over novel approaches

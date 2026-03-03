@@ -10,12 +10,18 @@
  * - PRISMALENS_LLM_MODEL — e.g., "claude-haiku-4-5-20251001" (no default)
  * - ANTHROPIC_API_KEY (or provider-specific key)
  *
- * Run:
+ * Run all:
  *   pnpm -F @prismalens/agents eval:scenarios
+ *
+ * Run single scenario:
+ *   SCENARIO=connection-pool pnpm -F @prismalens/agents eval:scenarios
  */
 
-import { describe, it } from "vitest"
+import { Client } from "langsmith"
 import { evaluate } from "langsmith/evaluation"
+import type { Example } from "langsmith/schemas"
+import { describe, it } from "vitest"
+
 import { createScenarioEvalTarget } from "./scenario-target.js"
 import {
   scenarioTrajectory,
@@ -33,9 +39,30 @@ describe.runIf(process.env.RUN_EVALS === "true")("Scenario Evals", () => {
     timeout: 1_200_000,
   }, async () => {
     const target = createScenarioEvalTarget()
+    const scenarioFilter = process.env.SCENARIO
+
+    // When SCENARIO env var is set, filter dataset to that single example.
+    // This allows running/debugging one scenario at a time.
+    let data: Parameters<typeof evaluate>[1]["data"] = "prismalens-scenarios"
+
+    if (scenarioFilter) {
+      const client = new Client()
+      const filtered: Example[] = []
+      for await (const example of client.listExamples({
+        datasetName: "prismalens-scenarios",
+      })) {
+        if (example.inputs.scenarioId === scenarioFilter) {
+          filtered.push(example)
+        }
+      }
+      if (filtered.length === 0) {
+        throw new Error(`No dataset example found for SCENARIO=${scenarioFilter}`)
+      }
+      data = filtered
+    }
 
     await evaluate(target, {
-      data: "prismalens-scenarios",
+      data,
       evaluators: [
         scenarioTrajectory,
         scenarioRootCauseKeywords,

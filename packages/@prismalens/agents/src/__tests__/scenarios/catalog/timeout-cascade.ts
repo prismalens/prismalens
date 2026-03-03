@@ -129,15 +129,7 @@ export const TIMEOUT_CASCADE: ScenarioDefinition = {
   ],
 
   httpMocks: [
-    {
-      integration: "render",
-      pathPattern: "/v1/services",
-      responseBody: buildServicesResponse([
-        { id: "srv-gateway", name: "api-gateway" },
-        { id: "srv-orders", name: "order-service" },
-        { id: "srv-inventory", name: "inventory-service" },
-      ]),
-    },
+    // Specific routes FIRST — general "/v1/services" string pattern is greedy (startsWith)
     // Inventory-service logs (root cause)
     {
       integration: "render",
@@ -212,6 +204,16 @@ export const TIMEOUT_CASCADE: ScenarioDefinition = {
           commitMessage: "chore: routine dependency update",
           createdAt: t.minus({ hours: 72 }),
         },
+      ]),
+    },
+    // General route LAST — string pattern uses startsWith, would capture specific paths
+    {
+      integration: "render",
+      pathPattern: "/v1/services",
+      responseBody: buildServicesResponse([
+        { id: "srv-gateway", name: "api-gateway" },
+        { id: "srv-orders", name: "order-service" },
+        { id: "srv-inventory", name: "inventory-service" },
       ]),
     },
   ],

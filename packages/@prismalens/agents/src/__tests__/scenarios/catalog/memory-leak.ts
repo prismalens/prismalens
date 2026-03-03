@@ -120,13 +120,7 @@ export const MEMORY_LEAK: ScenarioDefinition = {
   ],
 
   httpMocks: [
-    {
-      integration: "render",
-      pathPattern: "/v1/services",
-      responseBody: buildServicesResponse([
-        { id: "srv-users", name: "user-service", status: "deployed" },
-      ]),
-    },
+    // Specific routes FIRST — general "/v1/services" string pattern is greedy (startsWith)
     {
       integration: "render",
       pathPattern: /\/v1\/services\/srv-users\/logs/,
@@ -161,6 +155,14 @@ export const MEMORY_LEAK: ScenarioDefinition = {
             "ERROR Container killed due to OOM. Memory limit: 512MB, Usage: 512MB",
           level: "error",
         },
+      ]),
+    },
+    // General route LAST — string pattern uses startsWith, would capture specific paths
+    {
+      integration: "render",
+      pathPattern: "/v1/services",
+      responseBody: buildServicesResponse([
+        { id: "srv-users", name: "user-service", status: "deployed" },
       ]),
     },
     {

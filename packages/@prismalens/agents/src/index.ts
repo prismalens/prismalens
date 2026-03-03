@@ -106,8 +106,8 @@ export type { LLMProviderConfig, AgentLLMOverride } from "./llm/index.js"
 // =============================================================================
 
 export type { SkillMetadata, PrismaLensSkillMetadata } from "./tools/index.js"
-export { createHttpRequestTool, createWebBrowseTool, isDomainAllowed } from "./tools/index.js"
-export type { HttpRequestToolOptions, HttpRequestLimits, WebBrowseToolOptions, DomainFilter } from "./tools/index.js"
+export { createHttpRequestTool, createWebBrowseTool, isDomainAllowed, OpenApiToolkit, formatForLlm } from "./tools/index.js"
+export type { HttpRequestToolOptions, HttpRequestLimits, WebBrowseToolOptions, DomainFilter, OpenApiToolkitOptions, ToolEndpoint, ToolParameter, SecurityRequirement } from "./tools/index.js"
 
 // Agent shared types
 export type { AgentNodeDeps } from "./agents/types.js"

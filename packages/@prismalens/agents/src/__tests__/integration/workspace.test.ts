@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { getWorkspacePath, createWorkspaceDir, cleanupWorkspaceDir, injectSpecFiles } from "../../config/workspace.js"
 import type { IntegrationWithCredentials } from "../../types/contexts.js"
-import { mkdir, cp, rm } from "node:fs/promises"
+import { mkdir, cp, rm, writeFile } from "node:fs/promises"
 
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn(async () => undefined),
   cp: vi.fn(async () => undefined),
   rm: vi.fn(async () => undefined),
+  writeFile: vi.fn(async () => undefined),
 }))
 
 describe("getWorkspacePath", () => {
@@ -88,9 +89,10 @@ describe("cleanupWorkspaceDir", () => {
 describe("injectSpecFiles", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.restoreAllMocks()
   })
 
-  it("copies spec files for enabled integrations", async () => {
+  it("copies bundled spec for enabled integrations (convention fallback)", async () => {
     const integrations: IntegrationWithCredentials[] = [
       {
         id: "conn-1",
@@ -109,6 +111,77 @@ describe("injectSpecFiles", () => {
     expect(cpCall[1]).toContain("render-openapi.json")
   })
 
+  it("fetches spec from specUrl when provided", async () => {
+    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response('{"openapi":"3.0.0"}', { status: 200 }),
+    )
+
+    const integrations: IntegrationWithCredentials[] = [
+      {
+        id: "conn-1",
+        name: "custom",
+        type: "custom",
+        enabled: true,
+        config: {},
+        credentials: {},
+        specUrl: "https://example.com/spec.json",
+      },
+    ]
+
+    await injectSpecFiles("/tmp/prismalens-investigations/inv-1/workspace", integrations)
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://example.com/spec.json",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(writeFile).toHaveBeenCalledTimes(1)
+    expect(cp).not.toHaveBeenCalled()
+  })
+
+  it("skips specUrl fetch on non-ok response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Not Found", { status: 404 }),
+    )
+
+    const integrations: IntegrationWithCredentials[] = [
+      {
+        id: "conn-1",
+        name: "custom",
+        type: "custom",
+        enabled: true,
+        config: {},
+        credentials: {},
+        specUrl: "https://example.com/bad-spec.json",
+      },
+    ]
+
+    await injectSpecFiles("/tmp/prismalens-investigations/inv-1/workspace", integrations)
+    expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it("deduplicates by integration type", async () => {
+    const integrations: IntegrationWithCredentials[] = [
+      {
+        id: "conn-1",
+        name: "render-1",
+        type: "render",
+        enabled: true,
+        config: {},
+        credentials: { apiKey: "test1" },
+      },
+      {
+        id: "conn-2",
+        name: "render-2",
+        type: "render",
+        enabled: true,
+        config: {},
+        credentials: { apiKey: "test2" },
+      },
+    ]
+
+    await injectSpecFiles("/tmp/prismalens-investigations/inv-1/workspace", integrations)
+    expect(cp).toHaveBeenCalledTimes(1)
+  })
+
   it("skips disabled integrations", async () => {
     const integrations: IntegrationWithCredentials[] = [
       {
@@ -118,22 +191,6 @@ describe("injectSpecFiles", () => {
         enabled: false,
         config: {},
         credentials: { apiKey: "test" },
-      },
-    ]
-
-    await injectSpecFiles("/tmp/prismalens-investigations/inv-1/workspace", integrations)
-    expect(cp).not.toHaveBeenCalled()
-  })
-
-  it("skips unknown integration types", async () => {
-    const integrations: IntegrationWithCredentials[] = [
-      {
-        id: "conn-1",
-        name: "unknown",
-        type: "unknown",
-        enabled: true,
-        config: {},
-        credentials: {},
       },
     ]
 

@@ -3,7 +3,6 @@ import type { IntegrationAdapter } from "../integration-registry.js"
 export const prometheusAdapter: IntegrationAdapter = {
   type: "prometheus",
   defaultBaseUrl: "http://localhost:9090",
-  // specFileName: not yet available — add prometheus-openapi.json to specs/ when ready
   dataSources: ["metrics"],
   authenticate: {
     basic: {

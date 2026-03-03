@@ -51,11 +51,11 @@ Note validation results in your recommendation steps.
 
 1. Write validation script:
    ```
-   write_file("/workspace/validate-fix.py", "...")
-   execute("python3 /workspace/validate-fix.py")
+   write_file("/validate-fix.py", "...")
+   execute("python3 /validate-fix.py")
    ```
-2. Run existing tests: `execute("cd /workspace/repo && npm test 2>&1 | tail -20")`
-3. Apply patch and verify: `execute("cd /workspace/repo && git diff HEAD~1 -- src/config.ts")`
+2. Run existing tests: `execute("cd /repo && npm test 2>&1 | tail -20")`
+3. Apply patch and verify: `execute("cd /repo && git diff HEAD~1 -- src/config.ts")`
 
 ### Best Practices
 

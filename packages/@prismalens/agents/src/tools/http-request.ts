@@ -237,7 +237,7 @@ class HttpRequestTool extends StructuredTool {
       `Available integrations: ${availableIntegrations || "none"}. ` +
       `Allowed methods: ${methodsList}.${budgetNote} ` +
       `Auth is injected automatically — never include credentials in requests. ` +
-      `Check the OpenAPI spec in /workspace/specs/ for available endpoints.`
+      `Check the OpenAPI spec in /specs/ for available endpoints.`
   }
 
   async _call(input: HttpRequestInput): Promise<string> {

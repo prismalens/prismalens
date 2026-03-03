@@ -89,13 +89,7 @@ export const MISSING_ENV_VAR: ScenarioDefinition = {
   ],
 
   httpMocks: [
-    {
-      integration: "render",
-      pathPattern: "/v1/services",
-      responseBody: buildServicesResponse([
-        { id: "srv-payment", name: "payment-service", status: "deploy_failed" },
-      ]),
-    },
+    // Specific routes FIRST — general "/v1/services" string pattern is greedy (startsWith)
     {
       integration: "render",
       pathPattern: /\/v1\/services\/srv-payment\/deploys/,
@@ -144,6 +138,14 @@ export const MISSING_ENV_VAR: ScenarioDefinition = {
           message: "Process exited with code 1",
           level: "error",
         },
+      ]),
+    },
+    // General route LAST — string pattern uses startsWith, would capture specific paths
+    {
+      integration: "render",
+      pathPattern: "/v1/services",
+      responseBody: buildServicesResponse([
+        { id: "srv-payment", name: "payment-service", status: "deploy_failed" },
       ]),
     },
   ],

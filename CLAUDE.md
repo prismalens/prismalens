@@ -10,3 +10,6 @@ This is a project that is still in development phase
 
 ## Package installation
 When adding new packages, always prefer addition/installation via the package manager over adding the package details to package.json file directly.
+
+## Ecosystem
+This is a NodeJS project

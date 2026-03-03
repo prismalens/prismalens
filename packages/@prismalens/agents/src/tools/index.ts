@@ -16,3 +16,10 @@ export type { WebBrowseToolOptions } from "./web-browse.js"
 // Domain filtering (shared by web tools)
 export { isDomainAllowed } from "./domain-filter.js"
 export type { DomainFilter } from "./domain-filter.js"
+
+// OpenAPI toolkit (spec discovery)
+export { OpenApiToolkit } from "./openapi-toolkit.js"
+export type { OpenApiToolkitOptions, ToolEndpoint, ToolParameter, SecurityRequirement } from "./openapi-toolkit.js"
+
+// TOON formatter (token-efficient output)
+export { formatForLlm } from "./format-toon.js"

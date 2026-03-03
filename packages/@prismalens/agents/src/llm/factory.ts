@@ -18,7 +18,7 @@ import { getGraphConfig } from "../config/env.js"
 // ── Discriminated Union Config ──────────────────────────────────────
 
 export type AnthropicProviderConfig = { provider: "anthropic" } & ChatAnthropicInput
-export type OpenAIProviderConfig = { provider: "openai" } & ChatOpenAIFields
+export type OpenAIProviderConfig = { provider: "openai"; baseURL?: string } & ChatOpenAIFields
 export type GoogleProviderConfig = { provider: "google" } & GoogleGenerativeAIChatInput
 export type GroqProviderConfig = { provider: "groq" } & ChatGroqInput
 export type OllamaProviderConfig = { provider: "ollama" } & ChatOllamaInput
@@ -85,11 +85,17 @@ export function createLLM(config: LLMProviderConfig): BaseChatModel {
     }
 
     case "openai": {
-      const { provider: _, ...rest } = config
+      // ChatOpenAI expects baseURL inside `configuration`, not as a top-level field.
+      // Merge it into configuration for OpenAI-compatible providers (e.g. NVIDIA NIM).
+      const { provider: _, configuration: existingConfig, baseURL, ...openAIFields } = config
+      const configuration = baseURL
+        ? { ...existingConfig, baseURL }
+        : existingConfig
       return new ChatOpenAI({
-        ...rest,
-        temperature: rest.temperature ?? defaultTemp,
-        maxTokens: rest.maxTokens ?? defaultMaxTokens,
+        ...openAIFields,
+        ...(configuration && { configuration }),
+        temperature: openAIFields.temperature ?? defaultTemp,
+        maxTokens: openAIFields.maxTokens ?? defaultMaxTokens,
         maxRetries,
       })
     }

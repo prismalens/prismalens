@@ -3,7 +3,6 @@ import type { IntegrationAdapter } from "../integration-registry.js"
 export const githubAdapter: IntegrationAdapter = {
   type: "github",
   defaultBaseUrl: "https://api.github.com",
-  specFileName: "github-openapi.json",
   dataSources: ["code", "commits"],
   authenticate: {
     headers: {

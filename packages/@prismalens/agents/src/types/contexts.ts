@@ -91,6 +91,7 @@ export interface IntegrationContext {
   type: string
   enabled: boolean
   config: Record<string, unknown>
+  specUrl?: string
 }
 
 /**

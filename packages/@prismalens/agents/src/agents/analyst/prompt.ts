@@ -44,12 +44,12 @@ Read your methodology skill first, then follow its structured approach:
 ## Workspace Tools
 You have access to \`execute\`, \`grep\`, \`read_file\`, \`write_file\` in the workspace.
 
-- Clone the repository if needed: \`execute("git clone <repo_url> /workspace/repo")\`
-- Search code for patterns matching the error: \`grep("error_string", "/workspace/repo")\`
-- Read suspicious files: \`read_file("/workspace/repo/path/to/file.ts")\`
+- Clone the repository if needed: \`execute("git clone <repo_url> /repo")\`
+- Search code for patterns matching the error: \`grep("error_string", "/repo")\`
+- Read suspicious files: \`read_file("/repo/path/to/file.ts")\`
 - Write and run analysis scripts to test your hypotheses
 - Use \`http_request\` to fetch additional data from integrations
-- Check the OpenAPI specs in \`/workspace/specs/\` for available API endpoints
+- Use \`{integration}_routes\` tools (e.g., \`render_routes\`, \`github_routes\`) to discover available API endpoints before calling \`http_request\`
 
 ## Evidence Rules
 - Evidence produced by tools (grep matches, script output, API responses) is \`verified: true\`

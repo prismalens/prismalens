@@ -281,6 +281,7 @@ async function fetchIntegrationCredentials(
 		connectionId: string;
 		credentials: Record<string, unknown>;
 		config: Record<string, unknown>;
+		specUrl?: string | null;
 	}>;
 
 	return data.map((item) => ({
@@ -290,6 +291,7 @@ async function fetchIntegrationCredentials(
 		enabled: true,
 		config: item.config,
 		credentials: item.credentials,
+		specUrl: item.specUrl ?? undefined,
 	}));
 }
 

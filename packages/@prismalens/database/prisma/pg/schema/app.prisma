@@ -844,6 +844,7 @@ model IntegrationDefinition {
   oauthConfig      String? // Encrypted JSON: { clientId, clientSecret, scopes, authUrl, tokenUrl }
   iconUrl          String?
   docsUrl          String?
+  specUrl          String?
   maxConnectionsCE Int? // null = unlimited, 1 = single connection in CE
   isEnabled        Boolean  @default(true)
   createdAt        DateTime @default(now())

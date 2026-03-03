@@ -113,14 +113,7 @@ export const NPE_WITH_GITHUB: ScenarioDefinition = {
   ],
 
   httpMocks: [
-    // Render: services list
-    {
-      integration: "render",
-      pathPattern: "/v1/services",
-      responseBody: buildServicesResponse([
-        { id: "srv-user-api", name: "user-api", status: "deployed" },
-      ]),
-    },
+    // Specific routes FIRST — general "/v1/services" string pattern is greedy (startsWith)
     // Render: deploys for user-api
     {
       integration: "render",
@@ -193,6 +186,14 @@ export const NPE_WITH_GITHUB: ScenarioDefinition = {
             'User user = cache.get(userId); // null check removed in abc123f\nreturn user.getProfile(); // NPE here when cache miss',
           ],
         },
+      ]),
+    },
+    // General route LAST — string pattern uses startsWith, would capture specific paths
+    {
+      integration: "render",
+      pathPattern: "/v1/services",
+      responseBody: buildServicesResponse([
+        { id: "srv-user-api", name: "user-api", status: "deployed" },
       ]),
     },
     // GitHub: file content

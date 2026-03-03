@@ -33,7 +33,12 @@ export class MockHttpHandler {
   private originalFetch: typeof globalThis.fetch | null = null
 
   constructor(routes: MockHttpRoute[]) {
-    this.routes = routes
+    // Regex patterns are more specific than string patterns (which use startsWith).
+    // Sort regex routes first to prevent greedy string matches on sub-paths.
+    this.routes = [
+      ...routes.filter((r) => r.pathPattern instanceof RegExp),
+      ...routes.filter((r) => typeof r.pathPattern === "string"),
+    ]
   }
 
   /**
