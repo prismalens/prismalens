@@ -327,7 +327,6 @@ function AgentExecutionsTab({
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-3">
 								<Brain className="h-5 w-5 text-gray-500" />
-								)}
 								<div>
 									<CardTitle className="text-base capitalize">
 										{agent.agentName.replace(/_/g, " ")}
