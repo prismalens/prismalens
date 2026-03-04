@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SecretEnvVars } from "../utils/secrets.js";
 
 /**
  * Deployment configuration schema.
@@ -20,16 +21,16 @@ export const deploymentSchema = z.object({
 			"Path to .prismalens directory where CLI stores application files (logs, config, cached data). " +
 				"Defaults to ~/.prismalens if not specified.",
 		),
-	PRISMALENS_ENCRYPTION_KEY: z
+	[SecretEnvVars.ENCRYPTION_KEY]: z
 		.string()
 		.optional()
 		.describe(
 			"Hex-encoded 32-byte (64 hex chars) encryption key for encrypting sensitive data at rest. " +
 				"If not set, random key will be generated (not recommended for production).",
 		),
-	PRISMALENS_INTERNAL_SECRET: z
+	[SecretEnvVars.INTERNAL_SECRET]: z
 		.string()
-		.min(32, "PRISMALENS_INTERNAL_SECRET must be at least 32 characters when set")
+		.min(32, `${SecretEnvVars.INTERNAL_SECRET} must be at least 32 characters when set`)
 		.optional()
 		.describe(
 			"Shared secret for internal API communication. " +
@@ -37,9 +38,9 @@ export const deploymentSchema = z.object({
 		),
 
 	// Authentication (Better Auth)
-	PRISMALENS_AUTH_SECRET: z
+	[SecretEnvVars.AUTH_SECRET]: z
 		.string()
-		.min(32, "PRISMALENS_AUTH_SECRET must be at least 32 characters when set")
+		.min(32, `${SecretEnvVars.AUTH_SECRET} must be at least 32 characters when set`)
 		.optional()
 		.describe(
 			"Secret for Better Auth session signing. " +

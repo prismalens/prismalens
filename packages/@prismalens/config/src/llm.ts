@@ -8,7 +8,7 @@
  *
  * @example
  * ```typescript
- * import { LLM_PROVIDERS, llmProviderIdSchema, getDocsUrl } from '@prismalens/config/llm';
+ * import { LLM_PROVIDERS, llmProviderIdSchema } from '@prismalens/config/llm';
  * ```
  */
 
@@ -21,5 +21,5 @@ export {
 	llmProviderIdSchema,
 	// Helper functions
 	getApiKeyEnvVar,
-	getDocsUrl,
+	getAllowedHosts,
 } from "./providers/llm.js";

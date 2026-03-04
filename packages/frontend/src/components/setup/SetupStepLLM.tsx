@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import {
 	AlertCircle,
@@ -20,33 +20,44 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
 	useMarkStepSkipped,
-	useSaveLlmCredential,
-	useTestLlmConnectionWithEnv,
-	useUpdateLlmSettings,
+	useOllamaModels,
+	useSetupLlmEnvStatus,
+	useSetupLlmModels,
+	useSetupSaveLlmCredential,
+	useSetupTestLlmConnection,
+	useSetupUpdateLlmSettings,
 } from "@/lib/api/hooks";
+import {
+	ProviderModelSelector,
+	type ProviderInfo,
+} from "@/components/settings/ProviderModelSelector";
 
 // Transform LLM_PROVIDERS from config into UI-friendly format
-const AI_PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
-	id: provider.id as LLMProviderId,
-	name: provider.name,
-	models: [...provider.suggestedModels],
-	helpUrl: provider.helpUrl,
-	noApiKey: provider.envVar === null,
-	baseUrlRequired:
-		"baseUrlRequired" in provider ? provider.baseUrlRequired : false,
-	defaultBaseUrl:
-		"defaultBaseUrl" in provider ? provider.defaultBaseUrl : undefined,
-}));
+const PROVIDERS: ProviderInfo[] = Object.values(LLM_PROVIDERS).map(
+	(provider) => ({
+		id: provider.id as LLMProviderId,
+		name: provider.name,
+		free: "free" in provider ? provider.free : false,
+		baseUrlRequired: "baseUrlRequired" in provider ? provider.baseUrlRequired : undefined,
+		defaultBaseUrl: "defaultBaseUrl" in provider ? (provider.defaultBaseUrl as string) : undefined,
+	}),
+);
+
+// Provider metadata for API key / base URL handling
+const PROVIDER_META = Object.fromEntries(
+	Object.values(LLM_PROVIDERS).map((p) => [
+		p.id,
+		{
+			helpUrl: p.helpUrl,
+			noApiKey: p.envVar === null,
+			baseUrlRequired: "baseUrlRequired" in p ? p.baseUrlRequired : false,
+			defaultBaseUrl: "defaultBaseUrl" in p ? p.defaultBaseUrl : undefined,
+		},
+	]),
+);
 
 export interface SetupStepLLMProps {
 	onComplete: () => void;
@@ -59,23 +70,24 @@ export function SetupStepLLM({
 	onSkip,
 	onError,
 }: SetupStepLLMProps) {
-	const [error, setError] = useState<string | null>(null);
+	const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-	// Form state - default to first provider
-	const defaultProvider = AI_PROVIDERS[0];
-	const [selectedProvider, setSelectedProvider] = useState<string>(
-		defaultProvider?.id || "anthropic",
-	);
+	// Form state
+	const [selectedProvider, setSelectedProvider] =
+		useState<LLMProviderId>("anthropic");
 	const [apiKey, setApiKey] = useState("");
-	const [selectedModel, setSelectedModel] = useState<string>(
-		defaultProvider?.models[0] || "",
-	);
-	const [testSuccess, setTestSuccess] = useState<boolean | null>(null);
+	const [selectedModel, setSelectedModel] = useState("");
+	const [customModel, setCustomModel] = useState("");
+	const [baseUrl, setBaseUrl] = useState("");
 
-	// oRPC mutations
-	const updateSettings = useUpdateLlmSettings();
-	const saveCredential = useSaveLlmCredential();
-	const testConnection = useTestLlmConnectionWithEnv();
+	// API data (public setup endpoints — no auth required)
+	const { data: envStatus } = useSetupLlmEnvStatus();
+	const { data: modelsData, isLoading: modelsLoading } = useSetupLlmModels();
+
+	// oRPC mutations (use setup-specific public endpoints — no auth required)
+	const updateSettings = useSetupUpdateLlmSettings();
+	const saveCredential = useSetupSaveLlmCredential();
+	const testConnection = useSetupTestLlmConnection();
 	const markSkipped = useMarkStepSkipped();
 
 	const isLoading =
@@ -84,34 +96,66 @@ export function SetupStepLLM({
 		testConnection.isPending ||
 		markSkipped.isPending;
 
-	const provider = AI_PROVIDERS.find((p) => p.id === selectedProvider);
+	const meta = PROVIDER_META[selectedProvider];
+	const effectiveBaseUrl = baseUrl || meta?.defaultBaseUrl;
+	const { data: ollamaModels } = useOllamaModels(
+		selectedProvider === "ollama" ? effectiveBaseUrl : undefined,
+	);
+
+	// Merge cloud models (models.dev) with local Ollama models
+	const allModels = useMemo(
+		() => [...(modelsData?.models || []), ...(ollamaModels || [])],
+		[modelsData?.models, ollamaModels],
+	);
+	const activeModel = customModel || selectedModel;
+
+	// During setup, all providers are "ready" so model selection isn't blocked.
+	// The user enters their API key separately below — validation happens on submit.
+	const envStatusMap: Record<string, { isReady: boolean; envVarName?: string }> =
+		envStatus?.providers
+			? Object.fromEntries(
+					Object.entries(envStatus.providers).map(([id, status]) => {
+						const s = status as { isReady: boolean; envVarName: string | null };
+						return [
+							id,
+							{
+								isReady: true,
+								envVarName: s.envVarName ?? undefined,
+							},
+						];
+					}),
+				)
+			: {};
 
 	const handleTestConnection = async () => {
-		setError(null);
-		setTestSuccess(null);
+		setStatus(null);
 
-		testConnection.mutate(
-			{
-				provider: selectedProvider as Parameters<typeof testConnection.mutate>[0]["provider"],
-				model: selectedModel || undefined,
-			},
-			{
-				onSuccess: (data) => {
-					if (data.success) {
-						setTestSuccess(true);
-					} else {
-						setTestSuccess(false);
-						setError(data.error || "Connection test failed");
-					}
-				},
-				onError: (err) => {
-					setTestSuccess(false);
-					setError(
-						err instanceof Error ? err.message : "Connection test failed",
-					);
-				},
-			},
-		);
+		try {
+			// Save API key first so the backend can use it
+			if (apiKey && !meta?.noApiKey) {
+				await saveCredential.mutateAsync({
+					provider: selectedProvider,
+					apiKey,
+				});
+			}
+
+			const data = await testConnection.mutateAsync({
+				provider: selectedProvider,
+				model: activeModel || undefined,
+				baseUrl: effectiveBaseUrl || undefined,
+			});
+
+			if (data.success) {
+				setStatus({ type: "success", message: "Connection successful!" });
+			} else {
+				setStatus({ type: "error", message: data.error || "Connection test failed" });
+			}
+		} catch (err) {
+			setStatus({
+				type: "error",
+				message: err instanceof Error ? err.message : "Connection test failed",
+			});
+		}
 	};
 
 	const handleSkip = async () => {
@@ -120,32 +164,37 @@ export function SetupStepLLM({
 			onSkip?.();
 			onComplete();
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : "Failed to skip step";
-			setError(message);
+			setStatus({
+				type: "error",
+				message: err instanceof Error ? err.message : "Failed to skip step",
+			});
 		}
 	};
 
 	const handleSubmit = async () => {
-		setError(null);
+		setStatus(null);
 
 		try {
 			// Save API key via encrypted credential endpoint (if provided)
-			if (apiKey && !provider?.noApiKey) {
+			if (apiKey && !meta?.noApiKey) {
 				await saveCredential.mutateAsync({
-					provider: selectedProvider as Parameters<typeof saveCredential.mutateAsync>[0]["provider"],
+					provider: selectedProvider,
 					apiKey,
 				});
 			}
 
 			// Save provider config and set as active
 			await updateSettings.mutateAsync({
-				activeProvider: selectedProvider as Parameters<typeof updateSettings.mutateAsync>[0]["activeProvider"],
+				activeProvider: selectedProvider,
 				providers: {
 					[selectedProvider]: {
-						model: selectedModel,
-						...(provider?.baseUrlRequired
-							? { baseUrl: provider.defaultBaseUrl || "http://localhost:11434" }
+						model: activeModel,
+						...(meta?.defaultBaseUrl || baseUrl
+							? {
+									baseUrl:
+										baseUrl ||
+										(meta?.defaultBaseUrl as string),
+								}
 							: {}),
 					},
 				},
@@ -154,8 +203,10 @@ export function SetupStepLLM({
 			onComplete();
 		} catch (err) {
 			const message =
-				err instanceof Error ? err.message : "Failed to configure AI provider";
-			setError(message);
+				err instanceof Error
+					? err.message
+					: "Failed to configure AI provider";
+			setStatus({ type: "error", message });
 			onError?.(message);
 		}
 	};
@@ -172,49 +223,43 @@ export function SetupStepLLM({
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-6">
-				{error && (
-					<div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3">
-						<AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-						<p className="text-sm text-destructive">{error}</p>
-					</div>
-				)}
-
-				{/* Provider Selection */}
+				{/* Provider & Model Selection */}
 				<div className="space-y-3">
-					<Label>Select Provider</Label>
-					<div className="grid grid-cols-2 gap-3">
-						{AI_PROVIDERS.map((p) => (
-							<button
-								key={p.id}
-								type="button"
-								onClick={() => {
-									setSelectedProvider(p.id);
-									setSelectedModel(p.models[0]);
-									setApiKey("");
-									setTestSuccess(null);
-								}}
-								className={cn(
-									"p-4 rounded-lg border-2 text-left transition-colors",
-									selectedProvider === p.id
-										? "border-primary bg-primary/5"
-										: "border-muted hover:border-muted-foreground/50",
-								)}
-							>
-								<div className="flex items-center justify-between">
-									<span className="font-medium">{p.name}</span>
-								</div>
-								{p.noApiKey && (
-									<p className="text-xs text-muted-foreground mt-1">
-										No API key required
-									</p>
-								)}
-							</button>
-						))}
-					</div>
+					<Label>Select Provider & Model</Label>
+					{modelsLoading ? (
+						<div className="h-[300px] border rounded-lg flex items-center justify-center">
+							<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+						</div>
+					) : (
+						<ProviderModelSelector
+							providers={PROVIDERS}
+							models={allModels}
+							envStatus={envStatusMap}
+							hideStatusIcons
+							selectedProvider={selectedProvider}
+							selectedModel={selectedModel}
+							customModel={customModel}
+							baseUrl={baseUrl}
+							onProviderChange={(p) => {
+								setSelectedProvider(p as LLMProviderId);
+								setSelectedModel("");
+								setCustomModel("");
+								setBaseUrl("");
+								setApiKey("");
+								setStatus(null);
+							}}
+							onModelChange={(model) => {
+								setSelectedModel(model);
+								setCustomModel("");
+							}}
+							onCustomModelChange={setCustomModel}
+							onBaseUrlChange={setBaseUrl}
+						/>
+					)}
 				</div>
 
 				{/* API Key */}
-				{!provider?.noApiKey && (
+				{!meta?.noApiKey && (
 					<div className="space-y-2">
 						<Label htmlFor="apiKey">API Key</Label>
 						<Input
@@ -223,74 +268,48 @@ export function SetupStepLLM({
 							value={apiKey}
 							onChange={(e) => {
 								setApiKey(e.target.value);
-								setTestSuccess(null);
+								setStatus(null);
 							}}
 							placeholder="Enter your API key"
 						/>
-						{provider?.helpUrl && (
+						{meta?.helpUrl && (
 							<p className="text-xs text-muted-foreground">
 								Get a key:{" "}
 								<a
-									href={provider.helpUrl}
+									href={meta.helpUrl}
 									target="_blank"
 									rel="noopener noreferrer"
 									className="text-primary hover:underline"
 								>
-									{provider.helpUrl}
+									{meta.helpUrl}
 								</a>
 							</p>
 						)}
 					</div>
 				)}
 
-				{/* Model Selection */}
-				<div className="space-y-2">
-					<Label>Model</Label>
-					<Select value={selectedModel} onValueChange={setSelectedModel}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{provider?.models.map((model) => (
-								<SelectItem key={model} value={model}>
-									{model}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-
-				{/* Test Connection Result */}
-				{testSuccess !== null && (
+				{/* Status (success/error) */}
+				{status && (
 					<div
 						className={cn(
 							"p-3 rounded-lg flex items-center gap-2",
-							testSuccess
+							status.type === "success"
 								? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
 								: "bg-destructive/10 text-destructive",
 						)}
 					>
-						{testSuccess ? (
-							<>
-								<CheckCircle className="h-4 w-4" />
-								<span className="text-sm">Connection successful!</span>
-							</>
+						{status.type === "success" ? (
+							<CheckCircle className="h-4 w-4" />
 						) : (
-							<>
-								<AlertCircle className="h-4 w-4" />
-								<span className="text-sm">Connection failed</span>
-							</>
+							<AlertCircle className="h-4 w-4" />
 						)}
+						<span className="text-sm">{status.message}</span>
 					</div>
 				)}
 
 				{/* Actions */}
 				<div className="flex gap-3">
-					<Button
-						variant="ghost"
-						onClick={handleSkip}
-						disabled={isLoading}
-					>
+					<Button variant="ghost" onClick={handleSkip} disabled={isLoading}>
 						{markSkipped.isPending ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 						) : null}
@@ -299,7 +318,7 @@ export function SetupStepLLM({
 					<Button
 						variant="outline"
 						onClick={handleTestConnection}
-						disabled={isLoading || (!provider?.noApiKey && !apiKey)}
+						disabled={isLoading || (!meta?.noApiKey && !apiKey)}
 					>
 						{testConnection.isPending ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -311,7 +330,7 @@ export function SetupStepLLM({
 					<Button
 						className="flex-1"
 						onClick={() => handleSubmit()}
-						disabled={isLoading || (!provider?.noApiKey && !apiKey)}
+						disabled={isLoading || (!meta?.noApiKey && !apiKey) || !activeModel}
 					>
 						{updateSettings.isPending ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />

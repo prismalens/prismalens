@@ -8,12 +8,11 @@ import {
 	CheckCircle,
 	ChevronDown,
 	ChevronUp,
-	ExternalLink,
 	Info,
 	Loader2,
 	Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +38,7 @@ import {
 	useLlmEnvStatus,
 	useLlmModels,
 	useLlmSettings,
+	useOllamaModels,
 	useSaveLlmCredential,
 	useTestLlmConnectionWithEnv,
 	useUpdateLlmSettings,
@@ -51,7 +51,6 @@ import { AgentOverrideItem, type AgentMeta } from "./AgentOverrideItem";
 const PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
 	id: provider.id as LLMProviderId,
 	name: provider.name,
-	suggestedModels: [...provider.suggestedModels],
 	helpUrl: provider.helpUrl,
 	envVar: provider.envVar,
 	noApiKey: provider.envVar === null,
@@ -107,10 +106,12 @@ export function AIProviderSettings() {
 		useState<LLMProviderId>("anthropic");
 	const [selectedModel, setSelectedModel] = useState("");
 	const [customModel, setCustomModel] = useState("");
+	const [baseUrl, setBaseUrl] = useState("");
 	const [temperature, setTemperature] = useState(0.1);
 	const [maxTokens, setMaxTokens] = useState<number | undefined>(undefined);
 	const [advancedOptions, setAdvancedOptions] = useState("");
 	const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
+	const [advancedOptionsError, setAdvancedOptionsError] = useState<string | null>(null);
 	const [agentOverridesOpen, setAgentOverridesOpen] = useState(false);
 
 	// Per-agent state - track which agent's selector is expanded and their provider selection
@@ -133,34 +134,69 @@ export function AIProviderSettings() {
 	const providerEnvStatus = envStatus?.providers[selectedProvider];
 	const providerCredStatus = credentialStatus?.providers?.[selectedProvider];
 
-	// All models from registry
-	const allModels = modelsData?.models || [];
+	// Ollama local models (fetched from base URL)
+	const ollamaBaseUrl = selectedProvider === "ollama"
+		? (baseUrl || LLM_PROVIDERS.ollama.defaultBaseUrl)
+		: undefined;
+	const { data: ollamaModels } = useOllamaModels(ollamaBaseUrl);
+
+	// Merge cloud models (models.dev) with local Ollama models
+	const allModels = useMemo(
+		() => [...(modelsData?.models || []), ...(ollamaModels || [])],
+		[modelsData?.models, ollamaModels],
+	);
+
+	// Stable ref for allModels — avoids re-triggering form sync on background refetch
+	const allModelsRef = useRef(allModels);
+	allModelsRef.current = allModels;
 
 	// Convert envStatus to format for ProviderModelSelector
-	const envStatusMap: Record<string, { isReady: boolean; envVarName?: string }> =
-		envStatus?.providers
-			? Object.fromEntries(
-					Object.entries(envStatus.providers).map(([id, status]) => [
-						id,
-						{ isReady: status.isReady, envVarName: status.envVarName ?? undefined },
-					])
-				)
-			: {};
+	const envStatusMap = useMemo<Record<string, { isReady: boolean; envVarName?: string }>>(
+		() =>
+			envStatus?.providers
+				? Object.fromEntries(
+						Object.entries(envStatus.providers).map(([id, status]) => [
+							id,
+							{ isReady: status.isReady, envVarName: status.envVarName ?? undefined },
+						])
+					)
+				: {},
+		[envStatus?.providers],
+	);
 
-	// Convert PROVIDERS to ProviderInfo format
-	const providerInfos: ProviderInfo[] = PROVIDERS.map((p) => ({
-		id: p.id,
-		name: p.name,
-		free: p.free,
-	}));
+	// Convert PROVIDERS to ProviderInfo format (static — computed once)
+	const providerInfos = useMemo<ProviderInfo[]>(
+		() =>
+			PROVIDERS.map((p) => {
+				const config = LLM_PROVIDERS[p.id];
+				return {
+					id: p.id,
+					name: p.name,
+					free: p.free,
+					baseUrlRequired: "baseUrlRequired" in config ? config.baseUrlRequired : undefined,
+					defaultBaseUrl: "defaultBaseUrl" in config ? (config.defaultBaseUrl as string) : undefined,
+				};
+			}),
+		[],
+	);
 
-	// Sync form with settings when loaded or provider changes
+	// Initialize selected provider from settings (once on load)
+	const hasInitialized = useRef(false);
+	useEffect(() => {
+		if (settings?.activeProvider && !hasInitialized.current) {
+			hasInitialized.current = true;
+			setSelectedProvider(settings.activeProvider);
+		}
+	}, [settings?.activeProvider]);
+
+	// Sync form with settings when provider changes
 	useEffect(() => {
 		if (!settings || !provider) return;
 
 		const providerConfig = settings.providers[selectedProvider];
 		if (providerConfig) {
 			setSelectedModel(providerConfig.model || "");
+			setBaseUrl(providerConfig.baseUrl || "");
 			setTemperature(providerConfig.temperature ?? 0.1);
 			setMaxTokens(providerConfig.maxTokens);
 			setAdvancedOptions(
@@ -169,8 +205,10 @@ export function AIProviderSettings() {
 					: "",
 			);
 		} else {
-			// Reset to defaults for unconfigured provider
-			setSelectedModel(provider.suggestedModels[0] || "");
+			// Reset to defaults for unconfigured provider — first API model or empty
+			const firstApiModel = allModelsRef.current.find((m) => m.provider === selectedProvider);
+			setSelectedModel(firstApiModel?.id || "");
+			setBaseUrl("");
 			setTemperature(0.1);
 			setMaxTokens(undefined);
 			setAdvancedOptions("");
@@ -182,13 +220,6 @@ export function AIProviderSettings() {
 		setTestStatus("idle");
 		setTestError(null);
 	}, [selectedProvider, settings, provider]);
-
-	// Initialize selected provider from settings
-	useEffect(() => {
-		if (settings?.activeProvider) {
-			setSelectedProvider(settings.activeProvider);
-		}
-	}, [settings?.activeProvider]);
 
 	const handleTestConnection = async () => {
 		setTestStatus("testing");
@@ -220,24 +251,42 @@ export function AIProviderSettings() {
 		if (advancedOptions.trim()) {
 			try {
 				parsedAdvancedOptions = JSON.parse(advancedOptions);
+				setAdvancedOptionsError(null);
 			} catch {
-				// Invalid JSON - ignore for now
+				setAdvancedOptionsError("Invalid JSON. Please fix the syntax and try again.");
+				return;
 			}
+		} else {
+			setAdvancedOptionsError(null);
 		}
 
 		const modelToSave = customModel || selectedModel;
 
-		await updateSettings.mutateAsync({
-			activeProvider: selectedProvider,
-			providers: {
-				[selectedProvider]: {
-					model: modelToSave,
-					temperature,
-					maxTokens,
-					advancedOptions: parsedAdvancedOptions,
+		const providerInfo = providerInfos.find((p) => p.id === selectedProvider);
+		try {
+			await updateSettings.mutateAsync({
+				activeProvider: selectedProvider,
+				providers: {
+					[selectedProvider]: {
+						model: modelToSave,
+						temperature,
+						maxTokens,
+						advancedOptions: parsedAdvancedOptions,
+						...(providerInfo?.defaultBaseUrl || baseUrl
+							? {
+									baseUrl:
+										baseUrl ||
+										providerInfo?.defaultBaseUrl,
+								}
+							: {}),
+					},
 				},
-			},
-		});
+			});
+		} catch (err) {
+			setCredentialError(
+				err instanceof Error ? err.message : "Failed to save settings",
+			);
+		}
 	};
 
 	const isLoading = envLoading || settingsLoading;
@@ -319,12 +368,14 @@ export function AIProviderSettings() {
 								selectedProvider={selectedProvider}
 								selectedModel={selectedModel}
 								customModel={customModel}
+								baseUrl={baseUrl}
 								onProviderChange={(p) => setSelectedProvider(p as LLMProviderId)}
 								onModelChange={(model) => {
 									setSelectedModel(model);
 									setCustomModel("");
 								}}
 								onCustomModelChange={setCustomModel}
+								onBaseUrlChange={setBaseUrl}
 							/>
 						)}
 					</div>
@@ -517,9 +568,15 @@ export function AIProviderSettings() {
 								<Textarea
 									placeholder='{"topP": 0.9, "stopSequences": ["\\n"]}'
 									value={advancedOptions}
-									onChange={(e) => setAdvancedOptions(e.target.value)}
+									onChange={(e) => {
+										setAdvancedOptions(e.target.value);
+										setAdvancedOptionsError(null);
+									}}
 									className="font-mono text-sm min-h-[100px]"
 								/>
+								{advancedOptionsError && (
+									<p className="text-xs text-destructive mt-1">{advancedOptionsError}</p>
+								)}
 								<p className="text-xs text-muted-foreground mt-2">
 									Provider-specific options in JSON format. These are passed
 									directly to the LLM.

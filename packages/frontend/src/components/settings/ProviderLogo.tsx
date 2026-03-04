@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const MODELS_DEV_LOGO_URL = "https://models.dev/logos";
@@ -16,24 +17,49 @@ const sizeClasses = {
 	lg: "h-6 w-6",
 };
 
+const textSizeClasses = {
+	sm: "text-[10px]",
+	md: "text-xs",
+	lg: "text-sm",
+};
+
 /**
  * Display a provider logo from models.dev
- * Falls back to a default logo if the provider logo doesn't exist.
+ * Falls back to first letter of provider name if the logo fails to load.
  */
 export function ProviderLogo({
 	provider,
 	className,
 	size = "sm",
 }: ProviderLogoProps) {
+	const [failed, setFailed] = useState(false);
+
+	useEffect(() => {
+		setFailed(false);
+	}, [provider]);
+
+	if (failed) {
+		return (
+			<span
+				className={cn(
+					sizeClasses[size],
+					textSizeClasses[size],
+					"flex-shrink-0 inline-flex items-center justify-center rounded bg-muted font-medium uppercase text-muted-foreground",
+					className,
+				)}
+			>
+				{provider.charAt(0)}
+			</span>
+		);
+	}
+
 	return (
 		<img
 			src={`${MODELS_DEV_LOGO_URL}/${provider}.svg`}
 			alt={`${provider} logo`}
-			className={cn(sizeClasses[size], "flex-shrink-0", className)}
-			// Hide broken images gracefully
-			onError={(e) => {
-				e.currentTarget.style.display = "none";
-			}}
+			crossOrigin="anonymous"
+			className={cn(sizeClasses[size], "flex-shrink-0 dark:invert", className)}
+			onError={() => setFailed(true)}
 		/>
 	);
 }

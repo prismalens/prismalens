@@ -12,16 +12,20 @@ import { ChatGoogleGenerativeAI, type GoogleGenerativeAIChatInput } from "@langc
 import { ChatGroq, type ChatGroqInput } from "@langchain/groq"
 import { ChatOllama, type ChatOllamaInput } from "@langchain/ollama"
 import { ChatOpenAI, type ChatOpenAIFields } from "@langchain/openai"
+import type { LLMProviderId } from "@prismalens/config/llm"
 
 import { getGraphConfig } from "../config/env.js"
 
 // ── Discriminated Union Config ──────────────────────────────────────
+// Provider IDs are derived from @prismalens/config — adding a provider
+// there without handling it here will produce a compile-time error.
 
-export type AnthropicProviderConfig = { provider: "anthropic" } & ChatAnthropicInput
-export type OpenAIProviderConfig = { provider: "openai"; baseURL?: string } & ChatOpenAIFields
-export type GoogleProviderConfig = { provider: "google" } & GoogleGenerativeAIChatInput
-export type GroqProviderConfig = { provider: "groq" } & ChatGroqInput
-export type OllamaProviderConfig = { provider: "ollama" } & ChatOllamaInput
+type AnthropicProviderConfig = { provider: Extract<LLMProviderId, "anthropic"> } & ChatAnthropicInput
+type OpenAIProviderConfig = { provider: Extract<LLMProviderId, "openai">; baseURL?: string } & ChatOpenAIFields
+type GoogleProviderConfig = { provider: Extract<LLMProviderId, "google"> } & GoogleGenerativeAIChatInput
+type GroqProviderConfig = { provider: Extract<LLMProviderId, "groq"> } & ChatGroqInput
+type OllamaProviderConfig = { provider: Extract<LLMProviderId, "ollama"> } & ChatOllamaInput
+type CustomProviderConfig = { provider: Extract<LLMProviderId, "custom">; baseURL?: string } & ChatOpenAIFields
 
 export type LLMProviderConfig =
   | AnthropicProviderConfig
@@ -29,6 +33,7 @@ export type LLMProviderConfig =
   | GoogleProviderConfig
   | GroqProviderConfig
   | OllamaProviderConfig
+  | CustomProviderConfig
 
 // ── Per-Agent Override ──────────────────────────────────────────────
 
@@ -84,16 +89,21 @@ export function createLLM(config: LLMProviderConfig): BaseChatModel {
       })
     }
 
+    case "custom":
     case "openai": {
       // ChatOpenAI expects baseURL inside `configuration`, not as a top-level field.
-      // Merge it into configuration for OpenAI-compatible providers (e.g. NVIDIA NIM).
-      const { provider: _, configuration: existingConfig, baseURL, ...openAIFields } = config
+      // Merge it into configuration for OpenAI-compatible providers (e.g. custom endpoints).
+      const { provider: p, configuration: existingConfig, baseURL, ...openAIFields } = config
       const configuration = baseURL
         ? { ...existingConfig, baseURL }
         : existingConfig
       return new ChatOpenAI({
         ...openAIFields,
         ...(configuration && { configuration }),
+        // Custom provider stores key in CUSTOM_LLM_API_KEY, not OPENAI_API_KEY
+        ...(p === "custom" && process.env.CUSTOM_LLM_API_KEY
+          ? { apiKey: process.env.CUSTOM_LLM_API_KEY }
+          : {}),
         temperature: openAIFields.temperature ?? defaultTemp,
         maxTokens: openAIFields.maxTokens ?? defaultMaxTokens,
         maxRetries,

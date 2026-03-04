@@ -113,12 +113,20 @@ export {
 	useUpdateServiceIntegration,
 } from "./use-integrations-orpc";
 
+// Ollama hooks
+export { useOllamaModels } from "./use-ollama-models";
+
 // Setup hooks
 export {
 	setupKeys,
 	useCreateOwner,
 	useMarkStepSkipped,
+	useSetupLlmEnvStatus,
+	useSetupLlmModels,
+	useSetupSaveLlmCredential,
 	useSetupStatus,
+	useSetupTestLlmConnection,
+	useSetupUpdateLlmSettings,
 } from "./use-setup-orpc";
 
 // Timeline hooks

@@ -58,3 +58,53 @@ export function useMarkStepSkipped() {
 		},
 	});
 }
+
+/**
+ * Fetch LLM env status (public — no auth needed during setup)
+ */
+export function useSetupLlmEnvStatus() {
+	return useQuery(
+		orpc.setup.getLlmEnvStatus.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Fetch available LLM models (public — no auth needed during setup)
+ */
+export function useSetupLlmModels(provider?: string) {
+	return useQuery({
+		...orpc.setup.getLlmModels.queryOptions({
+			input: { provider },
+		}),
+		staleTime: 24 * 60 * 60 * 1000, // 24 hours
+	});
+}
+
+/**
+ * Save LLM credential (public — no auth needed during setup)
+ */
+export function useSetupSaveLlmCredential() {
+	return useMutation({
+		...orpc.setup.saveLlmCredential.mutationOptions(),
+	});
+}
+
+/**
+ * Update LLM settings (public — no auth needed during setup)
+ */
+export function useSetupUpdateLlmSettings() {
+	return useMutation({
+		...orpc.setup.updateLlmSettings.mutationOptions(),
+	});
+}
+
+/**
+ * Test LLM connection (public — no auth needed during setup)
+ */
+export function useSetupTestLlmConnection() {
+	return useMutation({
+		...orpc.setup.testLlmConnection.mutationOptions(),
+	});
+}

@@ -4,6 +4,15 @@
  */
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import {
+	LlmEnvStatusResponseSchema,
+	LlmSettingsSchema,
+	ModelsListResponseSchema,
+	SaveLlmCredentialSchema,
+	TestLlmConnectionInputSchema,
+	TestLlmResultSchema,
+	UpdateLlmSettingsSchema,
+} from "../schemas/settings.js";
 
 // =============================================================================
 // SCHEMAS
@@ -90,6 +99,76 @@ export const setupContract = {
 		})
 		.input(MarkStepSkippedInputSchema)
 		.output(MarkStepSkippedResponseSchema),
+
+	/**
+	 * Get LLM env status (public — needed during setup before auth)
+	 * GET /setup/llm/env-status
+	 */
+	getLlmEnvStatus: oc
+		.route({
+			method: "GET",
+			path: "/setup/llm/env-status",
+			summary: "Get LLM provider env status during setup",
+			tags: ["setup"],
+		})
+		.input(z.object({}))
+		.output(LlmEnvStatusResponseSchema),
+
+	/**
+	 * Get available LLM models (public — needed during setup before auth)
+	 * GET /setup/llm/models
+	 */
+	getLlmModels: oc
+		.route({
+			method: "GET",
+			path: "/setup/llm/models",
+			summary: "Get available LLM models during setup",
+			tags: ["setup"],
+		})
+		.input(z.object({ provider: z.string().optional() }))
+		.output(ModelsListResponseSchema),
+
+	/**
+	 * Save LLM credential (public — needed during setup before auth)
+	 * POST /setup/llm/credentials
+	 */
+	saveLlmCredential: oc
+		.route({
+			method: "POST",
+			path: "/setup/llm/credentials",
+			summary: "Save encrypted LLM API key during setup",
+			tags: ["setup"],
+		})
+		.input(SaveLlmCredentialSchema)
+		.output(z.object({ success: z.boolean() })),
+
+	/**
+	 * Update LLM settings (public — needed during setup before auth)
+	 * PUT /setup/llm/settings
+	 */
+	updateLlmSettings: oc
+		.route({
+			method: "PUT",
+			path: "/setup/llm/settings",
+			summary: "Update LLM settings during setup",
+			tags: ["setup"],
+		})
+		.input(UpdateLlmSettingsSchema)
+		.output(LlmSettingsSchema),
+
+	/**
+	 * Test LLM connection (public — needed during setup before auth)
+	 * POST /setup/llm/test-connection
+	 */
+	testLlmConnection: oc
+		.route({
+			method: "POST",
+			path: "/setup/llm/test-connection",
+			summary: "Test LLM connection during setup",
+			tags: ["setup"],
+		})
+		.input(TestLlmConnectionInputSchema)
+		.output(TestLlmResultSchema),
 };
 
 // =============================================================================

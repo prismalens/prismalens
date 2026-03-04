@@ -218,6 +218,30 @@ CREATE TABLE "postmortems" (
 );
 
 -- CreateTable
+CREATE TABLE "change_events" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "type" TEXT NOT NULL,
+    "source" TEXT NOT NULL,
+    "timestamp" DATETIME NOT NULL,
+    "serviceId" TEXT,
+    "description" TEXT,
+    "metadata" TEXT,
+    "riskScore" INTEGER,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "change_events_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "incident_similarities" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "incidentId" TEXT NOT NULL,
+    "similarIncidentId" TEXT NOT NULL,
+    "similarityScore" INTEGER NOT NULL,
+    "matchFactors" TEXT,
+    "calculatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
 CREATE TABLE "correlation_rules" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -252,9 +276,11 @@ CREATE TABLE "integration_definitions" (
     "category" TEXT NOT NULL,
     "authType" TEXT NOT NULL,
     "configSchema" TEXT,
+    "credentialSchema" TEXT,
     "oauthConfig" TEXT,
     "iconUrl" TEXT,
     "docsUrl" TEXT,
+    "specUrl" TEXT,
     "maxConnectionsCE" INTEGER,
     "isEnabled" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -328,7 +354,7 @@ CREATE TABLE "license_info" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "licenseKey" TEXT,
     "licenseType" TEXT NOT NULL DEFAULT 'none',
-    "tier" TEXT NOT NULL DEFAULT 'free',
+    "tier" TEXT NOT NULL DEFAULT 'community',
     "validUntil" DATETIME,
     "activatedAt" DATETIME,
     "lastValidated" DATETIME,
@@ -534,6 +560,27 @@ CREATE INDEX "timeline_entries_occurredAt_idx" ON "timeline_entries"("occurredAt
 
 -- CreateIndex
 CREATE UNIQUE INDEX "postmortems_incidentId_key" ON "postmortems"("incidentId");
+
+-- CreateIndex
+CREATE INDEX "change_events_serviceId_timestamp_idx" ON "change_events"("serviceId", "timestamp");
+
+-- CreateIndex
+CREATE INDEX "change_events_timestamp_idx" ON "change_events"("timestamp");
+
+-- CreateIndex
+CREATE INDEX "change_events_type_idx" ON "change_events"("type");
+
+-- CreateIndex
+CREATE INDEX "incident_similarities_incidentId_idx" ON "incident_similarities"("incidentId");
+
+-- CreateIndex
+CREATE INDEX "incident_similarities_similarIncidentId_idx" ON "incident_similarities"("similarIncidentId");
+
+-- CreateIndex
+CREATE INDEX "incident_similarities_similarityScore_idx" ON "incident_similarities"("similarityScore");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "incident_similarities_incidentId_similarIncidentId_key" ON "incident_similarities"("incidentId", "similarIncidentId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "correlation_rules_name_key" ON "correlation_rules"("name");

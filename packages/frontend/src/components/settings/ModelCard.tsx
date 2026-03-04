@@ -36,14 +36,6 @@ function formatContextSize(size: number): string {
 	return size.toString();
 }
 
-/**
- * Format cost for display (e.g., $3/$15)
- */
-function formatCost(cost: { input: number; output: number }): string | null {
-	if (cost.input === 0 && cost.output === 0) return null;
-	return `$${cost.input}/$${cost.output}`;
-}
-
 export function ModelCard({
 	model,
 	selected,
@@ -51,7 +43,6 @@ export function ModelCard({
 	onClick,
 }: ModelCardProps) {
 	const isNew = isNewModel(model.releaseDate);
-	const cost = formatCost(model.cost);
 	const contextSize = formatContextSize(model.limit.context);
 
 	return (
@@ -83,7 +74,7 @@ export function ModelCard({
 
 			{/* Model info */}
 			<div className="flex-1 min-w-0">
-				<div className="flex items-center gap-2 flex-wrap">
+				<div className="flex items-center gap-2">
 					<span
 						className={cn(
 							"font-medium text-sm truncate",
@@ -95,51 +86,41 @@ export function ModelCard({
 					{isNew && (
 						<Badge
 							variant="default"
-							className="text-[10px] px-1.5 py-0 h-4 bg-green-500 hover:bg-green-500"
+							className="text-[10px] px-1.5 py-0 h-4 bg-green-500 hover:bg-green-500 flex-shrink-0"
 						>
 							NEW
 						</Badge>
 					)}
 				</div>
-				<div className="flex items-center gap-2 mt-0.5 flex-wrap">
+				<div className="flex items-center gap-2 mt-0.5">
 					<span className="text-xs text-muted-foreground">
 						{contextSize} context
 					</span>
-					{cost && (
-						<>
-							<span className="text-xs text-muted-foreground">·</span>
-							<span className="text-xs text-muted-foreground">{cost}</span>
-						</>
+					{model.toolCall && (
+						<Badge
+							variant="secondary"
+							className={cn(
+								"text-[10px] px-1.5 py-0 h-4",
+								disabled && "opacity-50"
+							)}
+						>
+							<Wrench className="h-2.5 w-2.5 mr-0.5" />
+							Tools
+						</Badge>
+					)}
+					{model.reasoning && (
+						<Badge
+							variant="secondary"
+							className={cn(
+								"text-[10px] px-1.5 py-0 h-4",
+								disabled && "opacity-50"
+							)}
+						>
+							<Sparkles className="h-2.5 w-2.5 mr-0.5" />
+							Reason
+						</Badge>
 					)}
 				</div>
-			</div>
-
-			{/* Capability badges */}
-			<div className="flex gap-1 flex-shrink-0">
-				{model.toolCall && (
-					<Badge
-						variant="secondary"
-						className={cn(
-							"text-[10px] px-1.5 py-0 h-5",
-							disabled && "opacity-50"
-						)}
-					>
-						<Wrench className="h-2.5 w-2.5 mr-0.5" />
-						Tools
-					</Badge>
-				)}
-				{model.reasoning && (
-					<Badge
-						variant="secondary"
-						className={cn(
-							"text-[10px] px-1.5 py-0 h-5",
-							disabled && "opacity-50"
-						)}
-					>
-						<Sparkles className="h-2.5 w-2.5 mr-0.5" />
-						Reason
-					</Badge>
-				)}
 			</div>
 		</button>
 	);

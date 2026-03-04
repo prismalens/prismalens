@@ -2,15 +2,114 @@ import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
 import { createLLM, type LLMProviderConfig } from '@prismalens/agents';
 import {
   LLM_PROVIDERS,
+  LLM_PROVIDER_IDS,
   getApiKeyEnvVar,
+  getAllowedHosts,
   type LLMProviderId,
 } from '@prismalens/config/llm';
 import type {
   LlmSettings,
+  ModelMetadata,
+  ModelsListResponse,
   UpdateLlmSettings,
 } from '@prismalens/contracts/schemas';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CredentialsService } from '../../modules/integrations/crypto/credentials.service.js';
+
+// ── Base URL Allowlist ──────────────────────────────────────────────────────
+
+/**
+ * Hostnames blocked even for unrestricted providers (defense-in-depth).
+ * Prevents SSRF to cloud metadata, link-local, and loopback ranges.
+ */
+const BLOCKED_HOSTNAMES = new Set([
+  '169.254.169.254', // AWS/GCP/Azure metadata
+  'metadata.google.internal', // GCP metadata
+]);
+
+/** Patterns that match private/internal IP ranges (blocked for unrestricted providers). */
+const BLOCKED_IP_PATTERNS = [
+  /^10\./, // 10.0.0.0/8
+  /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
+  /^192\.168\./, // 192.168.0.0/16
+  /^169\.254\./, // 169.254.0.0/16
+] as const;
+
+/**
+ * Validate a base URL against the provider's hostname allowlist.
+ *
+ * - Protocol must be http or https
+ * - Hostname must be in the provider's allowedHosts list
+ * - Unrestricted providers (allowedHosts: null) still block known-dangerous internal hosts
+ *
+ * @throws Error if the URL is invalid or the hostname is not allowed
+ */
+function validateBaseUrl(url: string, providerId: LLMProviderId): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid base URL: ${url}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(
+      `Unsupported protocol: ${parsed.protocol}. Only http and https are allowed.`,
+    );
+  }
+
+  const hostname = parsed.hostname;
+  const allowed = getAllowedHosts(providerId);
+
+  if (allowed === null) {
+    // Unrestricted provider — still block known-dangerous internal targets
+    if (BLOCKED_HOSTNAMES.has(hostname)) {
+      throw new Error(
+        `Base URL host "${hostname}" is blocked (internal/metadata endpoint).`,
+      );
+    }
+    if (BLOCKED_IP_PATTERNS.some((pattern) => pattern.test(hostname))) {
+      throw new Error(
+        `Base URL host "${hostname}" is blocked (private IP range).`,
+      );
+    }
+    return;
+  }
+
+  if (!allowed.includes(hostname)) {
+    throw new Error(
+      `Base URL host "${hostname}" is not allowed for provider "${providerId}". ` +
+        `Allowed hosts: ${allowed.join(', ')}`,
+    );
+  }
+}
+
+/** Provider IDs that have models on models.dev (excludes ollama, custom) */
+const MODELS_DEV_PROVIDERS = LLM_PROVIDER_IDS.filter(
+  (id): id is Exclude<LLMProviderId, 'ollama' | 'custom'> =>
+    id !== 'ollama' && id !== 'custom',
+);
+
+/** models.dev API model entry */
+interface ModelsDevModel {
+  id: string;
+  name: string;
+  family?: string;
+  tool_call: boolean;
+  reasoning: boolean;
+  release_date?: string;
+  status?: string;
+  cost: { input: number; output: number };
+  limit: { context: number; output: number };
+  modalities: { input: string[]; output: string[] };
+}
+
+/** models.dev API provider entry */
+interface ModelsDevProvider {
+  id: string;
+  name: string;
+  models: Record<string, ModelsDevModel>;
+}
 
 @Injectable()
 export class LlmSettingsService {
@@ -18,6 +117,11 @@ export class LlmSettingsService {
 
   private readonly LLM_SETTINGS_KEY = 'LLM_SETTINGS';
   private readonly LLM_CREDENTIALS_KEY = 'LLM_CREDENTIALS_ENCRYPTED';
+
+  /** In-memory cache for models.dev data */
+  private modelsCache: { data: ModelMetadata[]; expiresAt: number } | null =
+    null;
+  private static readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
   constructor(
     private prisma: PrismaService,
@@ -48,7 +152,10 @@ export class LlmSettingsService {
 
       let isReady = false;
 
-      if (providerId === 'ollama') {
+      if (providerId === 'custom') {
+        // Custom provider is always "ready" — user provides key per-connection
+        isReady = true;
+      } else if (providerId === 'ollama') {
         if (hasApiKey) {
           isReady = true;
         } else {
@@ -80,12 +187,8 @@ export class LlmSettingsService {
     const baseUrl =
       process.env.PRISMALENS_OLLAMA_BASE_URL || 'http://localhost:11434';
 
-    // SSRF protection: only allow http/https protocols
     try {
-      const parsed = new URL(baseUrl);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return false;
-      }
+      validateBaseUrl(baseUrl, 'ollama');
     } catch {
       return false;
     }
@@ -96,6 +199,7 @@ export class LlmSettingsService {
 
       const response = await fetch(`${baseUrl}/api/tags`, {
         signal: controller.signal,
+        redirect: 'error',
       });
       clearTimeout(timeoutId);
 
@@ -128,6 +232,17 @@ export class LlmSettingsService {
   }
 
   async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
+    // Allowlist check: validate any base URLs before persisting
+    if (dto.providers) {
+      for (const [providerId, providerConfig] of Object.entries(
+        dto.providers,
+      )) {
+        if (providerConfig?.baseUrl) {
+          validateBaseUrl(providerConfig.baseUrl, providerId as LLMProviderId);
+        }
+      }
+    }
+
     const current = await this.getLlmSettings();
 
     const updatedProviders = { ...current.providers };
@@ -175,13 +290,109 @@ export class LlmSettingsService {
     return updated;
   }
 
-  async getAvailableModels(_provider?: string) {
-    return { models: [] };
+  async getAvailableModels(provider?: string): Promise<ModelsListResponse> {
+    const allModels = await this.fetchModelsFromRegistry();
+
+    const filtered = provider
+      ? allModels.filter((m) => m.provider === provider)
+      : allModels;
+
+    return { models: filtered };
+  }
+
+  /**
+   * Fetch models from models.dev with 1-hour in-memory cache.
+   * Returns empty array on network failure (graceful degradation).
+   */
+  private async fetchModelsFromRegistry(): Promise<ModelMetadata[]> {
+    const now = Date.now();
+    if (this.modelsCache && this.modelsCache.expiresAt > now) {
+      return this.modelsCache.data;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+      const response = await fetch('https://models.dev/api.json', {
+        signal: controller.signal,
+        redirect: 'error',
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        this.logger.warn(
+          `models.dev returned ${response.status}, using empty model list`,
+        );
+        return this.modelsCache?.data ?? [];
+      }
+
+      const data = (await response.json()) as Record<string, ModelsDevProvider>;
+      const models: ModelMetadata[] = [];
+
+      for (const providerId of MODELS_DEV_PROVIDERS) {
+        const providerData = data[providerId];
+        if (!providerData?.models) continue;
+
+        for (const model of Object.values(providerData.models)) {
+          // Skip deprecated models
+          if (model.status === 'deprecated') continue;
+
+          // Skip embedding models (no text generation)
+          if (model.family === 'text-embedding') continue;
+
+          models.push({
+            id: model.id,
+            name: model.name,
+            provider: providerId,
+            cost: {
+              input: model.cost.input,
+              output: model.cost.output,
+            },
+            limit: {
+              context: model.limit.context,
+              output: model.limit.output,
+            },
+            toolCall: model.tool_call,
+            reasoning: model.reasoning,
+            modalities: model.modalities,
+            releaseDate: model.release_date,
+          });
+        }
+      }
+
+      // Sort by release date descending (newest first)
+      models.sort((a, b) => {
+        if (!a.releaseDate && !b.releaseDate) return 0;
+        if (!a.releaseDate) return 1;
+        if (!b.releaseDate) return -1;
+        return (
+          new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime()
+        );
+      });
+
+      this.modelsCache = {
+        data: models,
+        expiresAt: now + LlmSettingsService.CACHE_TTL_MS,
+      };
+
+      this.logger.log(
+        `Loaded ${models.length} models from models.dev for ${MODELS_DEV_PROVIDERS.length} providers`,
+      );
+
+      return models;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to fetch models from models.dev: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return this.modelsCache?.data ?? [];
+    }
   }
 
   async testLlmConnectionWithEnv(
     provider: LLMProviderId,
     model?: string,
+    baseUrl?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const providerMeta = LLM_PROVIDERS[provider as LLMProviderId];
@@ -205,18 +416,33 @@ export class LlmSettingsService {
         testModel = settings.providers[provider]?.model;
       }
       if (!testModel) {
-        testModel = providerMeta.suggestedModels[0];
+        // Fetch first available model from registry as fallback
+        const { models } = await this.getAvailableModels(provider);
+        testModel = models[0]?.id;
+      }
+      if (!testModel) {
+        return {
+          success: false,
+          error: 'No model specified and none available from registry.',
+        };
       }
 
-      const baseUrl =
-        provider === 'ollama'
+      // Resolve base URL: explicit param > env var > provider default
+      const resolvedBaseUrl =
+        baseUrl ||
+        (provider === 'ollama'
           ? process.env.PRISMALENS_OLLAMA_BASE_URL || 'http://localhost:11434'
-          : undefined;
+          : undefined);
+
+      // Allowlist check: validate base URL before making server-side requests
+      if (resolvedBaseUrl) {
+        validateBaseUrl(resolvedBaseUrl, provider);
+      }
 
       const llmConfig: LLMProviderConfig = {
         provider: provider as LLMProviderConfig['provider'],
         model: testModel,
-        ...(baseUrl && { baseURL: baseUrl }),
+        ...(resolvedBaseUrl && { baseURL: resolvedBaseUrl }),
         temperature: 0,
         maxTokens: 50,
       };

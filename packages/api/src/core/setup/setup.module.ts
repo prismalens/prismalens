@@ -1,10 +1,11 @@
-import { Module } from "@nestjs/common";
-import { PrismaModule } from "../prisma/prisma.module.js";
-import { UsersModule } from "../users/users.module.js";
-import { SetupController } from "./setup.controller.js";
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../prisma/prisma.module.js';
+import { SettingsModule } from '../settings/settings.module.js';
+import { UsersModule } from '../users/users.module.js';
+import { SetupController } from './setup.controller.js';
 
 @Module({
-	imports: [UsersModule, PrismaModule],
-	controllers: [SetupController],
+  imports: [UsersModule, PrismaModule, SettingsModule],
+  controllers: [SetupController],
 })
 export class SetupModule {}

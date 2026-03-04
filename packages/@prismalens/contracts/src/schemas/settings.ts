@@ -351,7 +351,8 @@ export type ModelsListResponse = z.infer<typeof ModelsListResponseSchema>;
  */
 export const TestLlmConnectionInputSchema = z.object({
 	provider: LlmProviderIdSchema,
-	model: z.string().optional(),
+	model: z.string().max(256).optional(),
+	baseUrl: z.string().url().max(512).optional(),
 });
 export type TestLlmConnectionInput = z.infer<typeof TestLlmConnectionInputSchema>;
 

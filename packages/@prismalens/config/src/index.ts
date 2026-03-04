@@ -50,12 +50,11 @@ import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
 import {
 	generateEncryptionKey,
-	getEncryptionKeyPath,
 	getOrCreateEncryptionKey,
 	getOrCreateInternalSecret,
 	getOrCreateAuthSecret,
-	isValidEncryptionKey,
 } from "./utils/encryption-key.js";
+import { SecretEnvVars, FILE_SUFFIX } from "./utils/secrets.js";
 import { buildRedisUrl, buildRedisOptions } from "./utils/redis-url.js";
 import {
 	buildCheckpointerUrl,
@@ -71,12 +70,14 @@ export { getAppDataDir, ensureAppDataDir };
 // Re-export encryption key and secret utilities
 export {
 	generateEncryptionKey,
-	getEncryptionKeyPath,
 	getOrCreateEncryptionKey,
 	getOrCreateInternalSecret,
 	getOrCreateAuthSecret,
-	isValidEncryptionKey,
 };
+
+// Re-export secret constants
+export { SecretEnvVars, FILE_SUFFIX, secretFileName } from "./utils/secrets.js";
+export type { SecretEnvVar } from "./utils/secrets.js";
 
 // Re-export Redis utilities
 export { buildRedisUrl, buildRedisOptions };
@@ -120,16 +121,16 @@ export function getConfig(): GlobalConfig {
 	if (!_config) {
 		// Resolve secrets before Zod validation (auto-generate and persist if not set)
 		if (
-			!process.env.PRISMALENS_ENCRYPTION_KEY &&
-			!process.env.PRISMALENS_ENCRYPTION_KEY_FILE
+			!process.env[SecretEnvVars.ENCRYPTION_KEY] &&
+			!process.env[`${SecretEnvVars.ENCRYPTION_KEY}${FILE_SUFFIX}`]
 		) {
-			process.env.PRISMALENS_ENCRYPTION_KEY = getOrCreateEncryptionKey();
+			process.env[SecretEnvVars.ENCRYPTION_KEY] = getOrCreateEncryptionKey();
 		}
-		if (!process.env.PRISMALENS_INTERNAL_SECRET) {
-			process.env.PRISMALENS_INTERNAL_SECRET = getOrCreateInternalSecret();
+		if (!process.env[SecretEnvVars.INTERNAL_SECRET]) {
+			process.env[SecretEnvVars.INTERNAL_SECRET] = getOrCreateInternalSecret();
 		}
-		if (!process.env.PRISMALENS_AUTH_SECRET) {
-			process.env.PRISMALENS_AUTH_SECRET = getOrCreateAuthSecret();
+		if (!process.env[SecretEnvVars.AUTH_SECRET]) {
+			process.env[SecretEnvVars.AUTH_SECRET] = getOrCreateAuthSecret();
 		}
 
 		const result = baseConfigSchema
@@ -161,41 +162,14 @@ export function getConfig(): GlobalConfig {
 	return _config;
 }
 
-/**
- * Validate configuration without caching.
- * Useful for testing or checking config before startup.
- *
- * @returns Validation result with success flag and data/errors
- */
-export function validateConfig(): z.SafeParseReturnType<unknown, GlobalConfig> {
-	const result = baseConfigSchema
-		.omit({ PRISMALENS_DB_URL: true })
-		.safeParse(process.env);
-
-	if (!result.success) {
-		return result;
-	}
-
-	const baseConfig = result.data;
-	const databaseUrl = buildDatabaseUrl(baseConfig);
-
-	return {
-		success: true,
-		data: {
-			...baseConfig,
-			PRISMALENS_DB_URL: databaseUrl,
-		},
-	} as z.SafeParseReturnType<unknown, GlobalConfig>;
-}
+export type EnvironmentVariables = z.infer<typeof baseConfigSchema>;
 
 /**
- * Reset cached config. Useful for testing.
+ * Reset cached global config. Useful for testing.
  */
 export function resetConfig(): void {
 	_config = null;
 }
-
-export type EnvironmentVariables = z.infer<typeof baseConfigSchema>;
 
 // =============================================================================
 // WORKER CONFIGURATION

@@ -369,6 +369,7 @@ export class IntegrationsService {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
         },
+        redirect: 'error',
       });
 
       if (response.ok) {
@@ -386,12 +387,41 @@ export class IntegrationsService {
     }
   }
 
+  /** Allowed hostnames for Prometheus connection tests. */
+  private static readonly PROMETHEUS_ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '::1',
+  ];
+
   private async testPrometheusConnection(
     credentials: Record<string, unknown>,
     config: Record<string, unknown>,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const baseUrl = (config.baseUrl as string) || 'http://localhost:9090';
+      if (config.baseUrl !== undefined && typeof config.baseUrl !== 'string') {
+        return { success: false, error: 'Invalid baseUrl configuration' };
+      }
+      const baseUrl =
+        (config.baseUrl as string | undefined) || 'http://localhost:9090';
+
+      // Validate hostname against allowlist
+      const parsed = new URL(baseUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return {
+          success: false,
+          error: `Unsupported protocol: ${parsed.protocol}. Only http and https are allowed.`,
+        };
+      }
+      if (
+        !IntegrationsService.PROMETHEUS_ALLOWED_HOSTS.includes(parsed.hostname)
+      ) {
+        return {
+          success: false,
+          error: `Host "${parsed.hostname}" is not allowed. Allowed hosts: ${IntegrationsService.PROMETHEUS_ALLOWED_HOSTS.join(', ')}`,
+        };
+      }
+
       const url = `${baseUrl}/api/v1/status/config`;
 
       const headers: Record<string, string> = {};
@@ -402,7 +432,7 @@ export class IntegrationsService {
         headers.Authorization = `Basic ${auth}`;
       }
 
-      const response = await fetch(url, { headers });
+      const response = await fetch(url, { headers, redirect: 'error' });
       if (response.ok) {
         return { success: true };
       }
@@ -436,6 +466,7 @@ export class IntegrationsService {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        redirect: 'error',
       });
 
       const data = (await response.json()) as { ok: boolean; error?: string };
