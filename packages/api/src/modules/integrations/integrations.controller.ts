@@ -1,266 +1,414 @@
-import { Controller, Logger } from "@nestjs/common";
-import { Implement, implement, ORPCError } from "@orpc/nest";
-import { integrationsContract } from "@prismalens/contracts";
+import { Controller, Logger } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { integrationsContract } from '@prismalens/contracts';
 import type {
-	IntegrationDefinition,
-	IntegrationConnection,
-	IntegrationConnectionWithDefinition,
-	ServiceIntegration,
-} from "@prismalens/contracts/schemas";
-import type { CreateConnectionDto, UpdateConnectionDto } from "./dto/index.js";
-import { IntegrationsService } from "./integrations.service.js";
+  AuthTemplateResponse,
+  Connection as ConnectionResponse,
+  ConnectionWithIntegration as ConnectionWithIntegrationResponse,
+  Integration as IntegrationResponse,
+  ServiceIntegration as ServiceIntegrationResponse,
+} from '@prismalens/contracts/schemas';
+import type {
+  Connection,
+  Integration,
+  ServiceIntegration,
+} from '@prismalens/database';
+import { type AuthTemplate, getTemplate } from '@prismalens/integrations';
+import type { ConnectionWithIntegration } from './integrations.service.js';
+import { IntegrationsService } from './integrations.service.js';
 
 @Controller()
 export class IntegrationsController {
-	private readonly logger = new Logger(IntegrationsController.name);
+  private readonly logger = new Logger(IntegrationsController.name);
 
-	constructor(private readonly integrationsService: IntegrationsService) {}
+  constructor(private readonly integrationsService: IntegrationsService) {}
 
-	@Implement(integrationsContract)
-	integrations() {
-		return {
-			// GET /integrations/definitions - List available integration definitions
-			listDefinitions: implement(integrationsContract.listDefinitions).handler(
-				async () => {
-					const definitions =
-						await this.integrationsService.findAllDefinitions();
-					return definitions.map((d) => this.serializeDefinition(d));
-				},
-			),
+  private extractUserId(context: unknown): string {
+    const userId = (context as { user?: { id: string } })?.user?.id;
+    if (!userId) {
+      throw new ORPCError('UNAUTHORIZED', {
+        message: 'Authentication required',
+      });
+    }
+    return userId;
+  }
 
-			// GET /integrations/definitions/:id - Get a single integration definition
-			getDefinition: implement(integrationsContract.getDefinition).handler(
-				async ({ input }) => {
-					const definition = await this.integrationsService.findDefinitionById(
-						input.id,
-					);
-					if (!definition) {
-						throw new ORPCError("NOT_FOUND", {
-							message: `Integration definition ${input.id} not found`,
-						});
-					}
-					return this.serializeDefinition(definition);
-				},
-			),
+  @Implement(integrationsContract)
+  integrations() {
+    return {
+      // =========================================================================
+      // TEMPLATES
+      // =========================================================================
 
-			// POST /integrations/connections - Create a new integration connection
-			createConnection: implement(
-				integrationsContract.createConnection,
-			).handler(async ({ input }) => {
-				const connection = await this.integrationsService.createConnection(
-					input as CreateConnectionDto,
-				);
-				this.logger.log(`Created integration connection: ${connection.id}`);
-				return this.serializeConnection(connection);
-			}),
+      listTemplates: implement(integrationsContract.listTemplates).handler(
+        async () => {
+          const templates = this.integrationsService.findAllTemplates();
+          return templates.map((t) => this.serializeTemplate(t));
+        },
+      ),
 
-			// GET /integrations/connections - List integration connections
-			listConnections: implement(integrationsContract.listConnections).handler(
-				async ({ input }) => {
-					const connections = await this.integrationsService.findAllConnections(
-						{
-							status: input.status,
-						},
-					);
-					return connections.map((c) =>
-						this.serializeConnectionWithDefinition(c),
-					);
-				},
-			),
+      getTemplate: implement(integrationsContract.getTemplate).handler(
+        async ({ input }) => {
+          const template = this.integrationsService.findTemplateById(input.id);
+          if (!template) {
+            throw new ORPCError('NOT_FOUND', {
+              message: `Template ${input.id} not found`,
+            });
+          }
+          return this.serializeTemplate(template);
+        },
+      ),
 
-			// GET /integrations/connections/:id - Get a single integration connection
-			getConnection: implement(integrationsContract.getConnection).handler(
-				async ({ input }) => {
-					const connection =
-						await this.integrationsService.getConnectionWithMaskedCredentials(
-							input.id,
-						);
-					if (!connection) {
-						throw new ORPCError("NOT_FOUND", {
-							message: "Connection not found",
-						});
-					}
-					return this.serializeConnectionWithDefinition(connection);
-				},
-			),
+      // =========================================================================
+      // INTEGRATIONS (OAuth client creds / provider instances)
+      // =========================================================================
 
-			// PATCH /integrations/connections/:id - Update an integration connection
-			updateConnection: implement(
-				integrationsContract.updateConnection,
-			).handler(async ({ input }) => {
-				const { id, ...updateData } = input;
-				const connection = await this.integrationsService.updateConnection(
-					id,
-					updateData as UpdateConnectionDto,
-				);
-				if (!connection) {
-					throw new ORPCError("NOT_FOUND", { message: "Connection not found" });
-				}
-				this.logger.log(`Updated integration connection: ${id}`);
-				return this.serializeConnection(connection);
-			}),
+      createIntegration: implement(
+        integrationsContract.createIntegration,
+      ).handler(async ({ input }) => {
+        const integration =
+          await this.integrationsService.createIntegration(input);
+        this.logger.log(`Created integration: ${integration.id}`);
+        return this.serializeIntegration(integration);
+      }),
 
-			// DELETE /integrations/connections/:id - Delete an integration connection
-			deleteConnection: implement(
-				integrationsContract.deleteConnection,
-			).handler(async ({ input }) => {
-				const deleted = await this.integrationsService.deleteConnection(
-					input.id,
-				);
-				if (!deleted) {
-					throw new ORPCError("NOT_FOUND", { message: "Connection not found" });
-				}
-				this.logger.log(`Deleted integration connection: ${input.id}`);
-			}),
+      listIntegrations: implement(
+        integrationsContract.listIntegrations,
+      ).handler(async ({ input }) => {
+        const integrations = await this.integrationsService.findAllIntegrations(
+          {
+            templateId: input.templateId,
+          },
+        );
+        return integrations.map((i) => this.serializeIntegration(i));
+      }),
 
-			// POST /integrations/connections/:id/test - Test an integration connection
-			testConnection: implement(integrationsContract.testConnection).handler(
-				async ({ input }) => {
-					const result = await this.integrationsService.testConnection(
-						input.id,
-					);
-					return {
-						success: result.success,
-						message: result.success
-							? "Connection test successful"
-							: `Connection test failed: ${result.error}`,
-					};
-				},
-			),
+      getIntegration: implement(integrationsContract.getIntegration).handler(
+        async ({ input }) => {
+          const integration =
+            await this.integrationsService.findIntegrationById(input.id);
+          if (!integration) {
+            throw new ORPCError('NOT_FOUND', {
+              message: `Integration ${input.id} not found`,
+            });
+          }
+          return this.serializeIntegration(integration);
+        },
+      ),
 
-			// =========================================================================
-			// GIT PROVIDER ENDPOINTS
-			// =========================================================================
+      updateIntegration: implement(
+        integrationsContract.updateIntegration,
+      ).handler(async ({ input }) => {
+        const { id, ...updateData } = input;
+        const integration = await this.integrationsService.updateIntegration(
+          id,
+          updateData,
+        );
+        if (!integration) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Integration not found',
+          });
+        }
+        this.logger.log(`Updated integration: ${id}`);
+        return this.serializeIntegration(integration);
+      }),
 
-			// GET /integrations/connections/:id/git/organizations
-			getGitOrganizations: implement(
-				integrationsContract.getGitOrganizations,
-			).handler(async ({ input }) => {
-				return this.integrationsService.getGitOrganizations(input.id);
-			}),
+      deleteIntegration: implement(
+        integrationsContract.deleteIntegration,
+      ).handler(async ({ input }) => {
+        const deleted = await this.integrationsService.deleteIntegration(
+          input.id,
+        );
+        if (!deleted) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Integration not found',
+          });
+        }
+        this.logger.log(`Deleted integration: ${input.id}`);
+      }),
 
-			// GET /integrations/connections/:id/git/repositories
-			getGitRepositories: implement(
-				integrationsContract.getGitRepositories,
-			).handler(async ({ input }) => {
-				return this.integrationsService.getGitRepositories(input.id, input.org);
-			}),
+      // =========================================================================
+      // CONNECTIONS (user tokens / API keys)
+      // =========================================================================
 
-			// PATCH /integrations/connections/:id/config
-			updateConnectionConfig: implement(
-				integrationsContract.updateConnectionConfig,
-			).handler(async ({ input }) => {
-				const connection = await this.integrationsService.updateConnectionConfig(
-					input.id,
-					input.config,
-				);
-				this.logger.log(`Updated config for connection: ${input.id}`);
-				return this.serializeConnection(connection);
-			}),
+      createConnection: implement(
+        integrationsContract.createConnection,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        const connection = await this.integrationsService.createConnection(
+          input,
+          userId,
+        );
+        this.logger.log(`Created connection: ${connection.id}`);
+        return this.serializeConnection(connection);
+      }),
 
-			// =========================================================================
-			// SERVICE INTEGRATION ENDPOINTS
-			// =========================================================================
+      listConnections: implement(integrationsContract.listConnections).handler(
+        async ({ input, context }) => {
+          const userId = this.extractUserId(context);
+          const connections = await this.integrationsService.findAllConnections(
+            {
+              status: input.status,
+              userId,
+            },
+          );
+          return connections.map((c) =>
+            this.serializeConnectionWithIntegration(c),
+          );
+        },
+      ),
 
-			// GET /integrations/service/:serviceId
-			getServiceIntegrations: implement(
-				integrationsContract.getServiceIntegrations,
-			).handler(async ({ input }) => {
-				return this.integrationsService.getServiceIntegrationsWithStatus(
-					input.serviceId,
-				);
-			}),
+      getConnection: implement(integrationsContract.getConnection).handler(
+        async ({ input, context }) => {
+          const userId = this.extractUserId(context);
+          const connection = await this.integrationsService.findConnectionById(
+            input.id,
+            userId,
+          );
+          if (!connection) {
+            throw new ORPCError('NOT_FOUND', {
+              message: 'Connection not found',
+            });
+          }
+          return this.serializeConnectionWithIntegration(connection);
+        },
+      ),
 
-			// POST /integrations/service-integrations
-			createServiceIntegration: implement(
-				integrationsContract.createServiceIntegration,
-			).handler(async ({ input }) => {
-				const serviceIntegration =
-					await this.integrationsService.createServiceIntegration(input);
-				this.logger.log(
-					`Created service integration: ${serviceIntegration.id}`,
-				);
-				return this.serializeServiceIntegration(serviceIntegration);
-			}),
+      updateConnection: implement(
+        integrationsContract.updateConnection,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        const { id, ...updateData } = input;
+        const connection = await this.integrationsService.updateConnection(
+          id,
+          updateData,
+          userId,
+        );
+        if (!connection) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Connection not found',
+          });
+        }
+        this.logger.log(`Updated connection: ${id}`);
+        return this.serializeConnection(connection);
+      }),
 
-			// PATCH /integrations/service-integrations/:id
-			updateServiceIntegration: implement(
-				integrationsContract.updateServiceIntegration,
-			).handler(async ({ input }) => {
-				const { id, ...updateData } = input;
-				const serviceIntegration =
-					await this.integrationsService.updateServiceIntegrationById(
-						id,
-						updateData,
-					);
-				if (!serviceIntegration) {
-					throw new ORPCError("NOT_FOUND", {
-						message: "Service integration not found",
-					});
-				}
-				this.logger.log(`Updated service integration: ${id}`);
-				return this.serializeServiceIntegration(serviceIntegration);
-			}),
+      deleteConnection: implement(
+        integrationsContract.deleteConnection,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        const deleted = await this.integrationsService.deleteConnection(
+          input.id,
+          userId,
+        );
+        if (!deleted) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Connection not found',
+          });
+        }
+        this.logger.log(`Deleted connection: ${input.id}`);
+      }),
 
-			// DELETE /integrations/service-integrations/:id
-			deleteServiceIntegration: implement(
-				integrationsContract.deleteServiceIntegration,
-			).handler(async ({ input }) => {
-				const deleted =
-					await this.integrationsService.deleteServiceIntegrationById(input.id);
-				if (!deleted) {
-					throw new ORPCError("NOT_FOUND", {
-						message: "Service integration not found",
-					});
-				}
-				this.logger.log(`Deleted service integration: ${input.id}`);
-			}),
-		};
-	}
+      testConnection: implement(integrationsContract.testConnection).handler(
+        async ({ input, context }) => {
+          const userId = this.extractUserId(context);
+          const result = await this.integrationsService.testConnection(
+            input.id,
+            userId,
+          );
+          return { success: result.success };
+        },
+      ),
 
-	private serializeDefinition(definition: Record<string, any>): IntegrationDefinition {
-		return {
-			...definition,
-			capabilities: definition.capabilities
-				? JSON.parse(definition.capabilities)
-				: null,
-			configSchema: definition.configSchema
-				? JSON.parse(definition.configSchema)
-				: null,
-			createdAt: definition.createdAt?.toISOString(),
-			updatedAt: definition.updatedAt?.toISOString(),
-		} as unknown as IntegrationDefinition;
-	}
+      // =========================================================================
+      // GIT PROVIDER ENDPOINTS
+      // =========================================================================
 
-	private serializeConnection(connection: Record<string, any>): IntegrationConnection {
-		return {
-			...connection,
-			credentials: "[ENCRYPTED]", // Always mask credentials
-			config: connection.config ? JSON.parse(connection.config) : null,
-			createdAt: connection.createdAt?.toISOString(),
-			updatedAt: connection.updatedAt?.toISOString(),
-			lastTestedAt: connection.lastTestedAt?.toISOString() ?? null,
-		} as unknown as IntegrationConnection;
-	}
+      getGitOrganizations: implement(
+        integrationsContract.getGitOrganizations,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        return this.integrationsService.getGitOrganizations(input.id, userId);
+      }),
 
-	private serializeConnectionWithDefinition(connection: Record<string, any>): IntegrationConnectionWithDefinition {
-		const serialized = this.serializeConnection(connection) as any;
+      getGitRepositories: implement(
+        integrationsContract.getGitRepositories,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        return this.integrationsService.getGitRepositories(
+          input.id,
+          input.org,
+          userId,
+        );
+      }),
 
-		if (connection.definition) {
-			serialized.definition = this.serializeDefinition(connection.definition);
-		}
+      updateConnectionConfig: implement(
+        integrationsContract.updateConnectionConfig,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        const connection =
+          await this.integrationsService.updateConnectionConfig(
+            input.id,
+            input.config,
+            userId,
+          );
+        this.logger.log(`Updated config for connection: ${input.id}`);
+        return this.serializeConnection(connection);
+      }),
 
-		return serialized as IntegrationConnectionWithDefinition;
-	}
+      // =========================================================================
+      // SERVICE INTEGRATION ENDPOINTS
+      // =========================================================================
 
-	private serializeServiceIntegration(serviceIntegration: Record<string, any>): ServiceIntegration {
-		return {
-			...serviceIntegration,
-			config: serviceIntegration.config
-				? JSON.parse(serviceIntegration.config)
-				: null,
-			createdAt: serviceIntegration.createdAt?.toISOString(),
-			updatedAt: serviceIntegration.updatedAt?.toISOString(),
-		} as ServiceIntegration;
-	}
+      getServiceIntegrations: implement(
+        integrationsContract.getServiceIntegrations,
+      ).handler(async ({ input }) => {
+        return this.integrationsService.getServiceIntegrationsWithStatus(
+          input.serviceId,
+        );
+      }),
+
+      createServiceIntegration: implement(
+        integrationsContract.createServiceIntegration,
+      ).handler(async ({ input }) => {
+        const serviceIntegration =
+          await this.integrationsService.createServiceIntegration(input);
+        this.logger.log(
+          `Created service integration: ${serviceIntegration.id}`,
+        );
+        return this.serializeServiceIntegration(serviceIntegration);
+      }),
+
+      updateServiceIntegration: implement(
+        integrationsContract.updateServiceIntegration,
+      ).handler(async ({ input }) => {
+        const { id, ...updateData } = input;
+        const serviceIntegration =
+          await this.integrationsService.updateServiceIntegrationById(
+            id,
+            updateData,
+          );
+        if (!serviceIntegration) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Service integration not found',
+          });
+        }
+        this.logger.log(`Updated service integration: ${id}`);
+        return this.serializeServiceIntegration(serviceIntegration);
+      }),
+
+      deleteServiceIntegration: implement(
+        integrationsContract.deleteServiceIntegration,
+      ).handler(async ({ input }) => {
+        const deleted =
+          await this.integrationsService.deleteServiceIntegrationById(input.id);
+        if (!deleted) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Service integration not found',
+          });
+        }
+        this.logger.log(`Deleted service integration: ${input.id}`);
+      }),
+    };
+  }
+
+  private serializeTemplate(template: AuthTemplate): AuthTemplateResponse {
+    return {
+      id: template.id,
+      name: template.name,
+      category: template.category,
+      authMode: template.authMode,
+      icon: template.icon,
+      docsUrl: template.docsUrl,
+      connectionFields: template.connectionFields as
+        | AuthTemplateResponse['connectionFields']
+        | undefined,
+      credentialFields: template.credentialFields as
+        | AuthTemplateResponse['credentialFields']
+        | undefined,
+      hasOAuth: template.authMode === 'oauth2',
+    };
+  }
+
+  private serializeIntegration(integration: Integration): IntegrationResponse {
+    return {
+      id: integration.id,
+      templateId: integration.templateId,
+      label: integration.label,
+      scopes: this.parseStringArray(integration.scopes),
+      callbackUrl: integration.callbackUrl ?? null,
+      enabled: integration.enabled,
+      createdAt: integration.createdAt.toISOString(),
+      updatedAt: integration.updatedAt.toISOString(),
+    };
+  }
+
+  private serializeConnection(connection: Connection): ConnectionResponse {
+    return {
+      id: connection.id,
+      integrationId: connection.integrationId,
+      userId: connection.userId,
+      status: connection.status as ConnectionResponse['status'],
+      tokenExpiresAt: connection.tokenExpiresAt?.toISOString() ?? null,
+      grantedScopes: this.parseStringArray(connection.grantedScopes),
+      lastUsedAt: connection.lastUsedAt?.toISOString() ?? null,
+      lastRefreshedAt: connection.lastRefreshedAt?.toISOString() ?? null,
+      lastErrorMessage: connection.lastErrorMessage
+        ? 'Connection error occurred. Check logs for details.'
+        : null,
+      lastErrorAt: connection.lastErrorAt?.toISOString() ?? null,
+      consecutiveErrors: connection.consecutiveErrors ?? 0,
+      createdAt: connection.createdAt.toISOString(),
+      updatedAt: connection.updatedAt.toISOString(),
+    };
+  }
+
+  private serializeConnectionWithIntegration(
+    connection: ConnectionWithIntegration,
+  ): ConnectionWithIntegrationResponse {
+    const serialized = this.serializeConnection(connection);
+    const { integration } = connection;
+
+    return {
+      ...serialized,
+      integration: this.serializeIntegration(integration),
+      templateId: integration.templateId,
+      templateName:
+        getTemplate(integration.templateId)?.name ?? integration.templateId,
+    };
+  }
+
+  private serializeServiceIntegration(
+    si: ServiceIntegration,
+  ): ServiceIntegrationResponse {
+    return {
+      id: si.id,
+      serviceId: si.serviceId,
+      connectionId: si.connectionId,
+      priority: si.priority ?? 0,
+      config: si.config ? this.safeParseJson(si.config) : null,
+      isEnabled: si.isEnabled,
+      createdAt: si.createdAt.toISOString(),
+      updatedAt: si.updatedAt.toISOString(),
+    };
+  }
+
+  private parseStringArray(value: string | string[] | null): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    try {
+      return JSON.parse(value) as string[];
+    } catch {
+      return [];
+    }
+  }
+
+  private safeParseJson(value: string): Record<string, unknown> | null {
+    try {
+      return JSON.parse(value) as Record<string, unknown>;
+    } catch {
+      this.logger.warn('Failed to parse JSON config');
+      return null;
+    }
+  }
 }

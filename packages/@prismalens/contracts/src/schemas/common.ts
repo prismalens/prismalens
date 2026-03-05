@@ -220,13 +220,13 @@ export const SettingCategorySchema = z.enum([
 
 // Integrations
 export const ConnectionStatusSchema = z.enum([
-	"pending",
-	"connected",
-	"error",
-	"disabled",
+	"ACTIVE",
+	"TOKEN_EXPIRED",
+	"REFRESH_FAILED",
+	"CREDENTIALS_INVALID",
+	"REVOKED",
+	"ERROR",
 ]);
-
-export const AuthMethodSchema = z.enum(["api_key", "oauth2"]);
 
 // Service Discovery
 export const SuggestionStatusSchema = z.enum([
@@ -321,7 +321,6 @@ export type CorrelationAction = z.infer<typeof CorrelationActionSchema>;
 export type SettingType = z.infer<typeof SettingTypeSchema>;
 export type SettingCategory = z.infer<typeof SettingCategorySchema>;
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
-export type AuthMethod = z.infer<typeof AuthMethodSchema>;
 export type SuggestionStatus = z.infer<typeof SuggestionStatusSchema>;
 export type ChangeEventType = z.infer<typeof ChangeEventTypeSchema>;
 export type LicenseType = z.infer<typeof LicenseTypeSchema>;

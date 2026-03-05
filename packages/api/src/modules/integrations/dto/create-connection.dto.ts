@@ -1,86 +1,67 @@
-import { Type } from "class-transformer";
 import {
-	IsBoolean,
-	IsEnum,
-	IsObject,
-	IsOptional,
-	IsString,
-	ValidateNested,
-} from "class-validator";
-import { AuthMethod } from "../../../shared/enums/index.js";
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+} from 'class-validator';
 
-/**
- * Credentials for API key authentication.
- */
-export class ApiKeyCredentialsDto {
-	@IsString()
-	apiKey!: string;
+export class CreateIntegrationDto {
+  @IsString()
+  @IsNotEmpty()
+  templateId!: string;
 
-	@IsOptional()
-	@IsString()
-	username?: string;
+  @IsString()
+  label!: string;
 
-	@IsOptional()
-	@IsString()
-	password?: string;
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @IsOptional()
+  @IsString()
+  clientSecret?: string;
+
+  @IsOptional()
+  @IsString({ each: true })
+  scopes?: string[];
+
+  @IsOptional()
+  @IsUrl()
+  callbackUrl?: string;
 }
 
-/**
- * Credentials for OAuth authentication (after token exchange).
- */
-export class OAuthCredentialsDto {
-	@IsString()
-	accessToken!: string;
-
-	@IsOptional()
-	@IsString()
-	refreshToken?: string;
-
-	@IsOptional()
-	@IsString()
-	expiresAt?: string; // ISO date string
-
-	@IsOptional()
-	@IsString()
-	tokenType?: string;
-
-	@IsOptional()
-	@IsString()
-	scope?: string;
-}
-
-/**
- * DTO for creating a new integration connection.
- */
 export class CreateConnectionDto {
-	@IsString()
-	definitionId!: string;
+  @IsUUID()
+  integrationId!: string;
 
-	@IsString()
-	name!: string;
+  @IsObject()
+  credentials!: Record<string, string>;
 
-	@IsOptional()
-	@IsString()
-	description?: string;
+  @IsOptional()
+  @IsObject()
+  connectionConfig?: Record<string, string>;
+}
 
-	@IsOptional()
-	@IsBoolean()
-	isGlobal?: boolean;
+export class CreateServiceIntegrationDto {
+  @IsUUID()
+  serviceId!: string;
 
-	@IsEnum(AuthMethod)
-	authMethod!: AuthMethod;
+  @IsUUID()
+  connectionId!: string;
 
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => ApiKeyCredentialsDto)
-	apiKeyCredentials?: ApiKeyCredentialsDto;
+  @IsOptional()
+  @IsObject()
+  config?: Record<string, unknown>;
 
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => OAuthCredentialsDto)
-	oauthCredentials?: OAuthCredentialsDto;
+  @IsOptional()
+  @IsNumber()
+  priority?: number;
 
-	@IsOptional()
-	@IsObject()
-	config?: Record<string, unknown>;
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
 }

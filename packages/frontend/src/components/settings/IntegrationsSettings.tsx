@@ -16,6 +16,8 @@ import {
 	Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "@/hooks/use-toast";
+import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -46,53 +48,54 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-	useCreateIntegrationConnection,
-	useDeleteIntegrationConnection,
-	useIntegrationConnections,
-	useIntegrationDefinitions,
-	useTestIntegrationConnection,
-	useUpdateIntegrationConnection,
+	useConnections,
+	useCreateConnection,
+	useCreateIntegration,
+	useDeleteConnection,
+	useTemplates,
+	useTestConnection,
+	useUpdateConnection,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-import { parseCredentialSchema, validateCredentials } from "@/lib/credential-schema";
+import { validateFieldValues } from "@/lib/credential-schema";
 import { DynamicCredentialForm } from "./DynamicCredentialForm";
 
-// Integration icon helper — uses definition.name (not UUID id)
-function getIntegrationIcon(name: string) {
-	switch (name) {
-		case "github":
-			return <Github className="h-5 w-5" />;
-		case "slack":
-			return <MessageSquare className="h-5 w-5" />;
-		case "prometheus":
-			return <Zap className="h-5 w-5" />;
-		default:
-			return <Link2 className="h-5 w-5" />;
-	}
+// Template icon helper — uses template.id
+function getTemplateIcon(templateId: string) {
+	if (templateId.startsWith("github"))
+		return <Github className="h-5 w-5" />;
+	if (templateId.startsWith("slack"))
+		return <MessageSquare className="h-5 w-5" />;
+	if (templateId.startsWith("prometheus"))
+		return <Zap className="h-5 w-5" />;
+	return <Link2 className="h-5 w-5" />;
 }
 
 // Connection status badge
 function ConnectionStatusBadge({ status }: { status: string }) {
 	switch (status) {
-		case "connected":
+		case "ACTIVE":
 			return (
 				<Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
 					<CheckCircle className="h-3 w-3 mr-1" />
 					Connected
 				</Badge>
 			);
-		case "error":
+		case "TOKEN_EXPIRED":
+			return (
+				<Badge variant="secondary">
+					<AlertCircle className="h-3 w-3 mr-1" />
+					Token Expired
+				</Badge>
+			);
+		case "REFRESH_FAILED":
+		case "CREDENTIALS_INVALID":
+		case "REVOKED":
+		case "ERROR":
 			return (
 				<Badge variant="destructive">
 					<AlertCircle className="h-3 w-3 mr-1" />
-					Error
-				</Badge>
-			);
-		case "pending":
-			return (
-				<Badge variant="secondary">
-					<Loader2 className="h-3 w-3 mr-1 animate-spin" />
-					Pending
+					{status.replace(/_/g, " ")}
 				</Badge>
 			);
 		default:
@@ -101,30 +104,36 @@ function ConnectionStatusBadge({ status }: { status: string }) {
 }
 
 export function IntegrationsSettings() {
-	const { data: definitions, isLoading: defsLoading } =
-		useIntegrationDefinitions();
+	const { data: templates, isLoading: templatesLoading } = useTemplates();
 	const {
 		data: connections,
 		isLoading: connsLoading,
 		refetch: refetchConnections,
-	} = useIntegrationConnections();
-	const createConnection = useCreateIntegrationConnection();
-	const updateConnection = useUpdateIntegrationConnection();
-	const deleteConnection = useDeleteIntegrationConnection();
-	const testConnection = useTestIntegrationConnection();
+	} = useConnections();
+	const createIntegration = useCreateIntegration();
+	const createConnection = useCreateConnection();
+	const updateConnection = useUpdateConnection();
+	const deleteConnection = useDeleteConnection();
+	const testConnection = useTestConnection();
 
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showConfigDialog, setShowConfigDialog] = useState(false);
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-	const [selectedDefinition, setSelectedDefinition] = useState<string | null>(
-		null,
-	);
+	const [selectedTemplate, setSelectedTemplate] =
+		useState<AuthTemplateResponse | null>(null);
 	const [selectedConnection, setSelectedConnection] = useState<string | null>(
 		null,
 	);
-	const [connectionName, setConnectionName] = useState("");
-	const [credentialValues, setCredentialValues] = useState<Record<string, string>>({});
-	const [configFields, setConfigFields] = useState<Record<string, string>>({});
+	const [connectionLabel, setConnectionLabel] = useState("");
+	const [credentialValues, setCredentialValues] = useState<
+		Record<string, string>
+	>({});
+	const [connectionFieldValues, setConnectionFieldValues] = useState<
+		Record<string, string>
+	>({});
+	// OAuth-specific fields
+	const [oauthClientId, setOauthClientId] = useState("");
+	const [oauthClientSecret, setOauthClientSecret] = useState("");
 	const [showCredErrors, setShowCredErrors] = useState(false);
 	const [testingConnectionId, setTestingConnectionId] = useState<string | null>(
 		null,
@@ -151,7 +160,6 @@ export function IntegrationsSettings() {
 
 		if (!oauth) return;
 
-		// Clear the query params from URL
 		const url = new URL(window.location.href);
 		url.searchParams.delete("oauth");
 		url.searchParams.delete("status");
@@ -170,52 +178,34 @@ export function IntegrationsSettings() {
 		} else if (status === "error") {
 			setOauthMessage({
 				type: "error",
-				message: errorDescription || error || `Failed to connect to ${oauth}`,
+				message: (errorDescription || error || `Failed to connect to ${oauth}`).slice(0, 200),
 			});
 			setTimeout(() => setOauthMessage(null), 10000);
 		}
 	}, [refetchConnections]);
 
-	// Get the base URL for webhooks
 	const webhookBaseUrl =
 		typeof window !== "undefined"
 			? `${window.location.origin}/api/webhooks`
 			: "/api/webhooks";
 
 	const handleCopyUrl = async (url: string, id: string) => {
-		await navigator.clipboard.writeText(url);
-		setCopiedUrl(id);
-		setTimeout(() => setCopiedUrl(null), 2000);
+		try {
+			await navigator.clipboard.writeText(url);
+			setCopiedUrl(id);
+			setTimeout(() => setCopiedUrl(null), 2000);
+		} catch {
+			toast({ title: "Failed to copy URL", variant: "destructive" });
+		}
 	};
 
-	const getDefinitionById = (id: string) =>
-		definitions?.find((d) => d.id === id);
-
-	const handleAddIntegration = (definitionId: string) => {
-		const definition = definitions?.find((d) => d.id === definitionId);
-		if (!definition) return;
-
-		// For OAuth integrations, redirect to OAuth flow
-		if (definition.authType === "oauth2") {
-			const name = `${definition.displayName} Connection`;
-			const currentUrl = new URL(window.location.href);
-			currentUrl.search = "";
-			const redirectUri = currentUrl.toString();
-
-			const authorizeUrl =
-				`/api/integrations/oauth/${definition.id}/authorize?` +
-				`name=${encodeURIComponent(name)}&` +
-				`redirect_uri=${encodeURIComponent(redirectUri)}`;
-
-			window.location.href = authorizeUrl;
-			return;
-		}
-
-		// For API key integrations, show config dialog
-		setSelectedDefinition(definitionId);
-		setConnectionName(`${definition.displayName} Connection`);
+	const handleAddIntegration = (template: AuthTemplateResponse) => {
+		setSelectedTemplate(template);
+		setConnectionLabel(`${template.name} Connection`);
 		setCredentialValues({});
-		setConfigFields({});
+		setConnectionFieldValues({});
+		setOauthClientId("");
+		setOauthClientSecret("");
 		setShowCredErrors(false);
 		setShowAddDialog(false);
 		setShowConfigDialog(true);
@@ -225,30 +215,59 @@ export function IntegrationsSettings() {
 		const connection = connections?.find((c) => c.id === connectionId);
 		if (!connection) return;
 
+		const template = templates?.find(
+			(t) => t.id === connection.templateId,
+		);
 		setSelectedConnection(connectionId);
-		setSelectedDefinition(connection.definitionId);
-		setConnectionName(connection.name);
+		setSelectedTemplate(template ?? null);
+		setConnectionLabel(connection.integration?.label ?? "");
 		setCredentialValues({});
-		setConfigFields({});
+		setConnectionFieldValues({});
 		setShowCredErrors(false);
 		setShowConfigDialog(true);
 	};
 
 	const handleSaveConnection = async () => {
-		if (!selectedDefinition) return;
+		if (!selectedTemplate) return;
 
-		const definition = getDefinitionById(selectedDefinition);
-		const credSchema = parseCredentialSchema(
-			definition?.credentialSchema as string | null | undefined,
-		);
-
-		// Validate credentials if creating new (editing doesn't require re-entering credentials)
-		if (!selectedConnection && definition?.authType !== "oauth2") {
-			if (!credSchema) {
-				// No credential schema defined — cannot create connection without knowing required fields
+		if (selectedTemplate.authMode === "oauth2") {
+			// OAuth: Create Integration with client creds, then redirect to OAuth
+			if (!oauthClientId || !oauthClientSecret) {
+				setShowCredErrors(true);
 				return;
 			}
-			const errors = validateCredentials(credSchema, credentialValues);
+
+			try {
+				const integration = await createIntegration.mutateAsync({
+					templateId: selectedTemplate.id,
+					label: connectionLabel,
+					clientId: oauthClientId,
+					clientSecret: oauthClientSecret,
+				});
+
+				setShowConfigDialog(false);
+				resetDialogState();
+
+				// Redirect to OAuth authorization
+				const currentUrl = new URL(window.location.href);
+				currentUrl.search = "";
+				const authorizeUrl = `/api/integrations/oauth/${integration.id}/authorize`;
+				window.location.href = authorizeUrl;
+			} catch (err) {
+				console.error("Failed to create integration:", err);
+				toast({
+					title: "Failed to create integration",
+					description: err instanceof Error ? err.message : "An unexpected error occurred",
+					variant: "destructive",
+				});
+			}
+			return;
+		}
+
+		// API Key / Basic Auth: validate credential fields
+		const credFields = selectedTemplate.credentialFields ?? [];
+		if (!selectedConnection && credFields.length > 0) {
+			const errors = validateFieldValues(credFields, credentialValues);
 			if (Object.keys(errors).length > 0) {
 				setShowCredErrors(true);
 				return;
@@ -257,30 +276,43 @@ export function IntegrationsSettings() {
 
 		try {
 			if (selectedConnection) {
-				// Update existing
+				// Update existing connection
 				const hasNewCredentials = Object.values(credentialValues).some(
 					(v) => v.trim() !== "",
 				);
 				await updateConnection.mutateAsync({
 					id: selectedConnection,
-					name: connectionName,
 					credentials: hasNewCredentials ? credentialValues : undefined,
-					config: Object.keys(configFields).length > 0 ? configFields : undefined,
+					connectionConfig:
+						Object.keys(connectionFieldValues).length > 0
+							? connectionFieldValues
+							: undefined,
 				});
 			} else {
-				// Create new
+				// Create integration + connection in one flow for non-OAuth
+				const integration = await createIntegration.mutateAsync({
+					templateId: selectedTemplate.id,
+					label: connectionLabel,
+				});
+
 				await createConnection.mutateAsync({
-					definitionId: selectedDefinition,
-					name: connectionName,
-					authMethod: "api_key",
+					integrationId: integration.id,
 					credentials: credentialValues,
-					config: Object.keys(configFields).length > 0 ? configFields : undefined,
+					connectionConfig:
+						Object.keys(connectionFieldValues).length > 0
+							? connectionFieldValues
+							: undefined,
 				});
 			}
 			setShowConfigDialog(false);
 			resetDialogState();
 		} catch (err) {
 			console.error("Failed to save connection:", err);
+			toast({
+				title: "Failed to save connection",
+				description: err instanceof Error ? err.message : "An unexpected error occurred",
+				variant: "destructive",
+			});
 		}
 	};
 
@@ -293,6 +325,11 @@ export function IntegrationsSettings() {
 			resetDialogState();
 		} catch (err) {
 			console.error("Failed to delete connection:", err);
+			toast({
+				title: "Failed to delete connection",
+				description: err instanceof Error ? err.message : "An unexpected error occurred",
+				variant: "destructive",
+			});
 		}
 	};
 
@@ -318,22 +355,17 @@ export function IntegrationsSettings() {
 	};
 
 	const resetDialogState = () => {
-		setSelectedDefinition(null);
+		setSelectedTemplate(null);
 		setSelectedConnection(null);
-		setConnectionName("");
+		setConnectionLabel("");
 		setCredentialValues({});
-		setConfigFields({});
+		setConnectionFieldValues({});
+		setOauthClientId("");
+		setOauthClientSecret("");
 		setShowCredErrors(false);
 	};
 
-	const selectedDef = selectedDefinition
-		? getDefinitionById(selectedDefinition)
-		: null;
-	const selectedCredSchema = parseCredentialSchema(
-		selectedDef?.credentialSchema as string | null | undefined,
-	);
-
-	if (defsLoading || connsLoading) {
+	if (templatesLoading || connsLoading) {
 		return (
 			<Card>
 				<CardContent className="flex items-center justify-center py-12">
@@ -380,7 +412,6 @@ export function IntegrationsSettings() {
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					{/* Prometheus Webhook */}
 					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
 						<div className="flex items-center gap-3">
 							<Zap className="h-5 w-5 text-orange-500" />
@@ -406,7 +437,6 @@ export function IntegrationsSettings() {
 						</Button>
 					</div>
 
-					{/* Generic Webhook */}
 					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
 						<div className="flex items-center gap-3">
 							<Link2 className="h-5 w-5 text-gray-500" />
@@ -459,7 +489,6 @@ export function IntegrationsSettings() {
 					{connections && connections.length > 0 ? (
 						<div className="space-y-3">
 							{connections.map((connection) => {
-								const definition = getDefinitionById(connection.definitionId);
 								const testResult = testResults[connection.id];
 
 								return (
@@ -469,28 +498,43 @@ export function IntegrationsSettings() {
 									>
 										<div className="flex items-center gap-4">
 											<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-												{getIntegrationIcon(definition?.name ?? "")}
+												{getTemplateIcon(
+													connection.templateId ?? "",
+												)}
 											</div>
 											<div>
 												<div className="flex items-center gap-2">
-													<span className="font-medium">{connection.name}</span>
-													<ConnectionStatusBadge status={connection.status} />
+													<span className="font-medium">
+														{connection.integration?.label ??
+															connection.templateName ??
+															"Connection"}
+													</span>
+													<ConnectionStatusBadge
+														status={connection.status}
+													/>
 												</div>
 												<p className="text-sm text-muted-foreground">
-													{definition?.displayName} •{" "}
-													{definition?.authType === "oauth2"
-														? "OAuth"
-														: "API Key"}
-													{connection.lastHealthCheck && (
+													{connection.templateName} •{" "}
+													{connection.integration
+														? connection.integration.enabled
+															? "Enabled"
+															: "Disabled"
+														: ""}
+													{connection.lastRefreshedAt && (
 														<>
 															{" "}
-															• Last check:{" "}
+															• Last refreshed:{" "}
 															{new Date(
-																connection.lastHealthCheck,
+																connection.lastRefreshedAt,
 															).toLocaleString()}
 														</>
 													)}
 												</p>
+												{connection.lastErrorMessage && (
+													<p className="text-xs text-destructive mt-1">
+														{connection.lastErrorMessage}
+													</p>
+												)}
 												{testResult && (
 													<p
 														className={cn(
@@ -511,8 +555,12 @@ export function IntegrationsSettings() {
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() => handleTestConnection(connection.id)}
-												disabled={testingConnectionId === connection.id}
+												onClick={() =>
+													handleTestConnection(connection.id)
+												}
+												disabled={
+													testingConnectionId === connection.id
+												}
 											>
 												{testingConnectionId === connection.id ? (
 													<Loader2 className="h-4 w-4 animate-spin" />
@@ -523,7 +571,9 @@ export function IntegrationsSettings() {
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() => handleEditConnection(connection.id)}
+												onClick={() =>
+													handleEditConnection(connection.id)
+												}
 											>
 												<Pencil className="h-4 w-4" />
 											</Button>
@@ -556,7 +606,7 @@ export function IntegrationsSettings() {
 				</CardContent>
 			</Card>
 
-			{/* Add Integration Dialog */}
+			{/* Add Integration Dialog — pick a template */}
 			<Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
 				<DialogContent>
 					<DialogHeader>
@@ -566,24 +616,28 @@ export function IntegrationsSettings() {
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-3 py-4">
-						{definitions?.map((def) => (
+						{templates?.map((template) => (
 							<button
-								key={def.id}
+								key={template.id}
 								type="button"
-								onClick={() => handleAddIntegration(def.id)}
+								onClick={() => handleAddIntegration(template)}
 								className="w-full flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
 							>
 								<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-									{getIntegrationIcon(def.name)}
+									{getTemplateIcon(template.id)}
 								</div>
 								<div className="flex-1">
-									<p className="font-medium">{def.displayName}</p>
+									<p className="font-medium">{template.name}</p>
 									<p className="text-sm text-muted-foreground">
-										{def.description}
+										{template.category}
 									</p>
 								</div>
 								<Badge variant="outline">
-									{def.authType === "oauth2" ? "OAuth" : "API Key"}
+									{template.authMode === "oauth2"
+										? "OAuth"
+										: template.authMode === "basic"
+											? "Basic Auth"
+											: "API Key"}
 								</Badge>
 							</button>
 						))}
@@ -603,26 +657,95 @@ export function IntegrationsSettings() {
 					<DialogHeader>
 						<DialogTitle>
 							{selectedConnection ? "Edit" : "Configure"}{" "}
-							{selectedDef?.displayName}
+							{selectedTemplate?.name}
 						</DialogTitle>
-						<DialogDescription>{selectedDef?.description}</DialogDescription>
+						<DialogDescription>
+							{selectedTemplate?.authMode === "oauth2"
+								? "Enter your OAuth app credentials to connect"
+								: "Enter your credentials to connect"}
+						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						<div className="space-y-2">
-							<Label htmlFor="connectionName">Connection Name</Label>
+							<Label htmlFor="connectionLabel">Label</Label>
 							<Input
-								id="connectionName"
-								value={connectionName}
-								onChange={(e) => setConnectionName(e.target.value)}
-								placeholder="e.g., Production Prometheus"
+								id="connectionLabel"
+								value={connectionLabel}
+								onChange={(e) => setConnectionLabel(e.target.value)}
+								placeholder="e.g., Production GitHub"
 							/>
 						</div>
 
-						{/* Dynamic credential fields from credentialSchema */}
-						{selectedCredSchema &&
-							selectedDef?.authType !== "oauth2" && (
+						{/* OAuth-specific fields */}
+						{selectedTemplate?.authMode === "oauth2" && !selectedConnection && (
+							<>
+								<div className="space-y-2">
+									<Label htmlFor="oauthClientId">
+										Client ID
+										<span className="text-destructive ml-1">*</span>
+									</Label>
+									<Input
+										id="oauthClientId"
+										value={oauthClientId}
+										onChange={(e) => setOauthClientId(e.target.value)}
+										placeholder="OAuth App Client ID"
+										aria-invalid={
+											showCredErrors && !oauthClientId
+												? true
+												: undefined
+										}
+									/>
+									{showCredErrors && !oauthClientId && (
+										<p className="text-sm text-destructive">
+											Client ID is required
+										</p>
+									)}
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="oauthClientSecret">
+										Client Secret
+										<span className="text-destructive ml-1">*</span>
+									</Label>
+									<Input
+										id="oauthClientSecret"
+										type="password"
+										value={oauthClientSecret}
+										onChange={(e) =>
+											setOauthClientSecret(e.target.value)
+										}
+										placeholder="OAuth App Client Secret"
+										aria-invalid={
+											showCredErrors && !oauthClientSecret
+												? true
+												: undefined
+										}
+									/>
+									{showCredErrors && !oauthClientSecret && (
+										<p className="text-sm text-destructive">
+											Client Secret is required
+										</p>
+									)}
+								</div>
+							</>
+						)}
+
+						{/* Connection fields (e.g., domain, site) */}
+						{selectedTemplate?.connectionFields &&
+							selectedTemplate.connectionFields.length > 0 && (
 								<DynamicCredentialForm
-									schema={selectedCredSchema}
+									fields={selectedTemplate.connectionFields}
+									values={connectionFieldValues}
+									onChange={setConnectionFieldValues}
+									showErrors={showCredErrors}
+								/>
+							)}
+
+						{/* Credential fields (for api_key / basic auth) */}
+						{selectedTemplate?.authMode !== "oauth2" &&
+							selectedTemplate?.credentialFields &&
+							selectedTemplate.credentialFields.length > 0 && (
+								<DynamicCredentialForm
+									fields={selectedTemplate.credentialFields}
 									values={credentialValues}
 									onChange={setCredentialValues}
 									showErrors={showCredErrors}
@@ -642,25 +765,35 @@ export function IntegrationsSettings() {
 						<Button
 							onClick={handleSaveConnection}
 							disabled={
+								createIntegration.isPending ||
 								createConnection.isPending ||
 								updateConnection.isPending ||
-								!connectionName
+								!connectionLabel
 							}
 						>
-							{(createConnection.isPending || updateConnection.isPending) && (
+							{(createIntegration.isPending ||
+								createConnection.isPending ||
+								updateConnection.isPending) && (
 								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 							)}
-							{selectedConnection ? "Update" : "Create"} Connection
+							{selectedTemplate?.authMode === "oauth2" && !selectedConnection
+								? "Connect with OAuth"
+								: selectedConnection
+									? "Update Connection"
+									: "Create Connection"}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 
 			{/* Delete Confirmation Dialog */}
-			<AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+			<AlertDialog
+				open={showDeleteDialog}
+				onOpenChange={setShowDeleteDialog}
+			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Integration?</AlertDialogTitle>
+						<AlertDialogTitle>Delete Connection?</AlertDialogTitle>
 						<AlertDialogDescription>
 							This will remove the integration connection. Any services using
 							this integration will no longer have access to its data.

@@ -1,147 +1,151 @@
 import {
-	Injectable,
-	Logger,
-	OnModuleDestroy,
-	OnModuleInit,
-} from "@nestjs/common";
-import { prisma } from "@prismalens/database";
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { prisma } from '@prismalens/database';
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
-	private readonly logger = new Logger(PrismaService.name);
+  private readonly logger = new Logger(PrismaService.name);
 
-	// Expose the prisma instance methods
-	get $connect() {
-		return prisma.$connect.bind(prisma);
-	}
+  // Expose the prisma instance methods
+  get $connect() {
+    return prisma.$connect.bind(prisma);
+  }
 
-	get $disconnect() {
-		return prisma.$disconnect.bind(prisma);
-	}
+  get $disconnect() {
+    return prisma.$disconnect.bind(prisma);
+  }
 
-	get $transaction() {
-		return prisma.$transaction.bind(prisma);
-	}
+  get $transaction() {
+    return prisma.$transaction.bind(prisma);
+  }
 
-	// Forward all Prisma model access
-	get user() {
-		return prisma.user;
-	}
+  // Forward all Prisma model access
+  get user() {
+    return prisma.user;
+  }
 
-	get alert() {
-		return prisma.alert;
-	}
+  get alert() {
+    return prisma.alert;
+  }
 
-	get recommendation() {
-		return prisma.recommendation;
-	}
+  get recommendation() {
+    return prisma.recommendation;
+  }
 
-	get investigation() {
-		return prisma.investigation;
-	}
+  get investigation() {
+    return prisma.investigation;
+  }
 
-	get incident() {
-		return prisma.incident;
-	}
+  get incident() {
+    return prisma.incident;
+  }
 
-	get service() {
-		return prisma.service;
-	}
+  get service() {
+    return prisma.service;
+  }
 
-	get integrationDefinition() {
-		return prisma.integrationDefinition;
-	}
+  get integration() {
+    return prisma.integration;
+  }
 
-	get integrationConnection() {
-		return prisma.integrationConnection;
-	}
+  get connection() {
+    return prisma.connection;
+  }
 
-	get serviceIntegration() {
-		return prisma.serviceIntegration;
-	}
+  get oAuthState() {
+    return prisma.oAuthState;
+  }
 
-	get agentExecution() {
-		return prisma.agentExecution;
-	}
+  get serviceIntegration() {
+    return prisma.serviceIntegration;
+  }
 
-	get toolExecution() {
-		return prisma.toolExecution;
-	}
+  get agentExecution() {
+    return prisma.agentExecution;
+  }
 
-	get event() {
-		return prisma.event;
-	}
+  get toolExecution() {
+    return prisma.toolExecution;
+  }
 
-	get timelineEntry() {
-		return prisma.timelineEntry;
-	}
+  get event() {
+    return prisma.event;
+  }
 
-	get correlationRule() {
-		return prisma.correlationRule;
-	}
+  get timelineEntry() {
+    return prisma.timelineEntry;
+  }
 
-	get alertMappingRule() {
-		return prisma.alertMappingRule;
-	}
+  get correlationRule() {
+    return prisma.correlationRule;
+  }
 
-	get serviceDependency() {
-		return prisma.serviceDependency;
-	}
+  get alertMappingRule() {
+    return prisma.alertMappingRule;
+  }
 
-	get serviceSuggestion() {
-		return prisma.serviceSuggestion;
-	}
+  get serviceDependency() {
+    return prisma.serviceDependency;
+  }
 
-	get setting() {
-		return prisma.setting;
-	}
+  get serviceSuggestion() {
+    return prisma.serviceSuggestion;
+  }
 
-	get postmortem() {
-		return prisma.postmortem;
-	}
+  get setting() {
+    return prisma.setting;
+  }
 
-	get changeEvent() {
-		return prisma.changeEvent;
-	}
+  get postmortem() {
+    return prisma.postmortem;
+  }
 
-	// Better Auth models
-	get session() {
-		return prisma.session;
-	}
+  get changeEvent() {
+    return prisma.changeEvent;
+  }
 
-	get account() {
-		return prisma.account;
-	}
+  // Better Auth models
+  get session() {
+    return prisma.session;
+  }
 
-	get verification() {
-		return prisma.verification;
-	}
+  get account() {
+    return prisma.account;
+  }
 
-	get organization() {
-		return prisma.organization;
-	}
+  get verification() {
+    return prisma.verification;
+  }
 
-	get member() {
-		return prisma.member;
-	}
+  get organization() {
+    return prisma.organization;
+  }
 
-	get invitation() {
-		return prisma.invitation;
-	}
+  get member() {
+    return prisma.member;
+  }
 
-	async onModuleInit(): Promise<void> {
-		try {
-			await prisma.$connect();
-			this.logger.log("Database connection established");
-		} catch (error) {
-			this.logger.error("Database connection failed!");
-			this.logger.error('Run "pnpm db:init" to initialize the database');
-			throw error;
-		}
-	}
+  get invitation() {
+    return prisma.invitation;
+  }
 
-	async onModuleDestroy(): Promise<void> {
-		await prisma.$disconnect();
-		this.logger.log("Database connection closed");
-	}
+  async onModuleInit(): Promise<void> {
+    try {
+      await prisma.$connect();
+      this.logger.log('Database connection established');
+    } catch (error) {
+      this.logger.error('Database connection failed!');
+      this.logger.error('Run "pnpm db:init" to initialize the database');
+      throw error;
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await prisma.$disconnect();
+    this.logger.log('Database connection closed');
+  }
 }

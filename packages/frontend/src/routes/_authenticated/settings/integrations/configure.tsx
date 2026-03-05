@@ -7,21 +7,23 @@
  * (select organizations, repositories, etc.)
  */
 
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Github, Loader2 } from "lucide-react";
+import { useState } from "react";
+import {
+	createFileRoute,
+	useNavigate,
+	useSearch,
+} from "@tanstack/react-router";
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { getIntegrationIcon } from "@/lib/integration-icons";
 import { GitRepoSelector } from "@/components/settings/GitRepoSelector";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-	Card,
-	CardContent,
-} from "@/components/ui/card";
-import {
+	useConnection,
 	useGitOrganizations,
 	useGitRepositories,
-	useIntegrationConnection,
 	useUpdateConnectionConfig,
 } from "@/lib/api/hooks";
-import { useState } from "react";
 
 // Search params type
 interface ConfigureSearchParams {
@@ -32,43 +34,44 @@ interface ConfigureSearchParams {
 export const Route = createFileRoute(
 	"/_authenticated/settings/integrations/configure",
 )({
-	validateSearch: (search: Record<string, unknown>): ConfigureSearchParams => ({
-		connectionId: typeof search.connectionId === "string" ? search.connectionId : undefined,
-		provider: typeof search.provider === "string" ? search.provider : undefined,
+	validateSearch: (
+		search: Record<string, unknown>,
+	): ConfigureSearchParams => ({
+		connectionId:
+			typeof search.connectionId === "string"
+				? search.connectionId
+				: undefined,
+		provider:
+			typeof search.provider === "string" ? search.provider : undefined,
 	}),
 	component: ConfigureIntegrationPage,
 });
 
 function ConfigureIntegrationPage() {
 	const navigate = useNavigate();
-	const search = useSearch({ from: "/_authenticated/settings/integrations/configure" });
+	const search = useSearch({
+		from: "/_authenticated/settings/integrations/configure",
+	});
 	const { connectionId, provider } = search;
 
-	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(undefined);
+	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(
+		undefined,
+	);
 
-	// Fetch connection details
 	const {
 		data: connection,
 		isLoading: isLoadingConnection,
 		error: connectionError,
-	} = useIntegrationConnection(connectionId ?? "");
+	} = useConnection(connectionId ?? "");
 
-	// Fetch organizations
-	const {
-		data: organizations = [],
-		isLoading: isLoadingOrgs,
-	} = useGitOrganizations(connectionId ?? "");
+	const { data: organizations = [], isLoading: isLoadingOrgs } =
+		useGitOrganizations(connectionId ?? "");
 
-	// Fetch repositories
-	const {
-		data: repositories = [],
-		isLoading: isLoadingRepos,
-	} = useGitRepositories(connectionId ?? "", selectedOrg);
+	const { data: repositories = [], isLoading: isLoadingRepos } =
+		useGitRepositories(connectionId ?? "", selectedOrg);
 
-	// Update config mutation
 	const updateConfig = useUpdateConnectionConfig();
 
-	// Handle save
 	const handleSave = async (config: {
 		organization?: string;
 		repositories: string[];
@@ -87,14 +90,12 @@ function ConfigureIntegrationPage() {
 			},
 		});
 
-		// Navigate back to settings
 		navigate({
 			to: "/settings",
 			search: { tab: "integrations" },
 		});
 	};
 
-	// Handle cancel
 	const handleCancel = () => {
 		navigate({
 			to: "/settings",
@@ -102,9 +103,14 @@ function ConfigureIntegrationPage() {
 		});
 	};
 
-	// Get provider display name
+	// Derive provider name from template ID or search param
+	const providerName =
+		provider ??
+		connection?.templateId?.replace(/-oauth2$|-token$/, "") ??
+		"github";
+
 	const getProviderDisplayName = () => {
-		switch (provider || connection?.definition?.name) {
+		switch (providerName) {
 			case "github":
 				return "GitHub";
 			case "gitlab":
@@ -116,17 +122,10 @@ function ConfigureIntegrationPage() {
 		}
 	};
 
-	// Get provider icon
 	const getProviderIcon = () => {
-		switch (provider || connection?.definition?.name) {
-			case "github":
-				return <Github className="h-6 w-6" />;
-			default:
-				return <Github className="h-6 w-6" />;
-		}
+		return getIntegrationIcon(providerName ?? "", "h-6 w-6");
 	};
 
-	// No connectionId provided
 	if (!connectionId) {
 		return (
 			<div className="px-4 py-6 sm:px-0">
@@ -138,8 +137,8 @@ function ConfigureIntegrationPage() {
 								Missing Connection ID
 							</h2>
 							<p className="text-muted-foreground mb-4">
-								No connection ID was provided. Please return to settings and try
-								again.
+								No connection ID was provided. Please return to settings
+								and try again.
 							</p>
 							<Button onClick={handleCancel}>
 								<ArrowLeft className="h-4 w-4 mr-2" />
@@ -152,7 +151,6 @@ function ConfigureIntegrationPage() {
 		);
 	}
 
-	// Loading state
 	if (isLoadingConnection) {
 		return (
 			<div className="px-4 py-6 sm:px-0">
@@ -165,7 +163,6 @@ function ConfigureIntegrationPage() {
 		);
 	}
 
-	// Connection error
 	if (connectionError || !connection) {
 		return (
 			<div className="px-4 py-6 sm:px-0">
@@ -173,7 +170,9 @@ function ConfigureIntegrationPage() {
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
 							<AlertCircle className="h-12 w-12 text-destructive mb-4" />
-							<h2 className="text-lg font-semibold mb-2">Connection Not Found</h2>
+							<h2 className="text-lg font-semibold mb-2">
+								Connection Not Found
+							</h2>
 							<p className="text-muted-foreground mb-4">
 								{connectionError?.message ||
 									"The connection could not be found. It may have been deleted."}
@@ -189,20 +188,9 @@ function ConfigureIntegrationPage() {
 		);
 	}
 
-	// Parse existing config
-	const existingConfig = connection.config as
-		| {
-				organization?: string;
-				repositories?: string[];
-				allRepositories?: boolean;
-				defaultBranch?: string;
-		  }
-		| undefined;
-
 	return (
 		<div className="px-4 py-6 sm:px-0">
 			<div className="max-w-2xl mx-auto space-y-6">
-				{/* Header */}
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" size="icon" onClick={handleCancel}>
 						<ArrowLeft className="h-5 w-5" />
@@ -216,16 +204,17 @@ function ConfigureIntegrationPage() {
 								Configure {getProviderDisplayName()}
 							</h1>
 							<p className="text-sm text-muted-foreground">
-								{connection.name}
+								{connection.integration?.label ??
+									connection.templateName ??
+									"Connection"}
 							</p>
 						</div>
 					</div>
 				</div>
 
-				{/* Git Repo Selector */}
 				<GitRepoSelector
 					connectionId={connectionId}
-					providerName={provider || connection.definition?.name || "github"}
+					providerName={providerName}
 					providerDisplayName={getProviderDisplayName()}
 					organizations={organizations}
 					repositories={repositories}
@@ -233,7 +222,6 @@ function ConfigureIntegrationPage() {
 					isLoadingRepos={isLoadingRepos}
 					selectedOrg={selectedOrg}
 					onOrgChange={setSelectedOrg}
-					initialConfig={existingConfig}
 					onSave={handleSave}
 					onCancel={handleCancel}
 					isSaving={updateConfig.isPending}

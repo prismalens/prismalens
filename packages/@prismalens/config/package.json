@@ -21,6 +21,10 @@
 		"./agents": {
 			"types": "./dist/agents.d.ts",
 			"import": "./dist/agents.js"
+		},
+		"./integrations": {
+			"types": "./dist/integrations.d.ts",
+			"import": "./dist/integrations.js"
 		}
 	},
 	"scripts": {
@@ -37,7 +41,7 @@
 		"typescript": "^5.7.0"
 	},
 	"engines": {
-		"node": ">=24.0.0"
+		"node": ">=22.0.0"
 	},
 	"files": [
 		"dist",

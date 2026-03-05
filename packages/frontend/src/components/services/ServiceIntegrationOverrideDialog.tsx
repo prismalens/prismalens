@@ -10,15 +10,11 @@
 import { useState, useEffect, useMemo } from "react";
 import {
 	Check,
-	Github,
 	Globe,
-	Link2,
 	Loader2,
 	Lock,
-	MessageSquare,
 	Search,
 	Star,
-	Zap,
 } from "lucide-react";
 import type {
 	GitOrganization,
@@ -47,6 +43,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getIntegrationIcon } from "@/lib/integration-icons";
 import { cn } from "@/lib/utils";
 
 export interface ServiceIntegrationOverrideDialogProps {
@@ -71,20 +68,6 @@ export interface ServiceIntegrationOverrideDialogProps {
 	isSaving: boolean;
 }
 
-// Integration icon helper
-function getIntegrationIcon(definitionName: string) {
-	switch (definitionName) {
-		case "github":
-			return <Github className="h-5 w-5" />;
-		case "slack":
-			return <MessageSquare className="h-5 w-5" />;
-		case "prometheus":
-			return <Zap className="h-5 w-5" />;
-		default:
-			return <Link2 className="h-5 w-5" />;
-	}
-}
-
 export function ServiceIntegrationOverrideDialog({
 	open,
 	onOpenChange,
@@ -101,7 +84,7 @@ export function ServiceIntegrationOverrideDialog({
 	isSaving,
 }: ServiceIntegrationOverrideDialogProps) {
 	const isEditing = !!overrideId;
-	const definitionName = integration?.definitionName || "unknown";
+	const templateId = integration?.templateId || "unknown";
 
 	// Initialize config from existing override or global config
 	const initialConfig = useMemo(() => {
@@ -124,22 +107,26 @@ export function ServiceIntegrationOverrideDialog({
 	const [newLabelKey, setNewLabelKey] = useState("");
 	const [newLabelValue, setNewLabelValue] = useState("");
 
+	// Detect integration category from templateId
+	const isGitHub = templateId.startsWith("github");
+	const isPrometheus = templateId.startsWith("prometheus");
+
 	// Initialize state from existing config
 	useEffect(() => {
-		if (definitionName === "github") {
+		if (isGitHub) {
 			const config = initialConfig as {
 				allRepositories?: boolean;
 				repositories?: string[];
 			};
 			setRepoMode(config.allRepositories === false ? "specific" : "all");
 			setSelectedRepos(new Set(config.repositories || []));
-		} else if (definitionName === "prometheus") {
+		} else if (isPrometheus) {
 			const config = initialConfig as {
 				labels?: Record<string, string>;
 			};
 			setLabels(config.labels || {});
 		}
-	}, [definitionName, initialConfig]);
+	}, [isGitHub, isPrometheus, initialConfig]);
 
 	// Filtered repositories
 	const filteredRepos = useMemo(() => {
@@ -175,31 +162,25 @@ export function ServiceIntegrationOverrideDialog({
 
 	// Remove Prometheus label
 	const removeLabel = (key: string) => {
-		const newLabels = { ...labels };
-		delete newLabels[key];
-		setLabels(newLabels);
+		const { [key]: _, ...rest } = labels;
+		setLabels(rest);
 	};
 
 	// Build config and save
 	const handleSave = () => {
 		let config: Record<string, unknown> = {};
 
-		switch (definitionName) {
-			case "github":
-				config = {
-					organization: selectedOrg,
-					allRepositories: repoMode === "all",
-					repositories: repoMode === "specific" ? Array.from(selectedRepos) : [],
-				};
-				break;
-			case "prometheus":
-				config = {
-					labels,
-				};
-				break;
-			default:
-				// For unknown integrations, just pass through
-				config = initialConfig;
+		if (isGitHub) {
+			config = {
+				organization: selectedOrg,
+				allRepositories: repoMode === "all",
+				repositories: repoMode === "specific" ? Array.from(selectedRepos) : [],
+			};
+		} else if (isPrometheus) {
+			config = { labels };
+		} else {
+			// For unknown integrations, just pass through
+			config = initialConfig;
 		}
 
 		onSave(config);
@@ -207,32 +188,26 @@ export function ServiceIntegrationOverrideDialog({
 
 	// Validation
 	const canSave = useMemo(() => {
-		switch (definitionName) {
-			case "github":
-				return repoMode === "all" || selectedRepos.size > 0;
-			case "prometheus":
-				return true; // Labels are optional
-			default:
-				return true;
-		}
-	}, [definitionName, repoMode, selectedRepos]);
+		if (isGitHub) return repoMode === "all" || selectedRepos.size > 0;
+		return true;
+	}, [isGitHub, repoMode, selectedRepos]);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
-						{getIntegrationIcon(definitionName)}
+						{getIntegrationIcon(templateId)}
 						{isEditing ? "Edit" : "Create"} Override for {serviceName}
 					</DialogTitle>
 					<DialogDescription>
-						{integration?.definitionDisplayName} - {integration?.connectionName}
+						{integration?.templateName} - {integration?.connectionName}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-6 py-4">
 					{/* GitHub Config */}
-					{definitionName === "github" && (
+					{isGitHub && (
 						<GitHubConfigEditor
 							organizations={organizations}
 							repositories={filteredRepos}
@@ -250,7 +225,7 @@ export function ServiceIntegrationOverrideDialog({
 					)}
 
 					{/* Prometheus Config */}
-					{definitionName === "prometheus" && (
+					{isPrometheus && (
 						<PrometheusConfigEditor
 							labels={labels}
 							onAddLabel={addLabel}
@@ -263,7 +238,7 @@ export function ServiceIntegrationOverrideDialog({
 					)}
 
 					{/* Unknown Integration */}
-					{!["github", "prometheus"].includes(definitionName) && (
+					{!isGitHub && !isPrometheus && (
 						<div className="text-center py-6 text-muted-foreground">
 							<p>Configuration not available for this integration type.</p>
 						</div>
@@ -331,7 +306,7 @@ function GitHubConfigEditor({
 		<div className="space-y-4">
 			{/* Organization selector */}
 			<div className="space-y-2">
-				<Label>Organization</Label>
+				<Label htmlFor="organization">Organization</Label>
 				{isLoadingOrgs ? (
 					<Skeleton className="h-10 w-full" />
 				) : (
@@ -339,7 +314,7 @@ function GitHubConfigEditor({
 						value={selectedOrg ?? ""}
 						onValueChange={(v) => onOrgChange?.(v || undefined)}
 					>
-						<SelectTrigger>
+						<SelectTrigger id="organization">
 							<SelectValue placeholder="Select an organization" />
 						</SelectTrigger>
 						<SelectContent>

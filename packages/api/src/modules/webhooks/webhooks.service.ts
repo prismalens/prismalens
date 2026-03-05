@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Severity } from '../../shared/enums/index.js';
 import { AlertMappingService } from '../alert-mapping/alert-mapping.service.js';
 import type { Alert } from '../alerts/alerts.service.js';
@@ -6,8 +6,11 @@ import { AlertsService } from '../alerts/alerts.service.js';
 import { CorrelationService } from '../correlation/correlation.service.js';
 import type { Event } from '../events/events.service.js';
 import { EventsService } from '../events/events.service.js';
-import { IntegrationsService } from '../integrations/integrations.service.js';
-import { GenericWebhookDto, GithubWebhookDto, RenderWebhookDto } from './dto/index.js';
+import {
+  GenericWebhookDto,
+  GithubWebhookDto,
+  RenderWebhookDto,
+} from './dto/index.js';
 
 export interface WebhookResult {
   event: Event;
@@ -30,37 +33,33 @@ export class WebhooksService {
     @Inject(forwardRef(() => CorrelationService))
     private readonly correlationService: CorrelationService,
     private readonly alertMappingService: AlertMappingService,
-    private readonly integrationsService: IntegrationsService,
   ) {}
 
   async processGenericWebhook(dto: GenericWebhookDto): Promise<WebhookResult> {
-    // 1. Validate that a monitoring integration is configured
-    const monitoringConnection = await this.integrationsService.findMonitoringConnection();
-    if (!monitoringConnection) {
-      throw new NotFoundException(
-        'No monitoring integration configured. Please set up a monitoring integration first.'
-      );
-    }
-
-    // 2. Create immutable event record
+    // 1. Create immutable event record
     const event = await this.eventsService.create({
       source: dto.source ?? 'webhook',
       sourceEventId: dto.sourceEventId,
       eventType: 'alert',
-      payload: dto.rawPayload ?? { title: dto.title, description: dto.description },
+      payload: dto.rawPayload ?? {
+        title: dto.title,
+        description: dto.description,
+      },
       eventTime: dto.eventTime,
     });
 
     this.logger.log(`Created event ${event.id} from generic webhook`);
 
     // 3. Resolve service using alert mapping rules
-    const mappedService = await this.alertMappingService.resolveServiceForAlert({
-      source: dto.source ?? 'generic',
-      labels: dto.labels,
-      tags: dto.tags,
-      title: dto.title,
-      description: dto.description,
-    });
+    const mappedService = await this.alertMappingService.resolveServiceForAlert(
+      {
+        source: dto.source ?? 'generic',
+        labels: dto.labels,
+        tags: dto.tags,
+        title: dto.title,
+        description: dto.description,
+      },
+    );
 
     // 4. Create alert with resolved serviceId
     const alert = await this.alertsService.create({
@@ -80,7 +79,8 @@ export class WebhooksService {
     await this.eventsService.markProcessed(event.id, alert.id);
 
     // 6. Correlate alert to incident
-    const correlationResult = await this.correlationService.correlateAlert(alert);
+    const correlationResult =
+      await this.correlationService.correlateAlert(alert);
 
     return {
       event,
@@ -122,7 +122,8 @@ export class WebhooksService {
     await this.eventsService.markProcessed(event.id, alert.id);
 
     // 5. Correlate alert to incident
-    const correlationResult = await this.correlationService.correlateAlert(alert);
+    const correlationResult =
+      await this.correlationService.correlateAlert(alert);
 
     return {
       event,
@@ -162,7 +163,8 @@ export class WebhooksService {
     await this.eventsService.markProcessed(event.id, alert.id);
 
     // 5. Correlate alert to incident
-    const correlationResult = await this.correlationService.correlateAlert(alert);
+    const correlationResult =
+      await this.correlationService.correlateAlert(alert);
 
     return {
       event,
@@ -176,8 +178,10 @@ export class WebhooksService {
 
   private extractGithubEventId(dto: GithubWebhookDto): string | undefined {
     if (dto.alert) return `github-alert-${dto.alert.number}`;
-    if (dto.issue) return `github-issue-${dto.repository?.full_name}-${dto.issue.number}`;
-    if (dto.pull_request) return `github-pr-${dto.repository?.full_name}-${dto.pull_request.number}`;
+    if (dto.issue)
+      return `github-issue-${dto.repository?.full_name}-${dto.issue.number}`;
+    if (dto.pull_request)
+      return `github-pr-${dto.repository?.full_name}-${dto.pull_request.number}`;
     return undefined;
   }
 
@@ -289,7 +293,9 @@ export class WebhooksService {
 
     const labelNames = labels.map((l) => l.name.toLowerCase());
 
-    if (labelNames.some((l) => l.includes('critical') || l.includes('urgent'))) {
+    if (
+      labelNames.some((l) => l.includes('critical') || l.includes('urgent'))
+    ) {
       return Severity.critical;
     }
     if (labelNames.some((l) => l.includes('high') || l.includes('important'))) {

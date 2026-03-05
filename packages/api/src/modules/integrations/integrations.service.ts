@@ -4,9 +4,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  IntegrationConnection,
-  IntegrationDefinition,
+import type {
+  Connection,
+  Integration,
   ServiceIntegration,
 } from '@prismalens/database';
 import type {
@@ -14,27 +14,29 @@ import type {
   GitRepository,
   ServiceIntegrationWithStatus,
 } from '@prismalens/contracts';
+import {
+  getAllTemplates,
+  getTemplate,
+  type AuthTemplate,
+} from '@prismalens/integrations';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { CredentialsService } from './crypto/credentials.service.js';
-import {
+import type {
+  CreateIntegrationDto,
   CreateConnectionDto,
   CreateServiceIntegrationDto,
+} from './dto/create-connection.dto.js';
+import type {
+  UpdateIntegrationDto,
   UpdateConnectionDto,
-  UpdateOAuthConfigDto,
-} from './dto/index.js';
+} from './dto/update-connection.dto.js';
 import {
   createGitProvider,
   isGitProviderSupported,
 } from './git-providers/index.js';
 
-export type {
-  IntegrationDefinition,
-  IntegrationConnection,
-  ServiceIntegration,
-};
-
-export interface IntegrationConnectionWithDefinition extends IntegrationConnection {
-  definition: IntegrationDefinition;
+export interface ConnectionWithIntegration extends Connection {
+  integration: Integration;
 }
 
 export interface IntegrationContext {
@@ -56,237 +58,201 @@ export class IntegrationsService {
   ) {}
 
   // =========================================================================
-  // INTEGRATION DEFINITIONS (Catalog)
+  // TEMPLATES (from @prismalens/integrations package)
   // =========================================================================
 
-  async findAllDefinitions(): Promise<IntegrationDefinition[]> {
-    return this.prisma.integrationDefinition.findMany({
-      where: { isEnabled: true },
-      orderBy: { name: 'asc' },
-    });
+  findAllTemplates(): AuthTemplate[] {
+    return getAllTemplates();
   }
 
-  async findDefinitionByName(
-    name: string,
-  ): Promise<IntegrationDefinition | null> {
-    return this.prisma.integrationDefinition.findUnique({
-      where: { name },
-    });
+  findTemplateById(id: string): AuthTemplate | undefined {
+    return getTemplate(id);
   }
 
-  async findDefinitionById(id: string): Promise<IntegrationDefinition | null> {
-    return this.prisma.integrationDefinition.findUnique({
-      where: { id },
-    });
-  }
+  // =========================================================================
+  // INTEGRATIONS (OAuth client creds / provider instances)
+  // =========================================================================
 
-  async updateOAuthConfig(
-    name: string,
-    dto: UpdateOAuthConfigDto,
-  ): Promise<IntegrationDefinition> {
-    const definition = await this.findDefinitionByName(name);
-    if (!definition) {
-      throw new NotFoundException(`Integration definition '${name}' not found`);
+  async createIntegration(dto: CreateIntegrationDto): Promise<Integration> {
+    const template = getTemplate(dto.templateId);
+    if (!template) {
+      throw new NotFoundException(`Template '${dto.templateId}' not found`);
     }
 
-    if (definition.authType !== 'oauth2' && definition.authType !== 'both') {
-      throw new BadRequestException(
-        `Integration '${name}' does not support OAuth authentication`,
+    return this.prisma.integration.create({
+      data: {
+        templateId: dto.templateId,
+        label: dto.label,
+        clientIdEnc: dto.clientId
+          ? this.credentialsService.encrypt(dto.clientId)
+          : null,
+        clientSecretEnc: dto.clientSecret
+          ? this.credentialsService.encrypt(dto.clientSecret)
+          : null,
+        scopes: JSON.stringify(dto.scopes ?? template.oauth2?.scopes ?? []),
+        callbackUrl: dto.callbackUrl,
+      },
+    });
+  }
+
+  async findAllIntegrations(options?: {
+    templateId?: string;
+  }): Promise<Integration[]> {
+    return this.prisma.integration.findMany({
+      where: {
+        ...(options?.templateId && { templateId: options.templateId }),
+        enabled: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findIntegrationById(id: string): Promise<Integration | null> {
+    return this.prisma.integration.findUnique({ where: { id } });
+  }
+
+  async updateIntegration(
+    id: string,
+    dto: UpdateIntegrationDto,
+  ): Promise<Integration | null> {
+    const existing = await this.findIntegrationById(id);
+    if (!existing) return null;
+
+    const updateData: Record<string, unknown> = {};
+
+    if (dto.label !== undefined) updateData.label = dto.label;
+    if (dto.scopes !== undefined)
+      updateData.scopes = JSON.stringify(dto.scopes);
+    if (dto.callbackUrl !== undefined) updateData.callbackUrl = dto.callbackUrl;
+    if (dto.enabled !== undefined) updateData.enabled = dto.enabled;
+    if (dto.clientId !== undefined) {
+      updateData.clientIdEnc = this.credentialsService.encrypt(dto.clientId);
+    }
+    if (dto.clientSecret !== undefined) {
+      updateData.clientSecretEnc = this.credentialsService.encrypt(
+        dto.clientSecret,
       );
     }
 
-    const oauthConfig = {
-      clientId: dto.clientId,
-      clientSecret: dto.clientSecret,
-      scopes: dto.scopes || this.getDefaultScopes(name),
-      authUrl: dto.authUrl || this.getDefaultAuthUrl(name),
-      tokenUrl: dto.tokenUrl || this.getDefaultTokenUrl(name),
-    };
-
-    const encryptedConfig = this.credentialsService.encrypt(oauthConfig);
-
-    return this.prisma.integrationDefinition.update({
-      where: { name },
-      data: { oauthConfig: encryptedConfig },
+    return this.prisma.integration.update({
+      where: { id },
+      data: updateData,
     });
   }
 
-  private getDefaultScopes(name: string): string[] {
-    const defaults: Record<string, string[]> = {
-      github: ['repo', 'read:org', 'read:user'],
-      slack: ['chat:write', 'channels:read', 'users:read'],
-    };
-    return defaults[name] || [];
+  async deleteIntegration(id: string): Promise<boolean> {
+    try {
+      await this.prisma.integration.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  private getDefaultAuthUrl(name: string): string {
-    const defaults: Record<string, string> = {
-      github: 'https://github.com/login/oauth/authorize',
-      slack: 'https://slack.com/oauth/v2/authorize',
+  getClientCredentials(integration: Integration): {
+    clientId: string;
+    clientSecret: string;
+  } {
+    const vault = this.credentialsService.getVault();
+    if (!integration.clientIdEnc || !integration.clientSecretEnc) {
+      throw new BadRequestException(
+        'Integration does not have OAuth credentials configured',
+      );
+    }
+    return {
+      clientId: vault.decrypt(Buffer.from(integration.clientIdEnc)),
+      clientSecret: vault.decrypt(Buffer.from(integration.clientSecretEnc)),
     };
-    return defaults[name] || '';
-  }
-
-  private getDefaultTokenUrl(name: string): string {
-    const defaults: Record<string, string> = {
-      github: 'https://github.com/login/oauth/access_token',
-      slack: 'https://slack.com/api/oauth.v2.access',
-    };
-    return defaults[name] || '';
   }
 
   // =========================================================================
-  // INTEGRATION CONNECTIONS (User Instances)
+  // CONNECTIONS (user tokens / API keys)
   // =========================================================================
 
   async createConnection(
     dto: CreateConnectionDto,
-  ): Promise<IntegrationConnection> {
-    const definition = await this.findDefinitionById(dto.definitionId);
-    if (!definition) {
-      throw new NotFoundException('Integration definition not found');
+    userId: string,
+  ): Promise<Connection> {
+    const integration = await this.findIntegrationById(dto.integrationId);
+    if (!integration) {
+      throw new NotFoundException('Integration not found');
     }
 
-    // Validate auth method is supported by definition
-    if (
-      dto.authMethod === 'api_key' &&
-      definition.authType !== 'api_key' &&
-      definition.authType !== 'both'
-    ) {
-      throw new BadRequestException(
-        `Integration '${definition.name}' does not support API key authentication`,
-      );
-    }
-
-    if (
-      dto.authMethod === 'oauth2' &&
-      definition.authType !== 'oauth2' &&
-      definition.authType !== 'both'
-    ) {
-      throw new BadRequestException(
-        `Integration '${definition.name}' does not support OAuth authentication`,
-      );
-    }
-
-    // Check CE limits for monitoring integrations
-    if (
-      definition.category === 'monitoring' &&
-      definition.maxConnectionsCE === 1
-    ) {
-      const existingMonitoring = await this.prisma.integrationConnection.count({
-        where: {
-          definition: { category: 'monitoring' },
-          status: { in: ['connected', 'pending'] },
-        },
-      });
-
-      if (existingMonitoring > 0) {
-        throw new BadRequestException(
-          'Community Edition allows only one monitoring integration. ' +
-            'Please disconnect the existing one first.',
-        );
-      }
-    }
-
-    // Prepare credentials
-    let credentials: Record<string, unknown>;
-    if (dto.authMethod === 'api_key') {
-      if (!dto.apiKeyCredentials) {
-        throw new BadRequestException('API key credentials required');
-      }
-      credentials = { ...dto.apiKeyCredentials };
-    } else {
-      if (!dto.oauthCredentials) {
-        throw new BadRequestException('OAuth credentials required');
-      }
-      credentials = { ...dto.oauthCredentials };
-    }
-
-    const encryptedCredentials = this.credentialsService.encrypt(credentials);
-
-    return this.prisma.integrationConnection.create({
+    return this.prisma.connection.create({
       data: {
-        definitionId: dto.definitionId,
-        name: dto.name,
-        description: dto.description,
-        isGlobal: dto.isGlobal ?? true,
-        authMethod: dto.authMethod,
-        credentials: encryptedCredentials,
-        config: dto.config ? JSON.stringify(dto.config) : null,
-        status: 'pending',
+        integrationId: dto.integrationId,
+        userId,
+        credentialsEnc: this.credentialsService.encrypt(dto.credentials),
+        connectionConfigEnc: dto.connectionConfig
+          ? this.credentialsService.encrypt(dto.connectionConfig)
+          : null,
+        status: 'ACTIVE',
       },
     });
   }
 
   async findAllConnections(options?: {
     status?: string;
-    definitionId?: string;
-    isGlobal?: boolean;
-  }): Promise<IntegrationConnectionWithDefinition[]> {
-    return this.prisma.integrationConnection.findMany({
+    integrationId?: string;
+    userId?: string;
+  }): Promise<ConnectionWithIntegration[]> {
+    return this.prisma.connection.findMany({
       where: {
         ...(options?.status && { status: options.status }),
-        ...(options?.definitionId && { definitionId: options.definitionId }),
-        ...(options?.isGlobal !== undefined && { isGlobal: options.isGlobal }),
+        ...(options?.integrationId && {
+          integrationId: options.integrationId,
+        }),
+        ...(options?.userId && { userId: options.userId }),
       },
-      include: { definition: true },
+      include: { integration: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async findConnectionById(
     id: string,
-  ): Promise<IntegrationConnectionWithDefinition | null> {
-    return this.prisma.integrationConnection.findUnique({
-      where: { id },
-      include: { definition: true },
-    });
-  }
-
-  async findMonitoringConnection(): Promise<IntegrationConnectionWithDefinition | null> {
-    return this.prisma.integrationConnection.findFirst({
-      where: {
-        definition: { category: 'monitoring' },
-        status: 'connected',
-      },
-      include: { definition: true },
+    userId?: string,
+  ): Promise<ConnectionWithIntegration | null> {
+    return this.prisma.connection.findFirst({
+      where: { id, ...(userId && { userId }) },
+      include: { integration: true },
     });
   }
 
   async updateConnection(
     id: string,
     dto: UpdateConnectionDto,
-  ): Promise<IntegrationConnection | null> {
-    const connection = await this.findConnectionById(id);
-    if (!connection) {
-      return null;
+    userId?: string,
+  ): Promise<Connection | null> {
+    const connection = await this.findConnectionById(id, userId);
+    if (!connection) return null;
+
+    const updateData: Record<string, unknown> = {};
+
+    if (dto.status !== undefined) updateData.status = dto.status;
+    if (dto.credentials) {
+      updateData.credentialsEnc = this.credentialsService.encrypt(
+        dto.credentials,
+      );
+    }
+    if (dto.connectionConfig) {
+      updateData.connectionConfigEnc = this.credentialsService.encrypt(
+        dto.connectionConfig,
+      );
     }
 
-    const updateData: Record<string, unknown> = {
-      updatedAt: new Date(),
-    };
-
-    if (dto.name) updateData.name = dto.name;
-    if (dto.description !== undefined) updateData.description = dto.description;
-    if (dto.isGlobal !== undefined) updateData.isGlobal = dto.isGlobal;
-    if (dto.status) updateData.status = dto.status;
-    if (dto.config) updateData.config = JSON.stringify(dto.config);
-
-    // Update credentials if provided
-    if (dto.apiKeyCredentials || dto.oauthCredentials) {
-      const credentials = dto.apiKeyCredentials || dto.oauthCredentials;
-      updateData.credentials = this.credentialsService.encrypt(credentials);
-    }
-
-    return this.prisma.integrationConnection.update({
+    return this.prisma.connection.update({
       where: { id },
       data: updateData,
     });
   }
 
-  async deleteConnection(id: string): Promise<boolean> {
+  async deleteConnection(id: string, userId?: string): Promise<boolean> {
+    const connection = await this.findConnectionById(id, userId);
+    if (!connection) return false;
+
     try {
-      await this.prisma.integrationConnection.delete({ where: { id } });
+      await this.prisma.connection.delete({ where: { id } });
       return true;
     } catch {
       return false;
@@ -295,34 +261,44 @@ export class IntegrationsService {
 
   async testConnection(
     id: string,
+    userId?: string,
   ): Promise<{ success: boolean; error?: string }> {
-    const connection = await this.findConnectionById(id);
+    const connection = await this.findConnectionById(id, userId);
     if (!connection) {
       throw new NotFoundException('Connection not found');
+    }
+
+    const template = getTemplate(connection.integration.templateId);
+    if (!template) {
+      return { success: false, error: 'Unknown template' };
     }
 
     try {
       const credentials = this.credentialsService.decrypt<
         Record<string, unknown>
-      >(connection.credentials);
-      const config = connection.config
-        ? (JSON.parse(connection.config) as Record<string, unknown>)
+      >(Buffer.from(connection.credentialsEnc));
+      const config = connection.connectionConfigEnc
+        ? this.credentialsService.decrypt<Record<string, unknown>>(
+            Buffer.from(connection.connectionConfigEnc),
+          )
         : {};
 
-      // Test based on integration type
       const testResult = await this.performHealthCheck(
-        connection.definition.name,
+        template,
         credentials,
         config,
       );
 
-      // Update connection status
-      await this.prisma.integrationConnection.update({
+      await this.prisma.connection.update({
         where: { id },
         data: {
-          status: testResult.success ? 'connected' : 'error',
-          lastHealthCheck: new Date(),
-          lastError: testResult.error || null,
+          status: testResult.success ? 'ACTIVE' : 'ERROR',
+          lastUsedAt: new Date(),
+          lastErrorMessage: testResult.error ?? null,
+          lastErrorAt: testResult.success ? null : new Date(),
+          consecutiveErrors: testResult.success
+            ? 0
+            : connection.consecutiveErrors + 1,
         },
       });
 
@@ -330,12 +306,13 @@ export class IntegrationsService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      await this.prisma.integrationConnection.update({
+      await this.prisma.connection.update({
         where: { id },
         data: {
-          status: 'error',
-          lastHealthCheck: new Date(),
-          lastError: errorMessage,
+          status: 'ERROR',
+          lastErrorMessage: errorMessage,
+          lastErrorAt: new Date(),
+          consecutiveErrors: connection.consecutiveErrors + 1,
         },
       });
       return { success: false, error: errorMessage };
@@ -343,11 +320,18 @@ export class IntegrationsService {
   }
 
   private async performHealthCheck(
-    integrationType: string,
+    template: AuthTemplate,
     credentials: Record<string, unknown>,
     config: Record<string, unknown>,
   ): Promise<{ success: boolean; error?: string }> {
-    switch (integrationType) {
+    // Use the template's verify endpoint if available
+    if (!template.verify) {
+      return { success: true };
+    }
+
+    // Route to provider-specific test logic
+    const baseTemplateId = template.id.replace(/-oauth2$|-token$/, '');
+    switch (baseTemplateId) {
       case 'github':
         return this.testGitHubConnection(credentials);
       case 'prometheus':
@@ -372,9 +356,7 @@ export class IntegrationsService {
         redirect: 'error',
       });
 
-      if (response.ok) {
-        return { success: true };
-      }
+      if (response.ok) return { success: true };
       return {
         success: false,
         error: `GitHub API returned ${response.status}`,
@@ -387,7 +369,6 @@ export class IntegrationsService {
     }
   }
 
-  /** Allowed hostnames for Prometheus connection tests. */
   private static readonly PROMETHEUS_ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
@@ -399,18 +380,14 @@ export class IntegrationsService {
     config: Record<string, unknown>,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      if (config.baseUrl !== undefined && typeof config.baseUrl !== 'string') {
-        return { success: false, error: 'Invalid baseUrl configuration' };
-      }
       const baseUrl =
         (config.baseUrl as string | undefined) || 'http://localhost:9090';
 
-      // Validate hostname against allowlist
       const parsed = new URL(baseUrl);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         return {
           success: false,
-          error: `Unsupported protocol: ${parsed.protocol}. Only http and https are allowed.`,
+          error: `Unsupported protocol: ${parsed.protocol}`,
         };
       }
       if (
@@ -418,24 +395,18 @@ export class IntegrationsService {
       ) {
         return {
           success: false,
-          error: `Host "${parsed.hostname}" is not allowed. Allowed hosts: ${IntegrationsService.PROMETHEUS_ALLOWED_HOSTS.join(', ')}`,
+          error: `Host "${parsed.hostname}" is not allowed. Allowed: ${IntegrationsService.PROMETHEUS_ALLOWED_HOSTS.join(', ')}`,
         };
       }
 
       const url = `${baseUrl}/api/v1/status/config`;
-
       const headers: Record<string, string> = {};
-      if (credentials.username && credentials.password) {
-        const auth = Buffer.from(
-          `${credentials.username}:${credentials.password}`,
-        ).toString('base64');
-        headers.Authorization = `Basic ${auth}`;
+      if (credentials.username && credentials.apiKey) {
+        headers.Authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.apiKey}`).toString('base64')}`;
       }
 
       const response = await fetch(url, { headers, redirect: 'error' });
-      if (response.ok) {
-        return { success: true };
-      }
+      if (response.ok) return { success: true };
       return {
         success: false,
         error: `Prometheus returned ${response.status}`,
@@ -454,12 +425,10 @@ export class IntegrationsService {
     try {
       const token = (credentials.apiKey || credentials.accessToken) as string;
 
-      // If it's a webhook URL, just validate format
       if (token.startsWith('https://hooks.slack.com/')) {
         return { success: true };
       }
 
-      // Otherwise test as bot token
       const response = await fetch('https://slack.com/api/auth.test', {
         method: 'POST',
         headers: {
@@ -470,9 +439,7 @@ export class IntegrationsService {
       });
 
       const data = (await response.json()) as { ok: boolean; error?: string };
-      if (data.ok) {
-        return { success: true };
-      }
+      if (data.ok) return { success: true };
       return { success: false, error: data.error || 'Slack auth test failed' };
     } catch (error) {
       return {
@@ -486,130 +453,120 @@ export class IntegrationsService {
   // GIT PROVIDER OPERATIONS
   // =========================================================================
 
-  /**
-   * Get organizations from a git provider connection.
-   */
-  async getGitOrganizations(connectionId: string): Promise<GitOrganization[]> {
-    const connection = await this.findConnectionById(connectionId);
+  async getGitOrganizations(
+    connectionId: string,
+    userId?: string,
+  ): Promise<GitOrganization[]> {
+    const connection = await this.findConnectionById(connectionId, userId);
     if (!connection) {
       throw new NotFoundException('Connection not found');
     }
 
-    const providerName = connection.definition.name;
-    if (!isGitProviderSupported(providerName)) {
-      throw new BadRequestException(
-        `'${providerName}' is not a supported git provider`,
-      );
+    const providerName = this.getGitProviderName(
+      connection.integration.templateId,
+    );
+    if (!providerName || !isGitProviderSupported(providerName)) {
+      throw new BadRequestException('Not a supported git provider');
     }
 
     const provider = createGitProvider(providerName);
     if (!provider) {
-      throw new BadRequestException(
-        `Failed to create git provider for '${providerName}'`,
-      );
+      throw new BadRequestException('Failed to create git provider');
     }
 
     const credentials = this.credentialsService.decrypt<
       Record<string, unknown>
-    >(connection.credentials);
+    >(Buffer.from(connection.credentialsEnc));
     const accessToken = (credentials.accessToken ||
       credentials.apiKey) as string;
 
     if (!accessToken) {
-      throw new BadRequestException(
-        'No access token found for this connection',
-      );
+      throw new BadRequestException('No access token found');
     }
 
     return provider.getOrganizations(accessToken);
   }
 
-  /**
-   * Get repositories from a git provider connection.
-   */
   async getGitRepositories(
     connectionId: string,
     org?: string,
+    userId?: string,
   ): Promise<GitRepository[]> {
-    const connection = await this.findConnectionById(connectionId);
+    const connection = await this.findConnectionById(connectionId, userId);
     if (!connection) {
       throw new NotFoundException('Connection not found');
     }
 
-    const providerName = connection.definition.name;
-    if (!isGitProviderSupported(providerName)) {
-      throw new BadRequestException(
-        `'${providerName}' is not a supported git provider`,
-      );
+    const providerName = this.getGitProviderName(
+      connection.integration.templateId,
+    );
+    if (!providerName || !isGitProviderSupported(providerName)) {
+      throw new BadRequestException('Not a supported git provider');
     }
 
     const provider = createGitProvider(providerName);
     if (!provider) {
-      throw new BadRequestException(
-        `Failed to create git provider for '${providerName}'`,
-      );
+      throw new BadRequestException('Failed to create git provider');
     }
 
     const credentials = this.credentialsService.decrypt<
       Record<string, unknown>
-    >(connection.credentials);
+    >(Buffer.from(connection.credentialsEnc));
     const accessToken = (credentials.accessToken ||
       credentials.apiKey) as string;
 
     if (!accessToken) {
-      throw new BadRequestException(
-        'No access token found for this connection',
-      );
+      throw new BadRequestException('No access token found');
     }
 
     return provider.getRepositories(accessToken, org);
   }
 
-  /**
-   * Update connection config (e.g., selected repos after OAuth).
-   */
   async updateConnectionConfig(
     connectionId: string,
     config: Record<string, unknown>,
-  ): Promise<IntegrationConnection> {
-    const connection = await this.findConnectionById(connectionId);
+    userId?: string,
+  ): Promise<Connection> {
+    const connection = await this.findConnectionById(connectionId, userId);
     if (!connection) {
       throw new NotFoundException('Connection not found');
     }
 
-    // Merge with existing config
-    const existingConfig = connection.config
-      ? (JSON.parse(connection.config) as Record<string, unknown>)
+    const existingConfig = connection.connectionConfigEnc
+      ? this.credentialsService.decrypt<Record<string, unknown>>(
+          Buffer.from(connection.connectionConfigEnc),
+        )
       : {};
     const mergedConfig = { ...existingConfig, ...config };
 
-    return this.prisma.integrationConnection.update({
+    return this.prisma.connection.update({
       where: { id: connectionId },
       data: {
-        config: JSON.stringify(mergedConfig),
-        // If status was pending_config, mark as connected now
-        status:
-          connection.status === 'pending' ? 'connected' : connection.status,
+        connectionConfigEnc: this.credentialsService.encrypt(mergedConfig),
       },
     });
   }
 
+  private getGitProviderName(templateId: string): string | null {
+    // github-oauth2, github-token → github
+    if (templateId.startsWith('github')) return 'github';
+    if (templateId.startsWith('gitlab')) return 'gitlab';
+    if (templateId.startsWith('bitbucket')) return 'bitbucket';
+    return null;
+  }
+
   // =========================================================================
-  // SERVICE INTEGRATIONS (Service-Level Mappings)
+  // SERVICE INTEGRATIONS (Per-service overrides)
   // =========================================================================
 
-  /**
-   * Create a service integration override.
-   */
   async createServiceIntegration(
     dto: CreateServiceIntegrationDto,
   ): Promise<ServiceIntegration> {
     const connection = await this.findConnectionById(dto.connectionId);
     if (!connection) {
-      throw new NotFoundException('Integration connection not found');
+      throw new NotFoundException('Connection not found');
     }
 
-    // Check if override already exists
     const existing = await this.prisma.serviceIntegration.findUnique({
       where: {
         serviceId_connectionId: {
@@ -636,9 +593,6 @@ export class IntegrationsService {
     });
   }
 
-  /**
-   * Update a service integration override by ID.
-   */
   async updateServiceIntegrationById(
     id: string,
     data: {
@@ -650,12 +604,9 @@ export class IntegrationsService {
     const existing = await this.prisma.serviceIntegration.findUnique({
       where: { id },
     });
+    if (!existing) return null;
 
-    if (!existing) {
-      return null;
-    }
-
-    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    const updateData: Record<string, unknown> = {};
     if (data.priority !== undefined) updateData.priority = data.priority;
     if (data.isEnabled !== undefined) updateData.isEnabled = data.isEnabled;
     if (data.config !== undefined)
@@ -667,9 +618,6 @@ export class IntegrationsService {
     });
   }
 
-  /**
-   * Delete a service integration override by ID.
-   */
   async deleteServiceIntegrationById(id: string): Promise<boolean> {
     try {
       await this.prisma.serviceIntegration.delete({ where: { id } });
@@ -679,91 +627,71 @@ export class IntegrationsService {
     }
   }
 
-  /**
-   * Get all integrations for a service with override status.
-   * Returns both global integrations and service-specific overrides.
-   */
   async getServiceIntegrationsWithStatus(
     serviceId: string,
   ): Promise<ServiceIntegrationWithStatus[]> {
-    // Get all connected global integrations
-    const globalConnections = await this.prisma.integrationConnection.findMany({
-      where: { isGlobal: true, status: 'connected' },
-      include: { definition: true },
+    const activeConnections = await this.prisma.connection.findMany({
+      where: { status: 'ACTIVE' },
+      include: { integration: true },
     });
 
-    // Get service-specific overrides
     const serviceOverrides = await this.prisma.serviceIntegration.findMany({
       where: { serviceId },
       include: {
         connection: {
-          include: { definition: true },
+          include: { integration: true },
         },
       },
     });
 
-    // Build map of overrides by connection ID
     const overridesByConnectionId = new Map(
       serviceOverrides.map((so) => [so.connectionId, so]),
     );
 
     const results: ServiceIntegrationWithStatus[] = [];
 
-    // Process global integrations
-    for (const conn of globalConnections) {
+    for (const conn of activeConnections) {
+      const template = getTemplate(conn.integration.templateId);
       const override = overridesByConnectionId.get(conn.id);
-      const globalConfig = conn.config
-        ? (JSON.parse(conn.config) as Record<string, unknown>)
+      const connectionConfig = conn.connectionConfigEnc
+        ? this.credentialsService.decrypt<Record<string, unknown>>(
+            Buffer.from(conn.connectionConfigEnc),
+          )
         : null;
-      const serviceConfig = override?.config
-        ? (JSON.parse(override.config) as Record<string, unknown>)
-        : null;
+      let serviceConfig: Record<string, unknown> | null = null;
+      if (override?.config) {
+        try {
+          serviceConfig = JSON.parse(override.config) as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          this.logger.warn(
+            `Invalid JSON in service integration config: ${override.id}`,
+          );
+        }
+      }
 
       results.push({
         connectionId: conn.id,
-        connectionName: conn.name,
-        definitionName: conn.definition.name,
-        definitionDisplayName: conn.definition.displayName,
-        category: conn.definition.category,
-        status: conn.status as 'connected' | 'pending' | 'error' | 'disabled',
+        connectionName: conn.integration.label,
+        templateId: conn.integration.templateId,
+        templateName: template?.name ?? conn.integration.templateId,
+        category: template?.category ?? 'unknown',
+        status: conn.status as
+          | 'ACTIVE'
+          | 'TOKEN_EXPIRED'
+          | 'REFRESH_FAILED'
+          | 'CREDENTIALS_INVALID'
+          | 'REVOKED'
+          | 'ERROR',
         isGlobal: true,
         hasOverride: !!override,
         overrideId: override?.id,
-        globalConfig,
+        globalConfig: connectionConfig,
         serviceConfig,
-        effectiveConfig: serviceConfig ?? globalConfig,
+        effectiveConfig: serviceConfig ?? connectionConfig,
       });
-    }
-
-    // Add non-global service-specific connections (if any)
-    for (const override of serviceOverrides) {
-      if (!override.connection.isGlobal) {
-        const globalConfig = override.connection.config
-          ? (JSON.parse(override.connection.config) as Record<string, unknown>)
-          : null;
-        const serviceConfig = override.config
-          ? (JSON.parse(override.config) as Record<string, unknown>)
-          : null;
-
-        results.push({
-          connectionId: override.connectionId,
-          connectionName: override.connection.name,
-          definitionName: override.connection.definition.name,
-          definitionDisplayName: override.connection.definition.displayName,
-          category: override.connection.definition.category,
-          status: override.connection.status as
-            | 'connected'
-            | 'pending'
-            | 'error'
-            | 'disabled',
-          isGlobal: false,
-          hasOverride: true,
-          overrideId: override.id,
-          globalConfig,
-          serviceConfig,
-          effectiveConfig: serviceConfig ?? globalConfig,
-        });
-      }
     }
 
     return results;
@@ -771,73 +699,55 @@ export class IntegrationsService {
 
   async findServiceIntegrations(serviceId: string): Promise<
     (ServiceIntegration & {
-      connection: IntegrationConnectionWithDefinition;
+      connection: ConnectionWithIntegration;
     })[]
   > {
     return this.prisma.serviceIntegration.findMany({
       where: { serviceId, isEnabled: true },
       include: {
         connection: {
-          include: { definition: true },
+          include: { integration: true },
         },
       },
       orderBy: { priority: 'desc' },
     });
   }
 
-  async deleteServiceIntegration(
-    serviceId: string,
-    connectionId: string,
-  ): Promise<boolean> {
-    try {
-      await this.prisma.serviceIntegration.delete({
-        where: {
-          serviceId_connectionId: { serviceId, connectionId },
-        },
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   // =========================================================================
   // INTEGRATION CONTEXT FOR WORKER
   // =========================================================================
 
-  /**
-   * Get all integrations for a service (for passing to worker).
-   * Includes global integrations and service-specific mappings.
-   * Decrypts credentials for use by the worker.
-   */
   async getIntegrationsForService(
     serviceId?: string,
   ): Promise<IntegrationContext[]> {
     const contexts: IntegrationContext[] = [];
 
-    // Get global integrations
-    const globalConnections = await this.prisma.integrationConnection.findMany({
-      where: { isGlobal: true, status: 'connected' },
-      include: { definition: true },
+    const activeConnections = await this.prisma.connection.findMany({
+      where: { status: 'ACTIVE' },
+      include: { integration: true },
+      take: 1000,
     });
 
-    for (const conn of globalConnections) {
+    for (const conn of activeConnections) {
       const credentials = this.credentialsService.decrypt<
         Record<string, unknown>
-      >(conn.credentials);
-      const config = conn.config
-        ? (JSON.parse(conn.config) as Record<string, unknown>)
+      >(Buffer.from(conn.credentialsEnc));
+      const config = conn.connectionConfigEnc
+        ? this.credentialsService.decrypt<Record<string, unknown>>(
+            Buffer.from(conn.connectionConfigEnc),
+          )
         : {};
 
       contexts.push({
-        type: conn.definition.name,
+        type:
+          this.getGitProviderName(conn.integration.templateId) ??
+          conn.integration.templateId,
         connectionId: conn.id,
         credentials,
         config,
       });
     }
 
-    // Get service-specific integrations (with overrides)
     if (serviceId) {
       const serviceIntegrations = await this.findServiceIntegrations(serviceId);
 
@@ -846,24 +756,33 @@ export class IntegrationsService {
           (c) => c.connectionId === si.connectionId,
         );
 
-        const serviceOverrides = si.config
-          ? (JSON.parse(si.config) as Record<string, unknown>)
-          : undefined;
+        let serviceOverrides: Record<string, unknown> | undefined;
+        if (si.config) {
+          try {
+            serviceOverrides = JSON.parse(si.config) as Record<string, unknown>;
+          } catch {
+            this.logger.warn(
+              `Invalid JSON in service integration config: ${si.id}`,
+            );
+          }
+        }
 
         if (existingIndex >= 0) {
-          // Add service overrides to existing global integration
           contexts[existingIndex].serviceOverrides = serviceOverrides;
         } else {
-          // Add non-global service-specific integration
           const credentials = this.credentialsService.decrypt<
             Record<string, unknown>
-          >(si.connection.credentials);
-          const config = si.connection.config
-            ? (JSON.parse(si.connection.config) as Record<string, unknown>)
+          >(Buffer.from(si.connection.credentialsEnc));
+          const config = si.connection.connectionConfigEnc
+            ? this.credentialsService.decrypt<Record<string, unknown>>(
+                Buffer.from(si.connection.connectionConfigEnc),
+              )
             : {};
 
           contexts.push({
-            type: si.connection.definition.name,
+            type:
+              this.getGitProviderName(si.connection.integration.templateId) ??
+              si.connection.integration.templateId,
             connectionId: si.connectionId,
             credentials,
             config,
@@ -876,63 +795,36 @@ export class IntegrationsService {
     return contexts;
   }
 
-  /**
-   * Get a connection with decrypted (but masked) credentials for API response.
-   */
-  async getConnectionWithMaskedCredentials(id: string): Promise<
-    | (IntegrationConnectionWithDefinition & {
-        maskedCredentials: Record<string, unknown>;
-      })
-    | null
-  > {
-    const connection = await this.findConnectionById(id);
-    if (!connection) {
-      return null;
-    }
-
-    const credentials = this.credentialsService.decrypt<
-      Record<string, unknown>
-    >(connection.credentials);
-    const maskedCredentials = this.credentialsService.mask(credentials);
-
-    return {
-      ...connection,
-      maskedCredentials,
-    };
-  }
-
-  /**
-   * Fetch integration contexts by connection IDs with decrypted credentials.
-   * Used by the internal API for worker credential isolation:
-   * worker passes connectionIds → API decrypts and returns IntegrationContext[].
-   */
   async getIntegrationsByConnectionIds(
     connectionIds: string[],
   ): Promise<IntegrationContext[]> {
     if (connectionIds.length === 0) return [];
 
-    const connections = await this.prisma.integrationConnection.findMany({
+    const connections = await this.prisma.connection.findMany({
       where: {
         id: { in: connectionIds },
-        status: 'connected',
+        status: 'ACTIVE',
       },
-      include: { definition: true },
+      include: { integration: true },
     });
 
     return connections.map((conn) => {
       const credentials = this.credentialsService.decrypt<
         Record<string, unknown>
-      >(conn.credentials);
-      const config = conn.config
-        ? (JSON.parse(conn.config) as Record<string, unknown>)
+      >(Buffer.from(conn.credentialsEnc));
+      const config = conn.connectionConfigEnc
+        ? this.credentialsService.decrypt<Record<string, unknown>>(
+            Buffer.from(conn.connectionConfigEnc),
+          )
         : {};
 
       return {
-        type: conn.definition.name,
+        type:
+          this.getGitProviderName(conn.integration.templateId) ??
+          conn.integration.templateId,
         connectionId: conn.id,
         credentials,
         config,
-        specUrl: conn.definition.specUrl,
       };
     });
   }

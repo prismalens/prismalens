@@ -11,13 +11,12 @@
  */
 
 import { prisma } from "../client.js";
-import { seedIntegrationDefinitions } from "./seeds/integration-definitions.js";
 
 async function main() {
 	console.log("🌱 Starting database seeding...\n");
 
-	// Seed integration definitions (GitHub, Prometheus, Slack, etc.)
-	await seedIntegrationDefinitions(prisma);
+	// Integration definitions are no longer seeded — they are now TypeScript
+	// templates in @prismalens/integrations package.
 
 	// Add more seeds here as needed:
 	// await seedOtherData(prisma);

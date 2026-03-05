@@ -11,16 +11,12 @@
 import {
 	AlertCircle,
 	Check,
-	Github,
 	Globe,
-	Link2,
 	Loader2,
-	MessageSquare,
 	Pencil,
 	Plus,
 	Settings2,
 	Trash2,
-	Zap,
 } from "lucide-react";
 import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +29,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getIntegrationIcon } from "@/lib/integration-icons";
 import { cn } from "@/lib/utils";
 
 export interface ServiceIntegrationsTabProps {
@@ -43,20 +40,6 @@ export interface ServiceIntegrationsTabProps {
 	onCreateOverride: (connectionId: string) => void;
 	onEditOverride: (overrideId: string, integration: ServiceIntegrationWithStatus) => void;
 	onDeleteOverride: (overrideId: string) => void;
-}
-
-// Integration icon helper
-function getIntegrationIcon(definitionName: string) {
-	switch (definitionName) {
-		case "github":
-			return <Github className="h-5 w-5" />;
-		case "slack":
-			return <MessageSquare className="h-5 w-5" />;
-		case "prometheus":
-			return <Zap className="h-5 w-5" />;
-		default:
-			return <Link2 className="h-5 w-5" />;
-	}
 }
 
 // Connection status badge
@@ -175,7 +158,7 @@ export function ServiceIntegrationsTab({
 								>
 									<div className="flex items-center gap-3">
 										<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-											{getIntegrationIcon(integration.definitionName)}
+											{getIntegrationIcon(integration.templateId)}
 										</div>
 										<div>
 											<div className="flex items-center gap-2">
@@ -185,7 +168,7 @@ export function ServiceIntegrationsTab({
 												<ConnectionStatusBadge status={integration.status} />
 											</div>
 											<p className="text-sm text-muted-foreground">
-												{integration.definitionDisplayName} •{" "}
+												{integration.templateName} •{" "}
 												{integration.category}
 											</p>
 										</div>
@@ -246,7 +229,7 @@ export function ServiceIntegrationsTab({
 								>
 									<div className="flex items-center gap-3">
 										<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-											{getIntegrationIcon(integration.definitionName)}
+											{getIntegrationIcon(integration.templateId)}
 										</div>
 										<div>
 											<div className="flex items-center gap-2">
@@ -262,14 +245,14 @@ export function ServiceIntegrationsTab({
 												<ConnectionStatusBadge status={integration.status} />
 											</div>
 											<p className="text-sm text-muted-foreground">
-												{integration.definitionDisplayName} •{" "}
+												{integration.templateName} •{" "}
 												{integration.category}
 											</p>
 											{/* Show override config summary */}
 											{integration.serviceConfig && (
 												<p className="text-xs text-muted-foreground mt-1">
 													{summarizeConfig(
-														integration.definitionName,
+														integration.templateId,
 														integration.serviceConfig,
 													)}
 												</p>
@@ -280,6 +263,7 @@ export function ServiceIntegrationsTab({
 										<Button
 											variant="ghost"
 											size="sm"
+											aria-label="Edit override"
 											onClick={() =>
 												integration.overrideId &&
 												onEditOverride(integration.overrideId, integration)
@@ -290,6 +274,7 @@ export function ServiceIntegrationsTab({
 										<Button
 											variant="ghost"
 											size="sm"
+											aria-label="Delete override"
 											onClick={() =>
 												integration.overrideId &&
 												onDeleteOverride(integration.overrideId)
@@ -310,30 +295,27 @@ export function ServiceIntegrationsTab({
 
 // Summarize config for display
 function summarizeConfig(
-	definitionName: string,
+	templateId: string,
 	config: Record<string, unknown>,
 ): string {
-	switch (definitionName) {
-		case "github": {
-			const repos = config.repositories as string[] | undefined;
-			if (config.allRepositories) {
-				return "All repositories";
-			}
-			if (repos?.length) {
-				return `${repos.length} repositor${repos.length === 1 ? "y" : "ies"} selected`;
-			}
-			return "No repositories selected";
+	if (templateId.startsWith("github")) {
+		const repos = config.repositories as string[] | undefined;
+		if (config.allRepositories) {
+			return "All repositories";
 		}
-		case "prometheus": {
-			const labels = config.labels as Record<string, string> | undefined;
-			if (labels && Object.keys(labels).length > 0) {
-				return `Labels: ${Object.entries(labels)
-					.map(([k, v]) => `${k}=${v}`)
-					.join(", ")}`;
-			}
-			return "No label filters";
+		if (repos?.length) {
+			return `${repos.length} repositor${repos.length === 1 ? "y" : "ies"} selected`;
 		}
-		default:
-			return JSON.stringify(config);
+		return "No repositories selected";
 	}
+	if (templateId.startsWith("prometheus")) {
+		const labels = config.labels as Record<string, string> | undefined;
+		if (labels && Object.keys(labels).length > 0) {
+			return `Labels: ${Object.entries(labels)
+				.map(([k, v]) => `${k}=${v}`)
+				.join(", ")}`;
+		}
+		return "No label filters";
+	}
+	return JSON.stringify(config);
 }

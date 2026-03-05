@@ -2,9 +2,11 @@ import "dotenv/config";
 
 import { Worker } from "bullmq";
 import { Redis } from "ioredis";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createLogger } from "@prismalens/logger/standalone";
 import { config, redisUrl } from "./config.js";
-import { closeProcessor, processInvestigationJob } from "./processor.js";
 
 const logger = createLogger({
 	service: {
@@ -19,9 +21,18 @@ const redisConnection = new Redis(redisUrl, {
 	maxRetriesPerRequest: null,
 });
 
+// Sandboxed processor: each job runs in a forked child process with isolated
+// process.env, preventing LLM credential races between concurrent jobs.
+// Do NOT use useWorkerThreads — worker threads share process.env.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const processorTs = path.join(__dirname, "processor.ts");
+const processorFile = fs.existsSync(processorTs)
+	? processorTs
+	: path.join(__dirname, "processor.js");
+
 const worker = new Worker(
 	config.PRISMALENS_WORKER_QUEUE_NAME,
-	processInvestigationJob,
+	processorFile,
 	{
 		connection: redisConnection,
 		concurrency: config.PRISMALENS_WORKER_CONCURRENCY,
@@ -47,7 +58,6 @@ logger.info(`API URL: ${config.PRISMALENS_WORKER_API_URL}`);
 const shutdown = async () => {
 	logger.info("Shutting down...");
 	await worker.close();
-	await closeProcessor();
 	await redisConnection.quit();
 	process.exit(0);
 };

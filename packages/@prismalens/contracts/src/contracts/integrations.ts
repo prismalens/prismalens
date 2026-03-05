@@ -4,133 +4,164 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AuthTemplateResponseSchema,
+	ConnectionSchema,
+	ConnectionWithIntegrationSchema,
 	CreateConnectionSchema,
+	CreateIntegrationSchema,
 	CreateServiceIntegrationSchema,
 	GitOrganizationSchema,
 	GitRepositorySchema,
 	IdParamSchema,
-	IntegrationConnectionSchema,
-	IntegrationConnectionWithDefinitionSchema,
-	IntegrationDefinitionSchema,
 	IntegrationQuerySchema,
-	OAuthCallbackResponseSchema,
-	OAuthCallbackSchema,
+	IntegrationSchema,
 	OAuthStartResponseSchema,
 	ServiceIntegrationSchema,
 	ServiceIntegrationWithStatusSchema,
 	SuccessResponseSchema,
 	UpdateConnectionSchema,
+	UpdateIntegrationSchema,
 	UpdateServiceIntegrationSchema,
 } from "../schemas/index.js";
 
 export const integrationsContract = {
-	/**
-	 * List available integration definitions
-	 * GET /integrations/definitions
-	 */
-	listDefinitions: oc
+	// =========================================================================
+	// TEMPLATES (from @prismalens/integrations package)
+	// =========================================================================
+
+	listTemplates: oc
 		.route({
 			method: "GET",
-			path: "/integrations/definitions",
-			summary: "List available integration types",
+			path: "/integrations/templates",
+			summary: "List available integration templates",
 			tags: ["integrations"],
 		})
 		.input(z.object({}))
-		.output(z.array(IntegrationDefinitionSchema)),
+		.output(z.array(AuthTemplateResponseSchema)),
 
-	/**
-	 * Get a single integration definition
-	 * GET /integrations/definitions/:id
-	 */
-	getDefinition: oc
+	getTemplate: oc
 		.route({
 			method: "GET",
-			path: "/integrations/definitions/{id}",
-			summary: "Get integration definition by ID",
+			path: "/integrations/templates/{id}",
+			summary: "Get integration template by ID",
 			tags: ["integrations"],
 		})
-		.input(IdParamSchema)
-		.output(IntegrationDefinitionSchema),
+		.input(z.object({ id: z.string() }))
+		.output(AuthTemplateResponseSchema),
 
-	/**
-	 * Create a new integration connection
-	 * POST /integrations/connections
-	 */
-	createConnection: oc
+	// =========================================================================
+	// INTEGRATIONS (OAuth client creds / provider instances)
+	// =========================================================================
+
+	createIntegration: oc
 		.route({
 			method: "POST",
-			path: "/integrations/connections",
-			summary: "Create a new integration connection",
+			path: "/integrations",
+			summary: "Create a new integration",
 			tags: ["integrations"],
 		})
-		.input(CreateConnectionSchema)
-		.output(IntegrationConnectionSchema),
+		.input(CreateIntegrationSchema)
+		.output(IntegrationSchema),
 
-	/**
-	 * List integration connections
-	 * GET /integrations/connections
-	 */
-	listConnections: oc
+	listIntegrations: oc
 		.route({
 			method: "GET",
-			path: "/integrations/connections",
-			summary: "List integration connections",
+			path: "/integrations",
+			summary: "List integrations",
 			tags: ["integrations"],
 		})
 		.input(IntegrationQuerySchema)
-		.output(z.array(IntegrationConnectionWithDefinitionSchema)),
+		.output(z.array(IntegrationSchema)),
 
-	/**
-	 * Get a single integration connection
-	 * GET /integrations/connections/:id
-	 */
-	getConnection: oc
+	getIntegration: oc
 		.route({
 			method: "GET",
-			path: "/integrations/connections/{id}",
-			summary: "Get integration connection by ID",
+			path: "/integrations/{id}",
+			summary: "Get integration by ID",
 			tags: ["integrations"],
 		})
 		.input(IdParamSchema)
-		.output(IntegrationConnectionWithDefinitionSchema),
+		.output(IntegrationSchema),
 
-	/**
-	 * Update an integration connection
-	 * PATCH /integrations/connections/:id
-	 */
-	updateConnection: oc
+	updateIntegration: oc
 		.route({
 			method: "PATCH",
-			path: "/integrations/connections/{id}",
-			summary: "Update integration connection",
+			path: "/integrations/{id}",
+			summary: "Update integration",
 			tags: ["integrations"],
 		})
-		.input(IdParamSchema.merge(UpdateConnectionSchema))
-		.output(IntegrationConnectionSchema),
+		.input(IdParamSchema.merge(UpdateIntegrationSchema))
+		.output(IntegrationSchema),
 
-	/**
-	 * Delete an integration connection
-	 * DELETE /integrations/connections/:id
-	 */
-	deleteConnection: oc
+	deleteIntegration: oc
 		.route({
 			method: "DELETE",
-			path: "/integrations/connections/{id}",
-			summary: "Delete integration connection",
+			path: "/integrations/{id}",
+			summary: "Delete integration",
 			tags: ["integrations"],
 		})
 		.input(IdParamSchema)
 		.output(z.void()),
 
-	/**
-	 * Test an integration connection
-	 * POST /integrations/connections/:id/test
-	 */
+	// =========================================================================
+	// CONNECTIONS (user tokens / API keys)
+	// =========================================================================
+
+	createConnection: oc
+		.route({
+			method: "POST",
+			path: "/integrations/connections",
+			summary: "Create a new connection",
+			tags: ["integrations"],
+		})
+		.input(CreateConnectionSchema)
+		.output(ConnectionSchema),
+
+	listConnections: oc
+		.route({
+			method: "GET",
+			path: "/integrations/connections",
+			summary: "List connections",
+			tags: ["integrations"],
+		})
+		.input(IntegrationQuerySchema)
+		.output(z.array(ConnectionWithIntegrationSchema)),
+
+	getConnection: oc
+		.route({
+			method: "GET",
+			path: "/integrations/connections/{id}",
+			summary: "Get connection by ID",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema)
+		.output(ConnectionWithIntegrationSchema),
+
+	updateConnection: oc
+		.route({
+			method: "PATCH",
+			path: "/integrations/connections/{id}",
+			summary: "Update connection",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema.merge(UpdateConnectionSchema))
+		.output(ConnectionSchema),
+
+	deleteConnection: oc
+		.route({
+			method: "DELETE",
+			path: "/integrations/connections/{id}",
+			summary: "Delete connection",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema)
+		.output(z.void()),
+
 	testConnection: oc
 		.route({
 			method: "POST",
 			path: "/integrations/connections/{id}/test",
-			summary: "Test integration connection health",
+			summary: "Test connection health",
 			tags: ["integrations"],
 		})
 		.input(IdParamSchema)
@@ -140,10 +171,6 @@ export const integrationsContract = {
 	// GIT PROVIDER ENDPOINTS
 	// =========================================================================
 
-	/**
-	 * Get organizations from a git provider connection
-	 * GET /integrations/connections/:id/git/organizations
-	 */
 	getGitOrganizations: oc
 		.route({
 			method: "GET",
@@ -154,10 +181,6 @@ export const integrationsContract = {
 		.input(IdParamSchema)
 		.output(z.array(GitOrganizationSchema)),
 
-	/**
-	 * Get repositories from a git provider connection
-	 * GET /integrations/connections/:id/git/repositories
-	 */
 	getGitRepositories: oc
 		.route({
 			method: "GET",
@@ -172,10 +195,6 @@ export const integrationsContract = {
 		)
 		.output(z.array(GitRepositorySchema)),
 
-	/**
-	 * Update connection config (e.g., selected repos after OAuth)
-	 * PATCH /integrations/connections/:id/config
-	 */
 	updateConnectionConfig: oc
 		.route({
 			method: "PATCH",
@@ -188,16 +207,12 @@ export const integrationsContract = {
 				config: z.record(z.unknown()),
 			}),
 		)
-		.output(IntegrationConnectionSchema),
+		.output(ConnectionSchema),
 
 	// =========================================================================
 	// SERVICE INTEGRATION ENDPOINTS (Per-service overrides)
 	// =========================================================================
 
-	/**
-	 * Get integrations for a service (with override status)
-	 * GET /integrations/service/:serviceId
-	 */
 	getServiceIntegrations: oc
 		.route({
 			method: "GET",
@@ -208,10 +223,6 @@ export const integrationsContract = {
 		.input(z.object({ serviceId: z.string().uuid() }))
 		.output(z.array(ServiceIntegrationWithStatusSchema)),
 
-	/**
-	 * Create a service integration override
-	 * POST /integrations/service-integrations
-	 */
 	createServiceIntegration: oc
 		.route({
 			method: "POST",
@@ -222,10 +233,6 @@ export const integrationsContract = {
 		.input(CreateServiceIntegrationSchema)
 		.output(ServiceIntegrationSchema),
 
-	/**
-	 * Update a service integration override
-	 * PATCH /integrations/service-integrations/:id
-	 */
 	updateServiceIntegration: oc
 		.route({
 			method: "PATCH",
@@ -236,10 +243,6 @@ export const integrationsContract = {
 		.input(IdParamSchema.merge(UpdateServiceIntegrationSchema))
 		.output(ServiceIntegrationSchema),
 
-	/**
-	 * Delete a service integration override
-	 * DELETE /integrations/service-integrations/:id
-	 */
 	deleteServiceIntegration: oc
 		.route({
 			method: "DELETE",
@@ -252,24 +255,16 @@ export const integrationsContract = {
 };
 
 export const oauthContract = {
-	/**
-	 * Start OAuth flow
-	 * GET /integrations/oauth/:definitionId/start
-	 */
 	start: oc
 		.route({
-			method: "GET",
-			path: "/integrations/oauth/{definitionId}/start",
-			summary: "Start OAuth authentication flow",
+			method: "POST",
+			path: "/integrations/oauth/{integrationId}/authorize",
+			summary: "Start OAuth authorization flow",
 			tags: ["oauth"],
 		})
-		.input(z.object({ definitionId: z.string().uuid() }))
+		.input(z.object({ integrationId: z.string().uuid() }))
 		.output(OAuthStartResponseSchema),
 
-	/**
-	 * Handle OAuth callback
-	 * GET /integrations/oauth/callback
-	 */
 	callback: oc
 		.route({
 			method: "GET",
@@ -277,6 +272,11 @@ export const oauthContract = {
 			summary: "Handle OAuth callback",
 			tags: ["oauth"],
 		})
-		.input(OAuthCallbackSchema)
-		.output(OAuthCallbackResponseSchema),
+		.input(z.object({
+			code: z.string().optional(),
+			state: z.string().optional(),
+			error: z.string().optional(),
+			error_description: z.string().optional(),
+		}))
+		.output(z.void()),
 };

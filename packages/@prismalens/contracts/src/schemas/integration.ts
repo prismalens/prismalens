@@ -1,87 +1,121 @@
 /**
- * Integration schemas (external tool connections)
+ * Integration schemas (three-layer: Template → Integration → Connection)
  */
 import { z } from "zod";
-import {
-	AuthMethodSchema,
-	ConnectionStatusSchema,
-	DateStringSchema,
-} from "./common.js";
+import { ConnectionStatusSchema, DateStringSchema } from "./common.js";
 
 // =============================================================================
-// INTEGRATION DEFINITION SCHEMAS
+// AUTH TEMPLATE RESPONSE SCHEMAS (from @prismalens/integrations templates)
 // =============================================================================
 
-export const IntegrationDefinitionSchema = z.object({
+export const TemplateFieldOptionSchema = z.object({
+	label: z.string(),
+	value: z.string(),
+});
+
+export const TemplateFieldSchema = z.object({
+	name: z.string(),
+	label: z.string(),
+	type: z.enum(["string", "password", "select", "number", "boolean"]),
+	default: z.string().optional(),
+	required: z.boolean().optional(),
+	placeholder: z.string().optional(),
+	description: z.string().optional(),
+	example: z.string().optional(),
+	pattern: z.string().optional(),
+	options: z.array(TemplateFieldOptionSchema).optional(),
+	sensitive: z.boolean().optional(),
+});
+
+export const AuthTemplateResponseSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	category: z.string(),
+	authMode: z.enum(["api_key", "basic", "oauth2"]),
+	icon: z.string().optional(),
+	docsUrl: z.string().optional(),
+	connectionFields: z.array(TemplateFieldSchema).optional(),
+	credentialFields: z.array(TemplateFieldSchema).optional(),
+	hasOAuth: z.boolean(),
+});
+
+// =============================================================================
+// INTEGRATION SCHEMAS (OAuth client creds)
+// =============================================================================
+
+export const IntegrationSchema = z.object({
 	id: z.string().uuid(),
-	name: z.string(), // github, prometheus, slack
-	displayName: z.string(),
-	description: z.string().nullable(),
-	category: z.string(), // monitoring, code_source, knowledge_base
-	authType: z.string(), // api_key, oauth2, both
-	configSchema: z.record(z.unknown()).nullable(),
-	credentialSchema: z.record(z.unknown()).nullable().optional(),
-	iconUrl: z.string().nullable(),
-	docsUrl: z.string().nullable(),
-	specUrl: z.string().nullable(),
-	maxConnectionsCE: z.number().int().nullable(),
-	isEnabled: z.boolean(),
+	templateId: z.string(),
+	label: z.string(),
+	scopes: z.array(z.string()),
+	callbackUrl: z.string().nullable(),
+	enabled: z.boolean(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
 
+export const CreateIntegrationSchema = z.object({
+	templateId: z.string(),
+	label: z.string().min(1),
+	clientId: z.string().optional(),
+	clientSecret: z.string().optional(),
+	scopes: z.array(z.string()).optional(),
+	callbackUrl: z.string().optional(),
+});
+
+export const UpdateIntegrationSchema = z.object({
+	label: z.string().min(1).optional(),
+	clientId: z.string().optional(),
+	clientSecret: z.string().optional(),
+	scopes: z.array(z.string()).optional(),
+	callbackUrl: z.string().optional(),
+	enabled: z.boolean().optional(),
+});
+
 // =============================================================================
-// INTEGRATION CONNECTION SCHEMAS
+// CONNECTION SCHEMAS (user tokens / API keys)
 // =============================================================================
 
-export const IntegrationConnectionSchema = z.object({
+export const ConnectionSchema = z.object({
 	id: z.string().uuid(),
-	definitionId: z.string().uuid(),
-	name: z.string().min(1),
-	description: z.string().nullable(),
-	isGlobal: z.boolean(),
+	integrationId: z.string().uuid(),
+	userId: z.string(),
 	status: ConnectionStatusSchema,
-	lastHealthCheck: DateStringSchema.nullable(),
-	lastError: z.string().nullable(),
-	authMethod: AuthMethodSchema,
-	// credentials are encrypted and never returned to client
-	config: z.record(z.unknown()).nullable(),
+	tokenExpiresAt: DateStringSchema.nullable(),
+	grantedScopes: z.array(z.string()),
+	lastUsedAt: DateStringSchema.nullable(),
+	lastRefreshedAt: DateStringSchema.nullable(),
+	lastErrorMessage: z.string().nullable(),
+	lastErrorAt: DateStringSchema.nullable(),
+	consecutiveErrors: z.number().int(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
+});
+
+export const ConnectionWithIntegrationSchema = ConnectionSchema.extend({
+	integration: IntegrationSchema.optional(),
+	templateId: z.string().optional(),
+	templateName: z.string().optional(),
 });
 
 export const CreateConnectionSchema = z.object({
-	definitionId: z.string().uuid(),
-	name: z.string().min(1),
-	description: z.string().optional(),
-	authMethod: AuthMethodSchema,
+	integrationId: z.string().uuid(),
 	credentials: z.record(z.string(), z.string()),
-	config: z.record(z.unknown()).optional(),
+	connectionConfig: z.record(z.string(), z.string()).optional(),
 });
 
 export const UpdateConnectionSchema = z.object({
-	name: z.string().optional(),
-	description: z.string().optional(),
 	credentials: z.record(z.string(), z.string()).optional(),
-	config: z.record(z.unknown()).optional(),
+	connectionConfig: z.record(z.string(), z.string()).optional(),
+	status: ConnectionStatusSchema.optional(),
 });
-
-// =============================================================================
-// INTEGRATION CONNECTION WITH RELATIONS
-// =============================================================================
-
-export const IntegrationConnectionWithDefinitionSchema =
-	IntegrationConnectionSchema.extend({
-		definition: IntegrationDefinitionSchema.optional(),
-	});
 
 // =============================================================================
 // OAUTH SCHEMAS
 // =============================================================================
 
 export const OAuthStartResponseSchema = z.object({
-	authUrl: z.string().url(),
-	state: z.string(),
+	redirectUrl: z.string().url(),
 });
 
 export const OAuthCallbackSchema = z.object({
@@ -101,6 +135,7 @@ export const OAuthCallbackResponseSchema = z.object({
 export const IntegrationQuerySchema = z.object({
 	category: z.string().optional(),
 	status: ConnectionStatusSchema.optional(),
+	templateId: z.string().optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });
@@ -111,7 +146,7 @@ export const IntegrationQuerySchema = z.object({
 
 export const GitOrganizationSchema = z.object({
 	id: z.string(),
-	name: z.string(), // Login/slug (e.g., "prismalens-org")
+	name: z.string(),
 	displayName: z.string(),
 	avatarUrl: z.string().optional(),
 	repoCount: z.number().int().optional(),
@@ -120,14 +155,14 @@ export const GitOrganizationSchema = z.object({
 
 export const GitRepositorySchema = z.object({
 	id: z.string(),
-	name: z.string(), // Repo name only (e.g., "api")
-	fullName: z.string(), // Full name with org (e.g., "prismalens-org/api")
+	name: z.string(),
+	fullName: z.string(),
 	description: z.string().optional(),
 	language: z.string().optional(),
 	stars: z.number().int().optional(),
 	defaultBranch: z.string(),
 	isPrivate: z.boolean(),
-	url: z.string(), // Web URL
+	url: z.string(),
 	cloneUrl: z.string().optional(),
 	updatedAt: z.string().optional(),
 });
@@ -141,7 +176,7 @@ export const ServiceIntegrationSchema = z.object({
 	serviceId: z.string().uuid(),
 	connectionId: z.string().uuid(),
 	priority: z.number().int().default(0),
-	config: z.record(z.unknown()).nullable(), // Service-specific config overrides
+	config: z.record(z.unknown()).nullable(),
 	isEnabled: z.boolean().default(true),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
@@ -161,36 +196,34 @@ export const UpdateServiceIntegrationSchema = z.object({
 	isEnabled: z.boolean().optional(),
 });
 
-/**
- * Service integration with computed override status
- * Used when listing integrations for a service
- */
 export const ServiceIntegrationWithStatusSchema = z.object({
 	connectionId: z.string().uuid(),
 	connectionName: z.string(),
-	definitionName: z.string(), // github, prometheus, etc.
-	definitionDisplayName: z.string(),
+	templateId: z.string(),
+	templateName: z.string(),
 	category: z.string(),
 	status: ConnectionStatusSchema,
-	isGlobal: z.boolean(), // true = inherited from global, false = service-specific
-	hasOverride: z.boolean(), // true = has service-specific override
-	overrideId: z.string().uuid().optional(), // ServiceIntegration.id if has override
-	globalConfig: z.record(z.unknown()).nullable(), // Global connection config
-	serviceConfig: z.record(z.unknown()).nullable(), // Service-specific override config
-	effectiveConfig: z.record(z.unknown()).nullable(), // Merged config (serviceConfig || globalConfig)
+	isGlobal: z.boolean(),
+	hasOverride: z.boolean(),
+	overrideId: z.string().uuid().optional(),
+	globalConfig: z.record(z.unknown()).nullable(),
+	serviceConfig: z.record(z.unknown()).nullable(),
+	effectiveConfig: z.record(z.unknown()).nullable(),
 });
 
 // =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
-export type IntegrationDefinition = z.infer<typeof IntegrationDefinitionSchema>;
-export type IntegrationConnection = z.infer<typeof IntegrationConnectionSchema>;
+export type AuthTemplateResponse = z.infer<typeof AuthTemplateResponseSchema>;
+export type TemplateField = z.infer<typeof TemplateFieldSchema>;
+export type Integration = z.infer<typeof IntegrationSchema>;
+export type CreateIntegrationInput = z.infer<typeof CreateIntegrationSchema>;
+export type UpdateIntegrationInput = z.infer<typeof UpdateIntegrationSchema>;
+export type Connection = z.infer<typeof ConnectionSchema>;
+export type ConnectionWithIntegration = z.infer<typeof ConnectionWithIntegrationSchema>;
 export type CreateConnectionInput = z.infer<typeof CreateConnectionSchema>;
 export type UpdateConnectionInput = z.infer<typeof UpdateConnectionSchema>;
-export type IntegrationConnectionWithDefinition = z.infer<
-	typeof IntegrationConnectionWithDefinitionSchema
->;
 export type OAuthStartResponse = z.infer<typeof OAuthStartResponseSchema>;
 export type OAuthCallbackInput = z.infer<typeof OAuthCallbackSchema>;
 export type OAuthCallbackResponse = z.infer<typeof OAuthCallbackResponseSchema>;
@@ -202,12 +235,6 @@ export type GitRepository = z.infer<typeof GitRepositorySchema>;
 
 // Service integration types
 export type ServiceIntegration = z.infer<typeof ServiceIntegrationSchema>;
-export type CreateServiceIntegrationInput = z.infer<
-	typeof CreateServiceIntegrationSchema
->;
-export type UpdateServiceIntegrationInput = z.infer<
-	typeof UpdateServiceIntegrationSchema
->;
-export type ServiceIntegrationWithStatus = z.infer<
-	typeof ServiceIntegrationWithStatusSchema
->;
+export type CreateServiceIntegrationInput = z.infer<typeof CreateServiceIntegrationSchema>;
+export type UpdateServiceIntegrationInput = z.infer<typeof UpdateServiceIntegrationSchema>;
+export type ServiceIntegrationWithStatus = z.infer<typeof ServiceIntegrationWithStatusSchema>;

@@ -296,27 +296,6 @@ enum ChangeEventType {
   rollback // Rollback of deployment
 }
 
-/// Integration connection status
-enum ConnectionStatus {
-  pending // Not yet connected
-  connected // Successfully connected
-  error // Connection error
-  disabled // Manually disabled
-}
-
-/// Authentication methods
-enum AuthMethod {
-  api_key // API key authentication
-  oauth2 // OAuth 2.0 authentication
-}
-
-/// Service suggestion status
-enum SuggestionStatus {
-  pending // Awaiting user decision
-  accepted // User accepted the suggestion
-  rejected // User rejected the suggestion
-  ignored // User chose to ignore
-}
 
 // =============================================================================
 // SERVICE CATALOG
@@ -496,7 +475,7 @@ model Incident {
   updatedAt         DateTime       @updatedAt
 
   // Relations
-  service         Service?         @relation(fields: [serviceId], references: [id])
+  service         Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   assignedTo      User?            @relation("AssignedTo", fields: [assignedToId], references: [id])
   correlationRule CorrelationRule? @relation(fields: [correlationRuleId], references: [id])
   alerts          Alert[] // All alerts correlated to this incident
@@ -818,92 +797,10 @@ model Setting {
 }
 
 // =============================================================================
-// INTEGRATIONS - EXTERNAL TOOL CONNECTIONS
+// INTEGRATIONS
 // =============================================================================
-// Integration system for connecting external tools (GitHub, Prometheus, Slack).
-// Follows n8n-style credential management: OAuth credentials stored in DB (encrypted),
-// not in environment variables. Only PRISMALENS_ENCRYPTION_KEY env var required.
-//
-// HIERARCHY:
-//   IntegrationDefinition (catalog) - Admin configures OAuth app credentials here
-//     └── IntegrationConnection (user instance) - User's tokens/API keys
-//           └── ServiceIntegration (service mapping) - Optional service-level overrides
-// =============================================================================
-
-/// Integration catalog - available integration types (github, prometheus, slack)
-/// Admin can configure OAuth app credentials (clientId/clientSecret) here.
-model IntegrationDefinition {
-  id               String   @id @default(uuid())
-  name             String   @unique // Identifier: "github", "prometheus", "slack"
-  displayName      String // Human-readable: "GitHub", "Prometheus", "Slack"
-  description      String?
-  category         String // Category: "monitoring" | "code_source" | "knowledge_base"
-  authType         String // Authentication type: "api_key", "oauth2", "both"
-  configSchema     String? // JSON Schema for config fields
-  credentialSchema String? // JSON Schema describing credential fields for frontend + validation
-  oauthConfig      String? // Encrypted JSON: { clientId, clientSecret, scopes, authUrl, tokenUrl }
-  iconUrl          String?
-  docsUrl          String?
-  specUrl          String?
-  maxConnectionsCE Int? // null = unlimited, 1 = single connection in CE
-  isEnabled        Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  // Relations
-  connections IntegrationConnection[]
-
-  @@map("integration_definitions")
-}
-
-/// User-configured integration instance.
-/// Stores encrypted credentials (API keys or OAuth tokens).
-model IntegrationConnection {
-  id              String           @id @default(uuid())
-  definitionId    String
-  name            String // User-friendly name, e.g., "Production GitHub"
-  description     String?
-  isGlobal        Boolean          @default(true) // Available to all services if true
-  status          ConnectionStatus @default(pending)
-  lastHealthCheck DateTime?
-  lastError       String?
-  authMethod      AuthMethod // api_key or oauth2
-  credentials     String // Encrypted JSON — shape defined by IntegrationDefinition.credentialSchema
-  config          String? // JSON: { baseUrl, org, defaultChannel, etc. }
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  // Relations
-  definition         IntegrationDefinition @relation(fields: [definitionId], references: [id])
-  serviceMappings    ServiceIntegration[]
-  serviceSuggestions ServiceSuggestion[]
-
-  @@unique([definitionId, name])
-  @@index([status])
-  @@map("integration_connections")
-}
-
-/// Service-to-integration mapping (optional service-level overrides).
-/// Allows configuring specific repos, channels, etc. per service.
-model ServiceIntegration {
-  id           String   @id @default(uuid())
-  serviceId    String
-  connectionId String
-  priority     Int      @default(0) // Higher priority connections used first
-  config       String? // Service-specific overrides: { repo, channel, alertGroup, etc. }
-  isEnabled    Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  service    Service               @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-
-  @@unique([serviceId, connectionId])
-  @@index([serviceId])
-  @@index([connectionId])
-  @@map("service_integrations")
-}
+// Integration models (Integration, Connection, ServiceIntegration, etc.)
+// are defined in integrations.prisma in the same schema directory.
 
 // =============================================================================
 // ALERT MAPPING RULES - MAP ALERTS TO SERVICES
@@ -939,35 +836,6 @@ model AlertMappingRule {
   @@map("alert_mapping_rules")
 }
 
-// =============================================================================
-// SERVICE SUGGESTIONS - PENDING SERVICE DISCOVERIES
-// =============================================================================
-// Service suggestions are created when services are auto-discovered from
-// code repositories. Users can accept/reject suggestions to create Services.
-// =============================================================================
-
-/// Service suggestion from auto-discovery.
-/// Pending service discoveries awaiting user confirmation.
-model ServiceSuggestion {
-  id            String           @id @default(uuid())
-  connectionId  String // Which IntegrationConnection discovered this
-  suggestedName String
-  displayName   String?
-  repository    String // "owner/repo"
-  isMonorepo    Boolean          @default(false)
-  subPath       String? // For monorepo: "packages/api"
-  status        SuggestionStatus @default(pending)
-  metadata      String? // JSON with additional discovery info
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-
-  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-
-  @@unique([connectionId, repository, subPath])
-  @@index([status])
-  @@index([connectionId])
-  @@map("service_suggestions")
-}
 
 // =============================================================================
 // LICENSE MANAGEMENT

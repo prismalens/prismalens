@@ -44,41 +44,66 @@ export class IncidentsService {
    * Create a new incident
    */
   async create(dto: CreateIncidentDto): Promise<Incident> {
-    // Get next incident number (application-managed for SQLite compatibility)
-    const lastIncident = await this.prisma.incident.findFirst({
-      orderBy: { number: 'desc' },
-      select: { number: true },
-    });
-    const nextNumber = (lastIncident?.number ?? 0) + 1;
+    // Atomic incident number assignment with retry on unique constraint violation.
+    // Uses transaction to minimize the race window between reading max number
+    // and creating the incident. Retries handle concurrent webhook bursts.
+    const MAX_RETRIES = 3;
 
-    const incident = await this.prisma.incident.create({
-      data: {
-        number: nextNumber,
-        title: dto.title,
-        description: dto.description,
-        severity: dto.severity ?? 'medium',
-        status: 'triggered',
-        priority: dto.priority ?? 'p3',
-        serviceId: dto.serviceId,
-        correlationReason: dto.correlationReason,
-        tags: dto.tags ? JSON.stringify(dto.tags) : null,
-        customerImpact: dto.customerImpact,
-        alertCount: 0,
-      },
-    });
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const incident = await this.prisma.$transaction(async (tx) => {
+          const lastIncident = await tx.incident.findFirst({
+            orderBy: { number: 'desc' },
+            select: { number: true },
+          });
+          const nextNumber = (lastIncident?.number ?? 0) + 1;
 
-    this.logger.log(`Created incident INC-${incident.number}: ${incident.title}`);
+          return tx.incident.create({
+            data: {
+              number: nextNumber,
+              title: dto.title,
+              description: dto.description,
+              severity: dto.severity ?? 'medium',
+              status: 'triggered',
+              priority: dto.priority ?? 'p3',
+              serviceId: dto.serviceId,
+              correlationReason: dto.correlationReason,
+              tags: dto.tags ? JSON.stringify(dto.tags) : null,
+              customerImpact: dto.customerImpact,
+              alertCount: 0,
+            },
+          });
+        });
 
-    // Create timeline entry
-    await this.timelineService.create({
-      incidentId: incident.id,
-      type: TimelineEntryType.incident_created,
-      title: 'Incident created',
-      description: `Incident INC-${incident.number} was created`,
-      source: TimelineSource.system,
-    });
+        this.logger.log(
+          `Created incident INC-${incident.number}: ${incident.title}`,
+        );
 
-    return incident;
+        // Create timeline entry
+        await this.timelineService.create({
+          incidentId: incident.id,
+          type: TimelineEntryType.incident_created,
+          title: 'Incident created',
+          description: `Incident INC-${incident.number} was created`,
+          source: TimelineSource.system,
+        });
+
+        return incident;
+      } catch (error: unknown) {
+        const isUniqueViolation =
+          error instanceof Error && error.message.includes('Unique constraint');
+        if (isUniqueViolation && attempt < MAX_RETRIES - 1) {
+          this.logger.warn(
+            `Incident number collision on attempt ${attempt + 1}, retrying`,
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    // Unreachable — loop always returns or throws
+    throw new Error('Failed to create incident after retries');
   }
 
   /**
@@ -213,8 +238,8 @@ export class IncidentsService {
   async findActive(): Promise<IncidentWithRelations[]> {
     return this.findAll({
       status: undefined, // We'll filter below
-    }).then(incidents =>
-      incidents.filter(i => !['resolved', 'closed'].includes(i.status))
+    }).then((incidents) =>
+      incidents.filter((i) => !['resolved', 'closed'].includes(i.status)),
     );
   }
 
@@ -240,13 +265,13 @@ export class IncidentsService {
         if (dto.status === 'investigating' && !existing.acknowledgedAt) {
           updateData.acknowledgedAt = new Date();
           updateData.timeToAcknowledge = Math.floor(
-            (Date.now() - existing.triggeredAt.getTime()) / 1000
+            (Date.now() - existing.triggeredAt.getTime()) / 1000,
           );
         }
         if (dto.status === 'resolved' && !existing.resolvedAt) {
           updateData.resolvedAt = new Date();
           updateData.timeToResolve = Math.floor(
-            (Date.now() - existing.triggeredAt.getTime()) / 1000
+            (Date.now() - existing.triggeredAt.getTime()) / 1000,
           );
         }
       }
@@ -380,36 +405,43 @@ export class IncidentsService {
     avgTimeToAcknowledge: number | null;
     avgTimeToResolve: number | null;
   }> {
-    const [total, byStatus, bySeverity, ttaResult, ttrResult] = await Promise.all([
-      this.prisma.incident.count(),
-      this.prisma.incident.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
-      this.prisma.incident.groupBy({
-        by: ['severity'],
-        _count: true,
-      }),
-      this.prisma.incident.aggregate({
-        _avg: { timeToAcknowledge: true },
-        where: { timeToAcknowledge: { not: null } },
-      }),
-      this.prisma.incident.aggregate({
-        _avg: { timeToResolve: true },
-        where: { timeToResolve: { not: null } },
-      }),
-    ]);
+    const [total, byStatus, bySeverity, ttaResult, ttrResult] =
+      await Promise.all([
+        this.prisma.incident.count(),
+        this.prisma.incident.groupBy({
+          by: ['status'],
+          _count: true,
+        }),
+        this.prisma.incident.groupBy({
+          by: ['severity'],
+          _count: true,
+        }),
+        this.prisma.incident.aggregate({
+          _avg: { timeToAcknowledge: true },
+          where: { timeToAcknowledge: { not: null } },
+        }),
+        this.prisma.incident.aggregate({
+          _avg: { timeToResolve: true },
+          where: { timeToResolve: { not: null } },
+        }),
+      ]);
 
     return {
       total,
-      byStatus: byStatus.reduce((acc, item) => {
-        acc[item.status] = item._count;
-        return acc;
-      }, {} as Record<string, number>),
-      bySeverity: bySeverity.reduce((acc, item) => {
-        acc[item.severity] = item._count;
-        return acc;
-      }, {} as Record<string, number>),
+      byStatus: byStatus.reduce(
+        (acc, item) => {
+          acc[item.status] = item._count;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
+      bySeverity: bySeverity.reduce(
+        (acc, item) => {
+          acc[item.severity] = item._count;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
       avgTimeToAcknowledge: ttaResult._avg.timeToAcknowledge,
       avgTimeToResolve: ttrResult._avg.timeToResolve,
     };

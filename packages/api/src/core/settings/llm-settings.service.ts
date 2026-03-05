@@ -470,7 +470,7 @@ export class LlmSettingsService {
     const existing = await this.getLlmCredentialMap(true);
     const credMap = { ...existing, [providerId]: apiKey };
 
-    const encrypted = this.credentialsService.encrypt(credMap);
+    const encrypted = this.credentialsService.encryptToBase64(credMap);
     await this.prisma.setting.upsert({
       where: { key: this.LLM_CREDENTIALS_KEY },
       update: { value: encrypted },
@@ -482,6 +482,8 @@ export class LlmSettingsService {
       },
     });
 
+    // Safe in the API process: single-purpose, admin-only, sequential UI calls.
+    // Workers fetch credentials on-demand via internal API (not from this env).
     const envVar = getApiKeyEnvVar(providerId);
     if (envVar) {
       process.env[envVar] = apiKey;
@@ -497,7 +499,7 @@ export class LlmSettingsService {
         where: { key: this.LLM_CREDENTIALS_KEY },
       });
     } else {
-      const encrypted = this.credentialsService.encrypt(credMap);
+      const encrypted = this.credentialsService.encryptToBase64(credMap);
       await this.prisma.setting.update({
         where: { key: this.LLM_CREDENTIALS_KEY },
         data: { value: encrypted },
@@ -582,7 +584,7 @@ export class LlmSettingsService {
     if (!setting) return {};
 
     try {
-      return this.credentialsService.decrypt<Record<string, string>>(
+      return this.credentialsService.decryptFromBase64<Record<string, string>>(
         setting.value,
       );
     } catch (error) {

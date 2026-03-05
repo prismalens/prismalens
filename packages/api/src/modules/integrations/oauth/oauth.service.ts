@@ -1,428 +1,296 @@
 import {
-	BadRequestException,
-	Injectable,
-	Logger,
-	NotFoundException,
-} from "@nestjs/common";
-import { IntegrationConnection } from "@prismalens/database";
-import { PrismaService } from "../../../core/prisma/prisma.service.js";
-import { CredentialsService } from "../crypto/credentials.service.js";
-
-export interface OAuthConfig {
-	clientId: string;
-	clientSecret: string;
-	scopes: string[];
-	authUrl: string;
-	tokenUrl: string;
-}
-
-export interface OAuthTokens {
-	accessToken: string;
-	refreshToken?: string;
-	expiresAt?: string;
-	tokenType?: string;
-	scope?: string;
-}
-
-export interface OAuthState {
-	definitionId: string;
-	connectionName: string;
-	redirectUri: string;
-	nonce: string;
-}
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import type { Connection } from '@prismalens/database';
+import {
+  OAuth2Flow,
+  getTemplate,
+  type OAuth2StoreDeps,
+  type OAuthStateData,
+} from '@prismalens/integrations';
+import { PrismaService } from '../../../core/prisma/prisma.service.js';
+import { CredentialsService } from '../crypto/credentials.service.js';
+import { IntegrationsService } from '../integrations.service.js';
 
 @Injectable()
-export class OAuthService {
-	private readonly logger = new Logger(OAuthService.name);
-	private readonly stateStore = new Map<string, OAuthState>();
+export class OAuthService implements OAuth2StoreDeps {
+  private readonly logger = new Logger(OAuthService.name);
+  private readonly oauth2Flow: OAuth2Flow;
 
-	constructor(
-		private readonly prisma: PrismaService,
-		private readonly credentialsService: CredentialsService,
-	) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly credentialsService: CredentialsService,
+    private readonly integrationsService: IntegrationsService,
+  ) {
+    this.oauth2Flow = new OAuth2Flow(credentialsService.getVault(), this);
+  }
 
-	/**
-	 * Get the OAuth configuration for a provider.
-	 */
-	async getOAuthConfig(provider: string): Promise<OAuthConfig | null> {
-		const definition = await this.prisma.integrationDefinition.findUnique({
-			where: { name: provider },
-		});
+  // =========================================================================
+  // OAuth2StoreDeps implementation (DB-backed state)
+  // =========================================================================
 
-		if (!definition || !definition.oauthConfig) {
-			return null;
-		}
+  async saveOAuthState(data: OAuthStateData): Promise<void> {
+    await this.prisma.oAuthState.create({
+      data: {
+        state: data.state,
+        integrationId: data.integrationId,
+        userId: data.userId,
+        organizationId: data.organizationId,
+        callbackUrl: data.callbackUrl,
+        connectionConfigEnc: data.connectionConfigEnc
+          ? (new Uint8Array(
+              data.connectionConfigEnc,
+            ) as Uint8Array<ArrayBuffer>)
+          : null,
+        codeVerifier: data.codeVerifier,
+        metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+        expiresAt: data.expiresAt,
+      },
+    });
+  }
 
-		try {
-			return this.credentialsService.decrypt<OAuthConfig>(
-				definition.oauthConfig,
-			);
-		} catch {
-			this.logger.error(`Failed to decrypt OAuth config for ${provider}`);
-			return null;
-		}
-	}
+  async getOAuthState(stateToken: string): Promise<OAuthStateData | null> {
+    const row = await this.prisma.oAuthState.findUnique({
+      where: { state: stateToken },
+    });
+    if (!row) return null;
 
-	/**
-	 * Generate the OAuth authorization URL for a provider.
-	 */
-	async getAuthorizationUrl(
-		provider: string,
-		connectionName: string,
-		redirectUri: string,
-	): Promise<string> {
-		const definition = await this.prisma.integrationDefinition.findUnique({
-			where: { name: provider },
-		});
+    return {
+      state: row.state,
+      integrationId: row.integrationId,
+      userId: row.userId,
+      organizationId: row.organizationId ?? undefined,
+      callbackUrl: row.callbackUrl,
+      connectionConfigEnc: row.connectionConfigEnc
+        ? Buffer.from(row.connectionConfigEnc)
+        : null,
+      codeVerifier: row.codeVerifier,
+      metadata: row.metadata
+        ? (JSON.parse(row.metadata as string) as Record<string, unknown>)
+        : undefined,
+      expiresAt: row.expiresAt,
+    };
+  }
 
-		if (!definition) {
-			throw new NotFoundException(`Integration '${provider}' not found`);
-		}
+  async deleteOAuthState(stateToken: string): Promise<void> {
+    await this.prisma.oAuthState.delete({
+      where: { state: stateToken },
+    });
+  }
 
-		if (definition.authType !== "oauth2" && definition.authType !== "both") {
-			throw new BadRequestException(
-				`Integration '${provider}' does not support OAuth`,
-			);
-		}
+  // =========================================================================
+  // Public OAuth flow methods
+  // =========================================================================
 
-		const oauthConfig = await this.getOAuthConfig(provider);
-		if (!oauthConfig) {
-			throw new BadRequestException(
-				`OAuth not configured for '${provider}'. Admin must configure OAuth app credentials first.`,
-			);
-		}
+  async startAuthorization(
+    integrationId: string,
+    userId: string,
+    callbackUrl: string,
+  ): Promise<{ url: string; state: string }> {
+    const integration =
+      await this.integrationsService.findIntegrationById(integrationId);
+    if (!integration) {
+      throw new NotFoundException('Integration not found');
+    }
 
-		// Generate state parameter for CSRF protection
-		const nonce = this.generateNonce();
-		const state = Buffer.from(
-			JSON.stringify({
-				definitionId: definition.id,
-				connectionName,
-				redirectUri,
-				nonce,
-			}),
-		).toString("base64url");
+    const template = getTemplate(integration.templateId);
+    if (!template) {
+      throw new NotFoundException(
+        `Template '${integration.templateId}' not found`,
+      );
+    }
 
-		// Store state for validation
-		this.stateStore.set(state, {
-			definitionId: definition.id,
-			connectionName,
-			redirectUri,
-			nonce,
-		});
+    if (template.authMode !== 'oauth2') {
+      throw new BadRequestException(
+        `Template '${template.id}' does not support OAuth`,
+      );
+    }
 
-		// Clean up old states after 10 minutes
-		setTimeout(() => this.stateStore.delete(state), 10 * 60 * 1000);
+    const { clientId } =
+      this.integrationsService.getClientCredentials(integration);
 
-		// Build authorization URL
-		const params = new URLSearchParams({
-			client_id: oauthConfig.clientId,
-			redirect_uri: redirectUri,
-			scope: oauthConfig.scopes.join(" "),
-			state,
-			response_type: "code",
-		});
+    const scopes = Array.isArray(integration.scopes)
+      ? integration.scopes
+      : (JSON.parse(integration.scopes || '[]') as string[]);
 
-		// Provider-specific parameters
-		if (provider === "github") {
-			params.set("allow_signup", "false");
-		} else if (provider === "slack") {
-			// Slack uses different parameter names
-			params.set("user_scope", oauthConfig.scopes.join(","));
-		}
+    return this.oauth2Flow.startAuthorization({
+      template,
+      integrationId,
+      userId,
+      clientId,
+      callbackUrl,
+      scopes,
+    });
+  }
 
-		return `${oauthConfig.authUrl}?${params.toString()}`;
-	}
+  async handleCallback(code: string, stateToken: string): Promise<Connection> {
+    const oauthState = await this.getOAuthState(stateToken);
+    if (!oauthState) {
+      throw new BadRequestException('Invalid or expired OAuth state');
+    }
+    if (oauthState.expiresAt < new Date()) {
+      await this.deleteOAuthState(stateToken);
+      throw new BadRequestException('OAuth state expired');
+    }
+    await this.deleteOAuthState(stateToken);
 
-	/**
-	 * Peek at the stored redirect URI for a state token.
-	 * Returns null if state is invalid/expired.
-	 * Does NOT consume the state — handleCallback does that.
-	 */
-	getStoredRedirectUri(state: string): string | null {
-		const stored = this.stateStore.get(state);
-		return stored?.redirectUri ?? null;
-	}
+    const integration = await this.integrationsService.findIntegrationById(
+      oauthState.integrationId,
+    );
+    if (!integration) {
+      throw new BadRequestException('Integration no longer exists');
+    }
 
-	/**
-	 * Exchange authorization code for tokens and create connection.
-	 */
-	async handleCallback(
-		provider: string,
-		code: string,
-		state: string,
-	): Promise<IntegrationConnection> {
-		// Validate state
-		const storedState = this.stateStore.get(state);
-		if (!storedState) {
-			throw new BadRequestException("Invalid or expired OAuth state");
-		}
+    const template = getTemplate(integration.templateId);
+    if (!template) {
+      throw new BadRequestException('Template not found');
+    }
 
-		this.stateStore.delete(state);
+    const { clientId, clientSecret } =
+      this.integrationsService.getClientCredentials(integration);
 
-		const oauthConfig = await this.getOAuthConfig(provider);
-		if (!oauthConfig) {
-			throw new BadRequestException(`OAuth not configured for '${provider}'`);
-		}
+    const tokenResult = await this.oauth2Flow.exchangeCodeForTokens(
+      template,
+      code,
+      oauthState,
+      clientId,
+      clientSecret,
+    );
 
-		// Exchange code for tokens
-		const tokens = await this.exchangeCodeForTokens(
-			provider,
-			code,
-			storedState.redirectUri,
-			oauthConfig,
-		);
+    return this.prisma.connection.create({
+      data: {
+        integrationId: integration.id,
+        userId: oauthState.userId,
+        organizationId: oauthState.organizationId,
+        credentialsEnc: this.credentialsService.encrypt({
+          accessToken: tokenResult.accessToken,
+          refreshToken: tokenResult.refreshToken ?? null,
+          tokenType: tokenResult.tokenType,
+        }),
+        connectionConfigEnc: oauthState.connectionConfigEnc
+          ? (new Uint8Array(
+              oauthState.connectionConfigEnc,
+            ) as Uint8Array<ArrayBuffer>)
+          : null,
+        tokenExpiresAt: tokenResult.expiresIn
+          ? new Date(Date.now() + tokenResult.expiresIn * 1000)
+          : null,
+        tokenType: tokenResult.tokenType,
+        grantedScopes: JSON.stringify(tokenResult.grantedScopes ?? []),
+        metadataEnc: tokenResult.metadata
+          ? this.credentialsService.encrypt(tokenResult.metadata)
+          : null,
+        status: 'ACTIVE',
+      },
+    });
+  }
 
-		// Create or update the connection
-		const connection = await this.createOrUpdateConnection(
-			storedState.definitionId,
-			storedState.connectionName,
-			tokens,
-		);
+  async refreshToken(connectionId: string): Promise<Connection | null> {
+    const connection = await this.prisma.connection.findUnique({
+      where: { id: connectionId },
+      include: { integration: true },
+    });
 
-		this.logger.log(
-			`OAuth connection created: ${connection.id} for ${provider}`,
-		);
-		return connection;
-	}
+    if (!connection) return null;
 
-	/**
-	 * Exchange authorization code for access/refresh tokens.
-	 */
-	private async exchangeCodeForTokens(
-		provider: string,
-		code: string,
-		redirectUri: string,
-		oauthConfig: OAuthConfig,
-	): Promise<OAuthTokens> {
-		const body = new URLSearchParams({
-			client_id: oauthConfig.clientId,
-			client_secret: oauthConfig.clientSecret,
-			code,
-			redirect_uri: redirectUri,
-			grant_type: "authorization_code",
-		});
+    const template = getTemplate(connection.integration.templateId);
+    if (!template?.oauth2) {
+      this.logger.warn(
+        `Cannot refresh: template ${connection.integration.templateId} has no oauth2 config`,
+      );
+      return null;
+    }
 
-		const headers: Record<string, string> = {
-			"Content-Type": "application/x-www-form-urlencoded",
-		};
+    const vault = this.credentialsService.getVault();
+    const credentials = vault.decryptJSON<{
+      accessToken: string;
+      refreshToken?: string;
+    }>(Buffer.from(connection.credentialsEnc));
 
-		// GitHub requires Accept header for JSON response
-		if (provider === "github") {
-			headers.Accept = "application/json";
-		}
+    if (!credentials.refreshToken) {
+      this.logger.warn(
+        `No refresh token available for connection ${connectionId}`,
+      );
+      return null;
+    }
 
-		const response = await fetch(oauthConfig.tokenUrl, {
-			method: "POST",
-			headers,
-			body: body.toString(),
-		});
+    const { clientId, clientSecret } =
+      this.integrationsService.getClientCredentials(connection.integration);
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			this.logger.error(`Token exchange failed: ${errorText}`);
-			throw new BadRequestException(
-				"Failed to exchange authorization code for tokens",
-			);
-		}
+    try {
+      const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: credentials.refreshToken,
+        grant_type: 'refresh_token',
+      });
 
-		const data = await response.json();
+      const response = await fetch(template.oauth2.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        body: body.toString(),
+      });
 
-		// Handle provider-specific response formats
-		if (provider === "github") {
-			return this.parseGitHubTokenResponse(data);
-		} else if (provider === "slack") {
-			return this.parseSlackTokenResponse(data);
-		}
+      if (!response.ok) {
+        throw new Error(`Token refresh failed: ${response.status}`);
+      }
 
-		return this.parseStandardTokenResponse(data);
-	}
+      const data = (await response.json()) as Record<string, unknown>;
 
-	private parseGitHubTokenResponse(data: Record<string, unknown>): OAuthTokens {
-		if (data.error) {
-			throw new BadRequestException(
-				`GitHub OAuth error: ${data.error_description || data.error}`,
-			);
-		}
+      if (!data.access_token || typeof data.access_token !== 'string') {
+        throw new Error('OAuth token refresh returned no access_token');
+      }
 
-		return {
-			accessToken: data.access_token as string,
-			refreshToken: data.refresh_token as string | undefined,
-			tokenType: data.token_type as string | undefined,
-			scope: data.scope as string | undefined,
-		};
-	}
+      const newCredentials = {
+        accessToken: data.access_token,
+        refreshToken:
+          typeof data.refresh_token === 'string'
+            ? data.refresh_token
+            : credentials.refreshToken,
+        tokenType:
+          typeof data.token_type === 'string' ? data.token_type : 'bearer',
+      };
 
-	private parseSlackTokenResponse(data: Record<string, unknown>): OAuthTokens {
-		if (!data.ok) {
-			throw new BadRequestException(`Slack OAuth error: ${data.error}`);
-		}
+      const expiresIn = data.expires_in as number | undefined;
 
-		// Slack returns tokens in authed_user for user tokens
-		const authedUser = data.authed_user as Record<string, unknown> | undefined;
-		const accessToken = (authedUser?.access_token ||
-			data.access_token) as string;
+      return this.prisma.connection.update({
+        where: { id: connectionId },
+        data: {
+          credentialsEnc: this.credentialsService.encrypt(newCredentials),
+          tokenExpiresAt: expiresIn
+            ? new Date(Date.now() + expiresIn * 1000)
+            : null,
+          status: 'ACTIVE',
+          lastRefreshedAt: new Date(),
+          lastErrorMessage: null,
+          lastErrorAt: null,
+          consecutiveErrors: 0,
+        },
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Token refresh failed';
+      this.logger.error(
+        `Failed to refresh token for ${connectionId}: ${errorMessage}`,
+      );
 
-		return {
-			accessToken,
-			refreshToken: data.refresh_token as string | undefined,
-			tokenType: "Bearer",
-			scope: (authedUser?.scope || data.scope) as string | undefined,
-		};
-	}
+      await this.prisma.connection.update({
+        where: { id: connectionId },
+        data: {
+          status: 'REFRESH_FAILED',
+          lastErrorMessage: errorMessage,
+          lastErrorAt: new Date(),
+          consecutiveErrors: connection.consecutiveErrors + 1,
+        },
+      });
 
-	private parseStandardTokenResponse(
-		data: Record<string, unknown>,
-	): OAuthTokens {
-		const expiresIn = data.expires_in as number | undefined;
-		const expiresAt = expiresIn
-			? new Date(Date.now() + expiresIn * 1000).toISOString()
-			: undefined;
-
-		return {
-			accessToken: data.access_token as string,
-			refreshToken: data.refresh_token as string | undefined,
-			expiresAt,
-			tokenType: data.token_type as string | undefined,
-			scope: data.scope as string | undefined,
-		};
-	}
-
-	/**
-	 * Create or update an integration connection with OAuth tokens.
-	 */
-	private async createOrUpdateConnection(
-		definitionId: string,
-		name: string,
-		tokens: OAuthTokens,
-	): Promise<IntegrationConnection> {
-		const encryptedCredentials = this.credentialsService.encrypt(tokens);
-
-		// Check if connection already exists
-		const existing = await this.prisma.integrationConnection.findFirst({
-			where: { definitionId, name },
-		});
-
-		if (existing) {
-			return this.prisma.integrationConnection.update({
-				where: { id: existing.id },
-				data: {
-					credentials: encryptedCredentials,
-					authMethod: "oauth2",
-					status: "connected",
-					lastHealthCheck: new Date(),
-					lastError: null,
-				},
-			});
-		}
-
-		return this.prisma.integrationConnection.create({
-			data: {
-				definitionId,
-				name,
-				authMethod: "oauth2",
-				credentials: encryptedCredentials,
-				status: "connected",
-				isGlobal: true,
-				lastHealthCheck: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Refresh an expired OAuth token.
-	 */
-	async refreshToken(
-		connectionId: string,
-	): Promise<IntegrationConnection | null> {
-		const connection = await this.prisma.integrationConnection.findUnique({
-			where: { id: connectionId },
-			include: { definition: true },
-		});
-
-		if (!connection || connection.authMethod !== "oauth2") {
-			return null;
-		}
-
-		const credentials = this.credentialsService.decrypt<OAuthTokens>(
-			connection.credentials,
-		);
-		if (!credentials.refreshToken) {
-			this.logger.warn(
-				`No refresh token available for connection ${connectionId}`,
-			);
-			return null;
-		}
-
-		const oauthConfig = await this.getOAuthConfig(connection.definition.name);
-		if (!oauthConfig) {
-			return null;
-		}
-
-		try {
-			const body = new URLSearchParams({
-				client_id: oauthConfig.clientId,
-				client_secret: oauthConfig.clientSecret,
-				refresh_token: credentials.refreshToken,
-				grant_type: "refresh_token",
-			});
-
-			const response = await fetch(oauthConfig.tokenUrl, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-					Accept: "application/json",
-				},
-				body: body.toString(),
-			});
-
-			if (!response.ok) {
-				throw new Error(`Token refresh failed: ${response.status}`);
-			}
-
-			const data = await response.json();
-			const newTokens = this.parseStandardTokenResponse(data);
-
-			// Preserve refresh token if new one not provided
-			if (!newTokens.refreshToken && credentials.refreshToken) {
-				newTokens.refreshToken = credentials.refreshToken;
-			}
-
-			const encryptedCredentials = this.credentialsService.encrypt(newTokens);
-
-			return this.prisma.integrationConnection.update({
-				where: { id: connectionId },
-				data: {
-					credentials: encryptedCredentials,
-					status: "connected",
-					lastHealthCheck: new Date(),
-					lastError: null,
-				},
-			});
-		} catch (error) {
-			const errorMessage =
-				error instanceof Error ? error.message : "Token refresh failed";
-			this.logger.error(
-				`Failed to refresh token for ${connectionId}: ${errorMessage}`,
-			);
-
-			await this.prisma.integrationConnection.update({
-				where: { id: connectionId },
-				data: {
-					status: "error",
-					lastError: errorMessage,
-				},
-			});
-
-			return null;
-		}
-	}
-
-	private generateNonce(): string {
-		const array = new Uint8Array(16);
-		crypto.getRandomValues(array);
-		return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join(
-			"",
-		);
-	}
+      return null;
+    }
+  }
 }

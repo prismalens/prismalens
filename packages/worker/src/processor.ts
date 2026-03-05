@@ -24,7 +24,7 @@ import {
 } from "@prismalens/config";
 import { Logger, enrichContext } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
-import type { Job } from "bullmq";
+import type { SandboxedJob } from "bullmq";
 import crypto from "node:crypto";
 import { Redis } from "ioredis";
 import { config as workerConfig, redisUrl } from "./config.js";
@@ -342,8 +342,8 @@ async function fetchLlmConfig(): Promise<{
  * 3. Run investigation via InvestigationExecutor
  * 4. Submit results to API
  */
-export async function processInvestigationJob(
-	job: Job<InvestigationJobData>,
+export default async function processInvestigationJob(
+	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
 ): Promise<InvestigationResult> {
 	const { data } = job;
 
@@ -366,7 +366,7 @@ export async function processInvestigationJob(
  * Internal job processing logic.
  */
 async function processJobInternal(
-	job: Job<InvestigationJobData>,
+	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
 	data: InvestigationJobData,
 ): Promise<InvestigationResult> {
 	logger.info(`Processing job ${job.id} for investigation ${data.investigationId}`);
@@ -669,12 +669,19 @@ function buildResult(
 }
 
 /**
- * Graceful shutdown - close executor and Redis publisher connections
+ * Graceful shutdown - close executor and Redis publisher connections.
+ * In sandboxed mode, each child process manages its own cleanup.
  */
-export async function closeProcessor(): Promise<void> {
+async function closeProcessor(): Promise<void> {
 	if (_executorPromise) {
 		const executor = await _executorPromise;
 		await executor.close();
 	}
 	await redisPublisher.quit();
 }
+
+// Cleanup connections when the child process is terminated by the parent worker
+process.on("SIGTERM", async () => {
+	await closeProcessor();
+	process.exit(0);
+});

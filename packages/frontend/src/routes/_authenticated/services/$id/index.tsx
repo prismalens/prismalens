@@ -93,7 +93,7 @@ function ServiceDetailPage() {
 	const { data: integrations = [], isLoading: isLoadingIntegrations } = useServiceIntegrations(id);
 
 	// Git provider data for override dialog (only fetch when dialog is open for github integration)
-	const isGitHubIntegration = selectedIntegration?.definitionName === "github";
+	const isGitHubIntegration = selectedIntegration?.templateId?.startsWith("github") ?? false;
 	const { data: organizations = [], isLoading: isLoadingOrgs } = useGitOrganizations(
 		isGitHubIntegration && selectedIntegration ? selectedIntegration.connectionId : "",
 	);
@@ -132,7 +132,14 @@ function ServiceDetailPage() {
 
 	// Handle delete override
 	const handleDeleteOverride = (overrideId: string) => {
-		deleteOverride.mutate({ id: overrideId });
+		deleteOverride.mutate(
+			{ id: overrideId },
+			{
+				onError: (err) => {
+					console.error("Failed to delete override:", err);
+				},
+			},
+		);
 	};
 
 	// Handle save override

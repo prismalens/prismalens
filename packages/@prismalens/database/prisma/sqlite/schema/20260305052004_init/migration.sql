@@ -268,58 +268,6 @@ CREATE TABLE "settings" (
 );
 
 -- CreateTable
-CREATE TABLE "integration_definitions" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "name" TEXT NOT NULL,
-    "displayName" TEXT NOT NULL,
-    "description" TEXT,
-    "category" TEXT NOT NULL,
-    "authType" TEXT NOT NULL,
-    "configSchema" TEXT,
-    "credentialSchema" TEXT,
-    "oauthConfig" TEXT,
-    "iconUrl" TEXT,
-    "docsUrl" TEXT,
-    "specUrl" TEXT,
-    "maxConnectionsCE" INTEGER,
-    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
-);
-
--- CreateTable
-CREATE TABLE "integration_connections" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "definitionId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "description" TEXT,
-    "isGlobal" BOOLEAN NOT NULL DEFAULT true,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "lastHealthCheck" DATETIME,
-    "lastError" TEXT,
-    "authMethod" TEXT NOT NULL,
-    "credentials" TEXT NOT NULL,
-    "config" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "integration_connections_definitionId_fkey" FOREIGN KEY ("definitionId") REFERENCES "integration_definitions" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "service_integrations" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "serviceId" TEXT NOT NULL,
-    "connectionId" TEXT NOT NULL,
-    "priority" INTEGER NOT NULL DEFAULT 0,
-    "config" TEXT,
-    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "service_integrations_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "service_integrations_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "integration_connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
 CREATE TABLE "alert_mapping_rules" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -331,22 +279,6 @@ CREATE TABLE "alert_mapping_rules" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "alert_mapping_rules_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "service_suggestions" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "connectionId" TEXT NOT NULL,
-    "suggestedName" TEXT NOT NULL,
-    "displayName" TEXT,
-    "repository" TEXT NOT NULL,
-    "isMonorepo" BOOLEAN NOT NULL DEFAULT false,
-    "subPath" TEXT,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "metadata" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "service_suggestions_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "integration_connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -463,6 +395,88 @@ CREATE TABLE "invitation" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "invitation_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "invitation_inviterId_fkey" FOREIGN KEY ("inviterId") REFERENCES "user" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "integrations" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "templateId" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "clientIdEnc" BLOB,
+    "clientSecretEnc" BLOB,
+    "scopes" TEXT NOT NULL DEFAULT '[]',
+    "callbackUrl" TEXT,
+    "enabled" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "connections" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "integrationId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "organizationId" TEXT,
+    "connectionConfigEnc" BLOB,
+    "credentialsEnc" BLOB NOT NULL,
+    "tokenExpiresAt" DATETIME,
+    "tokenType" TEXT,
+    "grantedScopes" TEXT NOT NULL DEFAULT '[]',
+    "metadataEnc" BLOB,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "lastUsedAt" DATETIME,
+    "lastRefreshedAt" DATETIME,
+    "lastErrorMessage" TEXT,
+    "lastErrorAt" DATETIME,
+    "consecutiveErrors" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "connections_integrationId_fkey" FOREIGN KEY ("integrationId") REFERENCES "integrations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "oauth_states" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "state" TEXT NOT NULL,
+    "integrationId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "organizationId" TEXT,
+    "callbackUrl" TEXT NOT NULL,
+    "connectionConfigEnc" BLOB,
+    "codeVerifier" TEXT,
+    "metadata" TEXT,
+    "expiresAt" DATETIME NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
+CREATE TABLE "service_integrations" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "serviceId" TEXT NOT NULL,
+    "connectionId" TEXT NOT NULL,
+    "priority" INTEGER NOT NULL DEFAULT 0,
+    "config" TEXT,
+    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "service_integrations_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "service_integrations_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "service_suggestions" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "connectionId" TEXT NOT NULL,
+    "suggestedName" TEXT NOT NULL,
+    "displayName" TEXT,
+    "repository" TEXT NOT NULL,
+    "isMonorepo" BOOLEAN NOT NULL DEFAULT false,
+    "subPath" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "metadata" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "service_suggestions_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndex
@@ -589,24 +603,6 @@ CREATE UNIQUE INDEX "correlation_rules_name_key" ON "correlation_rules"("name");
 CREATE UNIQUE INDEX "settings_key_key" ON "settings"("key");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "integration_definitions_name_key" ON "integration_definitions"("name");
-
--- CreateIndex
-CREATE INDEX "integration_connections_status_idx" ON "integration_connections"("status");
-
--- CreateIndex
-CREATE UNIQUE INDEX "integration_connections_definitionId_name_key" ON "integration_connections"("definitionId", "name");
-
--- CreateIndex
-CREATE INDEX "service_integrations_serviceId_idx" ON "service_integrations"("serviceId");
-
--- CreateIndex
-CREATE INDEX "service_integrations_connectionId_idx" ON "service_integrations"("connectionId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "service_integrations_serviceId_connectionId_key" ON "service_integrations"("serviceId", "connectionId");
-
--- CreateIndex
 CREATE INDEX "alert_mapping_rules_priority_idx" ON "alert_mapping_rules"("priority");
 
 -- CreateIndex
@@ -614,15 +610,6 @@ CREATE INDEX "alert_mapping_rules_enabled_idx" ON "alert_mapping_rules"("enabled
 
 -- CreateIndex
 CREATE INDEX "alert_mapping_rules_serviceId_idx" ON "alert_mapping_rules"("serviceId");
-
--- CreateIndex
-CREATE INDEX "service_suggestions_status_idx" ON "service_suggestions"("status");
-
--- CreateIndex
-CREATE INDEX "service_suggestions_connectionId_idx" ON "service_suggestions"("connectionId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "service_suggestions_connectionId_repository_subPath_key" ON "service_suggestions"("connectionId", "repository", "subPath");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "license_info_licenseKey_key" ON "license_info"("licenseKey");
@@ -653,3 +640,45 @@ CREATE INDEX "invitation_organizationId_idx" ON "invitation"("organizationId");
 
 -- CreateIndex
 CREATE INDEX "invitation_email_idx" ON "invitation"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "integrations_templateId_label_key" ON "integrations"("templateId", "label");
+
+-- CreateIndex
+CREATE INDEX "connections_userId_idx" ON "connections"("userId");
+
+-- CreateIndex
+CREATE INDEX "connections_status_idx" ON "connections"("status");
+
+-- CreateIndex
+CREATE INDEX "connections_tokenExpiresAt_idx" ON "connections"("tokenExpiresAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "connections_integrationId_userId_key" ON "connections"("integrationId", "userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "oauth_states_state_key" ON "oauth_states"("state");
+
+-- CreateIndex
+CREATE INDEX "oauth_states_state_idx" ON "oauth_states"("state");
+
+-- CreateIndex
+CREATE INDEX "oauth_states_expiresAt_idx" ON "oauth_states"("expiresAt");
+
+-- CreateIndex
+CREATE INDEX "service_integrations_serviceId_idx" ON "service_integrations"("serviceId");
+
+-- CreateIndex
+CREATE INDEX "service_integrations_connectionId_idx" ON "service_integrations"("connectionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "service_integrations_serviceId_connectionId_key" ON "service_integrations"("serviceId", "connectionId");
+
+-- CreateIndex
+CREATE INDEX "service_suggestions_status_idx" ON "service_suggestions"("status");
+
+-- CreateIndex
+CREATE INDEX "service_suggestions_connectionId_idx" ON "service_suggestions"("connectionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "service_suggestions_connectionId_repository_subPath_key" ON "service_suggestions"("connectionId", "repository", "subPath");

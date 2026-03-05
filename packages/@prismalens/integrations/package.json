@@ -1,0 +1,42 @@
+{
+	"name": "@prismalens/integrations",
+	"version": "0.1.0",
+	"description": "Integration management: templates, OAuth2 flows, and credential encryption for PrismaLens",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./templates": {
+			"types": "./dist/templates/index.d.ts",
+			"import": "./dist/templates/index.js"
+		},
+		"./engine": {
+			"types": "./dist/engine/index.d.ts",
+			"import": "./dist/engine/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"zod": "^3.23.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.0",
+		"typescript": "^5.7.0"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"files": [
+		"dist",
+		"src"
+	]
+}

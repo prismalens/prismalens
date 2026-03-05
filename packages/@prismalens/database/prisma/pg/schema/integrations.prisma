@@ -1,0 +1,173 @@
+// =============================================================================
+// PRISMALENS INTEGRATIONS SCHEMA - PostgreSQL
+// =============================================================================
+// Three-layer integration architecture:
+//   Integration (OAuth client creds) → Connection (user tokens) → ServiceIntegration (per-service mapping)
+// Templates are in TypeScript code (@prismalens/integrations), not DB rows.
+// =============================================================================
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+/// Connection health status
+enum ConnectionStatus {
+  ACTIVE               // Connection working normally
+  TOKEN_EXPIRED        // OAuth token expired, needs refresh
+  REFRESH_FAILED       // Token refresh attempted but failed
+  CREDENTIALS_INVALID  // Credentials rejected by provider
+  REVOKED              // Access revoked at provider
+  ERROR                // Generic error
+}
+
+/// Service suggestion status (for auto-discovered services)
+enum SuggestionStatus {
+  pending   // Awaiting user decision
+  accepted  // User accepted the suggestion
+  rejected  // User rejected the suggestion
+  ignored   // User chose to ignore
+}
+
+// =============================================================================
+// INTEGRATION - OAuth app credentials (admin-configured)
+// =============================================================================
+
+/// Integration represents an admin-configured provider instance.
+/// For OAuth providers: stores encrypted clientId/clientSecret.
+/// For API key providers: just a label and templateId reference.
+model Integration {
+  id              String       @id @default(uuid())
+  templateId      String       // References AuthTemplate.id from @prismalens/integrations
+  label           String       // User-friendly name, e.g., "Production GitHub"
+  clientIdEnc     Bytes?       // Encrypted OAuth client ID (null for api_key/basic)
+  clientSecretEnc Bytes?       // Encrypted OAuth client secret (null for api_key/basic)
+  scopes          String[]     // OAuth scopes (empty for api_key/basic)
+  callbackUrl     String?      // OAuth callback URL
+  enabled         Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  connections Connection[]
+
+  @@unique([templateId, label])
+  @@map("integrations")
+}
+
+// =============================================================================
+// CONNECTION - User tokens / API keys
+// =============================================================================
+
+/// Connection stores a user's encrypted credentials for an integration.
+/// Shape of credentialsEnc depends on auth mode:
+///   api_key: { apiKey, ... }
+///   basic:   { username, password } or { email, apiToken }
+///   oauth2:  { accessToken, refreshToken, tokenType }
+model Connection {
+  id                  String           @id @default(uuid())
+  integrationId       String
+  userId              String           // User who created this connection
+  organizationId      String?          // For future multi-tenancy
+  connectionConfigEnc Bytes?           // Encrypted connection-specific config (e.g., baseUrl, site)
+  credentialsEnc      Bytes            // Encrypted credentials JSON
+  tokenExpiresAt      DateTime?        // OAuth token expiry
+  tokenType           String?          // "bearer", "bot", etc.
+  grantedScopes       String[]         // Actual scopes granted by provider
+  metadataEnc         Bytes?           // Encrypted provider metadata (e.g., team_id, instance_url)
+  status              ConnectionStatus @default(ACTIVE)
+  lastUsedAt          DateTime?
+  lastRefreshedAt     DateTime?
+  lastErrorMessage    String?
+  lastErrorAt         DateTime?
+  consecutiveErrors   Int              @default(0)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  // Relations
+  integration        Integration          @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  serviceMappings    ServiceIntegration[]
+  serviceSuggestions ServiceSuggestion[]
+
+  @@unique([integrationId, userId])
+  @@index([userId])
+  @@index([status])
+  @@index([tokenExpiresAt])
+  @@map("connections")
+}
+
+// =============================================================================
+// OAUTH STATE - CSRF protection for OAuth flows
+// =============================================================================
+
+/// Temporary OAuth state for CSRF protection during authorization flow.
+/// Created at flow start, consumed at callback, auto-expires after 10 minutes.
+model OAuthState {
+  id                  String    @id @default(uuid())
+  state               String    @unique  // Random hex token
+  integrationId       String
+  userId              String
+  organizationId      String?
+  callbackUrl         String
+  connectionConfigEnc Bytes?    // Encrypted connection config to restore after callback
+  codeVerifier        String?   // PKCE code_verifier
+  metadata            Json?     // Additional state data
+  expiresAt           DateTime
+  createdAt           DateTime  @default(now())
+
+  @@index([state])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+// =============================================================================
+// SERVICE INTEGRATION - Per-service overrides
+// =============================================================================
+
+/// Service-to-connection mapping with optional per-service config overrides.
+/// Allows configuring specific repos, channels, etc. per service.
+model ServiceIntegration {
+  id           String   @id @default(uuid())
+  serviceId    String
+  connectionId String
+  priority     Int      @default(0)  // Higher priority connections used first
+  config       String?  // Service-specific overrides JSON: { repo, channel, etc. }
+  isEnabled    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  service    Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, connectionId])
+  @@index([serviceId])
+  @@index([connectionId])
+  @@map("service_integrations")
+}
+
+// =============================================================================
+// SERVICE SUGGESTION - Auto-discovered services
+// =============================================================================
+
+/// Service suggestion from auto-discovery.
+/// Pending service discoveries awaiting user confirmation.
+model ServiceSuggestion {
+  id            String           @id @default(uuid())
+  connectionId  String           // Which Connection discovered this
+  suggestedName String
+  displayName   String?
+  repository    String           // "owner/repo"
+  isMonorepo    Boolean          @default(false)
+  subPath       String?          // For monorepo: "packages/api"
+  status        SuggestionStatus @default(pending)
+  metadata      String?          // JSON with additional discovery info
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, repository, subPath])
+  @@index([status])
+  @@index([connectionId])
+  @@map("service_suggestions")
+}

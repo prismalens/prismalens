@@ -1,304 +1,286 @@
 import {
-	BadRequestException,
-	Injectable,
-	Logger,
-	NotFoundException,
-} from "@nestjs/common";
-import {
-	IntegrationConnection,
-	Service,
-	ServiceSuggestion,
-} from "@prismalens/database";
-import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { AcceptBulkSuggestionsDto, AcceptSuggestionDto } from "./dto/index.js";
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import type {
+  Connection,
+  Service,
+  ServiceSuggestion,
+} from '@prismalens/database';
+import { getTemplate } from '@prismalens/integrations';
+import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { CredentialsService } from '../integrations/crypto/credentials.service.js';
+import type {
+  AcceptBulkSuggestionsDto,
+  AcceptSuggestionDto,
+} from './dto/index.js';
 
 export interface DiscoveredService {
-	name: string;
-	path: string;
-	isMonorepo?: boolean;
+  name: string;
+  path: string;
+  isMonorepo?: boolean;
 }
 
 @Injectable()
 export class ServiceDiscoveryService {
-	private readonly logger = new Logger(ServiceDiscoveryService.name);
+  private readonly logger = new Logger(ServiceDiscoveryService.name);
 
-	constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly credentialsService: CredentialsService,
+  ) {}
 
-	// =========================================================================
-	// DISCOVERY TRIGGER
-	// =========================================================================
+  // =========================================================================
+  // DISCOVERY TRIGGER
+  // =========================================================================
 
-	/**
-	 * Trigger service discovery for a given integration connection.
-	 * This will analyze repositories and create ServiceSuggestion records.
-	 */
-	async discoverFromConnection(
-		connectionId: string,
-	): Promise<ServiceSuggestion[]> {
-		const connection = await this.prisma.integrationConnection.findUnique({
-			where: { id: connectionId },
-			include: { definition: true },
-		});
+  async discoverFromConnection(
+    connectionId: string,
+  ): Promise<ServiceSuggestion[]> {
+    const connection = await this.prisma.connection.findUnique({
+      where: { id: connectionId },
+      include: { integration: true },
+    });
 
-		if (!connection) {
-			throw new NotFoundException("Integration connection not found");
-		}
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
 
-		// Only code_source integrations support discovery
-		if (connection.definition.category !== "code_source") {
-			throw new BadRequestException(
-				`Integration "${connection.definition.name}" does not support service discovery`,
-			);
-		}
+    const template = getTemplate(connection.integration.templateId);
+    if (!template || template.category !== 'vcs') {
+      throw new BadRequestException(
+        'This connection does not support service discovery',
+      );
+    }
 
-		// Route to provider-specific discovery
-		if (connection.definition.name === "github") {
-			return this.discoverFromGitHub(connection);
-		}
+    const providerName = connection.integration.templateId.replace(
+      /-oauth2$|-token$/,
+      '',
+    );
 
-		// Future: gitlab, bitbucket, etc.
-		throw new BadRequestException(
-			`Service discovery not yet implemented for "${connection.definition.name}"`,
-		);
-	}
+    if (providerName === 'github') {
+      return this.discoverFromGitHub(connection);
+    }
 
-	/**
-	 * Discover services from GitHub repositories.
-	 * This is a stub - in production would call GitHub API.
-	 */
-	async discoverFromGitHub(
-		connection: IntegrationConnection,
-	): Promise<ServiceSuggestion[]> {
-		this.logger.log(
-			`Discovering services from GitHub connection: ${connection.name}`,
-		);
+    throw new BadRequestException(
+      `Service discovery not yet implemented for "${providerName}"`,
+    );
+  }
 
-		// Parse config to get repositories
-		const config = connection.config ? JSON.parse(connection.config) : {};
-		const repositories = (config.repositories || []) as string[];
+  async discoverFromGitHub(
+    connection: Connection,
+  ): Promise<ServiceSuggestion[]> {
+    this.logger.log(
+      `Discovering services from GitHub connection: ${connection.id}`,
+    );
 
-		if (repositories.length === 0) {
-			this.logger.warn("No repositories configured for GitHub connection");
-			return [];
-		}
+    const config = connection.connectionConfigEnc
+      ? this.credentialsService.decrypt<Record<string, unknown>>(
+          Buffer.from(connection.connectionConfigEnc),
+        )
+      : {};
+    const repositories = (config.repositories || []) as string[];
 
-		const suggestions: ServiceSuggestion[] = [];
+    if (repositories.length === 0) {
+      this.logger.warn('No repositories configured for GitHub connection');
+      return [];
+    }
 
-		for (const repo of repositories) {
-			try {
-				// Analyze repo structure (stub - in production would call GitHub API)
-				const { isMonorepo, services } = await this.analyzeRepoStructure(
-					repo,
-					connection,
-				);
+    const suggestions: ServiceSuggestion[] = [];
 
-				for (const service of services) {
-					// Determine subPath value (null for root, string for subdirectories)
-					const subPath: string | null =
-						service.path === "." ? null : service.path;
+    for (const repo of repositories) {
+      try {
+        const { isMonorepo, services } = await this.analyzeRepoStructure(
+          repo,
+          connection,
+        );
 
-					// Check if suggestion already exists using findFirst to handle nullable subPath
-					const existing = await this.prisma.serviceSuggestion.findFirst({
-						where: {
-							connectionId: connection.id,
-							repository: repo,
-							subPath: subPath,
-						},
-					});
+        for (const service of services) {
+          const subPath: string | null =
+            service.path === '.' ? null : service.path;
 
-					if (
-						existing &&
-						existing.status !== "rejected" &&
-						existing.status !== "ignored"
-					) {
-						// Update existing suggestion
-						const updated = await this.prisma.serviceSuggestion.update({
-							where: { id: existing.id },
-							data: { updatedAt: new Date() },
-						});
-						suggestions.push(updated);
-					} else {
-						// Create new suggestion
-						const createData: any = {
-							connectionId: connection.id,
-							suggestedName: service.name,
-							displayName: service.name.replace(/-/g, " "),
-							repository: repo,
-							isMonorepo,
-							status: "pending",
-							metadata: JSON.stringify({
-								discoveryMethod: "github",
-								discoveredAt: new Date().toISOString(),
-							}),
-						};
+          const existing = await this.prisma.serviceSuggestion.findFirst({
+            where: {
+              connectionId: connection.id,
+              repository: repo,
+              subPath,
+            },
+          });
 
-						// Include subPath (can be null)
-						if (subPath !== null) {
-							createData.subPath = subPath;
-						}
+          if (
+            existing &&
+            existing.status !== 'rejected' &&
+            existing.status !== 'ignored'
+          ) {
+            const updated = await this.prisma.serviceSuggestion.update({
+              where: { id: existing.id },
+              data: { updatedAt: new Date() },
+            });
+            suggestions.push(updated);
+          } else {
+            const createData: Record<string, unknown> = {
+              connectionId: connection.id,
+              suggestedName: service.name,
+              displayName: service.name.replace(/-/g, ' '),
+              repository: repo,
+              isMonorepo,
+              status: 'pending',
+              metadata: JSON.stringify({
+                discoveryMethod: 'github',
+                discoveredAt: new Date().toISOString(),
+              }),
+            };
 
-						const suggestion = await this.prisma.serviceSuggestion.create({
-							data: createData,
-						});
-						suggestions.push(suggestion);
-					}
-				}
-			} catch (error) {
-				this.logger.error(`Error discovering services from ${repo}:`, error);
-			}
-		}
+            if (subPath !== null) {
+              createData.subPath = subPath;
+            }
 
-		return suggestions;
-	}
+            const suggestion = await this.prisma.serviceSuggestion.create({
+              data: createData as Parameters<
+                typeof this.prisma.serviceSuggestion.create
+              >[0]['data'],
+            });
+            suggestions.push(suggestion);
+          }
+        }
+      } catch (error) {
+        this.logger.error(`Error discovering services from ${repo}:`, error);
+      }
+    }
 
-	/**
-	 * Analyze repository structure to detect services.
-	 * Returns monorepo status and list of services found.
-	 * This is a stub - in production would call GitHub API.
-	 */
-	async analyzeRepoStructure(
-		repo: string,
-		connection: IntegrationConnection,
-	): Promise<{
-		isMonorepo: boolean;
-		services: DiscoveredService[];
-	}> {
-		this.logger.log(`Analyzing repo structure: ${repo}`);
+    return suggestions;
+  }
 
-		// Stub: Just return the repo as a single service
-		// In production, would:
-		// 1. Check for monorepo indicators (package.json workspaces, lerna.json, etc.)
-		// 2. Call GitHub API to list tree structure
-		// 3. Detect service boundaries (package.json, Dockerfile, etc.)
+  // TODO: Implement actual repo analysis (currently returns a stub)
+  async analyzeRepoStructure(
+    repo: string,
+    _connection: Connection,
+  ): Promise<{
+    isMonorepo: boolean;
+    services: DiscoveredService[];
+  }> {
+    this.logger.warn(
+      `analyzeRepoStructure is a stub — returning single-service default for: ${repo}`,
+    );
 
-		return {
-			isMonorepo: false,
-			services: [
-				{
-					name: repo.split("/")[1] || repo, // Use repo name as service name
-					path: ".",
-				},
-			],
-		};
-	}
+    return {
+      isMonorepo: false,
+      services: [
+        {
+          name: repo.split('/')[1] || repo,
+          path: '.',
+        },
+      ],
+    };
+  }
 
-	// =========================================================================
-	// SUGGESTION MANAGEMENT
-	// =========================================================================
+  // =========================================================================
+  // SUGGESTION MANAGEMENT
+  // =========================================================================
 
-	/**
-	 * Get all pending service suggestions.
-	 */
-	async getPendingSuggestions(): Promise<ServiceSuggestion[]> {
-		return this.prisma.serviceSuggestion.findMany({
-			where: { status: "pending" },
-			orderBy: { createdAt: "desc" },
-		});
-	}
+  async getPendingSuggestions(): Promise<ServiceSuggestion[]> {
+    return this.prisma.serviceSuggestion.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
-	/**
-	 * Accept a service suggestion and create a Service.
-	 */
-	async acceptSuggestion(
-		suggestionId: string,
-		overrides?: AcceptSuggestionDto,
-	): Promise<Service> {
-		const suggestion = await this.prisma.serviceSuggestion.findUnique({
-			where: { id: suggestionId },
-		});
+  async acceptSuggestion(
+    suggestionId: string,
+    overrides?: AcceptSuggestionDto,
+  ): Promise<Service> {
+    const suggestion = await this.prisma.serviceSuggestion.findUnique({
+      where: { id: suggestionId },
+    });
 
-		if (!suggestion) {
-			throw new NotFoundException("Service suggestion not found");
-		}
+    if (!suggestion) {
+      throw new NotFoundException('Service suggestion not found');
+    }
 
-		if (suggestion.status !== "pending") {
-			throw new BadRequestException(
-				`Cannot accept suggestion with status: ${suggestion.status}`,
-			);
-		}
+    if (suggestion.status !== 'pending') {
+      throw new BadRequestException(
+        `Cannot accept suggestion with status: ${suggestion.status}`,
+      );
+    }
 
-		// Create the service
-		const serviceName = overrides?.name || suggestion.suggestedName;
+    const serviceName = overrides?.name || suggestion.suggestedName;
 
-		const service = await this.prisma.service.create({
-			data: {
-				name: serviceName,
-				displayName:
-					overrides?.displayName || suggestion.displayName || serviceName,
-				description: overrides?.description,
-				type: overrides?.type || "service",
-				team: overrides?.team,
-				discoverySource: "github",
-				discoveryMetadata: JSON.stringify({
-					repository: suggestion.repository,
-					subPath: suggestion.subPath,
-					isMonorepo: suggestion.isMonorepo,
-				}),
-				isDiscovered: true,
-				isConfirmed: true,
-			},
-		});
+    // Atomic: create service + mark suggestion accepted in one transaction
+    const [service] = await this.prisma.$transaction([
+      this.prisma.service.create({
+        data: {
+          name: serviceName,
+          displayName:
+            overrides?.displayName || suggestion.displayName || serviceName,
+          description: overrides?.description,
+          type: overrides?.type || 'service',
+          team: overrides?.team,
+          discoverySource: 'github',
+          discoveryMetadata: JSON.stringify({
+            repository: suggestion.repository,
+            subPath: suggestion.subPath,
+            isMonorepo: suggestion.isMonorepo,
+          }),
+          isDiscovered: true,
+          isConfirmed: true,
+        },
+      }),
+      this.prisma.serviceSuggestion.update({
+        where: { id: suggestionId },
+        data: { status: 'accepted' },
+      }),
+    ]);
 
-		// Mark suggestion as accepted
-		await this.prisma.serviceSuggestion.update({
-			where: { id: suggestionId },
-			data: { status: "accepted" },
-		});
+    this.logger.log(
+      `Accepted service suggestion: ${serviceName} (${service.id})`,
+    );
 
-		this.logger.log(
-			`Accepted service suggestion: ${serviceName} (${service.id})`,
-		);
+    return service;
+  }
 
-		return service;
-	}
+  async rejectSuggestion(suggestionId: string): Promise<void> {
+    const suggestion = await this.prisma.serviceSuggestion.findUnique({
+      where: { id: suggestionId },
+    });
 
-	/**
-	 * Reject a service suggestion.
-	 */
-	async rejectSuggestion(suggestionId: string): Promise<void> {
-		const suggestion = await this.prisma.serviceSuggestion.findUnique({
-			where: { id: suggestionId },
-		});
+    if (!suggestion) {
+      throw new NotFoundException('Service suggestion not found');
+    }
 
-		if (!suggestion) {
-			throw new NotFoundException("Service suggestion not found");
-		}
+    if (suggestion.status !== 'pending') {
+      throw new BadRequestException(
+        `Cannot reject suggestion with status: ${suggestion.status}`,
+      );
+    }
 
-		if (suggestion.status !== "pending") {
-			throw new BadRequestException(
-				`Cannot reject suggestion with status: ${suggestion.status}`,
-			);
-		}
+    await this.prisma.serviceSuggestion.update({
+      where: { id: suggestionId },
+      data: { status: 'rejected' },
+    });
 
-		await this.prisma.serviceSuggestion.update({
-			where: { id: suggestionId },
-			data: { status: "rejected" },
-		});
+    this.logger.log(`Rejected service suggestion: ${suggestionId}`);
+  }
 
-		this.logger.log(`Rejected service suggestion: ${suggestionId}`);
-	}
+  async acceptMultiple(
+    suggestionIds: string[],
+    overrides?: AcceptBulkSuggestionsDto['overrides'],
+  ): Promise<Service[]> {
+    const services: Service[] = [];
 
-	/**
-	 * Accept multiple service suggestions at once.
-	 */
-	async acceptMultiple(
-		suggestionIds: string[],
-		overrides?: AcceptBulkSuggestionsDto["overrides"],
-	): Promise<Service[]> {
-		const services: Service[] = [];
+    for (const suggestionId of suggestionIds) {
+      try {
+        const service = await this.acceptSuggestion(suggestionId, {
+          type: overrides?.type,
+          team: overrides?.team,
+        });
+        services.push(service);
+      } catch (error) {
+        this.logger.error(`Error accepting suggestion ${suggestionId}:`, error);
+      }
+    }
 
-		for (const suggestionId of suggestionIds) {
-			try {
-				const service = await this.acceptSuggestion(suggestionId, {
-					type: overrides?.type,
-					team: overrides?.team,
-				});
-				services.push(service);
-			} catch (error) {
-				this.logger.error(`Error accepting suggestion ${suggestionId}:`, error);
-			}
-		}
-
-		return services;
-	}
+    return services;
+  }
 }

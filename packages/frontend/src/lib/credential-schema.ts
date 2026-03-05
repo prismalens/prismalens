@@ -1,58 +1,30 @@
 /**
  * Credential schema types and validation.
  *
- * Parses JSON Schema from IntegrationDefinition.credentialSchema
- * into typed form field descriptors for DynamicCredentialForm.
+ * Uses TemplateField[] from @prismalens/integrations templates.
  */
 
-export interface CredentialSchemaProperty {
-  type: string
-  title?: string
-  format?: string
-  placeholder?: string
-  description?: string
-}
+import type { TemplateField } from "@prismalens/contracts/schemas";
 
-export interface CredentialSchema {
-  type: "object"
-  required?: string[]
-  properties?: Record<string, CredentialSchemaProperty>
-}
+// =============================================================================
+// TEMPLATE FIELD VALIDATION
+// =============================================================================
 
 /**
- * Parse a credentialSchema string from the API into a typed object.
- * Returns null if the schema is missing or invalid.
- */
-export function parseCredentialSchema(
-  raw: string | null | undefined,
-): CredentialSchema | null {
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as CredentialSchema
-    if (parsed.type !== "object" || !parsed.properties) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-/**
- * Validate credential values against a schema.
+ * Validate credential values against TemplateField[].
  * Returns a map of field name → error message, or empty object if valid.
  */
-export function validateCredentials(
-  schema: CredentialSchema,
-  values: Record<string, string>,
+export function validateFieldValues(
+	fields: TemplateField[],
+	values: Record<string, string>,
 ): Record<string, string> {
-  const errors: Record<string, string> = {}
-  const required = new Set(schema.required ?? [])
+	const errors: Record<string, string> = {};
 
-  for (const key of Object.keys(schema.properties ?? {})) {
-    if (required.has(key) && !values[key]?.trim()) {
-      const title = schema.properties?.[key]?.title ?? key
-      errors[key] = `${title} is required`
-    }
-  }
+	for (const field of fields) {
+		if (field.required !== false && !values[field.name]?.trim()) {
+			errors[field.name] = `${field.label} is required`;
+		}
+	}
 
-  return errors
+	return errors;
 }
