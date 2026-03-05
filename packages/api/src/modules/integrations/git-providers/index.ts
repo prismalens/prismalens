@@ -5,21 +5,21 @@
  * Add new providers here as they are implemented.
  */
 
-export * from "./git-provider.interface.js";
-export * from "./github.provider.js";
+export * from './git-provider.interface.js';
+export * from './github.provider.js';
 
-import type { GitProvider } from "./git-provider.interface.js";
-import { GitHubProvider } from "./github.provider.js";
+import type { GitProvider } from './git-provider.interface.js';
+import { GitHubProvider } from './github.provider.js';
 
 /**
  * Map of provider names to their implementations.
  * Add new providers here as they are implemented.
  */
 const providers: Record<string, new () => GitProvider> = {
-	github: GitHubProvider,
-	// Future providers:
-	// gitlab: GitLabProvider,
-	// bitbucket: BitBucketProvider,
+  github: GitHubProvider,
+  // Future providers:
+  // gitlab: GitLabProvider,
+  // bitbucket: BitBucketProvider,
 };
 
 /**
@@ -30,11 +30,11 @@ const providers: Record<string, new () => GitProvider> = {
  * @returns GitProvider instance or null
  */
 export function createGitProvider(providerName: string): GitProvider | null {
-	const ProviderClass = providers[providerName.toLowerCase()];
-	if (!ProviderClass) {
-		return null;
-	}
-	return new ProviderClass();
+  const ProviderClass = providers[providerName.toLowerCase()];
+  if (!ProviderClass) {
+    return null;
+  }
+  return new ProviderClass();
 }
 
 /**
@@ -44,7 +44,7 @@ export function createGitProvider(providerName: string): GitProvider | null {
  * @returns true if the provider is supported
  */
 export function isGitProviderSupported(providerName: string): boolean {
-	return providerName.toLowerCase() in providers;
+  return providerName.toLowerCase() in providers;
 }
 
 /**
@@ -52,6 +52,9 @@ export function isGitProviderSupported(providerName: string): boolean {
  *
  * @returns Array of supported provider names
  */
-export function getSupportedGitProviders(): string[] {
-	return Object.keys(providers);
+function getSupportedGitProviders(): string[] {
+  return Object.keys(providers);
 }
+
+// Reserved for future use
+void getSupportedGitProviders;

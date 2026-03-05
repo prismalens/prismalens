@@ -61,7 +61,10 @@ function parseEnvInt(key: string, defaultValue: number): number {
 
 // ── Reset (for testing) ─────────────────────────────────────────────
 
-export function resetEnvConfig(): void {
+function resetEnvConfig(): void {
   _graphConfig = null
   _scoutConfig = null
 }
+
+// Reserved for testing use
+void resetEnvConfig;

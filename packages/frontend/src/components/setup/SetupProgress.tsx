@@ -3,22 +3,20 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type SetupStep = "account" | "ai" | "integration" | "complete";
+export type SetupStep = "account" | "complete";
 
-export interface StepConfig {
+interface StepConfig {
 	id: SetupStep;
 	title: string;
 	description: string;
 }
 
-export const SETUP_STEPS: StepConfig[] = [
+const SETUP_STEPS: StepConfig[] = [
 	{
 		id: "account",
 		title: "Create Account",
 		description: "Administrator account",
 	},
-	{ id: "ai", title: "AI Provider", description: "Configure LLM" },
-	{ id: "integration", title: "Integration", description: "Connect tools" },
 ];
 
 export interface SetupProgressProps {

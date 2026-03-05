@@ -1,118 +1,69 @@
-import { Type } from "class-transformer";
 import {
-	IsArray,
-	IsBoolean,
-	IsEnum,
-	IsInt,
-	IsObject,
-	IsOptional,
-	IsString,
-	Min,
-	ValidateNested,
-} from "class-validator";
-import { ConnectionStatus } from "../../../shared/enums/index.js";
-import {
-	ApiKeyCredentialsDto,
-	OAuthCredentialsDto,
-} from "./create-connection.dto.js";
+  IsBoolean,
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
-/**
- * DTO for updating an integration connection.
- */
+export class UpdateIntegrationDto {
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @IsOptional()
+  @IsString()
+  clientSecret?: string;
+
+  @IsOptional()
+  @IsString({ each: true })
+  scopes?: string[];
+
+  @IsOptional()
+  @IsString()
+  callbackUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
 export class UpdateConnectionDto {
-	@IsOptional()
-	@IsString()
-	name?: string;
+  @IsOptional()
+  @IsObject()
+  credentials?: Record<string, string>;
 
-	@IsOptional()
-	@IsString()
-	description?: string;
+  @IsOptional()
+  @IsObject()
+  connectionConfig?: Record<string, string>;
 
-	@IsOptional()
-	@IsBoolean()
-	isGlobal?: boolean;
-
-	@IsOptional()
-	@IsEnum(ConnectionStatus)
-	status?: ConnectionStatus;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => ApiKeyCredentialsDto)
-	apiKeyCredentials?: ApiKeyCredentialsDto;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => OAuthCredentialsDto)
-	oauthCredentials?: OAuthCredentialsDto;
-
-	@IsOptional()
-	@IsObject()
-	config?: Record<string, unknown>;
+  @IsOptional()
+  @IsIn([
+    'ACTIVE',
+    'DISABLED',
+    'TOKEN_EXPIRED',
+    'REFRESH_FAILED',
+    'CREDENTIALS_INVALID',
+    'REVOKED',
+    'ERROR',
+  ])
+  status?: string;
 }
 
-/**
- * DTO for updating OAuth app configuration on an integration definition (admin only).
- */
-export class UpdateOAuthConfigDto {
-	@IsString()
-	clientId!: string;
-
-	@IsString()
-	clientSecret!: string;
-
-	@IsOptional()
-	@IsArray()
-	@IsString({ each: true })
-	scopes?: string[];
-
-	@IsOptional()
-	@IsString()
-	authUrl?: string;
-
-	@IsOptional()
-	@IsString()
-	tokenUrl?: string;
-}
-
-/**
- * DTO for creating a service integration mapping.
- */
-export class CreateServiceIntegrationDto {
-	@IsString()
-	serviceId!: string;
-
-	@IsString()
-	connectionId!: string;
-
-	@IsOptional()
-	@IsObject()
-	config?: Record<string, unknown>;
-
-	@IsOptional()
-	@IsInt()
-	@Min(0)
-	priority?: number;
-
-	@IsOptional()
-	@IsBoolean()
-	isEnabled?: boolean;
-}
-
-/**
- * DTO for updating a service integration mapping.
- */
+// Reserved for future use
 export class UpdateServiceIntegrationDto {
-	@IsOptional()
-	@IsObject()
-	config?: Record<string, unknown>;
+  @IsOptional()
+  @IsObject()
+  config?: Record<string, unknown>;
 
-	@IsOptional()
-	@IsInt()
-	@Min(0)
-	priority?: number;
+  @IsOptional()
+  priority?: number;
 
-	@IsOptional()
-	@IsBoolean()
-	isEnabled?: boolean;
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
 }

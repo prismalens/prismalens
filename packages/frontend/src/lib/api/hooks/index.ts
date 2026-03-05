@@ -96,38 +96,33 @@ export {
 export {
 	integrationsKeys,
 	serviceIntegrationsKeys,
-	useCreateIntegrationConnection,
-	useCreateServiceIntegration,
-	useDeleteIntegrationConnection,
-	useDeleteServiceIntegration,
+	// New names (three-layer model)
+	useTemplates,
+	useTemplate,
+	useIntegrations,
+	useCreateIntegration,
+	useDeleteIntegration,
+	useConnections,
+	useConnection,
+	useCreateConnection,
+	useUpdateConnection,
+	useDeleteConnection,
+	useTestConnection,
+	// Git / Service integration hooks
 	useGitOrganizations,
 	useGitRepositories,
-	useIntegrationConnection,
-	useIntegrationConnections,
-	useIntegrationDefinition,
-	useIntegrationDefinitions,
-	useServiceIntegrations,
-	useTestIntegrationConnection,
 	useUpdateConnectionConfig,
-	useUpdateIntegrationConnection,
+	useServiceIntegrations,
+	useCreateServiceIntegration,
 	useUpdateServiceIntegration,
+	useDeleteServiceIntegration,
 } from "./use-integrations-orpc";
 
 // Ollama hooks
 export { useOllamaModels } from "./use-ollama-models";
 
 // Setup hooks
-export {
-	setupKeys,
-	useCreateOwner,
-	useMarkStepSkipped,
-	useSetupLlmEnvStatus,
-	useSetupLlmModels,
-	useSetupSaveLlmCredential,
-	useSetupStatus,
-	useSetupTestLlmConnection,
-	useSetupUpdateLlmSettings,
-} from "./use-setup-orpc";
+export { useCreateOwner } from "./use-setup-orpc";
 
 // Timeline hooks
 export {

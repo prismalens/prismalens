@@ -3,7 +3,7 @@
 /**
  * Integration hooks using oRPC client
  *
- * Type-safe hooks for integration management using oRPC with TanStack Query.
+ * Three-layer model: Template → Integration → Connection
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
@@ -13,14 +13,19 @@ import { orpc } from "../orpc-client";
  */
 export const integrationsKeys = {
 	all: () => orpc.integrations.key(),
-	definitions: {
-		all: () => orpc.integrations.listDefinitions.key(),
+	templates: {
+		all: () => orpc.integrations.listTemplates.key(),
 		detail: (id: string) =>
-			orpc.integrations.getDefinition.key({ input: { id } }),
+			orpc.integrations.getTemplate.key({ input: { id } }),
+	},
+	integrations: {
+		all: () => orpc.integrations.listIntegrations.key(),
+		detail: (id: string) =>
+			orpc.integrations.getIntegration.key({ input: { id } }),
 	},
 	connections: {
 		all: () => orpc.integrations.listConnections.key(),
-		list: (params?: { definitionId?: string; category?: string }) =>
+		list: (params?: { templateId?: string }) =>
 			orpc.integrations.listConnections.key({ input: params ?? {} }),
 		detail: (id: string) =>
 			orpc.integrations.getConnection.key({ input: { id } }),
@@ -28,26 +33,26 @@ export const integrationsKeys = {
 };
 
 // =============================================================================
-// INTEGRATION DEFINITIONS (Catalog)
+// TEMPLATES (from @prismalens/integrations package)
 // =============================================================================
 
 /**
- * Fetch all available integration definitions (GitHub, Prometheus, Slack)
+ * Fetch all available integration templates
  */
-export function useIntegrationDefinitions() {
+export function useTemplates() {
 	return useQuery(
-		orpc.integrations.listDefinitions.queryOptions({
+		orpc.integrations.listTemplates.queryOptions({
 			input: {},
 		}),
 	);
 }
 
 /**
- * Fetch a single integration definition by ID
+ * Fetch a single template by ID
  */
-export function useIntegrationDefinition(id: string) {
+export function useTemplate(id: string) {
 	return useQuery({
-		...orpc.integrations.getDefinition.queryOptions({
+		...orpc.integrations.getTemplate.queryOptions({
 			input: { id },
 		}),
 		enabled: !!id,
@@ -55,15 +60,61 @@ export function useIntegrationDefinition(id: string) {
 }
 
 // =============================================================================
-// INTEGRATION CONNECTIONS (User instances)
+// INTEGRATIONS (OAuth client creds / provider instances)
 // =============================================================================
 
 /**
- * Fetch all integration connections
+ * Fetch all integrations
  */
-export function useIntegrationConnections(params?: {
-	definitionId?: string;
-	category?: string;
+export function useIntegrations(params?: { templateId?: string }) {
+	return useQuery(
+		orpc.integrations.listIntegrations.queryOptions({
+			input: params ?? {},
+		}),
+	);
+}
+
+/**
+ * Create a new integration (OAuth client creds)
+ */
+export function useCreateIntegration() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.integrations.createIntegration.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: integrationsKeys.integrations.all(),
+			});
+		},
+	});
+}
+
+/**
+ * Delete an integration
+ */
+export function useDeleteIntegration() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.integrations.deleteIntegration.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: integrationsKeys.integrations.all(),
+			});
+		},
+	});
+}
+
+// =============================================================================
+// CONNECTIONS (user tokens / API keys)
+// =============================================================================
+
+/**
+ * Fetch all connections with integration info
+ */
+export function useConnections(params?: {
+	templateId?: string;
 }) {
 	return useQuery(
 		orpc.integrations.listConnections.queryOptions({
@@ -73,9 +124,9 @@ export function useIntegrationConnections(params?: {
 }
 
 /**
- * Fetch a single integration connection by ID
+ * Fetch a single connection by ID
  */
-export function useIntegrationConnection(id: string) {
+export function useConnection(id: string) {
 	return useQuery({
 		...orpc.integrations.getConnection.queryOptions({
 			input: { id },
@@ -85,9 +136,9 @@ export function useIntegrationConnection(id: string) {
 }
 
 /**
- * Create a new integration connection (for API key integrations)
+ * Create a new connection (for API key / basic auth integrations)
  */
-export function useCreateIntegrationConnection() {
+export function useCreateConnection() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
@@ -101,9 +152,9 @@ export function useCreateIntegrationConnection() {
 }
 
 /**
- * Update an integration connection
+ * Update a connection
  */
-export function useUpdateIntegrationConnection() {
+export function useUpdateConnection() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
@@ -120,9 +171,9 @@ export function useUpdateIntegrationConnection() {
 }
 
 /**
- * Delete an integration connection
+ * Delete a connection
  */
-export function useDeleteIntegrationConnection() {
+export function useDeleteConnection() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
@@ -136,9 +187,9 @@ export function useDeleteIntegrationConnection() {
 }
 
 /**
- * Test an integration connection health
+ * Test a connection health
  */
-export function useTestIntegrationConnection() {
+export function useTestConnection() {
 	return useMutation({
 		...orpc.integrations.testConnection.mutationOptions(),
 	});
@@ -240,7 +291,6 @@ export function useUpdateServiceIntegration() {
 	return useMutation({
 		...orpc.integrations.updateServiceIntegration.mutationOptions(),
 		onSuccess: () => {
-			// Invalidate all service integrations since we don't know which service
 			queryClient.invalidateQueries({
 				queryKey: orpc.integrations.key(),
 			});
@@ -257,7 +307,6 @@ export function useDeleteServiceIntegration() {
 	return useMutation({
 		...orpc.integrations.deleteServiceIntegration.mutationOptions(),
 		onSuccess: () => {
-			// Invalidate all service integrations since we don't know which service
 			queryClient.invalidateQueries({
 				queryKey: orpc.integrations.key(),
 			});

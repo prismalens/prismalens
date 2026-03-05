@@ -5,21 +5,21 @@
  * Simplified for Community/Enterprise model.
  */
 
-import { applyDecorators, SetMetadata, UseGuards } from "@nestjs/common";
-import { LICENSE_TIERS } from "./license.constants.js";
-import type { LicenseFeature, LicenseTierType } from "./license.constants.js";
+import { applyDecorators, SetMetadata, UseGuards } from '@nestjs/common';
+import { LICENSE_TIERS } from './license.constants.js';
+import type { LicenseFeature, LicenseTierType } from './license.constants.js';
 import {
-	LicenseFeatureGuard,
-	LicenseGuard,
-	LicenseTierGuard,
-} from "./license.guard.js";
+  LicenseFeatureGuard,
+  LicenseGuard,
+  LicenseTierGuard,
+} from './license.guard.js';
 
 // =============================================================================
 // METADATA KEYS
 // =============================================================================
 
-export const REQUIRES_FEATURE_KEY = "license:requires_feature";
-export const REQUIRES_TIER_KEY = "license:requires_tier";
+export const REQUIRES_FEATURE_KEY = 'license:requires_feature';
+export const REQUIRES_TIER_KEY = 'license:requires_tier';
 
 // =============================================================================
 // DECORATORS
@@ -36,11 +36,11 @@ export const REQUIRES_TIER_KEY = "license:requires_tier";
  * getSamlConfig() { ... }
  * ```
  */
-export const RequiresFeature = (feature: LicenseFeature) =>
-	applyDecorators(
-		SetMetadata(REQUIRES_FEATURE_KEY, feature),
-		UseGuards(LicenseFeatureGuard),
-	);
+const RequiresFeature = (feature: LicenseFeature) =>
+  applyDecorators(
+    SetMetadata(REQUIRES_FEATURE_KEY, feature),
+    UseGuards(LicenseFeatureGuard),
+  );
 
 /**
  * Require a minimum license tier to access this route.
@@ -53,11 +53,11 @@ export const RequiresFeature = (feature: LicenseFeature) =>
  * getAuditLogs() { ... }
  * ```
  */
-export const RequiresTier = (tier: LicenseTierType) =>
-	applyDecorators(
-		SetMetadata(REQUIRES_TIER_KEY, tier),
-		UseGuards(LicenseTierGuard),
-	);
+const RequiresTier = (tier: LicenseTierType) =>
+  applyDecorators(
+    SetMetadata(REQUIRES_TIER_KEY, tier),
+    UseGuards(LicenseTierGuard),
+  );
 
 /**
  * Apply all license checks: feature and tier.
@@ -73,26 +73,26 @@ export const RequiresTier = (tier: LicenseTierType) =>
  * createTenant() { ... }
  * ```
  */
-export const RequiresLicense = (options: {
-	feature?: LicenseFeature;
-	tier?: LicenseTierType;
+const RequiresLicense = (options: {
+  feature?: LicenseFeature;
+  tier?: LicenseTierType;
 }) => {
-	const decorators: Array<
-		ClassDecorator | MethodDecorator | PropertyDecorator
-	> = [];
+  const decorators: Array<
+    ClassDecorator | MethodDecorator | PropertyDecorator
+  > = [];
 
-	if (options.feature) {
-		decorators.push(SetMetadata(REQUIRES_FEATURE_KEY, options.feature));
-	}
+  if (options.feature) {
+    decorators.push(SetMetadata(REQUIRES_FEATURE_KEY, options.feature));
+  }
 
-	if (options.tier) {
-		decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
-	}
+  if (options.tier) {
+    decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
+  }
 
-	// Use the combined guard
-	decorators.push(UseGuards(LicenseGuard));
+  // Use the combined guard
+  decorators.push(UseGuards(LicenseGuard));
 
-	return applyDecorators(...decorators);
+  return applyDecorators(...decorators);
 };
 
 /**
@@ -106,4 +106,10 @@ export const RequiresLicense = (options: {
  * getAuditLogs() { ... }
  * ```
  */
-export const PaidFeature = () => RequiresTier(LICENSE_TIERS.ENTERPRISE);
+const PaidFeature = () => RequiresTier(LICENSE_TIERS.ENTERPRISE);
+
+// Suppress unused variable warnings for decorators reserved for future use
+void RequiresFeature;
+void RequiresTier;
+void RequiresLicense;
+void PaidFeature;

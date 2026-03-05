@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,63 +13,22 @@ import {
 } from "@/components/ui/card";
 import { SetupProgress, type SetupStep } from "./SetupProgress";
 import { SetupStepOwner } from "./SetupStepOwner";
-import { SetupStepLLM } from "./SetupStepLLM";
-import { SetupStepIntegrations } from "./SetupStepIntegrations";
 
 export interface SetupWizardProps {
-	/** Initial search params from OAuth callback or redirect */
-	searchParams?: {
-		callback?: boolean;
-		provider?: string;
-		success?: string;
-		redirect?: string;
-	};
+	/** Redirect URL after setup completes */
+	redirect?: string;
 	/** Initial step to start from (used when resuming setup) */
 	initialStep?: SetupStep;
 }
 
-export function SetupWizard({ searchParams, initialStep = "account" }: SetupWizardProps) {
+export function SetupWizard({ redirect, initialStep = "account" }: SetupWizardProps) {
 	const navigate = useNavigate();
 	const [currentStep, setCurrentStep] = useState<SetupStep>(initialStep);
-	const [connectedIntegrations, setConnectedIntegrations] = useState<string[]>(
-		[],
-	);
-	// Store redirect URL to use after setup completion
-	const [redirectUrl] = useState(searchParams?.redirect);
 
-	// Handle OAuth callback
-	useEffect(() => {
-		if (searchParams?.callback) {
-			setCurrentStep("integration");
-
-			// Check if OAuth was successful
-			const provider = searchParams.provider;
-			if (searchParams.success === "true" && provider) {
-				setConnectedIntegrations((prev) =>
-					prev.includes(provider) ? prev : [...prev, provider],
-				);
-			}
-
-			// Clean up URL params by navigating without search params (preserve redirect)
-			navigate({
-				to: "/setup",
-				search: {
-					callback: false,
-					provider: undefined,
-					success: undefined,
-					redirect: redirectUrl,
-				},
-				replace: true,
-			});
-		}
-	}, [searchParams?.callback, searchParams?.success, searchParams?.provider, navigate, redirectUrl]);
-
-	// Determine where to navigate after setup completion
 	const getRedirectDestination = () => {
-		if (redirectUrl) {
-			// Parse the redirect URL to get just the pathname
+		if (redirect) {
 			try {
-				const url = new URL(redirectUrl, window.location.origin);
+				const url = new URL(redirect, window.location.origin);
 				return url.pathname;
 			} catch {
 				return "/";
@@ -80,15 +39,12 @@ export function SetupWizard({ searchParams, initialStep = "account" }: SetupWiza
 
 	const handleComplete = () => {
 		setCurrentStep("complete");
-		// Auto-redirect after showing success
 		const destination = getRedirectDestination();
 		setTimeout(() => {
-			// Use window.location for full URL redirects to ensure route guards run
 			window.location.href = destination;
 		}, 2000);
 	};
 
-	// Render complete state
 	if (currentStep === "complete") {
 		const destination = getRedirectDestination();
 		return (
@@ -123,28 +79,12 @@ export function SetupWizard({ searchParams, initialStep = "account" }: SetupWiza
 	return (
 		<div className="min-h-[80vh] flex items-center justify-center py-8">
 			<div className="w-full max-w-2xl px-4">
-				{/* Stepper */}
 				<SetupProgress currentStep={currentStep} />
 
-				{/* Step 1: Create Account */}
 				{currentStep === "account" && (
-					<SetupStepOwner onComplete={() => setCurrentStep("ai")} />
+					<SetupStepOwner onComplete={handleComplete} />
 				)}
 
-				{/* Step 2: Configure AI Provider */}
-				{currentStep === "ai" && (
-					<SetupStepLLM onComplete={() => setCurrentStep("integration")} />
-				)}
-
-				{/* Step 3: Connect Integration */}
-				{currentStep === "integration" && (
-					<SetupStepIntegrations
-						onComplete={handleComplete}
-						connectedIntegrations={connectedIntegrations}
-					/>
-				)}
-
-				{/* Footer */}
 				<p className="text-center text-sm text-muted-foreground mt-6">
 					PrismaLens Community Edition - Unlimited users, unlimited features
 				</p>
