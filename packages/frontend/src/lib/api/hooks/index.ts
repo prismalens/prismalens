@@ -70,7 +70,6 @@ export {
 export {
 	llmCredentialKeys,
 	llmSettingsKeys,
-	mcpSettingsKeys,
 	useDeleteLlmCredential,
 	useFactoryReset,
 	useInvestigationLimits,
@@ -79,17 +78,12 @@ export {
 	useLlmEnvStatus,
 	useLlmModels,
 	useLlmSettings,
-	useMcpServerStatus,
-	useMcpSettings,
-	useMcpStatus,
 	useResetData,
 	useSaveLlmCredential,
 	useTestLlmConnectionWithEnv,
-	useTestMcpConnection,
 	useUpdateInvestigationLimits,
 	useUpdateInvestigationPolicy,
 	useUpdateLlmSettings,
-	useUpdateMcpSettings,
 } from "./use-settings-orpc";
 
 // Integration hooks

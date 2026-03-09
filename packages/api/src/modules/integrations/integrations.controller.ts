@@ -1,5 +1,10 @@
 import { Controller, Logger } from '@nestjs/common';
-import { Implement, implement, ORPCError } from '@orpc/nest';
+import {
+  Implement,
+  implement,
+  ORPCError,
+  type ORPCGlobalContext,
+} from '@orpc/nest';
 import { integrationsContract } from '@prismalens/contracts';
 import type {
   AuthTemplateResponse,
@@ -23,8 +28,8 @@ export class IntegrationsController {
 
   constructor(private readonly integrationsService: IntegrationsService) {}
 
-  private extractUserId(context: unknown): string {
-    const userId = (context as { user?: { id: string } })?.user?.id;
+  private extractUserId(context: ORPCGlobalContext): string {
+    const userId = context.request.user?.id;
     if (!userId) {
       throw new ORPCError('UNAUTHORIZED', {
         message: 'Authentication required',

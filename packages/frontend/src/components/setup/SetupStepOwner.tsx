@@ -9,6 +9,7 @@ import {
 	Loader2,
 	Shield,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -91,10 +92,10 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 			</CardHeader>
 			<CardContent>
 				{error && (
-					<div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3">
-						<AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-						<p className="text-sm text-destructive">{error}</p>
-					</div>
+					<Alert variant="destructive" className="mb-4">
+						<AlertCircle className="h-4 w-4" />
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
 				)}
 
 				{/* Render form only after client mount to avoid hydration mismatch from password manager extensions */}
@@ -158,17 +159,20 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 									minLength={8}
 									className="pr-10"
 								/>
-								<button
+								<Button
 									type="button"
+									variant="ghost"
+									size="icon"
 									onClick={() => setShowPassword(!showPassword)}
-									className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+									className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+									aria-label={showPassword ? "Hide password" : "Show password"}
 								>
 									{showPassword ? (
-										<EyeOff className="h-4 w-4" />
+										<EyeOff className="h-4 w-4 text-muted-foreground" />
 									) : (
-										<Eye className="h-4 w-4" />
+										<Eye className="h-4 w-4 text-muted-foreground" />
 									)}
-								</button>
+								</Button>
 							</div>
 						</div>
 

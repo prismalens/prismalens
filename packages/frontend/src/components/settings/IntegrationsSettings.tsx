@@ -76,7 +76,7 @@ function ConnectionStatusBadge({ status }: { status: string }) {
 	switch (status) {
 		case "ACTIVE":
 			return (
-				<Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+				<Badge variant="secondary">
 					<CheckCircle className="h-3 w-3 mr-1" />
 					Connected
 				</Badge>
@@ -383,7 +383,7 @@ export function IntegrationsSettings() {
 					className={cn(
 						"p-4 rounded-lg flex items-center gap-3",
 						oauthMessage.type === "success"
-							? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+							? "bg-muted text-foreground"
 							: "bg-destructive/10 text-destructive",
 					)}
 				>
@@ -399,22 +399,15 @@ export function IntegrationsSettings() {
 			{/* Webhook URLs Card */}
 			<Card>
 				<CardHeader>
-					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-							<Link2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-						</div>
-						<div>
-							<CardTitle>Webhook URLs</CardTitle>
-							<CardDescription>
-								Configure your alerting tools to send webhooks to PrismaLens
-							</CardDescription>
-						</div>
+					<div className="flex items-center gap-2">
+						<Link2 className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Webhook URLs</CardTitle>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
 						<div className="flex items-center gap-3">
-							<Zap className="h-5 w-5 text-orange-500" />
+							<Zap className="h-5 w-5 text-muted-foreground" />
 							<div>
 								<p className="font-medium text-sm">Prometheus AlertManager</p>
 								<code className="text-xs text-muted-foreground break-all">
@@ -430,7 +423,7 @@ export function IntegrationsSettings() {
 							}
 						>
 							{copiedUrl === "prometheus" ? (
-								<CheckCircle className="h-4 w-4 text-green-500" />
+								<CheckCircle className="h-4 w-4 text-muted-foreground" />
 							) : (
 								<Copy className="h-4 w-4" />
 							)}
@@ -439,7 +432,7 @@ export function IntegrationsSettings() {
 
 					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
 						<div className="flex items-center gap-3">
-							<Link2 className="h-5 w-5 text-gray-500" />
+							<Link2 className="h-5 w-5 text-muted-foreground" />
 							<div>
 								<p className="font-medium text-sm">Generic Webhook</p>
 								<code className="text-xs text-muted-foreground break-all">
@@ -455,7 +448,7 @@ export function IntegrationsSettings() {
 							}
 						>
 							{copiedUrl === "generic" ? (
-								<CheckCircle className="h-4 w-4 text-green-500" />
+								<CheckCircle className="h-4 w-4 text-muted-foreground" />
 							) : (
 								<Copy className="h-4 w-4" />
 							)}
@@ -468,16 +461,9 @@ export function IntegrationsSettings() {
 			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-3">
-							<div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-								<Settings2 className="h-5 w-5 text-primary" />
-							</div>
-							<div>
-								<CardTitle>Connected Integrations</CardTitle>
-								<CardDescription>
-									External services connected for context and notifications
-								</CardDescription>
-							</div>
+						<div className="flex items-center gap-2">
+							<Settings2 className="h-5 w-5 text-muted-foreground" />
+							<CardTitle>Connected Integrations</CardTitle>
 						</div>
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
@@ -496,12 +482,10 @@ export function IntegrationsSettings() {
 										key={connection.id}
 										className="flex items-center justify-between p-4 border rounded-lg"
 									>
-										<div className="flex items-center gap-4">
-											<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-												{getTemplateIcon(
-													connection.templateId ?? "",
-												)}
-											</div>
+										<div className="flex items-center gap-3">
+											{getTemplateIcon(
+												connection.templateId ?? "",
+											)}
 											<div>
 												<div className="flex items-center gap-2">
 													<span className="font-medium">
@@ -540,7 +524,7 @@ export function IntegrationsSettings() {
 														className={cn(
 															"text-xs mt-1",
 															testResult.success
-																? "text-green-600"
+																? "text-muted-foreground"
 																: "text-destructive",
 														)}
 													>
@@ -594,12 +578,9 @@ export function IntegrationsSettings() {
 						</div>
 					) : (
 						<div className="text-center py-8">
-							<Link2 className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+							<Link2 className="h-5 w-5 mx-auto text-muted-foreground mb-3" />
 							<p className="text-muted-foreground">
 								No integrations connected yet
-							</p>
-							<p className="text-sm text-muted-foreground mt-1">
-								Add GitHub, Prometheus, or Slack to enhance investigations
 							</p>
 						</div>
 					)}
@@ -621,11 +602,9 @@ export function IntegrationsSettings() {
 								key={template.id}
 								type="button"
 								onClick={() => handleAddIntegration(template)}
-								className="w-full flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
+								className="w-full flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
 							>
-								<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-									{getTemplateIcon(template.id)}
-								</div>
+								<span className="text-muted-foreground">{getTemplateIcon(template.id)}</span>
 								<div className="flex-1">
 									<p className="font-medium">{template.name}</p>
 									<p className="text-sm text-muted-foreground">

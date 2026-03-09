@@ -14,20 +14,14 @@ import {
 	LlmCredentialStatusResponseSchema,
 	LlmEnvStatusResponseSchema,
 	LlmSettingsSchema,
-	McpServerIdSchema,
-	McpSettingsSchema,
-	McpStatusResponseSchema,
 	ModelsListResponseSchema,
 	ResetDataInputSchema,
 	SaveLlmCredentialSchema,
 	TestLlmConnectionInputSchema,
 	TestLlmResultSchema,
-	TestMcpConnectionInputSchema,
-	TestMcpResultSchema,
 	UpdateInvestigationLimitsSchema,
 	UpdateInvestigationPolicySchema,
 	UpdateLlmSettingsSchema,
-	UpdateMcpSettingsSchema,
 } from "../schemas/settings.js";
 
 export const settingsContract = {
@@ -231,87 +225,5 @@ export const settingsContract = {
 			})
 			.input(FactoryResetInputSchema)
 			.output(DangerOperationResultSchema),
-	},
-
-	mcp: {
-		/**
-		 * Get MCP settings (enabled servers, tool filters, read-only mode)
-		 * GET /settings/mcp
-		 */
-		getSettings: oc
-			.route({
-				method: "GET",
-				path: "/settings/mcp",
-				summary: "Get MCP server configuration settings",
-				tags: ["settings"],
-			})
-			.input(z.object({}))
-			.output(McpSettingsSchema),
-
-		/**
-		 * Update MCP settings
-		 * PATCH /settings/mcp
-		 */
-		updateSettings: oc
-			.route({
-				method: "PATCH",
-				path: "/settings/mcp",
-				summary: "Update MCP server configuration settings",
-				tags: ["settings"],
-			})
-			.input(UpdateMcpSettingsSchema)
-			.output(McpSettingsSchema),
-
-		/**
-		 * Get MCP server status (enabled, has credentials, ready)
-		 * GET /settings/mcp/status
-		 */
-		getStatus: oc
-			.route({
-				method: "GET",
-				path: "/settings/mcp/status",
-				summary: "Get status of all MCP servers",
-				tags: ["settings"],
-			})
-			.input(z.object({}))
-			.output(McpStatusResponseSchema),
-
-		/**
-		 * Test MCP server connection
-		 * POST /settings/mcp/test
-		 */
-		testConnection: oc
-			.route({
-				method: "POST",
-				path: "/settings/mcp/test",
-				summary: "Test MCP server connection",
-				tags: ["settings"],
-			})
-			.input(TestMcpConnectionInputSchema)
-			.output(TestMcpResultSchema),
-
-		/**
-		 * Get MCP server status by ID
-		 * GET /settings/mcp/:serverId/status
-		 */
-		getServerStatus: oc
-			.route({
-				method: "GET",
-				path: "/settings/mcp/{serverId}/status",
-				summary: "Get status of a specific MCP server",
-				tags: ["settings"],
-			})
-			.input(z.object({ serverId: McpServerIdSchema }))
-			.output(
-				z.object({
-					serverId: McpServerIdSchema,
-					enabled: z.boolean(),
-					readOnlyMode: z.boolean(),
-					hasCredentials: z.boolean(),
-					isReady: z.boolean(),
-					integrationType: z.string(),
-					toolFilter: z.array(z.string()).optional(),
-				}),
-			),
 	},
 };

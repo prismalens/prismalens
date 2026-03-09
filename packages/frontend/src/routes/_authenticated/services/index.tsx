@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, RefreshCw, Server } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 
 import type { ServiceTier, ServiceType } from "@prismalens/contracts";
 
@@ -71,15 +71,12 @@ function ServicesPage() {
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<Server className="h-8 w-8 text-primary" />
-					<div>
-						<h1 className="text-2xl font-bold">Services</h1>
-						<p className="text-muted-foreground">
-							{services.length} services in catalog
-							{hasFilters && ` (${filteredServices.length} shown)`}
-						</p>
-					</div>
+				<div>
+					<h1 className="text-2xl font-bold">Services</h1>
+					<p className="text-muted-foreground">
+						{services.length} services in catalog
+						{hasFilters && ` (${filteredServices.length} shown)`}
+					</p>
 				</div>
 				<div className="flex items-center gap-2">
 					<Button
@@ -98,29 +95,25 @@ function ServicesPage() {
 				</div>
 			</div>
 
-			{/* Stats Cards */}
+			{/* Stats Summary */}
 			{!isLoading && services.length > 0 && (
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-					<StatCard
-						label="Tier 1 (Critical)"
-						value={services.filter((s) => s.tier === "tier_1").length}
-						className="bg-red-500/10 text-red-600"
-					/>
-					<StatCard
-						label="Tier 2 (High)"
-						value={services.filter((s) => s.tier === "tier_2").length}
-						className="bg-orange-500/10 text-orange-600"
-					/>
-					<StatCard
-						label="Tier 3 (Medium)"
-						value={services.filter((s) => s.tier === "tier_3").length}
-						className="bg-yellow-500/10 text-yellow-600"
-					/>
-					<StatCard
-						label="Tier 4 (Low)"
-						value={services.filter((s) => s.tier === "tier_4").length}
-						className="bg-gray-500/10 text-gray-600"
-					/>
+				<div className="flex items-center gap-6 text-sm">
+					<div>
+						<span className="text-muted-foreground">Tier 1 (Critical):</span>{" "}
+						<span className="font-medium">{services.filter((s) => s.tier === "tier_1").length}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Tier 2 (High):</span>{" "}
+						<span className="font-medium">{services.filter((s) => s.tier === "tier_2").length}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Tier 3 (Medium):</span>{" "}
+						<span className="font-medium">{services.filter((s) => s.tier === "tier_3").length}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Tier 4 (Low):</span>{" "}
+						<span className="font-medium">{services.filter((s) => s.tier === "tier_4").length}</span>
+					</div>
 				</div>
 			)}
 
@@ -178,19 +171,3 @@ function ServicesPage() {
 	)
 }
 
-function StatCard({
-	label,
-	value,
-	className,
-}: {
-	label: string;
-	value: number;
-	className?: string;
-}) {
-	return (
-		<div className={`rounded-lg p-4 ${className}`}>
-			<div className="text-2xl font-bold">{value}</div>
-			<div className="text-sm text-muted-foreground">{label}</div>
-		</div>
-	)
-}

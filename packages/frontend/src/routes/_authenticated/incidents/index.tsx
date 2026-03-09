@@ -8,7 +8,7 @@
 import { useState, useMemo } from "react";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, BarChart3, List } from "lucide-react";
+import { RefreshCw, BarChart3, List } from "lucide-react";
 
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 
@@ -173,15 +173,17 @@ function IncidentsPage() {
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<AlertTriangle className="h-8 w-8 text-primary" />
-					<div>
-						<h1 className="text-2xl font-bold">Incidents</h1>
-						<p className="text-muted-foreground">
-							{incidents.length} incidents
-							{activeCount > 0 && ` • ${activeCount} active`}
-						</p>
-					</div>
+				<div>
+					<h1 className="text-2xl font-bold">Incidents</h1>
+					<p className="text-muted-foreground">
+						<span className="text-foreground">{incidents.length}</span> incidents
+						{activeCount > 0 && (
+							<>
+								{" "}&bull;{" "}
+								<span className="text-foreground">{activeCount}</span> active
+							</>
+						)}
+					</p>
 				</div>
 				<Button
 					variant="outline"

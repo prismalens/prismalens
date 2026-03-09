@@ -49,6 +49,7 @@
 		"date-fns": "^4.1.0",
 		"html-to-image": "^1.11.13",
 		"lucide-react": "^0.460.0",
+		"radix-ui": "^1.4.3",
 		"react": "^19.2.3",
 		"react-day-picker": "^9.13.0",
 		"react-dom": "^19.2.3",

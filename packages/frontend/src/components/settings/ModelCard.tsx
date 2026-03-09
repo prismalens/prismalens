@@ -53,7 +53,7 @@ export function ModelCard({
 			className={cn(
 				"w-full text-left px-3 py-2.5 rounded-md transition-colors",
 				"flex items-start gap-3",
-				selected && !disabled && "bg-primary/10 border border-primary/30",
+				selected && !disabled && "bg-accent border-border",
 				!selected && !disabled && "hover:bg-accent/50",
 				disabled && "opacity-50 cursor-not-allowed"
 			)}
@@ -85,8 +85,8 @@ export function ModelCard({
 					</span>
 					{isNew && (
 						<Badge
-							variant="default"
-							className="text-[10px] px-1.5 py-0 h-4 bg-green-500 hover:bg-green-500 flex-shrink-0"
+							variant="secondary"
+							className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
 						>
 							NEW
 						</Badge>

@@ -4,7 +4,6 @@ import { Implement, implement, ORPCError } from '@orpc/nest';
 import { settingsContract } from '@prismalens/contracts';
 import type { ModelsListResponse } from '@prismalens/contracts/schemas';
 import { LlmSettingsService } from './llm-settings.service.js';
-import { McpSettingsService } from './mcp-settings.service.js';
 import { SettingsService } from './settings.service.js';
 
 @UseGuards(ThrottlerGuard)
@@ -13,7 +12,6 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly llmSettingsService: LlmSettingsService,
-    private readonly mcpSettingsService: McpSettingsService,
   ) {}
 
   /**
@@ -143,42 +141,6 @@ export class SettingsController {
             });
           }
           return this.settingsService.factoryReset();
-        },
-      ),
-    };
-  }
-
-  /**
-   * Implement MCP settings routes
-   */
-  @Implement(settingsContract.mcp)
-  mcp() {
-    return {
-      getSettings: implement(settingsContract.mcp.getSettings).handler(
-        async () => {
-          return this.mcpSettingsService.getMcpSettings();
-        },
-      ),
-
-      updateSettings: implement(settingsContract.mcp.updateSettings).handler(
-        async ({ input }) => {
-          return this.mcpSettingsService.updateMcpSettings(input);
-        },
-      ),
-
-      getStatus: implement(settingsContract.mcp.getStatus).handler(async () => {
-        return this.mcpSettingsService.getMcpStatus();
-      }),
-
-      testConnection: implement(settingsContract.mcp.testConnection).handler(
-        async ({ input }) => {
-          return this.mcpSettingsService.testMcpConnection(input.serverId);
-        },
-      ),
-
-      getServerStatus: implement(settingsContract.mcp.getServerStatus).handler(
-        async ({ input }) => {
-          return this.mcpSettingsService.getMcpServerStatus(input.serverId);
         },
       ),
     };

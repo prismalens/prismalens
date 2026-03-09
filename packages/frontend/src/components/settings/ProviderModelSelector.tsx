@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { ModelCard } from "./ModelCard";
@@ -106,12 +108,12 @@ export function ProviderModelSelector({
 					const isSelected = selectedProvider === p.id;
 
 					return (
-						<button
+						<Button
 							key={p.id}
-							type="button"
+							variant="ghost"
 							onClick={() => onProviderChange(p.id)}
 							className={cn(
-								"w-full px-3 py-2.5 text-left flex items-center gap-2 transition-colors",
+								"w-full justify-start px-3 py-2.5 h-auto rounded-none flex items-center gap-2",
 								isSelected
 									? "bg-background border-r-2 border-primary"
 									: "hover:bg-muted/50"
@@ -119,7 +121,7 @@ export function ProviderModelSelector({
 						>
 							{!hideStatusIcons &&
 								(ready ? (
-									<Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+									<Check className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
 								) : (
 									<X className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
 								))}
@@ -144,7 +146,7 @@ export function ProviderModelSelector({
 									Free
 								</Badge>
 							)}
-						</button>
+						</Button>
 					);
 				})}
 			</div>
@@ -153,17 +155,17 @@ export function ProviderModelSelector({
 			<div className="flex-1 flex flex-col min-w-0">
 				{/* API Key Warning Banner */}
 				{!isProviderReady && (
-					<div className="p-3 bg-amber-50 dark:bg-amber-950/30 border-b flex items-center gap-2">
-						<AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-						<span className="text-sm text-amber-700 dark:text-amber-400">
+					<div className="p-3 bg-muted border-b flex items-center gap-2">
+						<AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+						<span className="text-sm text-muted-foreground">
 							{selectedProvider === "ollama" ? (
 								<>
 									Set{" "}
-									<code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded text-xs">
+									<code className="font-mono bg-muted px-1 rounded text-xs">
 										OLLAMA_API_KEY
 									</code>{" "}
 									for cloud, or run{" "}
-									<code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded text-xs">
+									<code className="font-mono bg-muted px-1 rounded text-xs">
 										ollama serve
 									</code>{" "}
 									locally
@@ -171,7 +173,7 @@ export function ProviderModelSelector({
 							) : (
 								<>
 									Set{" "}
-									<code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded text-xs">
+									<code className="font-mono bg-muted px-1 rounded text-xs">
 										{providerEnvVar}
 									</code>{" "}
 									to enable
@@ -184,9 +186,9 @@ export function ProviderModelSelector({
 				{/* Base URL (for Ollama, Custom, etc.) */}
 				{showBaseUrl && onBaseUrlChange && (
 					<div className="p-2 border-b space-y-1">
-						<label htmlFor="provider-base-url" className="text-xs font-medium text-muted-foreground">
+						<Label htmlFor="provider-base-url" className="text-xs font-medium text-muted-foreground">
 							Base URL
-						</label>
+						</Label>
 						<Input
 							id="provider-base-url"
 							placeholder={selectedProviderInfo?.defaultBaseUrl || "http://localhost:8000/v1"}
@@ -240,15 +242,15 @@ export function ProviderModelSelector({
 												/>
 											))}
 											{!isSearching && hiddenCount > 0 && (
-												<button
-													type="button"
+												<Button
+													variant="ghost"
 													onClick={() => setShowAll(!showAll)}
-													className="w-full py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+													className="w-full py-2 h-auto text-xs text-muted-foreground hover:text-foreground"
 												>
 													{showAll
 														? "Show fewer models"
 														: `Show ${hiddenCount} more model${hiddenCount === 1 ? "" : "s"}`}
-												</button>
+												</Button>
 											)}
 										</>
 									)}
@@ -271,9 +273,9 @@ export function ProviderModelSelector({
 						/* No model catalog — show model name input */
 						onCustomModelChange && (
 							<div className="p-3 space-y-1.5">
-								<label htmlFor="custom-model-name" className="text-xs font-medium text-muted-foreground">
+								<Label htmlFor="custom-model-name" className="text-xs font-medium text-muted-foreground">
 									Model name
-								</label>
+								</Label>
 								<Input
 									id="custom-model-name"
 									placeholder={selectedProvider === "ollama" ? "e.g., llama3.3" : "e.g., gpt-4o"}

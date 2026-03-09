@@ -1,53 +1,73 @@
 "use client";
 
-import { createFileRoute } from "@tanstack/react-router";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	AIProviderSettings,
 	DangerZoneSettings,
 	IntegrationsSettings,
 	InvestigationSettings,
-	MCPServerSettings,
 } from "@/components/settings";
+import { cn } from "@/lib/utils";
+
+type SettingsTab = "ai" | "investigation" | "integrations" | "danger";
+
+const TABS: { value: SettingsTab; label: string }[] = [
+	{ value: "ai", label: "AI Provider" },
+	{ value: "investigation", label: "Investigation" },
+	{ value: "integrations", label: "Integrations" },
+	{ value: "danger", label: "Danger Zone" },
+];
 
 export const Route = createFileRoute("/_authenticated/settings/")({
+	validateSearch: (search: Record<string, unknown>) => ({
+		tab: (TABS.some((t) => t.value === search.tab)
+			? (search.tab as SettingsTab)
+			: "ai") as SettingsTab,
+	}),
 	component: SettingsPage,
 });
 
 function SettingsPage() {
+	const { tab } = Route.useSearch();
+	const navigate = useNavigate({ from: "/settings" });
+
 	return (
 		<div className="px-4 py-6 sm:px-0">
-			<h1 className="text-3xl font-bold text-foreground mb-8">Settings</h1>
+			<h1 className="text-2xl font-bold text-foreground mb-6">Settings</h1>
 
-			<Tabs defaultValue="ai" className="space-y-6">
-				<TabsList>
-					<TabsTrigger value="ai">AI Provider</TabsTrigger>
-					<TabsTrigger value="mcp">MCP Servers</TabsTrigger>
-					<TabsTrigger value="investigation">Investigation</TabsTrigger>
-					<TabsTrigger value="integrations">Integrations</TabsTrigger>
-					<TabsTrigger value="danger">Danger Zone</TabsTrigger>
-				</TabsList>
+			<div className="flex gap-8">
+				{/* Sidebar Navigation */}
+				<nav className="w-48 flex-shrink-0">
+					<ul className="space-y-1">
+						{TABS.map((t) => (
+							<li key={t.value}>
+								<button
+									type="button"
+									onClick={() =>
+										navigate({ search: { tab: t.value } })
+									}
+									className={cn(
+										"w-full text-left text-sm px-3 py-2 rounded-md transition-colors",
+										tab === t.value
+											? "bg-accent text-accent-foreground font-medium"
+											: "text-muted-foreground hover:text-foreground hover:bg-muted",
+									)}
+								>
+									{t.label}
+								</button>
+							</li>
+						))}
+					</ul>
+				</nav>
 
-				<TabsContent value="ai">
-					<AIProviderSettings />
-				</TabsContent>
-
-				<TabsContent value="mcp">
-					<MCPServerSettings />
-				</TabsContent>
-
-				<TabsContent value="investigation">
-					<InvestigationSettings />
-				</TabsContent>
-
-				<TabsContent value="integrations">
-					<IntegrationsSettings />
-				</TabsContent>
-
-				<TabsContent value="danger">
-					<DangerZoneSettings />
-				</TabsContent>
-			</Tabs>
+				{/* Content */}
+				<div className="flex-1 min-w-0">
+					{tab === "ai" && <AIProviderSettings />}
+					{tab === "investigation" && <InvestigationSettings />}
+					{tab === "integrations" && <IntegrationsSettings />}
+					{tab === "danger" && <DangerZoneSettings />}
+				</div>
+			</div>
 		</div>
 	);
 }

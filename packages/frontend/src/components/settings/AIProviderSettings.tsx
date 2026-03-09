@@ -320,17 +320,9 @@ export function AIProviderSettings() {
 			{/* Main Configuration Card */}
 			<Card>
 				<CardHeader>
-					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-							<Bot className="h-5 w-5 text-primary" />
-						</div>
-						<div>
-							<CardTitle>AI Provider Configuration</CardTitle>
-							<CardDescription>
-								Configure your preferred LLM provider for AI-powered
-								investigations
-							</CardDescription>
-						</div>
+					<div className="flex items-center gap-2">
+						<Bot className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>AI Provider Configuration</CardTitle>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-6">
@@ -338,7 +330,7 @@ export function AIProviderSettings() {
 					{settings?.activeProvider && (
 						<div className="p-4 bg-muted/50 rounded-lg">
 							<div className="flex items-center gap-2 text-sm">
-								<CheckCircle className="h-4 w-4 text-green-500" />
+								<CheckCircle className="h-4 w-4 text-muted-foreground" />
 								<span className="text-muted-foreground">Active provider:</span>
 								<span className="font-medium">
 									{PROVIDERS.find((p) => p.id === settings.activeProvider)
@@ -391,7 +383,7 @@ export function AIProviderSettings() {
 							)}
 							{providerCredStatus?.activeSource === "db" && !isUpdatingKey ? (
 								<div className="flex items-center gap-3">
-									<Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+									<Badge variant="secondary" >
 										<CheckCircle className="h-3 w-3 mr-1" />
 										Stored (encrypted)
 									</Badge>
@@ -590,7 +582,7 @@ export function AIProviderSettings() {
 								className={cn(
 									"p-3 rounded-lg flex items-center gap-2",
 									testStatus === "success"
-										? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+										? "bg-muted text-foreground"
 										: testStatus === "error"
 											? "bg-destructive/10 text-destructive"
 											: "bg-muted",

@@ -85,15 +85,12 @@ function InvestigationsPage() {
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<Search className="h-8 w-8 text-primary" />
-					<div>
-						<h1 className="text-2xl font-bold">Investigations</h1>
-						<p className="text-muted-foreground">
-							{investigations.length} investigations
-							{hasFilters && ` (filtered)`}
-						</p>
-					</div>
+				<div>
+					<h1 className="text-2xl font-bold">Investigations</h1>
+					<p className="text-muted-foreground">
+						{investigations.length} investigations
+						{hasFilters && ` (filtered)`}
+					</p>
 				</div>
 				<Button
 					variant="outline"
@@ -108,33 +105,25 @@ function InvestigationsPage() {
 				</Button>
 			</div>
 
-			{/* Stats Cards */}
+			{/* Stats Summary */}
 			{!isLoading && investigations.length > 0 && (
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-					<StatCard
-						label="Total"
-						value={stats.total}
-						icon={<Search className="h-4 w-4" />}
-						className="bg-primary/10 text-primary"
-					/>
-					<StatCard
-						label="Running"
-						value={stats.running}
-						icon={<Activity className="h-4 w-4" />}
-						className="bg-blue-500/10 text-blue-600"
-					/>
-					<StatCard
-						label="Completed"
-						value={stats.completed}
-						icon={<CheckCircle className="h-4 w-4" />}
-						className="bg-green-500/10 text-green-600"
-					/>
-					<StatCard
-						label="Failed"
-						value={stats.failed}
-						icon={<AlertCircle className="h-4 w-4" />}
-						className="bg-red-500/10 text-red-600"
-					/>
+				<div className="flex items-center gap-6 text-sm">
+					<div>
+						<span className="text-muted-foreground">Total:</span>{" "}
+						<span className="font-medium">{stats.total}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Running:</span>{" "}
+						<span className="font-medium">{stats.running}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Completed:</span>{" "}
+						<span className="font-medium">{stats.completed}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Failed:</span>{" "}
+						<span className="font-medium">{stats.failed}</span>
+					</div>
 				</div>
 			)}
 
@@ -171,7 +160,7 @@ function InvestigationsPage() {
 			) : investigations.length === 0 ? (
 				<Card>
 					<CardContent className="flex flex-col items-center justify-center py-12">
-						<Search className="h-12 w-12 mb-4 opacity-50 text-muted-foreground" />
+						<Search className="h-6 w-6 mb-4 text-muted-foreground" />
 						<p className="text-lg font-medium text-muted-foreground">
 							No investigations found
 						</p>
@@ -218,9 +207,9 @@ function InvestigationsPage() {
 										<TableCell>
 											{investigation.confidence ? (
 												<div className="flex items-center">
-													<div className="w-16 bg-muted rounded-full h-2 mr-2">
+													<div className="w-16 bg-muted rounded-sm h-2 mr-2">
 														<div
-															className="bg-green-500 h-2 rounded-full"
+															className="bg-green-500 h-2 rounded-sm"
 															style={{
 																width: "${investigation.confidence * 100}%",
 															}}
@@ -267,27 +256,6 @@ function InvestigationsPage() {
 	)
 }
 
-function StatCard({
-	label,
-	value,
-	icon,
-	className,
-}: {
-	label: string;
-	value: number;
-	icon: React.ReactNode;
-	className?: string;
-}) {
-	return (
-		<div className={`rounded-lg p-4 ${className}`}>
-			<div className="flex items-center justify-between">
-				<div className="text-2xl font-bold">{value}</div>
-				{icon}
-			</div>
-			<div className="text-sm text-muted-foreground">{label}</div>
-		</div>
-	)
-}
 
 function StatusBadge({ status }: { status: string }) {
 	const statusConfig = {

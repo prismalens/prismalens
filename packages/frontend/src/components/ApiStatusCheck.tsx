@@ -39,7 +39,7 @@ export function ApiStatusCheck() {
 	}
 
 	return (
-		<div className="text-sm text-green-600 dark:text-green-400">
+		<div className="text-sm text-muted-foreground">
 			API connected: {data?.status}
 		</div>
 	);

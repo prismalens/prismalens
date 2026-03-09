@@ -5,7 +5,6 @@ export {
 } from "./CorrelationRulesSettings";
 export { DangerZoneSettings } from "./DangerZoneSettings";
 export { IntegrationCard, type IntegrationCardProps } from "./IntegrationCard";
-export { MCPServerSettings } from "./MCPServerSettings";
 export { IntegrationsSettings } from "./IntegrationsSettings";
 export { InvestigationSettings } from "./InvestigationSettings";
 export { ModelCard, type ModelCardProps } from "./ModelCard";

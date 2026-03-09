@@ -31,6 +31,9 @@ export function createAuth(prisma: any, options: AuthOptions) {
 		// Base URL for auth endpoints
 		baseURL: options.baseURL,
 
+		// Trust the frontend origin (may differ from API baseURL in dev)
+		trustedOrigins: options.trustedOrigins,
+
 		// Secret for signing tokens/cookies
 		secret: options.secret,
 
@@ -104,6 +107,9 @@ export interface AuthOptions {
 
 	/** Base URL for the API (e.g., "http://localhost:3001") */
 	baseURL: string;
+
+	/** Trusted origins that can make auth requests (e.g., frontend URL) */
+	trustedOrigins?: string[];
 
 	/** Secret for signing tokens. Generate with: openssl rand -base64 32 */
 	secret: string;

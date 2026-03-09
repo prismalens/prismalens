@@ -132,7 +132,7 @@ function ConfigureIntegrationPage() {
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
-							<AlertCircle className="h-12 w-12 text-destructive mb-4" />
+							<AlertCircle className="h-5 w-5 text-destructive mb-3" />
 							<h2 className="text-lg font-semibold mb-2">
 								Missing Connection ID
 							</h2>
@@ -169,7 +169,7 @@ function ConfigureIntegrationPage() {
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
-							<AlertCircle className="h-12 w-12 text-destructive mb-4" />
+							<AlertCircle className="h-5 w-5 text-destructive mb-3" />
 							<h2 className="text-lg font-semibold mb-2">
 								Connection Not Found
 							</h2>
@@ -196,7 +196,7 @@ function ConfigureIntegrationPage() {
 						<ArrowLeft className="h-5 w-5" />
 					</Button>
 					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+						<div className="flex-shrink-0">
 							{getProviderIcon()}
 						</div>
 						<div>

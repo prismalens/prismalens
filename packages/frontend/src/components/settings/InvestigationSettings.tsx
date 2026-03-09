@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
-	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -95,16 +95,9 @@ export function InvestigationSettings() {
 			{/* Tier Policies */}
 			<Card>
 				<CardHeader>
-					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-							<Settings2 className="h-5 w-5 text-primary" />
-						</div>
-						<div>
-							<CardTitle>Investigation Policies</CardTitle>
-							<CardDescription>
-								Configure how investigations are triggered for each service tier
-							</CardDescription>
-						</div>
+					<div className="flex items-center gap-2">
+						<Settings2 className="h-5 w-5 text-muted-foreground" />
+						<CardTitle>Investigation Policies</CardTitle>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -150,51 +143,54 @@ export function InvestigationSettings() {
 								</div>
 
 								<div className="grid grid-cols-3 gap-4 pt-2 border-t">
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
+									<div className="flex items-center gap-2">
+										<Checkbox
+											id={`${policy.tier}-requiresApproval`}
 											checked={policy.requiresApproval}
-											onChange={(e) =>
+											onCheckedChange={(checked) =>
 												handlePolicyChange(
 													policy.tier,
 													"requiresApproval",
-													e.target.checked,
+													!!checked,
 												)
 											}
-											className="rounded border-gray-300"
 										/>
-										Requires approval
-									</label>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
+										<Label htmlFor={`${policy.tier}-requiresApproval`} className="text-sm font-normal">
+											Requires approval
+										</Label>
+									</div>
+									<div className="flex items-center gap-2">
+										<Checkbox
+											id={`${policy.tier}-pageOnCall`}
 											checked={policy.pageOnCall}
-											onChange={(e) =>
+											onCheckedChange={(checked) =>
 												handlePolicyChange(
 													policy.tier,
 													"pageOnCall",
-													e.target.checked,
+													!!checked,
 												)
 											}
-											className="rounded border-gray-300"
 										/>
-										Page on-call
-									</label>
-									<label className="flex items-center gap-2 text-sm">
-										<input
-											type="checkbox"
+										<Label htmlFor={`${policy.tier}-pageOnCall`} className="text-sm font-normal">
+											Page on-call
+										</Label>
+									</div>
+									<div className="flex items-center gap-2">
+										<Checkbox
+											id={`${policy.tier}-postToSlack`}
 											checked={policy.postToSlack}
-											onChange={(e) =>
+											onCheckedChange={(checked) =>
 												handlePolicyChange(
 													policy.tier,
 													"postToSlack",
-													e.target.checked,
+													!!checked,
 												)
 											}
-											className="rounded border-gray-300"
 										/>
-										Post to Slack
-									</label>
+										<Label htmlFor={`${policy.tier}-postToSlack`} className="text-sm font-normal">
+											Post to Slack
+										</Label>
+									</div>
 								</div>
 							</div>
 						);
@@ -206,16 +202,9 @@ export function InvestigationSettings() {
 			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-3">
-							<div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
-								<Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-							</div>
-							<div>
-								<CardTitle>Investigation Limits</CardTitle>
-								<CardDescription>
-									Resource constraints for AI investigations
-								</CardDescription>
-							</div>
+						<div className="flex items-center gap-2">
+							<Clock className="h-5 w-5 text-muted-foreground" />
+							<CardTitle>Investigation Limits</CardTitle>
 						</div>
 						{!editingLimits && (
 							<Button variant="outline" onClick={() => setEditingLimits(true)}>
@@ -314,28 +303,18 @@ export function InvestigationSettings() {
 							</div>
 						</div>
 					) : (
-						<div className="grid grid-cols-3 gap-4">
-							<div className="p-4 bg-muted/50 rounded-lg text-center">
-								<div className="text-2xl font-bold">
-									{limits?.maxConcurrent || 5}
-								</div>
-								<div className="text-sm text-muted-foreground">
-									Max Concurrent
-								</div>
+						<div className="flex items-center gap-8 text-sm">
+							<div>
+								<span className="text-muted-foreground">Max Concurrent:</span>{" "}
+								<span className="font-medium">{limits?.maxConcurrent || 5}</span>
 							</div>
-							<div className="p-4 bg-muted/50 rounded-lg text-center">
-								<div className="text-2xl font-bold">
-									{limits?.timeoutMinutes || 30}m
-								</div>
-								<div className="text-sm text-muted-foreground">Timeout</div>
+							<div>
+								<span className="text-muted-foreground">Timeout:</span>{" "}
+								<span className="font-medium">{limits?.timeoutMinutes || 30}m</span>
 							</div>
-							<div className="p-4 bg-muted/50 rounded-lg text-center">
-								<div className="text-2xl font-bold">
-									{limits?.maxToolCalls || 100}
-								</div>
-								<div className="text-sm text-muted-foreground">
-									Max Tool Calls
-								</div>
+							<div>
+								<span className="text-muted-foreground">Max Tool Calls:</span>{" "}
+								<span className="font-medium">{limits?.maxToolCalls || 100}</span>
 							</div>
 						</div>
 					)}

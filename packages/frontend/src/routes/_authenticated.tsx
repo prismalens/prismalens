@@ -12,6 +12,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { isRedirect } from "@tanstack/react-router";
 import { orpc } from "@/lib/api/orpc-client";
+import { getSession } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async ({ context, location }) => {
@@ -23,7 +24,22 @@ export const Route = createFileRoute("/_authenticated")({
 			);
 
 			if (result.setupComplete) {
-				return; // Setup complete, allow access to protected routes
+				// Setup complete — now verify the user has a valid session
+				// Wrap in try/catch so transient network errors (e.g. API hot-reload)
+				// don't log the user out — only explicit "no session" triggers redirect
+				try {
+					const session = await getSession();
+					if (!session.data) {
+						throw redirect({
+							to: "/auth/login",
+							search: { redirect: location.href },
+						});
+					}
+				} catch (sessionError) {
+					if (isRedirect(sessionError)) throw sessionError;
+					// Network error (API restarting) — don't redirect, let error boundary handle
+				}
+				return;
 			}
 
 			// Setup not complete - redirect to setup with original URL
@@ -31,9 +47,6 @@ export const Route = createFileRoute("/_authenticated")({
 				to: "/setup",
 				search: {
 					redirect: location.href,
-					callback: false,
-					provider: undefined,
-					success: undefined,
 				},
 			});
 		} catch (error) {

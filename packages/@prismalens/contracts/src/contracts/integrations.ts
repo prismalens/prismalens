@@ -50,7 +50,7 @@ export const integrationsContract = {
 		.output(AuthTemplateResponseSchema),
 
 	// =========================================================================
-	// INTEGRATIONS (OAuth client creds / provider instances)
+	// INTEGRATIONS — static paths first to avoid {id} param collision
 	// =========================================================================
 
 	createIntegration: oc
@@ -73,38 +73,9 @@ export const integrationsContract = {
 		.input(IntegrationQuerySchema)
 		.output(z.array(IntegrationSchema)),
 
-	getIntegration: oc
-		.route({
-			method: "GET",
-			path: "/integrations/{id}",
-			summary: "Get integration by ID",
-			tags: ["integrations"],
-		})
-		.input(IdParamSchema)
-		.output(IntegrationSchema),
-
-	updateIntegration: oc
-		.route({
-			method: "PATCH",
-			path: "/integrations/{id}",
-			summary: "Update integration",
-			tags: ["integrations"],
-		})
-		.input(IdParamSchema.merge(UpdateIntegrationSchema))
-		.output(IntegrationSchema),
-
-	deleteIntegration: oc
-		.route({
-			method: "DELETE",
-			path: "/integrations/{id}",
-			summary: "Delete integration",
-			tags: ["integrations"],
-		})
-		.input(IdParamSchema)
-		.output(z.void()),
-
 	// =========================================================================
 	// CONNECTIONS (user tokens / API keys)
+	// Must be defined before /integrations/{id} to avoid route collision
 	// =========================================================================
 
 	createConnection: oc
@@ -211,6 +182,7 @@ export const integrationsContract = {
 
 	// =========================================================================
 	// SERVICE INTEGRATION ENDPOINTS (Per-service overrides)
+	// Must be defined before /integrations/{id} to avoid route collision
 	// =========================================================================
 
 	getServiceIntegrations: oc
@@ -249,6 +221,40 @@ export const integrationsContract = {
 			path: "/integrations/service-integrations/{id}",
 			summary: "Delete per-service integration override",
 			tags: ["integrations", "services"],
+		})
+		.input(IdParamSchema)
+		.output(z.void()),
+
+	// =========================================================================
+	// INTEGRATION by ID (parameterized — must be LAST to avoid collisions)
+	// =========================================================================
+
+	getIntegration: oc
+		.route({
+			method: "GET",
+			path: "/integrations/{id}",
+			summary: "Get integration by ID",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema)
+		.output(IntegrationSchema),
+
+	updateIntegration: oc
+		.route({
+			method: "PATCH",
+			path: "/integrations/{id}",
+			summary: "Update integration",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema.merge(UpdateIntegrationSchema))
+		.output(IntegrationSchema),
+
+	deleteIntegration: oc
+		.route({
+			method: "DELETE",
+			path: "/integrations/{id}",
+			summary: "Delete integration",
+			tags: ["integrations"],
 		})
 		.input(IdParamSchema)
 		.output(z.void()),

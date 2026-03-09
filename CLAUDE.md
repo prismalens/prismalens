@@ -13,3 +13,9 @@ When adding new packages, always prefer addition/installation via the package ma
 
 ## Ecosystem
 This is a NodeJS project
+
+## Code Formatting Best Practices
+
+### Indentation
+- Never convert tabs to spaces or vice-versa.
+- Preserve the original indentation pattern exactly when making code suggestions.

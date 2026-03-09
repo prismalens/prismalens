@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import type { AlertStatus, Severity } from "@prismalens/contracts";
 
@@ -71,21 +71,11 @@ function AlertsPage() {
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<Bell className="h-8 w-8 text-primary" />
-					<div>
-						<h1 className="text-2xl font-bold">Alerts</h1>
-						<p className="text-muted-foreground">
-							{stats ? (
-								<>
-									{stats.total} total alerts
-									{stats.byStatus?.triggered ? ` • ${stats.byStatus.triggered} triggered` : ""}
-								</>
-							) : (
-								"Monitor and manage incoming alerts"
-							)}
-						</p>
-					</div>
+				<div>
+					<h1 className="text-2xl font-bold">Alerts</h1>
+					<p className="text-muted-foreground">
+						Monitor and manage incoming alerts
+					</p>
 				</div>
 				<Button
 					variant="outline"
@@ -98,34 +88,29 @@ function AlertsPage() {
 				</Button>
 			</div>
 
-			{/* Stats Cards */}
+			{/* Stats Summary */}
 			{stats && (
-				<div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-					<StatCard
-						label="Total"
-						value={stats.total}
-						className="bg-muted/50"
-					/>
-					<StatCard
-						label="Triggered"
-						value={stats.byStatus?.triggered || 0}
-						className="bg-red-500/10 text-red-600"
-					/>
-					<StatCard
-						label="Acknowledged"
-						value={stats.byStatus?.acknowledged || 0}
-						className="bg-blue-500/10 text-blue-600"
-					/>
-					<StatCard
-						label="Correlated"
-						value={stats.byStatus?.correlated || 0}
-						className="bg-purple-500/10 text-purple-600"
-					/>
-					<StatCard
-						label="Resolved"
-						value={stats.byStatus?.resolved || 0}
-						className="bg-green-500/10 text-green-600"
-					/>
+				<div className="flex items-center gap-6 text-sm">
+					<div>
+						<span className="text-muted-foreground">Total:</span>{" "}
+						<span className="font-medium">{stats.total}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Triggered:</span>{" "}
+						<span className="font-medium">{stats.byStatus?.triggered || 0}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Acknowledged:</span>{" "}
+						<span className="font-medium">{stats.byStatus?.acknowledged || 0}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Correlated:</span>{" "}
+						<span className="font-medium">{stats.byStatus?.correlated || 0}</span>
+					</div>
+					<div>
+						<span className="text-muted-foreground">Resolved:</span>{" "}
+						<span className="font-medium">{stats.byStatus?.resolved || 0}</span>
+					</div>
 				</div>
 			)}
 
@@ -149,19 +134,3 @@ function AlertsPage() {
 	)
 }
 
-function StatCard({
-	label,
-	value,
-	className,
-}: {
-	label: string;
-	value: number;
-	className?: string;
-}) {
-	return (
-		<div className={`rounded-lg p-4 ${className}`}>
-			<div className="text-2xl font-bold">{value}</div>
-			<div className="text-sm text-muted-foreground">{label}</div>
-		</div>
-	)
-}

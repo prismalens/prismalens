@@ -5,7 +5,8 @@
  * Hidden during setup flow to prevent navigation away from required setup steps
  */
 
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
@@ -15,14 +16,26 @@ import {
 	NavigationMenuLink,
 	navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useSession, signOut } from "@/lib/auth";
 import * as m from "@/lib/paraglide/messages.js";
 
 export function Navbar() {
 	const location = useLocation();
 	const isSetupRoute = location.pathname.startsWith("/setup");
+	const isAuthRoute = location.pathname.startsWith("/auth");
 
-	// Hide navbar entirely during setup flow
-	if (isSetupRoute) {
+	// Hide navbar entirely during setup and auth flows
+	if (isSetupRoute || isAuthRoute) {
 		return null;
 	}
 
@@ -96,9 +109,67 @@ export function Navbar() {
 						</NavigationMenu>
 						<LanguageSwitcher />
 						<ThemeToggle />
+						<UserMenu />
 					</div>
 				</div>
 			</div>
 		</nav>
+	);
+}
+
+function getInitials(name: string | null | undefined): string {
+	if (!name) return "?";
+	return name
+		.split(" ")
+		.map((part) => part[0])
+		.filter(Boolean)
+		.slice(0, 2)
+		.join("")
+		.toUpperCase();
+}
+
+function UserMenu() {
+	const { data: session } = useSession();
+	const navigate = useNavigate();
+
+	if (!session?.user) return null;
+
+	const { user } = session;
+
+	const handleSignOut = async () => {
+		await signOut();
+		navigate({ to: "/auth/login", search: { redirect: undefined } });
+	};
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
+					<Avatar className="h-8 w-8">
+						<AvatarFallback className="bg-primary text-primary-foreground text-xs">
+							{getInitials(user.name)}
+						</AvatarFallback>
+					</Avatar>
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-56">
+				<DropdownMenuLabel className="font-normal">
+					<div className="flex flex-col space-y-1">
+						<p className="text-sm font-medium leading-none">{user.name}</p>
+						<p className="text-xs leading-none text-muted-foreground">
+							{user.email}
+						</p>
+					</div>
+				</DropdownMenuLabel>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem
+					onClick={handleSignOut}
+					className="cursor-pointer"
+				>
+					<LogOut className="mr-2 h-4 w-4" />
+					Sign out
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

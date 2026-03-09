@@ -56,23 +56,16 @@ export function DangerZoneSettings() {
 
 	return (
 		<>
-			<Card className="border-destructive/50">
+			<Card className="border-destructive/30">
 				<CardHeader>
-					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 bg-destructive/10 rounded-lg flex items-center justify-center">
-							<AlertTriangle className="h-5 w-5 text-destructive" />
-						</div>
-						<div>
-							<CardTitle className="text-destructive">Danger Zone</CardTitle>
-							<CardDescription>
-								Destructive operations that cannot be undone
-							</CardDescription>
-						</div>
+					<div className="flex items-center gap-2">
+						<AlertTriangle className="h-5 w-5 text-destructive" />
+						<CardTitle className="text-destructive">Danger Zone</CardTitle>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-6">
 					{/* Reset Data */}
-					<div className="flex justify-between items-center p-4 border border-destructive/30 rounded-lg">
+					<div className="flex justify-between items-center p-4 border rounded-lg">
 						<div>
 							<h3 className="font-medium text-foreground">Reset All Data</h3>
 							<p className="text-sm text-muted-foreground">
@@ -90,7 +83,7 @@ export function DangerZoneSettings() {
 					</div>
 
 					{/* Factory Reset */}
-					<div className="flex justify-between items-center p-4 border border-destructive/30 rounded-lg">
+					<div className="flex justify-between items-center p-4 border rounded-lg">
 						<div>
 							<h3 className="font-medium text-foreground">Factory Reset</h3>
 							<p className="text-sm text-muted-foreground">

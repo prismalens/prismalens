@@ -13,7 +13,6 @@ import {
 	ExternalLink,
 	Lightbulb,
 	MapPin,
-	Timer,
 } from "lucide-react";
 import { ApiStatusCheck } from "@/components/ApiStatusCheck";
 import { LLMWarningBanner } from "@/components/shared/LLMWarningBanner";
@@ -96,7 +95,10 @@ function CommandCenter() {
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex justify-between items-center">
-				<h1 className="text-3xl font-bold text-foreground">Command Center</h1>
+				<div>
+					<h1 className="text-3xl font-bold text-foreground">Command Center</h1>
+					<p className="text-sm text-muted-foreground mt-1">Incident overview and status</p>
+				</div>
 				<div className="flex items-center gap-2">
 					<Button variant="outline" size="sm" asChild>
 						<Link to="/incidents">
@@ -112,40 +114,27 @@ function CommandCenter() {
 				<LLMWarningBanner incidentCount={activeIncidents.length} />
 			)}
 
-			{/* Quick Stats Bar - All Clickable */}
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-				<QuickStatCard
-					title="Active"
-					value={isLoading ? "-" : activeIncidents.length.toString()}
-					icon={<AlertTriangle className="h-5 w-5" />}
-					variant={activeIncidents.length > 0 ? "danger" : "success"}
-					loading={incidentsLoading}
-					href="/incidents?status=active"
-				/>
-				<QuickStatCard
-					title="Investigating"
-					value={isLoading ? "-" : investigatingIncidents.length.toString()}
-					icon={<Brain className="h-5 w-5" />}
-					variant={investigatingIncidents.length > 0 ? "warning" : "default"}
-					loading={incidentsLoading}
-					href="/incidents?status=investigating"
-				/>
-				<QuickStatCard
-					title="Unassigned Alerts"
-					value={isLoading ? "-" : unassignedAlerts.length.toString()}
-					icon={<AlertCircle className="h-5 w-5" />}
-					variant={unassignedAlerts.length > 0 ? "warning" : "default"}
-					loading={alertsLoading}
-					href="/alerts?tab=unmapped"
-				/>
-				<QuickStatCard
-					title="MTTR"
-					value={avgMttr !== null ? `${avgMttr}m` : "--"}
-					icon={<Timer className="h-5 w-5" />}
-					variant="default"
-					loading={incidentsLoading}
-					href="/incidents?tab=analytics"
-				/>
+			{/* Quick Stats Summary */}
+			<div className="flex items-center gap-4 text-sm text-muted-foreground">
+				{isLoading ? (
+					<Skeleton className="h-5 w-64" />
+				) : (
+					<>
+						<Link to="/incidents" search={{ status: "active" }} className="hover:text-foreground transition-colors">
+							Active: {activeIncidents.length}
+						</Link>
+						<span>&middot;</span>
+						<Link to="/incidents" search={{ status: "investigating" }} className="hover:text-foreground transition-colors">
+							Investigating: {investigatingIncidents.length}
+						</Link>
+						<span>&middot;</span>
+						<Link to="/alerts" search={{ tab: "unmapped" }} className="hover:text-foreground transition-colors">
+							Unassigned: {unassignedAlerts.length}
+						</Link>
+						<span>&middot;</span>
+						<span>MTTR: {avgMttr !== null ? `${avgMttr}m` : "--"}</span>
+					</>
+				)}
 			</div>
 
 			{/* Master-Detail Layout for Active Incidents */}
@@ -230,7 +219,7 @@ function CommandCenter() {
 					<NeedsAttentionCard
 						title="Unassigned Alerts"
 						count={unassignedAlerts.length}
-						icon={<AlertCircle className="h-5 w-5 text-orange-500" />}
+						icon={<AlertCircle className="h-5 w-5 text-muted-foreground" />}
 						loading={alertsLoading}
 						emptyText="All alerts are assigned to incidents"
 						viewAllHref="/alerts?tab=unmapped"
@@ -253,7 +242,7 @@ function CommandCenter() {
 					<NeedsAttentionCard
 						title="Pending Recommendations"
 						count={recommendations.length}
-						icon={<Lightbulb className="h-5 w-5 text-amber-500" />}
+						icon={<Lightbulb className="h-5 w-5 text-muted-foreground" />}
 						loading={recommendationsLoading}
 						emptyText="No pending recommendations"
 						viewAllHref="/incidents"
@@ -276,7 +265,7 @@ function CommandCenter() {
 					<NeedsAttentionCard
 						title="Alert Mapping Issues"
 						count={0}
-						icon={<MapPin className="h-5 w-5 text-red-500" />}
+						icon={<MapPin className="h-5 w-5 text-muted-foreground" />}
 						loading={false}
 						emptyText="No mapping issues detected"
 						viewAllHref="/alerts?tab=mapping-issues"
@@ -290,53 +279,7 @@ function CommandCenter() {
 	);
 }
 
-// Quick Stat Card Component
-interface QuickStatCardProps {
-	title: string;
-	value: string;
-	icon: React.ReactNode;
-	variant: "default" | "success" | "warning" | "danger";
-	loading?: boolean;
-	href: string;
-}
-
-function QuickStatCard({ title, value, icon, variant, loading, href }: QuickStatCardProps) {
-	const variantStyles = {
-		default: "bg-muted/50 hover:bg-muted",
-		success: "bg-green-500/10 hover:bg-green-500/20 border-green-500/20",
-		warning: "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20",
-		danger: "bg-red-500/10 hover:bg-red-500/20 border-red-500/20",
-	};
-
-	const iconStyles = {
-		default: "text-muted-foreground",
-		success: "text-green-600",
-		warning: "text-amber-600",
-		danger: "text-red-600",
-	};
-
-	return (
-		<Link to={href}>
-			<Card className={cn("transition-colors cursor-pointer border", variantStyles[variant])}>
-				<CardContent className="p-4">
-					<div className="flex items-center justify-between">
-						<div>
-							<p className="text-sm font-medium text-muted-foreground">{title}</p>
-							{loading ? (
-								<Skeleton className="h-8 w-12 mt-1" />
-							) : (
-								<p className="text-2xl font-bold">{value}</p>
-							)}
-						</div>
-						<div className={cn("p-2 rounded-full bg-background/50", iconStyles[variant])}>
-							{icon}
-						</div>
-					</div>
-				</CardContent>
-			</Card>
-		</Link>
-	);
-}
+// QuickStatCard is no longer used - stats are shown inline above.
 
 // Incident Detail Panel Component
 interface IncidentDetailPanelProps {
@@ -548,8 +491,7 @@ function NeedsAttentionCard({
 						))}
 					</div>
 				) : count === 0 ? (
-					<div className="flex flex-col items-center justify-center py-6">
-						<CheckCircle className="h-8 w-8 text-green-500 mb-2" />
+					<div className="py-4">
 						<p className="text-sm text-muted-foreground">{emptyText}</p>
 					</div>
 				) : (
@@ -571,20 +513,17 @@ function NeedsAttentionCard({
 function EmptyState() {
 	return (
 		<Card>
-			<CardContent className="flex flex-col items-center justify-center py-16">
-				<CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-				<h2 className="text-xl font-semibold mb-2">All Clear!</h2>
-				<p className="text-muted-foreground text-center mb-6 max-w-md">
-					No active incidents. Your systems are healthy. While things are quiet, you might want to:
-				</p>
+			<CardContent className="flex flex-col items-center justify-center py-10">
+				<CheckCircle className="h-6 w-6 text-muted-foreground mb-2" />
+				<p className="text-sm font-medium text-muted-foreground mb-4">No active incidents</p>
 				<div className="flex flex-wrap justify-center gap-3">
-					<Button variant="outline" asChild>
+					<Button variant="outline" size="sm" asChild>
 						<Link to="/settings">Configure Integrations</Link>
 					</Button>
-					<Button variant="outline" asChild>
+					<Button variant="outline" size="sm" asChild>
 						<Link to="/services">Add Services</Link>
 					</Button>
-					<Button variant="outline" asChild>
+					<Button variant="outline" size="sm" asChild>
 						<Link to="/incidents">View Historical Incidents</Link>
 					</Button>
 				</div>

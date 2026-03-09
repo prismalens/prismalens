@@ -1,15 +1,14 @@
-import { Module, forwardRef } from "@nestjs/common";
-import { PrismaModule } from "../prisma/prisma.module.js";
-import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
-import { SettingsController } from "./settings.controller.js";
-import { SettingsService } from "./settings.service.js";
-import { LlmSettingsService } from "./llm-settings.service.js";
-import { McpSettingsService } from "./mcp-settings.service.js";
+import { Module, forwardRef } from '@nestjs/common';
+import { PrismaModule } from '../prisma/prisma.module.js';
+import { IntegrationsModule } from '../../modules/integrations/integrations.module.js';
+import { SettingsController } from './settings.controller.js';
+import { SettingsService } from './settings.service.js';
+import { LlmSettingsService } from './llm-settings.service.js';
 
 @Module({
-	imports: [PrismaModule, forwardRef(() => IntegrationsModule)],
-	controllers: [SettingsController],
-	providers: [SettingsService, LlmSettingsService, McpSettingsService],
-	exports: [SettingsService, LlmSettingsService, McpSettingsService],
+  imports: [PrismaModule, forwardRef(() => IntegrationsModule)],
+  controllers: [SettingsController],
+  providers: [SettingsService, LlmSettingsService],
+  exports: [SettingsService, LlmSettingsService],
 })
 export class SettingsModule {}

@@ -12,11 +12,28 @@ import { createAuthClient } from "better-auth/react";
 import { organizationClient, adminClient } from "better-auth/client/plugins";
 
 /**
+ * Build an absolute base URL for the Better Auth client.
+ * Better Auth requires an absolute URL with protocol (http:// or https://).
+ * In the browser, uses window.location.origin; in SSR, uses env vars.
+ */
+function getDefaultBaseURL(): string {
+	// Use globalThis to avoid needing DOM lib types in the shared package
+	const win = globalThis as unknown as { location?: { origin: string } };
+	if (win.location?.origin) {
+		return `${win.location.origin}/api/auth`;
+	}
+	const protocol = process.env.PRISMALENS_PROTOCOL || "http";
+	const host = process.env.PRISMALENS_HOST || "localhost";
+	const port = process.env.PRISMALENS_PORT || "3001";
+	return `${protocol}://${host}:${port}/api/auth`;
+}
+
+/**
  * Create the Better Auth client instance.
  *
- * @param baseURL - The base URL of the API (e.g., "/api/auth" or "http://localhost:3001/api/auth")
+ * @param baseURL - Absolute URL of the auth API (defaults to auto-detected origin + /api/auth)
  */
-export function createPrismaLensAuthClient(baseURL: string = "/api/auth") {
+export function createPrismaLensAuthClient(baseURL: string = getDefaultBaseURL()) {
 	return createAuthClient({
 		baseURL,
 		plugins: [
@@ -34,8 +51,8 @@ export function createPrismaLensAuthClient(baseURL: string = "/api/auth") {
 export type AuthClient = ReturnType<typeof createPrismaLensAuthClient>;
 
 /**
- * Pre-configured auth client for use in the frontend
- * Uses the default "/api/auth" base URL which works with Vite proxy
+ * Pre-configured auth client for use in the frontend.
+ * Uses auto-detected absolute URL (browser origin or SSR env vars).
  */
 export const authClient = createPrismaLensAuthClient();
 
