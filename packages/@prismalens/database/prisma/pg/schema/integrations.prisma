@@ -38,6 +38,7 @@ enum SuggestionStatus {
 model Integration {
   id              String       @id @default(uuid())
   templateId      String       // References AuthTemplate.id from @prismalens/integrations
+  templateVersion String?      // Template semver at creation time (e.g., "1.0.0")
   label           String       // User-friendly name, e.g., "Production GitHub"
   clientIdEnc     Bytes?       // Encrypted OAuth client ID (null for api_key/basic)
   clientSecretEnc Bytes?       // Encrypted OAuth client secret (null for api_key/basic)
@@ -50,7 +51,7 @@ model Integration {
   // Relations
   connections Connection[]
 
-  @@unique([templateId, label])
+  @@index([templateId])
   @@map("integrations")
 }
 
@@ -88,7 +89,7 @@ model Connection {
   serviceMappings    ServiceIntegration[]
   serviceSuggestions ServiceSuggestion[]
 
-  @@unique([integrationId, userId])
+  @@index([integrationId, userId])
   @@index([userId])
   @@index([status])
   @@index([tokenExpiresAt])

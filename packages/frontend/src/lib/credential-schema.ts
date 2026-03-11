@@ -21,8 +21,14 @@ export function validateFieldValues(
 	const errors: Record<string, string> = {};
 
 	for (const field of fields) {
-		if (field.required !== false && !values[field.name]?.trim()) {
+		const value = values[field.name]?.trim();
+		if (field.required === true && !value) {
 			errors[field.name] = `${field.label} is required`;
+		} else if (value && field.pattern) {
+			const regex = new RegExp(field.pattern);
+			if (!regex.test(value)) {
+				errors[field.name] = field.description ?? `${field.label} has an invalid format`;
+			}
 		}
 	}
 

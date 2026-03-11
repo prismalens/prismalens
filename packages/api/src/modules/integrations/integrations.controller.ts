@@ -262,6 +262,50 @@ export class IntegrationsController {
       }),
 
       // =========================================================================
+      // GITHUB APP ENDPOINTS
+      // =========================================================================
+
+      listGitHubInstallations: implement(
+        integrationsContract.listGitHubInstallations,
+      ).handler(async ({ input, context }) => {
+        this.extractUserId(context);
+        const installations =
+          await this.integrationsService.listGitHubInstallations(input.id);
+        return installations.map((inst) => ({
+          id: inst.id,
+          account: {
+            login: inst.account.login,
+            id: inst.account.id,
+            type: inst.account.type,
+            avatarUrl: inst.account.avatar_url,
+          },
+          appId: inst.app_id,
+          targetType: inst.target_type,
+          permissions: inst.permissions,
+          events: inst.events,
+          repositorySelection: inst.repository_selection,
+        }));
+      }),
+
+      connectGitHubInstallation: implement(
+        integrationsContract.connectGitHubInstallation,
+      ).handler(async ({ input, context }) => {
+        const userId = this.extractUserId(context);
+        const connection =
+          await this.integrationsService.connectGitHubInstallation(
+            input.id,
+            input.installationId,
+            userId,
+            input.organization,
+            input.permissionOverrides,
+          );
+        this.logger.log(
+          `Connected GitHub installation ${input.installationId} → connection ${connection.id}`,
+        );
+        return this.serializeConnection(connection);
+      }),
+
+      // =========================================================================
       // SERVICE INTEGRATION ENDPOINTS
       // =========================================================================
 
@@ -321,17 +365,20 @@ export class IntegrationsController {
     return {
       id: template.id,
       name: template.name,
+      version: template.version,
       category: template.category,
       authMode: template.authMode,
       icon: template.icon,
       docsUrl: template.docsUrl,
+      setupDocsUrl: template.setupDocsUrl,
       connectionFields: template.connectionFields as
         | AuthTemplateResponse['connectionFields']
         | undefined,
       credentialFields: template.credentialFields as
         | AuthTemplateResponse['credentialFields']
         | undefined,
-      hasOAuth: template.authMode === 'oauth2',
+      hasOAuth:
+        template.authMode === 'oauth2' || template.authMode === 'github_app',
     };
   }
 

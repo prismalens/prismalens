@@ -3,10 +3,12 @@ import type { AuthTemplate } from "../types.js";
 export const render: AuthTemplate = {
 	id: "render",
 	name: "Render",
+	version: "1.0.0",
 	category: "observability",
 	authMode: "api_key",
 	icon: "https://render.com/favicon.ico",
 	docsUrl: "https://docs.render.com/api",
+	setupDocsUrl: "https://docs.prismalens.io/integrations/render/",
 	credentialFields: [
 		{
 			name: "apiKey",

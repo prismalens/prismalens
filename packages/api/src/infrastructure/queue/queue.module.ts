@@ -26,9 +26,14 @@ function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
       },
     );
     const opts = buildRedisOptions(config);
-    return new IORedis.Cluster(nodes, { redisOptions: opts });
+    return new IORedis.Cluster(nodes, {
+      redisOptions: { ...opts, maxRetriesPerRequest: null },
+    });
   }
-  return new IORedis.Redis(buildRedisOptions(config));
+  return new IORedis.Redis({
+    ...buildRedisOptions(config),
+    maxRetriesPerRequest: null,
+  });
 }
 
 /**

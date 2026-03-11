@@ -16,7 +16,7 @@ export const TemplateFieldOptionSchema = z.object({
 export const TemplateFieldSchema = z.object({
 	name: z.string(),
 	label: z.string(),
-	type: z.enum(["string", "password", "select", "number", "boolean"]),
+	type: z.enum(["string", "password", "select", "number", "boolean", "textarea"]),
 	default: z.string().optional(),
 	required: z.boolean().optional(),
 	placeholder: z.string().optional(),
@@ -25,15 +25,19 @@ export const TemplateFieldSchema = z.object({
 	pattern: z.string().optional(),
 	options: z.array(TemplateFieldOptionSchema).optional(),
 	sensitive: z.boolean().optional(),
+	readonly: z.boolean().optional(),
+	hidden: z.boolean().optional(),
 });
 
 export const AuthTemplateResponseSchema = z.object({
 	id: z.string(),
 	name: z.string(),
+	version: z.string(),
 	category: z.string(),
-	authMode: z.enum(["api_key", "basic", "oauth2"]),
+	authMode: z.enum(["api_key", "basic", "oauth2", "github_app"]),
 	icon: z.string().optional(),
 	docsUrl: z.string().optional(),
+	setupDocsUrl: z.string().optional(),
 	connectionFields: z.array(TemplateFieldSchema).optional(),
 	credentialFields: z.array(TemplateFieldSchema).optional(),
 	hasOAuth: z.boolean(),
@@ -116,16 +120,6 @@ export const UpdateConnectionSchema = z.object({
 
 export const OAuthStartResponseSchema = z.object({
 	redirectUrl: z.string().url(),
-});
-
-export const OAuthCallbackSchema = z.object({
-	code: z.string(),
-	state: z.string(),
-});
-
-export const OAuthCallbackResponseSchema = z.object({
-	connectionId: z.string().uuid(),
-	status: ConnectionStatusSchema,
 });
 
 // =============================================================================
@@ -212,6 +206,31 @@ export const ServiceIntegrationWithStatusSchema = z.object({
 });
 
 // =============================================================================
+// GITHUB APP SCHEMAS
+// =============================================================================
+
+export const GitHubInstallationSchema = z.object({
+	id: z.number(),
+	account: z.object({
+		login: z.string(),
+		id: z.number(),
+		type: z.string(),
+		avatarUrl: z.string().optional(),
+	}),
+	appId: z.number(),
+	targetType: z.string(),
+	permissions: z.record(z.string()),
+	events: z.array(z.string()),
+	repositorySelection: z.string(),
+});
+
+export const ConnectInstallationSchema = z.object({
+	installationId: z.string(),
+	organization: z.string().optional(),
+	permissionOverrides: z.record(z.string()).optional(),
+});
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -225,8 +244,6 @@ export type ConnectionWithIntegration = z.infer<typeof ConnectionWithIntegration
 export type CreateConnectionInput = z.infer<typeof CreateConnectionSchema>;
 export type UpdateConnectionInput = z.infer<typeof UpdateConnectionSchema>;
 export type OAuthStartResponse = z.infer<typeof OAuthStartResponseSchema>;
-export type OAuthCallbackInput = z.infer<typeof OAuthCallbackSchema>;
-export type OAuthCallbackResponse = z.infer<typeof OAuthCallbackResponseSchema>;
 export type IntegrationQuery = z.infer<typeof IntegrationQuerySchema>;
 
 // Git provider types
@@ -238,3 +255,7 @@ export type ServiceIntegration = z.infer<typeof ServiceIntegrationSchema>;
 export type CreateServiceIntegrationInput = z.infer<typeof CreateServiceIntegrationSchema>;
 export type UpdateServiceIntegrationInput = z.infer<typeof UpdateServiceIntegrationSchema>;
 export type ServiceIntegrationWithStatus = z.infer<typeof ServiceIntegrationWithStatusSchema>;
+
+// GitHub App types
+export type GitHubInstallation = z.infer<typeof GitHubInstallationSchema>;
+export type ConnectInstallationInput = z.infer<typeof ConnectInstallationSchema>;

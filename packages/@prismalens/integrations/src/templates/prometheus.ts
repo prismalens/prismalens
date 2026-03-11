@@ -3,10 +3,12 @@ import type { AuthTemplate } from "../types.js";
 export const prometheus: AuthTemplate = {
 	id: "prometheus",
 	name: "Prometheus",
+	version: "1.0.0",
 	category: "observability",
 	authMode: "basic",
 	icon: "https://prometheus.io/assets/prometheus_logo_grey.svg",
 	docsUrl: "https://prometheus.io/docs/prometheus/latest/querying/api/",
+	setupDocsUrl: "https://docs.prismalens.io/integrations/prometheus/",
 	connectionFields: [
 		{
 			name: "baseUrl",
@@ -23,6 +25,7 @@ export const prometheus: AuthTemplate = {
 			name: "username",
 			label: "Username",
 			type: "string",
+			required: false,
 			placeholder: "admin",
 			description: "Basic auth username (optional)",
 		},
@@ -30,6 +33,7 @@ export const prometheus: AuthTemplate = {
 			name: "apiKey",
 			label: "Password / API Key",
 			type: "password",
+			required: false,
 			description: "Basic auth password (optional)",
 			sensitive: true,
 		},

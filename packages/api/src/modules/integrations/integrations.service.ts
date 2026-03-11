@@ -17,7 +17,11 @@ import type {
 import {
   getAllTemplates,
   getTemplate,
+  AuthManager,
+  GitHubAppFlow,
   type AuthTemplate,
+  type AuthManagerDeps,
+  type GitHubInstallation,
 } from '@prismalens/integrations';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { CredentialsService } from './crypto/credentials.service.js';
@@ -51,11 +55,96 @@ export interface IntegrationContext {
 @Injectable()
 export class IntegrationsService {
   private readonly logger = new Logger(IntegrationsService.name);
+  private authManager: AuthManager | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly credentialsService: CredentialsService,
   ) {}
+
+  private getAuthManager(): AuthManager {
+    if (this.authManager) return this.authManager;
+
+    const vault = this.credentialsService.getVault();
+    const prisma = this.prisma;
+    const credentialsService = this.credentialsService;
+
+    const deps: AuthManagerDeps = {
+      getConnection: async (connectionId: string) => {
+        const conn = await prisma.connection.findUnique({
+          where: { id: connectionId },
+          include: { integration: true },
+        });
+        if (!conn) return null;
+        return {
+          id: conn.id,
+          integrationId: conn.integrationId,
+          credentialsEnc: Buffer.from(conn.credentialsEnc),
+          tokenExpiresAt: conn.tokenExpiresAt,
+        };
+      },
+      getTemplate: async (integrationId: string) => {
+        const integration = await prisma.integration.findUnique({
+          where: { id: integrationId },
+        });
+        if (!integration) return null;
+        const template = getTemplate(integration.templateId);
+        if (!template) return null;
+        const clientId = integration.clientIdEnc
+          ? vault.decrypt(Buffer.from(integration.clientIdEnc))
+          : '';
+        const clientSecret = integration.clientSecretEnc
+          ? vault.decrypt(Buffer.from(integration.clientSecretEnc))
+          : '';
+        return { template, clientId, clientSecret };
+      },
+      updateConnectionTokens: async (connectionId, data) => {
+        await prisma.connection.update({
+          where: { id: connectionId },
+          data: {
+            credentialsEnc: new Uint8Array(
+              data.credentialsEnc,
+            ) as Uint8Array<ArrayBuffer>,
+            tokenExpiresAt: data.tokenExpiresAt,
+            lastRefreshedAt: data.lastRefreshedAt,
+            status: data.status,
+            consecutiveErrors: data.consecutiveErrors,
+          },
+        });
+      },
+      markConnectionError: async (connectionId, error, status) => {
+        await prisma.connection.update({
+          where: { id: connectionId },
+          data: {
+            status,
+            lastErrorMessage: error,
+            lastErrorAt: new Date(),
+            consecutiveErrors: { increment: 1 },
+          },
+        });
+      },
+      getTemplateForConnection: async (connectionId: string) => {
+        const conn = await prisma.connection.findUnique({
+          where: { id: connectionId },
+          include: { integration: true },
+        });
+        if (!conn) return null;
+        return getTemplate(conn.integration.templateId) ?? null;
+      },
+      getConnectionCredentials: async (connectionId: string) => {
+        const conn = await prisma.connection.findUnique({
+          where: { id: connectionId },
+        });
+        if (!conn) return null;
+        return credentialsService.decrypt<Record<string, unknown>>(
+          Buffer.from(conn.credentialsEnc),
+        );
+      },
+    };
+
+    this.authManager = new AuthManager(vault, deps);
+    return this.authManager;
+  }
 
   // =========================================================================
   // TEMPLATES (from @prismalens/integrations package)
@@ -79,16 +168,40 @@ export class IntegrationsService {
       throw new NotFoundException(`Template '${dto.templateId}' not found`);
     }
 
+    let clientIdEnc: Uint8Array<ArrayBuffer> | null = null;
+    let clientSecretEnc: Uint8Array<ArrayBuffer> | null = null;
+
+    if (template.authMode === 'github_app') {
+      // For GitHub App: appId → clientIdEnc, { privateKey, webhookSecret } → clientSecretEnc
+      // clientId/clientSecret are plain strings — use vault.encrypt directly
+      // (not encryptJSON, which would double-serialize the already-JSON clientSecret)
+      const vault = this.credentialsService.getVault();
+      if (dto.clientId) {
+        clientIdEnc = new Uint8Array(
+          vault.encrypt(dto.clientId),
+        ) as Uint8Array<ArrayBuffer>;
+      }
+      if (dto.clientSecret) {
+        clientSecretEnc = new Uint8Array(
+          vault.encrypt(dto.clientSecret),
+        ) as Uint8Array<ArrayBuffer>;
+      }
+    } else {
+      clientIdEnc = dto.clientId
+        ? this.credentialsService.encrypt(dto.clientId)
+        : null;
+      clientSecretEnc = dto.clientSecret
+        ? this.credentialsService.encrypt(dto.clientSecret)
+        : null;
+    }
+
     return this.prisma.integration.create({
       data: {
         templateId: dto.templateId,
+        templateVersion: template.version,
         label: dto.label,
-        clientIdEnc: dto.clientId
-          ? this.credentialsService.encrypt(dto.clientId)
-          : null,
-        clientSecretEnc: dto.clientSecret
-          ? this.credentialsService.encrypt(dto.clientSecret)
-          : null,
+        clientIdEnc,
+        clientSecretEnc,
         scopes: JSON.stringify(dto.scopes ?? template.oauth2?.scopes ?? []),
         callbackUrl: dto.callbackUrl,
       },
@@ -268,26 +381,8 @@ export class IntegrationsService {
       throw new NotFoundException('Connection not found');
     }
 
-    const template = getTemplate(connection.integration.templateId);
-    if (!template) {
-      return { success: false, error: 'Unknown template' };
-    }
-
     try {
-      const credentials = this.credentialsService.decrypt<
-        Record<string, unknown>
-      >(Buffer.from(connection.credentialsEnc));
-      const config = connection.connectionConfigEnc
-        ? this.credentialsService.decrypt<Record<string, unknown>>(
-            Buffer.from(connection.connectionConfigEnc),
-          )
-        : {};
-
-      const testResult = await this.performHealthCheck(
-        template,
-        credentials,
-        config,
-      );
+      const testResult = await this.getAuthManager().verifyConnection(id);
 
       await this.prisma.connection.update({
         where: { id },
@@ -304,8 +399,9 @@ export class IntegrationsService {
 
       return testResult;
     } catch (error) {
-      const errorMessage =
+      const rawMessage =
         error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = rawMessage.slice(0, 500);
       await this.prisma.connection.update({
         where: { id },
         data: {
@@ -319,134 +415,134 @@ export class IntegrationsService {
     }
   }
 
-  private async performHealthCheck(
-    template: AuthTemplate,
-    credentials: Record<string, unknown>,
-    config: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string }> {
-    // Use the template's verify endpoint if available
-    if (!template.verify) {
-      return { success: true };
+  // =========================================================================
+  // TOKEN RESOLUTION (auth-mode-aware)
+  // =========================================================================
+
+  async resolveAccessToken(
+    connectionId: string,
+    userId?: string,
+  ): Promise<string> {
+    // Verify user has access to this connection
+    if (userId) {
+      const connection = await this.findConnectionById(connectionId, userId);
+      if (!connection) {
+        throw new NotFoundException('Connection not found');
+      }
     }
 
-    // Route to provider-specific test logic
-    const baseTemplateId = template.id.replace(/-oauth2$|-token$/, '');
-    switch (baseTemplateId) {
-      case 'github':
-        return this.testGitHubConnection(credentials);
-      case 'prometheus':
-        return this.testPrometheusConnection(credentials, config);
-      case 'slack':
-        return this.testSlackConnection(credentials);
-      default:
-        return { success: true };
-    }
+    return this.getAuthManager().resolveAccessToken(connectionId);
   }
 
-  private async testGitHubConnection(
-    credentials: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const token = (credentials.apiKey || credentials.accessToken) as string;
-      const response = await fetch('https://api.github.com/user', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-        },
-        redirect: 'error',
-      });
+  // =========================================================================
+  // GITHUB APP OPERATIONS
+  // =========================================================================
 
-      if (response.ok) return { success: true };
-      return {
-        success: false,
-        error: `GitHub API returned ${response.status}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Connection failed',
-      };
+  async listGitHubInstallations(
+    integrationId: string,
+  ): Promise<GitHubInstallation[]> {
+    const integration = await this.findIntegrationById(integrationId);
+    if (!integration) {
+      throw new NotFoundException('Integration not found');
     }
+
+    const { appId, privateKey } = this.getGitHubAppCredentials(integration);
+
+    const jwt = GitHubAppFlow.generateJWT(appId, privateKey);
+    return GitHubAppFlow.listInstallations(jwt);
   }
 
-  private static readonly PROMETHEUS_ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '::1',
-  ];
-
-  private async testPrometheusConnection(
-    credentials: Record<string, unknown>,
-    config: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const baseUrl =
-        (config.baseUrl as string | undefined) || 'http://localhost:9090';
-
-      const parsed = new URL(baseUrl);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return {
-          success: false,
-          error: `Unsupported protocol: ${parsed.protocol}`,
-        };
-      }
-      if (
-        !IntegrationsService.PROMETHEUS_ALLOWED_HOSTS.includes(parsed.hostname)
-      ) {
-        return {
-          success: false,
-          error: `Host "${parsed.hostname}" is not allowed. Allowed: ${IntegrationsService.PROMETHEUS_ALLOWED_HOSTS.join(', ')}`,
-        };
-      }
-
-      const url = `${baseUrl}/api/v1/status/config`;
-      const headers: Record<string, string> = {};
-      if (credentials.username && credentials.apiKey) {
-        headers.Authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.apiKey}`).toString('base64')}`;
-      }
-
-      const response = await fetch(url, { headers, redirect: 'error' });
-      if (response.ok) return { success: true };
-      return {
-        success: false,
-        error: `Prometheus returned ${response.status}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Connection failed',
-      };
+  async connectGitHubInstallation(
+    integrationId: string,
+    installationId: string,
+    userId: string,
+    organization?: string,
+    permissionOverrides?: Record<string, string>,
+  ): Promise<Connection> {
+    const integration = await this.findIntegrationById(integrationId);
+    if (!integration) {
+      throw new NotFoundException('Integration not found');
     }
+
+    const template = getTemplate(integration.templateId);
+    if (!template || template.authMode !== 'github_app') {
+      throw new BadRequestException(
+        'Integration is not a GitHub App integration',
+      );
+    }
+
+    const { appId, privateKey } = this.getGitHubAppCredentials(integration);
+
+    // Generate first installation token
+    const jwt = GitHubAppFlow.generateJWT(appId, privateKey);
+    const permissions =
+      permissionOverrides ?? template.githubApp?.defaultPermissions;
+
+    const tokenResult = await GitHubAppFlow.getInstallationToken(
+      jwt,
+      installationId,
+      permissions,
+    );
+
+    const credentials: Record<string, unknown> = {
+      installationId,
+      accessToken: tokenResult.token,
+      installationToken: tokenResult.token,
+      permissions: tokenResult.permissions,
+      repositorySelection: tokenResult.repositorySelection,
+    };
+    if (permissionOverrides) {
+      credentials.permissionOverrides = permissionOverrides;
+    }
+
+    const connectionConfig: Record<string, string> = {};
+    if (organization) {
+      connectionConfig.organization = organization;
+    }
+
+    return this.prisma.connection.create({
+      data: {
+        integrationId,
+        userId,
+        credentialsEnc: this.credentialsService.encrypt(credentials),
+        connectionConfigEnc:
+          Object.keys(connectionConfig).length > 0
+            ? this.credentialsService.encrypt(connectionConfig)
+            : null,
+        tokenExpiresAt: tokenResult.expiresAt,
+        lastRefreshedAt: new Date(),
+        status: 'ACTIVE',
+      },
+    });
   }
 
-  private async testSlackConnection(
-    credentials: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const token = (credentials.apiKey || credentials.accessToken) as string;
-
-      if (token.startsWith('https://hooks.slack.com/')) {
-        return { success: true };
-      }
-
-      const response = await fetch('https://slack.com/api/auth.test', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        redirect: 'error',
-      });
-
-      const data = (await response.json()) as { ok: boolean; error?: string };
-      if (data.ok) return { success: true };
-      return { success: false, error: data.error || 'Slack auth test failed' };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Connection failed',
-      };
+  private getGitHubAppCredentials(integration: Integration): {
+    appId: string;
+    privateKey: string;
+    webhookSecret?: string;
+  } {
+    const vault = this.credentialsService.getVault();
+    if (!integration.clientIdEnc || !integration.clientSecretEnc) {
+      throw new BadRequestException(
+        'Integration does not have GitHub App credentials configured',
+      );
     }
+    const appId = vault.decrypt(Buffer.from(integration.clientIdEnc));
+    const secretJson = vault.decrypt(Buffer.from(integration.clientSecretEnc));
+
+    // clientSecret stores JSON string of { privateKey, webhookSecret }
+    let parsed: { privateKey: string; webhookSecret?: string };
+    try {
+      parsed = JSON.parse(secretJson) as {
+        privateKey: string;
+        webhookSecret?: string;
+      };
+    } catch {
+      // Fallback: if stored as raw string, treat entire value as privateKey
+      parsed = { privateKey: secretJson };
+    }
+
+    return { appId, ...parsed };
   }
 
   // =========================================================================
@@ -474,12 +570,7 @@ export class IntegrationsService {
       throw new BadRequestException('Failed to create git provider');
     }
 
-    const credentials = this.credentialsService.decrypt<
-      Record<string, unknown>
-    >(Buffer.from(connection.credentialsEnc));
-    const accessToken = (credentials.accessToken ||
-      credentials.apiKey) as string;
-
+    const accessToken = await this.resolveAccessToken(connectionId, userId);
     if (!accessToken) {
       throw new BadRequestException('No access token found');
     }
@@ -509,12 +600,7 @@ export class IntegrationsService {
       throw new BadRequestException('Failed to create git provider');
     }
 
-    const credentials = this.credentialsService.decrypt<
-      Record<string, unknown>
-    >(Buffer.from(connection.credentialsEnc));
-    const accessToken = (credentials.accessToken ||
-      credentials.apiKey) as string;
-
+    const accessToken = await this.resolveAccessToken(connectionId, userId);
     if (!accessToken) {
       throw new BadRequestException('No access token found');
     }
@@ -548,7 +634,7 @@ export class IntegrationsService {
   }
 
   private getGitProviderName(templateId: string): string | null {
-    // github-oauth2, github-token → github
+    // github-app, github-token → github
     if (templateId.startsWith('github')) return 'github';
     if (templateId.startsWith('gitlab')) return 'gitlab';
     if (templateId.startsWith('bitbucket')) return 'bitbucket';
@@ -633,6 +719,7 @@ export class IntegrationsService {
     const activeConnections = await this.prisma.connection.findMany({
       where: { status: 'ACTIVE' },
       include: { integration: true },
+      take: 1000,
     });
 
     const serviceOverrides = await this.prisma.serviceIntegration.findMany({
@@ -729,9 +816,26 @@ export class IntegrationsService {
     });
 
     for (const conn of activeConnections) {
-      const credentials = this.credentialsService.decrypt<
-        Record<string, unknown>
-      >(Buffer.from(conn.credentialsEnc));
+      const template = getTemplate(conn.integration.templateId);
+      let credentials: Record<string, unknown>;
+
+      // For GitHub App, resolve a fresh installation token
+      if (template?.authMode === 'github_app') {
+        try {
+          const token = await this.resolveAccessToken(conn.id);
+          credentials = { accessToken: token };
+        } catch (error) {
+          this.logger.warn(
+            `Failed to resolve token for connection ${conn.id}: ${error instanceof Error ? error.message : 'Unknown'}`,
+          );
+          continue;
+        }
+      } else {
+        credentials = this.credentialsService.decrypt<Record<string, unknown>>(
+          Buffer.from(conn.credentialsEnc),
+        );
+      }
+
       const config = conn.connectionConfigEnc
         ? this.credentialsService.decrypt<Record<string, unknown>>(
             Buffer.from(conn.connectionConfigEnc),
@@ -768,7 +872,10 @@ export class IntegrationsService {
         }
 
         if (existingIndex >= 0) {
-          contexts[existingIndex].serviceOverrides = serviceOverrides;
+          contexts[existingIndex] = {
+            ...contexts[existingIndex],
+            serviceOverrides,
+          };
         } else {
           const credentials = this.credentialsService.decrypt<
             Record<string, unknown>

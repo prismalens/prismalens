@@ -279,8 +279,6 @@ function CommandCenter() {
 	);
 }
 
-// QuickStatCard is no longer used - stats are shown inline above.
-
 // Incident Detail Panel Component
 interface IncidentDetailPanelProps {
 	incident: {
@@ -518,7 +516,7 @@ function EmptyState() {
 				<p className="text-sm font-medium text-muted-foreground mb-4">No active incidents</p>
 				<div className="flex flex-wrap justify-center gap-3">
 					<Button variant="outline" size="sm" asChild>
-						<Link to="/settings">Configure Integrations</Link>
+						<Link to="/settings" search={{ tab: "integrations" }}>Configure Integrations</Link>
 					</Button>
 					<Button variant="outline" size="sm" asChild>
 						<Link to="/services">Add Services</Link>

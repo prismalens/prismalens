@@ -106,6 +106,10 @@ export {
 	useGitOrganizations,
 	useGitRepositories,
 	useUpdateConnectionConfig,
+	// GitHub App hooks
+	useGitHubInstallations,
+	useConnectGitHubInstallation,
+	// Service integration hooks
 	useServiceIntegrations,
 	useCreateServiceIntegration,
 	useUpdateServiceIntegration,

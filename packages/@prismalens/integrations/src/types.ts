@@ -4,7 +4,7 @@ import { z } from "zod";
 // AUTH MODE
 // =============================================================================
 
-export const AuthModeSchema = z.enum(["api_key", "basic", "oauth2"]);
+export const AuthModeSchema = z.enum(["api_key", "basic", "oauth2", "github_app"]);
 export type AuthMode = z.infer<typeof AuthModeSchema>;
 
 // =============================================================================
@@ -19,7 +19,7 @@ export const TemplateFieldOptionSchema = z.object({
 export const TemplateFieldSchema = z.object({
 	name: z.string(),
 	label: z.string(),
-	type: z.enum(["string", "password", "select", "number", "boolean"]),
+	type: z.enum(["string", "password", "select", "number", "boolean", "textarea"]),
 	default: z.string().optional(),
 	required: z.boolean().optional(),
 	placeholder: z.string().optional(),
@@ -28,6 +28,8 @@ export const TemplateFieldSchema = z.object({
 	pattern: z.string().optional(),
 	options: z.array(TemplateFieldOptionSchema).optional(),
 	sensitive: z.boolean().optional(),
+	readonly: z.boolean().optional(),
+	hidden: z.boolean().optional(),
 });
 
 export type TemplateFieldOption = z.infer<typeof TemplateFieldOptionSchema>;
@@ -50,6 +52,16 @@ export interface OAuth2Config {
 	tokensNeverExpire?: boolean;
 	disablePkce?: boolean;
 	clientCredentialSource?: "body" | "header" | "both";
+	refreshBuffer?: number;
+}
+
+// =============================================================================
+// GITHUB APP CONFIG
+// =============================================================================
+
+export interface GitHubAppConfig {
+	defaultPermissions: Record<string, string>;
+	defaultEvents?: string[];
 }
 
 // =============================================================================
@@ -59,22 +71,29 @@ export interface OAuth2Config {
 export interface AuthTemplate {
 	id: string;
 	name: string;
+	version: string;
 	category: string;
 	authMode: AuthMode;
 	icon?: string;
 	docsUrl?: string;
+	setupDocsUrl?: string;
 	connectionFields?: TemplateField[];
 	credentialFields?: TemplateField[];
 	oauth2?: OAuth2Config;
+	githubApp?: GitHubAppConfig;
 	authenticate: {
-		headers: Record<string, string>;
+		headers?: Record<string, string>;
+		query?: Record<string, string>;
+		body?: Record<string, string>;
 	};
 	proxy: {
 		baseUrl: string;
 		headers?: Record<string, string>;
+		rateLimit?: { windowMs: number; maxRequests: number };
+		retry?: { maxRetries: number; backoffMs: number };
 	};
 	verify?: {
-		method: string;
+		method: "GET" | "POST";
 		path: string;
 	};
 }
@@ -108,23 +127,3 @@ export interface TokenResult {
 	metadata?: Record<string, unknown>;
 }
 
-// =============================================================================
-// EVENT TYPES (type-only, no bus yet)
-// =============================================================================
-
-export type IntegrationEventType =
-	| "connection.created"
-	| "connection.updated"
-	| "connection.deleted"
-	| "connection.broken"
-	| "connection.refreshed"
-	| "connection.tested";
-
-export interface IntegrationEvent {
-	type: IntegrationEventType;
-	connectionId: string;
-	integrationId: string;
-	templateId: string;
-	timestamp: Date;
-	metadata?: Record<string, unknown>;
-}

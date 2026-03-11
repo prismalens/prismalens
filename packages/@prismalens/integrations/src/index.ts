@@ -1,43 +1,56 @@
 // Types
+
+export type {
+	AuthManagerDeps,
+	GitHubInstallation,
+	InstallationTokenResult,
+	OAuth2StoreDeps,
+	RefreshableConnection,
+	RefreshDeps,
+	StartAuthorizationParams,
+} from "./engine/index.js";
+// Engine
+export {
+	AuthError,
+	AuthManager,
+	CredentialsInvalidError,
+	GitHubAppFlow,
+	interpolate,
+	interpolateRecord,
+	interpolateWithFunctions,
+	OAuth2Flow,
+	ProviderError,
+	RateLimitError,
+	TokenExpiredError,
+	TokenRefreshError,
+	TokenRefresher,
+	TokenVault,
+} from "./engine/index.js";
+// Templates
+export {
+	getAllTemplates,
+	getTemplate,
+	getTemplatesByAuthMode,
+	getTemplatesByCategory,
+	githubApp,
+	githubToken,
+	prometheus,
+	render,
+	slack,
+	slackToken,
+} from "./templates/index.js";
 export type {
 	AuthMode,
 	AuthTemplate,
+	GitHubAppConfig,
 	OAuth2Config,
+	OAuthStateData,
 	TemplateField,
 	TemplateFieldOption,
-	OAuthStateData,
 	TokenResult,
-	IntegrationEvent,
-	IntegrationEventType,
 } from "./types.js";
-export { AuthModeSchema, TemplateFieldSchema, TemplateFieldOptionSchema } from "./types.js";
-
-// Engine
 export {
-	interpolate,
-	interpolateWithFunctions,
-	interpolateRecord,
-	TokenVault,
-	OAuth2Flow,
-	TokenRefresher,
-} from "./engine/index.js";
-export type {
-	OAuth2StoreDeps,
-	StartAuthorizationParams,
-	RefreshableConnection,
-	RefreshDeps,
-} from "./engine/index.js";
-
-// Templates
-export {
-	getTemplate,
-	getAllTemplates,
-	getTemplatesByCategory,
-	getTemplatesByAuthMode,
-	githubOAuth2,
-	githubToken,
-	slack,
-	slackToken,
-	prometheus,
-	render,
-} from "./templates/index.js";
+	AuthModeSchema,
+	TemplateFieldOptionSchema,
+	TemplateFieldSchema,
+} from "./types.js";

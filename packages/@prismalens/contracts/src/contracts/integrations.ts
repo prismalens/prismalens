@@ -5,11 +5,13 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AuthTemplateResponseSchema,
+	ConnectInstallationSchema,
 	ConnectionSchema,
 	ConnectionWithIntegrationSchema,
 	CreateConnectionSchema,
 	CreateIntegrationSchema,
 	CreateServiceIntegrationSchema,
+	GitHubInstallationSchema,
 	GitOrganizationSchema,
 	GitRepositorySchema,
 	IdParamSchema,
@@ -178,6 +180,30 @@ export const integrationsContract = {
 				config: z.record(z.unknown()),
 			}),
 		)
+		.output(ConnectionSchema),
+
+	// =========================================================================
+	// GITHUB APP ENDPOINTS
+	// =========================================================================
+
+	listGitHubInstallations: oc
+		.route({
+			method: "GET",
+			path: "/integrations/{id}/github/installations",
+			summary: "List available GitHub App installations",
+			tags: ["integrations", "github"],
+		})
+		.input(IdParamSchema)
+		.output(z.array(GitHubInstallationSchema)),
+
+	connectGitHubInstallation: oc
+		.route({
+			method: "POST",
+			path: "/integrations/{id}/github/installations/connect",
+			summary: "Create connection for a GitHub App installation",
+			tags: ["integrations", "github"],
+		})
+		.input(IdParamSchema.merge(ConnectInstallationSchema))
 		.output(ConnectionSchema),
 
 	// =========================================================================

@@ -3,10 +3,12 @@ import type { AuthTemplate } from "../types.js";
 export const slack: AuthTemplate = {
 	id: "slack",
 	name: "Slack",
+	version: "1.0.0",
 	category: "communication",
 	authMode: "oauth2",
 	icon: "https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
 	docsUrl: "https://api.slack.com/messaging/webhooks",
+	setupDocsUrl: "https://docs.prismalens.io/integrations/slack/",
 	oauth2: {
 		authorizationUrl: "https://slack.com/oauth/v2/authorize",
 		tokenUrl: "https://slack.com/api/oauth.v2.access",
@@ -31,10 +33,12 @@ export const slack: AuthTemplate = {
 export const slackToken: AuthTemplate = {
 	id: "slack-token",
 	name: "Slack (Bot Token)",
+	version: "1.0.0",
 	category: "communication",
 	authMode: "api_key",
 	icon: "https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
 	docsUrl: "https://api.slack.com/messaging/webhooks",
+	setupDocsUrl: "https://docs.prismalens.io/integrations/slack-bot-token/",
 	credentialFields: [
 		{
 			name: "apiKey",
@@ -51,6 +55,7 @@ export const slackToken: AuthTemplate = {
 			name: "defaultChannel",
 			label: "Default Channel",
 			type: "string",
+			required: false,
 			placeholder: "#incidents",
 			description: "Default Slack channel for notifications",
 		},

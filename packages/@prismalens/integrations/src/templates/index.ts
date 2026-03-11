@@ -1,16 +1,16 @@
 import type { AuthTemplate } from "../types.js";
-import { githubOAuth2, githubToken } from "./github.js";
+import { githubApp, githubToken } from "./github.js";
 import { prometheus } from "./prometheus.js";
 import { render } from "./render.js";
 import { slack, slackToken } from "./slack.js";
 
-export { githubOAuth2, githubToken } from "./github.js";
+export { githubApp, githubToken } from "./github.js";
 export { prometheus } from "./prometheus.js";
 export { render } from "./render.js";
 export { slack, slackToken } from "./slack.js";
 
 const TEMPLATES = new Map<string, AuthTemplate>([
-	[githubOAuth2.id, githubOAuth2],
+	[githubApp.id, githubApp],
 	[githubToken.id, githubToken],
 	[slack.id, slack],
 	[slackToken.id, slackToken],
@@ -19,7 +19,13 @@ const TEMPLATES = new Map<string, AuthTemplate>([
 ]);
 
 export function getTemplate(id: string): AuthTemplate | undefined {
-	return TEMPLATES.get(id);
+	const template = TEMPLATES.get(id);
+	if (!template) {
+		console.warn(
+			`Template '${id}' not found — connection may reference a removed template`,
+		);
+	}
+	return template;
 }
 
 export function getAllTemplates(): AuthTemplate[] {

@@ -14,6 +14,10 @@ When adding new packages, always prefer addition/installation via the package ma
 ## Ecosystem
 This is a NodeJS project
 
+## App/Project context
+* Opensource app
+* Single tenant
+
 ## Code Formatting Best Practices
 
 ### Indentation

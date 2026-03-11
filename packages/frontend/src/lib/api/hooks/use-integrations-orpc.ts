@@ -243,6 +243,38 @@ export function useUpdateConnectionConfig() {
 }
 
 // =============================================================================
+// GITHUB APP (installations)
+// =============================================================================
+
+/**
+ * Fetch available GitHub App installations for an integration
+ */
+export function useGitHubInstallations(integrationId: string) {
+	return useQuery({
+		...orpc.integrations.listGitHubInstallations.queryOptions({
+			input: { id: integrationId },
+		}),
+		enabled: !!integrationId,
+	});
+}
+
+/**
+ * Connect a GitHub App installation (creates a connection)
+ */
+export function useConnectGitHubInstallation() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.integrations.connectGitHubInstallation.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: integrationsKeys.connections.all(),
+			});
+		},
+	});
+}
+
+// =============================================================================
 // SERVICE INTEGRATIONS (Per-service overrides)
 // =============================================================================
 

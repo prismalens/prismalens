@@ -1,9 +1,11 @@
 "use client";
 
+import { useNavigate } from "@tanstack/react-router";
 import {
 	AlertCircle,
 	CheckCircle,
 	Copy,
+	ExternalLink,
 	Github,
 	Link2,
 	Loader2,
@@ -49,9 +51,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
 	useConnections,
+	useConnectGitHubInstallation,
 	useCreateConnection,
 	useCreateIntegration,
 	useDeleteConnection,
+	useGitHubInstallations,
 	useTemplates,
 	useTestConnection,
 	useUpdateConnection,
@@ -115,6 +119,7 @@ export function IntegrationsSettings() {
 	const updateConnection = useUpdateConnection();
 	const deleteConnection = useDeleteConnection();
 	const testConnection = useTestConnection();
+	const navigate = useNavigate();
 
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showConfigDialog, setShowConfigDialog] = useState(false);
@@ -201,7 +206,14 @@ export function IntegrationsSettings() {
 
 	const handleAddIntegration = (template: AuthTemplateResponse) => {
 		setSelectedTemplate(template);
-		setConnectionLabel(`${template.name} Connection`);
+		// Auto-increment label if connections with same templateId exist
+		const existingCount = connections?.filter(
+			(c) => c.templateId === template.id,
+		).length ?? 0;
+		const label = existingCount > 0
+			? `${template.name} Connection ${existingCount + 1}`
+			: `${template.name} Connection`;
+		setConnectionLabel(label);
 		setCredentialValues({});
 		setConnectionFieldValues({});
 		setOauthClientId("");
@@ -230,8 +242,123 @@ export function IntegrationsSettings() {
 	const handleSaveConnection = async () => {
 		if (!selectedTemplate) return;
 
+		if (selectedTemplate.authMode === "github_app") {
+			if (selectedConnection) {
+				// Edit existing GitHub App connection
+				try {
+					const hasNewCredentials = Object.values(credentialValues).some(
+						(v) => v.trim() !== "",
+					);
+					await updateConnection.mutateAsync({
+						id: selectedConnection,
+						credentials: hasNewCredentials ? credentialValues : undefined,
+						connectionConfig:
+							Object.keys(connectionFieldValues).length > 0
+								? connectionFieldValues
+								: undefined,
+					});
+					setShowConfigDialog(false);
+					resetDialogState();
+				} catch (err) {
+					toast({
+						title: "Failed to update connection",
+						description: err instanceof Error ? err.message : "An unexpected error occurred",
+						variant: "destructive",
+					});
+				}
+				return;
+			}
+
+			// Create new GitHub App integration
+			const credFields = selectedTemplate.credentialFields ?? [];
+			if (credFields.length > 0) {
+				const errors = validateFieldValues(credFields, credentialValues);
+				if (Object.keys(errors).length > 0) {
+					setShowCredErrors(true);
+					return;
+				}
+			}
+
+			const connFields = selectedTemplate.connectionFields ?? [];
+			if (connFields.length > 0) {
+				const connErrors = validateFieldValues(connFields, connectionFieldValues);
+				if (Object.keys(connErrors).length > 0) {
+					setShowCredErrors(true);
+					return;
+				}
+			}
+
+			try {
+				const appId = credentialValues.appId;
+				const privateKey = credentialValues.privateKey;
+				const webhookSecret = credentialValues.webhookSecret;
+
+				const integration = await createIntegration.mutateAsync({
+					templateId: selectedTemplate.id,
+					label: connectionLabel,
+					clientId: appId,
+					clientSecret: JSON.stringify({
+						privateKey,
+						...(webhookSecret ? { webhookSecret } : {}),
+					}),
+				});
+
+				setShowConfigDialog(false);
+				resetDialogState();
+
+				// Navigate to configure page for installation selection
+				await navigate({
+					to: "/settings/integrations/configure",
+					search: {
+						integrationId: integration.id,
+						provider: "github",
+						mode: "github-app",
+					},
+				});
+			} catch (err) {
+				toast({
+					title: "Failed to create integration",
+					description: err instanceof Error ? err.message : "An unexpected error occurred",
+					variant: "destructive",
+				});
+			}
+			return;
+		}
+
 		if (selectedTemplate.authMode === "oauth2") {
-			// OAuth: Create Integration with client creds, then redirect to OAuth
+			if (selectedConnection) {
+				// Edit existing OAuth connection (re-authorize)
+				try {
+					const connection = connections?.find((c) => c.id === selectedConnection);
+					const integrationId = connection?.integrationId;
+					if (!integrationId) throw new Error("Integration not found");
+
+					setShowConfigDialog(false);
+					resetDialogState();
+
+					// Re-trigger OAuth flow with existing integration
+					const res = await fetch(
+						`/api/integrations/oauth/${integrationId}/authorize`,
+						{
+							method: "POST",
+							credentials: "include",
+							headers: { "Content-Type": "application/json" },
+						},
+					);
+					if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
+					const { redirectUrl } = await res.json();
+					window.location.href = redirectUrl;
+				} catch (err) {
+					toast({
+						title: "Failed to re-authorize",
+						description: err instanceof Error ? err.message : "An unexpected error occurred",
+						variant: "destructive",
+					});
+				}
+				return;
+			}
+
+			// Create new OAuth integration
 			if (!oauthClientId || !oauthClientSecret) {
 				setShowCredErrors(true);
 				return;
@@ -248,13 +375,18 @@ export function IntegrationsSettings() {
 				setShowConfigDialog(false);
 				resetDialogState();
 
-				// Redirect to OAuth authorization
-				const currentUrl = new URL(window.location.href);
-				currentUrl.search = "";
-				const authorizeUrl = `/api/integrations/oauth/${integration.id}/authorize`;
-				window.location.href = authorizeUrl;
+				const res = await fetch(
+					`/api/integrations/oauth/${integration.id}/authorize`,
+					{
+						method: "POST",
+						credentials: "include",
+						headers: { "Content-Type": "application/json" },
+					},
+				);
+				if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
+				const { redirectUrl } = await res.json();
+				window.location.href = redirectUrl;
 			} catch (err) {
-				console.error("Failed to create integration:", err);
 				toast({
 					title: "Failed to create integration",
 					description: err instanceof Error ? err.message : "An unexpected error occurred",
@@ -307,7 +439,6 @@ export function IntegrationsSettings() {
 			setShowConfigDialog(false);
 			resetDialogState();
 		} catch (err) {
-			console.error("Failed to save connection:", err);
 			toast({
 				title: "Failed to save connection",
 				description: err instanceof Error ? err.message : "An unexpected error occurred",
@@ -324,7 +455,6 @@ export function IntegrationsSettings() {
 			setShowDeleteDialog(false);
 			resetDialogState();
 		} catch (err) {
-			console.error("Failed to delete connection:", err);
 			toast({
 				title: "Failed to delete connection",
 				description: err instanceof Error ? err.message : "An unexpected error occurred",
@@ -614,10 +744,24 @@ export function IntegrationsSettings() {
 								<Badge variant="outline">
 									{template.authMode === "oauth2"
 										? "OAuth"
-										: template.authMode === "basic"
-											? "Basic Auth"
-											: "API Key"}
+										: template.authMode === "github_app"
+											? "GitHub App"
+											: template.authMode === "basic"
+												? "Basic Auth"
+												: "API Key"}
 								</Badge>
+								{template.setupDocsUrl && (
+									<a
+										href={template.setupDocsUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="p-1 text-muted-foreground hover:text-foreground"
+										title="Setup guide"
+										onClick={(e) => e.stopPropagation()}
+									>
+										<ExternalLink className="h-3.5 w-3.5" />
+									</a>
+								)}
 							</button>
 						))}
 					</div>
@@ -641,8 +785,21 @@ export function IntegrationsSettings() {
 						<DialogDescription>
 							{selectedTemplate?.authMode === "oauth2"
 								? "Enter your OAuth app credentials to connect"
-								: "Enter your credentials to connect"}
+								: selectedTemplate?.authMode === "github_app"
+									? "Enter your GitHub App credentials. You'll select an installation next."
+									: "Enter your credentials to connect"}
 						</DialogDescription>
+						{selectedTemplate?.setupDocsUrl && (
+							<a
+								href={selectedTemplate.setupDocsUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline pt-1"
+							>
+								<ExternalLink className="h-3.5 w-3.5" />
+								View setup guide
+							</a>
+						)}
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						<div className="space-y-2">
@@ -705,6 +862,33 @@ export function IntegrationsSettings() {
 										</p>
 									)}
 								</div>
+								<div className="space-y-2">
+									<Label>Callback URL</Label>
+									<div className="flex items-center gap-2">
+										<code className="flex-1 text-xs bg-muted p-2 rounded break-all">
+											{window.location.origin}/api/integrations/oauth/callback
+										</code>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() =>
+												handleCopyUrl(
+													`${window.location.origin}/api/integrations/oauth/callback`,
+													"oauth-callback",
+												)
+											}
+										>
+											{copiedUrl === "oauth-callback" ? (
+												<CheckCircle className="h-4 w-4 text-muted-foreground" />
+											) : (
+												<Copy className="h-4 w-4" />
+											)}
+										</Button>
+									</div>
+									<p className="text-xs text-muted-foreground">
+										Set this as the Redirect URL in your {selectedTemplate?.name} app settings
+									</p>
+								</div>
 							</>
 						)}
 
@@ -719,7 +903,7 @@ export function IntegrationsSettings() {
 								/>
 							)}
 
-						{/* Credential fields (for api_key / basic auth) */}
+						{/* Credential fields (for api_key / basic / github_app auth) */}
 						{selectedTemplate?.authMode !== "oauth2" &&
 							selectedTemplate?.credentialFields &&
 							selectedTemplate.credentialFields.length > 0 && (
@@ -757,9 +941,11 @@ export function IntegrationsSettings() {
 							)}
 							{selectedTemplate?.authMode === "oauth2" && !selectedConnection
 								? "Connect with OAuth"
-								: selectedConnection
-									? "Update Connection"
-									: "Create Connection"}
+								: selectedTemplate?.authMode === "github_app" && !selectedConnection
+									? "Save & Select Installation"
+									: selectedConnection
+										? "Update Connection"
+										: "Create Connection"}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
