@@ -13,6 +13,7 @@ import { AlertTriangle, Frown, ServerOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/Navbar";
 import { Toaster } from "@/components/ui/toaster";
+import { ConnectionError } from "@/lib/api/orpc-client";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { LanguageProvider } from "@/lib/providers/language-provider";
 import { getThemeServerFn } from "@/lib/theme";
@@ -94,12 +95,7 @@ function NotFound() {
 }
 
 function RootError({ error }: { error: Error }) {
-	const isConnectionError =
-		error.message.includes("fetch") ||
-		error.message.includes("network") ||
-		error.message.includes("ECONNREFUSED") ||
-		error.name === "TypeError" ||
-		error.name === "ConnectionError";
+	const isConnectionError = error instanceof ConnectionError;
 
 	if (isConnectionError) {
 		return (

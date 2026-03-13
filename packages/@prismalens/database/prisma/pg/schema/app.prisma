@@ -309,6 +309,7 @@ enum ChangeEventType {
 
 /// Service represents a monitored component (API, database, queue, etc.)
 /// Services form the backbone of topology-aware incident correlation.
+/// A Service is a pure logical entity — source tracking lives in Repository and Deployment.
 model Service {
   id           String      @id @default(uuid())
   name         String      @unique // Unique identifier, e.g., "api-gateway", "user-service"
@@ -318,15 +319,9 @@ model Service {
   tier         ServiceTier @default(tier_3)
   team         String? // Team responsible for this service
   slackChannel String? // Slack channel for notifications
-  repository   String? // GitHub repo, e.g., "org/repo-name" (for AI code analysis)
-  tags         String? // JSON array: ["backend", "critical", "payments"]
-  metadata     String? // JSON object for custom fields: {"oncall": "team-a", "runbook": "..."}
-
-  // Discovery metadata
-  discoverySource   String? // "github", "manual", etc.
-  discoveryMetadata String? // JSON: { "owner": "org", "repo": "name", "isMonorepo": false }
-  isDiscovered      Boolean @default(false) // true = auto-discovered, false = manually created
-  isConfirmed       Boolean @default(true) // false = pending user confirmation
+  tags              String? // JSON array: ["backend", "critical", "payments"]
+  metadata          String? // JSON object for custom fields: {"oncall": "team-a", "runbook": "..."}
+  discoveryMetadata String? // JSON object — populated during service discovery
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -339,8 +334,73 @@ model Service {
   integrations      ServiceIntegration[]
   alertMappingRules AlertMappingRule[]
   changeEvents      ChangeEvent[]
+  repositories      ServiceRepository[]
+  deployments       Deployment[]
 
   @@map("services")
+}
+
+/// Repository represents a code source from a VCS provider (GitHub, GitLab, etc.)
+model Repository {
+  id            String   @id @default(uuid())
+  connectionId  String
+  fullName      String               // "org/repo"
+  url           String               // "https://github.com/org/repo"
+  description   String?
+  language      String?
+  defaultBranch String   @default("main")
+  isPrivate     Boolean  @default(false)
+  metadata      String?              // JSON — stars, topics, etc.
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  connection    Connection          @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  services      ServiceRepository[]
+
+  @@unique([connectionId, fullName])
+  @@map("repositories")
+}
+
+/// Junction table linking Services to Repositories (M:N with subPath for monorepos)
+model ServiceRepository {
+  id            String   @id @default(uuid())
+  serviceId     String
+  repositoryId  String
+  subPath       String?              // "packages/api" for monorepos
+  isPrimary     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  service       Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  repository    Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, repositoryId, subPath])
+  @@map("service_repositories")
+}
+
+/// Deployment represents a running instance from a deployment platform (Render, Vercel, etc.)
+model Deployment {
+  id              String    @id @default(uuid())
+  serviceId       String?              // nullable — can exist unlinked
+  connectionId    String
+  externalId      String               // Provider's service/deployment ID
+  name            String
+  url             String?              // Public URL
+  status          String?              // "live", "suspended", etc.
+  environment     String?              // "production", "staging"
+  deploymentType  String?              // "web_service", "worker", "cron_job", "static_site"
+  region          String?
+  branch          String?
+  repositoryUrl   String?              // Repo URL from deployment platform (for merge hints)
+  metadata        String?              // JSON — provider-specific extras
+  lastDeployedAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  service         Service?   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  connection      Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalId])
+  @@map("deployments")
 }
 
 /// Service dependency for topology-based correlation.

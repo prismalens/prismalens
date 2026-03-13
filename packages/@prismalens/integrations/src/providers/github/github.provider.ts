@@ -11,10 +11,10 @@ import type {
 	GitRepository,
 } from "@prismalens/config/integrations";
 import type {
-	AuthenticatedRequestFn,
 	GitProvider,
 	GitProviderContext,
-} from "./provider.interface.js";
+} from "../git.interface.js";
+import type { AuthenticatedRequestFn } from "../types.js";
 
 // GitHub API response types (snake_case)
 interface GitHubOrg {

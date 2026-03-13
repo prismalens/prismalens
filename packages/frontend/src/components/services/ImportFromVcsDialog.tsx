@@ -35,11 +35,13 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import {
+	useBatchCreateRepositories,
 	useConnections,
 	useCreateService,
 	useGitOrganizations,
 	useGitRepositories,
-	useServices,
+	useLinkRepository,
+	useRepositories,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
@@ -111,9 +113,11 @@ export function ImportFromVcsDialog({
 
 	// Queries
 	const { data: allConnections = [] } = useConnections();
-	const { data: existingServicesResponse } = useServices();
-	const existingServices = existingServicesResponse?.data ?? [];
+	const { data: repoResponse } = useRepositories();
+	const existingRepos = repoResponse?.data ?? [];
+	const batchCreateRepositories = useBatchCreateRepositories();
 	const createService = useCreateService();
+	const linkRepository = useLinkRepository();
 
 	// Filter to VCS connections only
 	const vcsConnections = useMemo(
@@ -142,29 +146,23 @@ export function ImportFromVcsDialog({
 	const { data: repositories = [], isLoading: isLoadingRepos } =
 		useGitRepositories(activeConnectionId, selectedOrg);
 
-	// Build set of already-imported repo URLs for duplicate detection
-	const importedRepoUrls = useMemo(() => {
-		const urls = new Set<string>();
-		for (const service of existingServices) {
-			if (service.repository) {
-				urls.add(service.repository);
-				// Also match by fullName pattern (org/repo)
-				const match = service.repository.match(
-					/(?:github|gitlab|bitbucket)\.(?:com|org)\/([^/]+\/[^/]+)/,
-				);
-				if (match) urls.add(match[1]);
-			}
+	// Build set of already-imported repo fullNames for duplicate detection
+	const importedRepoFullNames = useMemo(() => {
+		const names = new Set<string>();
+		for (const repo of existingRepos) {
+			names.add(repo.fullName);
+			if (repo.url) names.add(repo.url);
 		}
-		return urls;
-	}, [existingServices]);
+		return names;
+	}, [existingRepos]);
 
 	const isRepoImported = useCallback(
 		(repo: GitRepository) => {
-			if (importedRepoUrls.has(repo.fullName)) return true;
-			if (repo.url && importedRepoUrls.has(repo.url)) return true;
+			if (importedRepoFullNames.has(repo.fullName)) return true;
+			if (repo.url && importedRepoFullNames.has(repo.url)) return true;
 			return false;
 		},
-		[importedRepoUrls],
+		[importedRepoFullNames],
 	);
 
 	// Filtered repositories
@@ -228,6 +226,8 @@ export function ImportFromVcsDialog({
 		setStep(target);
 	};
 
+	const [createServices, setCreateServices] = useState(true);
+
 	const handleImport = async () => {
 		const repos = Array.from(selectedRepos.values());
 		setImportProgress({
@@ -240,37 +240,83 @@ export function ImportFromVcsDialog({
 		const results: Array<{ name: string; success: boolean; error?: string }> =
 			[];
 
-		for (let i = 0; i < repos.length; i++) {
-			const repo = repos[i];
-			const serviceName = toKebabCase(repo.fullName.replace("/", "-"));
-
-			try {
-				await createService.mutateAsync({
-					name: serviceName,
-					displayName: toTitleCase(repo.name),
+		// Step 1: Batch create Repository records
+		try {
+			const batchResult = await batchCreateRepositories.mutateAsync({
+				repositories: repos.map((repo) => ({
+					connectionId: activeConnectionId,
+					fullName: repo.fullName,
+					url: repo.url ?? `https://${providerName}.com/${repo.fullName}`,
 					description: repo.description ?? undefined,
-					type: "service",
-					tier: bulkTier,
-					repository:
-						repo.url ?? `https://${providerName}.com/${repo.fullName}`,
-					discoverySource: providerName,
-					discoveryMetadata: {
-						repository: repo.fullName,
-						importedAt: new Date().toISOString(),
-						connectionId: activeConnectionId,
-					},
-					isDiscovered: true,
-				});
-				results.push({ name: serviceName, success: true });
-			} catch (err) {
-				const message = err instanceof Error ? err.message : "Unknown error";
-				results.push({ name: serviceName, success: false, error: message });
-			}
+					language: repo.language ?? undefined,
+					isPrivate: repo.isPrivate ?? false,
+				})),
+			});
 
+			// Step 2: Optionally create Services and link them
+			if (createServices && Array.isArray(batchResult)) {
+				for (let i = 0; i < batchResult.length; i++) {
+					const repoRecord = batchResult[i];
+					const originalRepo = repos[i];
+					const serviceName = toKebabCase(
+						originalRepo.fullName.replace("/", "-"),
+					);
+
+					try {
+						const service = await createService.mutateAsync({
+							name: serviceName,
+							displayName: toTitleCase(originalRepo.name),
+							description: originalRepo.description ?? undefined,
+							type: "service",
+							tier: bulkTier,
+						});
+
+						// Link repository to the new service
+						await linkRepository.mutateAsync({
+							id: repoRecord.id,
+							serviceId: service.id,
+							isPrimary: true,
+						});
+
+						results.push({ name: serviceName, success: true });
+					} catch (err) {
+						const message =
+							err instanceof Error ? err.message : "Unknown error";
+						results.push({
+							name: serviceName,
+							success: false,
+							error: message,
+						});
+					}
+
+					setImportProgress({
+						current: i + 1,
+						total: batchResult.length,
+						importing: i + 1 < batchResult.length,
+						results: [...results],
+					});
+				}
+			} else {
+				// Just repos created, no services
+				for (const repo of repos) {
+					results.push({ name: repo.fullName, success: true });
+				}
+				setImportProgress({
+					current: repos.length,
+					total: repos.length,
+					importing: false,
+					results: [...results],
+				});
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Batch import failed";
+			for (const repo of repos) {
+				results.push({ name: repo.fullName, success: false, error: message });
+			}
 			setImportProgress({
-				current: i + 1,
+				current: repos.length,
 				total: repos.length,
-				importing: i + 1 < repos.length,
+				importing: false,
 				results: [...results],
 			});
 		}
@@ -300,13 +346,13 @@ export function ImportFromVcsDialog({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<GitBranch className="h-5 w-5" />
-						Import Services from VCS
+						Import from VCS
 					</DialogTitle>
 					<DialogDescription>
 						{step === "connection" &&
 							"Select a VCS connection to import repositories from."}
 						{step === "browse" &&
-							"Browse and select repositories to import as services."}
+							"Browse and select repositories to import."}
 						{step === "review" && "Review and import selected repositories."}
 					</DialogDescription>
 				</DialogHeader>
@@ -510,7 +556,21 @@ export function ImportFromVcsDialog({
 				{/* Step 3: Review & Import */}
 				{step === "review" && !importProgress && (
 					<div className="space-y-4">
+						{/* Create services checkbox */}
+						<label className="flex items-center gap-2 cursor-pointer">
+							<Checkbox
+								checked={createServices}
+								onCheckedChange={(checked) =>
+									setCreateServices(checked === true)
+								}
+							/>
+							<span className="text-sm">
+								Also create a Service for each repository
+							</span>
+						</label>
+
 						{/* Bulk tier selection */}
+						{createServices && (
 						<div className="flex items-center gap-3">
 							<span className="text-sm font-medium">Default tier:</span>
 							<Select
@@ -528,6 +588,7 @@ export function ImportFromVcsDialog({
 								</SelectContent>
 							</Select>
 						</div>
+						)}
 
 						{/* Selected repos preview */}
 						<div className="max-h-64 overflow-y-auto space-y-2 border rounded-md p-3">
@@ -548,8 +609,8 @@ export function ImportFromVcsDialog({
 						</div>
 
 						<p className="text-sm text-muted-foreground">
-							{selectedRepos.size} service{selectedRepos.size !== 1 ? "s" : ""}{" "}
-							will be created.
+							{selectedRepos.size} repositor{selectedRepos.size !== 1 ? "ies" : "y"}{" "}
+							will be imported{createServices ? " with services" : ""}.
 						</p>
 					</div>
 				)}
@@ -637,8 +698,8 @@ export function ImportFromVcsDialog({
 								Back
 							</Button>
 							<Button onClick={handleImport}>
-								Import {selectedRepos.size} Service
-								{selectedRepos.size !== 1 ? "s" : ""}
+								Import {selectedRepos.size} Repositor
+								{selectedRepos.size !== 1 ? "ies" : "y"}
 							</Button>
 						</>
 					)}

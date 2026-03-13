@@ -155,7 +155,7 @@ export class IntegrationsService {
    * This replaces raw accessToken passing — the git provider calls
    * request(method, path) and AuthManager handles auth headers + token refresh.
    */
-  private createRequestFn(connectionId: string): AuthenticatedRequestFn {
+  public createRequestFn(connectionId: string): AuthenticatedRequestFn {
     const authManager = this.getAuthManager();
     return (method, path, opts) =>
       authManager.request(connectionId, method, path, opts);

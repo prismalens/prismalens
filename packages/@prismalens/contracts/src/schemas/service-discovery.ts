@@ -12,14 +12,18 @@ import {
 // SERVICE SUGGESTION SCHEMAS
 // =============================================================================
 
+export const SourceTypeSchema = z.enum(["repository", "deployment"]);
+export type SourceType = z.infer<typeof SourceTypeSchema>;
+
 export const ServiceSuggestionSchema = z.object({
 	id: z.string().uuid(),
 	connectionId: z.string().uuid(),
 	suggestedName: z.string(),
 	displayName: z.string().nullable(),
-	repository: z.string(), // "owner/repo"
+	repository: z.string(), // "owner/repo" for VCS, provider service name for deployments
 	isMonorepo: z.boolean(),
-	subPath: z.string().nullable(), // For monorepo: "packages/api"
+	subPath: z.string().nullable(),
+	sourceType: SourceTypeSchema,
 	status: SuggestionStatusSchema,
 	metadata: z.record(z.unknown()).nullable(),
 	createdAt: DateStringSchema,
@@ -36,6 +40,7 @@ export const AcceptSuggestionSchema = z.object({
 	description: z.string().optional(),
 	type: ServiceTypeSchema.optional(),
 	team: z.string().optional(),
+	linkedServiceId: z.string().uuid().optional(), // Link deployment to existing service instead of creating new
 });
 
 export const AcceptBulkSuggestionsSchema = z.object({
@@ -65,6 +70,7 @@ export const AcceptBulkSuggestionsResponseSchema = z.object({
 export const ServiceSuggestionQuerySchema = z.object({
 	connectionId: z.string().uuid().optional(),
 	status: SuggestionStatusSchema.optional(),
+	sourceType: SourceTypeSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });

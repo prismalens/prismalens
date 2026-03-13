@@ -1,6 +1,7 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { signIn } from "@/lib/auth";
+import { getSession, signIn } from "@/lib/auth";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -17,11 +18,22 @@ export const Route = createFileRoute("/auth/login")({
 	validateSearch: (search: Record<string, unknown>) => ({
 		redirect: (search.redirect as string) || undefined,
 	}),
+	beforeLoad: async ({ search }) => {
+		const session = await getSession();
+		if (session.data) {
+			const safePath =
+				search.redirect && search.redirect.startsWith("/")
+					? search.redirect
+					: "/";
+			throw redirect({ to: safePath });
+		}
+	},
 	component: LoginPage,
 });
 
 function LoginPage() {
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const { redirect: redirectTo } = Route.useSearch();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -45,12 +57,15 @@ function LoginPage() {
 				return;
 			}
 
+			// Invalidate session cache so _authenticated beforeLoad gets the fresh session
+			await queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+
 			// Redirect to original page or dashboard on success
 			// Only allow same-origin relative paths to prevent open redirect
 			const safePath =
-				redirectTo && redirectTo.startsWith("/") ? redirectTo : "/";
+				redirectTo?.startsWith("/") ? redirectTo : "/";
 			navigate({ to: safePath });
-		} catch (err) {
+		} catch {
 			setError("An unexpected error occurred. Please try again.");
 		} finally {
 			setIsLoading(false);

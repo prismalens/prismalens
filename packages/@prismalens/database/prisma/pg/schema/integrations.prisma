@@ -88,6 +88,8 @@ model Connection {
   integration        Integration          @relation(fields: [integrationId], references: [id], onDelete: Cascade)
   serviceMappings    ServiceIntegration[]
   serviceSuggestions ServiceSuggestion[]
+  repositories       Repository[]
+  deployments        Deployment[]
 
   @@index([integrationId, userId])
   @@index([userId])
@@ -157,9 +159,10 @@ model ServiceSuggestion {
   connectionId  String           // Which Connection discovered this
   suggestedName String
   displayName   String?
-  repository    String           // "owner/repo"
+  repository    String           // "owner/repo" for VCS, provider service name for deployments
   isMonorepo    Boolean          @default(false)
   subPath       String?          // For monorepo: "packages/api"
+  sourceType    String           @default("repository") // "repository" | "deployment"
   status        SuggestionStatus @default(pending)
   metadata      String?          // JSON with additional discovery info
   createdAt     DateTime         @default(now())

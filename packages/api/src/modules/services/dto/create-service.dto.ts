@@ -1,6 +1,5 @@
 import {
   IsArray,
-  IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsObject,
@@ -10,7 +9,8 @@ import {
 import { ServiceTier, ServiceType } from '../../../shared/enums/index.js';
 
 /**
- * DTO for creating a service in the catalog
+ * DTO for creating a service in the catalog.
+ * Services are pure logical entities — source tracking lives in Repository and Deployment.
  */
 export class CreateServiceDto {
   /** Unique service identifier (e.g., 'api-gateway', 'user-service') */
@@ -48,11 +48,6 @@ export class CreateServiceDto {
   @IsString()
   slackChannel?: string;
 
-  /** GitHub repository for AI code analysis */
-  @IsOptional()
-  @IsString()
-  repository?: string;
-
   /** Tags for categorization */
   @IsOptional()
   @IsArray()
@@ -63,19 +58,4 @@ export class CreateServiceDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
-
-  /** Discovery source provider (e.g., 'github', 'gitlab') */
-  @IsOptional()
-  @IsString()
-  discoverySource?: string;
-
-  /** Discovery metadata (repository, importedAt, connectionId, etc.) */
-  @IsOptional()
-  @IsObject()
-  discoveryMetadata?: Record<string, unknown>;
-
-  /** Whether this service was created via discovery/import */
-  @IsOptional()
-  @IsBoolean()
-  isDiscovered?: boolean;
 }

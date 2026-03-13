@@ -70,7 +70,6 @@ export function ServiceFormDialog({
 	const [type, setType] = useState<ServiceType>("service");
 	const [tier, setTier] = useState<ServiceTier>("tier_3");
 	const [team, setTeam] = useState("");
-	const [repository, setRepository] = useState("");
 	const [tags, setTags] = useState<string[]>([]);
 	const [error, setError] = useState<string | null>(null);
 
@@ -89,7 +88,6 @@ export function ServiceFormDialog({
 				setType(service.type);
 				setTier(service.tier);
 				setTeam(service.team || "");
-				setRepository(service.repository || "");
 				setTags(service.tags || []);
 			} else {
 				// Reset form for create
@@ -99,7 +97,6 @@ export function ServiceFormDialog({
 				setType("service");
 				setTier("tier_3");
 				setTeam("");
-				setRepository("");
 				setTags([]);
 			}
 			setError(null);
@@ -123,7 +120,6 @@ export function ServiceFormDialog({
 					type,
 					tier,
 					team: team || undefined,
-					repository: repository || undefined,
 					tags: tags.length > 0 ? tags : undefined,
 				});
 			} else {
@@ -134,7 +130,6 @@ export function ServiceFormDialog({
 					type,
 					tier,
 					team: team || undefined,
-					repository: repository || undefined,
 					tags: tags.length > 0 ? tags : undefined,
 				});
 			}
@@ -251,20 +246,6 @@ export function ServiceFormDialog({
 							onChange={(e) => setTeam(e.target.value)}
 							placeholder="platform-team"
 						/>
-					</div>
-
-					{/* Repository */}
-					<div className="space-y-2">
-						<Label htmlFor="repository">Repository URL</Label>
-						<Input
-							id="repository"
-							value={repository}
-							onChange={(e) => setRepository(e.target.value)}
-							placeholder="https://github.com/org/repo"
-						/>
-						<p className="text-xs text-muted-foreground">
-							Used by AI agents for code analysis during investigations
-						</p>
 					</div>
 
 					{/* Tags */}

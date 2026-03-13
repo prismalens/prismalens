@@ -10,17 +10,8 @@ import type {
 	GitOrganization,
 	GitRepository,
 } from "@prismalens/config/integrations";
-import type { AuthMode } from "../../types.js";
-
-/**
- * Bound authenticated request function — created by binding
- * AuthManager.request() to a specific connectionId.
- */
-export type AuthenticatedRequestFn = (
-	method: string,
-	path: string,
-	options?: { body?: string; headers?: Record<string, string> },
-) => Promise<Response>;
+import type { AuthMode } from "../types.js";
+import type { AuthenticatedRequestFn } from "./types.js";
 
 /**
  * Context passed to git provider methods for auth-mode-aware behavior.

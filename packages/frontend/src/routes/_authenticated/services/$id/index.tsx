@@ -3,8 +3,10 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Box,
+	Cloud,
 	Database,
 	ExternalLink,
+	FolderGit2,
 	GitBranch,
 	Globe,
 	Info,
@@ -12,9 +14,11 @@ import {
 	MoreHorizontal,
 	Pencil,
 	Plus,
+	Rocket,
 	Search,
 	Server,
 	Trash2,
+	Unlink,
 	Zap,
 } from "lucide-react";
 import type {
@@ -31,6 +35,8 @@ import {
 	useGitRepositories,
 	useRemoveServiceDependency,
 	useServiceIntegrations,
+	useUnlinkDeployment,
+	useUnlinkRepository,
 	useUpdateServiceIntegration,
 } from "@/lib/api/hooks";
 import { Badge } from "@/components/ui/badge";
@@ -61,12 +67,16 @@ import { ServiceIntegrationOverrideDialog } from "@/components/services/ServiceI
 import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigationTab";
 import { AddDependencyDialog } from "@/components/services/AddDependencyDialog";
 import { EditDependencyDialog } from "@/components/services/EditDependencyDialog";
+import { LinkRepositoryDialog } from "@/components/services/LinkRepositoryDialog";
+import { LinkDeploymentDialog } from "@/components/services/LinkDeploymentDialog";
 import { MutationError } from "@/components/shared/MutationError";
 
-type ServiceTab = "general" | "integrations" | "investigation" | "dependencies";
+type ServiceTab = "overview" | "repositories" | "deployments" | "integrations" | "investigation" | "dependencies";
 
 const TABS: { value: ServiceTab; label: string; icon: typeof Server }[] = [
-	{ value: "general", label: "General", icon: Info },
+	{ value: "overview", label: "Overview", icon: Info },
+	{ value: "repositories", label: "Repositories", icon: FolderGit2 },
+	{ value: "deployments", label: "Deployments", icon: Rocket },
 	{ value: "integrations", label: "Integrations", icon: Link2 },
 	{ value: "investigation", label: "Investigation", icon: Search },
 	{ value: "dependencies", label: "Dependencies", icon: GitBranch },
@@ -76,7 +86,7 @@ export const Route = createFileRoute("/_authenticated/services/$id/")({
 	validateSearch: (search: Record<string, unknown>) => ({
 		tab: (TABS.some((t) => t.value === search.tab)
 			? (search.tab as ServiceTab)
-			: "general") as ServiceTab,
+			: "overview") as ServiceTab,
 	}),
 	component: ServiceDetailPage,
 });
@@ -314,7 +324,13 @@ function ServiceDetailPage() {
 				onTabChange={(t) => navigate({ search: { tab: t } })}
 				header={header}
 			>
-				{tab === "general" && <GeneralTab service={service} topology={topology} />}
+				{tab === "overview" && <OverviewTab service={service} topology={topology} integrations={integrations} />}
+				{tab === "repositories" && (
+					<RepositoriesTab serviceId={id} service={service} />
+				)}
+				{tab === "deployments" && (
+					<DeploymentsTab serviceId={id} service={service} />
+				)}
 				{tab === "integrations" && (
 					<>
 						<MutationError error={deleteOverride.error} className="mb-4" />
@@ -425,12 +441,13 @@ function ServiceDetailPage() {
 }
 
 // =============================================================================
-// General Tab
+// Overview Tab
 // =============================================================================
 
-function GeneralTab({
+function OverviewTab({
 	service,
 	topology,
+	integrations,
 }: {
 	service: ServiceWithRelations;
 	topology?: {
@@ -438,7 +455,11 @@ function GeneralTab({
 		upstream: TopologyEdge[];
 		downstream: TopologyEdge[];
 	};
+	integrations: ServiceIntegrationWithStatus[];
 }) {
+	const repos = service.repositories ?? [];
+	const deploys = service.deployments ?? [];
+
 	return (
 		<div className="grid gap-4 md:grid-cols-2">
 			{/* Basic Info */}
@@ -459,20 +480,6 @@ function GeneralTab({
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">Team</span>
 							<span>{service.team}</span>
-						</div>
-					)}
-					{service.repository && (
-						<div className="flex justify-between">
-							<span className="text-muted-foreground">Repository</span>
-							<a
-								href={service.repository}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="flex items-center gap-1 hover:text-primary truncate max-w-[200px]"
-							>
-								<GitBranch className="h-3 w-3 flex-shrink-0" />
-								{service.repository.split("/").slice(-2).join("/")}
-							</a>
 						</div>
 					)}
 					{service.slackChannel && (
@@ -549,6 +556,328 @@ function GeneralTab({
 					</Card>
 				)}
 			</div>
+
+			{/* Repositories Summary */}
+			<Card>
+				<CardHeader>
+					<CardTitle className="text-base flex items-center gap-2">
+						<FolderGit2 className="h-4 w-4" />
+						Repositories ({repos.length})
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{repos.length > 0 ? (
+						<div className="space-y-1 text-sm">
+							{repos.map((sr) => (
+								<div key={sr.id} className="flex items-center gap-2">
+									<GitBranch className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+									<span className="truncate">{sr.repository.fullName}</span>
+									{sr.isPrimary && (
+										<Badge variant="default" className="text-xs">PRIMARY</Badge>
+									)}
+								</div>
+							))}
+						</div>
+					) : (
+						<p className="text-sm text-muted-foreground">No linked repositories</p>
+					)}
+				</CardContent>
+			</Card>
+
+			{/* Deployments Summary */}
+			<Card>
+				<CardHeader>
+					<CardTitle className="text-base flex items-center gap-2">
+						<Rocket className="h-4 w-4" />
+						Deployments ({deploys.length})
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{deploys.length > 0 ? (
+						<div className="space-y-1 text-sm">
+							{deploys.map((dep) => (
+								<div key={dep.id} className="flex items-center gap-2">
+									<DeploymentStatusIndicator status={dep.status} />
+									<span className="truncate">{dep.name}</span>
+									{dep.status && (
+										<Badge variant="outline" className="text-xs capitalize">
+											{dep.status}
+										</Badge>
+									)}
+								</div>
+							))}
+						</div>
+					) : (
+						<p className="text-sm text-muted-foreground">No linked deployments</p>
+					)}
+				</CardContent>
+			</Card>
+
+			{/* Integrations Summary */}
+			{integrations.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-base flex items-center gap-2">
+							<Link2 className="h-4 w-4" />
+							Integrations ({integrations.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-1 text-sm">
+							{integrations.map((integ) => (
+								<div key={integ.connectionId} className="flex items-center gap-2">
+									<span className="truncate">{integ.templateId}</span>
+									<Badge
+										variant={integ.status === "active" ? "default" : "secondary"}
+										className="text-xs capitalize"
+									>
+										{integ.status}
+									</Badge>
+								</div>
+							))}
+						</div>
+					</CardContent>
+				</Card>
+			)}
+		</div>
+	);
+}
+
+// =============================================================================
+// Repositories Tab
+// =============================================================================
+
+function RepositoriesTab({
+	serviceId,
+	service,
+}: {
+	serviceId: string;
+	service: ServiceWithRelations;
+}) {
+	const [showLinkDialog, setShowLinkDialog] = useState(false);
+	const repos = service.repositories ?? [];
+	const unlinkRepo = useUnlinkRepository();
+	const linkedRepoIds = repos.map((sr) => sr.repositoryId);
+
+	return (
+		<div className="space-y-4">
+			<div className="flex items-center justify-between">
+				<h3 className="text-sm font-medium">
+					Linked Repositories ({repos.length})
+				</h3>
+				<Button size="sm" variant="outline" onClick={() => setShowLinkDialog(true)}>
+					<Plus className="h-4 w-4 mr-1" />
+					Link Repository
+				</Button>
+			</div>
+
+			<MutationError error={unlinkRepo.error} className="mb-4" />
+
+			<div className="rounded-md border">
+				{repos.length > 0 ? (
+					<div className="divide-y">
+						{repos.map((sr) => (
+							<div
+								key={sr.id}
+								className="flex items-center justify-between p-4 hover:bg-muted/50"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<FolderGit2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+										<span className="font-medium text-sm truncate">
+											{sr.repository.fullName}
+										</span>
+										{sr.isPrimary && (
+											<Badge variant="default" className="text-xs">PRIMARY</Badge>
+										)}
+									</div>
+									<div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+										{sr.repository.language && (
+											<span>{sr.repository.language}</span>
+										)}
+										{sr.repository.defaultBranch && (
+											<span className="flex items-center gap-1">
+												<GitBranch className="h-3 w-3" />
+												{sr.repository.defaultBranch}
+											</span>
+										)}
+										{sr.subPath && (
+											<span className="font-mono">/{sr.subPath}</span>
+										)}
+									</div>
+								</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="text-destructive hover:text-destructive"
+									disabled={unlinkRepo.isPending}
+									onClick={() =>
+										unlinkRepo.mutate({
+											id: sr.repositoryId,
+											serviceId,
+										})
+									}
+								>
+									<Unlink className="h-4 w-4 mr-1" />
+									Unlink
+								</Button>
+							</div>
+						))}
+					</div>
+				) : (
+					<p className="p-4 text-sm text-muted-foreground text-center">
+						No repositories linked to this service
+					</p>
+				)}
+			</div>
+
+			<LinkRepositoryDialog
+				open={showLinkDialog}
+				onOpenChange={setShowLinkDialog}
+				serviceId={serviceId}
+				linkedRepositoryIds={linkedRepoIds}
+			/>
+		</div>
+	);
+}
+
+// =============================================================================
+// Deployments Tab
+// =============================================================================
+
+function DeploymentStatusIndicator({ status }: { status: string | null }) {
+	const colors: Record<string, string> = {
+		live: "text-green-500",
+		active: "text-green-500",
+		running: "text-green-500",
+		suspended: "text-yellow-500",
+		paused: "text-yellow-500",
+		stopped: "text-red-500",
+		failed: "text-red-500",
+		error: "text-red-500",
+	};
+	const colorClass = status ? (colors[status.toLowerCase()] ?? "text-muted-foreground") : "text-muted-foreground";
+	return <Cloud className={`h-3 w-3 flex-shrink-0 ${colorClass}`} />;
+}
+
+function formatTimeAgo(dateStr: string): string {
+	const date = new Date(dateStr);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	if (diffMins < 1) return "just now";
+	if (diffMins < 60) return `${diffMins}m ago`;
+	const diffHours = Math.floor(diffMins / 60);
+	if (diffHours < 24) return `${diffHours}h ago`;
+	const diffDays = Math.floor(diffHours / 24);
+	if (diffDays < 30) return `${diffDays}d ago`;
+	return date.toLocaleDateString();
+}
+
+function DeploymentsTab({
+	serviceId,
+	service,
+}: {
+	serviceId: string;
+	service: ServiceWithRelations;
+}) {
+	const [showLinkDialog, setShowLinkDialog] = useState(false);
+	const deploys = service.deployments ?? [];
+	const unlinkDeploy = useUnlinkDeployment();
+	const linkedDeployIds = deploys.map((d) => d.id);
+
+	return (
+		<div className="space-y-4">
+			<div className="flex items-center justify-between">
+				<h3 className="text-sm font-medium">
+					Linked Deployments ({deploys.length})
+				</h3>
+				<Button size="sm" variant="outline" onClick={() => setShowLinkDialog(true)}>
+					<Plus className="h-4 w-4 mr-1" />
+					Link Deployment
+				</Button>
+			</div>
+
+			<MutationError error={unlinkDeploy.error} className="mb-4" />
+
+			<div className="rounded-md border">
+				{deploys.length > 0 ? (
+					<div className="divide-y">
+						{deploys.map((dep) => (
+							<div
+								key={dep.id}
+								className="flex items-center justify-between p-4 hover:bg-muted/50"
+							>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<DeploymentStatusIndicator status={dep.status} />
+										<span className="font-medium text-sm truncate">
+											{dep.name}
+										</span>
+										{dep.status && (
+											<Badge
+												variant={
+													["live", "active", "running"].includes(dep.status.toLowerCase())
+														? "default"
+														: ["suspended", "paused"].includes(dep.status.toLowerCase())
+															? "secondary"
+															: "destructive"
+												}
+												className="text-xs capitalize"
+											>
+												{dep.status}
+											</Badge>
+										)}
+									</div>
+									<div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+										{dep.deploymentType && (
+											<span className="capitalize">{dep.deploymentType}</span>
+										)}
+										{dep.region && <span>{dep.region}</span>}
+										{dep.url && (
+											<a
+												href={dep.url}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="flex items-center gap-1 hover:text-primary"
+											>
+												<ExternalLink className="h-3 w-3" />
+												{dep.url}
+											</a>
+										)}
+										{dep.lastDeployedAt && (
+											<span>Last deployed: {formatTimeAgo(dep.lastDeployedAt)}</span>
+										)}
+									</div>
+								</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="text-destructive hover:text-destructive"
+									disabled={unlinkDeploy.isPending}
+									onClick={() =>
+										unlinkDeploy.mutate({ id: dep.id })
+									}
+								>
+									<Unlink className="h-4 w-4 mr-1" />
+									Unlink
+								</Button>
+							</div>
+						))}
+					</div>
+				) : (
+					<p className="p-4 text-sm text-muted-foreground text-center">
+						No deployments linked to this service
+					</p>
+				)}
+			</div>
+
+			<LinkDeploymentDialog
+				open={showLinkDialog}
+				onOpenChange={setShowLinkDialog}
+				serviceId={serviceId}
+				linkedDeploymentIds={linkedDeployIds}
+			/>
 		</div>
 	);
 }
@@ -597,7 +926,7 @@ function DependenciesTab({
 									<Link
 										to="/services/$id"
 										params={{ id: edge.service.id }}
-										search={{ tab: "general" }}
+										search={{ tab: "overview" }}
 										className="flex items-center gap-2 min-w-0 flex-1"
 									>
 										<div className="p-1 rounded bg-muted flex-shrink-0">
@@ -673,7 +1002,7 @@ function DependenciesTab({
 									<Link
 										to="/services/$id"
 										params={{ id: edge.service.id }}
-										search={{ tab: "general" }}
+										search={{ tab: "overview" }}
 										className="flex items-center gap-2 min-w-0 flex-1"
 									>
 										<div className="p-1 rounded bg-muted flex-shrink-0">

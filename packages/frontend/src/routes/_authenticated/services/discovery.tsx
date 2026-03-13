@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { DataTable } from "@/components/ui/data-table";
 import { AcceptSuggestionDialog } from "@/components/services/AcceptSuggestionDialog";
+import { RunDiscoveryDialog } from "@/components/services/RunDiscoveryDialog";
 import { MutationError } from "@/components/shared/MutationError";
 
 const PAGE_SIZE = 25;
@@ -34,6 +35,12 @@ const statusOptions = [
 	{ value: "accepted", label: "Accepted" },
 	{ value: "rejected", label: "Rejected" },
 	{ value: "ignored", label: "Ignored" },
+];
+
+const sourceTypeOptions = [
+	{ value: "all", label: "All Sources" },
+	{ value: "repository", label: "🔗 Repository" },
+	{ value: "deployment", label: "🚀 Deployment" },
 ];
 
 const statusColors: Record<string, string> = {
@@ -49,44 +56,51 @@ export const Route = createFileRoute("/_authenticated/services/discovery")({
 
 function DiscoveryPage() {
 	const [statusFilter, setStatusFilter] = useState<SuggestionStatus | "all">("pending");
+	const [sourceTypeFilter, setSourceTypeFilter] = useState<"repository" | "deployment" | "all">("all");
 	const [page, setPage] = useState(1);
 	const [acceptingSuggestion, setAcceptingSuggestion] =
 		useState<ServiceSuggestion | null>(null);
 	const [discoveryError, setDiscoveryError] = useState<Error | null>(null);
+	const [showRunDialog, setShowRunDialog] = useState(false);
 
 	const offset = (page - 1) * PAGE_SIZE;
 
 	// Fetch suggestions
 	const { data: suggestions = [], isLoading } = useSuggestions({
 		status: statusFilter !== "all" ? statusFilter as SuggestionStatus : undefined,
+		sourceType: sourceTypeFilter !== "all" ? sourceTypeFilter : undefined,
 		limit: PAGE_SIZE,
 		offset,
 	});
 
-	// Fetch VCS connections for "Run Discovery" button
+	// Fetch VCS + deployment connections for "Run Discovery" button
 	const { data: allConnections = [] } = useConnections();
-	const vcsConnections = allConnections.filter((c) =>
-		["github", "gitlab", "bitbucket"].some((prefix) =>
+	const discoveryConnections = allConnections.filter((c) => {
+		const category = c.integration?.template?.category;
+		if (category === "vcs" || category === "deployment") return true;
+		// Fallback: match by templateId prefix when category is unavailable
+		return ["github", "gitlab", "bitbucket", "render"].some((prefix) =>
 			(c.integration?.templateId ?? "").startsWith(prefix),
-		),
-	);
+		);
+	});
 
 	const triggerDiscovery = useTriggerDiscovery();
 	const rejectSuggestion = useRejectSuggestion();
 	const ignoreSuggestion = useIgnoreSuggestion();
 	const bulkAccept = useAcceptBulkSuggestions();
 
-	const handleRunDiscovery = async () => {
+	const handleRunDiscovery = async (connectionIds: string[]) => {
+		setShowRunDialog(false);
 		setDiscoveryError(null);
 		const results = await Promise.allSettled(
-			vcsConnections.map((conn) =>
-				triggerDiscovery.mutateAsync({ connectionId: conn.id }),
+			connectionIds.map((id) =>
+				triggerDiscovery.mutateAsync({ connectionId: id }),
 			),
 		);
 		const failed = results.filter((r) => r.status === "rejected");
 		if (failed.length > 0) {
 			setDiscoveryError(
-				new Error(`${failed.length} of ${vcsConnections.length} connections failed`),
+				new Error(`${failed.length} of ${connectionIds.length} connections failed`),
 			);
 		}
 	};
@@ -125,11 +139,22 @@ function DiscoveryPage() {
 			),
 		},
 		{
-			accessorKey: "isMonorepo",
+			accessorKey: "sourceType",
 			header: "Source",
 			cell: ({ row }) => (
 				<Badge variant="outline" className="text-xs">
-					{row.original.isMonorepo ? "Monorepo" : "Repository"}
+					{row.original.sourceType === "deployment"
+						? "🚀 Deployment"
+						: "🔗 Repository"}
+				</Badge>
+			),
+		},
+		{
+			accessorKey: "isMonorepo",
+			header: "Type",
+			cell: ({ row }) => (
+				<Badge variant="outline" className="text-xs">
+					{row.original.isMonorepo ? "Monorepo" : "Single"}
 				</Badge>
 			),
 		},
@@ -195,10 +220,10 @@ function DiscoveryPage() {
 				title="Discovered Services"
 				subtitle="Services automatically discovered from your integrations"
 				actions={
-					vcsConnections.length > 0 ? (
+					discoveryConnections.length > 0 ? (
 						<Button
 							size="sm"
-							onClick={handleRunDiscovery}
+							onClick={() => setShowRunDialog(true)}
 							disabled={triggerDiscovery.isPending}
 						>
 							<Play className="h-4 w-4 mr-1" />
@@ -218,6 +243,18 @@ function DiscoveryPage() {
 					</SelectTrigger>
 					<SelectContent>
 						{statusOptions.map((opt) => (
+							<SelectItem key={opt.value} value={opt.value}>
+								{opt.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<Select value={sourceTypeFilter} onValueChange={(v) => setSourceTypeFilter(v as "repository" | "deployment" | "all")}>
+					<SelectTrigger className="w-[160px]">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{sourceTypeOptions.map((opt) => (
 							<SelectItem key={opt.value} value={opt.value}>
 								{opt.label}
 							</SelectItem>
@@ -270,6 +307,15 @@ function DiscoveryPage() {
 					if (!open) setAcceptingSuggestion(null);
 				}}
 				suggestion={acceptingSuggestion}
+			/>
+
+			{/* Run Discovery Dialog */}
+			<RunDiscoveryDialog
+				open={showRunDialog}
+				onOpenChange={setShowRunDialog}
+				connections={discoveryConnections}
+				onRun={handleRunDiscovery}
+				isPending={triggerDiscovery.isPending}
 			/>
 		</div>
 	);

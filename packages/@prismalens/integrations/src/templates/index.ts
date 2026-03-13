@@ -33,7 +33,7 @@ export function getAllTemplates(): AuthTemplate[] {
 }
 
 export function getTemplatesByCategory(
-	category: string,
+	category: AuthTemplate["category"],
 ): AuthTemplate[] {
 	return getAllTemplates().filter((t) => t.category === category);
 }

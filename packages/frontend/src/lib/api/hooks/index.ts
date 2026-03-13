@@ -117,6 +117,26 @@ export {
 	useDeleteServiceIntegration,
 } from "./use-integrations-orpc";
 
+// Repository hooks
+export {
+	deploymentKeys,
+	useBatchCreateDeployments,
+	useDeployment,
+	useDeployments,
+	useLinkDeployment,
+	useUnlinkDeployment,
+} from "./use-deployments-orpc";
+
+// Deployment hooks
+export {
+	repositoryKeys,
+	useBatchCreateRepositories,
+	useLinkRepository,
+	useRepositories,
+	useRepository,
+	useUnlinkRepository,
+} from "./use-repositories-orpc";
+
 // Service discovery hooks
 export {
 	serviceDiscoveryKeys,

@@ -10,6 +10,8 @@ import {
 	ServiceTierSchema,
 	ServiceTypeSchema,
 } from "./common.js";
+import { DeploymentSchema } from "./deployment.js";
+import { RepositorySchema, ServiceRepositorySchema } from "./repository.js";
 
 // =============================================================================
 // SERVICE SCHEMAS
@@ -24,13 +26,8 @@ export const ServiceSchema = z.object({
 	tier: ServiceTierSchema,
 	team: z.string().nullable(),
 	slackChannel: z.string().nullable(),
-	repository: z.string().nullable(),
 	tags: z.array(z.string()).nullable(),
 	metadata: z.record(z.unknown()).nullable(),
-	discoverySource: z.string().nullable(),
-	discoveryMetadata: z.record(z.unknown()).nullable(),
-	isDiscovered: z.boolean(),
-	isConfirmed: z.boolean(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -43,12 +40,8 @@ export const CreateServiceSchema = z.object({
 	tier: ServiceTierSchema.optional(),
 	team: z.string().optional(),
 	slackChannel: z.string().optional(),
-	repository: z.string().optional(),
 	tags: z.array(z.string()).optional(),
 	metadata: z.record(z.unknown()).optional(),
-	discoverySource: z.string().optional(),
-	discoveryMetadata: z.record(z.unknown()).optional(),
-	isDiscovered: z.boolean().optional(),
 });
 
 export const UpdateServiceSchema = CreateServiceSchema.partial();
@@ -101,12 +94,18 @@ export const ServiceInvestigationConfigSchema = z.object({
 });
 
 // =============================================================================
-// SERVICE WITH RELATIONS
+// SERVICE WITH RELATIONS (includes nested repos + deployments)
 // =============================================================================
+
+export const ServiceRepositoryNestedSchema = ServiceRepositorySchema.extend({
+	repository: RepositorySchema,
+});
 
 export const ServiceWithRelationsSchema = ServiceSchema.extend({
 	dependencies: z.array(ServiceDependencySchema).optional(),
 	dependents: z.array(ServiceDependencySchema).optional(),
+	repositories: z.array(ServiceRepositoryNestedSchema).optional(),
+	deployments: z.array(DeploymentSchema).optional(),
 	alertCount: z.number().int().optional(),
 	incidentCount: z.number().int().optional(),
 });
@@ -141,3 +140,4 @@ export type ServiceListQuery = z.infer<typeof ServiceListQuerySchema>;
 export type ServiceListResponse = z.infer<typeof ServiceListResponseSchema>;
 export type ServiceInvestigationConfig = z.infer<typeof ServiceInvestigationConfigSchema>;
 export type TopologyEdge = z.infer<typeof TopologyEdgeSchema>;
+export type ServiceRepositoryNested = z.infer<typeof ServiceRepositoryNestedSchema>;

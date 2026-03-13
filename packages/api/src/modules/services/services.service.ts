@@ -34,14 +34,8 @@ export class ServicesService {
         tier: dto.tier ?? 'tier_3',
         team: dto.team,
         slackChannel: dto.slackChannel,
-        repository: dto.repository,
         tags: dto.tags ? JSON.stringify(dto.tags) : null,
         metadata: dto.metadata ? JSON.stringify(dto.metadata) : null,
-        discoverySource: dto.discoverySource ?? null,
-        discoveryMetadata: dto.discoveryMetadata
-          ? JSON.stringify(dto.discoveryMetadata)
-          : null,
-        isDiscovered: dto.isDiscovered ?? false,
       },
     });
 
@@ -50,9 +44,9 @@ export class ServicesService {
   }
 
   /**
-   * Find service by ID with dependencies
+   * Find service by ID with dependencies, repositories, and deployments
    */
-  async findById(id: string): Promise<ServiceWithDependencies | null> {
+  async findById(id: string) {
     return this.prisma.service.findUnique({
       where: { id },
       include: {
@@ -62,6 +56,10 @@ export class ServicesService {
         dependents: {
           include: { dependent: true },
         },
+        repositories: {
+          include: { repository: true },
+        },
+        deployments: true,
       },
     });
   }
@@ -76,7 +74,7 @@ export class ServicesService {
   }
 
   /**
-   * Find all services
+   * Find all services with repositories and deployments
    */
   async findAll(options?: {
     type?: string;
@@ -102,6 +100,12 @@ export class ServicesService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.service.findMany({
         where,
+        include: {
+          repositories: {
+            include: { repository: true },
+          },
+          deployments: true,
+        },
         orderBy: [{ tier: 'asc' }, { name: 'asc' }],
         take: options?.limit,
         skip: options?.offset,
@@ -121,7 +125,6 @@ export class ServicesService {
         updatedAt: new Date(),
       };
 
-      // Only allow user-editable fields
       const allowedFields = [
         'name',
         'displayName',
@@ -130,7 +133,6 @@ export class ServicesService {
         'tier',
         'team',
         'slackChannel',
-        'repository',
       ] as const;
 
       for (const field of allowedFields) {
@@ -139,15 +141,11 @@ export class ServicesService {
         }
       }
 
-      // JSON stringify arrays/objects
       if (dto.tags) {
         updateData.tags = JSON.stringify(dto.tags);
       }
       if (dto.metadata) {
         updateData.metadata = JSON.stringify(dto.metadata);
-      }
-      if ('discoveryMetadata' in dto && dto.discoveryMetadata) {
-        updateData.discoveryMetadata = JSON.stringify(dto.discoveryMetadata);
       }
 
       const service = await this.prisma.service.update({

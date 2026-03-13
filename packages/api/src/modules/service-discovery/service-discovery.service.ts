@@ -9,7 +9,12 @@ import type {
   Service,
   ServiceSuggestion,
 } from '@prismalens/database';
-import { getTemplate, resolveGitProviderName } from '@prismalens/integrations';
+import {
+  createDeploymentProvider,
+  getTemplate,
+  resolveDeploymentProviderName,
+  resolveGitProviderName,
+} from '@prismalens/integrations';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { CredentialsService } from '../integrations/crypto/credentials.service.js';
 import { IntegrationsService } from '../integrations/integrations.service.js';
@@ -24,9 +29,22 @@ export interface DiscoveredService {
   isMonorepo?: boolean;
 }
 
+type ConnectionWithTemplate = Connection & {
+  integration: { templateId: string };
+};
+
 @Injectable()
 export class ServiceDiscoveryService {
   private readonly logger = new Logger(ServiceDiscoveryService.name);
+
+  /** Strategy dispatch map — keyed by template category */
+  private readonly discoveryStrategies: Record<
+    string,
+    (conn: ConnectionWithTemplate) => Promise<ServiceSuggestion[]>
+  > = {
+    vcs: (conn) => this.discoverFromVcsProvider(conn),
+    deployment: (conn) => this.discoverFromDeploymentProvider(conn),
+  };
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,17 +69,26 @@ export class ServiceDiscoveryService {
     }
 
     const template = getTemplate(connection.integration.templateId);
-    if (!template || template.category !== 'vcs') {
+    if (!template) {
+      throw new BadRequestException('Template not found for this connection');
+    }
+
+    const strategy = this.discoveryStrategies[template.category];
+    if (!strategy) {
       throw new BadRequestException(
-        'This connection does not support service discovery',
+        `Discovery not supported for category "${template.category}"`,
       );
     }
 
-    return this.discoverFromProvider(connection);
+    return strategy(connection);
   }
 
-  async discoverFromProvider(
-    connection: Connection & { integration: { templateId: string } },
+  // =========================================================================
+  // VCS DISCOVERY (existing flow, renamed from discoverFromProvider)
+  // =========================================================================
+
+  async discoverFromVcsProvider(
+    connection: ConnectionWithTemplate,
   ): Promise<ServiceSuggestion[]> {
     const providerName = resolveGitProviderName(
       connection.integration.templateId,
@@ -77,7 +104,6 @@ export class ServiceDiscoveryService {
       `Discovering services from ${providerName} connection: ${connection.id}`,
     );
 
-    // Decrypt connection config to get repository settings
     const config = connection.connectionConfigEnc
       ? this.credentialsService.decrypt<Record<string, unknown>>(
           Buffer.from(connection.connectionConfigEnc),
@@ -88,7 +114,6 @@ export class ServiceDiscoveryService {
     const configuredRepos = (config.repositories || []) as string[];
     const organization = config.organization as string | undefined;
 
-    // Resolve repository list — delegate to IntegrationsService for auth + capability checks
     let repositories: string[];
 
     if (allRepositories || configuredRepos.length === 0) {
@@ -121,49 +146,16 @@ export class ServiceDiscoveryService {
           const subPath: string | null =
             service.path === '.' ? null : service.path;
 
-          const existing = await this.prisma.serviceSuggestion.findFirst({
-            where: {
-              connectionId: connection.id,
-              repository: repo,
-              subPath,
-            },
+          const suggestion = await this.upsertSuggestion({
+            connectionId: connection.id,
+            suggestedName: service.name,
+            repository: repo,
+            isMonorepo,
+            subPath,
+            sourceType: 'repository',
+            providerName,
           });
-
-          if (
-            existing &&
-            existing.status !== 'rejected' &&
-            existing.status !== 'ignored'
-          ) {
-            const updated = await this.prisma.serviceSuggestion.update({
-              where: { id: existing.id },
-              data: { updatedAt: new Date() },
-            });
-            suggestions.push(updated);
-          } else {
-            const createData: Record<string, unknown> = {
-              connectionId: connection.id,
-              suggestedName: service.name,
-              displayName: service.name.replace(/-/g, ' '),
-              repository: repo,
-              isMonorepo,
-              status: 'pending',
-              metadata: JSON.stringify({
-                discoveryMethod: providerName,
-                discoveredAt: new Date().toISOString(),
-              }),
-            };
-
-            if (subPath !== null) {
-              createData.subPath = subPath;
-            }
-
-            const suggestion = await this.prisma.serviceSuggestion.create({
-              data: createData as Parameters<
-                typeof this.prisma.serviceSuggestion.create
-              >[0]['data'],
-            });
-            suggestions.push(suggestion);
-          }
+          suggestions.push(suggestion);
         }
       } catch (error) {
         this.logger.error(`Error discovering services from ${repo}:`, error);
@@ -173,19 +165,140 @@ export class ServiceDiscoveryService {
     return suggestions;
   }
 
+  // =========================================================================
+  // DEPLOYMENT DISCOVERY (new flow)
+  // =========================================================================
+
+  async discoverFromDeploymentProvider(
+    connection: ConnectionWithTemplate,
+  ): Promise<ServiceSuggestion[]> {
+    const providerName = resolveDeploymentProviderName(
+      connection.integration.templateId,
+    );
+
+    if (!providerName) {
+      throw new BadRequestException(
+        `Deployment discovery not supported for provider "${connection.integration.templateId}"`,
+      );
+    }
+
+    this.logger.log(
+      `Discovering deployments from ${providerName} connection: ${connection.id}`,
+    );
+
+    const provider = createDeploymentProvider(providerName);
+    if (!provider) {
+      throw new BadRequestException(
+        `Failed to create deployment provider: ${providerName}`,
+      );
+    }
+
+    const requestFn = this.integrationsService.createRequestFn(connection.id);
+    const deploymentServices = await provider.listServices(requestFn);
+
+    const suggestions: ServiceSuggestion[] = [];
+
+    for (const svc of deploymentServices) {
+      try {
+        const suggestion = await this.upsertSuggestion({
+          connectionId: connection.id,
+          suggestedName: svc.name,
+          repository: svc.name, // Use service name as identifier for deployments
+          isMonorepo: false,
+          subPath: null,
+          sourceType: 'deployment',
+          providerName,
+          metadata: {
+            externalId: svc.id,
+            type: svc.type,
+            status: svc.status,
+            url: svc.url,
+            repo: svc.repo,
+            branch: svc.branch,
+            region: svc.region,
+          },
+        });
+        suggestions.push(suggestion);
+      } catch (error) {
+        this.logger.error(
+          `Error creating suggestion for deployment ${svc.name}:`,
+          error,
+        );
+      }
+    }
+
+    return suggestions;
+  }
+
+  // =========================================================================
+  // SUGGESTION UPSERT HELPER
+  // =========================================================================
+
+  private async upsertSuggestion(params: {
+    connectionId: string;
+    suggestedName: string;
+    repository: string;
+    isMonorepo: boolean;
+    subPath: string | null;
+    sourceType: string;
+    providerName: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ServiceSuggestion> {
+    const existing = await this.prisma.serviceSuggestion.findFirst({
+      where: {
+        connectionId: params.connectionId,
+        repository: params.repository,
+        subPath: params.subPath,
+      },
+    });
+
+    if (
+      existing &&
+      existing.status !== 'rejected' &&
+      existing.status !== 'ignored'
+    ) {
+      return this.prisma.serviceSuggestion.update({
+        where: { id: existing.id },
+        data: { updatedAt: new Date() },
+      });
+    }
+
+    const createData: Record<string, unknown> = {
+      connectionId: params.connectionId,
+      suggestedName: params.suggestedName,
+      displayName: params.suggestedName.replace(/-/g, ' '),
+      repository: params.repository,
+      isMonorepo: params.isMonorepo,
+      sourceType: params.sourceType,
+      status: 'pending',
+      metadata: JSON.stringify({
+        discoveryMethod: params.providerName,
+        discoveredAt: new Date().toISOString(),
+        ...params.metadata,
+      }),
+    };
+
+    if (params.subPath !== null) {
+      createData.subPath = params.subPath;
+    }
+
+    return this.prisma.serviceSuggestion.create({
+      data: createData as Parameters<
+        typeof this.prisma.serviceSuggestion.create
+      >[0]['data'],
+    });
+  }
+
   /**
    * Analyze repository structure to detect monorepo layout and service boundaries.
-   * Currently returns a single-service default — full analysis is not yet implemented.
    */
   async analyzeRepoStructure(
     repo: string,
-    _connection: Connection & { integration: { templateId: string } },
+    _connection: ConnectionWithTemplate,
   ): Promise<{
     isMonorepo: boolean;
     services: DiscoveredService[];
   }> {
-    // Single-service default: assumes repo = one service.
-    // Full repo analysis (monorepo detection, language scanning) is planned.
     return {
       isMonorepo: false,
       services: [
@@ -232,9 +345,28 @@ export class ServiceDiscoveryService {
       );
     }
 
+    const sourceType = (suggestion as Record<string, unknown>).sourceType as
+      | string
+      | undefined;
+
+    if (sourceType === 'deployment') {
+      return this.acceptDeploymentSuggestion(suggestion, overrides);
+    }
+
+    return this.acceptRepositorySuggestion(suggestion, overrides);
+  }
+
+  // =========================================================================
+  // ACCEPT FLOWS BY SOURCE TYPE
+  // =========================================================================
+
+  private async acceptRepositorySuggestion(
+    suggestion: ServiceSuggestion,
+    overrides?: AcceptSuggestionDto,
+  ): Promise<Service> {
     const serviceName = overrides?.name || suggestion.suggestedName;
 
-    // Atomic: create service + mark suggestion accepted in one transaction
+    // Create repository record + service + link them
     const [service] = await this.prisma.$transaction([
       this.prisma.service.create({
         data: {
@@ -244,24 +376,94 @@ export class ServiceDiscoveryService {
           description: overrides?.description,
           type: overrides?.type || 'service',
           team: overrides?.team,
-          discoverySource: this.resolveProviderFromSuggestion(suggestion),
-          discoveryMetadata: JSON.stringify({
-            repository: suggestion.repository,
-            subPath: suggestion.subPath,
-            isMonorepo: suggestion.isMonorepo,
-          }),
-          isDiscovered: true,
-          isConfirmed: true,
         },
       }),
       this.prisma.serviceSuggestion.update({
-        where: { id: suggestionId },
+        where: { id: suggestion.id },
         data: { status: 'accepted' },
       }),
     ]);
 
     this.logger.log(
-      `Accepted service suggestion: ${serviceName} (${service.id})`,
+      `Accepted repository suggestion: ${serviceName} (${service.id})`,
+    );
+
+    return service;
+  }
+
+  private async acceptDeploymentSuggestion(
+    suggestion: ServiceSuggestion,
+    overrides?: AcceptSuggestionDto,
+  ): Promise<Service> {
+    const serviceName = overrides?.name || suggestion.suggestedName;
+
+    let metadata: Record<string, unknown> = {};
+    try {
+      metadata =
+        typeof suggestion.metadata === 'string'
+          ? (JSON.parse(suggestion.metadata) as Record<string, unknown>)
+          : ((suggestion.metadata as unknown as Record<string, unknown>) ?? {});
+    } catch {
+      // ignore parse errors
+    }
+
+    // Validate linked service exists before starting transaction
+    if (overrides?.linkedServiceId) {
+      const existing = await this.prisma.service.findUnique({
+        where: { id: overrides.linkedServiceId },
+      });
+      if (!existing) {
+        throw new NotFoundException('Linked service not found');
+      }
+    }
+
+    // Atomic: create/link service + deployment + mark accepted
+    const service = await this.prisma.$transaction(async (tx) => {
+      let svc: Service;
+      if (overrides?.linkedServiceId) {
+        svc = (await tx.service.findUnique({
+          where: { id: overrides.linkedServiceId },
+        }))!;
+      } else {
+        svc = await tx.service.create({
+          data: {
+            name: serviceName,
+            displayName:
+              overrides?.displayName || suggestion.displayName || serviceName,
+            description: overrides?.description,
+            type: overrides?.type || 'service',
+            team: overrides?.team,
+          },
+        });
+      }
+
+      if (metadata.externalId) {
+        await tx.deployment.create({
+          data: {
+            serviceId: svc.id,
+            connectionId: suggestion.connectionId,
+            externalId: metadata.externalId as string,
+            name: suggestion.suggestedName,
+            url: (metadata.url as string) ?? null,
+            status: (metadata.status as string) ?? null,
+            deploymentType: (metadata.type as string) ?? null,
+            region: (metadata.region as string) ?? null,
+            branch: (metadata.branch as string) ?? null,
+            repositoryUrl: (metadata.repo as string) ?? null,
+          },
+        });
+      }
+
+      await tx.serviceSuggestion.update({
+        where: { id: suggestion.id },
+        data: { status: 'accepted' },
+      });
+
+      return svc;
+    });
+
+    this.logger.log(
+      `Accepted deployment suggestion: ${serviceName} (${service.id})`,
     );
 
     return service;
@@ -334,31 +536,5 @@ export class ServiceDiscoveryService {
     }
 
     return services;
-  }
-
-  // =========================================================================
-  // HELPERS
-  // =========================================================================
-
-  private resolveProviderFromSuggestion(suggestion: ServiceSuggestion): string {
-    try {
-      const metadata =
-        typeof suggestion.metadata === 'string'
-          ? (JSON.parse(suggestion.metadata) as Record<string, unknown>)
-          : suggestion.metadata;
-      const provider = (metadata?.discoveryMethod as string) ?? null;
-      if (!provider) {
-        this.logger.warn(
-          `No discoveryMethod in metadata for suggestion ${suggestion.id}, defaulting to "vcs"`,
-        );
-        return 'vcs';
-      }
-      return provider;
-    } catch (error) {
-      this.logger.error(
-        `Malformed metadata on suggestion ${suggestion.id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return 'vcs';
-    }
   }
 }

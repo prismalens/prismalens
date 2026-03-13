@@ -225,7 +225,7 @@ const createColumns = (
 				<Link
 					to="/services/$id"
 					params={{ id: row.original.service.id }}
-					search={{ tab: "general" }}
+					search={{ tab: "overview" }}
 					className="text-sm hover:underline hover:text-primary"
 				>
 					{row.original.service.name}

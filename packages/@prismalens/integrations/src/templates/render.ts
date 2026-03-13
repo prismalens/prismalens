@@ -4,8 +4,12 @@ import type { AuthTemplate } from "../types.js";
 const renderPermissions: PermissionRequirement[] = [
 	{
 		key: "api_access",
-		reason: "Access Render API for service monitoring",
-		capabilities: ["monitoring:read"],
+		reason: "Access Render API for deployment management",
+		capabilities: [
+			"deployment:list_services",
+			"deployment:get_service",
+			"deployment:list_deploys",
+		],
 	},
 ];
 
@@ -13,7 +17,7 @@ export const render: AuthTemplate = {
 	id: "render",
 	name: "Render",
 	version: "1.0.0",
-	category: "observability",
+	category: "deployment",
 	authMode: "api_key",
 	icon: "https://render.com/favicon.ico",
 	docsUrl: "https://docs.render.com/api",

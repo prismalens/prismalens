@@ -148,7 +148,7 @@ export function IncidentTable({
 										<Link
 											to="/services/$id"
 											params={{ id: incident.service.id }}
-											search={{ tab: "general" }}
+											search={{ tab: "overview" }}
 											className="text-sm hover:underline hover:text-primary"
 										>
 											{incident.service.name}

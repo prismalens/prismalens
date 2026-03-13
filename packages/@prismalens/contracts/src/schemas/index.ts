@@ -9,6 +9,7 @@ export * from "./change-event.js";
 // Common schemas (enums, pagination, utilities)
 export * from "./common.js";
 export * from "./correlation.js";
+export * from "./deployment.js";
 export * from "./event.js";
 export * from "./incident.js";
 export * from "./incident-similarity.js";
@@ -17,6 +18,7 @@ export * from "./investigation.js";
 export * from "./investigation-progress.js";
 export * from "./license.js";
 export * from "./recommendation.js";
+export * from "./repository.js";
 // Entity schemas
 export * from "./service.js";
 export * from "./service-discovery.js";

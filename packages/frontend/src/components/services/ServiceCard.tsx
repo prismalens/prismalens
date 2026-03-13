@@ -1,7 +1,7 @@
 /**
  * Service Card Component
  *
- * Displays a service in a card format
+ * Displays a service in a card format with linked sources
  */
 
 import { Link } from "@tanstack/react-router";
@@ -51,6 +51,8 @@ const tierLabels: Record<string, string> = {
 
 export function ServiceCard({ service }: ServiceCardProps) {
 	const typeIcon = serviceTypeIcons[service.type] || serviceTypeIcons.service;
+	const repos = service.repositories ?? [];
+	const deployments = service.deployments ?? [];
 
 	return (
 		<Card className="hover:border-primary/50 transition-colors">
@@ -63,7 +65,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 								<Link
 									to="/services/$id"
 									params={{ id: service.id }}
-									search={{ tab: "general" }}
+									search={{ tab: "overview" }}
 									className="hover:text-primary hover:underline"
 								>
 									{service.displayName || service.name}
@@ -90,6 +92,25 @@ export function ServiceCard({ service }: ServiceCardProps) {
 					<p className="text-sm text-muted-foreground line-clamp-2">
 						{service.description}
 					</p>
+				)}
+
+				{/* Sources */}
+				{(repos.length > 0 || deployments.length > 0) && (
+					<div className="flex flex-wrap gap-1">
+						{repos.map((sr) => (
+							<Badge key={sr.id} variant="secondary" className="text-xs">
+								🔗 {sr.repository.fullName}
+							</Badge>
+						))}
+						{deployments.map((dep) => (
+							<Badge key={dep.id} variant="secondary" className="text-xs">
+								🚀 {dep.name}
+								{dep.status && (
+									<span className="ml-1 opacity-70">({dep.status})</span>
+								)}
+							</Badge>
+						))}
+					</div>
 				)}
 
 				{/* Stats Row */}
@@ -134,14 +155,9 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				<div className="flex items-center justify-between text-xs text-muted-foreground">
 					<div className="flex items-center gap-2">
 						{service.team && <span>Team: {service.team}</span>}
-						{service.isDiscovered && !service.isConfirmed && (
-							<Badge variant="outline" className="text-xs">
-								Discovered
-							</Badge>
-						)}
 					</div>
 					<Button variant="ghost" size="sm" asChild>
-						<Link to="/services/$id" params={{ id: service.id }} search={{ tab: "general" }}>
+						<Link to="/services/$id" params={{ id: service.id }} search={{ tab: "overview" }}>
 							View
 						</Link>
 					</Button>

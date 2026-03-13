@@ -1,4 +1,7 @@
-import type { PermissionRequirement } from "@prismalens/config/integrations";
+import type {
+	PermissionRequirement,
+	TemplateCategory,
+} from "@prismalens/config/integrations";
 import { z } from "zod";
 
 // =============================================================================
@@ -73,7 +76,7 @@ export interface AuthTemplate {
 	id: string;
 	name: string;
 	version: string;
-	category: string;
+	category: TemplateCategory;
 	authMode: AuthMode;
 	icon?: string;
 	docsUrl?: string;

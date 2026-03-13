@@ -263,7 +263,7 @@ function IncidentsPage() {
 						}}
 						onServiceFilter={(serviceId) => {
 							// Navigate to service detail page
-							navigate({ to: "/services/$id", params: { id: serviceId }, search: { tab: "general" } });
+							navigate({ to: "/services/$id", params: { id: serviceId }, search: { tab: "overview" } });
 						}}
 					/>
 				</TabsContent>

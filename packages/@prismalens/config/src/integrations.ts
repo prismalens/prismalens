@@ -17,11 +17,27 @@ export const CapabilitySchema = z.enum([
 	"vcs:list_repos",
 	"vcs:read_file",
 	"vcs:read_commit_status",
+	"deployment:list_services",
+	"deployment:get_service",
+	"deployment:list_deploys",
 	"messaging:post",
 	"messaging:read",
 	"monitoring:read",
 ]);
 export type Capability = z.infer<typeof CapabilitySchema>;
+
+// =============================================================================
+// TEMPLATE CATEGORY — type-safe category for discovery strategy dispatch
+// =============================================================================
+
+export const TemplateCategorySchema = z.enum([
+	"vcs",
+	"deployment",
+	"messaging",
+	"communication",
+	"observability",
+]);
+export type TemplateCategory = z.infer<typeof TemplateCategorySchema>;
 
 // =============================================================================
 // PERMISSION REQUIREMENTS — the atomic unit linking provider-specific
@@ -77,3 +93,21 @@ export const GitFileContentSchema = z.object({
 	size: z.number(),
 });
 export type GitFileContent = z.infer<typeof GitFileContentSchema>;
+
+// =============================================================================
+// DEPLOYMENT PROVIDER TYPES — shared across contracts + integrations
+// =============================================================================
+
+export const DeploymentServiceSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	type: z.string(), // "web_service", "private_service", "background_worker", "cron_job", "static_site"
+	status: z.string(), // "created", "building", "live", "deactivated", "suspended"
+	url: z.string().optional(),
+	repo: z.string().optional(), // repository URL from the deployment platform
+	branch: z.string().optional(),
+	region: z.string().optional(),
+	createdAt: z.string().optional(),
+	updatedAt: z.string().optional(),
+});
+export type DeploymentService = z.infer<typeof DeploymentServiceSchema>;

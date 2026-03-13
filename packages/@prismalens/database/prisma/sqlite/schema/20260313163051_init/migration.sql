@@ -8,15 +8,61 @@ CREATE TABLE "services" (
     "tier" TEXT NOT NULL DEFAULT 'tier_3',
     "team" TEXT,
     "slackChannel" TEXT,
-    "repository" TEXT,
     "tags" TEXT,
     "metadata" TEXT,
-    "discoverySource" TEXT,
     "discoveryMetadata" TEXT,
-    "isDiscovered" BOOLEAN NOT NULL DEFAULT false,
-    "isConfirmed" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "repositories" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "connectionId" TEXT NOT NULL,
+    "fullName" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "description" TEXT,
+    "language" TEXT,
+    "defaultBranch" TEXT NOT NULL DEFAULT 'main',
+    "isPrivate" BOOLEAN NOT NULL DEFAULT false,
+    "metadata" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "repositories_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "service_repositories" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "serviceId" TEXT NOT NULL,
+    "repositoryId" TEXT NOT NULL,
+    "subPath" TEXT,
+    "isPrimary" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "service_repositories_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "service_repositories_repositoryId_fkey" FOREIGN KEY ("repositoryId") REFERENCES "repositories" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "deployments" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "serviceId" TEXT,
+    "connectionId" TEXT NOT NULL,
+    "externalId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "url" TEXT,
+    "status" TEXT,
+    "environment" TEXT,
+    "deploymentType" TEXT,
+    "region" TEXT,
+    "branch" TEXT,
+    "repositoryUrl" TEXT,
+    "metadata" TEXT,
+    "lastDeployedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "deployments_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "deployments_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -401,6 +447,7 @@ CREATE TABLE "invitation" (
 CREATE TABLE "integrations" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "templateId" TEXT NOT NULL,
+    "templateVersion" TEXT,
     "label" TEXT NOT NULL,
     "clientIdEnc" BLOB,
     "clientSecretEnc" BLOB,
@@ -472,6 +519,7 @@ CREATE TABLE "service_suggestions" (
     "repository" TEXT NOT NULL,
     "isMonorepo" BOOLEAN NOT NULL DEFAULT false,
     "subPath" TEXT,
+    "sourceType" TEXT NOT NULL DEFAULT 'repository',
     "status" TEXT NOT NULL DEFAULT 'pending',
     "metadata" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -481,6 +529,15 @@ CREATE TABLE "service_suggestions" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "services_name_key" ON "services"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "repositories_connectionId_fullName_key" ON "repositories"("connectionId", "fullName");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "service_repositories_serviceId_repositoryId_subPath_key" ON "service_repositories"("serviceId", "repositoryId", "subPath");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "deployments_connectionId_externalId_key" ON "deployments"("connectionId", "externalId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "service_dependencies_dependentId_dependencyId_key" ON "service_dependencies"("dependentId", "dependencyId");
@@ -642,7 +699,10 @@ CREATE INDEX "invitation_organizationId_idx" ON "invitation"("organizationId");
 CREATE INDEX "invitation_email_idx" ON "invitation"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "integrations_templateId_label_key" ON "integrations"("templateId", "label");
+CREATE INDEX "integrations_templateId_idx" ON "integrations"("templateId");
+
+-- CreateIndex
+CREATE INDEX "connections_integrationId_userId_idx" ON "connections"("integrationId", "userId");
 
 -- CreateIndex
 CREATE INDEX "connections_userId_idx" ON "connections"("userId");
@@ -652,9 +712,6 @@ CREATE INDEX "connections_status_idx" ON "connections"("status");
 
 -- CreateIndex
 CREATE INDEX "connections_tokenExpiresAt_idx" ON "connections"("tokenExpiresAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "connections_integrationId_userId_key" ON "connections"("integrationId", "userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "oauth_states_state_key" ON "oauth_states"("state");

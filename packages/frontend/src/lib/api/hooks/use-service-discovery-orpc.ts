@@ -6,13 +6,14 @@
  * Hooks for triggering discovery, managing suggestions, and bulk operations.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SuggestionStatus } from "@prismalens/contracts";
+import type { SourceType, SuggestionStatus } from "@prismalens/contracts";
 import { orpc } from "../orpc-client";
 import { serviceKeys } from "./use-services-orpc";
 
 interface SuggestionListParams {
 	connectionId?: string;
 	status?: SuggestionStatus;
+	sourceType?: SourceType;
 	limit?: number;
 	offset?: number;
 }

@@ -11,15 +11,15 @@ export type {
 } from "./engine/index.js";
 // Engine
 export {
+	assertCapability,
 	AuthError,
 	AuthManager,
 	CapabilityNotSupportedError,
-	CredentialsInvalidError,
-	GitHubAppFlow,
-	assertCapability,
 	checkGitHubAppPermissions,
 	checkOAuthScopes,
+	CredentialsInvalidError,
 	getCapabilities,
+	GitHubAppFlow,
 	hasCapability,
 	interpolate,
 	interpolateRecord,
@@ -32,19 +32,31 @@ export {
 	TokenRefresher,
 	TokenVault,
 } from "./engine/index.js";
-// Providers
+// Providers — shared types
+export type { AuthenticatedRequestFn } from "./providers/types.js";
+// Providers — git
 export type {
-	AuthenticatedRequestFn,
 	GitProvider,
 	GitProviderContext,
 	GitProviderFactory,
-} from "./providers/github/index.js";
+} from "./providers/git.interface.js";
 export {
 	createGitProvider,
 	GitHubProvider,
 	isGitProviderSupported,
 	resolveGitProviderName,
-} from "./providers/github/index.js";
+} from "./providers/index.js";
+// Providers — deployment
+export type {
+	DeploymentProvider,
+	DeploymentProviderFactory,
+} from "./providers/deployment.interface.js";
+export {
+	createDeploymentProvider,
+	isDeploymentProviderSupported,
+	RenderProvider,
+	resolveDeploymentProviderName,
+} from "./providers/index.js";
 // Templates
 export {
 	getAllTemplates,

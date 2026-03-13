@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import type { ServiceSuggestion } from "@prismalens/contracts";
 
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -18,7 +20,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useAcceptSuggestion } from "@/lib/api/hooks";
+import { Badge } from "@/components/ui/badge";
+import { useAcceptSuggestion, useServices } from "@/lib/api/hooks";
 
 const SERVICE_TYPES = [
 	"service",
@@ -30,17 +33,10 @@ const SERVICE_TYPES = [
 	"infrastructure",
 ] as const;
 
-interface Suggestion {
-	id: string;
-	suggestedName: string;
-	displayName: string | null;
-	repository: string;
-}
-
 export interface AcceptSuggestionDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	suggestion: Suggestion | null;
+	suggestion: ServiceSuggestion | null;
 	onSuccess?: () => void;
 }
 
@@ -52,9 +48,16 @@ export function AcceptSuggestionDialog({
 }: AcceptSuggestionDialogProps) {
 	const [type, setType] = useState<string>("");
 	const [team, setTeam] = useState("");
+	const [linkedServiceId, setLinkedServiceId] = useState<string>("");
 	const [error, setError] = useState<string | null>(null);
 
 	const acceptSuggestion = useAcceptSuggestion();
+
+	// For deployment suggestions, allow linking to an existing service
+	const { data: servicesResponse } = useServices();
+	const existingServices = servicesResponse?.data ?? [];
+
+	const isDeployment = suggestion?.sourceType === "deployment";
 
 	const handleAccept = async () => {
 		if (!suggestion) return;
@@ -63,8 +66,12 @@ export function AcceptSuggestionDialog({
 		try {
 			await acceptSuggestion.mutateAsync({
 				id: suggestion.id,
-				type: (type || undefined) as any,
+				type: type || undefined,
 				team: team || undefined,
+				linkedServiceId:
+					isDeployment && linkedServiceId && linkedServiceId !== "__new__"
+						? linkedServiceId
+						: undefined,
 			});
 			onOpenChange(false);
 			resetForm();
@@ -79,6 +86,7 @@ export function AcceptSuggestionDialog({
 	const resetForm = () => {
 		setType("");
 		setTeam("");
+		setLinkedServiceId("");
 		setError(null);
 	};
 
@@ -94,20 +102,30 @@ export function AcceptSuggestionDialog({
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Accept Suggestion</DialogTitle>
+					<DialogDescription>
+						{isDeployment
+							? "This will create a Deployment record and optionally link it to a service."
+							: "This will create a Repository record and a new service."}
+					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					<div className="rounded-md border p-3 space-y-1">
-						<p className="text-sm font-medium">
-							{suggestion.displayName ?? suggestion.suggestedName}
-						</p>
+						<div className="flex items-center gap-2">
+							<p className="text-sm font-medium">
+								{suggestion.displayName ?? suggestion.suggestedName}
+							</p>
+							<Badge variant="outline" className="text-xs">
+								{isDeployment ? "🚀 Deployment" : "🔗 Repository"}
+							</Badge>
+						</div>
 						<p className="text-xs text-muted-foreground">
 							{suggestion.repository}
 						</p>
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="suggestion-type">Type (optional)</Label>
+						<Label htmlFor="suggestion-type">Service Type (optional)</Label>
 						<Select value={type} onValueChange={setType}>
 							<SelectTrigger id="suggestion-type">
 								<SelectValue placeholder="Default" />
@@ -131,6 +149,30 @@ export function AcceptSuggestionDialog({
 							onChange={(e) => setTeam(e.target.value)}
 						/>
 					</div>
+
+					{isDeployment && existingServices.length > 0 && (
+						<div className="space-y-2">
+							<Label htmlFor="link-service">
+								Link to existing service (optional)
+							</Label>
+							<Select
+								value={linkedServiceId}
+								onValueChange={setLinkedServiceId}
+							>
+								<SelectTrigger id="link-service">
+									<SelectValue placeholder="Create new service" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="__new__">Create new service</SelectItem>
+									{existingServices.map((s) => (
+										<SelectItem key={s.id} value={s.id}>
+											{s.displayName || s.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					)}
 
 					{error && (
 						<p className="text-sm text-destructive text-center">{error}</p>

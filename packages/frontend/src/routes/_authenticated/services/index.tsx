@@ -95,7 +95,7 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 				<Link
 					to="/services/$id"
 					params={{ id: s.id }}
-					search={{ tab: "general" }}
+					search={{ tab: "overview" }}
 					className="hover:text-primary"
 				>
 					<div>
@@ -140,14 +140,38 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 		),
 	},
 	{
-		accessorKey: "alertCount",
-		header: "Alerts",
-		cell: ({ row }) => row.original.alertCount ?? 0,
-	},
-	{
-		accessorKey: "incidentCount",
-		header: "Incidents",
-		cell: ({ row }) => row.original.incidentCount ?? 0,
+		id: "sources",
+		header: "Sources",
+		cell: ({ row }) => {
+			const s = row.original;
+			const repos = s.repositories ?? [];
+			const deploys = s.deployments ?? [];
+			if (repos.length === 0 && deploys.length === 0) {
+				return <span className="text-muted-foreground">—</span>;
+			}
+			return (
+				<div className="flex flex-wrap gap-1">
+					{repos.map((sr) => (
+						<Badge
+							key={sr.repository?.id ?? sr.repositoryId}
+							variant="outline"
+							className="text-xs"
+						>
+							🔗 {sr.repository?.fullName ?? sr.repositoryId}
+						</Badge>
+					))}
+					{deploys.map((d) => (
+						<Badge
+							key={d.id}
+							variant="outline"
+							className="text-xs"
+						>
+							🚀 {d.name} ({d.status})
+						</Badge>
+					))}
+				</div>
+			);
+		},
 	},
 ];
 
@@ -248,17 +272,17 @@ function ServicesPage() {
 							/>
 							Refresh
 						</Button>
-						{pendingCount > 0 && (
-							<Button variant="outline" size="sm" asChild>
-								<Link to="/services/discovery">
-									<Sparkles className="h-4 w-4 mr-1" />
-									Discovered
+						<Button variant="outline" size="sm" asChild>
+							<Link to="/services/discovery">
+								<Sparkles className="h-4 w-4 mr-1" />
+								Discovery
+								{pendingCount > 0 && (
 									<Badge variant="secondary" className="ml-1 text-xs">
 										{pendingCount}
 									</Badge>
-								</Link>
-							</Button>
-						)}
+								)}
+							</Link>
+						</Button>
 						{hasVcsConnections && (
 							<Button
 								variant="outline"
@@ -362,7 +386,7 @@ function ServicesPage() {
 					isLoading={isLoading}
 					emptyMessage="No services found"
 					onRowClick={(row) =>
-						navigate({ to: "/services/$id", params: { id: row.id }, search: { tab: "general" } })
+						navigate({ to: "/services/$id", params: { id: row.id }, search: { tab: "overview" } })
 					}
 				/>
 			) : (

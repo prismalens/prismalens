@@ -108,6 +108,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return prisma.changeEvent;
   }
 
+  get repository() {
+    return prisma.repository;
+  }
+
+  get serviceRepository() {
+    return prisma.serviceRepository;
+  }
+
+  get deployment() {
+    return prisma.deployment;
+  }
+
   // Better Auth models
   get session() {
     return prisma.session;
