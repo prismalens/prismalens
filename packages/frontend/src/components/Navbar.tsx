@@ -102,7 +102,7 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
-										<Link to="/settings">{m.nav_settings()}</Link>
+										<Link to="/settings" search={{ tab: "ai" }}>{m.nav_settings()}</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>
 							</NavigationMenuList>

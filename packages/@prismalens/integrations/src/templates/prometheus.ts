@@ -1,4 +1,13 @@
+import type { PermissionRequirement } from "@prismalens/config/integrations";
 import type { AuthTemplate } from "../types.js";
+
+const prometheusPermissions: PermissionRequirement[] = [
+	{
+		key: "query",
+		reason: "Read metrics data for monitoring and alerting",
+		capabilities: ["monitoring:read"],
+	},
+];
 
 export const prometheus: AuthTemplate = {
 	id: "prometheus",
@@ -9,6 +18,7 @@ export const prometheus: AuthTemplate = {
 	icon: "https://prometheus.io/assets/prometheus_logo_grey.svg",
 	docsUrl: "https://prometheus.io/docs/prometheus/latest/querying/api/",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/prometheus/",
+	requiredPermissions: prometheusPermissions,
 	connectionFields: [
 		{
 			name: "baseUrl",

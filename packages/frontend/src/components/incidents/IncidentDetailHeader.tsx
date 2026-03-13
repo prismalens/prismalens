@@ -83,6 +83,7 @@ export function IncidentDetailHeader({
 							<Link
 								to="/services/$id"
 								params={{ id: incident.service.id }}
+								search={{ tab: "general" }}
 								className="text-sm text-primary hover:underline"
 							>
 								{incident.service.displayName || incident.service.name}

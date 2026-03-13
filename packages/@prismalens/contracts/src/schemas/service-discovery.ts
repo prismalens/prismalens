@@ -2,7 +2,11 @@
  * Service discovery schemas
  */
 import { z } from "zod";
-import { DateStringSchema, SuggestionStatusSchema } from "./common.js";
+import {
+	DateStringSchema,
+	ServiceTypeSchema,
+	SuggestionStatusSchema,
+} from "./common.js";
 
 // =============================================================================
 // SERVICE SUGGESTION SCHEMAS
@@ -29,6 +33,8 @@ export const ServiceSuggestionSchema = z.object({
 export const AcceptSuggestionSchema = z.object({
 	name: z.string().min(1).optional(), // Override suggested name
 	displayName: z.string().optional(),
+	description: z.string().optional(),
+	type: ServiceTypeSchema.optional(),
 	team: z.string().optional(),
 });
 

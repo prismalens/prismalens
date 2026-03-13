@@ -66,6 +66,7 @@ export function CorrelatedAlerts({ alerts, onAcknowledge }: CorrelatedAlertsProp
 										<Link
 											to="/services/$id"
 											params={{ id: alert.service.id }}
+											search={{ tab: "general" }}
 											className="hover:text-primary"
 										>
 											{alert.service.displayName || alert.service.name}

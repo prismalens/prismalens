@@ -64,6 +64,7 @@ export {
 	useServices,
 	useServiceTopology,
 	useUpdateService,
+	useUpdateServiceDependency,
 } from "./use-services-orpc";
 
 // Settings hooks
@@ -115,6 +116,17 @@ export {
 	useUpdateServiceIntegration,
 	useDeleteServiceIntegration,
 } from "./use-integrations-orpc";
+
+// Service discovery hooks
+export {
+	serviceDiscoveryKeys,
+	useAcceptBulkSuggestions,
+	useAcceptSuggestion,
+	useIgnoreSuggestion,
+	useRejectSuggestion,
+	useSuggestions,
+	useTriggerDiscovery,
+} from "./use-service-discovery-orpc";
 
 // Ollama hooks
 export { useOllamaModels } from "./use-ollama-models";

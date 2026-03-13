@@ -19,8 +19,16 @@ import {
   getTemplate,
   AuthManager,
   GitHubAppFlow,
+  hasCapability,
+  assertCapability,
+  CapabilityNotSupportedError,
+  checkGitHubAppPermissions,
+  createGitProvider,
+  isGitProviderSupported,
+  resolveGitProviderName,
   type AuthTemplate,
   type AuthManagerDeps,
+  type AuthenticatedRequestFn,
   type GitHubInstallation,
 } from '@prismalens/integrations';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -34,10 +42,6 @@ import type {
   UpdateIntegrationDto,
   UpdateConnectionDto,
 } from './dto/update-connection.dto.js';
-import {
-  createGitProvider,
-  isGitProviderSupported,
-} from './git-providers/index.js';
 
 export interface ConnectionWithIntegration extends Connection {
   integration: Integration;
@@ -52,26 +56,23 @@ export interface IntegrationContext {
   serviceOverrides?: Record<string, unknown>;
 }
 
+/** Upper bound for connection queries — prevents unbounded result sets in single-tenant deployments */
+const MAX_CONNECTIONS_PER_QUERY = 1000;
+
 @Injectable()
 export class IntegrationsService {
   private readonly logger = new Logger(IntegrationsService.name);
-  private authManager: AuthManager | null = null;
+  private readonly authManager: AuthManager;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly credentialsService: CredentialsService,
-  ) {}
-
-  private getAuthManager(): AuthManager {
-    if (this.authManager) return this.authManager;
-
+  ) {
     const vault = this.credentialsService.getVault();
-    const prisma = this.prisma;
-    const credentialsService = this.credentialsService;
 
     const deps: AuthManagerDeps = {
       getConnection: async (connectionId: string) => {
-        const conn = await prisma.connection.findUnique({
+        const conn = await this.prisma.connection.findUnique({
           where: { id: connectionId },
           include: { integration: true },
         });
@@ -84,7 +85,7 @@ export class IntegrationsService {
         };
       },
       getTemplate: async (integrationId: string) => {
-        const integration = await prisma.integration.findUnique({
+        const integration = await this.prisma.integration.findUnique({
           where: { id: integrationId },
         });
         if (!integration) return null;
@@ -99,7 +100,7 @@ export class IntegrationsService {
         return { template, clientId, clientSecret };
       },
       updateConnectionTokens: async (connectionId, data) => {
-        await prisma.connection.update({
+        await this.prisma.connection.update({
           where: { id: connectionId },
           data: {
             credentialsEnc: new Uint8Array(
@@ -113,7 +114,7 @@ export class IntegrationsService {
         });
       },
       markConnectionError: async (connectionId, error, status) => {
-        await prisma.connection.update({
+        await this.prisma.connection.update({
           where: { id: connectionId },
           data: {
             status,
@@ -124,7 +125,7 @@ export class IntegrationsService {
         });
       },
       getTemplateForConnection: async (connectionId: string) => {
-        const conn = await prisma.connection.findUnique({
+        const conn = await this.prisma.connection.findUnique({
           where: { id: connectionId },
           include: { integration: true },
         });
@@ -132,18 +133,32 @@ export class IntegrationsService {
         return getTemplate(conn.integration.templateId) ?? null;
       },
       getConnectionCredentials: async (connectionId: string) => {
-        const conn = await prisma.connection.findUnique({
+        const conn = await this.prisma.connection.findUnique({
           where: { id: connectionId },
         });
         if (!conn) return null;
-        return credentialsService.decrypt<Record<string, unknown>>(
+        return this.credentialsService.decrypt<Record<string, unknown>>(
           Buffer.from(conn.credentialsEnc),
         );
       },
     };
 
     this.authManager = new AuthManager(vault, deps);
+  }
+
+  private getAuthManager(): AuthManager {
     return this.authManager;
+  }
+
+  /**
+   * Create a bound authenticated request function for a connection.
+   * This replaces raw accessToken passing — the git provider calls
+   * request(method, path) and AuthManager handles auth headers + token refresh.
+   */
+  private createRequestFn(connectionId: string): AuthenticatedRequestFn {
+    const authManager = this.getAuthManager();
+    return (method, path, opts) =>
+      authManager.request(connectionId, method, path, opts);
   }
 
   // =========================================================================
@@ -484,12 +499,29 @@ export class IntegrationsService {
       permissions,
     );
 
+    // Verify granted permissions against template requirements
+    const permCheck =
+      template.requiredPermissions && tokenResult.permissions
+        ? checkGitHubAppPermissions(template, tokenResult.permissions)
+        : null;
+
+    if (permCheck && !permCheck.satisfied) {
+      const missingKeys = permCheck.missing.map((m) => m.key).join(', ');
+      this.logger.warn(
+        `GitHub App installation ${installationId} missing permissions: ${missingKeys}`,
+      );
+    }
+
     const credentials: Record<string, unknown> = {
       installationId,
       accessToken: tokenResult.token,
       installationToken: tokenResult.token,
       permissions: tokenResult.permissions,
       repositorySelection: tokenResult.repositorySelection,
+      missingPermissions:
+        permCheck && !permCheck.satisfied
+          ? permCheck.missing.map((m) => m.key)
+          : [],
     };
     if (permissionOverrides) {
       credentials.permissionOverrides = permissionOverrides;
@@ -558,7 +590,8 @@ export class IntegrationsService {
       throw new NotFoundException('Connection not found');
     }
 
-    const providerName = this.getGitProviderName(
+    const template = getTemplate(connection.integration.templateId);
+    const providerName = resolveGitProviderName(
       connection.integration.templateId,
     );
     if (!providerName || !isGitProviderSupported(providerName)) {
@@ -570,12 +603,30 @@ export class IntegrationsService {
       throw new BadRequestException('Failed to create git provider');
     }
 
-    const accessToken = await this.resolveAccessToken(connectionId, userId);
-    if (!accessToken) {
-      throw new BadRequestException('No access token found');
+    const requestFn = this.createRequestFn(connectionId);
+    const ctx = { authMode: template?.authMode };
+
+    if (template && !hasCapability(template, 'vcs:list_orgs')) {
+      // Fallback: derive orgs from repo listing (e.g. GitHub App installation tokens)
+      this.logger.log(
+        `Template "${template.id}" lacks vcs:list_orgs — deriving orgs from repositories`,
+      );
+      const repos = await provider.getRepositories(requestFn, undefined, ctx);
+      const ownerMap = new Map<string, GitOrganization>();
+      for (const repo of repos) {
+        const ownerName = repo.fullName.split('/')[0];
+        if (ownerName && !ownerMap.has(ownerName)) {
+          ownerMap.set(ownerName, {
+            id: ownerName,
+            name: ownerName,
+            displayName: ownerName,
+          });
+        }
+      }
+      return Array.from(ownerMap.values());
     }
 
-    return provider.getOrganizations(accessToken);
+    return provider.getOrganizations(requestFn, ctx);
   }
 
   async getGitRepositories(
@@ -588,7 +639,19 @@ export class IntegrationsService {
       throw new NotFoundException('Connection not found');
     }
 
-    const providerName = this.getGitProviderName(
+    const template = getTemplate(connection.integration.templateId);
+    if (template) {
+      try {
+        assertCapability(template, 'vcs:list_repos');
+      } catch (e) {
+        if (e instanceof CapabilityNotSupportedError) {
+          throw new BadRequestException(e.message);
+        }
+        throw e;
+      }
+    }
+
+    const providerName = resolveGitProviderName(
       connection.integration.templateId,
     );
     if (!providerName || !isGitProviderSupported(providerName)) {
@@ -600,12 +663,10 @@ export class IntegrationsService {
       throw new BadRequestException('Failed to create git provider');
     }
 
-    const accessToken = await this.resolveAccessToken(connectionId, userId);
-    if (!accessToken) {
-      throw new BadRequestException('No access token found');
-    }
-
-    return provider.getRepositories(accessToken, org);
+    const requestFn = this.createRequestFn(connectionId);
+    return provider.getRepositories(requestFn, org, {
+      authMode: template?.authMode,
+    });
   }
 
   async updateConnectionConfig(
@@ -631,14 +692,6 @@ export class IntegrationsService {
         connectionConfigEnc: this.credentialsService.encrypt(mergedConfig),
       },
     });
-  }
-
-  private getGitProviderName(templateId: string): string | null {
-    // github-app, github-token → github
-    if (templateId.startsWith('github')) return 'github';
-    if (templateId.startsWith('gitlab')) return 'gitlab';
-    if (templateId.startsWith('bitbucket')) return 'bitbucket';
-    return null;
   }
 
   // =========================================================================
@@ -719,7 +772,7 @@ export class IntegrationsService {
     const activeConnections = await this.prisma.connection.findMany({
       where: { status: 'ACTIVE' },
       include: { integration: true },
-      take: 1000,
+      take: MAX_CONNECTIONS_PER_QUERY,
     });
 
     const serviceOverrides = await this.prisma.serviceIntegration.findMany({
@@ -812,7 +865,7 @@ export class IntegrationsService {
     const activeConnections = await this.prisma.connection.findMany({
       where: { status: 'ACTIVE' },
       include: { integration: true },
-      take: 1000,
+      take: MAX_CONNECTIONS_PER_QUERY,
     });
 
     for (const conn of activeConnections) {
@@ -844,7 +897,7 @@ export class IntegrationsService {
 
       contexts.push({
         type:
-          this.getGitProviderName(conn.integration.templateId) ??
+          resolveGitProviderName(conn.integration.templateId) ??
           conn.integration.templateId,
         connectionId: conn.id,
         credentials,
@@ -888,7 +941,7 @@ export class IntegrationsService {
 
           contexts.push({
             type:
-              this.getGitProviderName(si.connection.integration.templateId) ??
+              resolveGitProviderName(si.connection.integration.templateId) ??
               si.connection.integration.templateId,
             connectionId: si.connectionId,
             credentials,
@@ -927,7 +980,7 @@ export class IntegrationsService {
 
       return {
         type:
-          this.getGitProviderName(conn.integration.templateId) ??
+          resolveGitProviderName(conn.integration.templateId) ??
           conn.integration.templateId,
         connectionId: conn.id,
         credentials,

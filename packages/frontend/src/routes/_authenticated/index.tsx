@@ -15,6 +15,8 @@ import {
 	MapPin,
 } from "lucide-react";
 import { ApiStatusCheck } from "@/components/ApiStatusCheck";
+import { PageHeader } from "@/components/layout";
+import { EmptyState as SharedEmptyState } from "@/components/ui/empty-state";
 import { LLMWarningBanner } from "@/components/shared/LLMWarningBanner";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -93,21 +95,20 @@ function CommandCenter() {
 
 	return (
 		<div className="space-y-6">
-			{/* Header */}
-			<div className="flex justify-between items-center">
-				<div>
-					<h1 className="text-3xl font-bold text-foreground">Command Center</h1>
-					<p className="text-sm text-muted-foreground mt-1">Incident overview and status</p>
-				</div>
-				<div className="flex items-center gap-2">
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents">
-							View All Incidents <ArrowRight className="ml-1 h-4 w-4" />
-						</Link>
-					</Button>
-					<ApiStatusCheck />
-				</div>
-			</div>
+			<PageHeader
+				title="Command Center"
+				subtitle="Incident overview and status"
+				actions={
+					<>
+						<Button variant="outline" size="sm" asChild>
+							<Link to="/incidents">
+								View All Incidents <ArrowRight className="ml-1 h-4 w-4" />
+							</Link>
+						</Button>
+						<ApiStatusCheck />
+					</>
+				}
+			/>
 
 			{/* LLM Warning Banner - only show when there are incidents to analyze */}
 			{!isLlmConfigured && activeIncidents.length > 0 && (
@@ -139,7 +140,7 @@ function CommandCenter() {
 
 			{/* Master-Detail Layout for Active Incidents */}
 			{activeIncidents.length === 0 && !incidentsLoading ? (
-				<EmptyState />
+				<DashboardEmptyState />
 			) : (
 				<div className="grid gap-6 lg:grid-cols-5">
 					{/* Master Panel - Incident List (40%) */}
@@ -508,23 +509,27 @@ function NeedsAttentionCard({
 }
 
 // Empty State Component
-function EmptyState() {
+function DashboardEmptyState() {
 	return (
 		<Card>
-			<CardContent className="flex flex-col items-center justify-center py-10">
-				<CheckCircle className="h-6 w-6 text-muted-foreground mb-2" />
-				<p className="text-sm font-medium text-muted-foreground mb-4">No active incidents</p>
-				<div className="flex flex-wrap justify-center gap-3">
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/settings" search={{ tab: "integrations" }}>Configure Integrations</Link>
-					</Button>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/services">Add Services</Link>
-					</Button>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents">View Historical Incidents</Link>
-					</Button>
-				</div>
+			<CardContent className="py-10">
+				<SharedEmptyState
+					icon={CheckCircle}
+					title="No active incidents"
+					actions={
+						<div className="flex flex-wrap justify-center gap-3">
+							<Button variant="outline" size="sm" asChild>
+								<Link to="/settings" search={{ tab: "integrations" }}>Configure Integrations</Link>
+							</Button>
+							<Button variant="outline" size="sm" asChild>
+								<Link to="/services">Add Services</Link>
+							</Button>
+							<Button variant="outline" size="sm" asChild>
+								<Link to="/incidents">View Historical Incidents</Link>
+							</Button>
+						</div>
+					}
+				/>
 			</CardContent>
 		</Card>
 	);

@@ -13,6 +13,7 @@ import { RefreshCw, BarChart3, List } from "lucide-react";
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 
 import { orpc } from "@/lib/api/orpc-client";
+import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -171,11 +172,10 @@ function IncidentsPage() {
 
 	return (
 		<div className="space-y-6">
-			{/* Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-2xl font-bold">Incidents</h1>
-					<p className="text-muted-foreground">
+			<PageHeader
+				title="Incidents"
+				subtitle={
+					<>
 						<span className="text-foreground">{incidents.length}</span> incidents
 						{activeCount > 0 && (
 							<>
@@ -183,20 +183,22 @@ function IncidentsPage() {
 								<span className="text-foreground">{activeCount}</span> active
 							</>
 						)}
-					</p>
-				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={() => refetch()}
-					disabled={isRefetching}
-				>
-					<RefreshCw
-						className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
-					/>
-					Refresh
-				</Button>
-			</div>
+					</>
+				}
+				actions={
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => refetch()}
+						disabled={isRefetching}
+					>
+						<RefreshCw
+							className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
+						/>
+						Refresh
+					</Button>
+				}
+			/>
 
 			{/* Tabs */}
 			<Tabs value={currentTab} onValueChange={handleTabChange}>
@@ -261,7 +263,7 @@ function IncidentsPage() {
 						}}
 						onServiceFilter={(serviceId) => {
 							// Navigate to service detail page
-							navigate({ to: "/services/$id", params: { id: serviceId } });
+							navigate({ to: "/services/$id", params: { id: serviceId }, search: { tab: "general" } });
 						}}
 					/>
 				</TabsContent>

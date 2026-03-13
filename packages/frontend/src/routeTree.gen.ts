@@ -18,6 +18,7 @@ import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedInvestigationsIndexRouteImport } from './routes/_authenticated/investigations/index'
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
+import { Route as AuthenticatedServicesDiscoveryRouteImport } from './routes/_authenticated/services/discovery'
 import { Route as AuthenticatedServicesIdIndexRouteImport } from './routes/_authenticated/services/$id/index'
 import { Route as AuthenticatedInvestigationsIdIndexRouteImport } from './routes/_authenticated/investigations/$id/index'
 import { Route as AuthenticatedIncidentsIdIndexRouteImport } from './routes/_authenticated/incidents/$id/index'
@@ -72,6 +73,12 @@ const AuthenticatedAlertsIndexRoute =
     path: '/alerts/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedServicesDiscoveryRoute =
+  AuthenticatedServicesDiscoveryRouteImport.update({
+    id: '/services/discovery',
+    path: '/services/discovery',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedServicesIdIndexRoute =
   AuthenticatedServicesIdIndexRouteImport.update({
     id: '/services/$id/',
@@ -101,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/auth/login': typeof AuthLoginRoute
   '/': typeof AuthenticatedIndexRoute
   '/setup': typeof SetupIndexRoute
+  '/services/discovery': typeof AuthenticatedServicesDiscoveryRoute
   '/alerts': typeof AuthenticatedAlertsIndexRoute
   '/incidents': typeof AuthenticatedIncidentsIndexRoute
   '/investigations': typeof AuthenticatedInvestigationsIndexRoute
@@ -115,6 +123,7 @@ export interface FileRoutesByTo {
   '/auth/login': typeof AuthLoginRoute
   '/': typeof AuthenticatedIndexRoute
   '/setup': typeof SetupIndexRoute
+  '/services/discovery': typeof AuthenticatedServicesDiscoveryRoute
   '/alerts': typeof AuthenticatedAlertsIndexRoute
   '/incidents': typeof AuthenticatedIncidentsIndexRoute
   '/investigations': typeof AuthenticatedInvestigationsIndexRoute
@@ -131,6 +140,7 @@ export interface FileRoutesById {
   '/auth/login': typeof AuthLoginRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/setup/': typeof SetupIndexRoute
+  '/_authenticated/services/discovery': typeof AuthenticatedServicesDiscoveryRoute
   '/_authenticated/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/_authenticated/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/_authenticated/investigations/': typeof AuthenticatedInvestigationsIndexRoute
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/auth/login'
     | '/'
     | '/setup'
+    | '/services/discovery'
     | '/alerts'
     | '/incidents'
     | '/investigations'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/auth/login'
     | '/'
     | '/setup'
+    | '/services/discovery'
     | '/alerts'
     | '/incidents'
     | '/investigations'
@@ -176,6 +188,7 @@ export interface FileRouteTypes {
     | '/auth/login'
     | '/_authenticated/'
     | '/setup/'
+    | '/_authenticated/services/discovery'
     | '/_authenticated/alerts/'
     | '/_authenticated/incidents/'
     | '/_authenticated/investigations/'
@@ -258,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAlertsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/services/discovery': {
+      id: '/_authenticated/services/discovery'
+      path: '/services/discovery'
+      fullPath: '/services/discovery'
+      preLoaderRoute: typeof AuthenticatedServicesDiscoveryRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/services/$id/': {
       id: '/_authenticated/services/$id/'
       path: '/services/$id'
@@ -291,6 +311,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedServicesDiscoveryRoute: typeof AuthenticatedServicesDiscoveryRoute
   AuthenticatedAlertsIndexRoute: typeof AuthenticatedAlertsIndexRoute
   AuthenticatedIncidentsIndexRoute: typeof AuthenticatedIncidentsIndexRoute
   AuthenticatedInvestigationsIndexRoute: typeof AuthenticatedInvestigationsIndexRoute
@@ -304,6 +325,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedServicesDiscoveryRoute: AuthenticatedServicesDiscoveryRoute,
   AuthenticatedAlertsIndexRoute: AuthenticatedAlertsIndexRoute,
   AuthenticatedIncidentsIndexRoute: AuthenticatedIncidentsIndexRoute,
   AuthenticatedInvestigationsIndexRoute: AuthenticatedInvestigationsIndexRoute,

@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Bell, CheckCircle, ExternalLink, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
 	Table,
 	TableBody,
@@ -47,17 +48,15 @@ function LoadingSkeleton() {
 	);
 }
 
-function EmptyState() {
+function AlertsEmptyState() {
 	return (
-		<TableRow>
-			<TableCell colSpan={6} className="h-24 text-center">
-				<div className="flex flex-col items-center gap-2 text-muted-foreground">
-					<Bell className="h-8 w-8" />
-					<p>No alerts found</p>
-					<p className="text-sm">Alerts will appear here when received from your monitoring tools</p>
-				</div>
-			</TableCell>
-		</TableRow>
+		<EmptyState
+			variant="table-cell"
+			colSpan={6}
+			icon={Bell}
+			title="No alerts found"
+			description="Alerts will appear here when received from your monitoring tools"
+		/>
 	);
 }
 
@@ -85,7 +84,7 @@ export function AlertsTable({
 						{isLoading ? (
 							<LoadingSkeleton />
 						) : alerts.length === 0 ? (
-							<EmptyState />
+							<AlertsEmptyState />
 						) : (
 							alerts.map((alert) => (
 								<TableRow key={alert.id}>
@@ -117,6 +116,7 @@ export function AlertsTable({
 											<Link
 												to="/services/$id"
 												params={{ id: alert.service.id }}
+												search={{ tab: "general" }}
 												className="text-sm hover:text-primary"
 											>
 												{alert.service.displayName || alert.service.name}

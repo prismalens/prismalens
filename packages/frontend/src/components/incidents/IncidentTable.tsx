@@ -23,6 +23,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { EmptyState } from "@/components/ui/empty-state";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import {
@@ -85,11 +86,11 @@ export function IncidentTable({
 
 	if (incidents.length === 0) {
 		return (
-			<div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-				<FileText className="h-12 w-12 mb-4 opacity-50" />
-				<p className="text-lg font-medium">No incidents found</p>
-				<p className="text-sm">Incidents will appear here when alerts are correlated</p>
-			</div>
+			<EmptyState
+				icon={FileText}
+				title="No incidents found"
+				description="Incidents will appear here when alerts are correlated"
+			/>
 		);
 	}
 
@@ -147,6 +148,7 @@ export function IncidentTable({
 										<Link
 											to="/services/$id"
 											params={{ id: incident.service.id }}
+											search={{ tab: "general" }}
 											className="text-sm hover:underline hover:text-primary"
 										>
 											{incident.service.name}

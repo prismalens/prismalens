@@ -7,10 +7,13 @@ import {
 	AddDependencySchema,
 	CreateServiceSchema,
 	IdParamSchema,
-	PaginationSchema,
 	ServiceDependencySchema,
+	ServiceListQuerySchema,
+	ServiceListResponseSchema,
 	ServiceSchema,
 	ServiceWithRelationsSchema,
+	TopologyEdgeSchema,
+	UpdateDependencySchema,
 	UpdateServiceSchema,
 } from "../schemas/index.js";
 
@@ -40,8 +43,8 @@ export const servicesContract = {
 			summary: "List all services",
 			tags: ["services"],
 		})
-		.input(PaginationSchema)
-		.output(z.array(ServiceWithRelationsSchema)),
+		.input(ServiceListQuerySchema)
+		.output(ServiceListResponseSchema),
 
 	/**
 	 * Get a single service by ID
@@ -100,6 +103,25 @@ export const servicesContract = {
 		.output(ServiceDependencySchema),
 
 	/**
+	 * Update a dependency's type or criticality
+	 * PATCH /services/:id/dependencies/:dependencyId
+	 */
+	updateDependency: oc
+		.route({
+			method: "PATCH",
+			path: "/services/{id}/dependencies/{dependencyId}",
+			summary: "Update dependency type or criticality",
+			tags: ["services"],
+		})
+		.input(
+			z.object({
+				id: z.string().uuid(),
+				dependencyId: z.string().uuid(),
+			}).merge(UpdateDependencySchema),
+		)
+		.output(ServiceDependencySchema),
+
+	/**
 	 * Remove a dependency from a service
 	 * DELETE /services/:id/dependencies/:dependencyId
 	 */
@@ -133,8 +155,8 @@ export const servicesContract = {
 		.output(
 			z.object({
 				service: ServiceWithRelationsSchema,
-				upstream: z.array(ServiceSchema),
-				downstream: z.array(ServiceSchema),
+				upstream: z.array(TopologyEdgeSchema),
+				downstream: z.array(TopologyEdgeSchema),
 			}),
 		),
 };

@@ -31,7 +31,7 @@ export function LLMWarningBanner({ className, incidentCount }: LLMWarningBannerP
 					{message}
 				</span>
 				<Button variant="outline" size="sm" asChild className="w-fit">
-					<Link to="/settings">
+					<Link to="/settings" search={{ tab: "ai" }}>
 						<Settings className="h-4 w-4 mr-2" />
 						Configure AI
 					</Link>

@@ -1,0 +1,157 @@
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { useAcceptSuggestion } from "@/lib/api/hooks";
+
+const SERVICE_TYPES = [
+	"service",
+	"database",
+	"queue",
+	"cache",
+	"gateway",
+	"external",
+	"infrastructure",
+] as const;
+
+interface Suggestion {
+	id: string;
+	suggestedName: string;
+	displayName: string | null;
+	repository: string;
+}
+
+export interface AcceptSuggestionDialogProps {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	suggestion: Suggestion | null;
+	onSuccess?: () => void;
+}
+
+export function AcceptSuggestionDialog({
+	open,
+	onOpenChange,
+	suggestion,
+	onSuccess,
+}: AcceptSuggestionDialogProps) {
+	const [type, setType] = useState<string>("");
+	const [team, setTeam] = useState("");
+	const [error, setError] = useState<string | null>(null);
+
+	const acceptSuggestion = useAcceptSuggestion();
+
+	const handleAccept = async () => {
+		if (!suggestion) return;
+
+		setError(null);
+		try {
+			await acceptSuggestion.mutateAsync({
+				id: suggestion.id,
+				type: (type || undefined) as any,
+				team: team || undefined,
+			});
+			onOpenChange(false);
+			resetForm();
+			onSuccess?.();
+		} catch (err) {
+			const message =
+				err instanceof Error ? err.message : "Failed to accept suggestion";
+			setError(message);
+		}
+	};
+
+	const resetForm = () => {
+		setType("");
+		setTeam("");
+		setError(null);
+	};
+
+	const handleOpenChange = (next: boolean) => {
+		if (!next) resetForm();
+		onOpenChange(next);
+	};
+
+	if (!suggestion) return null;
+
+	return (
+		<Dialog open={open} onOpenChange={handleOpenChange}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Accept Suggestion</DialogTitle>
+				</DialogHeader>
+
+				<div className="space-y-4">
+					<div className="rounded-md border p-3 space-y-1">
+						<p className="text-sm font-medium">
+							{suggestion.displayName ?? suggestion.suggestedName}
+						</p>
+						<p className="text-xs text-muted-foreground">
+							{suggestion.repository}
+						</p>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="suggestion-type">Type (optional)</Label>
+						<Select value={type} onValueChange={setType}>
+							<SelectTrigger id="suggestion-type">
+								<SelectValue placeholder="Default" />
+							</SelectTrigger>
+							<SelectContent>
+								{SERVICE_TYPES.map((t) => (
+									<SelectItem key={t} value={t}>
+										{t.charAt(0).toUpperCase() + t.slice(1)}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="suggestion-team">Team (optional)</Label>
+						<Input
+							id="suggestion-team"
+							placeholder="e.g. platform-team"
+							value={team}
+							onChange={(e) => setTeam(e.target.value)}
+						/>
+					</div>
+
+					{error && (
+						<p className="text-sm text-destructive text-center">{error}</p>
+					)}
+				</div>
+
+				<DialogFooter>
+					<Button variant="outline" onClick={() => handleOpenChange(false)}>
+						Cancel
+					</Button>
+					<Button
+						onClick={handleAccept}
+						disabled={acceptSuggestion.isPending}
+					>
+						{acceptSuggestion.isPending && (
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						)}
+						Accept
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}

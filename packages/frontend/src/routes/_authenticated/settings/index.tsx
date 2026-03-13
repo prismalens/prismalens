@@ -7,6 +7,7 @@ import {
 	IntegrationsSettings,
 	InvestigationSettings,
 } from "@/components/settings";
+import { PageHeader } from "@/components/layout";
 import { cn } from "@/lib/utils";
 
 type SettingsTab = "ai" | "investigation" | "integrations" | "danger";
@@ -33,7 +34,9 @@ function SettingsPage() {
 
 	return (
 		<div className="px-4 py-6 sm:px-0">
-			<h1 className="text-2xl font-bold text-foreground mb-6">Settings</h1>
+			<div className="mb-6">
+				<PageHeader title="Settings" />
+			</div>
 
 			<div className="flex gap-8">
 				{/* Sidebar Navigation */}

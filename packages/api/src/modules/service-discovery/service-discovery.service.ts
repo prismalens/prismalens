@@ -9,9 +9,10 @@ import type {
   Service,
   ServiceSuggestion,
 } from '@prismalens/database';
-import { getTemplate } from '@prismalens/integrations';
+import { getTemplate, resolveGitProviderName } from '@prismalens/integrations';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { CredentialsService } from '../integrations/crypto/credentials.service.js';
+import { IntegrationsService } from '../integrations/integrations.service.js';
 import type {
   AcceptBulkSuggestionsDto,
   AcceptSuggestionDto,
@@ -30,6 +31,7 @@ export class ServiceDiscoveryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly credentialsService: CredentialsService,
+    private readonly integrationsService: IntegrationsService,
   ) {}
 
   // =========================================================================
@@ -55,36 +57,54 @@ export class ServiceDiscoveryService {
       );
     }
 
-    const providerName = connection.integration.templateId.replace(
-      /-oauth2$|-token$/,
-      '',
-    );
-
-    if (providerName === 'github') {
-      return this.discoverFromGitHub(connection);
-    }
-
-    throw new BadRequestException(
-      `Service discovery not yet implemented for "${providerName}"`,
-    );
+    return this.discoverFromProvider(connection);
   }
 
-  async discoverFromGitHub(
-    connection: Connection,
+  async discoverFromProvider(
+    connection: Connection & { integration: { templateId: string } },
   ): Promise<ServiceSuggestion[]> {
-    this.logger.log(
-      `Discovering services from GitHub connection: ${connection.id}`,
+    const providerName = resolveGitProviderName(
+      connection.integration.templateId,
     );
 
+    if (!providerName) {
+      throw new BadRequestException(
+        `Service discovery not supported for provider "${connection.integration.templateId}"`,
+      );
+    }
+
+    this.logger.log(
+      `Discovering services from ${providerName} connection: ${connection.id}`,
+    );
+
+    // Decrypt connection config to get repository settings
     const config = connection.connectionConfigEnc
       ? this.credentialsService.decrypt<Record<string, unknown>>(
           Buffer.from(connection.connectionConfigEnc),
         )
       : {};
-    const repositories = (config.repositories || []) as string[];
+
+    const allRepositories = config.allRepositories as boolean | undefined;
+    const configuredRepos = (config.repositories || []) as string[];
+    const organization = config.organization as string | undefined;
+
+    // Resolve repository list — delegate to IntegrationsService for auth + capability checks
+    let repositories: string[];
+
+    if (allRepositories || configuredRepos.length === 0) {
+      const remoteRepos = await this.integrationsService.getGitRepositories(
+        connection.id,
+        organization,
+      );
+      repositories = remoteRepos.map((r) => r.fullName);
+    } else {
+      repositories = configuredRepos;
+    }
 
     if (repositories.length === 0) {
-      this.logger.warn('No repositories configured for GitHub connection');
+      this.logger.warn(
+        `No repositories found for ${providerName} connection ${connection.id}`,
+      );
       return [];
     }
 
@@ -128,7 +148,7 @@ export class ServiceDiscoveryService {
               isMonorepo,
               status: 'pending',
               metadata: JSON.stringify({
-                discoveryMethod: 'github',
+                discoveryMethod: providerName,
                 discoveredAt: new Date().toISOString(),
               }),
             };
@@ -153,18 +173,19 @@ export class ServiceDiscoveryService {
     return suggestions;
   }
 
-  // TODO: Implement actual repo analysis (currently returns a stub)
+  /**
+   * Analyze repository structure to detect monorepo layout and service boundaries.
+   * Currently returns a single-service default — full analysis is not yet implemented.
+   */
   async analyzeRepoStructure(
     repo: string,
-    _connection: Connection,
+    _connection: Connection & { integration: { templateId: string } },
   ): Promise<{
     isMonorepo: boolean;
     services: DiscoveredService[];
   }> {
-    this.logger.warn(
-      `analyzeRepoStructure is a stub — returning single-service default for: ${repo}`,
-    );
-
+    // Single-service default: assumes repo = one service.
+    // Full repo analysis (monorepo detection, language scanning) is planned.
     return {
       isMonorepo: false,
       services: [
@@ -184,6 +205,12 @@ export class ServiceDiscoveryService {
     return this.prisma.serviceSuggestion.findMany({
       where: { status: 'pending' },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findSuggestionById(id: string): Promise<ServiceSuggestion | null> {
+    return this.prisma.serviceSuggestion.findUnique({
+      where: { id },
     });
   }
 
@@ -217,7 +244,7 @@ export class ServiceDiscoveryService {
           description: overrides?.description,
           type: overrides?.type || 'service',
           team: overrides?.team,
-          discoverySource: 'github',
+          discoverySource: this.resolveProviderFromSuggestion(suggestion),
           discoveryMetadata: JSON.stringify({
             repository: suggestion.repository,
             subPath: suggestion.subPath,
@@ -240,7 +267,31 @@ export class ServiceDiscoveryService {
     return service;
   }
 
-  async rejectSuggestion(suggestionId: string): Promise<void> {
+  async ignoreSuggestion(suggestionId: string): Promise<ServiceSuggestion> {
+    const suggestion = await this.prisma.serviceSuggestion.findUnique({
+      where: { id: suggestionId },
+    });
+
+    if (!suggestion) {
+      throw new NotFoundException('Service suggestion not found');
+    }
+
+    if (suggestion.status !== 'pending') {
+      throw new BadRequestException(
+        `Cannot ignore suggestion with status: ${suggestion.status}`,
+      );
+    }
+
+    const updated = await this.prisma.serviceSuggestion.update({
+      where: { id: suggestionId },
+      data: { status: 'ignored' },
+    });
+
+    this.logger.log(`Ignored service suggestion: ${suggestionId}`);
+    return updated;
+  }
+
+  async rejectSuggestion(suggestionId: string): Promise<ServiceSuggestion> {
     const suggestion = await this.prisma.serviceSuggestion.findUnique({
       where: { id: suggestionId },
     });
@@ -255,12 +306,13 @@ export class ServiceDiscoveryService {
       );
     }
 
-    await this.prisma.serviceSuggestion.update({
+    const updated = await this.prisma.serviceSuggestion.update({
       where: { id: suggestionId },
       data: { status: 'rejected' },
     });
 
     this.logger.log(`Rejected service suggestion: ${suggestionId}`);
+    return updated;
   }
 
   async acceptMultiple(
@@ -282,5 +334,31 @@ export class ServiceDiscoveryService {
     }
 
     return services;
+  }
+
+  // =========================================================================
+  // HELPERS
+  // =========================================================================
+
+  private resolveProviderFromSuggestion(suggestion: ServiceSuggestion): string {
+    try {
+      const metadata =
+        typeof suggestion.metadata === 'string'
+          ? (JSON.parse(suggestion.metadata) as Record<string, unknown>)
+          : suggestion.metadata;
+      const provider = (metadata?.discoveryMethod as string) ?? null;
+      if (!provider) {
+        this.logger.warn(
+          `No discoveryMethod in metadata for suggestion ${suggestion.id}, defaulting to "vcs"`,
+        );
+        return 'vcs';
+      }
+      return provider;
+    } catch (error) {
+      this.logger.error(
+        `Malformed metadata on suggestion ${suggestion.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return 'vcs';
+    }
   }
 }

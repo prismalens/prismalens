@@ -1,3 +1,4 @@
+import type { PermissionRequirement } from "@prismalens/config/integrations";
 import { z } from "zod";
 
 // =============================================================================
@@ -96,6 +97,8 @@ export interface AuthTemplate {
 		method: "GET" | "POST";
 		path: string;
 	};
+	/** Permission requirements — single source of truth for capabilities, defaultPermissions, and scopes */
+	requiredPermissions?: PermissionRequirement[];
 }
 
 // =============================================================================

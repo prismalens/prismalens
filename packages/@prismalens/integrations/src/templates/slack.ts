@@ -1,4 +1,32 @@
+import type { PermissionRequirement } from "@prismalens/config/integrations";
 import type { AuthTemplate } from "../types.js";
+
+// =============================================================================
+// Slack OAuth — bot scopes derived from requiredPermissions
+// =============================================================================
+
+const slackPermissions: PermissionRequirement[] = [
+	{
+		key: "channels:read",
+		reason: "List channels for notifications",
+		capabilities: ["messaging:read"],
+	},
+	{
+		key: "chat:write",
+		reason: "Send messages to channels",
+		capabilities: ["messaging:post"],
+	},
+	{
+		key: "users:read",
+		reason: "Look up user information",
+		capabilities: ["messaging:read"],
+	},
+	{
+		key: "groups:read",
+		reason: "List private channels for alerts",
+		capabilities: ["messaging:read"],
+	},
+];
 
 export const slack: AuthTemplate = {
 	id: "slack",
@@ -9,10 +37,12 @@ export const slack: AuthTemplate = {
 	icon: "https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
 	docsUrl: "https://api.slack.com/messaging/webhooks",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/slack/",
+	requiredPermissions: slackPermissions,
 	oauth2: {
 		authorizationUrl: "https://slack.com/oauth/v2/authorize",
 		tokenUrl: "https://slack.com/api/oauth.v2.access",
-		scopes: ["channels:read", "chat:write", "users:read", "groups:read"],
+		// DERIVED from requiredPermissions — always in sync
+		scopes: slackPermissions.map((p) => p.key),
 		tokenAuthMethod: "body",
 		tokenResponseMetadata: [
 			"incoming_webhook.url",
@@ -30,6 +60,18 @@ export const slack: AuthTemplate = {
 	verify: { method: "POST", path: "/auth.test" },
 };
 
+// =============================================================================
+// Slack Bot Token — direct token, best-effort permission tracking
+// =============================================================================
+
+const slackTokenPermissions: PermissionRequirement[] = [
+	{
+		key: "chat:write",
+		reason: "Send messages to channels",
+		capabilities: ["messaging:post"],
+	},
+];
+
 export const slackToken: AuthTemplate = {
 	id: "slack-token",
 	name: "Slack (Bot Token)",
@@ -39,6 +81,7 @@ export const slackToken: AuthTemplate = {
 	icon: "https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
 	docsUrl: "https://api.slack.com/messaging/webhooks",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/slack-bot-token/",
+	requiredPermissions: slackTokenPermissions,
 	credentialFields: [
 		{
 			name: "apiKey",

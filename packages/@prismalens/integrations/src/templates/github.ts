@@ -1,4 +1,43 @@
+import type { PermissionRequirement } from "@prismalens/config/integrations";
 import type { AuthTemplate } from "../types.js";
+
+// =============================================================================
+// GitHub App — installation token permissions
+// Note: vcs:list_orgs intentionally absent — installation tokens cannot list user orgs
+// =============================================================================
+
+const githubAppPermissions: PermissionRequirement[] = [
+	{
+		key: "contents",
+		level: "read",
+		reason: "Read repository files for code analysis",
+		capabilities: ["vcs:list_repos", "vcs:read_file"],
+	},
+	{
+		key: "metadata",
+		level: "read",
+		reason: "Access repository metadata",
+		capabilities: ["vcs:list_repos"],
+	},
+	{
+		key: "issues",
+		level: "read",
+		reason: "Read issues for investigation context",
+		capabilities: [],
+	},
+	{
+		key: "pull_requests",
+		level: "read",
+		reason: "Read pull requests for investigation",
+		capabilities: [],
+	},
+	{
+		key: "statuses",
+		level: "read",
+		reason: "Read commit/CI statuses for investigations",
+		capabilities: ["vcs:read_commit_status"],
+	},
+];
 
 export const githubApp: AuthTemplate = {
 	id: "github-app",
@@ -56,13 +95,12 @@ export const githubApp: AuthTemplate = {
 			description: "GitHub organization name (auto-detected from installation)",
 		},
 	],
+	requiredPermissions: githubAppPermissions,
 	githubApp: {
-		defaultPermissions: {
-			contents: "read",
-			metadata: "read",
-			issues: "read",
-			pull_requests: "read",
-		},
+		// DERIVED from requiredPermissions — always in sync
+		defaultPermissions: Object.fromEntries(
+			githubAppPermissions.map((p) => [p.key, p.level ?? "read"]),
+		),
 	},
 	authenticate: {
 		headers: { Authorization: "Bearer {{installationToken}}" },
@@ -76,6 +114,28 @@ export const githubApp: AuthTemplate = {
 	},
 	verify: { method: "GET", path: "/installation/repositories?per_page=1" },
 };
+
+// =============================================================================
+// GitHub PAT — user-scoped token permissions
+// =============================================================================
+
+const githubTokenPermissions: PermissionRequirement[] = [
+	{
+		key: "read:org",
+		reason: "List organizations the user belongs to",
+		capabilities: ["vcs:list_orgs"],
+	},
+	{
+		key: "repo",
+		reason: "Access repositories for code analysis",
+		capabilities: ["vcs:list_repos", "vcs:read_file"],
+	},
+	{
+		key: "repo:status",
+		reason: "Read commit/CI statuses",
+		capabilities: ["vcs:read_commit_status"],
+	},
+];
 
 export const githubToken: AuthTemplate = {
 	id: "github-token",
@@ -108,6 +168,7 @@ export const githubToken: AuthTemplate = {
 			sensitive: true,
 		},
 	],
+	requiredPermissions: githubTokenPermissions,
 	authenticate: {
 		headers: { Authorization: "Bearer {{apiKey}}" },
 	},

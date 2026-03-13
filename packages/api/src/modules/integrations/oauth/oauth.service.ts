@@ -8,6 +8,7 @@ import type { Connection } from '@prismalens/database';
 import {
   OAuth2Flow,
   getTemplate,
+  checkOAuthScopes,
   type OAuth2StoreDeps,
   type OAuthStateData,
 } from '@prismalens/integrations';
@@ -160,6 +161,20 @@ export class OAuthService implements OAuth2StoreDeps {
       clientSecret,
     );
 
+    // Verify granted scopes against template requirements (OAuth flows only).
+    // GitHub App permission checking is handled separately in integrations.service.ts#connectGitHubInstallation.
+    const scopeCheck =
+      tokenResult.grantedScopes && template.requiredPermissions
+        ? checkOAuthScopes(template, tokenResult.grantedScopes)
+        : null;
+
+    if (scopeCheck && !scopeCheck.satisfied) {
+      const missingKeys = scopeCheck.missing.map((m) => m.key).join(', ');
+      this.logger.warn(
+        `OAuth connection for ${integration.templateId} missing scopes: ${missingKeys}`,
+      );
+    }
+
     return this.prisma.connection.create({
       data: {
         integrationId: integration.id,
@@ -169,6 +184,10 @@ export class OAuthService implements OAuth2StoreDeps {
           accessToken: tokenResult.accessToken,
           refreshToken: tokenResult.refreshToken ?? null,
           tokenType: tokenResult.tokenType,
+          missingScopes:
+            scopeCheck && !scopeCheck.satisfied
+              ? scopeCheck.missing.map((m) => m.key)
+              : [],
         }),
         connectionConfigEnc: oauthState.connectionConfigEnc
           ? (new Uint8Array(
@@ -235,6 +254,7 @@ export class OAuthService implements OAuth2StoreDeps {
           Accept: 'application/json',
         },
         body: body.toString(),
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {

@@ -1,4 +1,13 @@
+import type { PermissionRequirement } from "@prismalens/config/integrations";
 import type { AuthTemplate } from "../types.js";
+
+const renderPermissions: PermissionRequirement[] = [
+	{
+		key: "api_access",
+		reason: "Access Render API for service monitoring",
+		capabilities: ["monitoring:read"],
+	},
+];
 
 export const render: AuthTemplate = {
 	id: "render",
@@ -9,6 +18,7 @@ export const render: AuthTemplate = {
 	icon: "https://render.com/favicon.ico",
 	docsUrl: "https://docs.render.com/api",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/render/",
+	requiredPermissions: renderPermissions,
 	credentialFields: [
 		{
 			name: "apiKey",

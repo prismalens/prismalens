@@ -16,3 +16,14 @@ export {
 	RateLimitError,
 	CredentialsInvalidError,
 } from "./errors.js";
+export {
+	CapabilityNotSupportedError,
+	getCapabilities,
+	hasCapability,
+	assertCapability,
+} from "./capability-check.js";
+export {
+	checkGitHubAppPermissions,
+	checkOAuthScopes,
+} from "./permission-check.js";
+export type { PermissionCheckResult } from "./permission-check.js";

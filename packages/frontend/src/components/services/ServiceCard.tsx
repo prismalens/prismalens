@@ -63,6 +63,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 								<Link
 									to="/services/$id"
 									params={{ id: service.id }}
+									search={{ tab: "general" }}
 									className="hover:text-primary hover:underline"
 								>
 									{service.displayName || service.name}
@@ -140,7 +141,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 						)}
 					</div>
 					<Button variant="ghost" size="sm" asChild>
-						<Link to="/services/$id" params={{ id: service.id }}>
+						<Link to="/services/$id" params={{ id: service.id }} search={{ tab: "general" }}>
 							View
 						</Link>
 					</Button>

@@ -135,31 +135,23 @@ export const IntegrationQuerySchema = z.object({
 });
 
 // =============================================================================
-// GIT PROVIDER SCHEMAS (GitHub, GitLab, BitBucket)
+// GIT PROVIDER SCHEMAS (from @prismalens/config — single source of truth)
 // =============================================================================
 
-export const GitOrganizationSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	displayName: z.string(),
-	avatarUrl: z.string().optional(),
-	repoCount: z.number().int().optional(),
-	description: z.string().optional(),
-});
-
-export const GitRepositorySchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	fullName: z.string(),
-	description: z.string().optional(),
-	language: z.string().optional(),
-	stars: z.number().int().optional(),
-	defaultBranch: z.string(),
-	isPrivate: z.boolean(),
-	url: z.string(),
-	cloneUrl: z.string().optional(),
-	updatedAt: z.string().optional(),
-});
+export {
+	GitOrganizationSchema,
+	GitRepositorySchema,
+	GitFileContentSchema,
+	CapabilitySchema,
+	PermissionRequirementSchema,
+} from "@prismalens/config/integrations";
+export type {
+	GitOrganization,
+	GitRepository,
+	GitFileContent,
+	Capability,
+	PermissionRequirement,
+} from "@prismalens/config/integrations";
 
 // =============================================================================
 // SERVICE INTEGRATION SCHEMAS (Per-service overrides)
@@ -246,9 +238,7 @@ export type UpdateConnectionInput = z.infer<typeof UpdateConnectionSchema>;
 export type OAuthStartResponse = z.infer<typeof OAuthStartResponseSchema>;
 export type IntegrationQuery = z.infer<typeof IntegrationQuerySchema>;
 
-// Git provider types
-export type GitOrganization = z.infer<typeof GitOrganizationSchema>;
-export type GitRepository = z.infer<typeof GitRepositorySchema>;
+// Git provider types — re-exported from @prismalens/config/integrations above
 
 // Service integration types
 export type ServiceIntegration = z.infer<typeof ServiceIntegrationSchema>;

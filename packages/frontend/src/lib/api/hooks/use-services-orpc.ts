@@ -6,6 +6,7 @@
  * Type-safe hooks for service catalog operations using oRPC with TanStack Query.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ServiceListQuery } from "@prismalens/contracts";
 import { orpc } from "../orpc-client";
 
 /**
@@ -14,22 +15,19 @@ import { orpc } from "../orpc-client";
 export const serviceKeys = {
 	all: () => orpc.services.key(),
 	lists: () => orpc.services.list.key(),
-	list: (filters: { limit?: number; offset?: number }) =>
+	list: (filters: Partial<ServiceListQuery>) =>
 		orpc.services.list.key({ input: filters }),
 	detail: (id: string) => orpc.services.get.key({ input: { id } }),
 	topology: (id: string) => orpc.services.getTopology.key({ input: { id } }),
 };
 
 /**
- * Fetch list of services with optional pagination
+ * Fetch list of services with optional filtering and pagination
  */
-export function useServices(params?: { limit?: number; offset?: number }) {
+export function useServices(params?: Partial<ServiceListQuery>) {
 	return useQuery(
 		orpc.services.list.queryOptions({
-			input: {
-				limit: params?.limit,
-				offset: params?.offset,
-			},
+			input: params ?? {},
 		}),
 	);
 }
@@ -116,6 +114,26 @@ export function useAddServiceDependency() {
 			queryClient.invalidateQueries({
 				queryKey: serviceKeys.topology(variables.id),
 			});
+			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
+		},
+	});
+}
+
+/**
+ * Update a dependency's type or criticality
+ */
+export function useUpdateServiceDependency() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.services.updateDependency.mutationOptions(),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({
+				queryKey: serviceKeys.detail(variables.id),
+			});
+			queryClient.invalidateQueries({
+				queryKey: serviceKeys.topology(variables.id),
+			});
 		},
 	});
 }
@@ -135,6 +153,7 @@ export function useRemoveServiceDependency() {
 			queryClient.invalidateQueries({
 				queryKey: serviceKeys.topology(variables.id),
 			});
+			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
 		},
 	});
 }

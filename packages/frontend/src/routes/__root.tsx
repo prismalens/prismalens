@@ -12,6 +12,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AlertTriangle, Frown, ServerOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/Navbar";
+import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { LanguageProvider } from "@/lib/providers/language-provider";
 import { getThemeServerFn } from "@/lib/theme";
@@ -63,6 +64,7 @@ function RootLayout() {
 									<Outlet />
 								</main>
 							</div>
+							<Toaster />
 							<ReactQueryDevtools initialIsOpen={false} />
 						</QueryClientProvider>
 					</ThemeProvider>

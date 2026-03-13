@@ -6,6 +6,7 @@ import {
 	DateStringSchema,
 	DependencyCriticalitySchema,
 	DependencyTypeSchema,
+	PaginationSchema,
 	ServiceTierSchema,
 	ServiceTypeSchema,
 } from "./common.js";
@@ -45,9 +46,23 @@ export const CreateServiceSchema = z.object({
 	repository: z.string().optional(),
 	tags: z.array(z.string()).optional(),
 	metadata: z.record(z.unknown()).optional(),
+	discoverySource: z.string().optional(),
+	discoveryMetadata: z.record(z.unknown()).optional(),
+	isDiscovered: z.boolean().optional(),
 });
 
 export const UpdateServiceSchema = CreateServiceSchema.partial();
+
+// =============================================================================
+// SERVICE LIST QUERY SCHEMA
+// =============================================================================
+
+export const ServiceListQuerySchema = PaginationSchema.extend({
+	type: ServiceTypeSchema.optional(),
+	tier: ServiceTierSchema.optional(),
+	team: z.string().optional(),
+	search: z.string().optional(),
+});
 
 // =============================================================================
 // SERVICE DEPENDENCY SCHEMAS
@@ -68,6 +83,23 @@ export const AddDependencySchema = z.object({
 	criticality: DependencyCriticalitySchema.optional(),
 });
 
+export const UpdateDependencySchema = z.object({
+	dependencyType: DependencyTypeSchema.optional(),
+	criticality: DependencyCriticalitySchema.optional(),
+});
+
+// =============================================================================
+// SERVICE INVESTIGATION CONFIG SCHEMA
+// =============================================================================
+
+export const ServiceInvestigationConfigSchema = z.object({
+	autoInvestigate: z
+		.enum(["always", "critical_and_high", "critical_only", "never"])
+		.default("always"),
+	requiresApproval: z.boolean().default(false),
+	analysisContext: z.string().optional(),
+});
+
 // =============================================================================
 // SERVICE WITH RELATIONS
 // =============================================================================
@@ -79,6 +111,21 @@ export const ServiceWithRelationsSchema = ServiceSchema.extend({
 	incidentCount: z.number().int().optional(),
 });
 
+export const ServiceListResponseSchema = z.object({
+	data: z.array(ServiceWithRelationsSchema),
+	total: z.number().int(),
+});
+
+// =============================================================================
+// TOPOLOGY EDGE SCHEMA
+// =============================================================================
+
+export const TopologyEdgeSchema = z.object({
+	service: ServiceSchema,
+	dependencyType: DependencyTypeSchema,
+	criticality: DependencyCriticalitySchema,
+});
+
 // =============================================================================
 // TYPE EXPORTS
 // =============================================================================
@@ -88,4 +135,9 @@ export type CreateServiceInput = z.infer<typeof CreateServiceSchema>;
 export type UpdateServiceInput = z.infer<typeof UpdateServiceSchema>;
 export type ServiceDependency = z.infer<typeof ServiceDependencySchema>;
 export type AddDependencyInput = z.infer<typeof AddDependencySchema>;
+export type UpdateDependencyInput = z.infer<typeof UpdateDependencySchema>;
 export type ServiceWithRelations = z.infer<typeof ServiceWithRelationsSchema>;
+export type ServiceListQuery = z.infer<typeof ServiceListQuerySchema>;
+export type ServiceListResponse = z.infer<typeof ServiceListResponseSchema>;
+export type ServiceInvestigationConfig = z.infer<typeof ServiceInvestigationConfigSchema>;
+export type TopologyEdge = z.infer<typeof TopologyEdgeSchema>;

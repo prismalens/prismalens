@@ -12,6 +12,7 @@ import {
 	AlertCircle,
 	Check,
 	Globe,
+	Link2,
 	Loader2,
 	Pencil,
 	Plus,
