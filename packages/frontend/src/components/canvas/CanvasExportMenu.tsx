@@ -9,7 +9,7 @@
 import type { AgentExecutionWithTools } from "@prismalens/contracts";
 import { chartColors } from "@prismalens/design-tokens/colors";
 import { Download, FileJson, Image } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useReactFlow, getRectOfNodes, getTransformForBounds } from "reactflow";
 import { toPng } from "html-to-image";
 
@@ -33,8 +33,11 @@ export function CanvasExportMenu({
 	investigationId,
 }: CanvasExportMenuProps) {
 	const { getNodes } = useReactFlow();
+	const [exportError, setExportError] = useState<string | null>(null);
 
 	const downloadImage = useCallback(async () => {
+		setExportError(null);
+
 		// Find the react flow viewport element
 		const nodesBounds = getRectOfNodes(getNodes());
 		const transform = getTransformForBounds(
@@ -50,7 +53,7 @@ export function CanvasExportMenu({
 		) as HTMLElement;
 
 		if (!viewport) {
-			console.error("Could not find React Flow viewport");
+			setExportError("Could not find canvas viewport");
 			return;
 		}
 
@@ -70,12 +73,14 @@ export function CanvasExportMenu({
 			link.download = `investigation-${investigationId || "canvas"}.png`;
 			link.href = dataUrl;
 			link.click();
-		} catch (error) {
-			console.error("Failed to export canvas as PNG:", error);
+		} catch {
+			setExportError("Failed to export canvas as PNG");
 		}
 	}, [getNodes, investigationId]);
 
 	const downloadJson = useCallback(() => {
+		setExportError(null);
+
 		const exportData = {
 			exportedAt: new Date().toISOString(),
 			investigationId,
@@ -116,25 +121,30 @@ export function CanvasExportMenu({
 	}, [agentExecutions, investigationId]);
 
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button variant="outline" size="sm">
-					<Download className="h-4 w-4 mr-2" />
-					Export
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end">
-				<DropdownMenuLabel>Export Canvas</DropdownMenuLabel>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onClick={downloadImage}>
-					<Image className="h-4 w-4 mr-2" />
-					PNG Image
-				</DropdownMenuItem>
-				<DropdownMenuItem onClick={downloadJson}>
-					<FileJson className="h-4 w-4 mr-2" />
-					JSON Data
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+		<div>
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button variant="outline" size="sm">
+						<Download className="h-4 w-4 mr-2" />
+						Export
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuLabel>Export Canvas</DropdownMenuLabel>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={downloadImage}>
+						<Image className="h-4 w-4 mr-2" />
+						PNG Image
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={downloadJson}>
+						<FileJson className="h-4 w-4 mr-2" />
+						JSON Data
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+			{exportError && (
+				<p className="text-sm text-destructive mt-1">{exportError}</p>
+			)}
+		</div>
 	);
 }

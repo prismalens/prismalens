@@ -16,13 +16,13 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
-	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFactoryReset, useResetData } from "@/lib/api/hooks";
+import { MutationError } from "@/components/shared/MutationError";
 
 export function DangerZoneSettings() {
 	const [showResetDialog, setShowResetDialog] = useState(false);
@@ -37,8 +37,8 @@ export function DangerZoneSettings() {
 			await resetData.mutateAsync({ confirmation: "RESET" });
 			setShowResetDialog(false);
 			setConfirmText("");
-		} catch (err) {
-			console.error("Reset failed:", err);
+		} catch {
+			// error is surfaced via resetData.error
 		}
 	};
 
@@ -49,8 +49,8 @@ export function DangerZoneSettings() {
 			setConfirmText("");
 			// Redirect to setup wizard
 			window.location.href = "/setup";
-		} catch (err) {
-			console.error("Factory reset failed:", err);
+		} catch {
+			// error is surfaced via factoryReset.error
 		}
 	};
 
@@ -132,6 +132,7 @@ export function DangerZoneSettings() {
 							</div>
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					<MutationError error={resetData.error} />
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={() => setConfirmText("")}>
 							Cancel
@@ -186,6 +187,7 @@ export function DangerZoneSettings() {
 							</div>
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					<MutationError error={factoryReset.error} />
 					<AlertDialogFooter>
 						<AlertDialogCancel onClick={() => setConfirmText("")}>
 							Cancel

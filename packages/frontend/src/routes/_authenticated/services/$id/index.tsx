@@ -2,20 +2,26 @@ import { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
-	ArrowLeft,
 	Box,
 	Database,
 	ExternalLink,
 	GitBranch,
 	Globe,
+	Info,
 	Link2,
+	MoreHorizontal,
 	Pencil,
+	Plus,
+	Search,
 	Server,
-	Settings,
 	Trash2,
 	Zap,
 } from "lucide-react";
-import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
+import type {
+	ServiceIntegrationWithStatus,
+	ServiceWithRelations,
+	TopologyEdge,
+} from "@prismalens/contracts";
 
 import { orpc } from "@/lib/api/orpc-client";
 import {
@@ -23,57 +29,101 @@ import {
 	useDeleteServiceIntegration,
 	useGitOrganizations,
 	useGitRepositories,
+	useRemoveServiceDependency,
 	useServiceIntegrations,
 	useUpdateServiceIntegration,
 } from "@/lib/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { DetailPage, PageHeader } from "@/components/layout";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { ServiceIntegrationsTab } from "@/components/services/ServiceIntegrationsTab";
 import { ServiceIntegrationOverrideDialog } from "@/components/services/ServiceIntegrationOverrideDialog";
+import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigationTab";
+import { AddDependencyDialog } from "@/components/services/AddDependencyDialog";
+import { EditDependencyDialog } from "@/components/services/EditDependencyDialog";
+import { MutationError } from "@/components/shared/MutationError";
+
+type ServiceTab = "general" | "integrations" | "investigation" | "dependencies";
+
+const TABS: { value: ServiceTab; label: string; icon: typeof Server }[] = [
+	{ value: "general", label: "General", icon: Info },
+	{ value: "integrations", label: "Integrations", icon: Link2 },
+	{ value: "investigation", label: "Investigation", icon: Search },
+	{ value: "dependencies", label: "Dependencies", icon: GitBranch },
+];
 
 export const Route = createFileRoute("/_authenticated/services/$id/")({
+	validateSearch: (search: Record<string, unknown>) => ({
+		tab: (TABS.some((t) => t.value === search.tab)
+			? (search.tab as ServiceTab)
+			: "general") as ServiceTab,
+	}),
 	component: ServiceDetailPage,
 });
 
 const serviceTypeIcons: Record<string, React.ReactNode> = {
-	service: <Server className="h-6 w-6" />,
-	database: <Database className="h-6 w-6" />,
-	queue: <Zap className="h-6 w-6" />,
-	cache: <Box className="h-6 w-6" />,
-	gateway: <Globe className="h-6 w-6" />,
-	external: <ExternalLink className="h-6 w-6" />,
-	infrastructure: <Server className="h-6 w-6" />,
-};
-
-const tierColors: Record<string, string> = {
-	tier_1: "bg-red-500 text-white",
-	tier_2: "bg-orange-500 text-white",
-	tier_3: "bg-yellow-500 text-black",
-	tier_4: "bg-gray-500 text-white",
+	service: <Server className="h-5 w-5" />,
+	database: <Database className="h-5 w-5" />,
+	queue: <Zap className="h-5 w-5" />,
+	cache: <Box className="h-5 w-5" />,
+	gateway: <Globe className="h-5 w-5" />,
+	external: <ExternalLink className="h-5 w-5" />,
+	infrastructure: <Server className="h-5 w-5" />,
 };
 
 const tierLabels: Record<string, string> = {
-	tier_1: "Tier 1 - Critical",
-	tier_2: "Tier 2 - High",
-	tier_3: "Tier 3 - Medium",
-	tier_4: "Tier 4 - Low",
+	tier_1: "Critical",
+	tier_2: "High",
+	tier_3: "Medium",
+	tier_4: "Low",
 };
 
 function ServiceDetailPage() {
 	const { id } = Route.useParams();
-	const navigate = useNavigate();
+	const { tab } = Route.useSearch();
+	const navigate = useNavigate({ from: "/services/$id" });
 	const [showEditDialog, setShowEditDialog] = useState(false);
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+	const [showAddDepDialog, setShowAddDepDialog] = useState(false);
 	const [showOverrideDialog, setShowOverrideDialog] = useState(false);
-	const [selectedIntegration, setSelectedIntegration] = useState<ServiceIntegrationWithStatus | null>(null);
-	const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-	const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
-	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(undefined);
+	const [selectedIntegration, setSelectedIntegration] =
+		useState<ServiceIntegrationWithStatus | null>(null);
+	const [selectedConnectionId, setSelectedConnectionId] = useState<
+		string | null
+	>(null);
+	const [editingOverrideId, setEditingOverrideId] = useState<string | null>(
+		null,
+	);
+	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(
+		undefined,
+	);
+	const [editingDep, setEditingDep] = useState<{
+		dependencyId: string;
+		name: string;
+		type: string;
+		criticality: string;
+	} | null>(null);
+	const [removingDepId, setRemovingDepId] = useState<string | null>(null);
 
 	// Fetch service details
 	const {
@@ -90,26 +140,37 @@ function ServiceDetailPage() {
 	});
 
 	// Fetch service integrations
-	const { data: integrations = [], isLoading: isLoadingIntegrations } = useServiceIntegrations(id);
+	const { data: integrations = [], isLoading: isLoadingIntegrations } =
+		useServiceIntegrations(id);
 
-	// Git provider data for override dialog (only fetch when dialog is open for github integration)
-	const isGitHubIntegration = selectedIntegration?.templateId?.startsWith("github") ?? false;
-	const { data: organizations = [], isLoading: isLoadingOrgs } = useGitOrganizations(
-		isGitHubIntegration && selectedIntegration ? selectedIntegration.connectionId : "",
-	);
-	const { data: repositories = [], isLoading: isLoadingRepos } = useGitRepositories(
-		isGitHubIntegration && selectedIntegration ? selectedIntegration.connectionId : "",
-		selectedOrg,
-	);
+	// Git provider data for override dialog
+	const isGitHubIntegration =
+		selectedIntegration?.templateId?.startsWith("github") ?? false;
+	const { data: organizations = [], isLoading: isLoadingOrgs } =
+		useGitOrganizations(
+			isGitHubIntegration && selectedIntegration
+				? selectedIntegration.connectionId
+				: "",
+		);
+	const { data: repositories = [], isLoading: isLoadingRepos } =
+		useGitRepositories(
+			isGitHubIntegration && selectedIntegration
+				? selectedIntegration.connectionId
+				: "",
+			selectedOrg,
+		);
 
 	// Service integration mutations
 	const createOverride = useCreateServiceIntegration();
 	const updateOverride = useUpdateServiceIntegration();
 	const deleteOverride = useDeleteServiceIntegration();
+	const removeDep = useRemoveServiceDependency();
 
-	// Handle create override
+	// Integration override handlers
 	const handleCreateOverride = (connectionId: string) => {
-		const integration = integrations.find((i) => i.connectionId === connectionId);
+		const integration = integrations.find(
+			(i) => i.connectionId === connectionId,
+		);
 		if (integration) {
 			setSelectedIntegration(integration);
 			setSelectedConnectionId(connectionId);
@@ -119,33 +180,26 @@ function ServiceDetailPage() {
 		}
 	};
 
-	// Handle edit override
-	const handleEditOverride = (overrideId: string, integration: ServiceIntegrationWithStatus) => {
+	const handleEditOverride = (
+		overrideId: string,
+		integration: ServiceIntegrationWithStatus,
+	) => {
 		setSelectedIntegration(integration);
 		setEditingOverrideId(overrideId);
 		setSelectedConnectionId(integration.connectionId);
-		// Initialize org from existing config
-		const config = integration.serviceConfig as { organization?: string } | null;
+		const config = integration.serviceConfig as {
+			organization?: string;
+		} | null;
 		setSelectedOrg(config?.organization);
 		setShowOverrideDialog(true);
 	};
 
-	// Handle delete override
 	const handleDeleteOverride = (overrideId: string) => {
-		deleteOverride.mutate(
-			{ id: overrideId },
-			{
-				onError: (err) => {
-					console.error("Failed to delete override:", err);
-				},
-			},
-		);
+		deleteOverride.mutate({ id: overrideId });
 	};
 
-	// Handle save override
 	const handleSaveOverride = (config: Record<string, unknown>) => {
 		if (editingOverrideId) {
-			// Update existing
 			updateOverride.mutate(
 				{ id: editingOverrideId, config },
 				{
@@ -156,7 +210,6 @@ function ServiceDetailPage() {
 				},
 			);
 		} else if (selectedConnectionId) {
-			// Create new
 			createOverride.mutate(
 				{ serviceId: id, connectionId: selectedConnectionId, config },
 				{
@@ -174,7 +227,17 @@ function ServiceDetailPage() {
 		setSelectedConnectionId(null);
 		setEditingOverrideId(null);
 		setSelectedOrg(undefined);
-	}
+	};
+
+	const handleRemoveDependency = () => {
+		if (!removingDepId) return;
+		removeDep.mutate(
+			{ id, dependencyId: removingDepId },
+			{
+				onSuccess: () => setRemovingDepId(null),
+			},
+		);
+	};
 
 	if (isLoading) {
 		return <ServiceDetailSkeleton />;
@@ -190,304 +253,105 @@ function ServiceDetailPage() {
 					{error?.message || "Service not found"}
 				</p>
 			</div>
-		)
+		);
 	}
 
-	const typeIcon = serviceTypeIcons[service.type] || serviceTypeIcons.service;
+	const existingDepIds =
+		topology?.upstream?.map((d) => d.service.id) ?? [];
+
+	const header = (
+		<PageHeader
+			backLink={{ label: "Services", to: "/services" }}
+			title={service.displayName || service.name}
+			subtitle={
+				<span className="flex items-center gap-2">
+					<span className="font-mono">{service.name}</span>
+					<Badge variant="outline">{tierLabels[service.tier] || service.tier}</Badge>
+					<Badge variant="secondary" className="capitalize">
+						{service.type}
+					</Badge>
+					{service.team && (
+						<span>{service.team}</span>
+					)}
+				</span>
+			}
+			actions={
+				<>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setShowEditDialog(true)}
+					>
+						<Pencil className="h-4 w-4 mr-1" />
+						Edit
+					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant="outline" size="sm">
+								<MoreHorizontal className="h-4 w-4" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuItem
+								className="text-destructive"
+								onClick={() => setShowDeleteDialog(true)}
+							>
+								<Trash2 className="h-4 w-4 mr-2" />
+								Delete Service
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</>
+			}
+		/>
+	);
 
 	return (
-		<div className="space-y-6">
-			{/* Back link */}
-			<Link
-				to="/services"
-				className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+		<>
+			<DetailPage
+				tabs={TABS}
+				activeTab={tab}
+				onTabChange={(t) => navigate({ search: { tab: t } })}
+				header={header}
 			>
-				<ArrowLeft className="h-4 w-4" />
-				Back to Services
-			</Link>
-
-			{/* Header */}
-			<div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-				<div className="flex items-start gap-4">
-					<div className="p-3 rounded-lg bg-muted">{typeIcon}</div>
-					<div className="space-y-2">
-						<div className="flex items-center gap-3">
-							<h1 className="text-2xl font-bold">
-								{service.displayName || service.name}
-							</h1>
-							<Badge className={tierColors[service.tier] || "bg-gray-500"}>
-								{tierLabels[service.tier] || service.tier}
-							</Badge>
-						</div>
-						<p className="text-sm font-mono text-muted-foreground">
-							{service.name}
-						</p>
-						{service.description && (
-							<p className="text-muted-foreground max-w-2xl">
-								{service.description}
-							</p>
-						)}
-						<div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-							<Badge variant="outline" className="capitalize">
-								{service.type}
-							</Badge>
-							{service.team && <span>Team: {service.team}</span>}
-							{service.repository && (
-								<a
-									href={service.repository}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="flex items-center gap-1 hover:text-primary"
-								>
-									<GitBranch className="h-4 w-4" />
-									Repository
-								</a>
-							)}
-						</div>
-					</div>
-				</div>
-			</div>
-
-			{/* Tabs */}
-			<Tabs defaultValue="overview" className="space-y-4">
-				<TabsList>
-					<TabsTrigger value="overview">Overview</TabsTrigger>
-					<TabsTrigger value="dependencies">Dependencies</TabsTrigger>
-					<TabsTrigger value="integrations">
-						<Link2 className="h-4 w-4 mr-1" />
-						Integrations
-					</TabsTrigger>
-					<TabsTrigger value="settings">
-						<Settings className="h-4 w-4 mr-1" />
-						Settings
-					</TabsTrigger>
-				</TabsList>
-
-				<TabsContent value="overview">
-					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-						{/* Stats Card */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">Statistics</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-2">
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Active Alerts</span>
-									<span className="font-medium">
-										{service.alertCount ?? 0}
-									</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Active Incidents</span>
-									<span className="font-medium">
-										{service.incidentCount ?? 0}
-									</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Dependencies</span>
-									<span className="font-medium">
-										{service.dependencies?.length ?? 0}
-									</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Dependents</span>
-									<span className="font-medium">
-										{service.dependents?.length ?? 0}
-									</span>
-								</div>
-							</CardContent>
-						</Card>
-
-						{/* Tags Card */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">Tags</CardTitle>
-							</CardHeader>
-							<CardContent>
-								{service.tags && service.tags.length > 0 ? (
-									<div className="flex flex-wrap gap-2">
-										{service.tags.map((tag) => (
-											<Badge key={tag} variant="secondary">
-												{tag}
-											</Badge>
-										))}
-									</div>
-								) : (
-									<p className="text-sm text-muted-foreground">No tags</p>
-								)}
-							</CardContent>
-						</Card>
-
-						{/* Metadata Card */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">Information</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-2 text-sm">
-								{service.slackChannel && (
-									<div className="flex justify-between">
-										<span className="text-muted-foreground">Slack</span>
-										<span className="font-mono">{service.slackChannel}</span>
-									</div>
-								)}
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Discovered</span>
-									<span>{service.isDiscovered ? "Yes" : "No"}</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Confirmed</span>
-									<span>{service.isConfirmed ? "Yes" : "No"}</span>
-								</div>
-								<div className="flex justify-between">
-									<span className="text-muted-foreground">Created</span>
-									<span>
-										{new Date(service.createdAt).toLocaleDateString()}
-									</span>
-								</div>
-							</CardContent>
-						</Card>
-					</div>
-				</TabsContent>
-
-				<TabsContent value="dependencies">
-					<div className="grid gap-6 md:grid-cols-2">
-						{/* Upstream Dependencies */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">
-									Upstream Dependencies ({topology?.upstream?.length ?? 0})
-								</CardTitle>
-							</CardHeader>
-							<CardContent>
-								{topology?.upstream && topology.upstream.length > 0 ? (
-									<div className="space-y-2">
-										{topology.upstream.map((dep) => (
-											<Link
-												key={dep.id}
-												to="/services/$id"
-												params={{ id: dep.id }}
-												className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted"
-											>
-												<div className="p-1 rounded bg-muted">
-													{serviceTypeIcons[dep.type] || <Server className="h-4 w-4" />}
-												</div>
-												<div>
-													<p className="font-medium">{dep.displayName || dep.name}</p>
-													<p className="text-xs text-muted-foreground capitalize">
-														{dep.type} - {dep.tier.replace("_", " ")}
-													</p>
-												</div>
-											</Link>
-										))}
-									</div>
-								) : (
-									<p className="text-sm text-muted-foreground">
-										No upstream dependencies
-									</p>
-								)}
-							</CardContent>
-						</Card>
-
-						{/* Downstream Dependents */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">
-									Downstream Dependents ({topology?.downstream?.length ?? 0})
-								</CardTitle>
-							</CardHeader>
-							<CardContent>
-								{topology?.downstream && topology.downstream.length > 0 ? (
-									<div className="space-y-2">
-										{topology.downstream.map((dep) => (
-											<Link
-												key={dep.id}
-												to="/services/$id"
-												params={{ id: dep.id }}
-												className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted"
-											>
-												<div className="p-1 rounded bg-muted">
-													{serviceTypeIcons[dep.type] || <Server className="h-4 w-4" />}
-												</div>
-												<div>
-													<p className="font-medium">{dep.displayName || dep.name}</p>
-													<p className="text-xs text-muted-foreground capitalize">
-														{dep.type} - {dep.tier.replace("_", " ")}
-													</p>
-												</div>
-											</Link>
-										))}
-									</div>
-								) : (
-									<p className="text-sm text-muted-foreground">
-										No downstream dependents
-									</p>
-								)}
-							</CardContent>
-						</Card>
-					</div>
-				</TabsContent>
-
-				<TabsContent value="integrations">
-					<ServiceIntegrationsTab
+				{tab === "general" && <GeneralTab service={service} topology={topology} />}
+				{tab === "integrations" && (
+					<>
+						<MutationError error={deleteOverride.error} className="mb-4" />
+						<ServiceIntegrationsTab
+							serviceId={id}
+							serviceType={service.type}
+							integrations={integrations}
+							isLoading={isLoadingIntegrations}
+							onCreateOverride={handleCreateOverride}
+							onEditOverride={handleEditOverride}
+							onDeleteOverride={handleDeleteOverride}
+						/>
+					</>
+				)}
+				{tab === "investigation" && (
+					<ServiceInvestigationTab
 						serviceId={id}
-						serviceType={service.type}
-						integrations={integrations}
-						isLoading={isLoadingIntegrations}
-						onCreateOverride={handleCreateOverride}
-						onEditOverride={handleEditOverride}
-						onDeleteOverride={handleDeleteOverride}
+						metadata={service.metadata}
 					/>
-				</TabsContent>
+				)}
+				{tab === "dependencies" && (
+					<DependenciesTab
+						topology={topology}
+						onAddDependency={() => setShowAddDepDialog(true)}
+						onEditDependency={(dep) => setEditingDep(dep)}
+						onRemoveDependency={(depId) => setRemovingDepId(depId)}
+					/>
+				)}
+			</DetailPage>
 
-				<TabsContent value="settings">
-					<div className="space-y-6">
-						{/* Edit Service */}
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">Edit Service</CardTitle>
-								<CardDescription>
-									Update service information, tier, team, and other metadata.
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<Button onClick={() => setShowEditDialog(true)}>
-									<Pencil className="h-4 w-4 mr-2" />
-									Edit Service
-								</Button>
-							</CardContent>
-						</Card>
-
-						{/* Danger Zone */}
-						<Card className="border-destructive/50">
-							<CardHeader>
-								<CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
-								<CardDescription>
-									Permanently delete this service from the catalog. This action cannot be undone.
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<Button
-									variant="destructive"
-									onClick={() => setShowDeleteDialog(true)}
-								>
-									<Trash2 className="h-4 w-4 mr-2" />
-									Delete Service
-								</Button>
-							</CardContent>
-						</Card>
-					</div>
-				</TabsContent>
-			</Tabs>
-
-			{/* Edit Service Dialog */}
+			{/* Dialogs */}
 			<ServiceFormDialog
 				open={showEditDialog}
 				onOpenChange={setShowEditDialog}
 				service={service}
 				onSuccess={() => refetch()}
 			/>
-
-			{/* Delete Service Dialog */}
 			<DeleteServiceDialog
 				open={showDeleteDialog}
 				onOpenChange={setShowDeleteDialog}
@@ -495,8 +359,47 @@ function ServiceDetailPage() {
 				serviceName={service.displayName || service.name}
 				onSuccess={() => navigate({ to: "/services" })}
 			/>
-
-			{/* Service Integration Override Dialog */}
+			<AddDependencyDialog
+				open={showAddDepDialog}
+				onOpenChange={setShowAddDepDialog}
+				serviceId={id}
+				existingDependencyIds={existingDepIds}
+			/>
+			{editingDep && (
+				<EditDependencyDialog
+					open={!!editingDep}
+					onOpenChange={(open) => {
+						if (!open) setEditingDep(null);
+					}}
+					serviceId={id}
+					dependencyId={editingDep.dependencyId}
+					dependencyName={editingDep.name}
+					currentType={editingDep.type}
+					currentCriticality={editingDep.criticality}
+				/>
+			)}
+			<AlertDialog
+				open={!!removingDepId}
+				onOpenChange={(open) => {
+					if (!open) setRemovingDepId(null);
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Remove Dependency</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to remove this dependency? This action
+							cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction onClick={handleRemoveDependency}>
+							Remove
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 			<ServiceIntegrationOverrideDialog
 				open={showOverrideDialog}
 				onOpenChange={(open) => {
@@ -517,28 +420,318 @@ function ServiceDetailPage() {
 				onSave={handleSaveOverride}
 				isSaving={createOverride.isPending || updateOverride.isPending}
 			/>
-		</div>
-	)
+		</>
+	);
 }
+
+// =============================================================================
+// General Tab
+// =============================================================================
+
+function GeneralTab({
+	service,
+	topology,
+}: {
+	service: ServiceWithRelations;
+	topology?: {
+		service: ServiceWithRelations;
+		upstream: TopologyEdge[];
+		downstream: TopologyEdge[];
+	};
+}) {
+	return (
+		<div className="grid gap-4 md:grid-cols-2">
+			{/* Basic Info */}
+			<Card>
+				<CardHeader>
+					<CardTitle className="text-base">Basic Info</CardTitle>
+				</CardHeader>
+				<CardContent className="space-y-2 text-sm">
+					<div className="flex justify-between">
+						<span className="text-muted-foreground">Type</span>
+						<span className="capitalize">{service.type}</span>
+					</div>
+					<div className="flex justify-between">
+						<span className="text-muted-foreground">Tier</span>
+						<span>{tierLabels[service.tier] || service.tier}</span>
+					</div>
+					{service.team && (
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Team</span>
+							<span>{service.team}</span>
+						</div>
+					)}
+					{service.repository && (
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Repository</span>
+							<a
+								href={service.repository}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="flex items-center gap-1 hover:text-primary truncate max-w-[200px]"
+							>
+								<GitBranch className="h-3 w-3 flex-shrink-0" />
+								{service.repository.split("/").slice(-2).join("/")}
+							</a>
+						</div>
+					)}
+					{service.slackChannel && (
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Slack</span>
+							<span className="font-mono">{service.slackChannel}</span>
+						</div>
+					)}
+					{service.tags && service.tags.length > 0 && (
+						<div className="flex justify-between items-start">
+							<span className="text-muted-foreground">Tags</span>
+							<div className="flex flex-wrap gap-1 justify-end">
+								{service.tags.map((tag: string) => (
+									<Badge key={tag} variant="secondary" className="text-xs">
+										{tag}
+									</Badge>
+								))}
+							</div>
+						</div>
+					)}
+					<div className="flex justify-between">
+						<span className="text-muted-foreground">Created</span>
+						<span>{new Date(service.createdAt).toLocaleDateString()}</span>
+					</div>
+					<div className="flex justify-between">
+						<span className="text-muted-foreground">Updated</span>
+						<span>{new Date(service.updatedAt).toLocaleDateString()}</span>
+					</div>
+				</CardContent>
+			</Card>
+
+			{/* Stats */}
+			<div className="space-y-4">
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-base">Statistics</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-2 text-sm">
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Active Alerts</span>
+							<span className="font-medium">{service.alertCount ?? 0}</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Active Incidents</span>
+							<span className="font-medium">
+								{service.incidentCount ?? 0}
+							</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Upstream Dependencies</span>
+							<span className="font-medium">
+								{topology?.upstream?.length ?? 0}
+							</span>
+						</div>
+						<div className="flex justify-between">
+							<span className="text-muted-foreground">Downstream Dependents</span>
+							<span className="font-medium">
+								{topology?.downstream?.length ?? 0}
+							</span>
+						</div>
+					</CardContent>
+				</Card>
+
+				{service.description && (
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-base">Description</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<p className="text-sm text-muted-foreground">
+								{service.description}
+							</p>
+						</CardContent>
+					</Card>
+				)}
+			</div>
+		</div>
+	);
+}
+
+// =============================================================================
+// Dependencies Tab
+// =============================================================================
+
+function DependenciesTab({
+	topology,
+	onAddDependency,
+	onEditDependency,
+	onRemoveDependency,
+}: {
+	topology?: any;
+	onAddDependency: () => void;
+	onEditDependency: (dep: {
+		dependencyId: string;
+		name: string;
+		type: string;
+		criticality: string;
+	}) => void;
+	onRemoveDependency: (depId: string) => void;
+}) {
+	return (
+		<div className="space-y-6">
+			{/* Upstream Dependencies */}
+			<div>
+				<div className="flex items-center justify-between mb-3">
+					<h3 className="text-sm font-medium">
+						Upstream Dependencies ({topology?.upstream?.length ?? 0})
+					</h3>
+					<Button size="sm" variant="outline" onClick={onAddDependency}>
+						<Plus className="h-4 w-4 mr-1" />
+						Add Dependency
+					</Button>
+				</div>
+				<div className="max-h-96 overflow-y-auto rounded-md border">
+					{topology?.upstream && topology.upstream.length > 0 ? (
+						<div className="divide-y">
+							{topology.upstream.map((edge: any) => (
+								<div
+									key={edge.service.id}
+									className="flex items-center justify-between p-3 hover:bg-muted/50"
+								>
+									<Link
+										to="/services/$id"
+										params={{ id: edge.service.id }}
+										search={{ tab: "general" }}
+										className="flex items-center gap-2 min-w-0 flex-1"
+									>
+										<div className="p-1 rounded bg-muted flex-shrink-0">
+											{serviceTypeIcons[edge.service.type] || (
+												<Server className="h-4 w-4" />
+											)}
+										</div>
+										<div className="min-w-0">
+											<p className="font-medium text-sm truncate">
+												{edge.service.displayName || edge.service.name}
+											</p>
+											<p className="text-xs text-muted-foreground capitalize">
+												{edge.service.type}
+											</p>
+										</div>
+									</Link>
+									<div className="flex items-center gap-2 flex-shrink-0">
+										<Badge variant="outline" className="text-xs">
+											{edge.dependencyType}
+										</Badge>
+										<Badge variant="secondary" className="text-xs">
+											{edge.criticality}
+										</Badge>
+										<Button
+											variant="ghost"
+											size="sm"
+											className="h-7 w-7 p-0"
+											onClick={() =>
+												onEditDependency({
+													dependencyId: edge.service.id,
+													name:
+														edge.service.displayName || edge.service.name,
+													type: edge.dependencyType,
+													criticality: edge.criticality,
+												})
+											}
+										>
+											<Pencil className="h-3 w-3" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+											onClick={() => onRemoveDependency(edge.service.id)}
+										>
+											<Trash2 className="h-3 w-3" />
+										</Button>
+									</div>
+								</div>
+							))}
+						</div>
+					) : (
+						<p className="p-4 text-sm text-muted-foreground text-center">
+							No upstream dependencies
+						</p>
+					)}
+				</div>
+			</div>
+
+			{/* Downstream Dependents */}
+			<div>
+				<h3 className="text-sm font-medium mb-3">
+					Downstream Dependents ({topology?.downstream?.length ?? 0})
+				</h3>
+				<div className="max-h-96 overflow-y-auto rounded-md border">
+					{topology?.downstream && topology.downstream.length > 0 ? (
+						<div className="divide-y">
+							{topology.downstream.map((edge: any) => (
+								<div
+									key={edge.service.id}
+									className="flex items-center justify-between p-3 hover:bg-muted/50"
+								>
+									<Link
+										to="/services/$id"
+										params={{ id: edge.service.id }}
+										search={{ tab: "general" }}
+										className="flex items-center gap-2 min-w-0 flex-1"
+									>
+										<div className="p-1 rounded bg-muted flex-shrink-0">
+											{serviceTypeIcons[edge.service.type] || (
+												<Server className="h-4 w-4" />
+											)}
+										</div>
+										<div className="min-w-0">
+											<p className="font-medium text-sm truncate">
+												{edge.service.displayName || edge.service.name}
+											</p>
+											<p className="text-xs text-muted-foreground capitalize">
+												{edge.service.type}
+											</p>
+										</div>
+									</Link>
+									<div className="flex items-center gap-2 flex-shrink-0">
+										<Badge variant="outline" className="text-xs">
+											{edge.dependencyType}
+										</Badge>
+										<Badge variant="secondary" className="text-xs">
+											{edge.criticality}
+										</Badge>
+									</div>
+								</div>
+							))}
+						</div>
+					) : (
+						<p className="p-4 text-sm text-muted-foreground text-center">
+							No downstream dependents
+						</p>
+					)}
+				</div>
+			</div>
+
+		</div>
+	);
+}
+
+// =============================================================================
+// Skeleton
+// =============================================================================
 
 function ServiceDetailSkeleton() {
 	return (
 		<div className="space-y-6">
 			<Skeleton className="h-4 w-32" />
-			<div className="flex items-start gap-4">
-				<Skeleton className="h-14 w-14 rounded-lg" />
+			<div className="flex items-start gap-3">
+				<Skeleton className="h-10 w-10 rounded-lg" />
 				<div className="space-y-2">
 					<Skeleton className="h-8 w-64" />
 					<Skeleton className="h-4 w-32" />
-					<Skeleton className="h-4 w-96" />
 				</div>
 			</div>
-			<Skeleton className="h-10 w-96" />
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				<Skeleton className="h-48" />
-				<Skeleton className="h-48" />
-				<Skeleton className="h-48" />
+			<div className="flex gap-8">
+				<Skeleton className="h-64 w-48" />
+				<Skeleton className="h-64 flex-1" />
 			</div>
 		</div>
-	)
+	);
 }

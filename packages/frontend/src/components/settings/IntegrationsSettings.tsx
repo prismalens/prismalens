@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "@/hooks/use-toast";
+import { MutationError } from "@/components/shared/MutationError";
 import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
 import {
 	AlertDialog,
@@ -35,7 +36,6 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
-	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
@@ -51,11 +51,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
 	useConnections,
-	useConnectGitHubInstallation,
 	useCreateConnection,
 	useCreateIntegration,
 	useDeleteConnection,
-	useGitHubInstallations,
 	useTemplates,
 	useTestConnection,
 	useUpdateConnection,
@@ -140,6 +138,8 @@ export function IntegrationsSettings() {
 	const [oauthClientId, setOauthClientId] = useState("");
 	const [oauthClientSecret, setOauthClientSecret] = useState("");
 	const [showCredErrors, setShowCredErrors] = useState(false);
+	const [dialogError, setDialogError] = useState<Error | null>(null);
+	const [deleteError, setDeleteError] = useState<Error | null>(null);
 	const [testingConnectionId, setTestingConnectionId] = useState<string | null>(
 		null,
 	);
@@ -219,6 +219,7 @@ export function IntegrationsSettings() {
 		setOauthClientId("");
 		setOauthClientSecret("");
 		setShowCredErrors(false);
+		setDialogError(null);
 		setShowAddDialog(false);
 		setShowConfigDialog(true);
 	};
@@ -236,11 +237,13 @@ export function IntegrationsSettings() {
 		setCredentialValues({});
 		setConnectionFieldValues({});
 		setShowCredErrors(false);
+		setDialogError(null);
 		setShowConfigDialog(true);
 	};
 
 	const handleSaveConnection = async () => {
 		if (!selectedTemplate) return;
+		setDialogError(null);
 
 		if (selectedTemplate.authMode === "github_app") {
 			if (selectedConnection) {
@@ -260,11 +263,7 @@ export function IntegrationsSettings() {
 					setShowConfigDialog(false);
 					resetDialogState();
 				} catch (err) {
-					toast({
-						title: "Failed to update connection",
-						description: err instanceof Error ? err.message : "An unexpected error occurred",
-						variant: "destructive",
-					});
+					setDialogError(err instanceof Error ? err : new Error("Failed to update connection"));
 				}
 				return;
 			}
@@ -316,11 +315,7 @@ export function IntegrationsSettings() {
 					},
 				});
 			} catch (err) {
-				toast({
-					title: "Failed to create integration",
-					description: err instanceof Error ? err.message : "An unexpected error occurred",
-					variant: "destructive",
-				});
+				setDialogError(err instanceof Error ? err : new Error("Failed to create integration"));
 			}
 			return;
 		}
@@ -349,11 +344,7 @@ export function IntegrationsSettings() {
 					const { redirectUrl } = await res.json();
 					window.location.href = redirectUrl;
 				} catch (err) {
-					toast({
-						title: "Failed to re-authorize",
-						description: err instanceof Error ? err.message : "An unexpected error occurred",
-						variant: "destructive",
-					});
+					setDialogError(err instanceof Error ? err : new Error("Failed to re-authorize"));
 				}
 				return;
 			}
@@ -387,11 +378,7 @@ export function IntegrationsSettings() {
 				const { redirectUrl } = await res.json();
 				window.location.href = redirectUrl;
 			} catch (err) {
-				toast({
-					title: "Failed to create integration",
-					description: err instanceof Error ? err.message : "An unexpected error occurred",
-					variant: "destructive",
-				});
+				setDialogError(err instanceof Error ? err : new Error("Failed to create integration"));
 			}
 			return;
 		}
@@ -439,27 +426,20 @@ export function IntegrationsSettings() {
 			setShowConfigDialog(false);
 			resetDialogState();
 		} catch (err) {
-			toast({
-				title: "Failed to save connection",
-				description: err instanceof Error ? err.message : "An unexpected error occurred",
-				variant: "destructive",
-			});
+			setDialogError(err instanceof Error ? err : new Error("Failed to save connection"));
 		}
 	};
 
 	const handleDeleteConnection = async () => {
 		if (!selectedConnection) return;
+		setDeleteError(null);
 
 		try {
 			await deleteConnection.mutateAsync({ id: selectedConnection });
 			setShowDeleteDialog(false);
 			resetDialogState();
 		} catch (err) {
-			toast({
-				title: "Failed to delete connection",
-				description: err instanceof Error ? err.message : "An unexpected error occurred",
-				variant: "destructive",
-			});
+			setDeleteError(err instanceof Error ? err : new Error("Failed to delete connection"));
 		}
 	};
 
@@ -493,6 +473,8 @@ export function IntegrationsSettings() {
 		setOauthClientId("");
 		setOauthClientSecret("");
 		setShowCredErrors(false);
+		setDialogError(null);
+		setDeleteError(null);
 	};
 
 	if (templatesLoading || connsLoading) {
@@ -696,6 +678,7 @@ export function IntegrationsSettings() {
 												size="sm"
 												onClick={() => {
 													setSelectedConnection(connection.id);
+													setDeleteError(null);
 													setShowDeleteDialog(true);
 												}}
 											>
@@ -915,6 +898,7 @@ export function IntegrationsSettings() {
 								/>
 							)}
 					</div>
+					<MutationError error={dialogError} className="mb-2" />
 					<DialogFooter>
 						<Button
 							variant="outline"
@@ -964,11 +948,13 @@ export function IntegrationsSettings() {
 							this integration will no longer have access to its data.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					<MutationError error={deleteError} />
 					<AlertDialogFooter>
 						<AlertDialogCancel
 							onClick={() => {
 								setShowDeleteDialog(false);
 								setSelectedConnection(null);
+								setDeleteError(null);
 							}}
 						>
 							Cancel
