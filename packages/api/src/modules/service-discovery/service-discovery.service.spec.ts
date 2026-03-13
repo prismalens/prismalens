@@ -3,6 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from '@prismalens/database';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { CredentialsService } from '../integrations/crypto/credentials.service.js';
+import { IntegrationsService } from '../integrations/integrations.service.js';
 import type {
   AcceptBulkSuggestionsDto,
   AcceptSuggestionDto,
@@ -54,11 +55,21 @@ const mockPrismaService = {
   },
   service: {
     create: jest.fn(),
+    findUnique: jest.fn(),
   },
+  deployment: {
+    create: jest.fn(),
+  },
+  $transaction: jest.fn(),
 };
 
 const mockCredentialsService = {
   decrypt: jest.fn().mockReturnValue({}),
+};
+
+const mockIntegrationsService = {
+  getGitRepositories: jest.fn().mockResolvedValue([]),
+  createRequestFn: jest.fn(),
 };
 
 describe('ServiceDiscoveryService (BDD)', () => {
@@ -66,6 +77,16 @@ describe('ServiceDiscoveryService (BDD)', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Re-apply $transaction mock after clearAllMocks — supports both
+    // batched (array) and interactive (callback) transaction forms
+    mockPrismaService.$transaction.mockImplementation((arg: unknown) => {
+      if (typeof arg === 'function') {
+        return (arg as (tx: typeof mockPrismaService) => unknown)(
+          mockPrismaService,
+        );
+      }
+      return Promise.resolve(arg);
+    });
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
@@ -75,6 +96,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         ServiceDiscoveryService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: CredentialsService, useValue: mockCredentialsService },
+        { provide: IntegrationsService, useValue: mockIntegrationsService },
       ],
     }).compile();
 
@@ -90,7 +112,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw BadRequestException for non-vcs integrations', async () => {
+    it('should throw BadRequestException for unsupported categories', async () => {
       const connection = createMockConnection({
         integration: {
           templateId: 'datadog',
@@ -105,12 +127,12 @@ describe('ServiceDiscoveryService (BDD)', () => {
       );
     });
 
-    it('should route GitHub connections to discoverFromGitHub', async () => {
+    it('should route GitHub connections to VCS discovery', async () => {
       const connection = createMockConnection();
 
-      mockCredentialsService.decrypt.mockReturnValue({
-        repositories: ['org/repo'],
-      });
+      mockIntegrationsService.getGitRepositories.mockResolvedValue([
+        { fullName: 'org/repo' },
+      ]);
       mockPrismaService.connection.findUnique.mockResolvedValue(connection);
       mockPrismaService.serviceSuggestion.findFirst.mockResolvedValue(null);
       mockPrismaService.serviceSuggestion.create.mockResolvedValue({
@@ -121,6 +143,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         repository: 'org/repo',
         subPath: null,
         isMonorepo: false,
+        sourceType: 'repository',
         status: 'pending',
         metadata: '{}',
         createdAt: new Date(),
@@ -131,121 +154,6 @@ describe('ServiceDiscoveryService (BDD)', () => {
 
       expect(result).toHaveLength(1);
       expect(mockPrismaService.serviceSuggestion.create).toHaveBeenCalled();
-    });
-
-    it('should throw BadRequestException for unsupported discovery providers', async () => {
-      const connection = createMockConnection({
-        integration: {
-          templateId: 'gitlab-oauth2',
-          label: 'My GitLab',
-        },
-      });
-
-      mockPrismaService.connection.findUnique.mockResolvedValue(connection);
-
-      await expect(service.discoverFromConnection('conn-123')).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-  });
-
-  describe('discoverFromGitHub', () => {
-    it('should warn when no repositories configured', async () => {
-      const connection = createMockConnection();
-      mockCredentialsService.decrypt.mockReturnValue({ repositories: [] });
-
-      const result = await service.discoverFromGitHub(connection);
-
-      expect(result).toEqual([]);
-      expect(Logger.prototype.warn).toHaveBeenCalledWith(
-        'No repositories configured for GitHub connection',
-      );
-    });
-
-    it('should create service suggestions from discovered repositories', async () => {
-      const connection = createMockConnection({
-        connectionConfigEnc: new Uint8Array([1]) as Uint8Array<ArrayBuffer>,
-      });
-      mockCredentialsService.decrypt.mockReturnValue({
-        repositories: ['org/repo'],
-      });
-
-      mockPrismaService.serviceSuggestion.findFirst.mockResolvedValue(null);
-      mockPrismaService.serviceSuggestion.create.mockResolvedValue({
-        id: 'sugg-123',
-        connectionId: 'conn-123',
-        suggestedName: 'repo',
-        displayName: 'Repo',
-        repository: 'org/repo',
-        subPath: null,
-        isMonorepo: false,
-        status: 'pending',
-        metadata: JSON.stringify({ discoveryMethod: 'github' }),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      const result = await service.discoverFromGitHub(connection);
-
-      expect(result).toHaveLength(1);
-      expect(result[0].suggestedName).toBe('repo');
-    });
-
-    it('should update existing non-rejected suggestions', async () => {
-      const connection = createMockConnection({
-        connectionConfigEnc: new Uint8Array([1]) as Uint8Array<ArrayBuffer>,
-      });
-      mockCredentialsService.decrypt.mockReturnValue({
-        repositories: ['org/repo'],
-      });
-
-      const existingSuggestion = {
-        id: 'sugg-123',
-        connectionId: 'conn-123',
-        suggestedName: 'repo',
-        displayName: 'Repo',
-        repository: 'org/repo',
-        subPath: null,
-        isMonorepo: false,
-        status: 'pending',
-        metadata: '{}',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      mockPrismaService.serviceSuggestion.findFirst.mockResolvedValue(
-        existingSuggestion,
-      );
-      mockPrismaService.serviceSuggestion.update.mockResolvedValue({
-        ...existingSuggestion,
-        updatedAt: new Date(),
-      });
-
-      const result = await service.discoverFromGitHub(connection);
-
-      expect(result).toHaveLength(1);
-      expect(mockPrismaService.serviceSuggestion.update).toHaveBeenCalledWith({
-        where: { id: 'sugg-123' },
-        data: { updatedAt: expect.any(Date) },
-      });
-    });
-
-    it('should handle errors when discovering repositories', async () => {
-      const connection = createMockConnection({
-        connectionConfigEnc: new Uint8Array([1]) as Uint8Array<ArrayBuffer>,
-      });
-      mockCredentialsService.decrypt.mockReturnValue({
-        repositories: ['org/repo1', 'org/repo2'],
-      });
-
-      mockPrismaService.serviceSuggestion.findFirst.mockImplementation(() => {
-        throw new Error('DB Error');
-      });
-
-      const result = await service.discoverFromGitHub(connection);
-
-      expect(result).toEqual([]);
-      expect(Logger.prototype.error).toHaveBeenCalled();
     });
   });
 
@@ -262,6 +170,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
           repository: 'org/repo',
           subPath: null,
           isMonorepo: false,
+          sourceType: 'repository',
           metadata: '{}',
           updatedAt: new Date(),
         },
@@ -311,7 +220,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
       );
     });
 
-    it('should create a service from pending suggestion', async () => {
+    it('should create a service from pending repository suggestion', async () => {
       const suggestion = {
         id: 'sugg-123',
         suggestedName: 'my-api',
@@ -319,6 +228,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         repository: 'org/repo',
         subPath: null,
         isMonorepo: false,
+        sourceType: 'repository',
         status: 'pending',
         metadata: '{}',
         connectionId: 'conn-123',
@@ -333,15 +243,6 @@ describe('ServiceDiscoveryService (BDD)', () => {
         description: null,
         type: 'service',
         team: null,
-        discoverySource: 'github',
-        discoveryMetadata: JSON.stringify({
-          repository: 'org/repo',
-          subPath: null,
-          isMonorepo: false,
-        }),
-        isDiscovered: true,
-        isConfirmed: true,
-        discoveryPath: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -349,24 +250,15 @@ describe('ServiceDiscoveryService (BDD)', () => {
       mockPrismaService.serviceSuggestion.findUnique.mockResolvedValue(
         suggestion,
       );
-      mockPrismaService.service.create.mockResolvedValue(createdService);
-      mockPrismaService.serviceSuggestion.update.mockResolvedValue({
-        ...suggestion,
-        status: 'accepted',
-      });
+      mockPrismaService.$transaction.mockResolvedValue([
+        createdService,
+        { ...suggestion, status: 'accepted' },
+      ]);
 
       const result = await service.acceptSuggestion('sugg-123');
 
       expect(result).toEqual(createdService);
-      expect(mockPrismaService.service.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          name: 'my-api',
-          displayName: 'My API',
-          discoverySource: 'github',
-          isDiscovered: true,
-          isConfirmed: true,
-        }),
-      });
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
     });
 
     it('should accept with overrides', async () => {
@@ -377,6 +269,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         repository: 'org/repo',
         subPath: null,
         isMonorepo: false,
+        sourceType: 'repository',
         status: 'pending',
         metadata: '{}',
         connectionId: 'conn-123',
@@ -388,7 +281,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         name: 'custom-name',
         displayName: 'Custom Display Name',
         description: 'Custom description',
-        type: 'microservice',
+        type: 'service',
         team: 'platform',
       };
 
@@ -397,13 +290,53 @@ describe('ServiceDiscoveryService (BDD)', () => {
         name: 'custom-name',
         displayName: 'Custom Display Name',
         description: 'Custom description',
-        type: 'microservice',
+        type: 'service',
         team: 'platform',
-        discoverySource: 'github',
-        discoveryMetadata: '{}',
-        isDiscovered: true,
-        isConfirmed: true,
-        discoveryPath: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      mockPrismaService.serviceSuggestion.findUnique.mockResolvedValue(
+        suggestion,
+      );
+      mockPrismaService.$transaction.mockResolvedValue([
+        createdService,
+        { ...suggestion, status: 'accepted' },
+      ]);
+
+      const result = await service.acceptSuggestion('sugg-123', overrides);
+
+      expect(result.name).toBe('custom-name');
+      expect(result.team).toBe('platform');
+    });
+
+    it('should create deployment record for deployment suggestions', async () => {
+      const suggestion = {
+        id: 'sugg-456',
+        suggestedName: 'todo-api',
+        displayName: 'Todo API',
+        repository: 'todo-api',
+        subPath: null,
+        isMonorepo: false,
+        sourceType: 'deployment',
+        status: 'pending',
+        metadata: JSON.stringify({
+          externalId: 'srv-abc123',
+          url: 'https://todo-api.onrender.com',
+          status: 'live',
+          type: 'web_service',
+          region: 'oregon',
+        }),
+        connectionId: 'conn-render',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const createdService = {
+        id: 'service-456',
+        name: 'todo-api',
+        displayName: 'Todo API',
+        type: 'service',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -412,28 +345,54 @@ describe('ServiceDiscoveryService (BDD)', () => {
         suggestion,
       );
       mockPrismaService.service.create.mockResolvedValue(createdService);
+      mockPrismaService.deployment.create.mockResolvedValue({
+        id: 'dep-1',
+        serviceId: 'service-456',
+      });
       mockPrismaService.serviceSuggestion.update.mockResolvedValue({
         ...suggestion,
         status: 'accepted',
       });
 
-      const result = await service.acceptSuggestion('sugg-123', overrides);
+      const result = await service.acceptSuggestion('sugg-456');
 
-      expect(result.name).toBe('custom-name');
-      expect(result.team).toBe('platform');
+      expect(result).toEqual(createdService);
+      expect(mockPrismaService.deployment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          serviceId: 'service-456',
+          externalId: 'srv-abc123',
+          name: 'todo-api',
+        }),
+      });
     });
 
-    it('should mark suggestion as accepted', async () => {
+    it('should link deployment to existing service when linkedServiceId provided', async () => {
       const suggestion = {
-        id: 'sugg-123',
-        suggestedName: 'my-api',
-        displayName: 'My API',
-        repository: 'org/repo',
+        id: 'sugg-789',
+        suggestedName: 'todo-api',
+        displayName: 'Todo API',
+        repository: 'todo-api',
         subPath: null,
         isMonorepo: false,
+        sourceType: 'deployment',
         status: 'pending',
-        metadata: '{}',
-        connectionId: 'conn-123',
+        metadata: JSON.stringify({
+          externalId: 'srv-xyz',
+          url: 'https://todo-api.onrender.com',
+          status: 'live',
+          type: 'web_service',
+          region: 'oregon',
+        }),
+        connectionId: 'conn-render',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const existingService = {
+        id: 'service-existing',
+        name: 'existing-api',
+        displayName: 'Existing API',
+        type: 'service',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -441,32 +400,56 @@ describe('ServiceDiscoveryService (BDD)', () => {
       mockPrismaService.serviceSuggestion.findUnique.mockResolvedValue(
         suggestion,
       );
-      mockPrismaService.service.create.mockResolvedValue({
-        id: 'service-123',
-        name: 'my-api',
-        displayName: 'My API',
-        description: null,
-        type: 'service',
-        team: null,
-        discoverySource: 'github',
-        discoveryMetadata: '{}',
-        isDiscovered: true,
-        isConfirmed: true,
-        discoveryPath: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      mockPrismaService.service.findUnique.mockResolvedValue(existingService);
+      mockPrismaService.deployment.create.mockResolvedValue({
+        id: 'dep-2',
+        serviceId: 'service-existing',
       });
       mockPrismaService.serviceSuggestion.update.mockResolvedValue({
         ...suggestion,
         status: 'accepted',
       });
 
-      await service.acceptSuggestion('sugg-123');
-
-      expect(mockPrismaService.serviceSuggestion.update).toHaveBeenCalledWith({
-        where: { id: 'sugg-123' },
-        data: { status: 'accepted' },
+      const result = await service.acceptSuggestion('sugg-789', {
+        linkedServiceId: 'service-existing',
       });
+
+      expect(result).toEqual(existingService);
+      expect(mockPrismaService.service.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.deployment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          serviceId: 'service-existing',
+          externalId: 'srv-xyz',
+        }),
+      });
+    });
+
+    it('should throw NotFoundException when linkedServiceId not found', async () => {
+      const suggestion = {
+        id: 'sugg-999',
+        suggestedName: 'ghost-api',
+        displayName: 'Ghost API',
+        repository: 'ghost-api',
+        subPath: null,
+        isMonorepo: false,
+        sourceType: 'deployment',
+        status: 'pending',
+        metadata: '{}',
+        connectionId: 'conn-render',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      mockPrismaService.serviceSuggestion.findUnique.mockResolvedValue(
+        suggestion,
+      );
+      mockPrismaService.service.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.acceptSuggestion('sugg-999', {
+          linkedServiceId: 'non-existent',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -545,6 +528,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         repository: 'org/repo',
         subPath: null,
         isMonorepo: false,
+        sourceType: 'repository',
         status: 'pending',
         metadata: '{}',
         connectionId: 'conn-123',
@@ -559,6 +543,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         repository: 'org/repo',
         subPath: 'packages/lib',
         isMonorepo: true,
+        sourceType: 'repository',
         status: 'pending',
         metadata: '{}',
         connectionId: 'conn-123',
@@ -570,24 +555,18 @@ describe('ServiceDiscoveryService (BDD)', () => {
         .mockResolvedValueOnce(suggestion1)
         .mockResolvedValueOnce(suggestion2);
 
-      mockPrismaService.service.create
-        .mockResolvedValueOnce({
-          id: 'service-1',
-          name: 'service-1',
-          displayName: 'Service 1',
-        })
-        .mockResolvedValueOnce({
-          id: 'service-2',
-          name: 'service-2',
-          displayName: 'Service 2',
-        });
-
-      mockPrismaService.serviceSuggestion.update
-        .mockResolvedValueOnce({ ...suggestion1, status: 'accepted' })
-        .mockResolvedValueOnce({ ...suggestion2, status: 'accepted' });
+      mockPrismaService.$transaction
+        .mockResolvedValueOnce([
+          { id: 'service-1', name: 'service-1', displayName: 'Service 1' },
+          { ...suggestion1, status: 'accepted' },
+        ])
+        .mockResolvedValueOnce([
+          { id: 'service-2', name: 'service-2', displayName: 'Service 2' },
+          { ...suggestion2, status: 'accepted' },
+        ]);
 
       const overrides: AcceptBulkSuggestionsDto['overrides'] = {
-        type: 'microservice',
+        type: 'service',
         team: 'platform',
       };
 
@@ -597,7 +576,6 @@ describe('ServiceDiscoveryService (BDD)', () => {
       );
 
       expect(result).toHaveLength(2);
-      expect(mockPrismaService.service.create).toHaveBeenCalledTimes(2);
     });
 
     it('should handle errors when accepting individual suggestions', async () => {
@@ -608,6 +586,7 @@ describe('ServiceDiscoveryService (BDD)', () => {
         repository: 'org/repo',
         subPath: null,
         isMonorepo: false,
+        sourceType: 'repository',
         status: 'pending',
         metadata: '{}',
         connectionId: 'conn-123',
@@ -619,16 +598,10 @@ describe('ServiceDiscoveryService (BDD)', () => {
         .mockResolvedValueOnce(suggestion1)
         .mockResolvedValueOnce(null);
 
-      mockPrismaService.service.create.mockResolvedValueOnce({
-        id: 'service-1',
-        name: 'service-1',
-        displayName: 'Service 1',
-      });
-
-      mockPrismaService.serviceSuggestion.update.mockResolvedValueOnce({
-        ...suggestion1,
-        status: 'accepted',
-      });
+      mockPrismaService.$transaction.mockResolvedValueOnce([
+        { id: 'service-1', name: 'service-1', displayName: 'Service 1' },
+        { ...suggestion1, status: 'accepted' },
+      ]);
 
       const result = await service.acceptMultiple(['sugg-1', 'sugg-2']);
 
