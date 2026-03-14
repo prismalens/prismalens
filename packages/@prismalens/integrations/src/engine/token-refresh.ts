@@ -179,10 +179,16 @@ class GitHubAppRefreshStrategy implements RefreshStrategy {
 	) {
 		// For GitHub App, clientId stores appId and clientSecret stores JSON { privateKey, webhookSecret }
 		const appId = templateInfo.clientId;
-		const secretPayload = JSON.parse(templateInfo.clientSecret) as {
-			privateKey: string;
-			webhookSecret?: string;
-		};
+		let secretPayload: { privateKey: string; webhookSecret?: string };
+		try {
+			secretPayload = JSON.parse(templateInfo.clientSecret) as {
+				privateKey: string;
+				webhookSecret?: string;
+			};
+		} catch {
+			// Fallback: raw PEM string (e.g., from seed script)
+			secretPayload = { privateKey: templateInfo.clientSecret };
+		}
 
 		const installationId = credentials.installationId as string;
 		if (!installationId) {

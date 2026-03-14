@@ -1,19 +1,19 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '@prismalens/config';
 import { TokenVault } from '@prismalens/integrations';
 
 /**
  * NestJS wrapper around TokenVault for credential encryption.
+ * Vault is initialized in the constructor (synchronous) so it's available
+ * before any dependent service's onModuleInit hook runs.
  */
 @Injectable()
-export class CredentialsService implements OnModuleInit {
+export class CredentialsService {
   private readonly logger = new Logger(CredentialsService.name);
-  private vault!: TokenVault;
+  private readonly vault: TokenVault;
 
-  constructor(private configService: ConfigService<EnvironmentVariables>) {}
-
-  onModuleInit(): void {
+  constructor(private configService: ConfigService<EnvironmentVariables>) {
     const keyHex = this.configService.get('PRISMALENS_ENCRYPTION_KEY');
 
     if (!keyHex) {

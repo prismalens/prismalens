@@ -30,7 +30,7 @@ export const prometheus: AuthTemplate = {
 			default: "http://localhost:9090",
 		},
 	],
-	credentialFields: [
+	connectionCredentialFields: [
 		{
 			name: "username",
 			label: "Username",
@@ -57,4 +57,7 @@ export const prometheus: AuthTemplate = {
 		baseUrl: "{{baseUrl}}",
 	},
 	verify: { method: "GET", path: "/api/v1/status/config" },
+	connectionCreation: { mode: "form" },
+	postIntegrationCreation: { action: "none" },
+	display: { authModeLabel: "Basic Auth" },
 };

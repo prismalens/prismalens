@@ -1,34 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-	Activity,
 	AlertCircle,
 	AlertTriangle,
 	ArrowRight,
-	Brain,
-	CheckCircle,
-	Clock,
-	ExternalLink,
 	Lightbulb,
 	MapPin,
 } from "lucide-react";
 import { ApiStatusCheck } from "@/components/ApiStatusCheck";
 import { PageHeader } from "@/components/layout";
-import { EmptyState as SharedEmptyState } from "@/components/ui/empty-state";
 import { LLMWarningBanner } from "@/components/shared/LLMWarningBanner";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLlmSettings } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
+
+import { IncidentDetailPanel } from "@/components/dashboard/IncidentDetailPanel";
+import { NeedsAttentionCard } from "@/components/dashboard/NeedsAttentionCard";
+import { DashboardEmptyState } from "@/components/dashboard/DashboardEmptyState";
+import { IncidentListSkeleton, IncidentDetailSkeleton } from "@/components/dashboard/DashboardSkeletons";
+import { PriorityBadge } from "@/components/investigation/investigation.utils";
 
 // Setup check is handled by parent _authenticated layout route
 export const Route = createFileRoute("/_authenticated/")({
@@ -87,9 +84,11 @@ function CommandCenter() {
 		: activeIncidents[0];
 
 	// Auto-select first incident if none selected
-	if (!selectedIncidentId && activeIncidents.length > 0 && !selectedIncident) {
-		setSelectedIncidentId(activeIncidents[0].id);
-	}
+	useEffect(() => {
+		if (!selectedIncidentId && activeIncidents.length > 0) {
+			setSelectedIncidentId(activeIncidents[0].id);
+		}
+	}, [activeIncidents, selectedIncidentId]);
 
 	const isLoading = incidentsLoading || alertsLoading || recommendationsLoading;
 
@@ -277,350 +276,5 @@ function CommandCenter() {
 				</div>
 			</div>
 		</div>
-	);
-}
-
-// Incident Detail Panel Component
-interface IncidentDetailPanelProps {
-	incident: {
-		id: string;
-		title: string;
-		description?: string | null;
-		status: string;
-		severity: string;
-		triggeredAt: string;
-		alertCount?: number | null;
-		service?: { id: string; name: string } | null;
-		investigations?: Array<{
-			id: string;
-			status: string;
-			confidence?: number | null;
-			rootCause?: string | null;
-			createdAt: string;
-		}>;
-	};
-	isLlmConfigured: boolean;
-}
-
-function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetailPanelProps) {
-	const latestInvestigation = incident.investigations?.[0];
-
-	return (
-		<>
-			<CardHeader className="pb-2">
-				<div className="flex items-start justify-between">
-					<div>
-						<div className="flex items-center gap-2 mb-1">
-							<span className="text-xs text-muted-foreground font-mono">
-								INC-{incident.id.slice(0, 8)}
-							</span>
-							<SeverityBadge severity={incident.severity as "critical" | "high" | "medium" | "low" | "info"} />
-							<StatusBadge status={incident.status as "triggered" | "acknowledged" | "investigating" | "identified" | "monitoring" | "resolved" | "closed" | "correlated" | "suppressed"} />
-						</div>
-						<CardTitle className="text-lg">{incident.title}</CardTitle>
-						<p className="text-sm text-muted-foreground mt-1">
-							Service: {incident.service?.name || "Unknown"} • {incident.alertCount ?? 0} alerts
-						</p>
-					</div>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents/$id" params={{ id: incident.id }}>
-							View Full Detail <ExternalLink className="ml-1 h-3 w-3" />
-						</Link>
-					</Button>
-				</div>
-			</CardHeader>
-			<CardContent>
-				<Tabs defaultValue="overview" className="space-y-4">
-					<TabsList>
-						<TabsTrigger value="overview">Overview</TabsTrigger>
-						<TabsTrigger value="alerts">Alerts ({incident.alertCount ?? 0})</TabsTrigger>
-						<TabsTrigger value="investigation">Investigation</TabsTrigger>
-						<TabsTrigger value="timeline">Timeline</TabsTrigger>
-					</TabsList>
-
-					<TabsContent value="overview" className="space-y-4">
-						{incident.description && (
-							<div>
-								<h4 className="text-sm font-medium mb-1">Description</h4>
-								<p className="text-sm text-muted-foreground">{incident.description}</p>
-							</div>
-						)}
-						<div className="grid grid-cols-2 gap-4">
-							<div className="p-3 rounded-lg bg-muted/50">
-								<div className="text-xs text-muted-foreground">Duration</div>
-								<div className="text-lg font-semibold">
-									{formatDistanceToNow(new Date(incident.triggeredAt))}
-								</div>
-							</div>
-							<div className="p-3 rounded-lg bg-muted/50">
-								<div className="text-xs text-muted-foreground">Alerts</div>
-								<div className="text-lg font-semibold">{incident.alertCount ?? 0}</div>
-							</div>
-						</div>
-					</TabsContent>
-
-					<TabsContent value="alerts">
-						<div className="text-sm text-muted-foreground text-center py-8">
-							<Link to="/incidents/$id" params={{ id: incident.id }} className="text-primary hover:underline">
-								View all {incident.alertCount ?? 0} alerts in incident detail
-							</Link>
-						</div>
-					</TabsContent>
-
-					<TabsContent value="investigation" className="space-y-4">
-						{latestInvestigation ? (
-							<div className="space-y-3">
-								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-2">
-										<InvestigationStatusBadge status={latestInvestigation.status} />
-										{latestInvestigation.confidence && (
-											<span className="text-sm text-muted-foreground">
-												{Math.round(latestInvestigation.confidence * 100)}% confidence
-											</span>
-										)}
-									</div>
-									<Button variant="outline" size="sm" asChild>
-										<Link to="/investigations/$id" params={{ id: latestInvestigation.id }}>
-											View Canvas
-										</Link>
-									</Button>
-								</div>
-								{latestInvestigation.status === "running" && (
-									<div className="space-y-2">
-										<Progress value={50} className="h-2" />
-										<p className="text-xs text-muted-foreground text-center">
-											Investigation in progress...
-										</p>
-									</div>
-								)}
-								{latestInvestigation.rootCause && (
-									<div className="p-3 rounded-lg bg-muted/50">
-										<h4 className="text-sm font-medium mb-1">Root Cause</h4>
-										<p className="text-sm text-muted-foreground">
-											{latestInvestigation.rootCause}
-										</p>
-									</div>
-								)}
-							</div>
-						) : (
-							<div className="flex flex-col items-center justify-center py-8">
-								<Brain className="h-8 w-8 text-muted-foreground/50 mb-2" />
-								<p className="text-sm text-muted-foreground mb-3">No investigation yet</p>
-								{isLlmConfigured ? (
-									<Button size="sm" asChild>
-										<Link to="/incidents/$id" params={{ id: incident.id }}>
-											<Brain className="h-4 w-4 mr-2" />
-											Start Investigation
-										</Link>
-									</Button>
-								) : (
-									<p className="text-xs text-muted-foreground">
-										Configure LLM in settings to enable AI investigations
-									</p>
-								)}
-							</div>
-						)}
-					</TabsContent>
-
-					<TabsContent value="timeline">
-						<div className="text-sm text-muted-foreground text-center py-8">
-							<Link to="/incidents/$id" params={{ id: incident.id }} className="text-primary hover:underline">
-								View full timeline in incident detail
-							</Link>
-						</div>
-					</TabsContent>
-				</Tabs>
-
-				{/* Quick Actions */}
-				<div className="flex gap-2 mt-4 pt-4 border-t">
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents/$id" params={{ id: incident.id }}>
-							Acknowledge
-						</Link>
-					</Button>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents/$id" params={{ id: incident.id }}>
-							Resolve
-						</Link>
-					</Button>
-				</div>
-			</CardContent>
-		</>
-	);
-}
-
-// Needs Attention Card Component
-interface NeedsAttentionCardProps {
-	title: string;
-	count: number;
-	icon: React.ReactNode;
-	loading?: boolean;
-	emptyText: string;
-	viewAllHref: string;
-	viewAllText: string;
-	children?: React.ReactNode;
-}
-
-function NeedsAttentionCard({
-	title,
-	count,
-	icon,
-	loading,
-	emptyText,
-	viewAllHref,
-	viewAllText,
-	children,
-}: NeedsAttentionCardProps) {
-	return (
-		<Card>
-			<CardHeader className="pb-2">
-				<div className="flex items-center justify-between">
-					<CardTitle className="text-base font-medium flex items-center gap-2">
-						{icon}
-						{title}
-					</CardTitle>
-					<Badge variant="outline">{loading ? "-" : count}</Badge>
-				</div>
-			</CardHeader>
-			<CardContent>
-				{loading ? (
-					<div className="space-y-2">
-						{[1, 2, 3].map((i) => (
-							<Skeleton key={i} className="h-10 w-full" />
-						))}
-					</div>
-				) : count === 0 ? (
-					<div className="py-4">
-						<p className="text-sm text-muted-foreground">{emptyText}</p>
-					</div>
-				) : (
-					<>
-						<div className="divide-y divide-border">{children}</div>
-						<Button variant="ghost" size="sm" className="w-full mt-2" asChild>
-							<Link to={viewAllHref}>
-								{viewAllText} <ArrowRight className="ml-1 h-4 w-4" />
-							</Link>
-						</Button>
-					</>
-				)}
-			</CardContent>
-		</Card>
-	);
-}
-
-// Empty State Component
-function DashboardEmptyState() {
-	return (
-		<Card>
-			<CardContent className="py-10">
-				<SharedEmptyState
-					icon={CheckCircle}
-					title="No active incidents"
-					actions={
-						<div className="flex flex-wrap justify-center gap-3">
-							<Button variant="outline" size="sm" asChild>
-								<Link to="/settings" search={{ tab: "integrations" }}>Configure Integrations</Link>
-							</Button>
-							<Button variant="outline" size="sm" asChild>
-								<Link to="/services">Add Services</Link>
-							</Button>
-							<Button variant="outline" size="sm" asChild>
-								<Link to="/incidents">View Historical Incidents</Link>
-							</Button>
-						</div>
-					}
-				/>
-			</CardContent>
-		</Card>
-	);
-}
-
-// Helper Components
-function InvestigationStatusBadge({ status }: { status: string }) {
-	const statusConfig: Record<string, { icon: React.ElementType; className: string }> = {
-		completed: {
-			icon: CheckCircle,
-			className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-		},
-		running: {
-			icon: Activity,
-			className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-		},
-		failed: {
-			icon: AlertCircle,
-			className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-		},
-		pending: {
-			icon: Clock,
-			className: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-		},
-	};
-
-	const config = statusConfig[status] || statusConfig.pending;
-	const Icon = config.icon;
-
-	return (
-		<Badge variant="secondary" className={config.className}>
-			<Icon className="w-3 h-3 mr-1" />
-			{status}
-		</Badge>
-	);
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-	const colors: Record<string, string> = {
-		critical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-		high: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-		medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-		low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-	};
-
-	return (
-		<Badge variant="secondary" className={colors[priority.toLowerCase()] || colors.medium}>
-			{priority}
-		</Badge>
-	);
-}
-
-// Skeleton Components
-function IncidentListSkeleton() {
-	return (
-		<div className="divide-y divide-border">
-			{[1, 2, 3, 4].map((i) => (
-				<div key={i} className="px-4 py-3">
-					<div className="flex items-center gap-2 mb-2">
-						<Skeleton className="h-5 w-16" />
-						<Skeleton className="h-4 w-20" />
-					</div>
-					<Skeleton className="h-4 w-3/4 mb-1" />
-					<Skeleton className="h-3 w-1/2" />
-				</div>
-			))}
-		</div>
-	);
-}
-
-function IncidentDetailSkeleton() {
-	return (
-		<>
-			<CardHeader className="pb-2">
-				<div className="flex items-center gap-2 mb-2">
-					<Skeleton className="h-4 w-24" />
-					<Skeleton className="h-5 w-16" />
-					<Skeleton className="h-5 w-20" />
-				</div>
-				<Skeleton className="h-6 w-3/4" />
-				<Skeleton className="h-4 w-1/2 mt-2" />
-			</CardHeader>
-			<CardContent>
-				<div className="space-y-4">
-					<Skeleton className="h-10 w-full" />
-					<div className="grid grid-cols-2 gap-4">
-						<Skeleton className="h-20 w-full" />
-						<Skeleton className="h-20 w-full" />
-					</div>
-				</div>
-			</CardContent>
-		</>
 	);
 }

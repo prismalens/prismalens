@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  type OnModuleInit,
 } from '@nestjs/common';
 import type {
   Connection,
@@ -60,14 +61,22 @@ export interface IntegrationContext {
 const MAX_CONNECTIONS_PER_QUERY = 1000;
 
 @Injectable()
-export class IntegrationsService {
+export class IntegrationsService implements OnModuleInit {
   private readonly logger = new Logger(IntegrationsService.name);
-  private readonly authManager: AuthManager;
+  private authManager!: AuthManager;
+  private authManagerInitialized = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly credentialsService: CredentialsService,
-  ) {
+  ) {}
+
+  onModuleInit(): void {
+    this.initAuthManager();
+  }
+
+  private initAuthManager(): void {
+    if (this.authManagerInitialized) return;
     const vault = this.credentialsService.getVault();
 
     const deps: AuthManagerDeps = {
@@ -144,6 +153,7 @@ export class IntegrationsService {
     };
 
     this.authManager = new AuthManager(vault, deps);
+    this.authManagerInitialized = true;
   }
 
   private getAuthManager(): AuthManager {
@@ -186,7 +196,7 @@ export class IntegrationsService {
     let clientIdEnc: Uint8Array<ArrayBuffer> | null = null;
     let clientSecretEnc: Uint8Array<ArrayBuffer> | null = null;
 
-    if (template.authMode === 'github_app') {
+    if (template.githubApp) {
       // For GitHub App: appId → clientIdEnc, { privateKey, webhookSecret } → clientSecretEnc
       // clientId/clientSecret are plain strings — use vault.encrypt directly
       // (not encryptJSON, which would double-serialize the already-JSON clientSecret)
@@ -480,7 +490,7 @@ export class IntegrationsService {
     }
 
     const template = getTemplate(integration.templateId);
-    if (!template || template.authMode !== 'github_app') {
+    if (!template || !template.githubApp) {
       throw new BadRequestException(
         'Integration is not a GitHub App integration',
       );
@@ -873,7 +883,7 @@ export class IntegrationsService {
       let credentials: Record<string, unknown>;
 
       // For GitHub App, resolve a fresh installation token
-      if (template?.authMode === 'github_app') {
+      if (template?.githubApp) {
         try {
           const token = await this.resolveAccessToken(conn.id);
           credentials = { accessToken: token };

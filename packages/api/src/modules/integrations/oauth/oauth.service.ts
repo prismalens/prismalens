@@ -104,7 +104,7 @@ export class OAuthService implements OAuth2StoreDeps {
       );
     }
 
-    if (template.authMode !== 'oauth2') {
+    if (!template.oauth2) {
       throw new BadRequestException(
         `Template '${template.id}' does not support OAuth`,
       );

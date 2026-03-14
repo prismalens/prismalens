@@ -134,7 +134,7 @@ export function ServiceIntegrationsTab({
 						<div>
 							<CardTitle className="text-base">Global Integrations</CardTitle>
 							<CardDescription>
-								Inherited from connection-level settings
+								Inherited from global integration settings
 							</CardDescription>
 						</div>
 					</div>

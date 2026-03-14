@@ -374,11 +374,17 @@ export class IntegrationsController {
       connectionFields: template.connectionFields as
         | AuthTemplateResponse['connectionFields']
         | undefined,
-      credentialFields: template.credentialFields as
-        | AuthTemplateResponse['credentialFields']
+      integrationCredentialFields: template.integrationCredentialFields as
+        | AuthTemplateResponse['integrationCredentialFields']
         | undefined,
-      hasOAuth:
-        template.authMode === 'oauth2' || template.authMode === 'github_app',
+      connectionCredentialFields: template.connectionCredentialFields as
+        | AuthTemplateResponse['connectionCredentialFields']
+        | undefined,
+      hasOAuth: template.connectionCreation.mode === 'oauth_redirect',
+      authModeLabel: template.display.authModeLabel,
+      connectionCreationMode: template.connectionCreation.mode,
+      postCreationAction: template.postIntegrationCreation.action,
+      postCreationNavigateTo: template.postIntegrationCreation.navigateTo,
     };
   }
 

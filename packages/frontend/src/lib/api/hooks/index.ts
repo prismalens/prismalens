@@ -96,6 +96,7 @@ export {
 	useTemplate,
 	useIntegrations,
 	useCreateIntegration,
+	useUpdateIntegration,
 	useDeleteIntegration,
 	useConnections,
 	useConnection,

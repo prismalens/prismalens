@@ -48,7 +48,7 @@ export const githubApp: AuthTemplate = {
 	icon: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
 	docsUrl: "https://docs.github.com/en/apps/creating-github-apps",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/github-app/",
-	credentialFields: [
+	integrationCredentialFields: [
 		{
 			name: "appId",
 			label: "App ID",
@@ -113,6 +113,12 @@ export const githubApp: AuthTemplate = {
 		},
 	},
 	verify: { method: "GET", path: "/installation/repositories?per_page=1" },
+	connectionCreation: { mode: "form" },
+	postIntegrationCreation: {
+		action: "navigate",
+		navigateTo: "/settings/integrations/configure",
+	},
+	display: { authModeLabel: "GitHub App" },
 };
 
 // =============================================================================
@@ -156,7 +162,7 @@ export const githubToken: AuthTemplate = {
 			description: "GitHub organization name",
 		},
 	],
-	credentialFields: [
+	connectionCredentialFields: [
 		{
 			name: "apiKey",
 			label: "Personal Access Token",
@@ -180,4 +186,7 @@ export const githubToken: AuthTemplate = {
 		},
 	},
 	verify: { method: "GET", path: "/user" },
+	connectionCreation: { mode: "form" },
+	postIntegrationCreation: { action: "none" },
+	display: { authModeLabel: "API Key" },
 };

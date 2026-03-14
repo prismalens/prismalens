@@ -23,7 +23,7 @@ export const render: AuthTemplate = {
 	docsUrl: "https://docs.render.com/api",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/render/",
 	requiredPermissions: renderPermissions,
-	credentialFields: [
+	connectionCredentialFields: [
 		{
 			name: "apiKey",
 			label: "API Key",
@@ -42,4 +42,7 @@ export const render: AuthTemplate = {
 		headers: { "Content-Type": "application/json" },
 	},
 	verify: { method: "GET", path: "/v1/owners" },
+	connectionCreation: { mode: "form" },
+	postIntegrationCreation: { action: "none" },
+	display: { authModeLabel: "API Key" },
 };

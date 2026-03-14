@@ -39,8 +39,13 @@ export const AuthTemplateResponseSchema = z.object({
 	docsUrl: z.string().optional(),
 	setupDocsUrl: z.string().optional(),
 	connectionFields: z.array(TemplateFieldSchema).optional(),
-	credentialFields: z.array(TemplateFieldSchema).optional(),
+	integrationCredentialFields: z.array(TemplateFieldSchema).optional(),
+	connectionCredentialFields: z.array(TemplateFieldSchema).optional(),
 	hasOAuth: z.boolean(),
+	authModeLabel: z.string(),
+	connectionCreationMode: z.enum(["form", "oauth_redirect"]),
+	postCreationAction: z.enum(["none", "oauth_redirect", "navigate"]),
+	postCreationNavigateTo: z.string().optional(),
 });
 
 // =============================================================================

@@ -16,7 +16,9 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+.env.seed
 !.env.example
+!.env.seed.example
 
 # IDE
 .idea/
@@ -72,3 +74,6 @@ secrets.yaml
 
 # Internal documentation
 internal-docs
+
+# Sensitive files
+*.pem

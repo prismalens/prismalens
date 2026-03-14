@@ -58,6 +58,9 @@ export const slack: AuthTemplate = {
 		baseUrl: "https://slack.com/api",
 	},
 	verify: { method: "POST", path: "/auth.test" },
+	connectionCreation: { mode: "oauth_redirect" },
+	postIntegrationCreation: { action: "oauth_redirect" },
+	display: { authModeLabel: "OAuth" },
 };
 
 // =============================================================================
@@ -82,7 +85,7 @@ export const slackToken: AuthTemplate = {
 	docsUrl: "https://api.slack.com/messaging/webhooks",
 	setupDocsUrl: "https://docs.prismalens.io/integrations/slack-bot-token/",
 	requiredPermissions: slackTokenPermissions,
-	credentialFields: [
+	connectionCredentialFields: [
 		{
 			name: "apiKey",
 			label: "Bot Token",
@@ -110,4 +113,7 @@ export const slackToken: AuthTemplate = {
 		baseUrl: "https://slack.com/api",
 	},
 	verify: { method: "POST", path: "/auth.test" },
+	connectionCreation: { mode: "form" },
+	postIntegrationCreation: { action: "none" },
+	display: { authModeLabel: "API Key" },
 };

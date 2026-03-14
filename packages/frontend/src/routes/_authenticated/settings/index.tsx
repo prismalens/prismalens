@@ -7,15 +7,17 @@ import {
 	IntegrationsSettings,
 	InvestigationSettings,
 } from "@/components/settings";
+import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
 import { PageHeader } from "@/components/layout";
 import { cn } from "@/lib/utils";
 
-type SettingsTab = "ai" | "investigation" | "integrations" | "danger";
+type SettingsTab = "ai" | "investigation" | "integrations" | "connections" | "danger";
 
 const TABS: { value: SettingsTab; label: string }[] = [
 	{ value: "ai", label: "AI Provider" },
 	{ value: "investigation", label: "Investigation" },
 	{ value: "integrations", label: "Integrations" },
+	{ value: "connections", label: "Connections" },
 	{ value: "danger", label: "Danger Zone" },
 ];
 
@@ -68,6 +70,7 @@ function SettingsPage() {
 					{tab === "ai" && <AIProviderSettings />}
 					{tab === "investigation" && <InvestigationSettings />}
 					{tab === "integrations" && <IntegrationsSettings />}
+					{tab === "connections" && <ConnectionsTab />}
 					{tab === "danger" && <DangerZoneSettings />}
 				</div>
 			</div>

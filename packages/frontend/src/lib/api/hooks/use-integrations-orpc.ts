@@ -91,6 +91,25 @@ export function useCreateIntegration() {
 }
 
 /**
+ * Update an integration (label, credentials)
+ */
+export function useUpdateIntegration() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.integrations.updateIntegration.mutationOptions(),
+		onSuccess: (_data, variables) => {
+			queryClient.invalidateQueries({
+				queryKey: integrationsKeys.integrations.all(),
+			});
+			queryClient.invalidateQueries({
+				queryKey: integrationsKeys.integrations.detail(variables.id),
+			});
+		},
+	});
+}
+
+/**
  * Delete an integration
  */
 export function useDeleteIntegration() {

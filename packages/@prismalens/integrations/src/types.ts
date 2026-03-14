@@ -57,6 +57,7 @@ export interface OAuth2Config {
 	disablePkce?: boolean;
 	clientCredentialSource?: "body" | "header" | "both";
 	refreshBuffer?: number;
+	grantType?: "authorization_code" | "client_credentials";
 }
 
 // =============================================================================
@@ -82,7 +83,10 @@ export interface AuthTemplate {
 	docsUrl?: string;
 	setupDocsUrl?: string;
 	connectionFields?: TemplateField[];
-	credentialFields?: TemplateField[];
+	/** Secrets for Integration setup (appId, privateKey, clientId, clientSecret) */
+	integrationCredentialFields?: TemplateField[];
+	/** Secrets for Connection setup (apiKey, password, token) */
+	connectionCredentialFields?: TemplateField[];
 	oauth2?: OAuth2Config;
 	githubApp?: GitHubAppConfig;
 	authenticate: {
@@ -102,6 +106,19 @@ export interface AuthTemplate {
 	};
 	/** Permission requirements — single source of truth for capabilities, defaultPermissions, and scopes */
 	requiredPermissions?: PermissionRequirement[];
+	/** How connections are created for this template */
+	connectionCreation: {
+		mode: "form" | "oauth_redirect";
+	};
+	/** What happens after integration creation */
+	postIntegrationCreation: {
+		action: "none" | "oauth_redirect" | "navigate";
+		navigateTo?: string;
+	};
+	/** Display metadata */
+	display: {
+		authModeLabel: string;
+	};
 }
 
 // =============================================================================
