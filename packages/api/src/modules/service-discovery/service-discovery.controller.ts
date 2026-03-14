@@ -19,9 +19,9 @@ export class ServiceDiscoveryController {
       // GET /service-discovery/suggestions - List service suggestions
       listSuggestions: implement(
         serviceDiscoveryContract.listSuggestions,
-      ).handler(async () => {
+      ).handler(async ({ input }) => {
         const suggestions =
-          await this.serviceDiscoveryService.getPendingSuggestions();
+          await this.serviceDiscoveryService.getSuggestions(input);
         return suggestions.map((s) => this.serializeSuggestion(s));
       }),
 
@@ -143,6 +143,11 @@ export class ServiceDiscoveryController {
       suggestedName: suggestion.suggestedName ?? '',
       isMonorepo: suggestion.isMonorepo ?? false,
       subPath: suggestion.subPath ?? null,
+      sourceType:
+        ((suggestion as Record<string, unknown>).sourceType as string) ??
+        'repository',
+      createdAt: suggestion.createdAt.toISOString(),
+      updatedAt: suggestion.updatedAt.toISOString(),
     } as ServiceSuggestion;
   }
 }

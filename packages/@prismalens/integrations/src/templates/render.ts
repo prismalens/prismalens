@@ -39,7 +39,7 @@ export const render: AuthTemplate = {
 	},
 	proxy: {
 		baseUrl: "https://api.render.com",
-		headers: { "Content-Type": "application/json" },
+		headers: { Accept: "application/json" },
 	},
 	verify: { method: "GET", path: "/v1/owners" },
 	connectionCreation: { mode: "form" },

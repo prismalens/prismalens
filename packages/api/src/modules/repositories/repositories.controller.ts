@@ -1,60 +1,105 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  NotFoundException,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
-import { RepositoriesService } from './repositories.service.js';
+import { Controller } from '@nestjs/common';
+import { Implement, implement, ORPCError } from '@orpc/nest';
+import { repositoriesContract } from '@prismalens/contracts';
 import type {
-  BatchCreateRepositoriesDto,
-  LinkRepositoryDto,
-} from './dto/index.js';
+  Repository,
+  RepositoryWithServices,
+  ServiceRepository,
+} from '@prismalens/contracts/schemas';
+import type { Repository as PrismaRepository } from '@prismalens/database';
+import { RepositoriesService } from './repositories.service.js';
 
-@Controller('repositories')
+function serializeRepository(repo: PrismaRepository): Repository {
+  return {
+    ...repo,
+    createdAt: repo.createdAt.toISOString(),
+    updatedAt: repo.updatedAt.toISOString(),
+    metadata:
+      typeof repo.metadata === 'string'
+        ? (JSON.parse(repo.metadata) as Record<string, unknown>)
+        : (repo.metadata as Record<string, unknown> | null),
+  } as Repository;
+}
+
+function serializeRepositoryWithServices(
+  repo: PrismaRepository & {
+    services?: Array<{ createdAt: Date; [key: string]: unknown }>;
+  },
+): RepositoryWithServices {
+  return {
+    ...serializeRepository(repo),
+    services: repo.services?.map((s) => ({
+      ...s,
+      createdAt: s.createdAt.toISOString(),
+    })) as ServiceRepository[] | undefined,
+  } as RepositoryWithServices;
+}
+
+@Controller()
 export class RepositoriesController {
   constructor(private readonly repositoriesService: RepositoriesService) {}
 
-  @Post('batch')
-  async batchCreate(@Body() dto: BatchCreateRepositoriesDto) {
-    return this.repositoriesService.batchCreate(dto);
-  }
+  @Implement(repositoriesContract)
+  repositories() {
+    return {
+      // POST /repositories/batch - Batch create repositories
+      batchCreate: implement(repositoriesContract.batchCreate).handler(
+        async ({ input }) => {
+          const result = await this.repositoriesService.batchCreate(input);
+          return {
+            created: result.created,
+            repositories: result.repositories.map(serializeRepository),
+          };
+        },
+      ),
 
-  @Get()
-  async list(
-    @Query('connectionId') connectionId?: string,
-    @Query('search') search?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    return this.repositoriesService.findAll({
-      connectionId,
-      search,
-      limit: limit ? Number(limit) : undefined,
-      offset: offset ? Number(offset) : undefined,
-    });
-  }
+      // GET /repositories - List all repositories
+      list: implement(repositoriesContract.list).handler(async ({ input }) => {
+        const { data, total } = await this.repositoriesService.findAll({
+          connectionId: input.connectionId,
+          search: input.search,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return {
+          data: data.map(serializeRepositoryWithServices),
+          total,
+        };
+      }),
 
-  @Get(':id')
-  async get(@Param('id') id: string) {
-    const repo = await this.repositoriesService.findById(id);
-    if (!repo) throw new NotFoundException('Repository not found');
-    return repo;
-  }
+      // GET /repositories/:id - Get repository by ID
+      get: implement(repositoriesContract.get).handler(async ({ input }) => {
+        const repo = await this.repositoriesService.findById(input.id);
+        if (!repo) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Repository not found',
+          });
+        }
+        return serializeRepositoryWithServices(repo);
+      }),
 
-  @Post(':id/link')
-  async link(@Param('id') id: string, @Body() dto: LinkRepositoryDto) {
-    return this.repositoriesService.linkToService(id, dto);
-  }
+      // POST /repositories/:id/link - Link repository to service
+      link: implement(repositoriesContract.link).handler(async ({ input }) => {
+        const { id, ...linkData } = input;
+        const result = await this.repositoriesService.linkToService(
+          id,
+          linkData,
+        );
+        return {
+          ...result,
+          createdAt: result.createdAt.toISOString(),
+        };
+      }),
 
-  @Delete(':id/unlink/:serviceId')
-  async unlink(
-    @Param('id') id: string,
-    @Param('serviceId') serviceId: string,
-  ) {
-    await this.repositoriesService.unlinkFromService(id, serviceId);
+      // DELETE /repositories/:id/unlink/:serviceId - Unlink repository
+      unlink: implement(repositoriesContract.unlink).handler(
+        async ({ input }) => {
+          await this.repositoriesService.unlinkFromService(
+            input.id,
+            input.serviceId,
+          );
+        },
+      ),
+    };
   }
 }

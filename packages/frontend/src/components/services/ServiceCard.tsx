@@ -8,32 +8,17 @@ import { Link } from "@tanstack/react-router";
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import {
 	AlertTriangle,
-	Box,
-	Database,
-	ExternalLink,
 	GitBranch,
-	Globe,
-	Server,
-	Zap,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { serviceTypeIcons } from "./service-detail.utils";
 
 export interface ServiceCardProps {
 	service: ServiceWithRelations;
 }
-
-const serviceTypeIcons: Record<string, React.ReactNode> = {
-	service: <Server className="h-5 w-5" />,
-	database: <Database className="h-5 w-5" />,
-	queue: <Zap className="h-5 w-5" />,
-	cache: <Box className="h-5 w-5" />,
-	gateway: <Globe className="h-5 w-5" />,
-	external: <ExternalLink className="h-5 w-5" />,
-	infrastructure: <Server className="h-5 w-5" />,
-};
 
 const tierColors: Record<string, string> = {
 	tier_1: "bg-red-500 text-white",

@@ -30,6 +30,29 @@ interface RenderServiceItem {
 	cursor: string;
 }
 
+interface RenderProjectEnvironment {
+	id: string;
+	name: string;
+	projectId: string;
+	serviceIds?: string[];
+}
+
+interface RenderProject {
+	id: string;
+	name: string;
+	environments?: RenderProjectEnvironment[];
+}
+
+interface RenderProjectItem {
+	project: RenderProject;
+	cursor: string;
+}
+
+interface ProjectContext {
+	project: string;
+	environment?: string;
+}
+
 async function json<T>(response: Response): Promise<T> {
 	if (!response.ok) {
 		const errorText = await response.text();
@@ -48,7 +71,10 @@ function mapRenderStatus(
 	return "live";
 }
 
-function mapService(item: RenderServiceItem): DeploymentService {
+function mapService(
+	item: RenderServiceItem,
+	context?: ProjectContext,
+): DeploymentService {
 	const svc = item.service;
 	return {
 		id: svc.id,
@@ -59,6 +85,8 @@ function mapService(item: RenderServiceItem): DeploymentService {
 		repo: svc.repo,
 		branch: svc.branch,
 		region: svc.serviceDetails?.region,
+		project: context?.project,
+		environment: context?.environment,
 		createdAt: svc.createdAt,
 		updatedAt: svc.updatedAt,
 	};
@@ -69,11 +97,15 @@ export class RenderProvider implements DeploymentProvider {
 
 	/**
 	 * List all services from Render.
+	 * Enriches with project/environment context when available.
 	 * Uses cursor-based pagination — iterates until response is empty.
 	 */
 	async listServices(
 		request: AuthenticatedRequestFn,
 	): Promise<DeploymentService[]> {
+		// Best-effort: fetch project context for enrichment
+		const projectMap = await this.fetchProjectMap(request);
+
 		const results: DeploymentService[] = [];
 		let cursor: string | undefined;
 
@@ -88,7 +120,8 @@ export class RenderProvider implements DeploymentProvider {
 			if (items.length === 0) break;
 
 			for (const item of items) {
-				results.push(mapService(item));
+				const context = projectMap.get(item.service.id);
+				results.push(mapService(item, context));
 			}
 
 			cursor = items[items.length - 1]?.cursor;
@@ -123,5 +156,55 @@ export class RenderProvider implements DeploymentProvider {
 		} catch {
 			return false;
 		}
+	}
+
+	/**
+	 * Fetch project/environment context for all services.
+	 * Returns a map of serviceId -> { project, environment }.
+	 * Gracefully returns empty map on failure.
+	 */
+	private async fetchProjectMap(
+		request: AuthenticatedRequestFn,
+	): Promise<Map<string, ProjectContext>> {
+		const map = new Map<string, ProjectContext>();
+
+		try {
+			let cursor: string | undefined;
+
+			while (true) {
+				const path = cursor
+					? `/v1/projects?limit=100&cursor=${encodeURIComponent(cursor)}`
+					: "/v1/projects?limit=100";
+
+				const response = await request("GET", path);
+				const items = await json<RenderProjectItem[]>(response);
+
+				if (items.length === 0) break;
+
+				for (const item of items) {
+					const proj = item.project;
+					if (!proj.environments) continue;
+
+					for (const env of proj.environments) {
+						if (!env.serviceIds) continue;
+						for (const serviceId of env.serviceIds) {
+							map.set(serviceId, {
+								project: proj.name,
+								environment: env.name,
+							});
+						}
+					}
+				}
+
+				cursor = items[items.length - 1]?.cursor;
+				if (!cursor) break;
+			}
+		} catch (error) {
+			// Projects API may not be available or user may have no projects.
+			// Graceful fallback — services will be listed without project context.
+			console.warn("[RenderProvider] fetchProjectMap failed (non-blocking):", error);
+		}
+
+		return map;
 	}
 }

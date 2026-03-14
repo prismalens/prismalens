@@ -23,12 +23,15 @@ export function useRepositories(params?: {
 	search?: string;
 	limit?: number;
 	offset?: number;
+	enabled?: boolean;
 }) {
-	return useQuery(
-		orpc.repositories.list.queryOptions({
-			input: params ?? {},
+	const { enabled = true, ...input } = params ?? {};
+	return useQuery({
+		...orpc.repositories.list.queryOptions({
+			input,
 		}),
-	);
+		enabled,
+	});
 }
 
 /**

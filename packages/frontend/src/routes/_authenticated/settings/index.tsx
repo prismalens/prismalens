@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	AIProviderSettings,
 	DangerZoneSettings,
@@ -9,6 +11,7 @@ import {
 } from "@/components/settings";
 import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
 import { PageHeader } from "@/components/layout";
+import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
 type SettingsTab = "ai" | "investigation" | "integrations" | "connections" | "danger";
@@ -33,6 +36,13 @@ export const Route = createFileRoute("/_authenticated/settings/")({
 function SettingsPage() {
 	const { tab } = Route.useSearch();
 	const navigate = useNavigate({ from: "/settings" });
+	const queryClient = useQueryClient();
+
+	// Invalidate settings-related queries when switching tabs so data is fresh
+	useEffect(() => {
+		queryClient.invalidateQueries({ queryKey: orpc.integrations.key() });
+		queryClient.invalidateQueries({ queryKey: orpc.settings.key() });
+	}, [tab, queryClient]);
 
 	return (
 		<div className="px-4 py-6 sm:px-0">

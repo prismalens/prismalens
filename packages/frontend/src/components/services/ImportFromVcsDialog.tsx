@@ -111,9 +111,9 @@ export function ImportFromVcsDialog({
 		results: Array<{ name: string; success: boolean; error?: string }>;
 	} | null>(null);
 
-	// Queries
+	// Queries (gate on open to avoid unnecessary API calls)
 	const { data: allConnections = [] } = useConnections();
-	const { data: repoResponse } = useRepositories();
+	const { data: repoResponse } = useRepositories({ enabled: open });
 	const existingRepos = repoResponse?.data ?? [];
 	const batchCreateRepositories = useBatchCreateRepositories();
 	const createService = useCreateService();
@@ -140,11 +140,11 @@ export function ImportFromVcsDialog({
 		? getProviderName(activeConnection.integration?.templateId ?? "")
 		: "";
 
-	// Git data queries (enabled when connection selected)
+	// Git data queries (only when dialog is open and connection selected)
 	const { data: organizations = [], isLoading: isLoadingOrgs } =
-		useGitOrganizations(activeConnectionId);
+		useGitOrganizations(open ? activeConnectionId : "");
 	const { data: repositories = [], isLoading: isLoadingRepos } =
-		useGitRepositories(activeConnectionId, selectedOrg);
+		useGitRepositories(open ? activeConnectionId : "", selectedOrg);
 
 	// Build set of already-imported repo fullNames for duplicate detection
 	const importedRepoFullNames = useMemo(() => {
@@ -568,6 +568,13 @@ export function ImportFromVcsDialog({
 								Also create a Service for each repository
 							</span>
 						</label>
+
+						{!createServices && (
+							<p className="text-xs text-amber-600 dark:text-amber-400">
+								Repositories imported without services can be linked later from
+								the services list page.
+							</p>
+						)}
 
 						{/* Bulk tier selection */}
 						{createServices && (

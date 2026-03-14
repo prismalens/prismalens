@@ -107,6 +107,9 @@ export const DeploymentServiceSchema = z.object({
 	repo: z.string().optional(), // repository URL from the deployment platform
 	branch: z.string().optional(),
 	region: z.string().optional(),
+	project: z.string().optional(), // Render project, Vercel project, GCP project
+	environment: z.string().optional(), // "production", "staging", etc.
+	dependencies: z.array(z.string()).optional(), // names/IDs of services this depends on
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
 });

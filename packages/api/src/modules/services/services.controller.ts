@@ -222,6 +222,75 @@ export class ServicesController {
     const serialized = this.serializeService(service);
 
     const withDeps = service as ServiceWithDependencies;
+    const withRelations = service as Record<string, unknown>;
+
+    // Serialize nested repositories (ServiceRepository + Repository)
+    const repositories = Array.isArray(withRelations.repositories)
+      ? (withRelations.repositories as Array<Record<string, unknown>>).map(
+          (sr) => ({
+            ...sr,
+            createdAt:
+              sr.createdAt instanceof Date
+                ? sr.createdAt.toISOString()
+                : sr.createdAt,
+            repository: sr.repository
+              ? {
+                  ...(sr.repository as Record<string, unknown>),
+                  createdAt:
+                    (sr.repository as Record<string, unknown>)
+                      .createdAt instanceof Date
+                      ? (
+                          (sr.repository as Record<string, unknown>)
+                            .createdAt as Date
+                        ).toISOString()
+                      : (sr.repository as Record<string, unknown>).createdAt,
+                  updatedAt:
+                    (sr.repository as Record<string, unknown>)
+                      .updatedAt instanceof Date
+                      ? (
+                          (sr.repository as Record<string, unknown>)
+                            .updatedAt as Date
+                        ).toISOString()
+                      : (sr.repository as Record<string, unknown>).updatedAt,
+                  metadata:
+                    typeof (sr.repository as Record<string, unknown>)
+                      .metadata === 'string'
+                      ? JSON.parse(
+                          (sr.repository as Record<string, unknown>)
+                            .metadata as string,
+                        )
+                      : (sr.repository as Record<string, unknown>).metadata,
+                }
+              : undefined,
+          }),
+        )
+      : [];
+
+    // Serialize nested deployments
+    const deployments = Array.isArray(withRelations.deployments)
+      ? (withRelations.deployments as Array<Record<string, unknown>>).map(
+          (d) => ({
+            ...d,
+            createdAt:
+              d.createdAt instanceof Date
+                ? d.createdAt.toISOString()
+                : d.createdAt,
+            updatedAt:
+              d.updatedAt instanceof Date
+                ? d.updatedAt.toISOString()
+                : d.updatedAt,
+            lastDeployedAt:
+              d.lastDeployedAt instanceof Date
+                ? d.lastDeployedAt.toISOString()
+                : d.lastDeployedAt,
+            metadata:
+              typeof d.metadata === 'string'
+                ? JSON.parse(d.metadata as string)
+                : d.metadata,
+          }),
+        )
+      : [];
+
     return {
       ...serialized,
       dependencies:
@@ -230,6 +299,8 @@ export class ServicesController {
       dependents:
         withDeps.dependents?.map((d) => this.serializeServiceDependency(d)) ??
         [],
+      repositories,
+      deployments,
     } as ServiceWithRelations;
   }
 

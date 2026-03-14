@@ -3,12 +3,14 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	ChevronLeft,
 	ChevronRight,
+	FolderGit2,
 	GitBranch,
 	LayoutGrid,
 	List,
 	Plus,
 	RefreshCw,
 	Sparkles,
+	X,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -18,7 +20,7 @@ import type {
 	ServiceWithRelations,
 } from "@prismalens/contracts";
 
-import { useConnections, useServices, useSuggestions } from "@/lib/api/hooks";
+import { useConnections, useRepositories, useServices, useSuggestions } from "@/lib/api/hooks";
 import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +36,8 @@ import { DebouncedSearchInput } from "@/components/ui/debounced-search-input";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ImportFromVcsDialog } from "@/components/services/ImportFromVcsDialog";
 import { ServiceList } from "@/components/services/ServiceList";
+import { UnlinkedReposDialog } from "@/components/services/UnlinkedReposDialog";
+import { tierLabels } from "@/components/services/service-detail.utils";
 
 const PAGE_SIZE = 25;
 
@@ -56,12 +60,6 @@ const serviceTiers: { value: ServiceTier | "all"; label: string }[] = [
 	{ value: "tier_4", label: "Tier 4 - Low" },
 ];
 
-const tierLabels: Record<string, string> = {
-	tier_1: "Critical",
-	tier_2: "High",
-	tier_3: "Medium",
-	tier_4: "Low",
-};
 
 type ServicesSearch = {
 	type?: string;
@@ -180,6 +178,8 @@ function ServicesPage() {
 	const navigate = useNavigate({ from: "/services" });
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showImportDialog, setShowImportDialog] = useState(false);
+	const [showUnlinkedDialog, setShowUnlinkedDialog] = useState(false);
+	const [bannerDismissed, setBannerDismissed] = useState(false);
 
 	const typeFilter = (searchParams.type || "all") as ServiceType | "all";
 	const tierFilter = (searchParams.tier || "all") as ServiceTier | "all";
@@ -214,6 +214,12 @@ function ServicesPage() {
 		["github", "gitlab", "bitbucket"].some((prefix) =>
 			(c.integration?.templateId ?? "").startsWith(prefix),
 		),
+	);
+
+	// Unlinked repositories
+	const { data: repoResponse } = useRepositories({ limit: 100 });
+	const unlinkedRepos = (repoResponse?.data ?? []).filter(
+		(r) => !r.services || r.services.length === 0,
 	);
 
 	// Pending suggestions count
@@ -300,6 +306,35 @@ function ServicesPage() {
 					</>
 				}
 			/>
+
+			{/* Unlinked Repos Banner */}
+			{unlinkedRepos.length > 0 && !bannerDismissed && (
+				<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50 text-sm">
+					<div className="flex items-center gap-2">
+						<FolderGit2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+						<span>
+							{unlinkedRepos.length} repositor{unlinkedRepos.length !== 1 ? "ies are" : "y is"} not linked to any service.
+						</span>
+					</div>
+					<div className="flex items-center gap-2 flex-shrink-0">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setShowUnlinkedDialog(true)}
+						>
+							View & Link
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-7 w-7 p-0"
+							onClick={() => setBannerDismissed(true)}
+						>
+							<X className="h-3 w-3" />
+						</Button>
+					</div>
+				</div>
+			)}
 
 			{/* Filters */}
 			<div className="flex flex-wrap items-center gap-3">
@@ -435,6 +470,12 @@ function ServicesPage() {
 				open={showImportDialog}
 				onOpenChange={setShowImportDialog}
 				onSuccess={() => refetch()}
+			/>
+			<UnlinkedReposDialog
+				open={showUnlinkedDialog}
+				onOpenChange={setShowUnlinkedDialog}
+				unlinkedRepos={unlinkedRepos}
+				services={services}
 			/>
 		</div>
 	);

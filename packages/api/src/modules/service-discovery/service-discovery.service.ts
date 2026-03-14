@@ -216,6 +216,9 @@ export class ServiceDiscoveryService {
             repo: svc.repo,
             branch: svc.branch,
             region: svc.region,
+            project: svc.project,
+            environment: svc.environment,
+            dependencies: svc.dependencies,
           },
         });
         suggestions.push(suggestion);
@@ -318,6 +321,26 @@ export class ServiceDiscoveryService {
     return this.prisma.serviceSuggestion.findMany({
       where: { status: 'pending' },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getSuggestions(params: {
+    connectionId?: string;
+    status?: string;
+    sourceType?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ServiceSuggestion[]> {
+    const where: Record<string, unknown> = {};
+    if (params.connectionId) where.connectionId = params.connectionId;
+    if (params.status) where.status = params.status;
+    if (params.sourceType) where.sourceType = params.sourceType;
+
+    return this.prisma.serviceSuggestion.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: params.limit ?? 50,
+      skip: params.offset ?? 0,
     });
   }
 
@@ -450,8 +473,29 @@ export class ServiceDiscoveryService {
             region: (metadata.region as string) ?? null,
             branch: (metadata.branch as string) ?? null,
             repositoryUrl: (metadata.repo as string) ?? null,
+            environment: (metadata.environment as string) ?? null,
+            metadata: metadata.project
+              ? JSON.stringify({ project: metadata.project })
+              : undefined,
           },
         });
+      }
+
+      // Auto-link repository if the deployment has a repo reference
+      if (metadata.repo) {
+        await this.tryAutoLinkRepository(tx, svc.id, metadata.repo as string);
+      }
+
+      // Auto-create dependencies if the provider reported them
+      if (
+        Array.isArray(metadata.dependencies) &&
+        metadata.dependencies.length > 0
+      ) {
+        await this.tryAutoCreateDependencies(
+          tx,
+          svc.id,
+          metadata.dependencies as string[],
+        );
       }
 
       await tx.serviceSuggestion.update({
@@ -515,6 +559,122 @@ export class ServiceDiscoveryService {
 
     this.logger.log(`Rejected service suggestion: ${suggestionId}`);
     return updated;
+  }
+
+  // =========================================================================
+  // AUTO-LINKING HELPERS
+  // =========================================================================
+
+  /**
+   * Best-effort: link a repository to a service if a matching Repository record exists.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma transaction client type
+  private async tryAutoLinkRepository(
+    tx: any,
+    serviceId: string,
+    repoRef: string,
+  ): Promise<void> {
+    try {
+      // Extract "org/repo" from full URLs like "https://github.com/org/repo.git"
+      const fullName = repoRef
+        .replace(/^https?:\/\/[^/]+\//, '')
+        .replace(/\.git$/, '');
+
+      const existingRepo = await tx.repository.findFirst({
+        where: {
+          OR: [{ url: repoRef }, { fullName }],
+        },
+      });
+
+      if (!existingRepo) return;
+
+      // Check if already linked
+      const existingLink = await tx.serviceRepository.findFirst({
+        where: { serviceId, repositoryId: existingRepo.id },
+      });
+
+      if (existingLink) return;
+
+      await tx.serviceRepository.create({
+        data: {
+          serviceId,
+          repositoryId: existingRepo.id,
+          isPrimary: true,
+        },
+      });
+
+      this.logger.log(
+        `Auto-linked repository ${fullName} to service ${serviceId}`,
+      );
+    } catch (error) {
+      this.logger.warn('Failed to auto-link repository (non-blocking):', error);
+    }
+  }
+
+  /**
+   * Best-effort: create ServiceDependency records for dependency names
+   * that match existing services.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma transaction client type
+  private async tryAutoCreateDependencies(
+    tx: any,
+    serviceId: string,
+    dependencyNames: string[],
+  ): Promise<void> {
+    try {
+      // Batch lookup: find all matching services in one query
+      const matchingServices = await tx.service.findMany({
+        where: {
+          OR: dependencyNames.flatMap((name) => [
+            { name },
+            { displayName: name },
+          ]),
+        },
+        select: { id: true, name: true },
+      });
+
+      if (matchingServices.length === 0) return;
+
+      // Batch lookup: find existing dependencies in one query
+      const candidateIds = matchingServices
+        .filter((s: { id: string }) => s.id !== serviceId)
+        .map((s: { id: string }) => s.id);
+
+      if (candidateIds.length === 0) return;
+
+      const existingDeps = await tx.serviceDependency.findMany({
+        where: {
+          dependentId: serviceId,
+          dependencyId: { in: candidateIds },
+        },
+        select: { dependencyId: true },
+      });
+
+      const existingDepIds = new Set(
+        existingDeps.map((d: { dependencyId: string }) => d.dependencyId),
+      );
+
+      // Create only new dependencies
+      for (const svc of matchingServices) {
+        if (svc.id === serviceId || existingDepIds.has(svc.id)) continue;
+
+        await tx.serviceDependency.create({
+          data: {
+            dependentId: serviceId,
+            dependencyId: svc.id,
+            dependencyType: 'runtime',
+            criticality: 'required',
+          },
+        });
+
+        this.logger.log(`Auto-created dependency: ${serviceId} -> ${svc.name}`);
+      }
+    } catch (error) {
+      this.logger.warn(
+        'Failed to auto-create dependencies (non-blocking):',
+        error,
+      );
+    }
   }
 
   async acceptMultiple(
