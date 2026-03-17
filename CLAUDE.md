@@ -7,7 +7,7 @@ You should be critical of users ideas. Not eveything the is asked to be done sho
 This is a project that is still in development phase
 * No deperecation/legacy/dead code needed
 * Clean upgrade/update/change only
-* No new DB migrations
+* No new DB migrations required, clear existing and recreate init migration. Post recreation, delete prismalens.db
 * DEV user - admin@prismalens.dev/admin123
 
 ## Package installation

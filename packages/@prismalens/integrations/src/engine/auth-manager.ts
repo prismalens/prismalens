@@ -43,15 +43,33 @@ export class AuthManager {
 
 	/**
 	 * Build the interpolation context from credentials + resolved token.
+	 * Merges template field defaults (lowest priority) → stored credentials → token (highest).
 	 */
 	private async buildContext(
 		connectionId: string,
 		token: string,
+		template?: AuthTemplate | null,
 	): Promise<Record<string, string>> {
 		const credentials =
 			await this.deps.getConnectionCredentials(connectionId);
 
+		// Collect default values from template fields (fallback for missing credentials)
+		const defaults: Record<string, string> = {};
+		if (template) {
+			for (const field of template.connectionCredentialFields ?? []) {
+				if (field.default && typeof field.default === "string") {
+					defaults[field.name] = field.default;
+				}
+			}
+			for (const field of template.integrationCredentialFields ?? []) {
+				if (field.default && typeof field.default === "string") {
+					defaults[field.name] = field.default;
+				}
+			}
+		}
+
 		return {
+			...defaults,
 			...(credentials
 				? Object.fromEntries(
 						Object.entries(credentials).filter(
@@ -79,7 +97,7 @@ export class AuthManager {
 			return { Authorization: `Bearer ${token}` };
 		}
 
-		const context = await this.buildContext(connectionId, token);
+		const context = await this.buildContext(connectionId, token, template);
 		return interpolateRecord(template.authenticate.headers, context);
 	}
 
@@ -104,7 +122,7 @@ export class AuthManager {
 			const token = isRetry
 				? await this.refresher.getValidToken(connectionId)
 				: await this.resolveAccessToken(connectionId);
-			const context = await this.buildContext(connectionId, token);
+			const context = await this.buildContext(connectionId, token, template);
 
 			// Build URL from proxy.baseUrl + path
 			let baseUrl = template?.proxy?.baseUrl ?? "";

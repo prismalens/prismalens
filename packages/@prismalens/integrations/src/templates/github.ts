@@ -67,6 +67,16 @@ export const githubApp: AuthTemplate = {
 			sensitive: true,
 		},
 		{
+			name: "baseUrl",
+			label: "API Base URL",
+			type: "string",
+			required: false,
+			default: "https://api.github.com",
+			placeholder: "https://api.github.com",
+			description:
+				"For GitHub Enterprise Server, use https://your-domain.com/api/v3",
+		},
+		{
 			name: "webhookSecret",
 			label: "Webhook Secret",
 			type: "password",
@@ -106,7 +116,7 @@ export const githubApp: AuthTemplate = {
 		headers: { Authorization: "Bearer {{installationToken}}" },
 	},
 	proxy: {
-		baseUrl: "https://api.github.com",
+		baseUrl: "{{baseUrl}}",
 		headers: {
 			Accept: "application/vnd.github.v3+json",
 			"X-GitHub-Api-Version": "2022-11-28",
@@ -173,13 +183,23 @@ export const githubToken: AuthTemplate = {
 				"Fine-grained PAT recommended — grants per-repo access with minimal scope",
 			sensitive: true,
 		},
+		{
+			name: "baseUrl",
+			label: "API Base URL",
+			type: "string",
+			required: false,
+			default: "https://api.github.com",
+			placeholder: "https://api.github.com",
+			description:
+				"For GitHub Enterprise Server, use https://your-domain.com/api/v3",
+		},
 	],
 	requiredPermissions: githubTokenPermissions,
 	authenticate: {
 		headers: { Authorization: "Bearer {{apiKey}}" },
 	},
 	proxy: {
-		baseUrl: "https://api.github.com",
+		baseUrl: "{{baseUrl}}",
 		headers: {
 			Accept: "application/vnd.github.v3+json",
 			"X-GitHub-Api-Version": "2022-11-28",

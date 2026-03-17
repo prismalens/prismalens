@@ -28,7 +28,7 @@ CREATE TABLE "repositories" (
     "metadata" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "repositories_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "repositories_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADEn
 );
 
 -- CreateTable
@@ -358,7 +358,7 @@ CREATE TABLE "user" (
     "image" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    "role" TEXT NOT NULL DEFAULT 'user',
+    "role" TEXT NOT NULL DEFAULT 'member',
     "banned" BOOLEAN,
     "banReason" TEXT,
     "banExpires" DATETIME
@@ -462,6 +462,7 @@ CREATE TABLE "integrations" (
 CREATE TABLE "connections" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "integrationId" TEXT NOT NULL,
+    "label" TEXT NOT NULL DEFAULT '',
     "userId" TEXT NOT NULL,
     "organizationId" TEXT,
     "connectionConfigEnc" BLOB,

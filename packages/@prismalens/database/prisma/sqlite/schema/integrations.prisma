@@ -41,6 +41,7 @@ model Integration {
 model Connection {
   id                  String   @id @default(uuid())
   integrationId       String
+  label               String   @default("") // User-friendly name to distinguish multiple connections
   userId              String
   organizationId      String?
   connectionConfigEnc Bytes?   // Encrypted connection-specific config

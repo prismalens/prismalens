@@ -220,6 +220,29 @@ export class IntegrationsService implements OnModuleInit {
         : null;
     }
 
+    // For api_key/basic templates: only one integration per template allowed
+    // (multiple connections go under the single integration)
+    if (template.authMode === 'api_key' || template.authMode === 'basic') {
+      const existingForTemplate = await this.prisma.integration.findFirst({
+        where: { templateId: dto.templateId },
+      });
+      if (existingForTemplate) {
+        throw new BadRequestException(
+          `A ${template.name} integration already exists. Add connections to it instead.`,
+        );
+      }
+    }
+
+    // Enforce unique label per template (for multi-integration providers like GitHub App)
+    const existingLabel = await this.prisma.integration.findFirst({
+      where: { templateId: dto.templateId, label: dto.label },
+    });
+    if (existingLabel) {
+      throw new BadRequestException(
+        `An integration named "${dto.label}" already exists for this provider`,
+      );
+    }
+
     return this.prisma.integration.create({
       data: {
         templateId: dto.templateId,
@@ -316,9 +339,20 @@ export class IntegrationsService implements OnModuleInit {
       throw new NotFoundException('Integration not found');
     }
 
+    // Enforce unique label per integration
+    const existing = await this.prisma.connection.findFirst({
+      where: { integrationId: dto.integrationId, label: dto.label },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `A connection named "${dto.label}" already exists for this integration`,
+      );
+    }
+
     return this.prisma.connection.create({
       data: {
         integrationId: dto.integrationId,
+        label: dto.label,
         userId,
         credentialsEnc: this.credentialsService.encrypt(dto.credentials),
         connectionConfigEnc: dto.connectionConfig
@@ -545,6 +579,9 @@ export class IntegrationsService implements OnModuleInit {
     return this.prisma.connection.create({
       data: {
         integrationId,
+        label: organization
+          ? `GitHub App (${organization})`
+          : `GitHub App (${installationId})`,
         userId,
         credentialsEnc: this.credentialsService.encrypt(credentials),
         connectionConfigEnc:

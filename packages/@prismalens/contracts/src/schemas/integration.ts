@@ -88,6 +88,7 @@ export const UpdateIntegrationSchema = z.object({
 export const ConnectionSchema = z.object({
 	id: z.string().uuid(),
 	integrationId: z.string().uuid(),
+	label: z.string(),
 	userId: z.string(),
 	status: ConnectionStatusSchema,
 	tokenExpiresAt: DateStringSchema.nullable(),
@@ -109,11 +110,13 @@ export const ConnectionWithIntegrationSchema = ConnectionSchema.extend({
 
 export const CreateConnectionSchema = z.object({
 	integrationId: z.string().uuid(),
+	label: z.string().min(1),
 	credentials: z.record(z.string(), z.string()),
 	connectionConfig: z.record(z.string(), z.string()).optional(),
 });
 
 export const UpdateConnectionSchema = z.object({
+	label: z.string().min(1).optional(),
 	credentials: z.record(z.string(), z.string()).optional(),
 	connectionConfig: z.record(z.string(), z.string()).optional(),
 	status: ConnectionStatusSchema.optional(),

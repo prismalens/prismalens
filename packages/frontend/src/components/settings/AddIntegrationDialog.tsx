@@ -152,7 +152,7 @@ export function AddIntegrationDialog({
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-3 py-4">
-						{templates?.map((template) => (
+						{templates?.filter((t) => t.authMode !== "api_key" && t.authMode !== "basic").map((template) => (
 							<button
 								key={template.id}
 								type="button"

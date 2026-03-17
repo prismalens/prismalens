@@ -19,6 +19,7 @@ export type {
 	DeploymentProviderFactory,
 } from "./deployment.interface.js";
 export { RenderProvider } from "./render/render.provider.js";
+export { VercelProvider } from "./vercel/vercel.provider.js";
 
 // ── Git provider factory ──
 
@@ -50,9 +51,11 @@ export function resolveGitProviderName(templateId: string): string | null {
 
 import type { DeploymentProvider } from "./deployment.interface.js";
 import { RenderProvider } from "./render/render.provider.js";
+import { VercelProvider } from "./vercel/vercel.provider.js";
 
 const deploymentProviders: Record<string, new () => DeploymentProvider> = {
 	render: RenderProvider,
+	vercel: VercelProvider,
 };
 
 export function createDeploymentProvider(

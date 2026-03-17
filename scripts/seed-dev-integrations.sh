@@ -1,5 +1,5 @@
 #!/bin/bash
-# Seeds dev integrations (GitHub App, Render) via the API.
+# Seeds dev integrations (GitHub App, Render, Vercel) via the API.
 # Requires: API running on port 3001, dev user seeded, .env.seed file.
 # Usage: bash scripts/seed-dev-integrations.sh [--force]
 
@@ -215,8 +215,9 @@ if [ -n "${RENDER_API_KEY:-}" ]; then
 		echo "  Creating Render connection..."
 		RENDER_CONN_BODY=$(jq -n \
 			--arg integrationId "$RENDER_INTEGRATION_ID" \
+			--arg label "${SEED_PREFIX} Render" \
 			--arg apiKey "$RENDER_API_KEY" \
-			'{integrationId: $integrationId, credentials: {apiKey: $apiKey}}')
+			'{integrationId: $integrationId, label: $label, credentials: {apiKey: $apiKey}}')
 
 		RENDER_CONN_RESPONSE=$(api_post "/api/integrations/connections" "$RENDER_CONN_BODY")
 		RENDER_CONN_ID=$(echo "$RENDER_CONN_RESPONSE" | jq -r '.id // empty')
@@ -230,6 +231,61 @@ if [ -n "${RENDER_API_KEY:-}" ]; then
 	fi
 else
 	echo "  Skipping Render connection: RENDER_API_KEY not set in .env.seed"
+fi
+
+# --- Vercel Integration ---
+
+EXISTING_VERCEL=$(echo "$EXISTING" | jq -r '.[] | select(.templateId == "vercel") | .id' 2>/dev/null || true)
+
+if [ -n "$EXISTING_VERCEL" ]; then
+	echo "Vercel integration already exists (id: ${EXISTING_VERCEL}, template: vercel). Skipping creation."
+	VERCEL_INTEGRATION_ID="$EXISTING_VERCEL"
+else
+	echo "Creating Vercel integration..."
+	VERCEL_BODY=$(jq -n \
+		--arg templateId "vercel" \
+		--arg label "${SEED_PREFIX} Vercel" \
+		'{templateId: $templateId, label: $label}')
+
+	VERCEL_RESPONSE=$(api_post "/api/integrations" "$VERCEL_BODY")
+	VERCEL_INTEGRATION_ID=$(echo "$VERCEL_RESPONSE" | jq -r '.id // empty')
+
+	if [ -z "$VERCEL_INTEGRATION_ID" ]; then
+		echo "  Failed to create Vercel integration:"
+		echo "  $VERCEL_RESPONSE"
+		die "Vercel integration creation failed."
+	fi
+	echo "  Created Vercel integration (id: ${VERCEL_INTEGRATION_ID})"
+fi
+
+# Connect Vercel if API token is provided
+if [ -n "${VERCEL_API_TOKEN:-}" ]; then
+	CONNECTIONS=$(api_get "/api/integrations/connections")
+	EXISTING_VERCEL_CONN=$(echo "$CONNECTIONS" | jq -r --arg iid "$VERCEL_INTEGRATION_ID" '.[] | select(.integrationId == $iid) | .id' 2>/dev/null || true)
+	EXISTING_VERCEL_CONN_STATUS=$(echo "$CONNECTIONS" | jq -r --arg iid "$VERCEL_INTEGRATION_ID" '.[] | select(.integrationId == $iid) | .status' 2>/dev/null || true)
+
+	if [ -n "$EXISTING_VERCEL_CONN" ]; then
+		echo "  Vercel connection already exists (id: ${EXISTING_VERCEL_CONN}, status: ${EXISTING_VERCEL_CONN_STATUS}). Skipping."
+	else
+		echo "  Creating Vercel connection..."
+		VERCEL_CONN_BODY=$(jq -n \
+			--arg integrationId "$VERCEL_INTEGRATION_ID" \
+			--arg label "${SEED_PREFIX} Vercel" \
+			--arg apiKey "$VERCEL_API_TOKEN" \
+			'{integrationId: $integrationId, label: $label, credentials: {apiKey: $apiKey}}')
+
+		VERCEL_CONN_RESPONSE=$(api_post "/api/integrations/connections" "$VERCEL_CONN_BODY")
+		VERCEL_CONN_ID=$(echo "$VERCEL_CONN_RESPONSE" | jq -r '.id // empty')
+
+		if [ -z "$VERCEL_CONN_ID" ]; then
+			echo "  Failed to create Vercel connection:"
+			echo "  $VERCEL_CONN_RESPONSE"
+			die "Vercel connection creation failed."
+		fi
+		echo "  Connected Vercel (connection id: ${VERCEL_CONN_ID})"
+	fi
+else
+	echo "  Skipping Vercel connection: VERCEL_API_TOKEN not set in .env.seed"
 fi
 
 echo ""

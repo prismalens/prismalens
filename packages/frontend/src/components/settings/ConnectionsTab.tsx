@@ -380,10 +380,11 @@ export function ConnectionsTab() {
 											<div>
 												<div className="flex items-center gap-2">
 													<span className="font-medium">
-														{connection.integration
-															?.label ??
+														{connection.label ||
+															(connection.integration
+																?.label ??
 															connection.templateName ??
-															"Connection"}
+															"Connection")}
 													</span>
 													<ConnectionStatusBadge
 														status={

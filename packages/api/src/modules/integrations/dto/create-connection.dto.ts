@@ -38,6 +38,10 @@ export class CreateConnectionDto {
   @IsUUID()
   integrationId!: string;
 
+  @IsString()
+  @IsNotEmpty()
+  label!: string;
+
   @IsObject()
   credentials!: Record<string, string>;
 

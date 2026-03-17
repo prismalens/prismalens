@@ -429,6 +429,7 @@ export class IntegrationsController {
     return {
       id: connection.id,
       integrationId: connection.integrationId,
+      label: connection.label ?? '',
       userId: connection.userId,
       status: connection.status as ConnectionResponse['status'],
       tokenExpiresAt: connection.tokenExpiresAt?.toISOString() ?? null,

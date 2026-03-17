@@ -67,6 +67,7 @@ model Integration {
 model Connection {
   id                  String           @id @default(uuid())
   integrationId       String
+  label               String           @default("") // User-friendly name to distinguish multiple connections
   userId              String           // User who created this connection
   organizationId      String?          // For future multi-tenancy
   connectionConfigEnc Bytes?           // Encrypted connection-specific config (e.g., baseUrl, site)
