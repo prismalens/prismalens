@@ -9,3 +9,5 @@
 
 export { createAuth, type Auth, type AuthOptions } from "./auth.js";
 export type { Session, User } from "better-auth/types";
+export type { UserWithRole } from "better-auth/plugins/admin";
+export { APP_ROLES, ADMIN_ROLES, type AppRole } from "./roles.js";

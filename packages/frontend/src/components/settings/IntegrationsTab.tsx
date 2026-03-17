@@ -202,9 +202,6 @@ export function IntegrationsTab() {
 	);
 
 	const deleteTarget = integrations?.find((i) => i.id === deleteTargetId);
-	const deleteConnCount = deleteTargetId
-		? connectionCounts.get(deleteTargetId) ?? 0
-		: 0;
 
 	if (isLoading) {
 		return (
@@ -460,8 +457,8 @@ export function IntegrationsTab() {
 			<DeleteIntegrationDialog
 				open={showDeleteDialog}
 				onOpenChange={setShowDeleteDialog}
+				integrationId={deleteTargetId}
 				integrationLabel={deleteTarget?.label}
-				connectionCount={deleteConnCount}
 				error={deleteError}
 				onDelete={handleDelete}
 				onCancel={() => {

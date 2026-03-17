@@ -1,10 +1,5 @@
 import { Controller, Logger } from '@nestjs/common';
-import {
-  Implement,
-  implement,
-  ORPCError,
-  type ORPCGlobalContext,
-} from '@orpc/nest';
+import { Implement, implement, ORPCError } from '@orpc/nest';
 import { integrationsContract } from '@prismalens/contracts';
 import type {
   AuthTemplateResponse,
@@ -19,6 +14,7 @@ import type {
   ServiceIntegration,
 } from '@prismalens/database';
 import { type AuthTemplate, getTemplate } from '@prismalens/integrations';
+import { extractUserId, isAdmin, requireAdmin } from '../../core/auth/index.js';
 import type { ConnectionWithIntegration } from './integrations.service.js';
 import { IntegrationsService } from './integrations.service.js';
 
@@ -27,16 +23,6 @@ export class IntegrationsController {
   private readonly logger = new Logger(IntegrationsController.name);
 
   constructor(private readonly integrationsService: IntegrationsService) {}
-
-  private extractUserId(context: ORPCGlobalContext): string {
-    const userId = context.request.user?.id;
-    if (!userId) {
-      throw new ORPCError('UNAUTHORIZED', {
-        message: 'Authentication required',
-      });
-    }
-    return userId;
-  }
 
   @Implement(integrationsContract)
   integrations() {
@@ -120,7 +106,8 @@ export class IntegrationsController {
 
       deleteIntegration: implement(
         integrationsContract.deleteIntegration,
-      ).handler(async ({ input }) => {
+      ).handler(async ({ input, context }) => {
+        requireAdmin(context);
         const deleted = await this.integrationsService.deleteIntegration(
           input.id,
         );
@@ -139,7 +126,7 @@ export class IntegrationsController {
       createConnection: implement(
         integrationsContract.createConnection,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        const userId = extractUserId(context);
         const connection = await this.integrationsService.createConnection(
           input,
           userId,
@@ -150,7 +137,7 @@ export class IntegrationsController {
 
       listConnections: implement(integrationsContract.listConnections).handler(
         async ({ input, context }) => {
-          const userId = this.extractUserId(context);
+          const userId = extractUserId(context);
           const connections = await this.integrationsService.findAllConnections(
             {
               status: input.status,
@@ -165,7 +152,7 @@ export class IntegrationsController {
 
       getConnection: implement(integrationsContract.getConnection).handler(
         async ({ input, context }) => {
-          const userId = this.extractUserId(context);
+          const userId = extractUserId(context);
           const connection = await this.integrationsService.findConnectionById(
             input.id,
             userId,
@@ -182,7 +169,7 @@ export class IntegrationsController {
       updateConnection: implement(
         integrationsContract.updateConnection,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        const userId = extractUserId(context);
         const { id, ...updateData } = input;
         const connection = await this.integrationsService.updateConnection(
           id,
@@ -201,7 +188,8 @@ export class IntegrationsController {
       deleteConnection: implement(
         integrationsContract.deleteConnection,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        // Admins can delete any connection; members only their own
+        const userId = isAdmin(context) ? undefined : extractUserId(context);
         const deleted = await this.integrationsService.deleteConnection(
           input.id,
           userId,
@@ -216,7 +204,7 @@ export class IntegrationsController {
 
       testConnection: implement(integrationsContract.testConnection).handler(
         async ({ input, context }) => {
-          const userId = this.extractUserId(context);
+          const userId = extractUserId(context);
           const result = await this.integrationsService.testConnection(
             input.id,
             userId,
@@ -226,20 +214,56 @@ export class IntegrationsController {
       ),
 
       // =========================================================================
+      // DELETION IMPACT PREVIEW
+      // =========================================================================
+
+      getIntegrationDeletionImpact: implement(
+        integrationsContract.getIntegrationDeletionImpact,
+      ).handler(async ({ input, context }) => {
+        requireAdmin(context);
+        const impact =
+          await this.integrationsService.getIntegrationDeletionImpact(input.id);
+        if (!impact) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Integration not found',
+          });
+        }
+        return impact;
+      }),
+
+      getConnectionDeletionImpact: implement(
+        integrationsContract.getConnectionDeletionImpact,
+      ).handler(async ({ input, context }) => {
+        // Admins see any connection's impact; members only their own
+        const userId = isAdmin(context) ? undefined : extractUserId(context);
+        const impact =
+          await this.integrationsService.getConnectionDeletionImpact(
+            input.id,
+            userId,
+          );
+        if (!impact) {
+          throw new ORPCError('NOT_FOUND', {
+            message: 'Connection not found',
+          });
+        }
+        return impact;
+      }),
+
+      // =========================================================================
       // GIT PROVIDER ENDPOINTS
       // =========================================================================
 
       getGitOrganizations: implement(
         integrationsContract.getGitOrganizations,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        const userId = extractUserId(context);
         return this.integrationsService.getGitOrganizations(input.id, userId);
       }),
 
       getGitRepositories: implement(
         integrationsContract.getGitRepositories,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        const userId = extractUserId(context);
         return this.integrationsService.getGitRepositories(
           input.id,
           input.org,
@@ -250,7 +274,7 @@ export class IntegrationsController {
       updateConnectionConfig: implement(
         integrationsContract.updateConnectionConfig,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        const userId = extractUserId(context);
         const connection =
           await this.integrationsService.updateConnectionConfig(
             input.id,
@@ -268,7 +292,7 @@ export class IntegrationsController {
       listGitHubInstallations: implement(
         integrationsContract.listGitHubInstallations,
       ).handler(async ({ input, context }) => {
-        this.extractUserId(context);
+        extractUserId(context);
         const installations =
           await this.integrationsService.listGitHubInstallations(input.id);
         return installations.map((inst) => ({
@@ -290,7 +314,7 @@ export class IntegrationsController {
       connectGitHubInstallation: implement(
         integrationsContract.connectGitHubInstallation,
       ).handler(async ({ input, context }) => {
-        const userId = this.extractUserId(context);
+        const userId = extractUserId(context);
         const connection =
           await this.integrationsService.connectGitHubInstallation(
             input.id,

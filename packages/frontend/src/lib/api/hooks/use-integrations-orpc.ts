@@ -126,6 +126,34 @@ export function useDeleteIntegration() {
 }
 
 // =============================================================================
+// DELETION IMPACT PREVIEW
+// =============================================================================
+
+/**
+ * Preview what would be deleted if an integration is removed
+ */
+export function useIntegrationDeletionImpact(id: string | null) {
+	return useQuery({
+		...orpc.integrations.getIntegrationDeletionImpact.queryOptions({
+			input: { id: id ?? "" },
+		}),
+		enabled: !!id,
+	});
+}
+
+/**
+ * Preview what would be deleted if a connection is removed
+ */
+export function useConnectionDeletionImpact(id: string | null) {
+	return useQuery({
+		...orpc.integrations.getConnectionDeletionImpact.queryOptions({
+			input: { id: id ?? "" },
+		}),
+		enabled: !!id,
+	});
+}
+
+// =============================================================================
 // CONNECTIONS (user tokens / API keys)
 // =============================================================================
 

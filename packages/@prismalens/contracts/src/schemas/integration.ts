@@ -228,6 +228,31 @@ export const ConnectInstallationSchema = z.object({
 });
 
 // =============================================================================
+// DELETION IMPACT SCHEMAS
+// =============================================================================
+
+export const DeletionImpactSchema = z.object({
+	connections: z.array(z.object({
+		id: z.string().uuid(),
+		label: z.string(),
+	})),
+	repositories: z.array(z.object({
+		id: z.string().uuid(),
+		fullName: z.string(),
+	})),
+	deployments: z.array(z.object({
+		id: z.string().uuid(),
+		name: z.string(),
+	})),
+	affectedServices: z.array(z.object({
+		id: z.string().uuid(),
+		name: z.string(),
+		impact: z.enum(["repo_link_lost", "deployment_link_lost", "integration_override_lost"]),
+	})),
+	suggestionsCount: z.number().int(),
+});
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -254,3 +279,6 @@ export type ServiceIntegrationWithStatus = z.infer<typeof ServiceIntegrationWith
 // GitHub App types
 export type GitHubInstallation = z.infer<typeof GitHubInstallationSchema>;
 export type ConnectInstallationInput = z.infer<typeof ConnectInstallationSchema>;
+
+// Deletion impact types
+export type DeletionImpact = z.infer<typeof DeletionImpactSchema>;

@@ -12,6 +12,7 @@ import type {
   CreateServiceDto,
   UpdateServiceDto,
 } from './dto/index.js';
+import { requireAdmin } from '../../core/auth/index.js';
 import {
   ServicesService,
   type Service as PrismaService,
@@ -85,14 +86,17 @@ export class ServicesController {
       }),
 
       // DELETE /services/:id - Delete a service
-      delete: implement(servicesContract.delete).handler(async ({ input }) => {
-        const deleted = await this.servicesService.delete(input.id);
-        if (!deleted) {
-          throw new ORPCError('NOT_FOUND', {
-            message: `Service ${input.id} not found`,
-          });
-        }
-      }),
+      delete: implement(servicesContract.delete).handler(
+        async ({ input, context }) => {
+          requireAdmin(context);
+          const deleted = await this.servicesService.delete(input.id);
+          if (!deleted) {
+            throw new ORPCError('NOT_FOUND', {
+              message: `Service ${input.id} not found`,
+            });
+          }
+        },
+      ),
 
       // POST /services/:id/dependencies - Add a dependency
       addDependency: implement(servicesContract.addDependency).handler(

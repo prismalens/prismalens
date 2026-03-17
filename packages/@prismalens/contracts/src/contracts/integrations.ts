@@ -24,6 +24,7 @@ import {
 	UpdateConnectionSchema,
 	UpdateIntegrationSchema,
 	UpdateServiceIntegrationSchema,
+	DeletionImpactSchema,
 } from "../schemas/index.js";
 
 export const integrationsContract = {
@@ -284,6 +285,30 @@ export const integrationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(z.void()),
+
+	// =========================================================================
+	// DELETION IMPACT PREVIEW
+	// =========================================================================
+
+	getIntegrationDeletionImpact: oc
+		.route({
+			method: "GET",
+			path: "/integrations/{id}/deletion-impact",
+			summary: "Preview what would be deleted if this integration is removed",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema)
+		.output(DeletionImpactSchema),
+
+	getConnectionDeletionImpact: oc
+		.route({
+			method: "GET",
+			path: "/integrations/connections/{id}/deletion-impact",
+			summary: "Preview what would be deleted if this connection is removed",
+			tags: ["integrations"],
+		})
+		.input(IdParamSchema)
+		.output(DeletionImpactSchema),
 };
 
 export const oauthContract = {

@@ -998,4 +998,133 @@ export class IntegrationsService implements OnModuleInit {
       };
     });
   }
+
+  // =========================================================================
+  // DELETION IMPACT PREVIEW
+  // =========================================================================
+
+  async getIntegrationDeletionImpact(integrationId: string) {
+    const integration = await this.prisma.integration.findUnique({
+      where: { id: integrationId },
+      include: {
+        connections: {
+          include: {
+            repositories: {
+              include: { services: { include: { service: true } } },
+            },
+            deployments: { include: { service: true } },
+            serviceMappings: { include: { service: true } },
+            _count: { select: { serviceSuggestions: true } },
+          },
+        },
+      },
+    });
+
+    if (!integration) return null;
+
+    return this.buildDeletionImpact(integration.connections);
+  }
+
+  async getConnectionDeletionImpact(connectionId: string, userId?: string) {
+    const connection = await this.prisma.connection.findFirst({
+      where: { id: connectionId, ...(userId ? { userId } : {}) },
+      include: {
+        repositories: {
+          include: { services: { include: { service: true } } },
+        },
+        deployments: { include: { service: true } },
+        serviceMappings: { include: { service: true } },
+        _count: { select: { serviceSuggestions: true } },
+      },
+    });
+
+    if (!connection) return null;
+
+    return this.buildDeletionImpact([connection]);
+  }
+
+  private buildDeletionImpact(
+    connections: Array<{
+      id: string;
+      integration?: { label: string } | null;
+      repositories: Array<{
+        id: string;
+        fullName: string;
+        services: Array<{ service: { id: string; name: string } }>;
+      }>;
+      deployments: Array<{
+        id: string;
+        name: string;
+        service?: { id: string; name: string } | null;
+      }>;
+      serviceMappings: Array<{
+        service: { id: string; name: string };
+      }>;
+      _count: { serviceSuggestions: number };
+    }>,
+  ) {
+    const repos: Array<{ id: string; fullName: string }> = [];
+    const deploys: Array<{ id: string; name: string }> = [];
+    type ImpactType =
+      | 'repo_link_lost'
+      | 'deployment_link_lost'
+      | 'integration_override_lost';
+    const affectedMap = new Map<
+      string,
+      { id: string; name: string; impact: ImpactType }
+    >();
+    let suggestionsCount = 0;
+
+    for (const conn of connections) {
+      for (const repo of conn.repositories) {
+        repos.push({ id: repo.id, fullName: repo.fullName });
+        for (const sr of repo.services) {
+          if (!affectedMap.has(sr.service.id + ':repo_link_lost')) {
+            affectedMap.set(sr.service.id + ':repo_link_lost', {
+              id: sr.service.id,
+              name: sr.service.name,
+              impact: 'repo_link_lost',
+            });
+          }
+        }
+      }
+
+      for (const dep of conn.deployments) {
+        deploys.push({ id: dep.id, name: dep.name });
+        if (
+          dep.service &&
+          !affectedMap.has(dep.service.id + ':deployment_link_lost')
+        ) {
+          affectedMap.set(dep.service.id + ':deployment_link_lost', {
+            id: dep.service.id,
+            name: dep.service.name,
+            impact: 'deployment_link_lost',
+          });
+        }
+      }
+
+      for (const sm of conn.serviceMappings) {
+        if (!affectedMap.has(sm.service.id + ':integration_override_lost')) {
+          affectedMap.set(sm.service.id + ':integration_override_lost', {
+            id: sm.service.id,
+            name: sm.service.name,
+            impact: 'integration_override_lost',
+          });
+        }
+      }
+
+      suggestionsCount += conn._count.serviceSuggestions;
+    }
+
+    return {
+      connections: connections.map((c) => ({
+        id: c.id,
+        label: c.integration?.label ?? String(c.id).slice(0, 8),
+      })),
+      repositories: repos,
+      deployments: deploys,
+      affectedServices: Array.from(affectedMap.values()),
+      suggestionsCount,
+    };
+  }
 }

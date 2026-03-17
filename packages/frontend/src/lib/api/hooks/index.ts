@@ -98,6 +98,8 @@ export {
 	useCreateIntegration,
 	useUpdateIntegration,
 	useDeleteIntegration,
+	useIntegrationDeletionImpact,
+	useConnectionDeletionImpact,
 	useConnections,
 	useConnection,
 	useCreateConnection,

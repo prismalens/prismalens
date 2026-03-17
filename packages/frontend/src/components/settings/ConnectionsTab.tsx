@@ -538,6 +538,7 @@ export function ConnectionsTab() {
 			<DeleteConnectionDialog
 				open={showDeleteDialog}
 				onOpenChange={setShowDeleteDialog}
+				connectionId={selectedConnectionId}
 				error={deleteError}
 				onDelete={handleDelete}
 				onCancel={() => {

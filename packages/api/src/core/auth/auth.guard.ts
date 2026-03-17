@@ -43,7 +43,12 @@ export class AuthGuard implements CanActivate {
       }
 
       // Attach user and session to request for use in handlers
-      request.user = session.user;
+      // Coerce null role to undefined to match UserWithRole type
+      // (Better Auth's Prisma adapter returns null for nullable columns)
+      request.user = {
+        ...session.user,
+        role: session.user.role ?? undefined,
+      } as typeof request.user;
       request.session = session.session;
 
       return true;
