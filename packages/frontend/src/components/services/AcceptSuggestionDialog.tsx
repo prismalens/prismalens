@@ -21,7 +21,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useAcceptSuggestion, useServices } from "@/lib/api/hooks";
+import { useAcceptSuggestion } from "@/lib/api/hooks";
 
 const SERVICE_TYPES = [
 	"service",
@@ -48,14 +48,9 @@ export function AcceptSuggestionDialog({
 }: AcceptSuggestionDialogProps) {
 	const [type, setType] = useState<string>("");
 	const [team, setTeam] = useState("");
-	const [linkedServiceId, setLinkedServiceId] = useState<string>("");
 	const [error, setError] = useState<string | null>(null);
 
 	const acceptSuggestion = useAcceptSuggestion();
-
-	// For deployment suggestions, allow linking to an existing service
-	const { data: servicesResponse } = useServices();
-	const existingServices = servicesResponse?.data ?? [];
 
 	const isDeployment = suggestion?.sourceType === "deployment";
 
@@ -68,10 +63,6 @@ export function AcceptSuggestionDialog({
 				id: suggestion.id,
 				type: type || undefined,
 				team: team || undefined,
-				linkedServiceId:
-					isDeployment && linkedServiceId && linkedServiceId !== "__new__"
-						? linkedServiceId
-						: undefined,
 			});
 			onOpenChange(false);
 			resetForm();
@@ -86,7 +77,6 @@ export function AcceptSuggestionDialog({
 	const resetForm = () => {
 		setType("");
 		setTeam("");
-		setLinkedServiceId("");
 		setError(null);
 	};
 
@@ -103,9 +93,8 @@ export function AcceptSuggestionDialog({
 				<DialogHeader>
 					<DialogTitle>Accept Suggestion</DialogTitle>
 					<DialogDescription>
-						{isDeployment
-							? "This will create a Deployment record and optionally link it to a service."
-							: "This will create a Repository record and a new service."}
+						This will create a new service
+						{isDeployment ? " and deployment record" : ""}.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -149,30 +138,6 @@ export function AcceptSuggestionDialog({
 							onChange={(e) => setTeam(e.target.value)}
 						/>
 					</div>
-
-					{isDeployment && existingServices.length > 0 && (
-						<div className="space-y-2">
-							<Label htmlFor="link-service">
-								Link to existing service (optional)
-							</Label>
-							<Select
-								value={linkedServiceId}
-								onValueChange={setLinkedServiceId}
-							>
-								<SelectTrigger id="link-service">
-									<SelectValue placeholder="Create new service" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="__new__">Create new service</SelectItem>
-									{existingServices.map((s) => (
-										<SelectItem key={s.id} value={s.id}>
-											{s.displayName || s.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-					)}
 
 					{error && (
 						<p className="text-sm text-destructive text-center">{error}</p>

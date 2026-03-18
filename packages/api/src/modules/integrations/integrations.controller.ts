@@ -451,13 +451,14 @@ export class IntegrationsController {
   ): ConnectionWithIntegrationResponse {
     const serialized = this.serializeConnection(connection);
     const { integration } = connection;
+    const template = getTemplate(integration.templateId);
 
     return {
       ...serialized,
       integration: this.serializeIntegration(integration),
       templateId: integration.templateId,
-      templateName:
-        getTemplate(integration.templateId)?.name ?? integration.templateId,
+      templateName: template?.name ?? integration.templateId,
+      template: template ? this.serializeTemplate(template) : null,
     };
   }
 

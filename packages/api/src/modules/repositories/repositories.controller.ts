@@ -1,6 +1,7 @@
 import { Controller } from '@nestjs/common';
 import { Implement, implement, ORPCError } from '@orpc/nest';
 import { repositoriesContract } from '@prismalens/contracts';
+import { requireAdmin } from '../../core/auth/index.js';
 import type {
   Repository,
   RepositoryWithServices,
@@ -44,12 +45,21 @@ export class RepositoriesController {
     return {
       // POST /repositories/batch - Batch create repositories
       batchCreate: implement(repositoriesContract.batchCreate).handler(
-        async ({ input }) => {
+        async ({ input, context }) => {
+          requireAdmin(context);
           const result = await this.repositoriesService.batchCreate(input);
           return {
             created: result.created,
             repositories: result.repositories.map(serializeRepository),
           };
+        },
+      ),
+
+      // GET /repositories/unlinked-count - Count unlinked repositories
+      unlinkedCount: implement(repositoriesContract.unlinkedCount).handler(
+        async () => {
+          const count = await this.repositoriesService.countUnlinked();
+          return { count };
         },
       ),
 
@@ -79,25 +89,37 @@ export class RepositoriesController {
       }),
 
       // POST /repositories/:id/link - Link repository to service
-      link: implement(repositoriesContract.link).handler(async ({ input }) => {
-        const { id, ...linkData } = input;
-        const result = await this.repositoriesService.linkToService(
-          id,
-          linkData,
-        );
-        return {
-          ...result,
-          createdAt: result.createdAt.toISOString(),
-        };
-      }),
+      link: implement(repositoriesContract.link).handler(
+        async ({ input, context }) => {
+          requireAdmin(context);
+          const { id, ...linkData } = input;
+          const result = await this.repositoriesService.linkToService(
+            id,
+            linkData,
+          );
+          return {
+            ...result,
+            createdAt: result.createdAt.toISOString(),
+          };
+        },
+      ),
 
       // DELETE /repositories/:id/unlink/:serviceId - Unlink repository
       unlink: implement(repositoriesContract.unlink).handler(
-        async ({ input }) => {
+        async ({ input, context }) => {
+          requireAdmin(context);
           await this.repositoriesService.unlinkFromService(
             input.id,
             input.serviceId,
           );
+        },
+      ),
+
+      // DELETE /repositories/:id - Delete an unlinked repository
+      delete: implement(repositoriesContract.delete).handler(
+        async ({ input, context }) => {
+          requireAdmin(context);
+          await this.repositoriesService.delete(input.id);
         },
       ),
     };

@@ -8,5 +8,4 @@ export class AcceptSuggestionDto {
   description?: string; // Description
   type?: string; // Service type (defaults to "service")
   team?: string; // Team responsible
-  linkedServiceId?: string; // Link deployment to existing service instead of creating new
 }

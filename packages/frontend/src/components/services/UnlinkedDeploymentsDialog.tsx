@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { FolderGit2, Link2, Loader2, Trash2 } from "lucide-react";
-import type { RepositoryWithServices, ServiceWithRelations } from "@prismalens/contracts";
+import { Link2, Loader2, Rocket, Trash2 } from "lucide-react";
+import type { Deployment, ServiceWithRelations } from "@prismalens/contracts";
 
-import { useDeleteRepository, useLinkRepository } from "@/lib/api/hooks";
+import { useDeleteDeployment, useLinkDeployment } from "@/lib/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,43 +31,54 @@ import {
 } from "@/components/ui/alert-dialog";
 import { MutationError } from "@/components/shared/MutationError";
 
-interface UnlinkedReposDialogProps {
+interface UnlinkedDeploymentsDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	unlinkedRepos: RepositoryWithServices[];
+	unlinkedDeployments: Deployment[];
 	services: ServiceWithRelations[];
 }
 
-export function UnlinkedReposDialog({
+const statusColors: Record<string, string> = {
+	live: "text-green-600",
+	active: "text-green-600",
+	running: "text-green-600",
+	building: "text-yellow-600",
+	suspended: "text-orange-600",
+	deactivated: "text-muted-foreground",
+};
+
+export function UnlinkedDeploymentsDialog({
 	open,
 	onOpenChange,
-	unlinkedRepos,
+	unlinkedDeployments,
 	services,
-}: UnlinkedReposDialogProps) {
-	const [linkingRepoId, setLinkingRepoId] = useState<string | null>(null);
-	const [deletingRepoId, setDeletingRepoId] = useState<string | null>(null);
-	const linkRepo = useLinkRepository();
-	const deleteRepo = useDeleteRepository();
+}: UnlinkedDeploymentsDialogProps) {
+	const [linkingDeployId, setLinkingDeployId] = useState<string | null>(null);
+	const [deletingDeployId, setDeletingDeployId] = useState<string | null>(null);
+	const linkDeploy = useLinkDeployment();
+	const deleteDeploy = useDeleteDeployment();
 
-	const handleLink = (repositoryId: string, serviceId: string) => {
-		linkRepo.mutate(
-			{ id: repositoryId, serviceId, isPrimary: true },
+	const handleLink = (deploymentId: string, serviceId: string) => {
+		linkDeploy.mutate(
+			{ id: deploymentId, serviceId },
 			{
-				onSuccess: () => setLinkingRepoId(null),
+				onSuccess: () => setLinkingDeployId(null),
 			},
 		);
 	};
 
 	const handleDelete = (id: string) => {
-		deleteRepo.mutate(
+		deleteDeploy.mutate(
 			{ id },
 			{
-				onSuccess: () => setDeletingRepoId(null),
+				onSuccess: () => setDeletingDeployId(null),
 			},
 		);
 	};
 
-	const repoToDelete = unlinkedRepos.find((r) => r.id === deletingRepoId);
+	const deployToDelete = unlinkedDeployments.find(
+		(d) => d.id === deletingDeployId,
+	);
 
 	return (
 		<>
@@ -75,47 +86,53 @@ export function UnlinkedReposDialog({
 				<DialogContent className="max-w-lg max-h-[70vh] overflow-y-auto">
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
-							<FolderGit2 className="h-5 w-5" />
-							Unlinked Repositories ({unlinkedRepos.length})
+							<Rocket className="h-5 w-5" />
+							Unlinked Deployments ({unlinkedDeployments.length})
 						</DialogTitle>
 						<DialogDescription>
-							These repositories are not linked to any service. Link them to
-							enable code context during AI investigations.
+							These deployments are not linked to any service. Link them to
+							enable log and metric access during AI investigations.
 						</DialogDescription>
 					</DialogHeader>
 
-					<MutationError error={linkRepo.error} className="mb-2" />
-					<MutationError error={deleteRepo.error} className="mb-2" />
+					<MutationError error={linkDeploy.error} className="mb-2" />
+					<MutationError error={deleteDeploy.error} className="mb-2" />
 
 					<div className="space-y-3">
-						{unlinkedRepos.map((repo) => (
+						{unlinkedDeployments.map((deploy) => (
 							<div
-								key={repo.id}
+								key={deploy.id}
 								className="flex items-center justify-between p-3 border rounded-lg"
 							>
 								<div className="min-w-0 flex-1">
 									<p className="font-medium text-sm truncate">
-										{repo.fullName}
+										{deploy.name}
 									</p>
 									<div className="flex items-center gap-2 mt-0.5">
-										{repo.language && (
+										{deploy.status && (
 											<Badge variant="outline" className="text-xs">
-												{repo.language}
+												<span
+													className={
+														statusColors[deploy.status.toLowerCase()] ?? ""
+													}
+												>
+													{deploy.status}
+												</span>
 											</Badge>
 										)}
-										{repo.isPrivate && (
+										{deploy.environment && (
 											<Badge variant="secondary" className="text-xs">
-												Private
+												{deploy.environment}
 											</Badge>
 										)}
 									</div>
 								</div>
 
-								{linkingRepoId === repo.id ? (
+								{linkingDeployId === deploy.id ? (
 									<div className="flex items-center gap-2 flex-shrink-0">
 										<Select
 											onValueChange={(serviceId) =>
-												handleLink(repo.id, serviceId)
+												handleLink(deploy.id, serviceId)
 											}
 										>
 											<SelectTrigger className="w-[180px] h-8">
@@ -129,13 +146,13 @@ export function UnlinkedReposDialog({
 												))}
 											</SelectContent>
 										</Select>
-										{linkRepo.isPending && (
+										{linkDeploy.isPending && (
 											<Loader2 className="h-4 w-4 animate-spin" />
 										)}
 										<Button
 											variant="ghost"
 											size="sm"
-											onClick={() => setLinkingRepoId(null)}
+											onClick={() => setLinkingDeployId(null)}
 										>
 											Cancel
 										</Button>
@@ -145,7 +162,7 @@ export function UnlinkedReposDialog({
 										<Button
 											variant="outline"
 											size="sm"
-											onClick={() => setLinkingRepoId(repo.id)}
+											onClick={() => setLinkingDeployId(deploy.id)}
 										>
 											<Link2 className="h-3 w-3 mr-1" />
 											Link
@@ -154,7 +171,7 @@ export function UnlinkedReposDialog({
 											variant="ghost"
 											size="sm"
 											className="text-destructive hover:text-destructive"
-											onClick={() => setDeletingRepoId(repo.id)}
+											onClick={() => setDeletingDeployId(deploy.id)}
 										>
 											<Trash2 className="h-3 w-3" />
 										</Button>
@@ -163,9 +180,9 @@ export function UnlinkedReposDialog({
 							</div>
 						))}
 
-						{unlinkedRepos.length === 0 && (
+						{unlinkedDeployments.length === 0 && (
 							<p className="text-sm text-muted-foreground text-center py-4">
-								All repositories are linked to services.
+								All deployments are linked to services.
 							</p>
 						)}
 					</div>
@@ -173,18 +190,18 @@ export function UnlinkedReposDialog({
 			</Dialog>
 
 			<AlertDialog
-				open={!!deletingRepoId}
+				open={!!deletingDeployId}
 				onOpenChange={(open) => {
-					if (!open) setDeletingRepoId(null);
+					if (!open) setDeletingDeployId(null);
 				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete repository</AlertDialogTitle>
+						<AlertDialogTitle>Delete deployment</AlertDialogTitle>
 						<AlertDialogDescription>
-							Delete <strong>{repoToDelete?.fullName}</strong>? This removes it
-							from PrismaLens. It does not affect the actual repository on
-							GitHub/GitLab.
+							Delete <strong>{deployToDelete?.name}</strong>? This removes it
+							from PrismaLens. It does not affect the actual deployment on the
+							provider.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -192,11 +209,11 @@ export function UnlinkedReposDialog({
 						<AlertDialogAction
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 							onClick={() => {
-								if (deletingRepoId) handleDelete(deletingRepoId);
+								if (deletingDeployId) handleDelete(deletingDeployId);
 							}}
-							disabled={deleteRepo.isPending}
+							disabled={deleteDeploy.isPending}
 						>
-							{deleteRepo.isPending ? (
+							{deleteDeploy.isPending ? (
 								<Loader2 className="h-4 w-4 animate-spin mr-1" />
 							) : null}
 							Delete

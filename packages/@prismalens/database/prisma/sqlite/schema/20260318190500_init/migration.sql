@@ -28,7 +28,7 @@ CREATE TABLE "repositories" (
     "metadata" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "repositories_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADEn
+    CONSTRAINT "repositories_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -523,9 +523,14 @@ CREATE TABLE "service_suggestions" (
     "sourceType" TEXT NOT NULL DEFAULT 'repository',
     "status" TEXT NOT NULL DEFAULT 'pending',
     "metadata" TEXT,
+    "statusChangedAt" DATETIME,
+    "acceptedServiceId" TEXT,
+    "acceptedDeploymentId" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "service_suggestions_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "service_suggestions_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "service_suggestions_acceptedServiceId_fkey" FOREIGN KEY ("acceptedServiceId") REFERENCES "services" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "service_suggestions_acceptedDeploymentId_fkey" FOREIGN KEY ("acceptedDeploymentId") REFERENCES "deployments" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateIndex
@@ -737,6 +742,12 @@ CREATE INDEX "service_suggestions_status_idx" ON "service_suggestions"("status")
 
 -- CreateIndex
 CREATE INDEX "service_suggestions_connectionId_idx" ON "service_suggestions"("connectionId");
+
+-- CreateIndex
+CREATE INDEX "service_suggestions_acceptedServiceId_idx" ON "service_suggestions"("acceptedServiceId");
+
+-- CreateIndex
+CREATE INDEX "service_suggestions_acceptedDeploymentId_idx" ON "service_suggestions"("acceptedDeploymentId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "service_suggestions_connectionId_repository_subPath_key" ON "service_suggestions"("connectionId", "repository", "subPath");

@@ -106,6 +106,7 @@ export const ConnectionWithIntegrationSchema = ConnectionSchema.extend({
 	integration: IntegrationSchema.optional(),
 	templateId: z.string().optional(),
 	templateName: z.string().optional(),
+	template: AuthTemplateResponseSchema.nullable().optional(),
 });
 
 export const CreateConnectionSchema = z.object({

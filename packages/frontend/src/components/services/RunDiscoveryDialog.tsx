@@ -18,12 +18,12 @@ interface ConnectionInfo {
 	id: string;
 	label?: string | null;
 	status: string;
+	template?: {
+		category?: string;
+	} | null;
 	integration?: {
 		templateId?: string;
 		label?: string | null;
-		template?: {
-			category?: string;
-		};
 	} | null;
 }
 
@@ -36,12 +36,7 @@ interface RunDiscoveryDialogProps {
 }
 
 function getCategory(conn: ConnectionInfo): string {
-	const category = conn.integration?.template?.category;
-	if (category) return category;
-	const templateId = conn.integration?.templateId ?? "";
-	if (["github", "gitlab", "bitbucket"].some((p) => templateId.startsWith(p))) return "vcs";
-	if (["render", "vercel", "railway"].some((p) => templateId.startsWith(p))) return "deployment";
-	return "other";
+	return conn.template?.category ?? "other";
 }
 
 function getCategoryLabel(category: string): string {

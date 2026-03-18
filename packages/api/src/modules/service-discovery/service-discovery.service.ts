@@ -255,15 +255,33 @@ export class ServiceDiscoveryService {
       },
     });
 
-    if (
-      existing &&
-      existing.status !== 'rejected' &&
-      existing.status !== 'ignored'
-    ) {
-      return this.prisma.serviceSuggestion.update({
-        where: { id: existing.id },
-        data: { updatedAt: new Date() },
-      });
+    if (existing) {
+      // Orphan detection: reset accepted suggestions whose result no longer exists
+      if (existing.status === 'accepted') {
+        const isOrphaned = await this.isAcceptedSuggestionOrphaned(existing);
+        if (isOrphaned) {
+          this.logger.log(
+            `Resetting orphaned accepted suggestion: ${existing.suggestedName} (${existing.id})`,
+          );
+          return this.prisma.serviceSuggestion.update({
+            where: { id: existing.id },
+            data: {
+              status: 'pending',
+              statusChangedAt: new Date(),
+              acceptedServiceId: null,
+              acceptedDeploymentId: null,
+            },
+          });
+        }
+      }
+
+      // Skip pending/accepted suggestions (not orphaned)
+      if (existing.status !== 'rejected' && existing.status !== 'ignored') {
+        return this.prisma.serviceSuggestion.update({
+          where: { id: existing.id },
+          data: { updatedAt: new Date() },
+        });
+      }
     }
 
     const createData: Record<string, unknown> = {
@@ -293,6 +311,44 @@ export class ServiceDiscoveryService {
   }
 
   /**
+   * Check if an accepted suggestion's result (service/deployment) no longer exists or is orphaned.
+   *
+   * Orphan signals (all rely on onDelete:SetNull FK behavior):
+   * - acceptedServiceId is null but statusChangedAt is set → service was deleted after acceptance
+   * - acceptedServiceId points to a non-existent service → stale reference
+   * - acceptedDeploymentId points to a deployment with no serviceId → deployment was unlinked
+   */
+  private async isAcceptedSuggestionOrphaned(
+    suggestion: ServiceSuggestion,
+  ): Promise<boolean> {
+    // Suggestion has tracking fields (acceptedServiceId was set during acceptance).
+    // If it's now null, onDelete:SetNull fired → service was deleted.
+    if (suggestion.acceptedServiceId === null && suggestion.statusChangedAt) {
+      return true;
+    }
+
+    // Verify the accepted service still exists (handles edge cases where FK wasn't nullified)
+    if (suggestion.acceptedServiceId) {
+      const service = await this.prisma.service.findUnique({
+        where: { id: suggestion.acceptedServiceId },
+      });
+      if (!service) return true;
+    }
+
+    // For deployment suggestions, check if deployment was deleted or unlinked
+    if (suggestion.acceptedDeploymentId) {
+      const deployment = await this.prisma.deployment.findUnique({
+        where: { id: suggestion.acceptedDeploymentId },
+      });
+      if (!deployment || !deployment.serviceId) return true;
+    }
+
+    // No tracking fields at all (should not happen after DB reset, but safe fallback)
+    // Don't treat as orphaned — can't determine state without tracking data
+    return false;
+  }
+
+  /**
    * Analyze repository structure to detect monorepo layout and service boundaries.
    */
   async analyzeRepoStructure(
@@ -316,13 +372,6 @@ export class ServiceDiscoveryService {
   // =========================================================================
   // SUGGESTION MANAGEMENT
   // =========================================================================
-
-  async getPendingSuggestions(): Promise<ServiceSuggestion[]> {
-    return this.prisma.serviceSuggestion.findMany({
-      where: { status: 'pending' },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
 
   async getSuggestions(params: {
     connectionId?: string;
@@ -389,9 +438,9 @@ export class ServiceDiscoveryService {
   ): Promise<Service> {
     const serviceName = overrides?.name || suggestion.suggestedName;
 
-    // Create repository record + service + link them
-    const [service] = await this.prisma.$transaction([
-      this.prisma.service.create({
+    // Atomic: create service + mark suggestion accepted with tracking
+    const service = await this.prisma.$transaction(async (tx) => {
+      const svc = await tx.service.create({
         data: {
           name: serviceName,
           displayName:
@@ -400,12 +449,19 @@ export class ServiceDiscoveryService {
           type: overrides?.type || 'service',
           team: overrides?.team,
         },
-      }),
-      this.prisma.serviceSuggestion.update({
+      });
+
+      await tx.serviceSuggestion.update({
         where: { id: suggestion.id },
-        data: { status: 'accepted' },
-      }),
-    ]);
+        data: {
+          status: 'accepted',
+          statusChangedAt: new Date(),
+          acceptedServiceId: svc.id,
+        },
+      });
+
+      return svc;
+    });
 
     this.logger.log(
       `Accepted repository suggestion: ${serviceName} (${service.id})`,
@@ -430,25 +486,10 @@ export class ServiceDiscoveryService {
       // ignore parse errors
     }
 
-    // Validate linked service exists before starting transaction
-    if (overrides?.linkedServiceId) {
-      const existing = await this.prisma.service.findUnique({
-        where: { id: overrides.linkedServiceId },
-      });
-      if (!existing) {
-        throw new NotFoundException('Linked service not found');
-      }
-    }
-
-    // Atomic: create/link service + deployment + mark accepted
-    const service = await this.prisma.$transaction(async (tx) => {
-      let svc: Service;
-      if (overrides?.linkedServiceId) {
-        svc = (await tx.service.findUnique({
-          where: { id: overrides.linkedServiceId },
-        }))!;
-      } else {
-        svc = await tx.service.create({
+    // Atomic: always create new service + deployment + mark accepted
+    const { service, deploymentId } = await this.prisma.$transaction(
+      async (tx) => {
+        const svc = await tx.service.create({
           data: {
             name: serviceName,
             displayName:
@@ -458,53 +499,60 @@ export class ServiceDiscoveryService {
             team: overrides?.team,
           },
         });
-      }
 
-      if (metadata.externalId) {
-        await tx.deployment.create({
+        let depId: string | null = null;
+        if (metadata.externalId) {
+          const dep = await tx.deployment.create({
+            data: {
+              serviceId: svc.id,
+              connectionId: suggestion.connectionId,
+              externalId: metadata.externalId as string,
+              name: suggestion.suggestedName,
+              url: (metadata.url as string) ?? null,
+              status: (metadata.status as string) ?? null,
+              deploymentType: (metadata.type as string) ?? null,
+              region: (metadata.region as string) ?? null,
+              branch: (metadata.branch as string) ?? null,
+              repositoryUrl: (metadata.repo as string) ?? null,
+              environment: (metadata.environment as string) ?? null,
+              metadata: metadata.project
+                ? JSON.stringify({ project: metadata.project })
+                : undefined,
+            },
+          });
+          depId = dep.id;
+        }
+
+        // Auto-link repository if the deployment has a repo reference
+        if (metadata.repo) {
+          await this.tryAutoLinkRepository(tx, svc.id, metadata.repo as string);
+        }
+
+        // Auto-create dependencies if the provider reported them
+        if (
+          Array.isArray(metadata.dependencies) &&
+          metadata.dependencies.length > 0
+        ) {
+          await this.tryAutoCreateDependencies(
+            tx,
+            svc.id,
+            metadata.dependencies as string[],
+          );
+        }
+
+        await tx.serviceSuggestion.update({
+          where: { id: suggestion.id },
           data: {
-            serviceId: svc.id,
-            connectionId: suggestion.connectionId,
-            externalId: metadata.externalId as string,
-            name: suggestion.suggestedName,
-            url: (metadata.url as string) ?? null,
-            status: (metadata.status as string) ?? null,
-            deploymentType: (metadata.type as string) ?? null,
-            region: (metadata.region as string) ?? null,
-            branch: (metadata.branch as string) ?? null,
-            repositoryUrl: (metadata.repo as string) ?? null,
-            environment: (metadata.environment as string) ?? null,
-            metadata: metadata.project
-              ? JSON.stringify({ project: metadata.project })
-              : undefined,
+            status: 'accepted',
+            statusChangedAt: new Date(),
+            acceptedServiceId: svc.id,
+            acceptedDeploymentId: depId,
           },
         });
-      }
 
-      // Auto-link repository if the deployment has a repo reference
-      if (metadata.repo) {
-        await this.tryAutoLinkRepository(tx, svc.id, metadata.repo as string);
-      }
-
-      // Auto-create dependencies if the provider reported them
-      if (
-        Array.isArray(metadata.dependencies) &&
-        metadata.dependencies.length > 0
-      ) {
-        await this.tryAutoCreateDependencies(
-          tx,
-          svc.id,
-          metadata.dependencies as string[],
-        );
-      }
-
-      await tx.serviceSuggestion.update({
-        where: { id: suggestion.id },
-        data: { status: 'accepted' },
-      });
-
-      return svc;
-    });
+        return { service: svc, deploymentId: depId };
+      },
+    );
 
     this.logger.log(
       `Accepted deployment suggestion: ${serviceName} (${service.id})`,
@@ -530,7 +578,7 @@ export class ServiceDiscoveryService {
 
     const updated = await this.prisma.serviceSuggestion.update({
       where: { id: suggestionId },
-      data: { status: 'ignored' },
+      data: { status: 'ignored', statusChangedAt: new Date() },
     });
 
     this.logger.log(`Ignored service suggestion: ${suggestionId}`);
@@ -554,7 +602,7 @@ export class ServiceDiscoveryService {
 
     const updated = await this.prisma.serviceSuggestion.update({
       where: { id: suggestionId },
-      data: { status: 'rejected' },
+      data: { status: 'rejected', statusChangedAt: new Date() },
     });
 
     this.logger.log(`Rejected service suggestion: ${suggestionId}`);

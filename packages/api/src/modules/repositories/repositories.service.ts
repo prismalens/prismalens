@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Repository, ServiceRepository } from '@prismalens/database';
 import { Prisma } from '@prismalens/database';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -21,40 +26,52 @@ export class RepositoriesService {
   async batchCreate(
     dto: BatchCreateRepositoriesDto,
   ): Promise<{ created: number; repositories: Repository[] }> {
-    const results: Repository[] = [];
-
-    for (const repo of dto.repositories) {
-      const repository = await this.prisma.repository.upsert({
-        where: {
-          connectionId_fullName: {
+    const results = await this.prisma.$transaction(async (tx) => {
+      const repos: Repository[] = [];
+      for (const repo of dto.repositories) {
+        const repository = await tx.repository.upsert({
+          where: {
+            connectionId_fullName: {
+              connectionId: repo.connectionId,
+              fullName: repo.fullName,
+            },
+          },
+          update: {
+            url: repo.url,
+            description: repo.description ?? null,
+            language: repo.language ?? null,
+            defaultBranch: repo.defaultBranch ?? 'main',
+            isPrivate: repo.isPrivate ?? false,
+            metadata: repo.metadata ? JSON.stringify(repo.metadata) : null,
+          },
+          create: {
             connectionId: repo.connectionId,
             fullName: repo.fullName,
+            url: repo.url,
+            description: repo.description ?? null,
+            language: repo.language ?? null,
+            defaultBranch: repo.defaultBranch ?? 'main',
+            isPrivate: repo.isPrivate ?? false,
+            metadata: repo.metadata ? JSON.stringify(repo.metadata) : null,
           },
-        },
-        update: {
-          url: repo.url,
-          description: repo.description ?? null,
-          language: repo.language ?? null,
-          defaultBranch: repo.defaultBranch ?? 'main',
-          isPrivate: repo.isPrivate ?? false,
-          metadata: repo.metadata ? JSON.stringify(repo.metadata) : null,
-        },
-        create: {
-          connectionId: repo.connectionId,
-          fullName: repo.fullName,
-          url: repo.url,
-          description: repo.description ?? null,
-          language: repo.language ?? null,
-          defaultBranch: repo.defaultBranch ?? 'main',
-          isPrivate: repo.isPrivate ?? false,
-          metadata: repo.metadata ? JSON.stringify(repo.metadata) : null,
-        },
-      });
-      results.push(repository);
-    }
+        });
+        repos.push(repository);
+      }
+      return repos;
+    });
 
     this.logger.log(`Batch created/updated ${results.length} repositories`);
     return { created: results.length, repositories: results };
+  }
+
+  /**
+   * Count repositories not linked to any service
+   */
+  async countUnlinked(): Promise<number> {
+    const repos = await this.prisma.repository.findMany({
+      include: { services: { select: { id: true }, take: 1 } },
+    });
+    return repos.filter((r) => r.services.length === 0).length;
   }
 
   /**
@@ -133,5 +150,23 @@ export class RepositoriesService {
     await this.prisma.serviceRepository.deleteMany({
       where: { repositoryId, serviceId },
     });
+  }
+
+  /**
+   * Delete an unlinked repository
+   */
+  async delete(id: string): Promise<void> {
+    const repo = await this.prisma.repository.findUnique({
+      where: { id },
+      include: { services: true },
+    });
+    if (!repo) throw new NotFoundException('Repository not found');
+    if (repo.services.length > 0) {
+      throw new ConflictException(
+        'Repository is linked to services. Unlink before deleting.',
+      );
+    }
+    await this.prisma.repository.delete({ where: { id } });
+    this.logger.log(`Deleted repository ${repo.fullName} (${id})`);
   }
 }

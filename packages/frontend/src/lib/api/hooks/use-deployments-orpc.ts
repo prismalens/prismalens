@@ -27,10 +27,24 @@ export function useDeployments(params?: {
 	search?: string;
 	limit?: number;
 	offset?: number;
+	enabled?: boolean;
 }) {
+	const { enabled = true, ...input } = params ?? {};
+	return useQuery({
+		...orpc.deployments.list.queryOptions({
+			input,
+		}),
+		enabled,
+	});
+}
+
+/**
+ * Fetch count of unlinked deployments
+ */
+export function useUnlinkedDeploymentCount() {
 	return useQuery(
-		orpc.deployments.list.queryOptions({
-			input: params ?? {},
+		orpc.deployments.unlinkedCount.queryOptions({
+			input: {},
 		}),
 	);
 }
@@ -89,6 +103,21 @@ export function useUnlinkDeployment() {
 
 	return useMutation({
 		...orpc.deployments.unlink.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: deploymentKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: serviceKeys.all() });
+		},
+	});
+}
+
+/**
+ * Delete an unlinked deployment
+ */
+export function useDeleteDeployment() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.deployments.delete.mutationOptions(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: deploymentKeys.lists() });
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });

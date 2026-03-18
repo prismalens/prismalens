@@ -35,6 +35,17 @@ export function useRepositories(params?: {
 }
 
 /**
+ * Fetch count of unlinked repositories
+ */
+export function useUnlinkedRepositoryCount() {
+	return useQuery(
+		orpc.repositories.unlinkedCount.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
  * Fetch a single repository by ID
  */
 export function useRepository(id: string) {
@@ -91,6 +102,21 @@ export function useUnlinkRepository() {
 			queryClient.invalidateQueries({
 				queryKey: serviceKeys.detail(variables.serviceId),
 			});
+			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
+		},
+	});
+}
+
+/**
+ * Delete an unlinked repository
+ */
+export function useDeleteRepository() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.repositories.delete.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
 		},
 	});

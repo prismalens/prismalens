@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Deployment } from '@prismalens/database';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import type {
@@ -20,52 +25,63 @@ export class DeploymentsService {
   async batchCreate(
     dto: BatchCreateDeploymentsDto,
   ): Promise<{ created: number; deployments: Deployment[] }> {
-    const results: Deployment[] = [];
-
-    for (const dep of dto.deployments) {
-      const deployment = await this.prisma.deployment.upsert({
-        where: {
-          connectionId_externalId: {
+    const results = await this.prisma.$transaction(async (tx) => {
+      const deps: Deployment[] = [];
+      for (const dep of dto.deployments) {
+        const deployment = await tx.deployment.upsert({
+          where: {
+            connectionId_externalId: {
+              connectionId: dep.connectionId,
+              externalId: dep.externalId,
+            },
+          },
+          update: {
+            name: dep.name,
+            url: dep.url ?? null,
+            status: dep.status ?? null,
+            environment: dep.environment ?? null,
+            deploymentType: dep.deploymentType ?? null,
+            region: dep.region ?? null,
+            branch: dep.branch ?? null,
+            repositoryUrl: dep.repositoryUrl ?? null,
+            metadata: dep.metadata ? JSON.stringify(dep.metadata) : null,
+            lastDeployedAt: dep.lastDeployedAt
+              ? new Date(dep.lastDeployedAt)
+              : null,
+          },
+          create: {
             connectionId: dep.connectionId,
             externalId: dep.externalId,
+            name: dep.name,
+            url: dep.url ?? null,
+            status: dep.status ?? null,
+            environment: dep.environment ?? null,
+            deploymentType: dep.deploymentType ?? null,
+            region: dep.region ?? null,
+            branch: dep.branch ?? null,
+            repositoryUrl: dep.repositoryUrl ?? null,
+            metadata: dep.metadata ? JSON.stringify(dep.metadata) : null,
+            lastDeployedAt: dep.lastDeployedAt
+              ? new Date(dep.lastDeployedAt)
+              : null,
           },
-        },
-        update: {
-          name: dep.name,
-          url: dep.url ?? null,
-          status: dep.status ?? null,
-          environment: dep.environment ?? null,
-          deploymentType: dep.deploymentType ?? null,
-          region: dep.region ?? null,
-          branch: dep.branch ?? null,
-          repositoryUrl: dep.repositoryUrl ?? null,
-          metadata: dep.metadata ? JSON.stringify(dep.metadata) : null,
-          lastDeployedAt: dep.lastDeployedAt
-            ? new Date(dep.lastDeployedAt)
-            : null,
-        },
-        create: {
-          connectionId: dep.connectionId,
-          externalId: dep.externalId,
-          name: dep.name,
-          url: dep.url ?? null,
-          status: dep.status ?? null,
-          environment: dep.environment ?? null,
-          deploymentType: dep.deploymentType ?? null,
-          region: dep.region ?? null,
-          branch: dep.branch ?? null,
-          repositoryUrl: dep.repositoryUrl ?? null,
-          metadata: dep.metadata ? JSON.stringify(dep.metadata) : null,
-          lastDeployedAt: dep.lastDeployedAt
-            ? new Date(dep.lastDeployedAt)
-            : null,
-        },
-      });
-      results.push(deployment);
-    }
+        });
+        deps.push(deployment);
+      }
+      return deps;
+    });
 
     this.logger.log(`Batch created/updated ${results.length} deployments`);
     return { created: results.length, deployments: results };
+  }
+
+  /**
+   * Count deployments not linked to any service
+   */
+  async countUnlinked(): Promise<number> {
+    return this.prisma.deployment.count({
+      where: { serviceId: null },
+    });
   }
 
   /**
@@ -143,5 +159,22 @@ export class DeploymentsService {
       where: { id: deploymentId },
       data: { serviceId: null },
     });
+  }
+
+  /**
+   * Delete an unlinked deployment
+   */
+  async delete(id: string): Promise<void> {
+    const deployment = await this.prisma.deployment.findUnique({
+      where: { id },
+    });
+    if (!deployment) throw new NotFoundException('Deployment not found');
+    if (deployment.serviceId) {
+      throw new ConflictException(
+        'Deployment is linked to a service. Unlink before deleting.',
+      );
+    }
+    await this.prisma.deployment.delete({ where: { id } });
+    this.logger.log(`Deleted deployment ${deployment.name} (${id})`);
   }
 }

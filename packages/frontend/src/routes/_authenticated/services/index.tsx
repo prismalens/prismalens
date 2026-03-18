@@ -1,14 +1,15 @@
 import { useState, useCallback } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
+	AlertCircle,
 	ChevronLeft,
 	ChevronRight,
-	FolderGit2,
 	GitBranch,
 	LayoutGrid,
 	List,
 	Plus,
 	RefreshCw,
+	Rocket,
 	Sparkles,
 	X,
 } from "lucide-react";
@@ -20,7 +21,7 @@ import type {
 	ServiceWithRelations,
 } from "@prismalens/contracts";
 
-import { useConnections, useRepositories, useServices, useSuggestions } from "@/lib/api/hooks";
+import { useConnections, useDeployments, useRepositories, useServices, useSuggestions, useUnlinkedDeploymentCount, useUnlinkedRepositoryCount } from "@/lib/api/hooks";
 import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ import { DebouncedSearchInput } from "@/components/ui/debounced-search-input";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ImportFromVcsDialog } from "@/components/services/ImportFromVcsDialog";
 import { ServiceList } from "@/components/services/ServiceList";
+import { UnlinkedDeploymentsDialog } from "@/components/services/UnlinkedDeploymentsDialog";
 import { UnlinkedReposDialog } from "@/components/services/UnlinkedReposDialog";
 import { tierLabels } from "@/components/services/service-detail.utils";
 
@@ -178,7 +180,8 @@ function ServicesPage() {
 	const navigate = useNavigate({ from: "/services" });
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showImportDialog, setShowImportDialog] = useState(false);
-	const [showUnlinkedDialog, setShowUnlinkedDialog] = useState(false);
+	const [showUnlinkedReposDialog, setShowUnlinkedReposDialog] = useState(false);
+	const [showUnlinkedDeploymentsDialog, setShowUnlinkedDeploymentsDialog] = useState(false);
 	const [bannerDismissed, setBannerDismissed] = useState(false);
 
 	const typeFilter = (searchParams.type || "all") as ServiceType | "all";
@@ -210,16 +213,30 @@ function ServicesPage() {
 
 	// Detect VCS connections for import button
 	const { data: allConnections = [] } = useConnections();
-	const hasVcsConnections = allConnections.some((c) =>
-		["github", "gitlab", "bitbucket"].some((prefix) =>
-			(c.integration?.templateId ?? "").startsWith(prefix),
-		),
+	const hasVcsConnections = allConnections.some(
+		(c) => c.template?.category === "vcs",
 	);
 
-	// Unlinked repositories
-	const { data: repoResponse } = useRepositories({ limit: 100 });
+	// Unlinked resource counts (lightweight server-side queries for banner)
+	const { data: unlinkedRepoCount } = useUnlinkedRepositoryCount();
+	const { data: unlinkedDeployCount } = useUnlinkedDeploymentCount();
+	const unlinkedReposCount = unlinkedRepoCount?.count ?? 0;
+	const unlinkedDeploymentsCount = unlinkedDeployCount?.count ?? 0;
+
+	// Full data for dialogs (only fetched when dialogs are open)
+	const { data: repoResponse } = useRepositories({
+		limit: 100,
+		enabled: showUnlinkedReposDialog,
+	});
 	const unlinkedRepos = (repoResponse?.data ?? []).filter(
 		(r) => !r.services || r.services.length === 0,
+	);
+	const { data: deployResponse } = useDeployments({
+		limit: 100,
+		enabled: showUnlinkedDeploymentsDialog,
+	});
+	const unlinkedDeployments = (deployResponse?.data ?? []).filter(
+		(d) => !d.serviceId,
 	);
 
 	// Pending suggestions count
@@ -307,23 +324,45 @@ function ServicesPage() {
 				}
 			/>
 
-			{/* Unlinked Repos Banner */}
-			{unlinkedRepos.length > 0 && !bannerDismissed && (
+			{/* Unlinked Resources Banner */}
+			{(unlinkedReposCount > 0 || unlinkedDeploymentsCount > 0) && !bannerDismissed && (
 				<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50 text-sm">
 					<div className="flex items-center gap-2">
-						<FolderGit2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+						<AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
 						<span>
-							{unlinkedRepos.length} repositor{unlinkedRepos.length !== 1 ? "ies are" : "y is"} not linked to any service.
+							{[
+								unlinkedReposCount > 0
+									? `${unlinkedReposCount} repositor${unlinkedReposCount !== 1 ? "ies" : "y"}`
+									: null,
+								unlinkedDeploymentsCount > 0
+									? `${unlinkedDeploymentsCount} deployment${unlinkedDeploymentsCount !== 1 ? "s" : ""}`
+									: null,
+							]
+								.filter(Boolean)
+								.join(" and ")}{" "}
+							not linked to any service.
 						</span>
 					</div>
 					<div className="flex items-center gap-2 flex-shrink-0">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setShowUnlinkedDialog(true)}
-						>
-							View & Link
-						</Button>
+						{unlinkedReposCount > 0 && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => setShowUnlinkedReposDialog(true)}
+							>
+								Repos ({unlinkedReposCount})
+							</Button>
+						)}
+						{unlinkedDeploymentsCount > 0 && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => setShowUnlinkedDeploymentsDialog(true)}
+							>
+								<Rocket className="h-3 w-3 mr-1" />
+								Deployments ({unlinkedDeploymentsCount})
+							</Button>
+						)}
 						<Button
 							variant="ghost"
 							size="sm"
@@ -472,9 +511,15 @@ function ServicesPage() {
 				onSuccess={() => refetch()}
 			/>
 			<UnlinkedReposDialog
-				open={showUnlinkedDialog}
-				onOpenChange={setShowUnlinkedDialog}
+				open={showUnlinkedReposDialog}
+				onOpenChange={setShowUnlinkedReposDialog}
 				unlinkedRepos={unlinkedRepos}
+				services={services}
+			/>
+			<UnlinkedDeploymentsDialog
+				open={showUnlinkedDeploymentsDialog}
+				onOpenChange={setShowUnlinkedDeploymentsDialog}
+				unlinkedDeployments={unlinkedDeployments}
 				services={services}
 			/>
 		</div>

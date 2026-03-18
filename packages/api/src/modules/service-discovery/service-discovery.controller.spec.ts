@@ -5,7 +5,6 @@ import { ServiceDiscoveryService } from './service-discovery.service.js';
 
 const mockServiceDiscoveryService = {
   discoverFromConnection: jest.fn(),
-  getPendingSuggestions: jest.fn(),
   acceptSuggestion: jest.fn(),
   rejectSuggestion: jest.fn(),
   acceptMultiple: jest.fn(),
@@ -92,58 +91,6 @@ describe('ServiceDiscoveryController (BDD)', () => {
       expect(Logger.prototype.log).toHaveBeenCalledWith(
         expect.stringContaining('Triggering service discovery'),
       );
-    });
-  });
-
-  describe('listSuggestions', () => {
-    it('should return all pending suggestions', async () => {
-      const suggestions = [
-        {
-          id: 'sugg-1',
-          suggestedName: 'service-1',
-          displayName: 'Service 1',
-          repository: 'org/repo',
-          subPath: null,
-          isMonorepo: false,
-          status: 'pending',
-          metadata: '{}',
-          connectionId: 'conn-1',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        {
-          id: 'sugg-2',
-          suggestedName: 'service-2',
-          displayName: 'Service 2',
-          repository: 'org/repo',
-          subPath: 'packages/lib',
-          isMonorepo: true,
-          status: 'pending',
-          metadata: '{}',
-          connectionId: 'conn-1',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
-
-      mockServiceDiscoveryService.getPendingSuggestions.mockResolvedValue(
-        suggestions,
-      );
-
-      const handlers = getHandlers();
-      const result = await handlers.listSuggestions({} as any);
-
-      expect(result).toHaveLength(2);
-      expect(service.getPendingSuggestions).toHaveBeenCalled();
-    });
-
-    it('should return empty list when no suggestions pending', async () => {
-      mockServiceDiscoveryService.getPendingSuggestions.mockResolvedValue([]);
-
-      const handlers = getHandlers();
-      const result = await handlers.listSuggestions({} as any);
-
-      expect(result).toEqual([]);
     });
   });
 

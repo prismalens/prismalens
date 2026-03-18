@@ -125,23 +125,30 @@ model ServiceIntegration {
 
 /// Service suggestion from auto-discovery.
 model ServiceSuggestion {
-  id            String   @id @default(uuid())
-  connectionId  String
-  suggestedName String
-  displayName   String?
-  repository    String   // "owner/repo" for VCS, provider service name for deployments
-  isMonorepo    Boolean  @default(false)
-  subPath       String?
-  sourceType    String   @default("repository") // "repository" | "deployment"
-  status        String   @default("pending") // pending, accepted, rejected, ignored
-  metadata      String?  // JSON
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String    @id @default(uuid())
+  connectionId         String
+  suggestedName        String
+  displayName          String?
+  repository           String    // "owner/repo" for VCS, provider service name for deployments
+  isMonorepo           Boolean   @default(false)
+  subPath              String?
+  sourceType           String    @default("repository") // "repository" | "deployment"
+  status               String    @default("pending") // pending, accepted, rejected, ignored
+  metadata             String?   // JSON
+  statusChangedAt      DateTime?
+  acceptedServiceId    String?
+  acceptedDeploymentId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection         Connection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  acceptedService    Service?    @relation(fields: [acceptedServiceId], references: [id], onDelete: SetNull)
+  acceptedDeployment Deployment? @relation(fields: [acceptedDeploymentId], references: [id], onDelete: SetNull)
 
   @@unique([connectionId, repository, subPath])
   @@index([status])
   @@index([connectionId])
+  @@index([acceptedServiceId])
+  @@index([acceptedDeploymentId])
   @@map("service_suggestions")
 }

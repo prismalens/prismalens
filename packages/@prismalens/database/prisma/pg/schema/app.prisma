@@ -334,8 +334,9 @@ model Service {
   integrations      ServiceIntegration[]
   alertMappingRules AlertMappingRule[]
   changeEvents      ChangeEvent[]
-  repositories      ServiceRepository[]
-  deployments       Deployment[]
+  repositories         ServiceRepository[]
+  deployments          Deployment[]
+  acceptedSuggestions  ServiceSuggestion[]
 
   @@map("services")
 }
@@ -396,8 +397,9 @@ model Deployment {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  service         Service?   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  connection      Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  service            Service?            @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  connection         Connection          @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  acceptedSuggestion ServiceSuggestion[]
 
   @@unique([connectionId, externalId])
   @@map("deployments")

@@ -76,12 +76,8 @@ function DiscoveryPage() {
 	// Fetch VCS + deployment connections for "Run Discovery" button
 	const { data: allConnections = [] } = useConnections();
 	const discoveryConnections = allConnections.filter((c) => {
-		const category = c.integration?.template?.category;
-		if (category === "vcs" || category === "deployment") return true;
-		// Fallback: match by templateId prefix when category is unavailable
-		return ["github", "gitlab", "bitbucket", "render"].some((prefix) =>
-			(c.integration?.templateId ?? "").startsWith(prefix),
-		);
+		const category = c.template?.category;
+		return category === "vcs" || category === "deployment";
 	});
 
 	const triggerDiscovery = useTriggerDiscovery();

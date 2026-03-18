@@ -26,6 +26,9 @@ export const ServiceSuggestionSchema = z.object({
 	sourceType: SourceTypeSchema,
 	status: SuggestionStatusSchema,
 	metadata: z.record(z.unknown()).nullable(),
+	statusChangedAt: DateStringSchema.nullable(),
+	acceptedServiceId: z.string().uuid().nullable(),
+	acceptedDeploymentId: z.string().uuid().nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -40,7 +43,6 @@ export const AcceptSuggestionSchema = z.object({
 	description: z.string().optional(),
 	type: ServiceTypeSchema.optional(),
 	team: z.string().optional(),
-	linkedServiceId: z.string().uuid().optional(), // Link deployment to existing service instead of creating new
 });
 
 export const AcceptBulkSuggestionsSchema = z.object({
