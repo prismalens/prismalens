@@ -9,7 +9,9 @@ import { StreamRelayService } from "./stream-relay.service.js";
  * Forwards raw LangGraph [mode, data] tuples as JSON via SSE.
  * This is a raw NestJS controller (not oRPC) since SSE doesn't fit RPC.
  */
-@Controller("api/investigations")
+// NOTE: a global "api" prefix is applied app-wide, so this controller path must NOT
+// repeat it (else the route becomes /api/api/investigations/:id/stream).
+@Controller("investigations")
 @UseGuards(ThrottlerGuard)
 export class InvestigationStreamController {
 	constructor(private readonly streamRelay: StreamRelayService) {}

@@ -58,13 +58,13 @@ function InvestigationDetailPage() {
 
 	const runMutation = useRunInvestigation();
 
-	const isActive =
-		investigation?.status === "running" ||
-		investigation?.status === "pending";
+	// Only "running" streams. "pending" means created-but-not-run (show the Run button);
+	// streaming a non-running investigation just yields a dead SSE connection.
+	const isRunning = investigation?.status === "running";
 
 	// SSE stream for the in-process engine
 	const stream = useEngineInvestigationStream(investigationId, {
-		enabled: isActive,
+		enabled: isRunning,
 	});
 
 	// When stream completes, refetch investigation data
@@ -141,7 +141,7 @@ function InvestigationDetailPage() {
 					)}
 				</div>
 				<div className="flex items-center gap-2">
-					{!isActive && (
+					{!isRunning && (
 						<Button
 							size="sm"
 							onClick={() => runMutation.mutate({ id: investigationId })}
@@ -162,7 +162,7 @@ function InvestigationDetailPage() {
 						/>
 						Refresh
 					</Button>
-					{isActive && (
+					{isRunning && (
 						<Button variant="destructive" size="sm">
 							<XCircle className="h-4 w-4 mr-2" />
 							Cancel
@@ -178,7 +178,7 @@ function InvestigationDetailPage() {
 			)}
 
 			{/* Live engine investigation stream */}
-			{(isActive || stream.steps.length > 0) && (
+			{(isRunning || stream.steps.length > 0) && (
 				<EngineStreamPanel
 					steps={stream.steps}
 					status={stream.status}
