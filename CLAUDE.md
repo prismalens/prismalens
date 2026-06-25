@@ -27,3 +27,11 @@ When adding new packages, always prefer addition/installation via the package ma
 ### Indentation
 - Never convert tabs to spaces or vice-versa.
 - Preserve the original indentation pattern exactly when making code suggestions.
+
+## Knowledge base (mage)
+Design/spec knowledge lives in an external **mage** hub — see [AGENTS.md](AGENTS.md). This repo is
+project `prismalens-platform`; start at `<hub>/INDEX.md` and open the
+`prismalens-platform` wing (hub path in `mage/metadata.json`; full instructions
+in AGENTS.md).
+
+@AGENTS.md
