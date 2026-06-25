@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - packages/@prismalens/*
+  - spikes/*
 
 onlyBuiltDependencies:
   - '@nestjs/core'

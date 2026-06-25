@@ -1,0 +1,19 @@
+{
+	"name": "@prismalens/spike-investigate",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "M1 throwaway spike: a thin tool-calling loop we own — swappable model backend (Gemini/Ollama), one read-only shell tool, ordered-evidence report. NOT production; validates ADR-0002/0003/0004/0005/0006.",
+	"scripts": {
+		"investigate": "tsx src/cli.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"dotenv": "^16.6.1"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.0"
+	}
+}

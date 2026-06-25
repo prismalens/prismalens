@@ -1,0 +1,20 @@
+{
+	"_comment": "Deny-by-default read-only shell allowlist. A command runs ONLY if its binary is a key here AND (if `subcommands` is non-empty) its first arg is listed. Executed via execFile (no shell) so pipes/redirects/metacharacters are impossible. Mutating verbs are also rejected globally. Edit for your scenario.",
+	"commands": {
+		"kubectl": {
+			"subcommands": ["get", "describe", "logs", "top", "events", "version", "api-resources", "explain"]
+		},
+		"gh": {
+			"subcommands": ["pr", "issue", "run", "api", "release", "repo"]
+		},
+		"journalctl": {
+			"subcommands": []
+		},
+		"docker": {
+			"subcommands": ["ps", "logs", "inspect", "stats", "images", "version"]
+		},
+		"git": {
+			"subcommands": ["log", "status", "show", "diff", "blame"]
+		}
+	}
+}
