@@ -31,6 +31,16 @@
 		"db:deploy": {
 			"cache": false
 		},
+		"db:init": {
+			"cache": false
+		},
+		"db:studio": {
+			"cache": false,
+			"persistent": true
+		},
+		"db:reset": {
+			"cache": false
+		},
 		"//#format-and-lint": {},
 		"//#format-and-lint:fix": {
 			"cache": false

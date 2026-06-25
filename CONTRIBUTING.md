@@ -16,7 +16,7 @@ incident-investigation app. Contributions of all sizes are welcome.
 
 ## Development setup
 
-Requirements: **Node >= 20** and **pnpm** (this repo pins pnpm via the
+Requirements: **Node >= 24** and **pnpm** (this repo pins pnpm via the
 `packageManager` field; `corepack enable` will select the right version). It is
 a Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ worker, with
 Prisma/SQLite).
