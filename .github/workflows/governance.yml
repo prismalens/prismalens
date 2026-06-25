@@ -1,0 +1,36 @@
+# Apply repository governance (settings, labels, ruleset) from .github/governance.json.
+#
+# Manual trigger only. The default GITHUB_TOKEN cannot manage rulesets or repo
+# administration, so this needs a PAT with "Administration: read/write" stored as
+# the GOVERNANCE_TOKEN secret. Without that secret it runs in --dry-run.
+#
+# Day-to-day you can also just run the script locally:
+#   bash scripts/sync-repo-governance.sh
+name: Repo governance
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print changes, apply nothing)"
+        type: boolean
+        default: true
+
+jobs:
+  sync:
+    name: Sync governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply governance
+        env:
+          # PAT with Administration: read/write. Falls back to GITHUB_TOKEN, which
+          # can only do a subset (no rulesets) — so prefer setting GOVERNANCE_TOKEN.
+          GH_TOKEN: ${{ secrets.GOVERNANCE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          args=()
+          if [[ "${{ inputs.dry_run }}" == "true" || -z "${{ secrets.GOVERNANCE_TOKEN }}" ]]; then
+            args+=(--dry-run)
+            [[ -z "${{ secrets.GOVERNANCE_TOKEN }}" ]] && echo "::warning::GOVERNANCE_TOKEN not set — running --dry-run only."
+          fi
+          bash scripts/sync-repo-governance.sh "${args[@]}"
