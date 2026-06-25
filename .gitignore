@@ -76,4 +76,4 @@ secrets.yaml
 internal-docs
 
 # Sensitive files
-*.pem
+*.pem.playwright-mcp/

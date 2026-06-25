@@ -113,11 +113,13 @@ export function useRunInvestigation() {
 
 	return useMutation({
 		...orpc.investigations.run.mutationOptions(),
+		// Invalidate (server truth) rather than setQueryData: the run returns a bare
+		// Investigation while the detail query holds the with-relations shape, and the
+		// key factory uses a fuzzy match key unsuitable for an exact setQueryData.
 		onSuccess: (investigation) => {
-			queryClient.setQueryData(
-				investigationKeys.detail(investigation.id),
-				investigation,
-			);
+			queryClient.invalidateQueries({
+				queryKey: investigationKeys.detail(investigation.id),
+			});
 			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
 		},
 	});

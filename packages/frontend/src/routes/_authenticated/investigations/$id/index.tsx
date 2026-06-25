@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -58,18 +58,23 @@ function InvestigationDetailPage() {
 
 	const runMutation = useRunInvestigation();
 
-	// Only "running" streams. "pending" means created-but-not-run (show the Run button);
-	// streaming a non-running investigation just yields a dead SSE connection.
+	// `pendingRun` connects the live view the instant we kick off a run, rather than waiting
+	// for the get-query to reflect "running" (the run is fire-and-forget server-side; the SSE
+	// stream + DB are the channels we observe). On reload mid-run, status==="running" covers it.
+	const [pendingRun, setPendingRun] = useState(false);
 	const isRunning = investigation?.status === "running";
+	const live = isRunning || pendingRun;
 
 	// SSE stream for the in-process engine
 	const stream = useEngineInvestigationStream(investigationId, {
-		enabled: isRunning,
+		enabled: live,
 	});
 
-	// When stream completes, refetch investigation data
+	// When the stream ends, refetch the record (to load the persisted report) and close the
+	// live window.
 	useEffect(() => {
-		if (stream.status === "completed") {
+		if (stream.status === "completed" || stream.status === "error") {
+			setPendingRun(false);
 			queryClient.invalidateQueries({
 				queryKey: investigationKeys.detail(investigationId),
 			});
@@ -141,10 +146,16 @@ function InvestigationDetailPage() {
 					)}
 				</div>
 				<div className="flex items-center gap-2">
-					{!isRunning && (
+					{!live && (
 						<Button
 							size="sm"
-							onClick={() => runMutation.mutate({ id: investigationId })}
+							onClick={() => {
+								setPendingRun(true);
+								runMutation.mutate(
+									{ id: investigationId },
+									{ onError: () => setPendingRun(false) },
+								);
+							}}
 							disabled={runMutation.isPending}
 						>
 							<Play className="h-4 w-4 mr-2" />
@@ -162,7 +173,7 @@ function InvestigationDetailPage() {
 						/>
 						Refresh
 					</Button>
-					{isRunning && (
+					{live && (
 						<Button variant="destructive" size="sm">
 							<XCircle className="h-4 w-4 mr-2" />
 							Cancel
@@ -178,7 +189,7 @@ function InvestigationDetailPage() {
 			)}
 
 			{/* Live engine investigation stream */}
-			{(isRunning || stream.steps.length > 0) && (
+			{(live || stream.steps.length > 0) && (
 				<EngineStreamPanel
 					steps={stream.steps}
 					status={stream.status}

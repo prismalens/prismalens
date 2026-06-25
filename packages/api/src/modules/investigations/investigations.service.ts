@@ -394,6 +394,7 @@ export class InvestigationsService {
               : null,
             rawOutput: JSON.stringify(result.rawOutput),
             status: 'completed',
+            error: null,
             completedAt: new Date(),
             updatedAt: new Date(),
           },
