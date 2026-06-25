@@ -30,7 +30,7 @@ export function createGeminiBackend(opts: GeminiOptions): ModelBackend {
 				tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })) }],
 				toolConfig: { functionCallingConfig: { mode: "AUTO" } },
 			};
-			const res = await fetch(endpoint, {
+			const res = await fetchWithRetry(endpoint, {
 				method: "POST",
 				headers: { "content-type": "application/json", "x-goog-api-key": opts.apiKey },
 				body: JSON.stringify(body),
@@ -82,4 +82,29 @@ function parseParts(parts: GeminiPart[]): ModelResponse {
 
 function sanitize(s: string, key: string): string {
 	return key ? s.split(key).join("[REDACTED]") : s;
+}
+
+// Free-tier Gemini frequently returns 429/503 under load. Retry transient errors with
+// exponential backoff so a busy moment doesn't abort the whole investigation.
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Promise<Response> {
+	for (let i = 0; ; i++) {
+		try {
+			const res = await fetch(url, init);
+			if (RETRYABLE.has(res.status) && i < attempts - 1) {
+				const wait = 500 * 2 ** i;
+				console.warn(`[gemini] ${res.status} transient — retrying in ${wait}ms`);
+				await sleep(wait);
+				continue;
+			}
+			return res;
+		} catch (err) {
+			if (i >= attempts - 1) throw err;
+			const wait = 500 * 2 ** i;
+			console.warn(`[gemini] network error — retrying in ${wait}ms`);
+			await sleep(wait);
+		}
+	}
 }
