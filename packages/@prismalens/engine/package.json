@@ -1,0 +1,31 @@
+{
+	"name": "@prismalens/engine",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "prismalens investigation engine: a thin tool-calling loop we own, swappable model backends (OpenAI-compatible + native Gemini), read-only shell tools, and an ordered-evidence report. Streams StepEvents for the live UI.",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"investigate": "tsx src/cli.ts"
+	},
+	"dependencies": {
+		"@prismalens/config": "workspace:*",
+		"dotenv": "^16.6.1"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.0",
+		"vitest": "^3.0.0"
+	}
+}
