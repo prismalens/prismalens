@@ -1,0 +1,61 @@
+{
+  "$comment": "Declarative repo governance applied by scripts/sync-repo-governance.sh (idempotent, gh-api based). Edit here; re-run the script to apply. See docs/governance.md.",
+  "settings": {
+    "has_issues": true,
+    "has_wiki": false,
+    "has_projects": false,
+    "allow_squash_merge": true,
+    "allow_merge_commit": true,
+    "allow_rebase_merge": true,
+    "allow_auto_merge": true,
+    "delete_branch_on_merge": true,
+    "squash_merge_commit_title": "PR_TITLE",
+    "squash_merge_commit_message": "PR_BODY"
+  },
+  "labels": [
+    { "name": "bug", "color": "d73a4a", "description": "Something isn't working" },
+    { "name": "enhancement", "color": "a2eeef", "description": "New feature or request" },
+    { "name": "documentation", "color": "0075ca", "description": "Docs and knowledge base" },
+    { "name": "dependencies", "color": "0366d6", "description": "Dependency updates" },
+    { "name": "ci", "color": "ededed", "description": "CI, build, and tooling" },
+    { "name": "good first issue", "color": "7057ff", "description": "Good for newcomers" },
+    { "name": "help wanted", "color": "008672", "description": "Extra attention is needed" },
+    { "name": "question", "color": "d876e3", "description": "Further information is requested" }
+  ],
+  "ruleset": {
+    "name": "trunk protection",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "include": ["refs/heads/first"],
+        "exclude": []
+      }
+    },
+    "rules": [
+      { "type": "deletion" },
+      { "type": "non_fast_forward" },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "required_approving_review_count": 0,
+          "dismiss_stale_reviews_on_push": false,
+          "require_code_owner_review": false,
+          "require_last_push_approval": false,
+          "required_review_thread_resolution": false,
+          "allowed_merge_methods": ["squash", "merge", "rebase"]
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": true,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            { "context": "Validate PR title (conventional commits)" }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in prismalens behaves incorrectly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please do **not** paste real
+        secrets, tokens, API keys, or connection strings — issues are public.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: I started an investigation and ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact actions or commands, in order.
+      placeholder: |
+        1. ...
+        2. ...
+        3. see error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: prismalens version / commit
+      description: The release, or the git commit SHA you are running.
+      placeholder: commit abc1234
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version (`node --version`), and how you run prismalens (local dev / Docker).
+      placeholder: Ubuntu 24.04 (WSL2), Node 20.11, local dev
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Error messages or logs. Redact anything sensitive first.
+      render: shell
+    validations:
+      required: false
