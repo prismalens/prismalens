@@ -26,9 +26,14 @@ pnpm --filter @prismalens/spike-investigate investigate "pods in ns prod are cra
 
 # local, no key (needs Ollama running with a tool-capable model):
 pnpm --filter @prismalens/spike-investigate investigate --backend ollama --model qwen2.5 "checkout latency spiked"
+
+# prove the swappable backend at $0 — the OpenAI-protocol adapter on your SAME Gemini
+# key (via Gemini's OpenAI-compat endpoint). Also works with real OpenAI/Groq/OpenRouter
+# by setting OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL.
+pnpm --filter @prismalens/spike-investigate investigate --backend openai "pods crashlooping in ns prod"
 ```
 
-Flags: `--backend gemini|ollama`, `--model <name>`, `--max-steps <n>`, `--allowlist <file>`.
+Flags: `--backend gemini|ollama|openai`, `--model <name>`, `--max-steps <n>`, `--allowlist <file>`.
 
 ## Safety
 

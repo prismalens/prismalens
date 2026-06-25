@@ -8,12 +8,13 @@ import "dotenv/config";
 import type { EventSink, ModelBackend, Report } from "./types.js";
 import { createGeminiBackend } from "./backends/gemini.js";
 import { createOllamaBackend } from "./backends/ollama.js";
+import { createOpenAIBackend } from "./backends/openai.js";
 import { investigate } from "./loop.js";
 import { loadAllowlist } from "./tools/shell-exec.js";
 
 interface Args {
 	incident: string;
-	backend: "gemini" | "ollama";
+	backend: "gemini" | "ollama" | "openai";
 	model?: string;
 	maxSteps?: number;
 	allowlist: string;
@@ -21,13 +22,16 @@ interface Args {
 
 function parseArgs(argv: string[]): Args {
 	const positional: string[] = [];
-	let backend: "gemini" | "ollama" = "gemini";
+	let backend: "gemini" | "ollama" | "openai" = "gemini";
 	let model: string | undefined;
 	let maxSteps: number | undefined;
 	let allowlist = process.env.SPIKE_ALLOWLIST_FILE || "allowlist.example.json";
 	for (let i = 0; i < argv.length; i++) {
 		const tok = argv[i];
-		if (tok === "--backend") backend = argv[++i] === "ollama" ? "ollama" : "gemini";
+		if (tok === "--backend") {
+			const b = argv[++i];
+			backend = b === "ollama" ? "ollama" : b === "openai" ? "openai" : "gemini";
+		}
 		else if (tok === "--model") model = argv[++i];
 		else if (tok === "--max-steps") maxSteps = Number(argv[++i]);
 		else if (tok === "--allowlist") allowlist = argv[++i] ?? allowlist;
@@ -42,6 +46,23 @@ function buildBackend(args: Args): ModelBackend {
 			host: process.env.OLLAMA_HOST || "http://localhost:11434",
 			model: args.model || process.env.OLLAMA_MODEL || "qwen2.5",
 		});
+	}
+	if (args.backend === "openai") {
+		// Defaults to Gemini's OpenAI-compatibility endpoint with the SAME Gemini key —
+		// proves the swappable seam at $0. Override OPENAI_BASE_URL / OPENAI_API_KEY /
+		// OPENAI_MODEL to target real OpenAI, Groq, OpenRouter, etc.
+		const baseUrl = process.env.OPENAI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai";
+		const apiKey = process.env.OPENAI_API_KEY || process.env.GOOGLE_API_KEY;
+		if (!apiKey) {
+			throw new Error(
+				"No key for the OpenAI-compatible backend. Set OPENAI_API_KEY, or GOOGLE_API_KEY to use Gemini's OpenAI-compatible endpoint.",
+			);
+		}
+		const model = args.model || process.env.OPENAI_MODEL || "gemini-2.5-flash";
+		const backend = createOpenAIBackend({ baseUrl, apiKey, model });
+		delete process.env.OPENAI_API_KEY;
+		delete process.env.GOOGLE_API_KEY;
+		return backend;
 	}
 	const apiKey = process.env.GOOGLE_API_KEY;
 	if (!apiKey) {

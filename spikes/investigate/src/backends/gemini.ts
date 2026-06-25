@@ -89,13 +89,13 @@ function sanitize(s: string, key: string): string {
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Promise<Response> {
+export async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Promise<Response> {
 	for (let i = 0; ; i++) {
 		try {
 			const res = await fetch(url, init);
 			if (RETRYABLE.has(res.status) && i < attempts - 1) {
 				const wait = 500 * 2 ** i;
-				console.warn(`[gemini] ${res.status} transient — retrying in ${wait}ms`);
+				console.warn(`[http] ${res.status} transient — retrying in ${wait}ms`);
 				await sleep(wait);
 				continue;
 			}
@@ -103,7 +103,7 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Pro
 		} catch (err) {
 			if (i >= attempts - 1) throw err;
 			const wait = 500 * 2 ** i;
-			console.warn(`[gemini] network error — retrying in ${wait}ms`);
+			console.warn(`[http] network error — retrying in ${wait}ms`);
 			await sleep(wait);
 		}
 	}
