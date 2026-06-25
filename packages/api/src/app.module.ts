@@ -155,7 +155,7 @@ export class AppModule implements NestModule {
     // Apply permissive CORS middleware only to webhook routes
     // This allows browser-based testing tools while keeping main API restricted
     if (getConfig().PRISMALENS_CORS_WEBHOOK_OPEN) {
-      consumer.apply(WebhookCorsMiddleware).forRoutes('webhooks/*');
+      consumer.apply(WebhookCorsMiddleware).forRoutes('webhooks/*path');
     }
   }
 }
