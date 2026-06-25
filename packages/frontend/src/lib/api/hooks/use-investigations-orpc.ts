@@ -105,6 +105,25 @@ export function useCreateInvestigation() {
 }
 
 /**
+ * Run an investigation in-process with @prismalens/engine.
+ * Triggers the live SSE stream; the detail page consumes it.
+ */
+export function useRunInvestigation() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.investigations.run.mutationOptions(),
+		onSuccess: (investigation) => {
+			queryClient.setQueryData(
+				investigationKeys.detail(investigation.id),
+				investigation,
+			);
+			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
+		},
+	});
+}
+
+/**
  * Cancel an investigation
  */
 export function useCancelInvestigation() {

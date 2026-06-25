@@ -7,22 +7,29 @@ import {
 	ArrowLeft,
 	Brain,
 	Lightbulb,
+	Play,
 	RefreshCw,
 	Search,
 	XCircle,
 } from "lucide-react";
 
 import { orpc } from "@/lib/api/orpc-client";
-import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
-import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
-import { InvestigationStreamPanel } from "@/components/investigation/InvestigationStreamPanel";
+import {
+	investigationKeys,
+	useRunInvestigation,
+} from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	type EngineReport,
+	useEngineInvestigationStream,
+} from "@/lib/api/hooks/use-engine-investigation-stream";
+import { EngineReportView } from "@/components/investigation/EngineReportView";
+import { EngineStreamPanel } from "@/components/investigation/EngineStreamPanel";
 import { AgentExecutionsTab } from "@/components/investigation/AgentExecutionsTab";
 import { AnalysisTab } from "@/components/investigation/AnalysisTab";
 import { InvestigationDetailSkeleton } from "@/components/investigation/InvestigationDetailSkeleton";
 import { InvestigationStatusBadge } from "@/components/investigation/investigation.utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Dynamically import React Flow to avoid SSR issues
@@ -47,14 +54,16 @@ function InvestigationDetailPage() {
 		isRefetching,
 	} = useQuery(
 		orpc.investigations.get.queryOptions({ input: { id: investigationId } }),
-	)
+	);
+
+	const runMutation = useRunInvestigation();
 
 	const isActive =
 		investigation?.status === "running" ||
 		investigation?.status === "pending";
 
-	// SSE stream for real-time progress
-	const stream = useInvestigationStream(investigationId, {
+	// SSE stream for the in-process engine
+	const stream = useEngineInvestigationStream(investigationId, {
 		enabled: isActive,
 	});
 
@@ -69,19 +78,6 @@ function InvestigationDetailPage() {
 			});
 		}
 	}, [stream.status, investigationId, queryClient]);
-
-	// Fetch investigation status — polling fallback when SSE fails
-	const { data: statusData } = useQuery({
-		...orpc.investigations.getStatus.queryOptions({
-			input: { id: investigationId },
-		}),
-		enabled: !!investigation,
-		// Only poll if SSE is not streaming (fallback mode)
-		refetchInterval:
-			isActive && stream.status === "error"
-				? 3000
-				: false,
-	})
 
 	if (isLoading) {
 		return <InvestigationDetailSkeleton />;
@@ -107,10 +103,15 @@ function InvestigationDetailPage() {
 					</p>
 				</div>
 			</div>
-		)
+		);
 	}
 
-	const jobProgress = statusData?.job?.progress ?? 0;
+	// Ordered-evidence report: live from the stream, else the persisted rawOutput.
+	const report: EngineReport | null =
+		stream.report ?? (investigation.rawOutput as unknown as EngineReport | null);
+
+	const isFinished =
+		investigation.status === "completed" || investigation.status === "failed";
 
 	return (
 		<div className="space-y-6">
@@ -140,6 +141,16 @@ function InvestigationDetailPage() {
 					)}
 				</div>
 				<div className="flex items-center gap-2">
+					{!isActive && (
+						<Button
+							size="sm"
+							onClick={() => runMutation.mutate({ id: investigationId })}
+							disabled={runMutation.isPending}
+						>
+							<Play className="h-4 w-4 mr-2" />
+							{isFinished ? "Re-run with engine" : "Run with engine"}
+						</Button>
+					)}
 					<Button
 						variant="outline"
 						size="sm"
@@ -151,8 +162,7 @@ function InvestigationDetailPage() {
 						/>
 						Refresh
 					</Button>
-					{(investigation.status === "running" ||
-						investigation.status === "pending") && (
+					{isActive && (
 						<Button variant="destructive" size="sm">
 							<XCircle className="h-4 w-4 mr-2" />
 							Cancel
@@ -161,35 +171,23 @@ function InvestigationDetailPage() {
 				</div>
 			</div>
 
-			{/* Real-time stream panel for active investigations */}
-			{isActive && stream.status !== "error" && (
-				<InvestigationStreamPanel
-					tuples={stream.tuples}
-					currentNode={stream.currentNode}
-					latestMessage={stream.latestMessage}
+			{runMutation.isError && (
+				<p className="text-sm text-destructive">
+					{(runMutation.error as Error).message}
+				</p>
+			)}
+
+			{/* Live engine investigation stream */}
+			{(isActive || stream.steps.length > 0) && (
+				<EngineStreamPanel
+					steps={stream.steps}
 					status={stream.status}
+					error={stream.error}
 				/>
 			)}
 
-			{/* Polling fallback progress bar when SSE fails */}
-			{isActive && stream.status === "error" && (
-				<Card>
-					<CardContent className="py-4">
-						<div className="flex items-center justify-between mb-2">
-							<span className="text-sm font-medium">Investigation Progress</span>
-							<span className="text-sm text-muted-foreground">
-								{jobProgress}%
-							</span>
-						</div>
-						<Progress value={jobProgress} className="h-2" />
-						{statusData?.job?.state && (
-							<p className="text-xs text-muted-foreground mt-2">
-								Job state: {statusData.job.state}
-							</p>
-						)}
-					</CardContent>
-				</Card>
-			)}
+			{/* Ordered-evidence report (live or persisted) */}
+			{report && <EngineReportView report={report} />}
 
 			{/* Tabs */}
 			<Tabs defaultValue="canvas" className="space-y-4">
@@ -247,5 +245,5 @@ function InvestigationDetailPage() {
 				</TabsContent>
 			</Tabs>
 		</div>
-	)
+	);
 }
