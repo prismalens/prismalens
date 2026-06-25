@@ -1,4 +1,4 @@
-import { prisma } from '../packages/@prismalens/database/dist/client.js';
+import { prisma } from '../../packages/@prismalens/database/dist/client.js';
 
 await prisma.$executeRawUnsafe('DELETE FROM session');
 await prisma.$executeRawUnsafe('DELETE FROM account');

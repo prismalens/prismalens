@@ -20,7 +20,7 @@ done
 
 # --- Load .env.seed ---
 
-SEED_ENV="$(dirname "$0")/../.env.seed"
+SEED_ENV="$(dirname "$0")/../../.env.seed"
 if [ ! -f "$SEED_ENV" ]; then
 	echo "ERROR: .env.seed not found. Copy .env.seed.example to .env.seed and fill in your values."
 	exit 1

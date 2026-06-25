@@ -23,6 +23,11 @@
 		"db:generate": "turbo run db:generate --filter=@prismalens/database",
 		"db:studio": "turbo run db:studio --filter=@prismalens/database",
 		"db:reset": "turbo run db:reset --filter=@prismalens/database",
+		"seed:demo": "node scripts/dev/seed-demo-investigation.mjs",
+		"seed:user": "bash scripts/dev/seed-default-user.sh",
+		"seed:integrations": "bash scripts/dev/seed-dev-integrations.sh",
+		"reset:auth": "node scripts/dev/reset-auth-db.mjs",
+		"repo:governance": "bash scripts/repo/sync-repo-governance.sh",
 		"format-and-lint": "biome check .",
 		"format-and-lint:fix": "biome check . --write"
 	},

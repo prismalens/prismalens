@@ -1,5 +1,5 @@
 {
-  "$comment": "Declarative repo governance applied by scripts/sync-repo-governance.sh (idempotent, gh-api based). Edit here; re-run the script to apply. See docs/governance.md.",
+  "$comment": "Declarative repo governance applied by scripts/repo/sync-repo-governance.sh (idempotent, gh-api based). Edit here; re-run the script to apply. See docs/governance.md.",
   "settings": {
     "has_issues": true,
     "has_wiki": false,

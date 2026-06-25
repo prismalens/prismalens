@@ -7,7 +7,7 @@
 # branch-protected, squash-merge repo.
 #
 # This is wired as a REQUIRED status check via the repository ruleset (see
-# .github/governance.json and scripts/sync-repo-governance.sh) so a non-conventional
+# .github/governance.json and scripts/repo/sync-repo-governance.sh) so a non-conventional
 # title blocks merge. `synchronize` is included because a required check must run on
 # each new push to stay green.
 name: Lint PR title

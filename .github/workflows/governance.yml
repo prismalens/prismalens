@@ -5,7 +5,7 @@
 # the GOVERNANCE_TOKEN secret. Without that secret it runs in --dry-run.
 #
 # Day-to-day you can also just run the script locally:
-#   bash scripts/sync-repo-governance.sh
+#   bash scripts/repo/sync-repo-governance.sh
 name: Repo governance
 
 on:
@@ -33,4 +33,4 @@ jobs:
             args+=(--dry-run)
             [[ -z "${{ secrets.GOVERNANCE_TOKEN }}" ]] && echo "::warning::GOVERNANCE_TOKEN not set — running --dry-run only."
           fi
-          bash scripts/sync-repo-governance.sh "${args[@]}"
+          bash scripts/repo/sync-repo-governance.sh "${args[@]}"

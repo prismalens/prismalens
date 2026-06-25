@@ -3,7 +3,7 @@
 The repo's GitHub-side **rules and settings** — branch-protection ruleset,
 merge/repo settings, and labels — are declared in
 [`.github/governance.json`](../.github/governance.json) and applied idempotently
-by [`scripts/sync-repo-governance.sh`](../scripts/sync-repo-governance.sh).
+by [`scripts/repo/sync-repo-governance.sh`](../scripts/repo/sync-repo-governance.sh).
 
 This keeps the parts of governance that *aren't* files (and would otherwise be
 clicked into the GitHub UI) versioned, reviewable, and reproducible.
@@ -15,7 +15,7 @@ clicked into the GitHub UI) versioned, reviewable, and reproducible.
 | Community health (CoC, contributing, security, templates) | committed files | git (just being in the repo) |
 | Dependency updates | `.github/dependabot.yml` | GitHub (Dependabot) |
 | PR-title (conventional commits) check | `.github/workflows/pr-title.yml` | GitHub Actions |
-| Repo settings, labels, branch ruleset | `.github/governance.json` | `scripts/sync-repo-governance.sh` |
+| Repo settings, labels, branch ruleset | `.github/governance.json` | `scripts/repo/sync-repo-governance.sh` |
 
 ## The ruleset
 
@@ -32,13 +32,13 @@ Locally (your `gh` must be authenticated as a repo admin):
 
 ```bash
 # preview — changes nothing
-bash scripts/sync-repo-governance.sh --dry-run
+bash scripts/repo/sync-repo-governance.sh --dry-run
 
 # apply
-bash scripts/sync-repo-governance.sh
+bash scripts/repo/sync-repo-governance.sh
 
 # target another repo / config
-bash scripts/sync-repo-governance.sh --repo owner/name --config path/to.json
+bash scripts/repo/sync-repo-governance.sh --repo owner/name --config path/to.json
 ```
 
 Or from GitHub: **Actions → Repo governance → Run workflow**. That run needs a
