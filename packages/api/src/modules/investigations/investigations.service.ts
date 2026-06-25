@@ -359,6 +359,81 @@ export class InvestigationsService {
   }
 
   /**
+   * Write the result of an in-process engine investigation (@prismalens/engine).
+   *
+   * Deliberately minimal vs. writeResultWithRelations: the engine's ordered-evidence
+   * report (ADR-0002) has NO numeric confidence, so we never write/derive one. The full
+   * Report is persisted as JSON in `rawOutput`; the drill-down UI renders from it.
+   */
+  async writeEngineResult(
+    id: string,
+    result: {
+      summary: string;
+      rootCause: string | null;
+      rootCauseCategory?: string | null;
+      rawOutput: unknown;
+      dataSourcesUsed?: string[];
+    },
+  ): Promise<InvestigationWithRelations | null> {
+    try {
+      const investigation = await this.prisma.investigation.findUnique({
+        where: { id },
+        select: { incidentId: true },
+      });
+      if (!investigation) return null;
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.investigation.update({
+          where: { id },
+          data: {
+            summary: result.summary,
+            rootCause: result.rootCause,
+            rootCauseCategory: result.rootCauseCategory ?? null,
+            dataSourcesUsed: result.dataSourcesUsed
+              ? JSON.stringify(result.dataSourcesUsed)
+              : null,
+            rawOutput: JSON.stringify(result.rawOutput),
+            status: 'completed',
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        // Advance the incident only if it is still open.
+        await tx.incident.updateMany({
+          where: {
+            id: investigation.incidentId,
+            status: { notIn: ['resolved', 'closed'] },
+          },
+          data: { status: 'identified', updatedAt: new Date() },
+        });
+
+        await tx.timelineEntry.create({
+          data: {
+            incidentId: investigation.incidentId,
+            type: 'investigation_completed',
+            title: 'Investigation completed',
+            description: result.rootCause
+              ? `Root cause: ${result.rootCause}`
+              : result.summary,
+            source: 'ai_worker',
+            metadata: JSON.stringify({
+              investigationId: id,
+              rootCause: result.rootCause,
+            }),
+          },
+        });
+      });
+
+      this.logger.log(`Wrote engine result for investigation ${id}`);
+      return this.findById(id);
+    } catch (error) {
+      this.logger.error(`Failed to write engine result for investigation ${id}`, error);
+      return null;
+    }
+  }
+
+  /**
    * Set investigation result (called when worker completes)
    */
   async setResult(id: string, result: InvestigationResultDto): Promise<InvestigationWithRelations | null> {

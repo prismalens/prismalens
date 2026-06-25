@@ -10,6 +10,7 @@ import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enu
 import type { AgentExecutionDto } from "../../infrastructure/internal/dto/agent-execution.dto.js";
 import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
 import { type InvestigationWithRelations, InvestigationsService } from "./investigations.service.js";
+import { InvestigationEngineService } from "./investigation-engine.service.js";
 import { ProgressService } from "./progress.service.js";
 import { safeParseJsonObject, safeParseJsonArray } from "../../shared/utils/json-utils.js";
 
@@ -20,6 +21,7 @@ export class InvestigationsController {
 		private readonly investigationsService: InvestigationsService,
 		private readonly queueService: QueueService,
 		private readonly progressService: ProgressService,
+		private readonly engineService: InvestigationEngineService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -108,6 +110,40 @@ export class InvestigationsController {
 				);
 				return executions.map((e) => this.serializeAgentExecution(e));
 			}),
+
+			// POST /investigations/:id/run - Run in-process with @prismalens/engine
+			run: implement(investigationsContract.run).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					if (
+						investigation.status === "running" ||
+						this.engineService.isRunning(input.id)
+					) {
+						throw new ORPCError("CONFLICT", {
+							message: `Investigation ${input.id} is already running`,
+						});
+					}
+					try {
+						await this.engineService.start(input.id);
+					} catch (error) {
+						throw new ORPCError("BAD_REQUEST", {
+							message:
+								error instanceof Error
+									? error.message
+									: "Failed to start investigation",
+						});
+					}
+					const updated = await this.investigationsService.findById(input.id);
+					return this.serializeInvestigation(updated ?? investigation);
+				},
+			),
 
 			// POST /investigations/:id/cancel - Cancel an investigation
 			cancel: implement(investigationsContract.cancel).handler(

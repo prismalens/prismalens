@@ -7,14 +7,14 @@ import {
 	AgentExecutionWithToolsSchema,
 	CreateInvestigationSchema,
 	IdParamSchema,
+	InvestigationProgressSchema,
 	InvestigationQuerySchema,
 	InvestigationSchema,
 	InvestigationStatusSchema,
 	InvestigationWithRelationsSchema,
+	ProgressSnapshotSchema,
 	UpdateInvestigationStatusSchema,
 	WriteInvestigationResultSchema,
-	InvestigationProgressSchema,
-	ProgressSnapshotSchema,
 } from "../schemas/index.js";
 
 export const investigationsContract = {
@@ -87,6 +87,20 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(z.array(AgentExecutionWithToolsSchema)),
+
+	/**
+	 * Run an investigation in-process with @prismalens/engine
+	 * POST /investigations/:id/run
+	 */
+	run: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/run",
+			summary: "Run an investigation in-process with the engine",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationSchema),
 
 	/**
 	 * Cancel an investigation
