@@ -1,20 +1,20 @@
 /**
  * Live smoke test — validates the adapter + runner against REAL deepagents
- * `streamEvents(v2)` output, driven by an Ollama model.
+ * `streamEvents(v2)` output, driven by an Ollama Cloud model through its
+ * OpenAI-compatible endpoint (Path A: `ChatOpenAI` @ https://ollama.com/v1).
  *
- * Gated: skips unless OLLAMA_API_KEY and OLLAMA_MODEL are set. Run it with the
- * agents .env loaded, e.g.:
+ * Gated: skips unless an API key is present. Run with the engine .env loaded:
  *
- *   set -a && . packages/@prismalens/agents/.env && set +a \
- *     && pnpm --filter @prismalens/engine test -- run-branch ollama-smoke
+ *   set -a && . packages/@prismalens/engine/.env && set +a \
+ *     && pnpm --filter @prismalens/engine test
  *
- * For Ollama Cloud: OLLAMA_API_KEY=<key> OLLAMA_MODEL=<cloud-model>
- *   (OLLAMA_BASE_URL defaults to https://ollama.com).
- * For local Ollama: OLLAMA_BASE_URL=http://localhost:11434 OLLAMA_MODEL=<pulled-model>
- *   (no key needed — set OLLAMA_API_KEY=local to satisfy the gate, or run unskipped).
+ * Env:
+ *   OLLAMA_API_KEY (or OPENAI_API_KEY) — Ollama Cloud key (Bearer)
+ *   OLLAMA_MODEL                       — e.g. gpt-oss:120b-cloud ('-cloud' stripped for the cloud API)
+ *   OLLAMA_BASE_URL (optional)         — defaults to https://ollama.com/v1
  */
-import { ChatOllama } from "@langchain/ollama";
 import { DynamicStructuredTool } from "@langchain/core/tools";
+import { ChatOpenAI } from "@langchain/openai";
 import { CanonicalEventSchema } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -22,10 +22,11 @@ import type { HarnessStreamEvent } from "../adapter/deepagents-adapter.js";
 import { createDeepAgentsHarness } from "./deepagents-harness.js";
 import { runBranch } from "./run-branch.js";
 
-const KEY = process.env.OLLAMA_API_KEY;
-const MODEL = process.env.OLLAMA_MODEL;
-const BASE_URL = process.env.OLLAMA_BASE_URL ?? "https://ollama.com";
-const hasOllama = Boolean(KEY && MODEL);
+const KEY = process.env.OLLAMA_API_KEY || process.env.OPENAI_API_KEY;
+const BASE_URL = process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1";
+// The '-cloud' suffix is the local-ollama convention; the cloud API wants the plain tag.
+const MODEL = (process.env.OLLAMA_MODEL ?? "gpt-oss:120b").replace(/-cloud$/, "");
+const hasKey = Boolean(KEY);
 
 async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
 	const out: T[] = [];
@@ -33,15 +34,15 @@ async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
 	return out;
 }
 
-describe("Ollama live smoke (deepagents streamEvents → canonical)", () => {
-	it.skipIf(!hasOllama)(
+describe("Ollama Cloud live smoke (deepagents streamEvents → canonical)", () => {
+	it.skipIf(!hasKey)(
 		"produces schema-valid canonical events from a real run",
 		async () => {
-			const model = new ChatOllama({
-				baseUrl: BASE_URL,
-				model: MODEL as string,
-				// Ollama Cloud auth — harmless for a local instance that ignores it.
-				headers: KEY ? { Authorization: `Bearer ${KEY}` } : undefined,
+			const model = new ChatOpenAI({
+				apiKey: KEY,
+				model: MODEL,
+				temperature: 0,
+				configuration: { baseURL: BASE_URL },
 			});
 
 			const getPods = new DynamicStructuredTool({
@@ -59,7 +60,7 @@ describe("Ollama live smoke (deepagents streamEvents → canonical)", () => {
 				model,
 				tools: [getPods],
 				systemPrompt:
-					"You are an SRE assistant. Use the read-only tools to investigate, then summarise what you found.",
+					"You are an SRE assistant. Use the read-only get_pods tool to investigate, then briefly summarise what you found.",
 			});
 
 			const ctx = {
@@ -83,18 +84,21 @@ describe("Ollama live smoke (deepagents streamEvents → canonical)", () => {
 
 			// Every emitted event must validate against the canonical contract.
 			for (const e of out) {
-				expect(CanonicalEventSchema.safeParse(e).success).toBe(true);
+				const parsed = CanonicalEventSchema.safeParse(e);
+				if (!parsed.success) {
+					console.error("INVALID canonical event:", JSON.stringify(e));
+					console.error(parsed.error.issues);
+				}
+				expect(parsed.success).toBe(true);
 			}
-			// We expect at least one model turn and a terminal event.
 			expect(out.some((e) => e.kind === "agent_step")).toBe(true);
 			expect(out.at(-1)?.kind).toMatch(/branch_done|error/);
 
-			// Capture a fixture for offline adapter tests.
 			console.log(
-				`[ollama-smoke] ${out.length} canonical events:`,
-				JSON.stringify(out, null, 2),
+				`[smoke] ${out.length} canonical events: ${out.map((e) => e.kind).join(", ")}`,
 			);
+			console.log("[smoke] captured fixture:\n", JSON.stringify(out, null, 2));
 		},
-		120_000,
+		180_000,
 	);
 });
