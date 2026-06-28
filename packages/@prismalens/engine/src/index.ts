@@ -7,3 +7,5 @@
  */
 
 export * from "./adapter/deepagents-adapter.js";
+export * from "./runner/run-branch.js";
+export * from "./runner/deepagents-harness.js";
