@@ -197,6 +197,31 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/@prismalens/engine:
+    dependencies:
+      '@langchain/core':
+        specifier: ^1.1.29
+        version: 1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
+      '@prismalens/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      deepagents:
+        specifier: ^1.10.5
+        version: 1.10.5(langsmith@0.5.6(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.19.3
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.3)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/@prismalens/integrations:
     dependencies:
       '@prismalens/config':
@@ -13194,6 +13219,27 @@ snapshots:
       fast-glob: 3.3.3
       langchain: 1.5.2(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       langsmith: 0.3.87(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
+      micromatch: 4.0.8
+      yaml: 2.8.2
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - '@opentelemetry/exporter-trace-otlp-proto'
+      - '@opentelemetry/sdk-trace-base'
+      - openai
+      - react
+      - react-dom
+      - svelte
+      - vue
+
+  deepagents@1.10.5(langsmith@0.5.6(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    dependencies:
+      '@langchain/core': 1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
+      '@langchain/langgraph': 1.4.7(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod@4.3.6)
+      '@langchain/langgraph-sdk': 1.9.25(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      fast-glob: 3.3.3
+      langchain: 1.5.2(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      langsmith: 0.5.6(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
       micromatch: 4.0.8
       yaml: 2.8.2
       zod: 4.3.6
