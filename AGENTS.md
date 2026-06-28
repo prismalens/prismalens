@@ -2,6 +2,26 @@
 
 Instructions for AI coding agents working in this repository.
 
+## Engineering standards (gates)
+
+Four standards every change must meet. This prose is the *intent*; the teeth are
+lint + CI (being wired separately — until those land, reviewers enforce). Code
+that meets these comes out at-bar, so there's less to re-review.
+
+1. **Validate at boundaries with zod — not `as` casts.** Anything crossing a
+   trust boundary (HTTP/SSE payloads, DB rows, LLM/tool output, env) is parsed by
+   a zod schema; the inferred type flows inward. `as` / `as unknown as` hide drift
+   until it crashes a user. Wire types live only in `@prismalens/contracts`.
+2. **Handle the unhappy paths, not just the happy one.** Crash/restart, cancel,
+   reconnect, and persist-failure are part of the feature — design up front for
+   orphaned runs, aborted work, dropped streams, and failed writes.
+3. **Safety by construction, not denylist.** Capabilities come from an allowlist
+   of what's permitted; a blocklist of "bad" inputs is a UX guardrail, never the
+   security boundary (ADR-0009).
+4. **Test the risky paths.** Security, concurrency, and lifecycle seams
+   (capability/allowlist checks, single-flight, crash reconciliation,
+   cancel-during-run, persistence failure) carry tests.
+
 <!-- BEGIN mage -->
 ## mage knowledge base (external hub)
 
