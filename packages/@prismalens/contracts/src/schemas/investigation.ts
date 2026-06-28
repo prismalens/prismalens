@@ -6,7 +6,11 @@ import {
 	AgentNameSchema,
 	AgentTypeSchema,
 	DateStringSchema,
+	EvidenceDirectionSchema,
+	EvidenceStatusSchema,
 	ExecutionStatusSchema,
+	HypothesisStatusSchema,
+	RecommendationPrioritySchema,
 	RootCauseCategorySchema,
 	ToolCategorySchema,
 	ToolExecutionStatusSchema,
@@ -209,3 +213,177 @@ export const WriteInvestigationResultSchema = z.object({
 	agentExecutions: z.array(CreateAgentExecutionInputSchema).optional(),
 	recommendations: z.array(CreateRecommendationInputSchema).optional(),
 });
+
+// =============================================================================
+// ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
+// =============================================================================
+// The structured investigation result. Supersedes the untyped `rawOutput` blob:
+// ordered hypotheses + discrete evidence status carry certainty.
+
+export const EvidenceSchema = z.object({
+	/** What was observed. */
+	observation: z.string().min(1),
+	/** Where it came from — the exact command or origin that produced it. */
+	source: z.string().min(1),
+	direction: EvidenceDirectionSchema,
+	status: EvidenceStatusSchema,
+	/**
+	 * Links a finding to the live tool call that produced it
+	 * (StreamToolResult.toolCallId), so the report view can drill into the
+	 * originating output (ADR-0007). Null for `inferred` evidence with no single
+	 * originating call.
+	 */
+	toolCallId: z.string().nullable().optional(),
+});
+
+export const HypothesisSchema = z.object({
+	// Ordering is by ARRAY POSITION (most → least plausible) — the single source of
+	// truth, per ADR-0002's "ordered list". No numeric rank/confidence.
+	statement: z.string().min(1),
+	status: HypothesisStatusSchema,
+	evidence: z.array(EvidenceSchema),
+});
+
+export const RuledOutSchema = z.object({
+	// A candidate cause never promoted to a ranked hypothesis. (A hypothesis that WAS
+	// considered then disproved stays in `hypotheses` with status "refuted".)
+	statement: z.string().min(1),
+	why: z.string().min(1),
+	/** The contradicting evidence that ruled it out (direction "contradicts"). */
+	evidence: z.array(EvidenceSchema),
+});
+
+/** What was queried vs not — makes the investigation auditable (ADR-0002). */
+export const CoverageSchema = z.object({
+	queried: z.array(z.string()),
+	notQueried: z.array(z.string()),
+});
+
+/**
+ * A recommended next step (ADR-0002's "recommended next steps"). Carried inline so
+ * the report delivered over the wire is self-contained; the persistence layer also
+ * writes these as relational Recommendation rows.
+ */
+export const NextStepSchema = z.object({
+	title: z.string().min(1),
+	detail: z.string().min(1),
+	priority: RecommendationPrioritySchema.nullable().optional(),
+});
+
+export const InvestigationReportSchema = z.object({
+	summary: z.string().min(1),
+	rootCause: z.string().nullable(),
+	rootCauseCategory: RootCauseCategorySchema.nullable(),
+	/** Ordered most → least plausible (array order is the ordering). */
+	hypotheses: z.array(HypothesisSchema),
+	ruledOut: z.array(RuledOutSchema),
+	coverage: CoverageSchema,
+	nextSteps: z.array(NextStepSchema),
+});
+
+// =============================================================================
+// CANONICAL INVESTIGATION STREAM (harness-agnostic)
+// =============================================================================
+// The adapter normalises each rented harness's native events into this ONE
+// vocabulary (ADR-0008), superseding the LangGraph `[mode, data]` tuple stream.
+// Drill-down tree: branch → node (`path`) → tool call. Slice 0 is a single
+// branch; fan-out (Slice 1) varies `branchId` and reuses this shape unchanged.
+
+/** Normalised tool-call provenance — one harness tool call (OpenSRE evidence model). */
+export const StreamToolResultSchema = z.object({
+	/** Tool name — same key as the originating agent_step `toolCalls[].name`. */
+	name: z.string().min(1),
+	toolCategory: ToolCategorySchema.nullable().optional(),
+	/** Links this result to its call. Derive from ToolMessage.tool_call_id. */
+	toolCallId: z.string(),
+	/** The command/args that produced it (human-readable provenance). */
+	source: z.string().min(1),
+	/**
+	 * Derive from ToolMessage.status === "error" (NOT from "on_tool_end fired" —
+	 * LangGraph ToolNode has handleToolErrors=true and emits a failed tool as a
+	 * normal end event with status "error"; MCP tools may return error-as-content).
+	 */
+	ok: z.boolean(),
+	/** Failure message when !ok, for the drill-down. */
+	error: z.string().nullable().optional(),
+	/** Truncated/sanitised result. */
+	preview: z.string(),
+});
+
+const StreamBaseShape = {
+	runId: z.string().uuid(),
+	/**
+	 * Slice 0: a single constant branch. Fan-out (Slice 1) varies it. The UI's
+	 * ordering + idempotent-upsert key is (branchId, seq) — NOT seq alone, since each
+	 * branch is a separate harness run with its own counter.
+	 */
+	branchId: z.string().min(1),
+	/**
+	 * Structural nesting depth within a branch, from the harness checkpoint ns
+	 * (LangGraph node names + task uuids; the `tools:` wrapper collapsed). These are
+	 * NOT subagent names — see `label` for the human name. [] = branch top.
+	 */
+	path: z.array(z.string()),
+	/** Per-branch monotonic sequence (adapter-assigned in arrival order). */
+	seq: z.number().int(),
+	/**
+	 * Human-readable node/subagent label when resolvable (from the spawning `task`
+	 * tool-call's subagent_type via run_id parentage); null at the branch top.
+	 */
+	label: z.string().nullable().optional(),
+	/** Wall-clock emit time (adapter-stamped) for step/tool durations in the drill-down. */
+	ts: z.string().datetime(),
+};
+
+export const CanonicalEventSchema = z.discriminatedUnion("kind", [
+	z.object({
+		kind: z.literal("agent_step"),
+		...StreamBaseShape,
+		text: z.string(),
+		toolCalls: z.array(
+			z.object({
+				/** Stable id from AIMessage tool_calls[].id; pairs with a tool_result. */
+				toolCallId: z.string(),
+				name: z.string().min(1),
+				/** Post-unwrap args (the deepagents {input:"<json>"} wrapper removed). */
+				args: z.record(z.unknown()),
+			}),
+		),
+	}),
+	z.object({
+		kind: z.literal("tool_result"),
+		...StreamBaseShape,
+		result: StreamToolResultSchema,
+	}),
+	z.object({
+		kind: z.literal("branch_done"),
+		...StreamBaseShape,
+		/**
+		 * Supervisor classification (not a harness field). The adapter maps a thrown
+		 * GraphRecursionError to "budget"; genuine failures emit an `error` event.
+		 */
+		reason: z.enum(["submitted", "budget", "no_progress"]),
+	}),
+	z.object({
+		kind: z.literal("error"),
+		...StreamBaseShape,
+		message: z.string(),
+	}),
+	z.object({
+		kind: z.literal("report"),
+		runId: z.string().uuid(),
+		seq: z.number().int(),
+		ts: z.string().datetime(),
+		report: InvestigationReportSchema,
+	}),
+]);
+
+// ---- TYPE EXPORTS (ordered-evidence + canonical stream) ----
+export type Evidence = z.infer<typeof EvidenceSchema>;
+export type Hypothesis = z.infer<typeof HypothesisSchema>;
+export type RuledOut = z.infer<typeof RuledOutSchema>;
+export type Coverage = z.infer<typeof CoverageSchema>;
+export type NextStep = z.infer<typeof NextStepSchema>;
+export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
+export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
+export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
