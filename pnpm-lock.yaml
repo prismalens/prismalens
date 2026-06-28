@@ -75,7 +75,7 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0
       deepagents:
-        specifier: ^1.10.5
+        specifier: ^1.8.0
         version: 1.10.5(langsmith@0.3.87(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       langchain:
         specifier: ^1.2.28
