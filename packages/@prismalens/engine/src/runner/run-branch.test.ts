@@ -1,79 +1,135 @@
 import { CanonicalEventSchema } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import type { HarnessStreamEvent } from "../adapter/deepagents-adapter.js";
+import type { AcpStreamItem } from "./acp-client.js";
 import { runBranch } from "./run-branch.js";
 
+const FIXED = new Date("2026-06-29T00:00:00.000Z");
 const ctx = {
 	runId: "11111111-1111-1111-1111-111111111111",
 	branchId: "root",
-	now: () => new Date("2026-06-28T00:00:00.000Z"),
+	now: () => FIXED,
 };
 
-async function* fakeStream(
-	evs: HarnessStreamEvent[],
-): AsyncGenerator<HarnessStreamEvent> {
-	for (const e of evs) yield e;
+async function* feed(items: AcpStreamItem[]): AsyncGenerator<AcpStreamItem> {
+	for (const item of items) yield item;
 }
 
-async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
-	const out: T[] = [];
-	for await (const e of gen) out.push(e);
+async function collect(items: AcpStreamItem[]) {
+	const out = [];
+	for await (const ev of runBranch(feed(items), ctx)) out.push(ev);
 	return out;
 }
 
 describe("runBranch", () => {
-	it("normalizes the stream then emits a terminal branch_done(submitted)", async () => {
-		const evs: HarnessStreamEvent[] = [
+	it("maps a full update stream to canonical events ending in branch_done", async () => {
+		const events = await collect([
 			{
-				event: "on_chat_model_end",
-				name: "model",
-				run_id: "r",
-				data: {
-					output: {
-						content: "checking pods",
-						tool_calls: [{ id: "c1", name: "get_pods", args: {} }],
-					},
+				kind: "update",
+				update: {
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "looking" },
 				},
 			},
 			{
-				event: "on_tool_end",
-				name: "get_pods",
-				run_id: "r",
-				data: {
-					input: {},
-					output: { status: "success", content: "pod-1 Running", tool_call_id: "c1" },
+				kind: "update",
+				update: {
+					sessionUpdate: "tool_call",
+					kind: "search",
+					title: "ls",
+					toolCallId: "c1",
+					status: "pending",
 				},
 			},
-		];
-		const out = await collect(runBranch(fakeStream(evs), ctx));
-		expect(out.map((e) => e.kind)).toEqual([
+			{
+				kind: "update",
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: "c1",
+					status: "completed",
+					content: [
+						{ type: "content", content: { type: "text", text: "files" } },
+					],
+				},
+			},
+			{ kind: "done", stopReason: "end_turn" },
+		]);
+		expect(events.map((e) => e.kind)).toEqual([
 			"agent_step",
 			"tool_result",
 			"branch_done",
 		]);
-		for (const e of out) {
-			expect(CanonicalEventSchema.safeParse(e).success).toBe(true);
-		}
+		expect(events[2]).toMatchObject({
+			kind: "branch_done",
+			reason: "submitted",
+		});
+		expect(events.map((e) => e.seq)).toEqual([0, 1, 2]);
+		for (const ev of events)
+			expect(CanonicalEventSchema.safeParse(ev).success).toBe(true);
 	});
 
-	it("maps a thrown GraphRecursionError to branch_done(budget)", async () => {
-		async function* boom(): AsyncGenerator<HarnessStreamEvent> {
-			const err = new Error("Recursion limit reached");
-			err.name = "GraphRecursionError";
-			throw err;
-		}
-		const out = await collect(runBranch(boom(), ctx));
-		expect(out).toHaveLength(1);
-		expect(out[0]).toMatchObject({ kind: "branch_done", reason: "budget" });
+	it("flushes trailing assistant text as a final agent_step before branch_done", async () => {
+		const events = await collect([
+			{
+				kind: "update",
+				update: {
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "all clear" },
+				},
+			},
+			{ kind: "done", stopReason: "end_turn" },
+		]);
+		expect(events.map((e) => e.kind)).toEqual(["agent_step", "branch_done"]);
+		expect(events[0]).toMatchObject({
+			kind: "agent_step",
+			text: "all clear",
+			toolCalls: [],
+		});
 	});
 
-	it("maps any other throw to a terminal error event", async () => {
-		async function* boom(): AsyncGenerator<HarnessStreamEvent> {
-			throw new Error("kaboom");
-		}
-		const out = await collect(runBranch(boom(), ctx));
-		expect(out).toHaveLength(1);
-		expect(out[0]).toMatchObject({ kind: "error", message: "kaboom" });
-		expect(CanonicalEventSchema.safeParse(out[0]).success).toBe(true);
+	it("maps a budget stopReason to branch_done(budget)", async () => {
+		const events = await collect([
+			{ kind: "done", stopReason: "max_turn_requests" },
+		]);
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({ kind: "branch_done", reason: "budget" });
+	});
+
+	it("turns a transport error item into a terminal error event", async () => {
+		const events = await collect([
+			{
+				kind: "update",
+				update: {
+					sessionUpdate: "tool_call",
+					title: "ls",
+					toolCallId: "c1",
+					status: "pending",
+				},
+			},
+			{ kind: "error", message: "harness exited early (code=1)" },
+		]);
+		expect(events.map((e) => e.kind)).toEqual(["agent_step", "error"]);
+		expect(events[1]).toMatchObject({
+			kind: "error",
+			message: "harness exited early (code=1)",
+		});
+		expect(CanonicalEventSchema.safeParse(events[1]).success).toBe(true);
+	});
+
+	it("closes a stream that ends without an explicit terminal item", async () => {
+		const events = await collect([
+			{
+				kind: "update",
+				update: {
+					sessionUpdate: "tool_call",
+					title: "ls",
+					toolCallId: "c1",
+					status: "pending",
+				},
+			},
+		]);
+		expect(events.at(-1)).toMatchObject({
+			kind: "branch_done",
+			reason: "submitted",
+		});
 	});
 });

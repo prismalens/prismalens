@@ -199,22 +199,13 @@ importers:
 
   packages/@prismalens/engine:
     dependencies:
-      '@langchain/core':
-        specifier: ^1.1.29
-        version: 1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
       '@prismalens/contracts':
         specifier: workspace:*
         version: link:../contracts
-      deepagents:
-        specifier: ^1.10.5
-        version: 1.10.5(langsmith@0.5.6(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       zod:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
-      '@langchain/openai':
-        specifier: ^1.2.1
-        version: 1.2.11(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0)
       '@types/node':
         specifier: ^22.10.5
         version: 22.19.3
@@ -9962,15 +9953,6 @@ snapshots:
     transitivePeerDependencies:
       - ws
 
-  '@langchain/openai@1.2.11(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(ws@8.19.0)':
-    dependencies:
-      '@langchain/core': 1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
-      js-tiktoken: 1.0.21
-      openai: 6.25.0(ws@8.19.0)(zod@3.25.76)
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - ws
-
   '@langchain/protocol@0.0.18': {}
 
   '@langchain/textsplitters@1.0.1(@langchain/core@1.1.29(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))':
@@ -13244,27 +13226,6 @@ snapshots:
       - svelte
       - vue
 
-  deepagents@1.10.5(langsmith@0.5.6(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
-    dependencies:
-      '@langchain/core': 1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
-      '@langchain/langgraph': 1.4.7(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod@4.3.6)
-      '@langchain/langgraph-sdk': 1.9.25(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      fast-glob: 3.3.3
-      langchain: 1.5.2(@langchain/core@1.2.1(openai@6.25.0(ws@8.19.0)(zod@3.25.76)))(openai@6.25.0(ws@8.19.0)(zod@3.25.76))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      langsmith: 0.5.6(openai@6.25.0(ws@8.19.0)(zod@3.25.76))
-      micromatch: 4.0.8
-      yaml: 2.8.2
-      zod: 4.3.6
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - '@opentelemetry/exporter-trace-otlp-proto'
-      - '@opentelemetry/sdk-trace-base'
-      - openai
-      - react
-      - react-dom
-      - svelte
-      - vue
-
   deepmerge-ts@7.1.5: {}
 
   deepmerge@4.3.1: {}
@@ -14127,7 +14088,7 @@ snapshots:
       isstream: 0.1.2
       jsonwebtoken: 9.0.3
       mime-types: 2.1.35
-      retry-axios: 2.6.0(axios@1.13.6)
+      retry-axios: 2.6.0(axios@1.13.6(debug@4.4.3))
       tough-cookie: 4.1.4
     transitivePeerDependencies:
       - supports-color
@@ -15830,7 +15791,7 @@ snapshots:
       onetime: 5.1.2
       signal-exit: 3.0.7
 
-  retry-axios@2.6.0(axios@1.13.6):
+  retry-axios@2.6.0(axios@1.13.6(debug@4.4.3)):
     dependencies:
       axios: 1.13.6(debug@4.4.3)
 
