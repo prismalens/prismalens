@@ -158,12 +158,9 @@ CREATE TABLE "investigations" (
     "summary" TEXT,
     "rootCause" TEXT,
     "rootCauseCategory" TEXT,
-    "confidence" REAL,
-    "dataQuality" TEXT,
-    "dataSourcesUsed" TEXT,
-    "rawOutput" TEXT,
+    "report" TEXT,
     "error" TEXT,
-    "langGraphThreadId" TEXT,
+    "harnessThreadId" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     "triggerType" TEXT,
@@ -182,7 +179,7 @@ CREATE TABLE "agent_executions" (
     "completedAt" DATETIME,
     "executionTimeMs" INTEGER,
     "output" TEXT,
-    "confidence" REAL,
+    "branchId" TEXT,
     "inputTokens" INTEGER,
     "outputTokens" INTEGER,
     "error" TEXT,
@@ -200,7 +197,6 @@ CREATE TABLE "tool_executions" (
     "result" TEXT,
     "status" TEXT NOT NULL DEFAULT 'pending',
     "executionTimeMs" INTEGER,
-    "confidence" REAL,
     "dataQuality" TEXT,
     "error" TEXT,
     "executedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -600,7 +596,7 @@ CREATE INDEX "incidents_serviceId_idx" ON "incidents"("serviceId");
 CREATE INDEX "incidents_triggeredAt_idx" ON "incidents"("triggeredAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "investigations_langGraphThreadId_key" ON "investigations"("langGraphThreadId");
+CREATE UNIQUE INDEX "investigations_harnessThreadId_key" ON "investigations"("harnessThreadId");
 
 -- CreateIndex
 CREATE INDEX "investigations_incidentId_idx" ON "investigations"("incidentId");

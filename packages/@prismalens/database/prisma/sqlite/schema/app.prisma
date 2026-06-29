@@ -253,12 +253,9 @@ model Investigation {
   summary           String?
   rootCause         String?
   rootCauseCategory String? // code, config, infrastructure, external, unknown
-  confidence        Float? // 0.0 to 1.0
-  dataQuality       String? // JSON
-  dataSourcesUsed   String? // JSON array
-  rawOutput         String? // JSON
+  report            String? // JSON: InvestigationReport
   error             String?
-  langGraphThreadId String?   @unique // LangGraph checkpoint thread ID for resume/replay
+  harnessThreadId   String?   @unique // Harness checkpoint thread ID for resume/replay
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -286,7 +283,7 @@ model AgentExecution {
   completedAt     DateTime?
   executionTimeMs Int?
   output          String? // JSON
-  confidence      Float?
+  branchId        String?
   inputTokens     Int?
   outputTokens    Int?
   error           String?
@@ -310,7 +307,6 @@ model ToolExecution {
   result           String? // JSON
   status           String   @default("pending") // pending, running, success, error
   executionTimeMs  Int?
-  confidence       Float?
   dataQuality      String?
   error            String?
   executedAt       DateTime @default(now())
