@@ -20,7 +20,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.1",
     "@prismalens/contracts": "workspace:*",
+    "ai": "^7.0.4",
     "zod": "^3.25.76"
   },
   "devDependencies": {

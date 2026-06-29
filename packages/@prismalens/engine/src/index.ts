@@ -10,3 +10,6 @@
 export * from "./adapter/acp-adapter.js";
 export * from "./runner/acp-client.js";
 export * from "./runner/run-branch.js";
+export * from "./supervisor/alert-source.js";
+export * from "./supervisor/investigate.js";
+export * from "./supervisor/synthesize.js";
