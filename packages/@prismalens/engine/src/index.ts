@@ -8,7 +8,9 @@
  */
 
 export * from "./adapter/acp-adapter.js";
+export * from "./adapter/claude-code-adapter.js";
 export * from "./runner/acp-client.js";
+export * from "./runner/claude-code-runner.js";
 export * from "./runner/run-branch.js";
 export * from "./supervisor/alert-source.js";
 export * from "./supervisor/investigate.js";

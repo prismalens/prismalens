@@ -12,13 +12,46 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 } from "@prismalens/contracts";
+import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
 	type AcpClientConfig,
 	autoAllowReadOnly,
 } from "../runner/acp-client.js";
+import {
+	type ClaudeCodeConfig,
+	runClaudeCodeBranch,
+} from "../runner/claude-code-runner.js";
 import { runDeepAgentsBranch } from "../runner/run-branch.js";
 import type { FiringAlert } from "./alert-source.js";
 import { type SynthesisModelConfig, synthesizeReport } from "./synthesize.js";
+
+/**
+ * A Tier-2 harness as the supervisor sees it: given the investigation prompt and a
+ * branch context, yield the canonical event stream. deepagents (ACP) and Claude
+ * Code (Agent SDK) both reduce to this one shape.
+ */
+export type HarnessRunner = (
+	prompt: string,
+	ctx: AdapterContext,
+) => AsyncGenerator<CanonicalEvent>;
+
+/** deepagents over ACP — the zero-setup, read-only-by-default local harness. */
+export function deepAgentsHarness(
+	cfg: Omit<AcpClientConfig, "prompt">,
+): HarnessRunner {
+	return (prompt, ctx) =>
+		runDeepAgentsBranch(
+			{ ...cfg, prompt, permission: cfg.permission ?? autoAllowReadOnly },
+			ctx,
+		);
+}
+
+/** Claude Code over the Agent SDK — the deep path (subagent tree, read-only). */
+export function claudeCodeHarness(
+	cfg: Omit<ClaudeCodeConfig, "prompt">,
+): HarnessRunner {
+	return (prompt, ctx) => runClaudeCodeBranch({ ...cfg, prompt }, ctx);
+}
 
 export interface TelemetryEndpoints {
 	/** Prometheus base URL as seen by the harness (host: http://localhost:9090). */
@@ -34,11 +67,8 @@ export interface InvestigateOptions {
 	alert: FiringAlert;
 	/** Read-only telemetry + app endpoints the harness may query. */
 	telemetry: TelemetryEndpoints;
-	/** Tier-2 harness (deepagents over ACP) config. */
-	harness: Pick<
-		AcpClientConfig,
-		"cwd" | "model" | "env" | "promptTimeoutMs" | "initTimeoutMs"
-	>;
+	/** Tier-2 harness runner — e.g. deepAgentsHarness(...) or claudeCodeHarness(...). */
+	harness: HarnessRunner;
 	/** Tier-1 reduce model (Vercel AI SDK). */
 	synth: SynthesisModelConfig;
 	/** Investigation run id (== Investigation.id). Generated if omitted. */
@@ -58,18 +88,7 @@ export async function investigateIncident(
 	const prompt = buildInvestigationPrompt(opts.alert, opts.telemetry);
 
 	const events: CanonicalEvent[] = [];
-	for await (const ev of runDeepAgentsBranch(
-		{
-			cwd: opts.harness.cwd,
-			prompt,
-			model: opts.harness.model,
-			env: opts.harness.env,
-			promptTimeoutMs: opts.harness.promptTimeoutMs,
-			initTimeoutMs: opts.harness.initTimeoutMs,
-			permission: autoAllowReadOnly,
-		},
-		{ runId, branchId: "root" },
-	)) {
+	for await (const ev of opts.harness(prompt, { runId, branchId: "root" })) {
 		events.push(ev);
 	}
 
@@ -96,7 +115,7 @@ export function buildInvestigationPrompt(
 ): string {
 	const labels = JSON.stringify(alert.labels);
 	const annotations = JSON.stringify(alert.annotations);
-	return `You are an on-call Site Reliability Engineer. A production alert is FIRING. Investigate and determine the ROOT CAUSE.
+	return `You are an on-call Site Reliability Engineer running a LIVE investigation of a firing production alert. Your job is to find the ROOT CAUSE — the specific code path, configuration, dependency, or resource that produced this alert — not merely the symptom.
 
 FIRING ALERT
   name:        ${alert.alertname}
@@ -104,19 +123,30 @@ FIRING ALERT
   labels:      ${labels}
   annotations: ${annotations}
 
-WHAT YOU CAN DO (READ-ONLY — never modify, deploy, or restart anything)
-  - Prometheus API at ${t.prometheusUrl}
-      e.g. curl -s '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'
-           curl -s '${t.prometheusUrl}/api/v1/rules'
-  - Alertmanager API at ${t.alertmanagerUrl}  (e.g. curl -s '${t.alertmanagerUrl}/api/v2/alerts')
-  - The application's own API at ${t.apiUrl}
-  - The application SOURCE CODE is in your current working directory — inspect it with ls/cat/grep/head.
+READ-ONLY SURFACES (never modify, deploy, restart, or write anything)
+  - Prometheus    ${t.prometheusUrl}
+      curl -s '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'   ·   /api/v1/rules   ·   /api/v1/label/__name__/values
+  - Alertmanager  ${t.alertmanagerUrl}      curl -s '${t.alertmanagerUrl}/api/v2/alerts'
+  - Application API ${t.apiUrl}
+  - Application SOURCE CODE is in your current working directory — ls / cat / grep / head.
 
-HOW TO WORK
-  Use shell commands to gather concrete evidence. Confirm the alert's signal in Prometheus, then narrow down WHY:
-  correlate metrics, probe the API, read logs, and read the relevant source. For every conclusion, note the exact
-  command/metric/file that supports it. When you are confident, state the single most likely root cause, the
-  supporting evidence, and a recommended fix. Be specific and concise. Do not guess without evidence.`;
+METHOD (work iteratively — think → run a command → observe → decide)
+  1. Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.
+  2. After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.
+  3. Localize, then go to the code. Identify WHICH operation/endpoint/component the signal is about — e.g. for a latency
+     alert, find the SLOWEST endpoint or operation — then READ that code path's handler and the configuration it depends on.
+  4. Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the diagnosis.
+
+WHAT COUNTS AS A ROOT CAUSE (important)
+  Restating the symptom is NOT a root cause. "The service is slow / unresponsive / latency is high" is the alert restated,
+  not its cause. A surface symptom (e.g. requests timing out) is almost always a downstream EFFECT — keep digging until you
+  can name the concrete code, configuration, dependency, or resource responsible and explain the mechanism that links it to
+  the alert.
+
+OUTPUT
+  State the single most likely root cause and the mechanism. List the evidence as VALIDATED (a command/metric/file directly
+  showed it — quote the exact command) versus INFERRED (reasoned, not directly observed). Recommend a fix. Be specific and
+  concise; never assert without evidence.`;
 }
 
 const PREVIEW_CAP = 1200;

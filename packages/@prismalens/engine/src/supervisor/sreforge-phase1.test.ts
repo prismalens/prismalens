@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fetchFiringAlerts } from "./alert-source.js";
-import { investigateIncident } from "./investigate.js";
+import { deepAgentsHarness, investigateIncident } from "./investigate.js";
 
 const KEY = process.env.OLLAMA_API_KEY;
 const rawModel = process.env.OLLAMA_MODEL ?? "gpt-oss:120b";
@@ -53,13 +53,13 @@ describe.skipIf(!enabled)("sreforge booklogr — Phase-1 diagnosis eval", () => 
 		const { runId, report, events } = await investigateIncident({
 			alert: alerts[0],
 			telemetry: TELEMETRY,
-			harness: {
+			harness: deepAgentsHarness({
 				cwd: SUBSTRATE,
 				model: HARNESS_MODEL,
 				env: { OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE_URL },
 				promptTimeoutMs: 300_000,
 				initTimeoutMs: 120_000,
-			},
+			}),
 			synth: { baseURL: BASE_URL, apiKey: KEY ?? "", model: MODEL },
 		});
 
