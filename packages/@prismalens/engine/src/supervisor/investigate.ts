@@ -81,30 +81,60 @@ export interface InvestigationResult {
 	events: CanonicalEvent[];
 }
 
+/**
+ * Streaming Tier-1 supervisor primitive (ADR-0010): drive the rented harness and
+ * yield the canonical stream live, then emit the synthesized report as the terminal
+ * `report` event. The UI consumes events as they arrive instead of waiting for the
+ * whole run to buffer.
+ */
+export async function* investigateIncidentStream(
+	opts: InvestigateOptions,
+): AsyncGenerator<CanonicalEvent> {
+	const runId = opts.runId ?? randomUUID();
+	const prompt = buildInvestigationPrompt(opts.alert, opts.telemetry);
+	const collected: CanonicalEvent[] = [];
+	for await (const ev of opts.harness(prompt, { runId, branchId: "root" })) {
+		collected.push(ev);
+		yield ev;
+	}
+	// No-evidence guard: a branch that gathered nothing and errored must NOT be
+	// laundered into a fabricated report — the error event already conveyed failure.
+	const terminal = collected.at(-1);
+	const toolResults = collected.filter((e) => e.kind === "tool_result").length;
+	if (toolResults === 0 && terminal?.kind === "error") return;
+	const transcript = buildTranscript(opts.alert, collected);
+	const report = await synthesizeReport(transcript, opts.synth);
+	yield {
+		kind: "report",
+		runId,
+		seq: collected.length,
+		ts: new Date().toISOString(),
+		report,
+	};
+}
+
 export async function investigateIncident(
 	opts: InvestigateOptions,
 ): Promise<InvestigationResult> {
 	const runId = opts.runId ?? randomUUID();
-	const prompt = buildInvestigationPrompt(opts.alert, opts.telemetry);
-
 	const events: CanonicalEvent[] = [];
-	for await (const ev of opts.harness(prompt, { runId, branchId: "root" })) {
-		events.push(ev);
+	let report: InvestigationReport | null = null;
+	for await (const ev of investigateIncidentStream({ ...opts, runId })) {
+		if (ev.kind === "report") report = ev.report;
+		else events.push(ev);
 	}
 
 	// Don't let a failed branch be laundered into a fabricated RCA: if the harness
-	// gathered no evidence and ended in error, surface the transport failure instead
-	// of synthesizing a confident report from the error text.
-	const terminal = events.at(-1);
-	const toolResults = events.filter((e) => e.kind === "tool_result").length;
-	if (toolResults === 0 && terminal?.kind === "error") {
+	// gathered no evidence and ended in error, the stream emits no report — surface
+	// the transport failure instead of synthesizing a confident report.
+	if (!report) {
+		const last = events.at(-1);
+		const why = last?.kind === "error" ? last.message : "no evidence gathered";
 		throw new Error(
-			`investigation produced no evidence — the harness branch failed: ${terminal.message}`,
+			`investigation produced no evidence — the harness branch failed: ${why}`,
 		);
 	}
 
-	const transcript = buildTranscript(opts.alert, events);
-	const report = await synthesizeReport(transcript, opts.synth);
 	return { runId, report, events };
 }
 

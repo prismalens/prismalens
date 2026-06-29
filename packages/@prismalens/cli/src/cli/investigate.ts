@@ -4,46 +4,39 @@
  * Seeds a read-only root-cause investigation from a firing alert (piped on stdin
  * as a FiringAlert JSON, or synthesized from `--query`), rents a Tier-2 harness
  * (deepagents over ACP, or Claude Code over the Agent SDK), drives the Tier-1
- * supervisor (`investigateIncident`), persists the run, and renders the
- * ordered-evidence report (ADR-0002).
+ * supervisor LIVE (`investigateIncidentStream`), persists each canonical event as
+ * it arrives, and renders the ordered-evidence report (ADR-0002).
  *
  * BYO-key (ADR-0006): provider creds come from the environment
  * (OLLAMA_ / OPENAI_ vars), never hard-bound here. The harness investigates
  * READ-ONLY.
  *
- * FIRST CUT: `investigateIncident` AWAITS the whole run, then returns
- * `{ report, events }` in one shot — so this command shows progress around the
- * await rather than streaming. A streaming variant (the supervisor yielding
- * CanonicalEvents live, for the visual UI in ADR-0007) is a follow-up.
+ * LIVE (ADR-0007/0010): the supervisor yields CanonicalEvents as they happen; this
+ * command appends each to the session AND prints a one-line timeline entry, then
+ * renders the synthesized report once the terminal `report` event arrives. The
+ * ~/.prismalens workspace stays as the durable record.
  */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type {
+	CanonicalEvent,
 	Hypothesis,
 	InvestigationReport,
 	NextStep,
 	RuledOut,
 } from "@prismalens/contracts";
-import {
-	claudeCodeHarness,
-	deepAgentsHarness,
-	type FiringAlert,
-	type HarnessRunner,
-	investigateIncident,
-} from "@prismalens/engine";
+import { investigateIncidentStream } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
 import { detectRepo } from "../core/detect-repo.js";
 import { parseStdin } from "../core/parse-stdin.js";
+import {
+	type ResolvedInvestigation,
+	resolveInvestigation,
+} from "../core/run-investigation.js";
 import { createSessionManager } from "../core/session.js";
-
-const DEFAULT_PROMETHEUS_URL = "http://localhost:9090";
-const DEFAULT_ALERTMANAGER_URL = "http://localhost:9093";
-const DEFAULT_API_URL = "http://localhost:5000";
-const DEFAULT_OPENAI_BASE_URL = "https://ollama.com/v1";
-const DEFAULT_SYNTH_MODEL = "gpt-oss:120b";
 
 export default defineCommand({
 	meta: {
@@ -112,23 +105,16 @@ export default defineCommand({
 		const success = (msg: string): void => {
 			if (!quiet) consola.success(msg);
 		};
+		// One-line live timeline entries (no consola icon, so the stream reads cleanly).
+		const line = (msg: string): void => {
+			if (!quiet) consola.log(msg);
+		};
 
-		// (1) Resolve the seed alert: piped FiringAlert JSON wins, else --query.
+		// (1) Resolve the seed alert + config + harness + reduce model. The seed is a
+		// piped FiringAlert JSON (the stdin channel) or, failing that, --query.
 		const piped = await parseStdin();
-		let alert: FiringAlert;
-		if (piped) {
-			alert = coerceFiringAlert(piped);
-		} else if (args.query) {
-			alert = synthesizeAlert(args.query);
-		} else {
-			consola.error(
-				'No alert to investigate. Pipe a FiringAlert JSON on stdin, or pass --query/-q "<alert summary>".',
-			);
-			process.exitCode = 1;
-			return;
-		}
 
-		// (2) cwd = --repo (a local repo path) else the current directory. NOTE:
+		// cwd = --repo (a local repo path) else the current directory. NOTE:
 		// detectRepo() returns an OWNER/REPO slug (not a path), so it can't serve as
 		// a cwd — it's used below to label the session, not to choose the directory.
 		const cwd = args.repo ? resolve(args.repo) : process.cwd();
@@ -147,69 +133,31 @@ export default defineCommand({
 			);
 		}
 
-		// (3) Telemetry surfaces (read-only) — config with host-local fallbacks.
-		const telemetry = {
-			prometheusUrl: config.telemetry.prometheusUrl ?? DEFAULT_PROMETHEUS_URL,
-			alertmanagerUrl:
-				config.telemetry.alertmanagerUrl ?? DEFAULT_ALERTMANAGER_URL,
-			apiUrl: config.telemetry.apiUrl ?? DEFAULT_API_URL,
-		};
-
-		// (4) Build the Tier-2 harness from --harness (else agent.default).
-		const harnessName = args.harness ?? config.agent.default;
-		let harness: HarnessRunner;
-		switch (harnessName) {
-			case "deepagents":
-				harness = deepAgentsHarness({
-					cwd,
-					// agent.model is a bare id here; deepagents wants a provider prefix.
-					...(config.agent.model
-						? { model: `openai:${config.agent.model}` }
-						: {}),
-					env: {
-						OPENAI_API_KEY:
-							process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY,
-						OPENAI_BASE_URL:
-							process.env.OLLAMA_BASE_URL ??
-							process.env.OPENAI_BASE_URL ??
-							DEFAULT_OPENAI_BASE_URL,
-					},
-				});
-				break;
-			case "claude-code":
-				harness = claudeCodeHarness({
-					cwd,
-					...(config.agent.model ? { model: config.agent.model } : {}),
-				});
-				break;
-			case "codex":
-				consola.error("The 'codex' harness is not implemented yet.");
-				process.exitCode = 1;
-				return;
-			default:
-				// citty's enum arg widens to `string`, so this also catches an
-				// unknown --harness value.
-				consola.error(`Unknown harness: ${harnessName}`);
-				process.exitCode = 1;
-				return;
+		let resolved: ResolvedInvestigation;
+		try {
+			resolved = resolveInvestigation(
+				{
+					...(piped ? { alert: piped } : {}),
+					...(args.query ? { query: args.query } : {}),
+					...(args.repo ? { repo: args.repo } : {}),
+					...(args.harness ? { harness: args.harness } : {}),
+				},
+				config,
+			);
+		} catch (err) {
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exitCode = 1;
+			return;
 		}
+		const { alert, telemetry, harness, synth, harnessName } = resolved;
 
-		// (5) Tier-1 reduce model (Vercel AI SDK, OpenAI-compatible, BYO-key).
-		const synth = {
-			baseURL:
-				process.env.OLLAMA_BASE_URL ??
-				process.env.OPENAI_BASE_URL ??
-				DEFAULT_OPENAI_BASE_URL,
-			apiKey: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
-			model: config.agent.model ?? DEFAULT_SYNTH_MODEL,
-		};
 		if (!synth.apiKey) {
 			consola.warn(
 				"No OLLAMA_API_KEY / OPENAI_API_KEY in the environment — the synthesis call will likely fail (BYO-key, ADR-0006).",
 			);
 		}
 
-		// (6) Create the run workspace + session under workspace.base_dir.
+		// (2) Create the run workspace + session under workspace.base_dir.
 		const runId = randomUUID();
 		const sessions = createSessionManager(config.workspace.base_dir);
 		const session = await sessions.create({
@@ -223,28 +171,28 @@ export default defineCommand({
 			`Investigating "${alert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
 		);
 
-		// (7) Drive the supervisor. First cut: this AWAITS the whole run, then
-		// returns { report, events }. Streaming (yield-as-you-go) is a follow-up.
-		let report: InvestigationReport;
+		// (3) Drive the supervisor LIVE: append each canonical event to the session
+		// as it arrives and print a one-line timeline entry; capture the terminal
+		// `report` event for the renderer below.
+		let report: InvestigationReport | null = null;
+		let lastErrorMessage: string | undefined;
 		try {
-			const result = await investigateIncident({
+			for await (const event of investigateIncidentStream({
 				alert,
 				telemetry,
 				harness,
 				synth,
 				runId,
-			});
-			report = result.report;
-
-			// (8) Persist the canonical stream + report; mark the session done.
-			for (const event of result.events) {
+			})) {
 				await sessions.appendEvent(runId, event);
+				if (event.kind === "report") {
+					report = event.report;
+				} else {
+					if (event.kind === "error") lastErrorMessage = event.message;
+					const entry = liveTimelineEntry(event);
+					if (entry) line(entry);
+				}
 			}
-			await sessions.writeReport(runId, report);
-			await sessions.update(runId, {
-				status: "done",
-				completedAt: new Date().toISOString(),
-			});
 		} catch (err) {
 			await sessions.update(runId, { status: "errored" });
 			consola.error(
@@ -254,7 +202,28 @@ export default defineCommand({
 			return;
 		}
 
-		// (9) Output. --output writes report JSON to a file; --json prints it to
+		// No-report failure path: a branch that gathered no evidence and errored
+		// emits no `report` event — surface the transport failure rather than a
+		// fabricated RCA (mirrors the engine's no-evidence guard).
+		if (!report) {
+			await sessions.update(runId, { status: "errored" });
+			consola.error(
+				`Investigation produced no evidence — the harness branch failed: ${
+					lastErrorMessage ?? "no evidence gathered"
+				}`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+
+		// Persist the report + mark the session done.
+		await sessions.writeReport(runId, report);
+		await sessions.update(runId, {
+			status: "done",
+			completedAt: new Date().toISOString(),
+		});
+
+		// (4) Output. --output writes report JSON to a file; --json prints it to
 		// stdout; otherwise render the ordered-evidence report for humans.
 		if (args.output) {
 			const outPath = resolve(args.output);
@@ -275,49 +244,32 @@ export default defineCommand({
 });
 
 // ---------------------------------------------------------------------------
-// Alert coercion
+// Live timeline (one line per streamed canonical event)
 // ---------------------------------------------------------------------------
 
-/** Synthesize a minimal FiringAlert from a free-text `--query`. */
-function synthesizeAlert(query: string): FiringAlert {
-	return {
-		alertname: query,
-		severity: "unknown",
-		labels: {},
-		annotations: {},
-		startsAt: null,
-	};
-}
-
 /**
- * Coerce a piped JSON payload (a FiringAlert, or a webhook/Alertmanager-shaped
- * alert) into a FiringAlert. Permissive: pulls alertname/severity from top-level
- * fields, falling back to `labels`.
+ * Render one live-timeline line for a streamed canonical event, or null when the
+ * event carries nothing worth a line (an agent_step with neither text nor calls).
+ * The terminal `report` event is captured by the caller, not lined here.
  */
-function coerceFiringAlert(raw: Record<string, unknown>): FiringAlert {
-	const labels = asStringMap(raw.labels);
-	const annotations = asStringMap(raw.annotations);
-	const alertname =
-		(typeof raw.alertname === "string" && raw.alertname) ||
-		labels.alertname ||
-		"unknown";
-	const severity =
-		typeof raw.severity === "string"
-			? raw.severity
-			: typeof labels.severity === "string"
-				? labels.severity
-				: null;
-	const startsAt = typeof raw.startsAt === "string" ? raw.startsAt : null;
-	return { alertname, severity, labels, annotations, startsAt };
-}
-
-function asStringMap(x: unknown): Record<string, string> {
-	if (x === null || typeof x !== "object") return {};
-	const out: Record<string, string> = {};
-	for (const [k, v] of Object.entries(x)) {
-		if (typeof v === "string") out[k] = v;
+function liveTimelineEntry(event: CanonicalEvent): string | null {
+	switch (event.kind) {
+		case "agent_step": {
+			const firstLine = event.text.trim().split("\n", 1)[0]?.trim() ?? "";
+			const n = event.toolCalls.length;
+			if (!firstLine && n === 0) return null;
+			const calls = n > 0 ? ` + ${n} tool call${n === 1 ? "" : "s"}` : "";
+			return `• ${firstLine}${calls}`;
+		}
+		case "tool_result":
+			return `  ${event.result.ok ? "ok" : "ERR"} ${event.result.source}`;
+		case "branch_done":
+			return `  [branch ${event.reason}]`;
+		case "error":
+			return `  [error] ${event.message}`;
+		default:
+			return null;
 	}
-	return out;
 }
 
 // ---------------------------------------------------------------------------
