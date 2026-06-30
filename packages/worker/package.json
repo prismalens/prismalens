@@ -17,6 +17,7 @@
 		"@prismalens/agents": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
+		"@prismalens/engine": "workspace:*",
 		"@prismalens/logger": "workspace:*",
 		"bullmq": "^5.34.0",
 		"dotenv": "^16.4.7",

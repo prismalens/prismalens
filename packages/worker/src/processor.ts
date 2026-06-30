@@ -1,304 +1,42 @@
+/**
+ * Investigation job processor (ADR-0008/0010/0011 — Phase A).
+ *
+ * Drives the two-tier engine (`@prismalens/engine`) instead of the retired
+ * LangGraph `@prismalens/agents`: resolve the engine inputs from the job + LLM
+ * settings (shell-first, ADR-0005 — connectors come in Phase D), then
+ * `conductInvestigation` with a Redis SINK that publishes the canonical stream for
+ * the API to relay (→ SSE → UI). The terminal ordered-evidence report is persisted
+ * via `api.investigations.writeResult`.
+ *
+ * Phase A note: telemetry endpoints + harness cwd are sourced from
+ * INVESTIGATION_DEFAULTS + env as a local-first stopgap; the full `pl.config.yaml`
+ * sourcing (materialised by the web Settings UI) lands with the config-UI work.
+ */
+import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
+import type { InvestigationReport } from "@prismalens/contracts";
 import {
-	type InvestigationResult as AgentResult,
-	type AlertContext,
-	type AlertFetchRequest,
-	type AlertFetchResponse,
-	type DataProvider,
-	type IncidentContext,
-	type IntegrationWithCredentials,
-	InvestigationExecutor,
-	type InvestigationConfig,
-	type InvestigationInput,
-	type Recommendation,
-	type SimilarIncidentMatch,
-	type SimilarIncidentRequest,
-	type SimilarIncidentResponse,
-	mapSeverity,
-	createCheckpointer,
-	ExecutionTracker,
-} from "@prismalens/agents";
-import {
-	buildCheckpointerUrl,
-	getCheckpointerSchema,
-	databaseSchema,
-} from "@prismalens/config";
+	conductInvestigation,
+	type InvestigationRequest,
+	resolveInvestigation,
+} from "@prismalens/engine";
 import { Logger, enrichContext } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { SandboxedJob } from "bullmq";
-import crypto from "node:crypto";
 import { Redis } from "ioredis";
 import { config as workerConfig, redisUrl } from "./config.js";
 import { api } from "./orpc-client.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
-// =============================================================================
-// INVESTIGATION JOB PROCESSOR
-// =============================================================================
-// Processes investigation jobs from the BullMQ queue.
-// Uses the @prismalens/agents package for investigation execution.
-// =============================================================================
-
-// =============================================================================
-// WORKER DATA PROVIDER
-// =============================================================================
-// DataProvider implementation for queue mode.
-// Uses oRPC client to fetch data from the API.
-// =============================================================================
-
-/**
- * DataProvider implementation for worker (queue) mode.
- * Uses the oRPC client to fetch data from the API server.
- */
-class WorkerDataProvider implements DataProvider {
-	private logger = new Logger({ context: "WorkerDataProvider" });
-
-	/**
-	 * Fetch alerts via oRPC API
-	 */
-	async fetchAlerts(request: AlertFetchRequest): Promise<AlertFetchResponse> {
-		try {
-			const alerts = await api.alerts.list({
-				incidentId: request.incidentId,
-				serviceId: request.serviceId,
-				limit: request.limit || 50,
-			});
-
-			// Filter by specific IDs if provided
-			let filteredAlerts = alerts;
-			const alertIds = (request as AlertFetchRequest & { alertIds?: string[] }).alertIds;
-			if (alertIds && alertIds.length > 0) {
-				const idSet = new Set(alertIds);
-				filteredAlerts = alerts.filter((a: { id: string }) => idSet.has(a.id));
-			}
-
-			return {
-				alerts: filteredAlerts.map((a: Record<string, unknown>) =>
-					this.mapAlertToContext(a),
-				),
-				hasMore: alerts.length >= (request.limit || 50),
-			};
-		} catch (error) {
-			this.logger.error("Failed to fetch alerts via API", { error });
-			return { alerts: [], hasMore: false };
-		}
-	}
-
-	/**
-	 * Fetch a single incident via oRPC API
-	 */
-	async fetchIncident(incidentId: string): Promise<IncidentContext | null> {
-		try {
-			const incident = await api.incidents.get({ id: incidentId });
-			return this.mapIncidentToContext(incident);
-		} catch (error) {
-			this.logger.warn(`Failed to fetch incident ${incidentId}`, { error });
-			return null;
-		}
-	}
-
-	/**
-	 * Fetch similar incidents via oRPC API
-	 */
-	async fetchSimilarIncidents(
-		request: SimilarIncidentRequest,
-	): Promise<SimilarIncidentResponse> {
-		try {
-			// Fetch resolved/closed incidents from the same service
-			const incidents = await api.incidents.list({
-				serviceId: request.serviceId,
-				status: "resolved",
-				limit: request.limit || 10,
-			});
-
-			// Filter out the current incident and map to SimilarIncidentMatch
-			const similarIncidents: SimilarIncidentMatch[] = incidents
-				.filter((inc: { id: string }) => inc.id !== request.incidentId)
-				.map((inc: Record<string, unknown>) => this.mapToSimilarIncident(inc));
-
-			return { incidents: similarIncidents };
-		} catch (error) {
-			this.logger.warn("Failed to fetch similar incidents", { error });
-			return { incidents: [] };
-		}
-	}
-
-	/**
-	 * Map API alert response to AlertContext
-	 */
-	private mapAlertToContext(alert: Record<string, unknown>): AlertContext {
-		return {
-			alertId: alert.id as string,
-			title: (alert.title as string) || "Unknown Alert",
-			description: alert.description as string | undefined,
-			severity: (alert.severity as AlertContext["severity"]) || "medium",
-			status: alert.status as AlertContext["status"],
-			source: alert.source as string | undefined,
-			sourceUrl: alert.sourceUrl as string | undefined,
-			serviceId: alert.serviceId as string | undefined,
-			serviceName: alert.serviceName as string | undefined,
-			repository: alert.repository as string | undefined,
-			labels: alert.labels as Record<string, string> | undefined,
-			tags: alert.tags as string[] | undefined,
-			triggeredAt: (alert.triggeredAt as string) || new Date().toISOString(),
-			rawPayload: alert.rawPayload as Record<string, unknown> | undefined,
-		};
-	}
-
-	/**
-	 * Map API incident response to IncidentContext
-	 */
-	private mapIncidentToContext(
-		incident: Record<string, unknown>,
-	): IncidentContext {
-		return {
-			incidentId: incident.id as string,
-			number: (incident.number as number) || 0,
-			title: (incident.title as string) || "Unknown Incident",
-			description: incident.description as string | undefined,
-			severity: (incident.severity as IncidentContext["severity"]) || "medium",
-			status:
-				(incident.status as IncidentContext["status"]) || "investigating",
-			priority: (incident.priority as IncidentContext["priority"]) || "p3",
-			serviceId: incident.serviceId as string | undefined,
-			serviceName: incident.serviceName as string | undefined,
-			alertCount: (incident.alertCount as number) || 0,
-			triggeredAt: (incident.triggeredAt as string) || new Date().toISOString(),
-			acknowledgedAt: incident.acknowledgedAt as string | undefined,
-			tags: incident.tags as string[] | undefined,
-			customerImpact: incident.customerImpact as string | undefined,
-			affectedSystems: incident.affectedSystems as string[] | undefined,
-		};
-	}
-
-	/**
-	 * Map API incident to SimilarIncidentMatch.
-	 * Includes description, tags, and severity for similarity scoring.
-	 */
-	private mapToSimilarIncident(
-		incident: Record<string, unknown>,
-	): SimilarIncidentMatch {
-		return {
-			incidentId: incident.id as string,
-			number: incident.number as number | undefined,
-			title: (incident.title as string) || "Unknown Incident",
-			description: incident.description as string | undefined,
-			severity: incident.severity as string | undefined,
-			tags: incident.tags as string[] | undefined,
-			serviceId: incident.serviceId as string | undefined,
-			serviceName: incident.serviceName as string | undefined,
-			rootCause: incident.rootCause as string | undefined,
-			rootCauseCategory: incident.rootCauseCategory as string | undefined,
-			resolution: incident.resolution as string | undefined,
-			resolvedAt: incident.resolvedAt as string | undefined,
-			timeToResolve: incident.timeToResolve as number | undefined,
-			postmortemSummary: incident.postmortemSummary as string | undefined,
-			similarity: 0, // Computed by pre-gathering's calculateIncidentSimilarity
-		};
-	}
-}
-
-// Module-level singletons (order matters: logger before functions that use it)
 const logger = new Logger({ context: "InvestigationProcessor" });
-const dataProvider = new WorkerDataProvider();
 
-// Lazy executor init — PostgresSaver.setup() is async, so we can't create at module level.
-// Uses promise-based mutex to prevent duplicate initialization from concurrent jobs.
-let _executorPromise: Promise<InvestigationExecutor> | null = null;
-
-function getExecutor(): Promise<InvestigationExecutor> {
-	if (!_executorPromise) {
-		_executorPromise = initExecutor();
-	}
-	return _executorPromise;
-}
-
-async function initExecutor(): Promise<InvestigationExecutor> {
-	const dbConfig = databaseSchema.parse(process.env);
-	const connectionString = buildCheckpointerUrl(dbConfig);
-	const schema = dbConfig.PRISMALENS_DB_TYPE === "postgresql"
-		? getCheckpointerSchema(dbConfig)
-		: undefined;
-
-	const checkpointer = await createCheckpointer({
-		dbType: dbConfig.PRISMALENS_DB_TYPE,
-		connectionString,
-		schema,
-	});
-
-	return new InvestigationExecutor({ dataProvider, checkpointer });
-}
-
-// Redis publisher for streaming events to API
+// Redis publisher for streaming canonical events to the API relay.
 const redisPublisher = new Redis(redisUrl, {
 	maxRetriesPerRequest: null,
 });
 
-/** Node-to-percent mapping for BullMQ job progress reporting */
-const NODE_PROGRESS: Record<string, number> = {
-	scout: 10,
-	analyst: 30,
-	gatherer: 50,
-	resolver: 75,
-	supervisor: 90,
-};
-
 /**
- * Fetch integration credentials on-demand via internal API.
- * Worker passes connectionIds → API decrypts and returns IntegrationContext[].
- * SECURITY: Credentials only exist in-memory during execution, never in Redis.
- */
-async function fetchIntegrationCredentials(
-	connectionIds: string[],
-): Promise<IntegrationWithCredentials[]> {
-	if (connectionIds.length === 0) return [];
-
-	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
-	if (!internalSecret) {
-		throw new Error("PRISMALENS_INTERNAL_SECRET not set — cannot fetch integration credentials");
-	}
-
-	const url = new URL("/internal/integrations/credentials", workerConfig.PRISMALENS_WORKER_API_URL);
-	url.searchParams.set("connectionIds", connectionIds.join(","));
-
-	const response = await fetch(url.toString(), {
-		headers: {
-			"X-Internal-Secret": internalSecret,
-			"User-Agent": "prismalens-worker/0.1.0",
-		},
-		signal: AbortSignal.timeout(10_000),
-	});
-
-	if (!response.ok) {
-		logger.error("Failed to fetch integration credentials", {
-			status: response.status,
-			statusText: response.statusText,
-		});
-		return [];
-	}
-
-	const data = (await response.json()) as Array<{
-		type: string;
-		connectionId: string;
-		credentials: Record<string, unknown>;
-		config: Record<string, unknown>;
-		specUrl?: string | null;
-	}>;
-
-	return data.map((item) => ({
-		id: item.connectionId,
-		name: item.type,
-		type: item.type,
-		enabled: true,
-		config: item.config,
-		credentials: item.credentials,
-		specUrl: item.specUrl ?? undefined,
-	}));
-}
-
-/**
- * Fetch LLM configuration from the API.
- * Returns the active provider, model, and API key env var.
- * SECURITY: API key only lives in-memory during execution.
+ * Fetch LLM configuration from the API (active provider, model, api-key creds).
+ * SECURITY: the api key only lives in-memory during execution.
  */
 async function fetchLlmConfig(): Promise<{
 	provider: string | null;
@@ -307,10 +45,15 @@ async function fetchLlmConfig(): Promise<{
 }> {
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
 	if (!internalSecret) {
-		throw new Error("PRISMALENS_INTERNAL_SECRET not set — cannot fetch LLM config");
+		throw new Error(
+			"PRISMALENS_INTERNAL_SECRET not set — cannot fetch LLM config",
+		);
 	}
 
-	const url = new URL("/internal/settings/llm-credentials", workerConfig.PRISMALENS_WORKER_API_URL);
+	const url = new URL(
+		"/internal/settings/llm-credentials",
+		workerConfig.PRISMALENS_WORKER_API_URL,
+	);
 
 	const response = await fetch(url.toString(), {
 		headers: {
@@ -335,19 +78,11 @@ async function fetchLlmConfig(): Promise<{
 
 /**
  * Process an investigation job from the queue.
- *
- * Flow:
- * 1. Update investigation status to 'running'
- * 2. Add timeline entry
- * 3. Run investigation via InvestigationExecutor
- * 4. Submit results to API
  */
 export default async function processInvestigationJob(
 	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
 ): Promise<InvestigationResult> {
 	const { data } = job;
-
-	// Wrap job processing in a wide event context
 	return runWithWideEvent(
 		`job-${job.id}`,
 		async () => processJobInternal(job, data),
@@ -362,325 +97,240 @@ export default async function processInvestigationJob(
 	);
 }
 
-/**
- * Internal job processing logic.
- */
 async function processJobInternal(
 	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
 	data: InvestigationJobData,
 ): Promise<InvestigationResult> {
-	logger.info(`Processing job ${job.id} for investigation ${data.investigationId}`);
-
-	// Enrich with job context
+	logger.info(
+		`Processing job ${job.id} for investigation ${data.investigationId}`,
+	);
 	enrichContext({
 		context: {
 			alert_count: data.alerts?.length ?? 0,
-			connection_count: data.connectionIds?.length ?? 0,
 			priority: data.priority,
 		},
 	});
 
-	// Track env vars set for LLM credentials — restored in finally block
-	const previousEnv: Record<string, string | undefined> = {};
-
 	try {
-		// 1. Generate thread ID and update status to running
-		const threadId = crypto.randomUUID();
+		// 1. runId == the investigation id; mark running.
+		const runId = data.investigationId;
 		await api.investigations.updateStatus({
 			id: data.investigationId,
 			status: "running",
-			langGraphThreadId: threadId,
+			langGraphThreadId: runId,
 		});
 
-		// 2. Add timeline entry
+		// 2. Timeline entry.
 		await api.timeline.create({
 			incidentId: data.incidentId,
 			type: "investigation_started",
 			title: "AI Investigation Started",
-			description: "Starting automated multi-agent investigation",
+			description: "Starting the two-tier engine investigation",
 			source: "ai_worker",
 			metadata: { investigationId: data.investigationId },
 		});
 
-		// 3. Build input for executor (async - fetches incident + LLM config)
-		const executor = await getExecutor();
-		const { input, llmCredentials } = await buildExecutorInput(data);
+		// 3. Resolve engine inputs (shell-first; BYO-key from LLM settings).
+		const resolved = resolveInvestigation(await buildRequest(data, runId));
 
-		// Set LLM API keys in process.env so LangChain SDKs can resolve them.
-		// Saved/restored in finally block to avoid leaking between jobs.
-		for (const [key, value] of Object.entries(llmCredentials)) {
-			previousEnv[key] = process.env[key];
-			process.env[key] = value;
-		}
+		await job.updateProgress({ percent: 5, message: "Starting investigation..." });
 
-		await job.updateProgress({
-			percent: 5,
-			message: "Starting investigation...",
-		});
-
-		// 4. Stream investigation via executor, publishing events to Redis
+		// 4. Conduct: drive the harness, publishing the canonical stream to Redis.
 		const channel = `investigation:events:${data.investigationId}`;
-		let agentResult: AgentResult | null = null;
-		const tracker = new ExecutionTracker();
-
-		for await (const chunk of executor.stream(input, { configurable: { thread_id: threadId } })) {
-			// Publish raw tuple to Redis for API relay
-			await redisPublisher.publish(channel, JSON.stringify(chunk));
-
-			// Extract progress info for BullMQ job progress reporting
-			const [mode, eventData] = chunk as [string, Record<string, unknown>];
-
-			// "tasks" mode — track agent execution timing
-			if (mode === "tasks") {
-				const taskId = eventData?.id as string | undefined;
-				const name = eventData?.name as string | undefined;
-				if (taskId && name && !eventData?.result) {
-					tracker.onTaskStart(taskId, name);
-				}
-				if (taskId && eventData?.result) {
-					tracker.onTaskComplete(taskId, eventData?.error as string | undefined);
-					if (name) {
-						const percent = NODE_PROGRESS[name] ?? 50;
-						await job.updateProgress({ percent, message: `${name} completed` });
-					}
-				}
-			}
-
-			// Extract final result from "updates" mode
-			if (mode === "updates" && eventData) {
-				for (const nodeUpdate of Object.values(eventData)) {
-					const update = nodeUpdate as Record<string, unknown>;
-					if (update?.result) {
-						agentResult = update.result as AgentResult;
-					}
-				}
-			}
-		}
-
-		// Signal stream completion to Redis
+		const outcome = await conductInvestigation(
+			{
+				alert: resolved.alert,
+				telemetry: resolved.telemetry,
+				harness: resolved.harness,
+				synth: resolved.synth,
+				runId,
+			},
+			async (event) => {
+				await redisPublisher.publish(channel, JSON.stringify(event));
+			},
+		);
+		// Terminal sentinel for the API relay.
 		await redisPublisher.publish(channel, JSON.stringify(["__done__", {}]));
-
-		// If no result from stream, fall back to execute()
-		if (!agentResult) {
-			logger.warn(`Stream finished without result for job ${job.id}, using execute() fallback`);
-			agentResult = await executor.execute(input, { configurable: { thread_id: threadId } });
-		}
 
 		await job.updateProgress({ percent: 90, message: "Persisting results..." });
 
-		// 5. Submit results to API (with tracked agent executions)
-		const result = buildResult(data, agentResult);
-		const trackedExecutions = tracker.getExecutions();
+		// 5a. No-evidence / failed branch → surface the failure, don't fabricate.
+		if (!outcome.report) {
+			const message = outcome.error ?? "investigation produced no evidence";
+			await api.investigations.updateStatus({
+				id: data.investigationId,
+				status: "failed",
+				error: message,
+			});
+			await api.timeline.create({
+				incidentId: data.incidentId,
+				type: "investigation_completed",
+				title: "AI Investigation Failed",
+				description: message,
+				source: "ai_worker",
+				metadata: { investigationId: data.investigationId, error: message },
+			});
+			return failureResult(data, message);
+		}
 
+		// 5b. Persist the ordered-evidence report (mapped onto the current write shape;
+		// the full `report` JSON + canonical agent-executions land in the api step).
+		const report = outcome.report;
 		await api.investigations.writeResult({
 			id: data.investigationId,
-			status: result.success ? "completed" : "failed",
-			summary: result.findings.summary,
-			rootCause: result.findings.rootCause,
-			rootCauseCategory: agentResult.rootCauseCategory ?? undefined,
-			confidence: result.findings.confidence,
-			dataQuality: result.findings.dataQuality,
-			dataSourcesUsed: result.findings.dataSourcesUsed,
-			error: result.error,
-			agentExecutions: trackedExecutions.map((exec) => ({
-				agentName: exec.agentName,
-				status: exec.status,
-				startedAt: exec.startedAt,
-				completedAt: exec.completedAt,
-				executionTimeMs: exec.executionTimeMs,
-				error: exec.error,
-			})),
-			recommendations: result.recommendations.map((rec) => ({
-				title: rec.title,
-				description: rec.description,
-				priority: rec.priority,
-				category: rec.category,
-				urgency: rec.urgency,
-				actionable: rec.actionable,
-				estimatedEffort: rec.estimatedEffort,
+			status: "completed",
+			summary: report.summary,
+			rootCause: report.rootCause ?? undefined,
+			rootCauseCategory: report.rootCauseCategory ?? undefined,
+			recommendations: report.nextSteps.map((step) => ({
+				title: step.title,
+				description: step.detail,
+				priority: step.priority ?? undefined,
+				category: "investigation",
+				actionable: true,
 			})),
 		});
 
-		await job.updateProgress({
-			percent: 100,
-			message: "Investigation complete",
-		});
-
-		logger.info(`Job ${job.id} completed`, { success: result.success });
-
-		return result;
+		await job.updateProgress({ percent: 100, message: "Investigation complete" });
+		logger.info(`Job ${job.id} completed`);
+		return successResult(data, report);
 	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`Job failed: ${errorMessage}`, error);
-
-		// Update status to failed
 		try {
 			await api.investigations.updateStatus({
 				id: data.investigationId,
 				status: "failed",
 				error: errorMessage,
 			});
-
-			// Add failure timeline entry
 			await api.timeline.create({
 				incidentId: data.incidentId,
 				type: "investigation_completed",
 				title: "AI Investigation Failed",
 				description: errorMessage,
 				source: "ai_worker",
-				metadata: {
-					investigationId: data.investigationId,
-					error: errorMessage,
-				},
+				metadata: { investigationId: data.investigationId, error: errorMessage },
 			});
 		} catch (e) {
-			logger.error(`Failed to update failure status`, e);
+			logger.error("Failed to update failure status", e);
 		}
-
 		throw error;
-	} finally {
-		// Restore process.env to prevent credential leakage between jobs
-		for (const [key, prevValue] of Object.entries(previousEnv)) {
-			if (prevValue === undefined) {
-				delete process.env[key];
-			} else {
-				process.env[key] = prevValue;
-			}
-		}
 	}
 }
 
 /**
- * Build executor input from job data.
- * Returns the investigation input plus LLM credentials for env management.
- * Caller is responsible for setting/cleaning up process.env with the credentials.
+ * Build the engine investigation request from the job + LLM settings.
+ * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
+ * stopgap); connectors are Phase D. BYO-key (ADR-0006) from the LLM settings.
  */
-async function buildExecutorInput(jobData: InvestigationJobData): Promise<{
-	input: InvestigationInput;
-	llmCredentials: Record<string, string>;
-}> {
-	// Fetch incident context via API - REQUIRED for investigation
-	const incidentData = await dataProvider.fetchIncident(jobData.incidentId);
-	if (!incidentData) {
-		throw new Error(`Incident not found: ${jobData.incidentId}`);
-	}
-
-	// Convert alerts from job data to AlertContext
-	const alerts: AlertContext[] = (jobData.alerts || []).map((alertUnknown) => {
-		const alert = alertUnknown as Record<string, unknown>;
-		const labels = alert.labels as Record<string, string> | undefined;
-		return {
-			alertId:
-				(alert.id as string) ||
-				(alert.alertId as string) ||
-				`alert-${Date.now()}`,
-			title:
-				(alert.title as string) ||
-				(alert.alertname as string) ||
-				"Unknown Alert",
-			description:
-				(alert.description as string | undefined) ||
-				(alert.summary as string | undefined),
-			severity: mapSeverity((alert.severity as string) || labels?.severity),
-			status: alert.status as AlertContext["status"],
-			source: (alert.source as string) || labels?.source,
-			sourceUrl: (alert.sourceUrl as string) || (alert.generatorURL as string),
-			serviceId: alert.serviceId as string | undefined,
-			serviceName: (alert.serviceName as string) || labels?.service,
-			repository: (alert.repository as string) || labels?.repository,
-			labels,
-			tags: alert.tags as string[] | undefined,
-			triggeredAt: (alert.triggeredAt as string) || (alert.startsAt as string),
-			rawPayload: alert,
-		};
-	});
-
-	// Fetch integration credentials and LLM config in parallel via internal API.
-	// Both are independent calls — no need to serialize them.
-	const [integrations, llmConfig] = await Promise.all([
-		fetchIntegrationCredentials(jobData.connectionIds ?? []),
-		fetchLlmConfig(),
-	]);
-
+async function buildRequest(
+	data: InvestigationJobData,
+	_runId: string,
+): Promise<InvestigationRequest> {
+	const llmConfig = await fetchLlmConfig();
 	if (!llmConfig?.provider || !llmConfig?.model) {
 		throw new Error(
-			"LLM not configured: no active provider/model found. " +
-			"Configure via Settings UI or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL env vars.",
+			"LLM not configured: no active provider/model. Configure via Settings " +
+				"or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
 		);
 	}
-
-	if (!llmConfig.credentials || Object.keys(llmConfig.credentials).length === 0) {
+	const apiKey = Object.values(llmConfig.credentials ?? {})[0] ?? "";
+	if (!apiKey) {
 		throw new Error(
-			`LLM API key not configured for provider "${llmConfig.provider}". ` +
-			"Configure via Settings UI or set the provider's API key env var.",
+			`LLM API key not configured for provider "${llmConfig.provider}".`,
 		);
 	}
 
-	const config: InvestigationConfig = {
-		llm: {
-			provider: llmConfig.provider as InvestigationConfig["llm"]["provider"],
-			model: llmConfig.model,
-		},
-	};
-
-	return {
-		input: {
-			investigationId: jobData.investigationId,
-			incidentId: jobData.incidentId,
-			config,
-			integrations,
-		},
-		llmCredentials: llmConfig.credentials,
-	};
-}
-
-/**
- * Build result from agent result.
- */
-function buildResult(
-	jobData: InvestigationJobData,
-	agentResult: AgentResult,
-): InvestigationResult {
-	const success = agentResult.status === "completed" && !agentResult.error;
-
-	return {
-		success,
-		investigationId: jobData.investigationId,
-		incidentId: jobData.incidentId,
-		findings: {
-			rootCause: agentResult.rootCause || undefined,
-			summary: agentResult.summary || undefined,
-			confidence: agentResult.confidence || undefined,
-			dataSourcesUsed: [], // TODO(Phase-5C-2): populate from InvestigationResult.dataSourcesUsed
-			dataQuality: {}, // TODO(Phase-5C-2): populate from InvestigationResult.dataQuality
-		},
-		recommendations: agentResult.recommendations.map((rec: Recommendation) => ({
-			title: rec.title,
-			description: rec.description,
-			priority: rec.priority,
-			category: rec.category ?? "investigation",
-			urgency: rec.urgency,
-			actionable: rec.actionable ?? true,
-			estimatedEffort: rec.estimatedEffort,
-		})),
-		agentExecutions: [], // Agent executions are tracked internally by the executor
-		error: agentResult.error || undefined,
-	};
-}
-
-/**
- * Graceful shutdown - close executor and Redis publisher connections.
- * In sandboxed mode, each child process manages its own cleanup.
- */
-async function closeProcessor(): Promise<void> {
-	if (_executorPromise) {
-		const executor = await _executorPromise;
-		await executor.close();
+	let incident: Record<string, unknown> | null = null;
+	try {
+		incident = (await api.incidents.get({
+			id: data.incidentId,
+		})) as unknown as Record<string, unknown>;
+	} catch {
+		incident = null;
 	}
+
+	const baseURL = INVESTIGATION_DEFAULTS.synth.baseURL;
+	return {
+		alert: buildAlertPayload(incident, data),
+		harness: process.env.PRISMALENS_HARNESS ?? "deepagents",
+		model: llmConfig.model,
+		cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
+		telemetry: { ...INVESTIGATION_DEFAULTS.telemetry },
+		synth: { baseURL, apiKey, model: llmConfig.model },
+		harnessEnv: { OPENAI_API_KEY: apiKey, OPENAI_BASE_URL: baseURL },
+		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
+	};
+}
+
+/** Map the incident + seed alerts into a FiringAlert-shaped payload. */
+function buildAlertPayload(
+	incident: Record<string, unknown> | null,
+	data: InvestigationJobData,
+): Record<string, unknown> {
+	const firstAlert = (data.alerts?.[0] ?? {}) as Record<string, unknown>;
+	const labels = (firstAlert.labels as Record<string, string>) ?? {};
+	const annotations: Record<string, string> = {};
+	if (incident?.description) annotations.description = String(incident.description);
+	if (firstAlert.description) annotations.summary = String(firstAlert.description);
+	return {
+		alertname:
+			(incident?.title as string) ??
+			(firstAlert.title as string) ??
+			(firstAlert.alertname as string) ??
+			"Incident investigation",
+		severity:
+			(incident?.severity as string) ??
+			(firstAlert.severity as string) ??
+			labels.severity ??
+			"unknown",
+		labels,
+		annotations,
+		startsAt:
+			(incident?.triggeredAt as string) ??
+			(firstAlert.triggeredAt as string) ??
+			(firstAlert.startsAt as string) ??
+			null,
+	};
+}
+
+function successResult(
+	data: InvestigationJobData,
+	report: InvestigationReport,
+): InvestigationResult {
+	return {
+		success: true,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {
+			rootCause: report.rootCause ?? undefined,
+			summary: report.summary,
+		},
+		recommendations: [],
+		agentExecutions: [],
+	};
+}
+
+function failureResult(
+	data: InvestigationJobData,
+	error: string,
+): InvestigationResult {
+	return {
+		success: false,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {},
+		recommendations: [],
+		agentExecutions: [],
+		error,
+	};
+}
+
+/** Graceful shutdown — close the Redis publisher. */
+async function closeProcessor(): Promise<void> {
 	await redisPublisher.quit();
 }
 
-// Cleanup connections when the child process is terminated by the parent worker
 process.on("SIGTERM", async () => {
 	await closeProcessor();
 	process.exit(0);

@@ -625,6 +625,9 @@ importers:
       '@prismalens/contracts':
         specifier: workspace:*
         version: link:../@prismalens/contracts
+      '@prismalens/engine':
+        specifier: workspace:*
+        version: link:../@prismalens/engine
       '@prismalens/logger':
         specifier: workspace:*
         version: link:../@prismalens/logger
