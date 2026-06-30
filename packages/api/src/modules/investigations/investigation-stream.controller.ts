@@ -6,8 +6,9 @@ import { StreamRelayService } from "./stream-relay.service.js";
 /**
  * SSE endpoint for real-time investigation stream events.
  *
- * Forwards raw LangGraph [mode, data] tuples as JSON via SSE.
- * This is a raw NestJS controller (not oRPC) since SSE doesn't fit RPC.
+ * Forwards the canonical investigation event stream (CanonicalEvent) as JSON via
+ * SSE, then a final { type: "done" } marker. Raw NestJS controller (not oRPC,
+ * since SSE doesn't fit RPC).
  */
 @Controller("api/investigations")
 @UseGuards(ThrottlerGuard)
@@ -23,8 +24,8 @@ export class InvestigationStreamController {
 					subscriber.next({ data: JSON.stringify(event) });
 				},
 				() => {
-					// Send a final "done" event so the client knows the stream ended
-					subscriber.next({ data: JSON.stringify(["__done__", {}]) });
+					// Final marker so the client knows the stream ended cleanly.
+					subscriber.next({ data: JSON.stringify({ type: "done" }) });
 					setTimeout(() => subscriber.complete(), 100);
 				},
 			);

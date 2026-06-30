@@ -1,8 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { EventEmitter } from "node:events";
-
-/** Raw LangGraph stream tuple: [mode, data] */
-export type StreamTuple = [string, unknown];
+import type { CanonicalEvent } from "@prismalens/contracts";
 
 /** Ring buffer size per investigation */
 const BUFFER_SIZE = 50;
@@ -17,7 +15,7 @@ const MAX_ACTIVE_BUFFER_AGE_MS = 600_000;
 const SWEEP_INTERVAL_MS = 60_000;
 
 interface StreamBuffer {
-	events: StreamTuple[];
+	events: CanonicalEvent[];
 	done: boolean;
 	createdAt: number;
 }
@@ -64,7 +62,7 @@ export class StreamRelayService implements OnModuleDestroy {
 	 * Emit a stream event for an investigation.
 	 * Buffers the event and broadcasts to live subscribers.
 	 */
-	emit(investigationId: string, event: StreamTuple): void {
+	emit(investigationId: string, event: CanonicalEvent): void {
 		let buffer = this.buffers.get(investigationId);
 		if (!buffer) {
 			buffer = { events: [], done: false, createdAt: Date.now() };
@@ -112,7 +110,7 @@ export class StreamRelayService implements OnModuleDestroy {
 	 */
 	subscribe(
 		investigationId: string,
-		handler: (event: StreamTuple) => void,
+		handler: (event: CanonicalEvent) => void,
 		onDone: () => void,
 	): { unsubscribe: () => void } {
 		const buffer = this.buffers.get(investigationId);
@@ -122,7 +120,7 @@ export class StreamRelayService implements OnModuleDestroy {
 		let liveSkipped = 0;
 
 		// Live event handler — skips events already delivered during replay
-		const onEvent = (event: StreamTuple) => {
+		const onEvent = (event: CanonicalEvent) => {
 			if (liveSkipped < replayCount) {
 				liveSkipped++;
 				return;
