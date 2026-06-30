@@ -25,6 +25,10 @@
 		"./integrations": {
 			"types": "./dist/integrations.d.ts",
 			"import": "./dist/integrations.js"
+		},
+		"./investigation": {
+			"types": "./dist/investigation.d.ts",
+			"import": "./dist/investigation.js"
 		}
 	},
 	"scripts": {

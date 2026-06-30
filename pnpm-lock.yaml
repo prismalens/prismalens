@@ -124,6 +124,9 @@ importers:
 
   packages/@prismalens/cli:
     dependencies:
+      '@prismalens/config':
+        specifier: workspace:*
+        version: link:../config
       '@prismalens/contracts':
         specifier: workspace:*
         version: link:../contracts

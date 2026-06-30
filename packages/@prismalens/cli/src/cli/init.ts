@@ -43,7 +43,7 @@ agent:
 telemetry:
   prometheusUrl: http://localhost:9090
   alertmanagerUrl: http://localhost:9093
-  apiUrl: http://localhost:3000
+  apiUrl: http://localhost:5000
 
 # Where runs, events, and reports are stored.
 workspace:

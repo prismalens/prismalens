@@ -19,6 +19,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
+import { getAppDataDir } from "@prismalens/config/investigation";
 import { join, resolve } from "node:path";
 import type {
 	CanonicalEvent,
@@ -77,7 +78,10 @@ function expandHome(p: string): string {
 }
 
 export function resolveBaseDir(baseDir?: string): string {
-	return resolve(expandHome(baseDir ?? join(homedir(), ".prismalens")));
+	// Honor PRISMALENS_USER_FOLDER for the default workspace (via getAppDataDir);
+	// an explicit `workspace.base_dir` override still wins.
+	if (!baseDir || baseDir === "~/.prismalens") return getAppDataDir();
+	return resolve(expandHome(baseDir));
 }
 
 async function writeJsonAtomic(path: string, data: unknown): Promise<void> {

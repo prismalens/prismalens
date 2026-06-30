@@ -13,7 +13,7 @@
  */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { getAppDataDir } from "@prismalens/config/investigation";
 import { dirname, join, parse as parsePath, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { type PlConfig, PlConfigSchema } from "./schema.js";
@@ -65,7 +65,7 @@ export function findConfigFile(
 /** The global config file under ~/.prismalens, if present. */
 function globalConfigFile(): string | undefined {
 	for (const name of CONFIG_FILENAMES) {
-		const candidate = join(homedir(), ".prismalens", name);
+		const candidate = join(getAppDataDir(), name);
 		if (existsSync(candidate)) return candidate;
 	}
 	return undefined;

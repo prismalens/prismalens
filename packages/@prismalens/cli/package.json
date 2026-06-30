@@ -13,6 +13,7 @@
     "dev": "tsx bin/prismalens.ts"
   },
   "dependencies": {
+    "@prismalens/config": "workspace:*",
     "@prismalens/contracts": "workspace:*",
     "@prismalens/engine": "workspace:*",
     "citty": "^0.2.1",
