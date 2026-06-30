@@ -164,9 +164,8 @@ function InvestigationDetailPage() {
 			{/* Real-time stream panel for active investigations */}
 			{isActive && stream.status !== "error" && (
 				<InvestigationStreamPanel
-					tuples={stream.tuples}
-					currentNode={stream.currentNode}
-					latestMessage={stream.latestMessage}
+					events={stream.events}
+					latestText={stream.latestText}
 					status={stream.status}
 				/>
 			)}
