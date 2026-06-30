@@ -21,7 +21,6 @@ export interface AgentNodeData {
 	agentName?: string;
 	executionTimeMs?: number | null;
 	toolCount?: number;
-	confidence?: number | null;
 	error?: string | null;
 }
 
@@ -70,12 +69,6 @@ export function AgentNode({ data, selected }: NodeProps<AgentNodeData>) {
 					</Badge>
 				)}
 
-				{/* Confidence (for analyzer) */}
-				{data.confidence !== undefined && data.confidence !== null && (
-					<span className="text-purple-600 dark:text-purple-400">
-						{(data.confidence * 100).toFixed(0)}% conf
-					</span>
-				)}
 			</div>
 
 			{/* Error message (truncated) */}

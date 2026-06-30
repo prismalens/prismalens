@@ -110,7 +110,7 @@ The main work unit - a single business problem that may involve multiple correla
 | `timeToResolve` | int? | Seconds to resolve |
 
 ### Investigation
-AI-driven analysis of an incident. Each investigation runs the multi-agent workflow.
+AI-driven analysis of an incident. Each investigation runs the two-tier engine (ADR-0008).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -120,12 +120,9 @@ AI-driven analysis of an incident. Each investigation runs the multi-agent workf
 | `summary` | string? | Executive summary of findings |
 | `rootCause` | string? | Identified root cause |
 | `rootCauseCategory` | RootCauseCategory? | See [RootCauseCategory](#rootcausecategory) |
-| `confidence` | float? | Confidence score (0.0 to 1.0) |
-| `dataQuality` | JSON | Quality scores per data source |
-| `dataSourcesUsed` | JSON | Array of data source names used |
-| `rawOutput` | string? | Full agent workflow output (JSON) for debugging |
+| `report` | JSON? | Full ordered-evidence report (ADR-0002): hypotheses, ruledOut, coverage, nextSteps |
 | `error` | string? | Error message if status is "failed" |
-| `langGraphThreadId` | string? | **Unique** LangGraph checkpoint thread ID for resume/replay |
+| `harnessThreadId` | string? | **Unique** harness checkpoint thread ID for resume/replay |
 | `triggerType` | InvestigationTriggerType? | How this investigation was triggered |
 | `triggerReason` | string? | Human-readable trigger reason |
 
@@ -153,7 +150,6 @@ Tracks each agent's contribution to an investigation.
 | `agentType` | AgentType | See [AgentType](#agenttype) |
 | `status` | ExecutionStatus | See [ExecutionStatus](#executionstatus) |
 | `executionTimeMs` | int? | Execution time in milliseconds |
-| `confidence` | float? | Agent's confidence (0.0 to 1.0) |
 | `inputTokens` | int? | LLM input tokens |
 | `outputTokens` | int? | LLM output tokens |
 

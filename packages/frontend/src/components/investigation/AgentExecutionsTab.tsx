@@ -49,11 +49,6 @@ export function AgentExecutionsTab({ agentExecutions }: AgentExecutionsTabProps)
 							</div>
 							<div className="flex items-center gap-2">
 								<InvestigationStatusBadge status={agent.status} />
-								{agent.confidence && (
-									<Badge variant="outline">
-										{(agent.confidence * 100).toFixed(0)}% confidence
-									</Badge>
-								)}
 							</div>
 						</div>
 					</CardHeader>

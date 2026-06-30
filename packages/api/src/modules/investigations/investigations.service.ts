@@ -13,7 +13,6 @@ import {
   CreateAgentExecutionDto,
   CreateInvestigationDto,
   CreateToolExecutionDto,
-  InvestigationResultDto,
   UpdateAgentExecutionDto,
 } from './dto/index.js';
 
@@ -181,7 +180,7 @@ export class InvestigationsService {
     status: string,
     startedAt?: Date,
     error?: string,
-    langGraphThreadId?: string,
+    harnessThreadId?: string,
   ): Promise<Investigation | null> {
     try {
       const updateData: Record<string, unknown> = {
@@ -203,8 +202,8 @@ export class InvestigationsService {
         updateData.error = error;
       }
 
-      if (langGraphThreadId) {
-        updateData.langGraphThreadId = langGraphThreadId;
+      if (harnessThreadId) {
+        updateData.harnessThreadId = harnessThreadId;
       }
 
       return await this.prisma.investigation.update({
@@ -242,10 +241,7 @@ export class InvestigationsService {
             summary: dto.summary,
             rootCause: dto.rootCause,
             rootCauseCategory: dto.rootCauseCategory,
-            confidence: dto.confidence,
-            dataQuality: dto.dataQuality ? JSON.stringify(dto.dataQuality) : null,
-            dataSourcesUsed: dto.dataSourcesUsed ? JSON.stringify(dto.dataSourcesUsed) : null,
-            rawOutput: dto.rawOutput ? JSON.stringify(dto.rawOutput) : null,
+            report: dto.report ? JSON.stringify(dto.report) : null,
             error: dto.error,
             status: dto.status,
             completedAt: new Date(),
@@ -266,7 +262,6 @@ export class InvestigationsService {
                 completedAt: agent.completedAt ? new Date(agent.completedAt) : null,
                 executionTimeMs: agent.executionTimeMs,
                 output: agent.output ? JSON.stringify(agent.output) : null,
-                confidence: agent.confidence,
                 inputTokens: agent.inputTokens,
                 outputTokens: agent.outputTokens,
                 error: agent.error,
@@ -284,7 +279,6 @@ export class InvestigationsService {
                   result: tool.result ? JSON.stringify(tool.result) : null,
                   status: tool.status ?? 'success',
                   executionTimeMs: tool.executionTimeMs,
-                  confidence: tool.confidence,
                   dataQuality: tool.dataQuality,
                   error: tool.error,
                 })),
@@ -330,7 +324,9 @@ export class InvestigationsService {
           : 'Investigation completed';
         const timelineDescription = dto.status === 'failed'
           ? `Investigation failed: ${dto.error ?? 'Unknown error'}`
-          : `Root cause identified with ${Math.round((dto.confidence ?? 0) * 100)}% confidence`;
+          : dto.rootCause
+            ? `Root cause identified: ${dto.rootCause}`
+            : 'Investigation completed';
 
         await tx.timelineEntry.create({
           data: {
@@ -343,7 +339,6 @@ export class InvestigationsService {
               investigationId: id,
               rootCause: dto.rootCause,
               rootCauseCategory: dto.rootCauseCategory,
-              confidence: dto.confidence,
               recommendationCount: dto.recommendations?.length ?? 0,
             }),
           },
@@ -354,95 +349,6 @@ export class InvestigationsService {
       return this.findById(id);
     } catch (error) {
       this.logger.error(`Failed to write result for investigation ${id}`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Set investigation result (called when worker completes)
-   */
-  async setResult(id: string, result: InvestigationResultDto): Promise<InvestigationWithRelations | null> {
-    try {
-      const investigation = await this.prisma.investigation.findUnique({
-        where: { id },
-        select: { incidentId: true },
-      });
-
-      if (!investigation) return null;
-
-      // Use transaction for atomic writes
-      await this.prisma.$transaction(async (tx) => {
-        // 1. Update investigation with results
-        await tx.investigation.update({
-          where: { id },
-          data: {
-            summary: result.summary,
-            rootCause: result.rootCause,
-            rootCauseCategory: result.rootCauseCategory,
-            confidence: result.confidence,
-            dataQuality: result.dataQuality ? JSON.stringify(result.dataQuality) : null,
-            dataSourcesUsed: result.dataSourcesUsed ? JSON.stringify(result.dataSourcesUsed) : null,
-            rawOutput: result.rawOutput ? JSON.stringify(result.rawOutput) : null,
-            error: result.error,
-            status: result.error ? 'failed' : 'completed',
-            completedAt: new Date(),
-            updatedAt: new Date(),
-          },
-        });
-
-        // 2. Create recommendations if provided
-        if (result.recommendations && result.recommendations.length > 0) {
-          await tx.recommendation.createMany({
-            data: result.recommendations.map((rec) => ({
-              investigationId: id,
-              title: rec.title,
-              description: rec.description,
-              priority: rec.priority ?? 'medium',
-              category: rec.category,
-              urgency: rec.urgency,
-              status: 'pending',
-            })),
-          });
-        }
-
-        // 3. Update incident status (only if not already resolved/closed)
-        await tx.incident.updateMany({
-          where: {
-            id: investigation.incidentId,
-            status: { notIn: ['resolved', 'closed'] },
-          },
-          data: {
-            status: result.error ? 'triggered' : 'identified',
-            updatedAt: new Date(),
-          },
-        });
-
-        // 4. Create timeline entry
-        const timelineTitle = result.error ? 'Investigation failed' : 'Investigation completed';
-        const timelineDescription = result.error
-          ? `Investigation failed: ${result.error}`
-          : `Root cause identified with ${Math.round((result.confidence ?? 0) * 100)}% confidence`;
-
-        await tx.timelineEntry.create({
-          data: {
-            incidentId: investigation.incidentId,
-            type: result.error ? 'investigation_failed' : 'investigation_completed',
-            title: timelineTitle,
-            description: timelineDescription,
-            source: 'ai_worker',
-            metadata: JSON.stringify({
-              investigationId: id,
-              rootCause: result.rootCause,
-              confidence: result.confidence,
-            }),
-          },
-        });
-      });
-
-      this.logger.log(`Set result for investigation ${id}`);
-      return this.findById(id);
-    } catch (error) {
-      this.logger.error(`Failed to set result for investigation ${id}`, error);
       return null;
     }
   }
@@ -497,7 +403,6 @@ export class InvestigationsService {
         result: dto.result ? JSON.stringify(dto.result) : null,
         status: dto.status ?? 'pending',
         executionTimeMs: dto.executionTimeMs,
-        confidence: dto.confidence,
         error: dto.error,
       },
     });

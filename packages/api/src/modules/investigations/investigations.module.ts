@@ -7,7 +7,6 @@ import { InvestigationStreamController } from "./investigation-stream.controller
 import { InvestigationsService } from "./investigations.service.js";
 import { InvestigationTriggerService } from "./investigation-trigger.service.js";
 import { InvestigationUpdateService } from "./investigation-update.service.js";
-import { ProgressService } from "./progress.service.js";
 import { StreamRelayService } from "./stream-relay.service.js";
 
 @Module({
@@ -17,7 +16,6 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		InvestigationsService,
 		InvestigationTriggerService,
 		InvestigationUpdateService,
-		ProgressService,
 		StreamRelayService,
 		InternalGuard,
 	],
@@ -25,7 +23,6 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		InvestigationsService,
 		InvestigationTriggerService,
 		InvestigationUpdateService,
-		ProgressService,
 		StreamRelayService,
 	],
 })

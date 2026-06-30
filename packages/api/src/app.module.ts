@@ -26,7 +26,6 @@ declare module '@orpc/nest' {
 import { AuthModule, AuthGuard } from './core/auth/index.js';
 import { LicenseModule } from './core/license/license.module.js';
 // Core modules
-import { CheckpointerModule } from './core/checkpointer/checkpointer.module.js';
 import { PrismaModule } from './core/prisma/prisma.module.js';
 import { SettingsModule } from './core/settings/settings.module.js';
 import { SetupModule } from './core/setup/setup.module.js';
@@ -114,7 +113,6 @@ const orpcLogger = new Logger({ context: 'oRPC' });
 
     // Core
     PrismaModule,
-    CheckpointerModule,
     AuthModule, // Better Auth for authentication
     UsersModule,
     SetupModule, // Initial setup (oRPC)

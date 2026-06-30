@@ -1,14 +1,12 @@
+import type { InvestigationReport } from "@prismalens/contracts";
 import { Type } from "class-transformer";
 import {
 	IsArray,
 	IsEnum,
 	IsNotEmpty,
-	IsNumber,
 	IsObject,
 	IsOptional,
 	IsString,
-	Max,
-	Min,
 	ValidateNested,
 } from "class-validator";
 import {
@@ -55,28 +53,10 @@ export class InternalInvestigationResultDto {
 	@IsEnum(RootCauseCategory)
 	rootCauseCategory?: RootCauseCategory;
 
-	/** Confidence score (0.0 to 1.0) */
-	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(1)
-	confidence?: number;
-
-	/** Data quality scores per source */
+	/** The full ordered-evidence report (ADR-0002), persisted as Investigation.report */
 	@IsOptional()
 	@IsObject()
-	dataQuality?: Record<string, number>;
-
-	/** Data sources used in analysis */
-	@IsOptional()
-	@IsArray()
-	@IsString({ each: true })
-	dataSourcesUsed?: string[];
-
-	/** Raw output from agents */
-	@IsOptional()
-	@IsObject()
-	rawOutput?: Record<string, unknown>;
+	report?: InvestigationReport;
 
 	/** Error message if failed */
 	@IsOptional()

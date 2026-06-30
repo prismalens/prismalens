@@ -18,5 +18,5 @@ export class UpdateInvestigationStatusDto {
 
 	@IsOptional()
 	@IsUUID()
-	langGraphThreadId?: string;
+	harnessThreadId?: string;
 }

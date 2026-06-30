@@ -1,5 +1,4 @@
 import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
-import { createLLM, type LLMProviderConfig } from '@prismalens/agents';
 import {
   LLM_PROVIDERS,
   LLM_PROVIDER_IDS,
@@ -391,7 +390,7 @@ export class LlmSettingsService {
 
   async testLlmConnectionWithEnv(
     provider: LLMProviderId,
-    model?: string,
+    _model?: string,
     baseUrl?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -410,23 +409,6 @@ export class LlmSettingsService {
         };
       }
 
-      let testModel = model;
-      if (!testModel) {
-        const settings = await this.getLlmSettings();
-        testModel = settings.providers[provider]?.model;
-      }
-      if (!testModel) {
-        // Fetch first available model from registry as fallback
-        const { models } = await this.getAvailableModels(provider);
-        testModel = models[0]?.id;
-      }
-      if (!testModel) {
-        return {
-          success: false,
-          error: 'No model specified and none available from registry.',
-        };
-      }
-
       // Resolve base URL: explicit param > env var > provider default
       const resolvedBaseUrl =
         baseUrl ||
@@ -439,23 +421,96 @@ export class LlmSettingsService {
         validateBaseUrl(resolvedBaseUrl, provider);
       }
 
-      const llmConfig: LLMProviderConfig = {
-        provider: provider as LLMProviderConfig['provider'],
-        model: testModel,
-        ...(resolvedBaseUrl && { baseURL: resolvedBaseUrl }),
-        temperature: 0,
-        maxTokens: 50,
+      return await this.pingLlmProvider(provider, apiKey, resolvedBaseUrl);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Connection failed',
       };
+    }
+  }
 
-      const llm = createLLM(llmConfig);
-      await llm.invoke('Reply with just "OK" to confirm connection.');
+  /**
+   * Validate provider credentials with a lightweight, dependency-free request.
+   *
+   * Lists models (or pings the local daemon for Ollama) rather than running a
+   * generation — enough to confirm the key + endpoint are valid without spending
+   * tokens, and keeps the API free of any LLM SDK (ADR-0011: the engine owns
+   * model execution; the API only manages provider settings).
+   */
+  private async pingLlmProvider(
+    provider: LLMProviderId,
+    apiKey: string | undefined,
+    baseUrl: string | undefined,
+  ): Promise<{ success: boolean; error?: string }> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    try {
+      let url: string;
+      const headers: Record<string, string> = {};
 
+      switch (provider) {
+        case 'anthropic':
+          url = 'https://api.anthropic.com/v1/models';
+          headers['x-api-key'] = apiKey ?? '';
+          headers['anthropic-version'] = '2023-06-01';
+          break;
+        case 'openai':
+          url = 'https://api.openai.com/v1/models';
+          headers.Authorization = `Bearer ${apiKey ?? ''}`;
+          break;
+        case 'groq':
+          url = 'https://api.groq.com/openai/v1/models';
+          headers.Authorization = `Bearer ${apiKey ?? ''}`;
+          break;
+        case 'google':
+          url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey ?? '')}`;
+          break;
+        case 'ollama': {
+          const base =
+            baseUrl ||
+            process.env.PRISMALENS_OLLAMA_BASE_URL ||
+            'http://localhost:11434';
+          url = `${base.replace(/\/$/, '')}/api/tags`;
+          if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+          break;
+        }
+        default: {
+          // custom — OpenAI-compatible; baseUrl already includes the /v1 suffix
+          if (!baseUrl) {
+            return {
+              success: false,
+              error: 'Base URL is required for custom providers.',
+            };
+          }
+          url = `${baseUrl.replace(/\/$/, '')}/models`;
+          if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+          break;
+        }
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+        redirect: 'error',
+      });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error:
+            `Provider returned ${response.status} ${response.statusText}`.trim(),
+        };
+      }
       return { success: true };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Connection failed',
       };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

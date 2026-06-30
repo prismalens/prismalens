@@ -18,6 +18,74 @@ import {
 } from "./common.js";
 
 // =============================================================================
+// ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
+// =============================================================================
+// The structured investigation result. Supersedes the untyped `rawOutput` blob:
+// ordered hypotheses + discrete evidence status carry certainty. Defined first so
+// the persisted-result schemas below can reference it (eager z.object evaluation).
+
+export const EvidenceSchema = z.object({
+	/** What was observed. */
+	observation: z.string().min(1),
+	/** Where it came from — the exact command or origin that produced it. */
+	source: z.string().min(1),
+	direction: EvidenceDirectionSchema,
+	status: EvidenceStatusSchema,
+	/**
+	 * Links a finding to the live tool call that produced it
+	 * (StreamToolResult.toolCallId), so the report view can drill into the
+	 * originating output (ADR-0007). Null for `inferred` evidence with no single
+	 * originating call.
+	 */
+	toolCallId: z.string().nullable().optional(),
+});
+
+export const HypothesisSchema = z.object({
+	// Ordering is by ARRAY POSITION (most → least plausible) — the single source of
+	// truth, per ADR-0002's "ordered list". No numeric rank/confidence.
+	statement: z.string().min(1),
+	status: HypothesisStatusSchema,
+	evidence: z.array(EvidenceSchema),
+});
+
+export const RuledOutSchema = z.object({
+	// A candidate cause never promoted to a ranked hypothesis. (A hypothesis that WAS
+	// considered then disproved stays in `hypotheses` with status "refuted".)
+	statement: z.string().min(1),
+	why: z.string().min(1),
+	/** The contradicting evidence that ruled it out (direction "contradicts"). */
+	evidence: z.array(EvidenceSchema),
+});
+
+/** What was queried vs not — makes the investigation auditable (ADR-0002). */
+export const CoverageSchema = z.object({
+	queried: z.array(z.string()),
+	notQueried: z.array(z.string()),
+});
+
+/**
+ * A recommended next step (ADR-0002's "recommended next steps"). Carried inline so
+ * the report delivered over the wire is self-contained; the persistence layer also
+ * writes these as relational Recommendation rows.
+ */
+export const NextStepSchema = z.object({
+	title: z.string().min(1),
+	detail: z.string().min(1),
+	priority: RecommendationPrioritySchema.nullable().optional(),
+});
+
+export const InvestigationReportSchema = z.object({
+	summary: z.string().min(1),
+	rootCause: z.string().nullable(),
+	rootCauseCategory: RootCauseCategorySchema.nullable(),
+	/** Ordered most → least plausible (array order is the ordering). */
+	hypotheses: z.array(HypothesisSchema),
+	ruledOut: z.array(RuledOutSchema),
+	coverage: CoverageSchema,
+	nextSteps: z.array(NextStepSchema),
+});
+
+// =============================================================================
 // TOOL EXECUTION SCHEMAS
 // =============================================================================
 
@@ -30,7 +98,6 @@ export const ToolExecutionSchema = z.object({
 	result: z.record(z.unknown()).nullable(),
 	status: ToolExecutionStatusSchema,
 	executionTimeMs: z.number().int().nullable(),
-	confidence: z.number().min(0).max(1).nullable(),
 	dataQuality: z.string().nullable(),
 	error: z.string().nullable(),
 	executedAt: DateStringSchema,
@@ -50,7 +117,6 @@ export const AgentExecutionSchema = z.object({
 	completedAt: DateStringSchema.nullable(),
 	executionTimeMs: z.number().int().nullable(),
 	output: z.record(z.unknown()).nullable(),
-	confidence: z.number().min(0).max(1).nullable(),
 	inputTokens: z.number().int().nullable(),
 	outputTokens: z.number().int().nullable(),
 	error: z.string().nullable(),
@@ -74,10 +140,8 @@ export const InvestigationSchema = z.object({
 	summary: z.string().nullable(),
 	rootCause: z.string().nullable(),
 	rootCauseCategory: RootCauseCategorySchema.nullable(),
-	confidence: z.number().min(0).max(1).nullable(),
-	dataQuality: z.record(z.unknown()).nullable(),
-	dataSourcesUsed: z.array(z.string()).nullable(),
-	rawOutput: z.record(z.unknown()).nullable(),
+	/** The full ordered-evidence report (ADR-0002); supersedes the old confidence/dataQuality/rawOutput columns. */
+	report: InvestigationReportSchema.nullable().optional(),
 	error: z.string().nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
@@ -159,7 +223,7 @@ export const UpdateInvestigationStatusSchema = z.object({
 	id: z.string().uuid(),
 	status: WorkflowStatusSchema,
 	error: z.string().optional(),
-	langGraphThreadId: z.string().uuid().optional(),
+	harnessThreadId: z.string().uuid().optional(),
 });
 
 export const CreateToolExecutionInputSchema = z.object({
@@ -169,7 +233,6 @@ export const CreateToolExecutionInputSchema = z.object({
 	result: z.record(z.unknown()).nullable().optional(),
 	status: ToolExecutionStatusSchema.optional(),
 	executionTimeMs: z.number().int().optional(),
-	confidence: z.number().optional(),
 	dataQuality: z.string().optional(),
 	error: z.string().optional(),
 });
@@ -182,7 +245,6 @@ export const CreateAgentExecutionInputSchema = z.object({
 	completedAt: z.string().datetime().optional(),
 	executionTimeMs: z.number().int().optional(),
 	output: z.record(z.unknown()).optional(),
-	confidence: z.number().optional(),
 	inputTokens: z.number().int().optional(),
 	outputTokens: z.number().int().optional(),
 	error: z.string().optional(),
@@ -205,80 +267,11 @@ export const WriteInvestigationResultSchema = z.object({
 	summary: z.string().optional(),
 	rootCause: z.string().optional(),
 	rootCauseCategory: z.string().optional(),
-	confidence: z.number().optional(),
-	dataQuality: z.record(z.unknown()).optional(),
-	dataSourcesUsed: z.array(z.string()).optional(),
-	rawOutput: z.record(z.unknown()).optional(),
+	/** The full ordered-evidence report (ADR-0002), persisted as Investigation.report. */
+	report: InvestigationReportSchema.optional(),
 	error: z.string().optional(),
 	agentExecutions: z.array(CreateAgentExecutionInputSchema).optional(),
 	recommendations: z.array(CreateRecommendationInputSchema).optional(),
-});
-
-// =============================================================================
-// ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
-// =============================================================================
-// The structured investigation result. Supersedes the untyped `rawOutput` blob:
-// ordered hypotheses + discrete evidence status carry certainty.
-
-export const EvidenceSchema = z.object({
-	/** What was observed. */
-	observation: z.string().min(1),
-	/** Where it came from — the exact command or origin that produced it. */
-	source: z.string().min(1),
-	direction: EvidenceDirectionSchema,
-	status: EvidenceStatusSchema,
-	/**
-	 * Links a finding to the live tool call that produced it
-	 * (StreamToolResult.toolCallId), so the report view can drill into the
-	 * originating output (ADR-0007). Null for `inferred` evidence with no single
-	 * originating call.
-	 */
-	toolCallId: z.string().nullable().optional(),
-});
-
-export const HypothesisSchema = z.object({
-	// Ordering is by ARRAY POSITION (most → least plausible) — the single source of
-	// truth, per ADR-0002's "ordered list". No numeric rank/confidence.
-	statement: z.string().min(1),
-	status: HypothesisStatusSchema,
-	evidence: z.array(EvidenceSchema),
-});
-
-export const RuledOutSchema = z.object({
-	// A candidate cause never promoted to a ranked hypothesis. (A hypothesis that WAS
-	// considered then disproved stays in `hypotheses` with status "refuted".)
-	statement: z.string().min(1),
-	why: z.string().min(1),
-	/** The contradicting evidence that ruled it out (direction "contradicts"). */
-	evidence: z.array(EvidenceSchema),
-});
-
-/** What was queried vs not — makes the investigation auditable (ADR-0002). */
-export const CoverageSchema = z.object({
-	queried: z.array(z.string()),
-	notQueried: z.array(z.string()),
-});
-
-/**
- * A recommended next step (ADR-0002's "recommended next steps"). Carried inline so
- * the report delivered over the wire is self-contained; the persistence layer also
- * writes these as relational Recommendation rows.
- */
-export const NextStepSchema = z.object({
-	title: z.string().min(1),
-	detail: z.string().min(1),
-	priority: RecommendationPrioritySchema.nullable().optional(),
-});
-
-export const InvestigationReportSchema = z.object({
-	summary: z.string().min(1),
-	rootCause: z.string().nullable(),
-	rootCauseCategory: RootCauseCategorySchema.nullable(),
-	/** Ordered most → least plausible (array order is the ordering). */
-	hypotheses: z.array(HypothesisSchema),
-	ruledOut: z.array(RuledOutSchema),
-	coverage: CoverageSchema,
-	nextSteps: z.array(NextStepSchema),
 });
 
 // =============================================================================

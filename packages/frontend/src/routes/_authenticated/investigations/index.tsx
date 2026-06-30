@@ -178,7 +178,6 @@ function InvestigationsPage() {
 									<TableHead>ID</TableHead>
 									<TableHead>Status</TableHead>
 									<TableHead>Root Cause</TableHead>
-									<TableHead>Confidence</TableHead>
 									<TableHead>Agents</TableHead>
 									<TableHead>Started</TableHead>
 									<TableHead>Duration</TableHead>
@@ -203,25 +202,6 @@ function InvestigationsPage() {
 											<span className="text-sm line-clamp-1 max-w-[200px]">
 												{investigation.rootCause || "-"}
 											</span>
-										</TableCell>
-										<TableCell>
-											{investigation.confidence ? (
-												<div className="flex items-center">
-													<div className="w-16 bg-muted rounded-sm h-2 mr-2">
-														<div
-															className="bg-green-500 h-2 rounded-sm"
-															style={{
-																width: "${investigation.confidence * 100}%",
-															}}
-														/>
-													</div>
-													<span className="text-sm text-muted-foreground">
-														{(investigation.confidence * 100).toFixed(0)}%
-													</span>
-												</div>
-											) : (
-												<span className="text-sm text-muted-foreground">-</span>
-											)}
 										</TableCell>
 										<TableCell>
 											<span className="text-sm text-muted-foreground">
@@ -320,7 +300,6 @@ function InvestigationsTableSkeleton() {
 							<TableHead>ID</TableHead>
 							<TableHead>Status</TableHead>
 							<TableHead>Root Cause</TableHead>
-							<TableHead>Confidence</TableHead>
 							<TableHead>Agents</TableHead>
 							<TableHead>Started</TableHead>
 							<TableHead>Duration</TableHead>
@@ -337,9 +316,6 @@ function InvestigationsTableSkeleton() {
 								</TableCell>
 								<TableCell>
 									<Skeleton className="h-4 w-32" />
-								</TableCell>
-								<TableCell>
-									<Skeleton className="h-2 w-20" />
 								</TableCell>
 								<TableCell>
 									<Skeleton className="h-4 w-8" />

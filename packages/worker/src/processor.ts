@@ -117,7 +117,7 @@ async function processJobInternal(
 		await api.investigations.updateStatus({
 			id: data.investigationId,
 			status: "running",
-			langGraphThreadId: runId,
+			harnessThreadId: runId,
 		});
 
 		// 2. Timeline entry.
@@ -173,8 +173,8 @@ async function processJobInternal(
 			return failureResult(data, message);
 		}
 
-		// 5b. Persist the ordered-evidence report (mapped onto the current write shape;
-		// the full `report` JSON + canonical agent-executions land in the api step).
+		// 5b. Persist the full ordered-evidence report JSON plus the flattened
+		// summary/rootCause and the next-steps as relational Recommendation rows.
 		const report = outcome.report;
 		await api.investigations.writeResult({
 			id: data.investigationId,
@@ -182,6 +182,7 @@ async function processJobInternal(
 			summary: report.summary,
 			rootCause: report.rootCause ?? undefined,
 			rootCauseCategory: report.rootCauseCategory ?? undefined,
+			report,
 			recommendations: report.nextSteps.map((step) => ({
 				title: step.title,
 				description: step.detail,

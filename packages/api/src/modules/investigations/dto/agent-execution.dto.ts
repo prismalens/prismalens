@@ -18,7 +18,6 @@ export class UpdateAgentExecutionDto {
 	completedAt?: Date;
 	executionTimeMs?: number;
 	output?: string | Record<string, unknown>;
-	confidence?: number;
 	inputTokens?: number;
 	outputTokens?: number;
 	error?: string;

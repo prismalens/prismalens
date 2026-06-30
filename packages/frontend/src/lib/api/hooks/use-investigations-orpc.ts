@@ -19,10 +19,6 @@ export const investigationKeys = {
 		orpc.investigations.list.key({ input: filters }),
 	detail: (id: string) => orpc.investigations.get.key({ input: { id } }),
 	status: (id: string) => orpc.investigations.getStatus.key({ input: { id } }),
-	progress: (id: string) =>
-		orpc.investigations.getProgress.key({ input: { id } }),
-	progressHistory: (id: string) =>
-		orpc.investigations.getProgressHistory.key({ input: { id } }),
 	byIncident: (incidentId: string) =>
 		orpc.investigations.list.key({ input: { incidentId } }),
 };
