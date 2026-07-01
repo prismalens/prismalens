@@ -75,11 +75,16 @@ export const RepoConfigSchema = z.object({
 	alert_sources: AlertSourceConfigSchema.optional(),
 });
 
-/** Make a sub-section optional in YAML but always present (with defaults) after parse. */
+/**
+ * Make a sub-section optional in YAML but always present (with defaults) after
+ * parse. The transform's return is annotated `z.output<T>` so the resolved
+ * `PlConfig` keeps each sub-object's precise field types (e.g. `agent.default` is
+ * the harness-id union, not `any`) instead of collapsing to `any`.
+ */
 function optionalWithDefaults<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 	return z
 		.optional(z.record(z.string(), z.unknown()))
-		.transform((val) => schema.parse(val ?? {}));
+		.transform((val): z.output<T> => schema.parse(val ?? {}));
 }
 
 export const PlConfigSchema = z.object({

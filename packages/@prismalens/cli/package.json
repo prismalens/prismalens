@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx bin/prismalens.ts"
+    "dev": "tsx bin/prismalens.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@prismalens/config": "workspace:*",
@@ -18,6 +19,7 @@
     "@prismalens/engine": "workspace:*",
     "citty": "^0.2.1",
     "consola": "^3.4.2",
+    "env-paths": "^4.0.0",
     "yaml": "^2.8.2",
     "zod": "^3.25.76"
   },

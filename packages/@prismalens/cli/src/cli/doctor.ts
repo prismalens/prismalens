@@ -17,7 +17,7 @@ import { accessSync, existsSync, constants as fsConstants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
-import { HARNESS_BINARY, type HarnessId } from "@prismalens/config/harness";
+import { HARNESS_BINARY } from "@prismalens/config/harness";
 import { LLM_CREDENTIAL_ENV_VARS } from "@prismalens/config/llm";
 import { defineCommand } from "citty";
 import consola from "consola";
@@ -26,7 +26,7 @@ import { type PlConfig, PlConfigSchema } from "../config/schema.js";
 import { resolveBaseDir } from "../core/session.js";
 
 /** The harness selected in config; keys the shared HARNESS_BINARY map. */
-type Harness = HarnessId;
+type Harness = PlConfig["agent"]["default"];
 
 interface Check {
 	name: string;

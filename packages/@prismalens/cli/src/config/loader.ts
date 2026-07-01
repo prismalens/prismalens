@@ -1,24 +1,37 @@
 /**
- * Config loader (salvaged from the retired pl orchestrator, ADR-0010).
+ * Config loader (ADR-0010/0014).
  *
- * Resolution order (later overrides earlier):
+ * Resolution order (later overrides earlier — deep-merge; arrays replace):
  *  1. Built-in defaults (Zod `.default()`)
- *  2. Global layer: ~/.prismalens/{prismalens,pl}.config.yaml  (BYO-key creds, ADR-0006)
- *  3. Project layer: the explicit `--config` path, else the nearest config file
- *     found by walking UP from cwd to the filesystem root
- *  4. CLI flag overrides
+ *  2. User layer:    ~/.config/prismalens/config.yaml   (the XDG config dir; BYO-key
+ *     creds live in env per ADR-0006, never here)
+ *  3. Project layer: the explicit `--config` path, else the nearest
+ *     `prismalens.config.yaml` found by walking UP from cwd to the root
+ *  4. Project-local: `prismalens.config.local.yaml` beside the project config — a
+ *     gitignored per-checkout override
+ *  5. CLI flag overrides
  *
- * `${VAR}` patterns in string values are interpolated from the environment
- * (throws on an unset var), then the merged object is validated by the schema.
+ * `${VAR}` patterns in string values are interpolated from the environment (throws
+ * on an unset var), then the merged object is validated by the schema.
+ *
+ * Deferred ADR-0014 layers (pulled in with their consumers, not speculatively):
+ *  - a curated env-overlay layer — today `${VAR}` interpolation already covers env
+ *    access from within the config;
+ *  - the reserved managed layer — there is no managed config source in the
+ *    local-first OSS build (it belongs to the cloud tier);
+ *  - the permission allow/deny list UNION (deny-wins) — coupled to the tool-seam
+ *    that enforces it (its own slice), so it lands there, not in the merge.
  */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { getAppDataDir } from "@prismalens/config/investigation";
 import { dirname, join, parse as parsePath, resolve } from "node:path";
+import envPaths from "env-paths";
 import { parse as parseYaml } from "yaml";
 import { type PlConfig, PlConfigSchema } from "./schema.js";
 
-const CONFIG_FILENAMES = ["prismalens.config.yaml", "pl.config.yaml"];
+const PROJECT_CONFIG_FILENAME = "prismalens.config.yaml";
+const PROJECT_LOCAL_CONFIG_FILENAME = "prismalens.config.local.yaml";
+const USER_CONFIG_FILENAME = "config.yaml";
 
 export interface CliOverrides {
 	/** agent.default — harness backend. */
@@ -46,29 +59,37 @@ export interface LoadConfigOptions {
 	cliOverrides?: CliOverrides;
 }
 
-/** Find the nearest config file by walking up from `cwd` to the filesystem root. */
+/** Find the nearest project config by walking up from `cwd` to the filesystem root. */
 export function findConfigFile(
 	cwd: string = process.cwd(),
 ): string | undefined {
 	let dir = resolve(cwd);
 	const { root } = parsePath(dir);
 	for (;;) {
-		for (const name of CONFIG_FILENAMES) {
-			const candidate = join(dir, name);
-			if (existsSync(candidate)) return candidate;
-		}
+		const candidate = join(dir, PROJECT_CONFIG_FILENAME);
+		if (existsSync(candidate)) return candidate;
 		if (dir === root) return undefined;
 		dir = dirname(dir);
 	}
 }
 
-/** The global config file under ~/.prismalens, if present. */
-function globalConfigFile(): string | undefined {
-	for (const name of CONFIG_FILENAMES) {
-		const candidate = join(getAppDataDir(), name);
-		if (existsSync(candidate)) return candidate;
-	}
-	return undefined;
+/** The user-global config in the XDG config dir (~/.config/prismalens/config.yaml). */
+function userConfigFile(): string | undefined {
+	const candidate = join(
+		envPaths("prismalens", { suffix: "" }).config,
+		USER_CONFIG_FILENAME,
+	);
+	return existsSync(candidate) ? candidate : undefined;
+}
+
+/** The gitignored project-local override beside the project config (else in cwd). */
+function projectLocalConfigFile(
+	projectFile: string | undefined,
+	cwd: string,
+): string | undefined {
+	const dir = projectFile ? dirname(projectFile) : resolve(cwd);
+	const candidate = join(dir, PROJECT_LOCAL_CONFIG_FILENAME);
+	return existsSync(candidate) ? candidate : undefined;
 }
 
 async function readYamlFile(
@@ -160,14 +181,18 @@ export async function loadConfig(
 ): Promise<PlConfig> {
 	const cwd = options.cwd ?? process.cwd();
 
-	const globalFile = globalConfigFile();
+	const userFile = userConfigFile();
 	const projectFile = options.configPath
 		? resolve(options.configPath)
 		: findConfigFile(cwd);
+	const projectLocalFile = projectLocalConfigFile(projectFile, cwd);
 
 	let merged: Record<string, unknown> = {};
-	if (globalFile) merged = deepMerge(merged, await readYamlFile(globalFile));
+	if (userFile) merged = deepMerge(merged, await readYamlFile(userFile));
 	if (projectFile) merged = deepMerge(merged, await readYamlFile(projectFile));
+	if (projectLocalFile && projectLocalFile !== projectFile) {
+		merged = deepMerge(merged, await readYamlFile(projectLocalFile));
+	}
 
 	if (options.cliOverrides) {
 		merged = applyCliOverrides(merged, options.cliOverrides);
