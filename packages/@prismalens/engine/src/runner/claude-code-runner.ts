@@ -10,7 +10,10 @@
  * The stream ALWAYS terminates (result → branch_done/error, or a thrown failure).
  */
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { PermissionMode } from "@prismalens/config/harness";
+import {
+	HARNESS_REGISTRY,
+	type PermissionMode,
+} from "@prismalens/config/harness";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
@@ -47,7 +50,12 @@ export interface ClaudeCodeConfig {
 	native?: Record<string, unknown>;
 }
 
-const READ_ONLY_DENY = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+// The read-only floor is the registry SSOT (ADR-0017 Amendment 2) — the SAME array
+// the reported fidelity mechanism is derived from, so enforcement can't drift from
+// what the report claims.
+const READ_ONLY_DENY = [
+	...(HARNESS_REGISTRY["claude-code"].readOnlyDeny ?? []),
+];
 
 export async function* runClaudeCodeBranch(
 	config: ClaudeCodeConfig,

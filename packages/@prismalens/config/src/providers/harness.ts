@@ -44,6 +44,14 @@ export interface HarnessDescriptor {
 	readOnlyFidelity: PermissionFidelity;
 	/** One-line description of HOW read-only is realized (shown in doctor/UI). */
 	readOnlyMechanism: string;
+	/**
+	 * The per-tool deny-list that REALIZES read-only on this harness (claude-code's
+	 * Agent-SDK disallowedTools). The runner enforces THIS array AND the reported
+	 * fidelity mechanism is derived from it — one SSOT, so enforcement and report
+	 * cannot drift (ADR-0017 Amendment 2). Undefined where read-only is realized
+	 * without a per-tool list (deepagents cooperative auto-approve; codex OS sandbox).
+	 */
+	readOnlyDeny?: readonly string[];
 	/** Wired end-to-end today? (codex is a reserved slot — ADR-0017 §5.) */
 	implemented: boolean;
 }
@@ -68,8 +76,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		transport: "agent-sdk",
 		modelPrefix: null,
 		readOnlyFidelity: "enforced",
-		readOnlyMechanism:
-			"Agent SDK disallowedTools deny-list (Edit/Write/MultiEdit/NotebookEdit) + permissionMode",
+		// The reported mechanism is DERIVED from readOnlyDeny — no hand-typed tool list
+		// here to drift from what the runner enforces (ADR-0017 Amendment 2).
+		readOnlyMechanism: "Agent SDK disallowedTools + permissionMode",
+		readOnlyDeny: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
 		implemented: true,
 	},
 	codex: {
@@ -124,11 +134,12 @@ export function resolvePermissionOutcome(
 ): PermissionOutcome {
 	const registry = HARNESS_REGISTRY[harnessId];
 	if (mode === "read-only" || mode === "supervised") {
-		return {
-			mode,
-			fidelity: registry.readOnlyFidelity,
-			mechanism: registry.readOnlyMechanism,
-		};
+		// Derive the mechanism from the SAME deny-list the runner enforces, so honest
+		// fidelity can't claim a guarantee the runner no longer delivers (ADR-0017 Amdt 2).
+		const mechanism = registry.readOnlyDeny?.length
+			? `disallowedTools deny-list: ${registry.readOnlyDeny.join(", ")}`
+			: registry.readOnlyMechanism;
+		return { mode, fidelity: registry.readOnlyFidelity, mechanism };
 	}
 	return {
 		mode,

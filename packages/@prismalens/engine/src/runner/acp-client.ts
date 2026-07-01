@@ -67,14 +67,12 @@ export interface AcpClientConfig {
 	/** Full arg vector override; when set, `model`/native args are ignored. Default `["--acp","-M",model]`. */
 	args?: string[];
 	/**
-	 * Native passthrough (ADR-0017): deepagents shell allow-list → `-S csv`. When set,
-	 * turns the cooperative read-only posture into a real shell restriction.
+	 * Native passthrough (ADR-0017): deepagents-specific config, turned into the arg
+	 * vector by {@link buildAcpArgs} — `shellAllowList` → `-S csv`, `sandbox` →
+	 * `--sandbox`, `args` → extra CLI args. Passed through verbatim (no intermediate
+	 * mapping hop; ADR-0017 Amendment 2).
 	 */
-	shellAllowList?: string[];
-	/** Native passthrough (ADR-0017): run the harness sandboxed → `--sandbox`. */
-	sandbox?: boolean;
-	/** Native passthrough (ADR-0017): extra CLI args appended after the derived ones. */
-	extraArgs?: string[];
+	native?: Record<string, unknown>;
 	/** Extra env merged OVER `process.env` (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
 	env?: NodeJS.ProcessEnv;
 	/** MCP servers offered to the session. Default `[]`. */
@@ -97,11 +95,13 @@ const DEFAULT_MODEL = "openai:gpt-oss:120b";
  */
 function buildAcpArgs(model: string, config: AcpClientConfig): string[] {
 	const args = ["--acp", "-M", model];
-	if (config.shellAllowList?.length) {
-		args.push("-S", config.shellAllowList.join(","));
-	}
-	if (config.sandbox) args.push("--sandbox");
-	if (config.extraArgs?.length) args.push(...config.extraArgs);
+	const native = config.native ?? {};
+	const strings = (v: unknown): string[] =>
+		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+	const shellAllowList = strings(native.shellAllowList);
+	if (shellAllowList.length) args.push("-S", shellAllowList.join(","));
+	if (native.sandbox === true) args.push("--sandbox");
+	args.push(...strings(native.args));
 	return args;
 }
 const DEFAULT_INIT_TIMEOUT_MS = 30_000;

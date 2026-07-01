@@ -45,48 +45,18 @@ export type HarnessRunner = (
 /**
  * deepagents over ACP — the zero-setup, read-only-by-default local harness. The
  * permission policy always stays {@link autoAllowReadOnly} (COOPERATIVE — deepagents
- * cannot hard-enforce without a sandbox); the ADR-0017 `native` passthrough maps to
- * the CLI's real enforcers (`-S` shellAllowList / `--sandbox`) via the arg vector.
+ * cannot hard-enforce without a sandbox); the ADR-0017 `native` passthrough rides on
+ * AcpClientConfig and is turned into the real enforcers (`-S` shellAllowList /
+ * `--sandbox`) by the ACP arg builder — no intermediate mapping hop (ADR-0017 Amdt 2).
  */
 export function deepAgentsHarness(
-	cfg: Omit<AcpClientConfig, "prompt"> & {
-		/** ADR-0017 native passthrough → shellAllowList/sandbox/extraArgs. */
-		native?: Record<string, unknown>;
-	},
+	cfg: Omit<AcpClientConfig, "prompt">,
 ): HarnessRunner {
-	const { native, ...rest } = cfg;
-	const nativeCfg = mapDeepAgentsNative(native);
 	return (prompt, ctx) =>
 		runDeepAgentsBranch(
-			{
-				...rest,
-				...nativeCfg,
-				prompt,
-				permission: cfg.permission ?? autoAllowReadOnly,
-			},
+			{ ...cfg, prompt, permission: cfg.permission ?? autoAllowReadOnly },
 			ctx,
 		);
-}
-
-/** Map the deepagents `native` object → the AcpClientConfig enforcer fields (ADR-0017). */
-function mapDeepAgentsNative(
-	native: Record<string, unknown> | undefined,
-): Pick<AcpClientConfig, "shellAllowList" | "sandbox" | "extraArgs"> {
-	if (!native) return {};
-	const out: Pick<AcpClientConfig, "shellAllowList" | "sandbox" | "extraArgs"> =
-		{};
-	if (Array.isArray(native.shellAllowList)) {
-		out.shellAllowList = native.shellAllowList.filter(
-			(x): x is string => typeof x === "string",
-		);
-	}
-	if (native.sandbox === true) out.sandbox = true;
-	if (Array.isArray(native.args)) {
-		out.extraArgs = native.args.filter(
-			(x): x is string => typeof x === "string",
-		);
-	}
-	return out;
 }
 
 /** Claude Code over the Agent SDK — the deep path (subagent tree, read-only). */
