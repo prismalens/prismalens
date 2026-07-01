@@ -175,12 +175,12 @@ importers:
 
   packages/@prismalens/engine:
     dependencies:
-      '@ai-sdk/openai-compatible':
-        specifier: ^3.0.1
-        version: 3.0.1(zod@3.25.76)
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.195
         version: 0.3.195(@anthropic-ai/sdk@0.74.0(zod@3.25.76))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76))(zod@3.25.76)
+      '@prismalens/config':
+        specifier: workspace:*
+        version: link:../config
       '@prismalens/contracts':
         specifier: workspace:*
         version: link:../contracts

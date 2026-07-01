@@ -22,11 +22,14 @@ export const TELEMETRY_DEFAULTS = {
 	apiUrl: "http://localhost:5000",
 } as const;
 
-/** Tier-1 reduce model (Vercel AI SDK, OpenAI-compatible, BYO-key — ADR-0006). */
+/**
+ * Tier-1 reduce synthesis default endpoint (OpenAI-compatible, BYO-key — ADR-0006).
+ * The default MODEL is per-provider now (ADR-0013 default-model strategy): see
+ * `getDefaultModel` in `@prismalens/config/llm` — there is no universal model here.
+ */
 export const SYNTH_DEFAULTS = {
 	/** OpenAI-compatible endpoint — note the `/v1`, which the AI SDK requires. */
 	baseURL: "https://ollama.com/v1",
-	model: "gpt-oss:120b",
 } as const;
 
 /** ACP cold-start headroom: the first handshake (spawn + model warm-up) is slow. */

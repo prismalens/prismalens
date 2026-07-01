@@ -11,9 +11,10 @@
  */
 import { resolve } from "node:path";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
+import { getDefaultModel } from "@prismalens/config/llm";
 import {
-	type InvestigationRequest,
 	resolveInvestigation as engineResolveInvestigation,
+	type InvestigationRequest,
 	type ResolvedInvestigation,
 } from "@prismalens/engine";
 import type { PlConfig } from "../config/schema.js";
@@ -49,8 +50,14 @@ export function resolveInvestigation(
 		process.env.OLLAMA_BASE_URL ??
 		process.env.OPENAI_BASE_URL ??
 		INVESTIGATION_DEFAULTS.synth.baseURL;
-	const apiKey =
-		process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
+	const apiKey = process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
+
+	// Tier-1 reduce model: explicit agent.model wins; else the provider default
+	// (ADR-0013). The CLI synth endpoint is OpenAI-compatible (ollama/openai base URL).
+	const synthModel = config.agent.model ?? getDefaultModel("ollama");
+	if (!synthModel) {
+		throw new Error("No synthesis model configured (set agent.model).");
+	}
 
 	const request: InvestigationRequest = {
 		alert: args.alert,
@@ -65,12 +72,14 @@ export function resolveInvestigation(
 			alertmanagerUrl:
 				config.telemetry.alertmanagerUrl ??
 				INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
-			apiUrl: config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+			apiUrl:
+				config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
 		},
 		synth: {
-			baseURL: openaiBaseUrl,
+			providerId: "ollama",
+			model: synthModel,
 			apiKey,
-			model: config.agent.model ?? INVESTIGATION_DEFAULTS.synth.model,
+			baseURL: openaiBaseUrl,
 		},
 		harnessEnv: {
 			OPENAI_API_KEY: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY,

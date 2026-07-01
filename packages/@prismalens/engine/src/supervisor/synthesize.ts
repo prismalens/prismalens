@@ -9,7 +9,8 @@
  * plain completion + manual extraction, and validate the result against
  * `InvestigationReportSchema` either way (AGENTS.md gate 1: validate at the boundary).
  */
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import type { LLMProviderId } from "@prismalens/config/llm";
+import { resolveModel } from "@prismalens/config/model";
 import {
 	type InvestigationReport,
 	InvestigationReportSchema,
@@ -17,11 +18,14 @@ import {
 import { generateObject, generateText } from "ai";
 
 export interface SynthesisModelConfig {
-	/** OpenAI-compatible base URL, e.g. https://ollama.com/v1 . */
-	baseURL: string;
-	apiKey: string;
-	/** Model id, e.g. gpt-oss:120b . */
+	/** LLM provider the reduce step calls, resolved via ADR-0013's resolveModel. */
+	providerId: LLMProviderId;
+	/** Model id, e.g. "gpt-oss:20b" or "claude-sonnet-4-5". */
 	model: string;
+	/** BYO-key, injected by the caller (ADR-0006); omit for keyless local. */
+	apiKey?: string;
+	/** Required for the OpenAI-compatible providers (ollama/custom). */
+	baseURL?: string;
 }
 
 const SYSTEM = `You are a senior Site Reliability Engineer writing the FINAL structured root-cause report for an incident investigation.
@@ -42,12 +46,10 @@ export async function synthesizeReport(
 	transcript: string,
 	cfg: SynthesisModelConfig,
 ): Promise<InvestigationReport> {
-	const provider = createOpenAICompatible({
-		name: "byo",
-		baseURL: cfg.baseURL,
+	const model = resolveModel(cfg.providerId, cfg.model, {
 		apiKey: cfg.apiKey,
+		baseURL: cfg.baseURL,
 	});
-	const model = provider(cfg.model);
 	const basePrompt = `${SYSTEM}\n\n=== INVESTIGATION TRANSCRIPT ===\n${transcript}\n=== END TRANSCRIPT ===\n\nWrite the report now.`;
 
 	try {

@@ -13,17 +13,18 @@
  * sourcing (materialised by the web Settings UI) lands with the config-UI work.
  */
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
+import type { LLMProviderId } from "@prismalens/config/llm";
 import type { InvestigationReport } from "@prismalens/contracts";
 import {
 	conductInvestigation,
 	type InvestigationRequest,
 	resolveInvestigation,
 } from "@prismalens/engine";
-import { Logger, enrichContext } from "@prismalens/logger";
+import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { SandboxedJob } from "bullmq";
 import { Redis } from "ioredis";
-import { config as workerConfig, redisUrl } from "./config.js";
+import { redisUrl, config as workerConfig } from "./config.js";
 import { api } from "./orpc-client.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
@@ -133,7 +134,10 @@ async function processJobInternal(
 		// 3. Resolve engine inputs (shell-first; BYO-key from LLM settings).
 		const resolved = resolveInvestigation(await buildRequest(data, runId));
 
-		await job.updateProgress({ percent: 5, message: "Starting investigation..." });
+		await job.updateProgress({
+			percent: 5,
+			message: "Starting investigation...",
+		});
 
 		// 4. Conduct: drive the harness, publishing the canonical stream to Redis.
 		const channel = `investigation:events:${data.investigationId}`;
@@ -192,7 +196,10 @@ async function processJobInternal(
 			})),
 		});
 
-		await job.updateProgress({ percent: 100, message: "Investigation complete" });
+		await job.updateProgress({
+			percent: 100,
+			message: "Investigation complete",
+		});
 		logger.info(`Job ${job.id} completed`);
 		return successResult(data, report);
 	} catch (error: unknown) {
@@ -210,7 +217,10 @@ async function processJobInternal(
 				title: "AI Investigation Failed",
 				description: errorMessage,
 				source: "ai_worker",
-				metadata: { investigationId: data.investigationId, error: errorMessage },
+				metadata: {
+					investigationId: data.investigationId,
+					error: errorMessage,
+				},
 			});
 		} catch (e) {
 			logger.error("Failed to update failure status", e);
@@ -252,13 +262,23 @@ async function buildRequest(
 	}
 
 	const baseURL = INVESTIGATION_DEFAULTS.synth.baseURL;
+	// Tier-1 reduce runs on the user's chosen provider (ADR-0013 resolver); a base
+	// URL is only needed for the OpenAI-compatible providers (ollama/custom).
+	const synthProvider = llmConfig.provider as LLMProviderId;
+	const synthIsOpenAiCompat =
+		synthProvider === "ollama" || synthProvider === "custom";
 	return {
 		alert: buildAlertPayload(incident, data),
 		harness: process.env.PRISMALENS_HARNESS ?? "deepagents",
 		model: llmConfig.model,
 		cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
 		telemetry: { ...INVESTIGATION_DEFAULTS.telemetry },
-		synth: { baseURL, apiKey, model: llmConfig.model },
+		synth: {
+			providerId: synthProvider,
+			model: llmConfig.model,
+			apiKey,
+			...(synthIsOpenAiCompat ? { baseURL } : {}),
+		},
 		harnessEnv: { OPENAI_API_KEY: apiKey, OPENAI_BASE_URL: baseURL },
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};
@@ -272,8 +292,10 @@ function buildAlertPayload(
 	const firstAlert = (data.alerts?.[0] ?? {}) as Record<string, unknown>;
 	const labels = (firstAlert.labels as Record<string, string>) ?? {};
 	const annotations: Record<string, string> = {};
-	if (incident?.description) annotations.description = String(incident.description);
-	if (firstAlert.description) annotations.summary = String(firstAlert.description);
+	if (incident?.description)
+		annotations.description = String(incident.description);
+	if (firstAlert.description)
+		annotations.summary = String(firstAlert.description);
 	return {
 		alertname:
 			(incident?.title as string) ??
