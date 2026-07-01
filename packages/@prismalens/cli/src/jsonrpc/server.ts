@@ -28,7 +28,7 @@ import {
 	JSONRPCServer,
 } from "json-rpc-2.0";
 import { loadConfig } from "../config/loader.js";
-import { detectRepo } from "../core/detect-repo.js";
+import { resolveRepoSlug } from "../core/detect-repo.js";
 import {
 	type ResolvedInvestigation,
 	resolveInvestigation,
@@ -155,7 +155,7 @@ export async function runJsonRpcServer(
 
 		// Persist to the session workspace exactly as the investigate command does.
 		const runId = randomUUID();
-		const repoSlug = await detectRepo(cwd);
+		const repoSlug = await resolveRepoSlug(config.repo, cwd);
 		const sessions = createSessionManager(config.workspace.base_dir);
 		await sessions.create({
 			runId,

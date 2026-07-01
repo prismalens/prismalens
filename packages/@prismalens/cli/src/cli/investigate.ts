@@ -30,7 +30,7 @@ import { investigateIncidentStream } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
-import { detectRepo } from "../core/detect-repo.js";
+import { resolveRepoSlug } from "../core/detect-repo.js";
 import { parseStdin } from "../core/parse-stdin.js";
 import {
 	type ResolvedInvestigation,
@@ -108,11 +108,8 @@ export default defineCommand({
 		// piped FiringAlert JSON (the stdin channel) or, failing that, --query.
 		const piped = await parseStdin();
 
-		// cwd = --repo (a local repo path) else the current directory. NOTE:
-		// detectRepo() returns an OWNER/REPO slug (not a path), so it can't serve as
-		// a cwd — it's used below to label the session, not to choose the directory.
+		// cwd = --repo (a local repo path) else the current directory.
 		const cwd = args.repo ? resolve(args.repo) : process.cwd();
-		const repoSlug = await detectRepo(cwd);
 
 		// Load + merge config (global → project → CLI overrides); --model overrides agent.model.
 		const config = await loadConfig({
@@ -120,6 +117,9 @@ export default defineCommand({
 			cwd,
 			cliOverrides: { ...(args.model ? { model: args.model } : {}) },
 		});
+
+		// Session label: config `repo` (owner/name) wins; else git auto-detect; else none.
+		const repoSlug = await resolveRepoSlug(config.repo, cwd);
 
 		let resolved: ResolvedInvestigation;
 		try {

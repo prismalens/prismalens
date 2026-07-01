@@ -1,7 +1,7 @@
 /**
- * Auto-detect the repository under investigation from a working directory's git
- * remote (salvaged from the retired pl orchestrator). Returns `owner/repo`, or
- * `undefined` if not a git repo, no `origin`, or the URL can't be parsed.
+ * Resolve the repository label under investigation. Precedence: an explicit
+ * config `repo` value (owner/name) wins; else git origin auto-detect from the
+ * working directory; else `undefined`.
  *
  * Uses node:child_process directly (no tinyexec dependency).
  */
@@ -13,9 +13,7 @@ const execFileAsync = promisify(execFile);
 const REPO_PATTERN =
 	/(?:github\.com|gitlab\.com|bitbucket\.org)[/:](.+?)(?:\.git)?$/;
 
-export async function detectRepo(
-	cwd: string = process.cwd(),
-): Promise<string | undefined> {
+async function detectRepo(cwd: string): Promise<string | undefined> {
 	try {
 		const { stdout } = await execFileAsync(
 			"git",
@@ -26,4 +24,13 @@ export async function detectRepo(
 	} catch {
 		return undefined;
 	}
+}
+
+/** Session repo label: an explicit config `repo` (owner/name) wins; else git
+ * auto-detect from cwd; else none. */
+export async function resolveRepoSlug(
+	configRepo: string | undefined,
+	cwd: string = process.cwd(),
+): Promise<string | undefined> {
+	return configRepo ?? (await detectRepo(cwd));
 }
