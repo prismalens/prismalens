@@ -21,6 +21,12 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { InvestigationReport } from "@prismalens/contracts";
 import { investigateIncidentStream } from "@prismalens/engine";
+import {
+	JSONRPCErrorException,
+	type JSONRPCRequest,
+	type JSONRPCResponse,
+	JSONRPCServer,
+} from "json-rpc-2.0";
 import { loadConfig } from "../config/loader.js";
 import { detectRepo } from "../core/detect-repo.js";
 import {
@@ -28,30 +34,16 @@ import {
 	resolveInvestigation,
 } from "../core/run-investigation.js";
 import { createSessionManager } from "../core/session.js";
-import type { JsonRpcId, JsonRpcRequest, OutgoingMessage } from "./types.js";
+import type { JsonRpcNotification } from "./types.js";
 
 const PROTOCOL_VERSION = 1;
 
 // JSON-RPC 2.0 error codes (spec-reserved range + one server-defined code).
 const PARSE_ERROR = -32700;
-const INVALID_REQUEST = -32600;
-const METHOD_NOT_FOUND = -32601;
 const INVALID_PARAMS = -32602;
 const INTERNAL_ERROR = -32603;
 /** No evidence gathered — the harness branch failed (mirrors the engine guard). */
 const NO_EVIDENCE = -32000;
-
-/** Thrown by a method handler to produce a JSON-RPC error response (never crashes). */
-class RpcError extends Error {
-	constructor(
-		readonly code: number,
-		message: string,
-		readonly data?: unknown,
-	) {
-		super(message);
-		this.name = "RpcError";
-	}
-}
 
 export interface JsonRpcServerOptions {
 	/** serverInfo.version reported by `initialize`. */
@@ -68,19 +60,6 @@ export interface JsonRpcServerOptions {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
 	return x !== null && typeof x === "object" && !Array.isArray(x);
-}
-
-function isJsonRpcId(x: unknown): x is JsonRpcId {
-	return x === null || typeof x === "string" || typeof x === "number";
-}
-
-function isJsonRpcRequest(x: unknown): x is JsonRpcRequest {
-	return (
-		isRecord(x) &&
-		x.jsonrpc === "2.0" &&
-		typeof x.method === "string" &&
-		(x.id === undefined || isJsonRpcId(x.id))
-	);
 }
 
 function str(x: unknown): string | undefined {
@@ -129,26 +108,11 @@ export async function runJsonRpcServer(
 	const input = options.input ?? process.stdin;
 	const output = options.output ?? process.stdout;
 
-	const write = (message: OutgoingMessage): void => {
+	const write = (message: JsonRpcNotification | JSONRPCResponse): void => {
 		output.write(`${JSON.stringify(message)}\n`);
 	};
 	const notify = (method: string, params: unknown): void => {
 		write({ jsonrpc: "2.0", method, params });
-	};
-	const ok = (id: JsonRpcId, result: unknown): void => {
-		write({ jsonrpc: "2.0", id, result });
-	};
-	const fail = (
-		id: JsonRpcId,
-		code: number,
-		message: string,
-		data?: unknown,
-	): void => {
-		write({
-			jsonrpc: "2.0",
-			id,
-			error: { code, message, ...(data !== undefined ? { data } : {}) },
-		});
 	};
 
 	// --- methods ---
@@ -182,9 +146,9 @@ export async function runJsonRpcServer(
 				config,
 			);
 		} catch (err) {
-			throw new RpcError(
-				INVALID_PARAMS,
+			throw new JSONRPCErrorException(
 				err instanceof Error ? err.message : String(err),
+				INVALID_PARAMS,
 			);
 		}
 		const { alert, telemetry, harness, synth, harnessName } = resolved;
@@ -219,11 +183,11 @@ export async function runJsonRpcServer(
 			}
 		} catch (err) {
 			await sessions.update(runId, { status: "errored" });
-			throw new RpcError(
-				INTERNAL_ERROR,
+			throw new JSONRPCErrorException(
 				`Investigation failed: ${
 					err instanceof Error ? err.message : String(err)
 				}`,
+				INTERNAL_ERROR,
 				{ runId },
 			);
 		}
@@ -232,11 +196,11 @@ export async function runJsonRpcServer(
 		// errored emits no report — surface a JSON-RPC error, not a fabricated RCA.
 		if (!report) {
 			await sessions.update(runId, { status: "errored" });
-			throw new RpcError(
-				NO_EVIDENCE,
+			throw new JSONRPCErrorException(
 				`investigation produced no evidence — the harness branch failed: ${
 					lastErrorMessage ?? "no evidence gathered"
 				}`,
+				NO_EVIDENCE,
 				{ runId },
 			);
 		}
@@ -250,31 +214,31 @@ export async function runJsonRpcServer(
 		return { runId, report };
 	};
 
-	const dispatch = async (request: JsonRpcRequest): Promise<void> => {
-		const id = request.id ?? null;
-		try {
-			switch (request.method) {
-				case "initialize":
-					ok(id, handleInitialize());
-					return;
-				case "investigate":
-					ok(id, await handleInvestigate(request.params));
-					return;
-				default:
-					fail(id, METHOD_NOT_FOUND, `Unknown method: ${request.method}`);
-					return;
-			}
-		} catch (err) {
-			if (err instanceof RpcError) {
-				fail(id, err.code, err.message, err.data);
-			} else {
-				fail(
-					id,
-					INTERNAL_ERROR,
-					err instanceof Error ? err.message : String(err),
-				);
-			}
+	const server = new JSONRPCServer();
+	server.addMethod("initialize", () => handleInitialize());
+	server.addMethod("investigate", (params: unknown) =>
+		handleInvestigate(params),
+	);
+	server.mapErrorToJSONRPCErrorResponse = (id, error) => {
+		if (error instanceof JSONRPCErrorException) {
+			return {
+				jsonrpc: "2.0",
+				id,
+				error: {
+					code: error.code,
+					message: error.message,
+					...(error.data !== undefined ? { data: error.data } : {}),
+				},
+			};
 		}
+		return {
+			jsonrpc: "2.0",
+			id,
+			error: {
+				code: INTERNAL_ERROR,
+				message: error instanceof Error ? error.message : String(error),
+			},
+		};
 	};
 
 	const handleLine = (line: string): void => {
@@ -284,18 +248,16 @@ export async function runJsonRpcServer(
 		try {
 			parsed = JSON.parse(trimmed);
 		} catch {
-			fail(null, PARSE_ERROR, "Parse error: invalid JSON");
+			write({
+				jsonrpc: "2.0",
+				id: null,
+				error: { code: PARSE_ERROR, message: "Parse error: invalid JSON" },
+			});
 			return;
 		}
-		if (!isJsonRpcRequest(parsed)) {
-			const id = isRecord(parsed) && isJsonRpcId(parsed.id) ? parsed.id : null;
-			fail(id, INVALID_REQUEST, "Invalid JSON-RPC request");
-			return;
-		}
-		// Fire-and-forget: requests run independently and interleave their
-		// notifications (each carries runId). dispatch() catches every error and
-		// turns it into a JSON-RPC error response, so the server never crashes.
-		void dispatch(parsed);
+		void server.receive(parsed as JSONRPCRequest).then((response) => {
+			if (response) write(response);
+		});
 	};
 
 	const rl = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
