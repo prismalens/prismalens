@@ -400,3 +400,100 @@ export const TelemetryEndpointsSchema = z.object({
 	apiUrl: z.string(),
 });
 export type TelemetryEndpoints = z.infer<typeof TelemetryEndpointsSchema>;
+
+// =============================================================================
+// ENGINE INVESTIGATION CONTEXT (ADR-0015) — the host-assembled input contract
+// =============================================================================
+// The ONE domain payload the Tier-1 supervisor consumes (ADR-0016). An incident-
+// shaped SUPERSET: a single-alert CLI run is the DEGENERATE case (one alert), NOT
+// context-free — it still carries the repo/service/telemetry/logs the host knows
+// from `prismalens.config.yaml`. These are engine-local PROJECTIONS: deliberately
+// lifecycle-field-free (no id/number/status/assignee/MTTx) and NOT the DB
+// Alert/Incident/Service schemas (ADR-0011 keeps the engine db-clean).
+
+/** Incident meta for framing — no lifecycle fields. */
+export const IncidentContextSchema = z.object({
+	title: z.string().optional(),
+	description: z.string().optional(),
+	severity: z.string().optional(),
+	startedAt: z.string().optional(),
+});
+export type IncidentContext = z.infer<typeof IncidentContextSchema>;
+
+/** The affected service projection — identity + a blast-radius seed. */
+export const ServiceContextSchema = z.object({
+	name: z.string().min(1),
+	tier: z.string().optional(),
+	/** owner/name slug or a local path — where the harness reads the code. */
+	repo: z.string().optional(),
+	/** Direct dependency names (blast-radius seed for a future reduce overlay). */
+	dependsOn: z.array(z.string()).optional(),
+});
+export type ServiceContext = z.infer<typeof ServiceContextSchema>;
+
+/** A read-only log-query system the harness may curl (Loki, Elasticsearch, …). */
+export const LogSystemContextSchema = z.object({
+	kind: z.string().optional(),
+	url: z.string().optional(),
+});
+export type LogSystemContext = z.infer<typeof LogSystemContextSchema>;
+
+/** A prior investigation summary — an episodic-memory seed (top-N similar past). */
+export const PriorInvestigationSchema = z.object({
+	incidentTitle: z.string().optional(),
+	summary: z.string().optional(),
+	rootCause: z.string().optional(),
+});
+export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
+
+/**
+ * The host-assembled investigation context (ADR-0015). `alerts` (≥1) + `telemetry`
+ * are the always-present core; the rest are optional enrichments a richer host (the
+ * app/cloud) supplies and the future context-pack (ADR-0016 §5) rides on. A later
+ * per-alert fan-out needs no change here — the context is already 1..N.
+ */
+export const InvestigationContextSchema = z.object({
+	/** ≥1 firing alert. A single-alert run is the degenerate case, not empty. */
+	alerts: z.array(FiringAlertSchema).min(1),
+	/** Read-only telemetry surfaces (resolved by the host — ADR-0011). */
+	telemetry: TelemetryEndpointsSchema,
+	incident: IncidentContextSchema.optional(),
+	service: ServiceContextSchema.optional(),
+	/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
+	repos: z.array(z.string()).optional(),
+	logs: LogSystemContextSchema.optional(),
+	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
+});
+export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
+
+/** Optional enrichments for the single-alert (CLI/degenerate) path. */
+export interface SingleAlertContextExtras {
+	incident?: IncidentContext;
+	service?: ServiceContext;
+	repos?: string[];
+	logs?: LogSystemContext;
+	priorInvestigations?: PriorInvestigation[];
+}
+
+/**
+ * Build an InvestigationContext from ONE firing alert — the degenerate/CLI path.
+ * The single place the "one alert → context" collapse lives (ADR-0015 §2); the
+ * multi-alert app path assembles the context from its DB rows directly.
+ */
+export function singleAlertContext(
+	alert: FiringAlert,
+	telemetry: TelemetryEndpoints,
+	extras: SingleAlertContextExtras = {},
+): InvestigationContext {
+	return {
+		alerts: [alert],
+		telemetry,
+		...(extras.incident ? { incident: extras.incident } : {}),
+		...(extras.service ? { service: extras.service } : {}),
+		...(extras.repos ? { repos: extras.repos } : {}),
+		...(extras.logs ? { logs: extras.logs } : {}),
+		...(extras.priorInvestigations
+			? { priorInvestigations: extras.priorInvestigations }
+			: {}),
+	};
+}

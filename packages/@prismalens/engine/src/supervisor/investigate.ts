@@ -10,20 +10,19 @@
 import { randomUUID } from "node:crypto";
 import type {
 	CanonicalEvent,
-	FiringAlert,
+	InvestigationContext,
 	InvestigationReport,
-	TelemetryEndpoints,
 } from "@prismalens/contracts";
 import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
 	type AcpClientConfig,
 	autoAllowReadOnly,
 } from "../runner/acp-client.js";
+import { runDeepAgentsBranch } from "../runner/acp-run-branch.js";
 import {
 	type ClaudeCodeConfig,
 	runClaudeCodeBranch,
 } from "../runner/claude-code-runner.js";
-import { runDeepAgentsBranch } from "../runner/acp-run-branch.js";
 import { type SynthesisModelConfig, synthesizeReport } from "./synthesize.js";
 
 /**
@@ -55,10 +54,12 @@ export function claudeCodeHarness(
 }
 
 export interface InvestigateOptions {
-	/** The firing alert that seeds the investigation. */
-	alert: FiringAlert;
-	/** Read-only telemetry + app endpoints the harness may query. */
-	telemetry: TelemetryEndpoints;
+	/**
+	 * The host-assembled investigation context (ADR-0015): ≥1 firing alert, the
+	 * read-only telemetry surfaces, and optional service/repo/log/incident context.
+	 * The ONE domain payload the supervisor consumes (ADR-0016).
+	 */
+	context: InvestigationContext;
 	/** Tier-2 harness runner — e.g. deepAgentsHarness(...) or claudeCodeHarness(...). */
 	harness: HarnessRunner;
 	/** Tier-1 reduce model (Vercel AI SDK). */
@@ -83,7 +84,7 @@ export async function* investigateIncidentStream(
 	opts: InvestigateOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const runId = opts.runId ?? randomUUID();
-	const prompt = buildInvestigationPrompt(opts.alert, opts.telemetry);
+	const prompt = buildInvestigationPrompt(opts.context);
 	const collected: CanonicalEvent[] = [];
 	for await (const ev of opts.harness(prompt, { runId, branchId: "root" })) {
 		collected.push(ev);
@@ -94,7 +95,7 @@ export async function* investigateIncidentStream(
 	const terminal = collected.at(-1);
 	const toolResults = collected.filter((e) => e.kind === "tool_result").length;
 	if (toolResults === 0 && terminal?.kind === "error") return;
-	const transcript = buildTranscript(opts.alert, collected);
+	const transcript = buildTranscript(opts.context, collected);
 	const report = await synthesizeReport(transcript, opts.synth);
 	yield {
 		kind: "report",
@@ -130,26 +131,51 @@ export async function investigateIncident(
 	return { runId, report, events };
 }
 
-/** The neutral on-call brief handed to the rented harness. */
+/**
+ * The neutral on-call brief handed to the rented harness. Built from the primary
+ * firing alert; the optional service / related-alert / log blocks are rendered only
+ * when the host supplied them, so a bare single-alert run is unchanged (ADR-0015).
+ */
 export function buildInvestigationPrompt(
-	alert: FiringAlert,
-	t: TelemetryEndpoints,
+	context: InvestigationContext,
 ): string {
-	const labels = JSON.stringify(alert.labels);
-	const annotations = JSON.stringify(alert.annotations);
+	const [primary, ...rest] = context.alerts;
+	const t = context.telemetry;
+	const labels = JSON.stringify(primary.labels);
+	const annotations = JSON.stringify(primary.annotations);
+
+	const s = context.service;
+	const serviceBlock = s
+		? `\n\nAFFECTED SERVICE\n  name: ${s.name}${
+				s.tier ? `   ·   tier: ${s.tier}` : ""
+			}${s.repo ? `   ·   repo: ${s.repo}` : ""}${
+				s.dependsOn?.length ? `\n  depends on: ${s.dependsOn.join(", ")}` : ""
+			}`
+		: "";
+
+	const relatedBlock = rest.length
+		? `\n\nRELATED FIRING ALERTS (same incident — correlate, don't investigate in isolation)\n${rest
+				.map((a) => `  - ${a.alertname} (severity=${a.severity ?? "unknown"})`)
+				.join("\n")}`
+		: "";
+
+	const logsSurface = context.logs?.url
+		? `\n  - Logs (${context.logs.kind ?? "log system"})   ${context.logs.url}      query recent logs for the affected service`
+		: "";
+
 	return `You are an on-call Site Reliability Engineer running a LIVE investigation of a firing production alert. Your job is to find the ROOT CAUSE — the specific code path, configuration, dependency, or resource that produced this alert — not merely the symptom.
 
 FIRING ALERT
-  name:        ${alert.alertname}
-  severity:    ${alert.severity ?? "unknown"}
+  name:        ${primary.alertname}
+  severity:    ${primary.severity ?? "unknown"}
   labels:      ${labels}
-  annotations: ${annotations}
+  annotations: ${annotations}${serviceBlock}${relatedBlock}
 
 READ-ONLY SURFACES (never modify, deploy, restart, or write anything)
   - Prometheus    ${t.prometheusUrl}
       curl -s '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'   ·   /api/v1/rules   ·   /api/v1/label/__name__/values
   - Alertmanager  ${t.alertmanagerUrl}      curl -s '${t.alertmanagerUrl}/api/v2/alerts'
-  - Application API ${t.apiUrl}
+  - Application API ${t.apiUrl}${logsSurface}
   - Application SOURCE CODE is in your current working directory — ls / cat / grep / head.
 
 METHOD (work iteratively — think → run a command → observe → decide)
@@ -176,12 +202,16 @@ const TRANSCRIPT_CAP = 24_000;
 
 /** Compact the canonical stream into a transcript the reduce model can read. */
 export function buildTranscript(
-	alert: FiringAlert,
+	context: InvestigationContext,
 	events: CanonicalEvent[],
 ): string {
+	const [primary, ...rest] = context.alerts;
 	const lines: string[] = [
-		`FIRING ALERT: ${alert.alertname} (severity=${alert.severity ?? "unknown"})`,
-		`annotations: ${JSON.stringify(alert.annotations)}`,
+		`FIRING ALERT: ${primary.alertname} (severity=${primary.severity ?? "unknown"})`,
+		`annotations: ${JSON.stringify(primary.annotations)}`,
+		...(rest.length
+			? [`related alerts: ${rest.map((a) => a.alertname).join(", ")}`]
+			: []),
 		"",
 		"AGENT INVESTIGATION (steps, tool calls, and observed results):",
 	];

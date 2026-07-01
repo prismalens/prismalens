@@ -11,9 +11,10 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type {
-	CanonicalEvent,
-	InvestigationReport,
+import {
+	type CanonicalEvent,
+	type InvestigationReport,
+	singleAlertContext,
 } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { fetchFiringAlerts } from "./alert-source.js";
@@ -102,7 +103,12 @@ describe.skipIf(!enabled)(
 				"no firing alert — run `pnpm forge arm booklogr` first",
 			).toBeGreaterThan(0);
 			const alert = alerts[0];
-			const synth = { baseURL: BASE_URL, apiKey: KEY ?? "", model: MODEL };
+			const synth = {
+				providerId: "ollama" as const,
+				baseURL: BASE_URL,
+				apiKey: KEY ?? "",
+				model: MODEL,
+			};
 
 			const harnesses = [
 				{
@@ -127,8 +133,7 @@ describe.skipIf(!enabled)(
 				console.log(`\n===== running ${h.name} =====`);
 				try {
 					const { report, events } = await investigateIncident({
-						alert,
-						telemetry: TELEMETRY,
+						context: singleAlertContext(alert, TELEMETRY),
 						harness: h.runner,
 						synth,
 					});

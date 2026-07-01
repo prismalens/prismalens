@@ -12,7 +12,16 @@
  * CLI can bundle without server config. It also OWNS alert coercion + harness
  * construction (review candidate #3) so callers only name a harness + pass config.
  */
-import type { FiringAlert, TelemetryEndpoints } from "@prismalens/contracts";
+import {
+	type FiringAlert,
+	type IncidentContext,
+	type InvestigationContext,
+	InvestigationContextSchema,
+	type LogSystemContext,
+	type ServiceContext,
+	singleAlertContext,
+	type TelemetryEndpoints,
+} from "@prismalens/contracts";
 import {
 	claudeCodeHarness,
 	deepAgentsHarness,
@@ -23,20 +32,39 @@ import type { SynthesisModelConfig } from "../supervisor/synthesize.js";
 /**
  * A fully-resolved investigation request. Every value is final — the caller has
  * already applied config defaults, read env/vault secrets, and made `cwd` absolute.
+ *
+ * The domain input is EITHER a host-assembled `context` (the app/worker path) OR a
+ * single `alert`/`query` (the CLI/degenerate path) that the resolver collapses into
+ * a context via {@link singleAlertContext} — normalized here so downstream sees ONE
+ * shape (ADR-0015).
  */
 export interface InvestigationRequest {
-	/** Raw alert payload (FiringAlert / webhook / Alertmanager shape). */
+	/**
+	 * Host-assembled context (app/worker). Takes precedence over alert/query and is
+	 * re-validated against InvestigationContextSchema — the app→worker→engine trust
+	 * boundary (ADR-0015 §5).
+	 */
+	context?: InvestigationContext;
+	/** Single-alert path: raw alert payload (FiringAlert / webhook / Alertmanager shape). */
 	alert?: Record<string, unknown>;
-	/** Free-text fallback → a synthesized alert when no `alert` payload is given. */
+	/** Single-alert path: free-text fallback → a synthesized alert. */
 	query?: string;
+	/** Single-alert enrichments (CLI, from config): the matched service, repos, log system. */
+	service?: ServiceContext;
+	repos?: string[];
+	logs?: LogSystemContext;
+	incident?: IncidentContext;
 	/** Tier-2 harness backend: "deepagents" | "claude-code" | "codex". */
 	harness: string;
 	/** Bare model id (e.g. "gpt-oss:120b"); the harness applies its own prefixing. */
 	model?: string;
 	/** Absolute working dir the harness reads (shell-first source root). */
 	cwd: string;
-	/** Read-only telemetry surfaces (already defaulted). */
-	telemetry: TelemetryEndpoints;
+	/**
+	 * Read-only telemetry surfaces (already defaulted). Folded into the context on
+	 * the single-alert path; ignored when `context` is supplied (it carries its own).
+	 */
+	telemetry?: TelemetryEndpoints;
 	/** Tier-1 reduce model — base URL + api key already resolved (injected secret). */
 	synth: SynthesisModelConfig;
 	/** Child-process env for the harness (BYO-key), injected by the caller. */
@@ -46,8 +74,8 @@ export interface InvestigationRequest {
 }
 
 export interface ResolvedInvestigation {
-	alert: FiringAlert;
-	telemetry: TelemetryEndpoints;
+	/** The normalized, host-assembled investigation context (ADR-0015). */
+	context: InvestigationContext;
 	harness: HarnessRunner;
 	synth: SynthesisModelConfig;
 	/** The harness working directory (absolute). */
@@ -58,22 +86,20 @@ export interface ResolvedInvestigation {
 
 /**
  * Resolve a request into the inputs `investigateIncidentStream` wants. Throws on a
- * hard input error (no alert/query, unknown/unbuilt harness) so each caller can
- * surface it its own way (CLI stderr+exit; server JSON-RPC error; worker job fail).
+ * hard input error (no context/alert/query, unknown/unbuilt harness) so each caller
+ * can surface it its own way (CLI stderr+exit; server JSON-RPC error; worker job fail).
  */
 export function resolveInvestigation(
 	req: InvestigationRequest,
 ): ResolvedInvestigation {
-	let alert: FiringAlert;
-	if (req.alert) {
-		alert = coerceFiringAlert(req.alert);
-	} else if (req.query) {
-		alert = synthesizeAlert(req.query);
-	} else {
-		throw new Error(
-			"No alert to investigate — supply a FiringAlert payload or a query.",
-		);
-	}
+	const context = req.context
+		? InvestigationContextSchema.parse(req.context)
+		: singleAlertContext(resolveSeedAlert(req), requireTelemetry(req), {
+				...(req.incident ? { incident: req.incident } : {}),
+				...(req.service ? { service: req.service } : {}),
+				...(req.repos ? { repos: req.repos } : {}),
+				...(req.logs ? { logs: req.logs } : {}),
+			});
 
 	const harness = buildHarness(req.harness, req.cwd, {
 		model: req.model,
@@ -82,13 +108,31 @@ export function resolveInvestigation(
 	});
 
 	return {
-		alert,
-		telemetry: req.telemetry,
+		context,
 		harness,
 		synth: req.synth,
 		cwd: req.cwd,
 		harnessName: req.harness,
 	};
+}
+
+/** Coerce the single-alert path's seed to a FiringAlert (raw payload or free text). */
+function resolveSeedAlert(req: InvestigationRequest): FiringAlert {
+	if (req.alert) return coerceFiringAlert(req.alert);
+	if (req.query) return synthesizeAlert(req.query);
+	throw new Error(
+		"No alert to investigate — supply a context, a FiringAlert payload, or a query.",
+	);
+}
+
+/** The single-alert path folds telemetry into the context; it must be supplied. */
+function requireTelemetry(req: InvestigationRequest): TelemetryEndpoints {
+	if (!req.telemetry) {
+		throw new Error(
+			"Missing telemetry endpoints — required to build a single-alert context.",
+		);
+	}
+	return req.telemetry;
 }
 
 interface BuildHarnessOpts {

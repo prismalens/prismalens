@@ -53,6 +53,21 @@ telemetry:
   alertmanagerUrl: ${INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl}
   apiUrl: ${INVESTIGATION_DEFAULTS.telemetry.apiUrl}
 
+# Read-only log-query system the harness may curl (Loki, Elasticsearch, …). Distinct
+# from \`logging\` below (the CLI's own log-output level/format).
+# logs:
+#   kind: loki
+#   url: http://localhost:3100
+
+# Service catalog (ADR-0015). The alert's \`service\` label (else \`namespace\`/\`job\`)
+# selects an entry; \`--service <name>\` overrides. The matched service's repo/tier/
+# deps ride into the investigation context so a single-alert run isn't context-free.
+# services:
+#   checkout:
+#     tier: tier-1
+#     repo: acme/checkout
+#     depends_on: [payments, inventory]
+
 # Where runs, events, and reports are stored.
 workspace:
   base_dir: ${d.workspace.base_dir}

@@ -14,7 +14,13 @@
  */
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import type { LLMProviderId } from "@prismalens/config/llm";
-import type { InvestigationReport } from "@prismalens/contracts";
+import type {
+	FiringAlert,
+	IncidentContext,
+	InvestigationContext,
+	InvestigationReport,
+	TelemetryEndpoints,
+} from "@prismalens/contracts";
 import {
 	conductInvestigation,
 	type InvestigationRequest,
@@ -143,8 +149,7 @@ async function processJobInternal(
 		const channel = `investigation:events:${data.investigationId}`;
 		const outcome = await conductInvestigation(
 			{
-				alert: resolved.alert,
-				telemetry: resolved.telemetry,
+				context: resolved.context,
 				harness: resolved.harness,
 				synth: resolved.synth,
 				runId,
@@ -268,11 +273,12 @@ async function buildRequest(
 	const synthIsOpenAiCompat =
 		synthProvider === "ollama" || synthProvider === "custom";
 	return {
-		alert: buildAlertPayload(incident, data),
+		context: assembleInvestigationContext(incident, data, {
+			...INVESTIGATION_DEFAULTS.telemetry,
+		}),
 		harness: process.env.PRISMALENS_HARNESS ?? "deepagents",
 		model: llmConfig.model,
 		cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
-		telemetry: { ...INVESTIGATION_DEFAULTS.telemetry },
 		synth: {
 			providerId: synthProvider,
 			model: llmConfig.model,
@@ -284,36 +290,69 @@ async function buildRequest(
 	};
 }
 
-/** Map the incident + seed alerts into a FiringAlert-shaped payload. */
-function buildAlertPayload(
+/**
+ * Assemble the host investigation context (ADR-0015) from the incident + ALL seed
+ * alerts — replacing the old lossy single-alert collapse (which discarded every
+ * alert but `[0]` and folded the incident title INTO the alert name). Each alert
+ * keeps its own identity; the incident meta rides in `context.incident`. Richer
+ * enrichment (service graph, prior investigations from the DB) is a later slice
+ * (ADR-0016 §5), which the app/API — not the worker — will own.
+ */
+function assembleInvestigationContext(
 	incident: Record<string, unknown> | null,
 	data: InvestigationJobData,
-): Record<string, unknown> {
-	const firstAlert = (data.alerts?.[0] ?? {}) as Record<string, unknown>;
-	const labels = (firstAlert.labels as Record<string, string>) ?? {};
-	const annotations: Record<string, string> = {};
-	if (incident?.description)
-		annotations.description = String(incident.description);
-	if (firstAlert.description)
-		annotations.summary = String(firstAlert.description);
+	telemetry: TelemetryEndpoints,
+): InvestigationContext {
+	const rows = (data.alerts ?? []) as Record<string, unknown>[];
+	const alerts: FiringAlert[] =
+		rows.length > 0 ? rows.map(toFiringAlert) : [incidentAsAlert(incident)];
 	return {
-		alertname:
-			(incident?.title as string) ??
-			(firstAlert.title as string) ??
-			(firstAlert.alertname as string) ??
-			"Incident investigation",
-		severity:
-			(incident?.severity as string) ??
-			(firstAlert.severity as string) ??
-			labels.severity ??
-			"unknown",
+		alerts,
+		telemetry,
+		...(incident ? { incident: incidentMeta(incident) } : {}),
+	};
+}
+
+/** Map a DB alert row into a FiringAlert projection. */
+function toFiringAlert(row: Record<string, unknown>): FiringAlert {
+	const labels = (row.labels as Record<string, string>) ?? {};
+	const annotations: Record<string, string> = {};
+	if (row.description) annotations.summary = String(row.description);
+	return {
+		alertname: (row.title as string) ?? (row.alertname as string) ?? "Alert",
+		severity: (row.severity as string) ?? labels.severity ?? null,
 		labels,
 		annotations,
-		startsAt:
-			(incident?.triggeredAt as string) ??
-			(firstAlert.triggeredAt as string) ??
-			(firstAlert.startsAt as string) ??
-			null,
+		startsAt: (row.triggeredAt as string) ?? (row.startsAt as string) ?? null,
+	};
+}
+
+/** Degenerate no-alerts case: project the incident itself into a single alert. */
+function incidentAsAlert(
+	incident: Record<string, unknown> | null,
+): FiringAlert {
+	return {
+		alertname: (incident?.title as string) ?? "Incident investigation",
+		severity: (incident?.severity as string) ?? null,
+		labels: {},
+		annotations: incident?.description
+			? { description: String(incident.description) }
+			: {},
+		startsAt: (incident?.triggeredAt as string) ?? null,
+	};
+}
+
+/** Project incident meta (framing only — no lifecycle fields, ADR-0015). */
+function incidentMeta(incident: Record<string, unknown>): IncidentContext {
+	return {
+		...(incident.title ? { title: String(incident.title) } : {}),
+		...(incident.description
+			? { description: String(incident.description) }
+			: {}),
+		...(incident.severity ? { severity: String(incident.severity) } : {}),
+		...(incident.triggeredAt
+			? { startedAt: String(incident.triggeredAt) }
+			: {}),
 	};
 }
 

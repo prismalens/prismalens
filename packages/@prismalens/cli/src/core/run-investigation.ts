@@ -12,6 +12,7 @@
 import { resolve } from "node:path";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { getDefaultModel } from "@prismalens/config/llm";
+import type { ServiceContext } from "@prismalens/contracts";
 import {
 	resolveInvestigation as engineResolveInvestigation,
 	type InvestigationRequest,
@@ -30,6 +31,11 @@ export interface ResolveInvestigationArgs {
 	repo?: string;
 	/** Harness backend override; else `config.agent.default`. */
 	harness?: string;
+	/**
+	 * Service name to select from `config.services` — overrides the alert's own
+	 * service label. Covers `--query` runs that carry no labels (ADR-0015 §4).
+	 */
+	service?: string;
 }
 
 /**
@@ -59,9 +65,27 @@ export function resolveInvestigation(
 		throw new Error("No synthesis model configured (set agent.model).");
 	}
 
+	// Context enrichment (ADR-0015) — a single-alert CLI run is NOT context-free: it
+	// still knows the service/repos/logs from `prismalens.config.yaml`.
+	const service = selectService(args, config);
+	const repos = config.repo
+		? [config.repo]
+		: Object.keys(config.repos).length > 0
+			? Object.keys(config.repos)
+			: undefined;
+	const logs = config.logs.url
+		? {
+				...(config.logs.kind ? { kind: config.logs.kind } : {}),
+				url: config.logs.url,
+			}
+		: undefined;
+
 	const request: InvestigationRequest = {
 		alert: args.alert,
 		query: args.query,
+		...(service ? { service } : {}),
+		...(repos ? { repos } : {}),
+		...(logs ? { logs } : {}),
 		harness: args.harness ?? config.agent.default,
 		model: config.agent.model,
 		cwd,
@@ -89,4 +113,34 @@ export function resolveInvestigation(
 	};
 
 	return engineResolveInvestigation(request);
+}
+
+/**
+ * Label-driven service selection (ADR-0015 §4): `--service` wins; else the alert's
+ * own service label; no match in the catalog → no service context (degrade to
+ * telemetry + cwd, today's behaviour — never an error).
+ */
+function selectService(
+	args: ResolveInvestigationArgs,
+	config: PlConfig,
+): ServiceContext | undefined {
+	const name = args.service ?? pickServiceLabel(args.alert);
+	if (!name) return undefined;
+	const cfg = config.services[name];
+	if (!cfg) return undefined;
+	return {
+		name,
+		...(cfg.tier ? { tier: cfg.tier } : {}),
+		...(cfg.repo ? { repo: cfg.repo } : {}),
+		...(cfg.depends_on.length > 0 ? { dependsOn: cfg.depends_on } : {}),
+	};
+}
+
+/** The alert's service identity label — `service`, else `namespace`, else `job`. */
+function pickServiceLabel(
+	alert: Record<string, unknown> | undefined,
+): string | undefined {
+	const labels = (alert?.labels ?? {}) as Record<string, unknown>;
+	const pick = labels.service ?? labels.namespace ?? labels.job;
+	return typeof pick === "string" && pick ? pick : undefined;
 }

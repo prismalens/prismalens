@@ -71,6 +71,11 @@ export default defineCommand({
 			description:
 				"Tier-2 harness backend. Defaults to agent.default in config.",
 		},
+		service: {
+			type: "string",
+			description:
+				"Select the service context by name from `services` in config (overrides the alert's service label).",
+		},
 		json: {
 			type: "boolean",
 			default: false,
@@ -129,6 +134,7 @@ export default defineCommand({
 					...(args.query ? { query: args.query } : {}),
 					...(args.repo ? { repo: args.repo } : {}),
 					...(args.harness ? { harness: args.harness } : {}),
+					...(args.service ? { service: args.service } : {}),
 				},
 				config,
 			);
@@ -137,7 +143,8 @@ export default defineCommand({
 			process.exitCode = 1;
 			return;
 		}
-		const { alert, telemetry, harness, synth, harnessName } = resolved;
+		const { context, harness, synth, harnessName } = resolved;
+		const primaryAlert = context.alerts[0];
 
 		if (!synth.apiKey) {
 			consola.warn(
@@ -150,13 +157,13 @@ export default defineCommand({
 		const sessions = createSessionManager(config.workspace.base_dir);
 		const session = await sessions.create({
 			runId,
-			alertname: alert.alertname,
+			alertname: primaryAlert.alertname,
 			agent: harnessName,
 			...(repoSlug ? { repo: repoSlug } : {}),
 		});
 
 		info(
-			`Investigating "${alert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
+			`Investigating "${primaryAlert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
 		);
 
 		// (3) Drive the supervisor LIVE: append each canonical event to the session
@@ -166,8 +173,7 @@ export default defineCommand({
 		let lastErrorMessage: string | undefined;
 		try {
 			for await (const event of investigateIncidentStream({
-				alert,
-				telemetry,
+				context,
 				harness,
 				synth,
 				runId,

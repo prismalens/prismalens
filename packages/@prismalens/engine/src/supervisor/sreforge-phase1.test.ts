@@ -15,6 +15,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { singleAlertContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { fetchFiringAlerts } from "./alert-source.js";
 import { deepAgentsHarness, investigateIncident } from "./investigate.js";
@@ -51,8 +52,7 @@ describe.skipIf(!enabled)("sreforge booklogr — Phase-1 diagnosis eval", () => 
 		).toBeGreaterThan(0);
 
 		const { runId, report, events } = await investigateIncident({
-			alert: alerts[0],
-			telemetry: TELEMETRY,
+			context: singleAlertContext(alerts[0], TELEMETRY),
 			harness: deepAgentsHarness({
 				cwd: SUBSTRATE,
 				model: HARNESS_MODEL,
@@ -60,7 +60,12 @@ describe.skipIf(!enabled)("sreforge booklogr — Phase-1 diagnosis eval", () => 
 				promptTimeoutMs: 300_000,
 				initTimeoutMs: 120_000,
 			}),
-			synth: { baseURL: BASE_URL, apiKey: KEY ?? "", model: MODEL },
+			synth: {
+				providerId: "ollama",
+				baseURL: BASE_URL,
+				apiKey: KEY ?? "",
+				model: MODEL,
+			},
 		});
 
 		const counts = events.reduce<Record<string, number>>((m, e) => {

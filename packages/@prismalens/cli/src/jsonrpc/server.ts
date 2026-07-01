@@ -73,6 +73,7 @@ interface InvestigateParams {
 	harness?: string;
 	model?: string;
 	config?: string;
+	service?: string;
 }
 
 /** Coerce raw RPC params into the typed investigate shape (drops anything else). */
@@ -90,6 +91,8 @@ function parseInvestigateParams(raw: unknown): InvestigateParams {
 	if (model) out.model = model;
 	const config = str(p.config);
 	if (config) out.config = config;
+	const service = str(p.service);
+	if (service) out.service = service;
 	return out;
 }
 
@@ -142,6 +145,7 @@ export async function runJsonRpcServer(
 					...(params.query ? { query: params.query } : {}),
 					...(params.repo ? { repo: params.repo } : {}),
 					...(params.harness ? { harness: params.harness } : {}),
+					...(params.service ? { service: params.service } : {}),
 				},
 				config,
 			);
@@ -151,7 +155,8 @@ export async function runJsonRpcServer(
 				INVALID_PARAMS,
 			);
 		}
-		const { alert, telemetry, harness, synth, harnessName } = resolved;
+		const { context, harness, synth, harnessName } = resolved;
+		const primaryAlert = context.alerts[0];
 
 		// Persist to the session workspace exactly as the investigate command does.
 		const runId = randomUUID();
@@ -159,7 +164,7 @@ export async function runJsonRpcServer(
 		const sessions = createSessionManager(config.workspace.base_dir);
 		await sessions.create({
 			runId,
-			alertname: alert.alertname,
+			alertname: primaryAlert.alertname,
 			agent: harnessName,
 			...(repoSlug ? { repo: repoSlug } : {}),
 		});
@@ -170,8 +175,7 @@ export async function runJsonRpcServer(
 		let lastErrorMessage: string | undefined;
 		try {
 			for await (const event of investigateIncidentStream({
-				alert,
-				telemetry,
+				context,
 				harness,
 				synth,
 				runId,

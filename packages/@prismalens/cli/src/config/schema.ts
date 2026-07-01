@@ -63,6 +63,29 @@ export const TelemetryConfigSchema = z.object({
 	apiUrl: z.string().optional(),
 });
 
+/**
+ * A service in the catalog (ADR-0015). The CLI maps the matched entry into the
+ * investigation context's `service` field so a single-alert run carries the affected
+ * service's repo/tier/deps, not just the bare alert.
+ */
+export const ServiceConfigSchema = z.object({
+	tier: z.string().optional(),
+	/** owner/name slug or a local path the harness reads. */
+	repo: z.string().optional(),
+	/** Direct dependency service names (blast-radius seed). */
+	depends_on: z.array(z.string()).default([]),
+});
+
+/**
+ * A read-only log-query system the harness may curl (Loki/Elasticsearch/…). Kept
+ * DISTINCT from `logging` (below), which is the CLI's own log-output level/format —
+ * a different concern that happens to share the word.
+ */
+export const LogSourceConfigSchema = z.object({
+	kind: z.string().optional(),
+	url: z.string().optional(),
+});
+
 /** Free-form `{ source: { key: value } }` connection hints for alert ingestion. */
 export const AlertSourceConfigSchema = z.record(
 	z.string(),
@@ -95,6 +118,13 @@ export const PlConfigSchema = z.object({
 		.record(z.string(), RepoConfigSchema)
 		.optional()
 		.transform((val) => val ?? {}),
+	/** Service catalog (ADR-0015) — keyed by service name; maps into the context. */
+	services: z
+		.record(z.string(), ServiceConfigSchema)
+		.optional()
+		.transform((val) => val ?? {}),
+	/** Read-only log-query system the harness may query (distinct from `logging`). */
+	logs: optionalWithDefaults(LogSourceConfigSchema),
 	agent: optionalWithDefaults(AgentConfigSchema),
 	budget: optionalWithDefaults(BudgetConfigSchema),
 	workspace: optionalWithDefaults(WorkspaceConfigSchema),
