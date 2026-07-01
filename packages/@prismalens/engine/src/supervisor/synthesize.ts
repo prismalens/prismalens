@@ -1,8 +1,10 @@
 /**
- * Synthesize — the Tier-1 reduce step (ADR-0008): turn a branch's investigation
- * transcript into the structured ordered-evidence report (ADR-0002). This is the
- * only LLM call the supervisor itself makes in Phase-1 (decompose is N=1), via the
- * Vercel AI SDK (provider-agnostic, BYO-key) — NOT the rented harness.
+ * Reduce — the Tier-1 supervisor's join (ADR-0016): compact the branch canonical
+ * stream into a transcript ({@link buildTranscript}) and synthesize the structured
+ * ordered-evidence report ({@link synthesizeReport}, ADR-0002). This is the only LLM
+ * call the supervisor itself makes (decompose is deterministic N=1; the inner ReAct
+ * loop is rented), via the Vercel AI SDK (provider-agnostic, BYO-key) — NOT the
+ * rented harness.
  *
  * Robustness: try the SDK's structured-object path first; if the (BYO, possibly
  * OpenAI-compat) endpoint can't honour the JSON-schema constraint, fall back to a
@@ -12,6 +14,8 @@
 import type { LLMProviderId } from "@prismalens/config/llm";
 import { resolveModel } from "@prismalens/config/model";
 import {
+	type CanonicalEvent,
+	type InvestigationContext,
 	type InvestigationReport,
 	InvestigationReportSchema,
 } from "@prismalens/contracts";
@@ -31,6 +35,23 @@ export interface SynthesisModelConfig {
 const SYSTEM = `You are a senior Site Reliability Engineer writing the FINAL structured root-cause report for an incident investigation.
 
 Epistemics (strict): order hypotheses MOST → LEAST plausible by array position. Do NOT use numeric confidence/probability. Each hypothesis carries a discrete status and a list of evidence; each evidence item records what was observed, the exact source (the command/metric/file that produced it), whether it supports or contradicts, and whether it was directly verified or inferred. Ground every claim in the transcript — do not invent evidence.`;
+
+const PREVIEW_CAP = 1200;
+const TRANSCRIPT_CAP = 24_000;
+
+/**
+ * The reduce step (ADR-0016): compact the collected branch stream into a transcript
+ * and synthesize the ordered-evidence report. For N=1 the transcript covers the one
+ * branch; a per-alert fan-out (later slice) grows this into a cross-branch join
+ * (correlate + dedupe + rank) without changing this signature.
+ */
+export async function reduce(
+	context: InvestigationContext,
+	events: CanonicalEvent[],
+	cfg: SynthesisModelConfig,
+): Promise<InvestigationReport> {
+	return synthesizeReport(buildTranscript(context, events), cfg);
+}
 
 const SHAPE_HINT = `{
   "summary": string,
@@ -93,4 +114,45 @@ export function extractJsonObject(text: string): unknown {
 		}
 	}
 	throw new Error("synthesize: unterminated JSON object in completion");
+}
+
+/** Compact the canonical stream into a transcript the reduce model can read. */
+export function buildTranscript(
+	context: InvestigationContext,
+	events: CanonicalEvent[],
+): string {
+	const [primary, ...rest] = context.alerts;
+	const lines: string[] = [
+		`FIRING ALERT: ${primary.alertname} (severity=${primary.severity ?? "unknown"})`,
+		`annotations: ${JSON.stringify(primary.annotations)}`,
+		...(rest.length
+			? [`related alerts: ${rest.map((a) => a.alertname).join(", ")}`]
+			: []),
+		"",
+		"AGENT INVESTIGATION (steps, tool calls, and observed results):",
+	];
+	for (const ev of events) {
+		if (ev.kind === "agent_step") {
+			if (ev.text.trim()) lines.push(`\n[think] ${ev.text.trim()}`);
+			for (const tc of ev.toolCalls) {
+				lines.push(
+					`[call] ${tc.name} ${JSON.stringify(tc.args).slice(0, 300)}`,
+				);
+			}
+		} else if (ev.kind === "tool_result") {
+			const r = ev.result;
+			lines.push(
+				`[result ${r.ok ? "ok" : "ERROR"}] ${r.source}\n${truncate(r.preview, PREVIEW_CAP)}`,
+			);
+		} else if (ev.kind === "branch_done") {
+			lines.push(`\n[branch ended: ${ev.reason}]`);
+		} else if (ev.kind === "error") {
+			lines.push(`\n[branch error: ${ev.message}]`);
+		}
+	}
+	return truncate(lines.join("\n"), TRANSCRIPT_CAP);
+}
+
+function truncate(s: string, cap: number): string {
+	return s.length > cap ? `${s.slice(0, cap)}\n…[truncated]` : s;
 }
