@@ -29,11 +29,6 @@ Severity = blast radius if shipped as-is. Each item: `ID · what · file · why`
 - **FE-1 · Wire the Cancel button** · `routes/_authenticated/investigations/$id/index.tsx`
   · The destructive "Cancel" button has no `onClick` — a dead control;
   `useCancelInvestigation` isn't even imported. Zero recovery affordance for a run.
-- **FE-2 · Validate `rawOutput` + guard the report view + add a route error boundary**
-  · `index.tsx` (`as unknown as EngineReport`), `EngineReportView.tsx`,
-  `routes/_authenticated/.../$id` · A legacy/partial `rawOutput` (the legacy worker
-  path is still intact) hits `report.hypotheses.length` with no guard → render
-  throw → `RootError` replaces the **entire app**, not just the panel.
 - **API-1 · Boot reconciliation for orphaned runs** · `investigation-engine.service.ts`
   (+ `OnApplicationBootstrap`) · A crash/restart mid-run leaves the row at
   `running` forever (no reconciliation exists), and the `CONFLICT` guard then
@@ -90,9 +85,6 @@ Severity = blast radius if shipped as-is. Each item: `ID · what · file · why`
 - **API-9 · Make `consume` un-rejectable** · `investigation-engine.service.ts` · The
   `void`ed promise can still reject from `finally`'s `complete()`; wrap so the
   fire-and-forget can never become an `unhandledRejection`.
-- **ENG-1 · Durable checkpointer on SQLite** · engine + API · Snapshot loop state
-  (status, cursor, `messages[]`) after each StepEvent; resume by replay. Structure
-  each iteration as a discrete step → matches DBOS's `@DBOS.step()` seam. (ADR-0008)
 - **ENG-3 · Retry hygiene** · `http.ts` · Honour `Retry-After`, add jitter, treat
   429-on-quota as non-retryable (current fixed backoff amplifies quota burn).
 - **ENG-4 · Loop robustness** · `loop.ts`, `shell-exec.ts` · Include `stdout` on
