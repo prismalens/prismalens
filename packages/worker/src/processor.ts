@@ -4,9 +4,9 @@
  * Drives the two-tier engine (`@prismalens/engine`) instead of the retired
  * LangGraph `@prismalens/agents`: resolve the engine inputs from the job + LLM
  * settings (shell-first, ADR-0005 — connectors come in Phase D), then
- * `conductInvestigation` with a Redis SINK that publishes the canonical stream for
- * the API to relay (→ SSE → UI). The terminal ordered-evidence report is persisted
- * via `api.investigations.writeResult`.
+ * `conductRun` (ADR-0018) with a Redis SINK that publishes the canonical stream for
+ * the API to relay (→ SSE → UI), and a DB STORE that folds the lifecycle
+ * (status/timeline/result) via `api.investigations.writeResult`.
  *
  * Phase A note: telemetry endpoints + harness cwd are sourced from
  * INVESTIGATION_DEFAULTS + env as a local-first stopgap; the full `pl.config.yaml`
@@ -22,8 +22,9 @@ import type {
 	TelemetryEndpoints,
 } from "@prismalens/contracts";
 import {
-	conductInvestigation,
+	conductRun,
 	type InvestigationRequest,
+	type InvestigationSink,
 	resolveInvestigation,
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
@@ -31,6 +32,7 @@ import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { SandboxedJob } from "bullmq";
 import { Redis } from "ioredis";
 import { redisUrl, config as workerConfig } from "./config.js";
+import { createDbInvestigationStore } from "./db-investigation-store.js";
 import { api } from "./orpc-client.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
@@ -119,25 +121,10 @@ async function processJobInternal(
 	});
 
 	try {
-		// 1. runId == the investigation id; mark running.
+		// 1. runId == the investigation id.
 		const runId = data.investigationId;
-		await api.investigations.updateStatus({
-			id: data.investigationId,
-			status: "running",
-			harnessThreadId: runId,
-		});
 
-		// 2. Timeline entry.
-		await api.timeline.create({
-			incidentId: data.incidentId,
-			type: "investigation_started",
-			title: "AI Investigation Started",
-			description: "Starting the two-tier engine investigation",
-			source: "ai_worker",
-			metadata: { investigationId: data.investigationId },
-		});
-
-		// 3. Resolve engine inputs (shell-first; BYO-key from LLM settings).
+		// 2. Resolve engine inputs (shell-first; BYO-key from LLM settings).
 		const resolved = resolveInvestigation(await buildRequest(data, runId));
 
 		await job.updateProgress({
@@ -145,9 +132,21 @@ async function processJobInternal(
 			message: "Starting investigation...",
 		});
 
-		// 4. Conduct: drive the harness, publishing the canonical stream to Redis.
+		// 3. Conduct: drive the harness once through the shared primitive
+		// (ADR-0018), fanning the canonical stream to Redis (live/ephemeral) and
+		// folding the lifecycle through the DB store (durable — status/timeline/
+		// result). conductRun owns create → append → finish|fail; it never throws
+		// on a failed branch (see the outer catch for unexpected transport errors).
 		const channel = `investigation:events:${data.investigationId}`;
-		const outcome = await conductInvestigation(
+		const sink: InvestigationSink = async (event) => {
+			await redisPublisher.publish(channel, JSON.stringify(event));
+		};
+		const store = createDbInvestigationStore(api, {
+			investigationId: data.investigationId,
+			incidentId: data.incidentId,
+			runId,
+		});
+		const outcome = await conductRun(
 			{
 				context: resolved.context,
 				harness: resolved.harness,
@@ -155,59 +154,31 @@ async function processJobInternal(
 				fidelity: resolved.fidelity,
 				runId,
 			},
-			async (event) => {
-				await redisPublisher.publish(channel, JSON.stringify(event));
-			},
+			{ sink, store },
 		);
 		// Terminal sentinel for the API relay.
 		await redisPublisher.publish(channel, JSON.stringify(["__done__", {}]));
 
 		await job.updateProgress({ percent: 90, message: "Persisting results..." });
 
-		// 5a. No-evidence / failed branch → surface the failure, don't fabricate.
+		// 4a. No-evidence / failed branch → the store already recorded the
+		// failure; just surface it as the job result, don't fabricate.
 		if (!outcome.report) {
-			const message = outcome.error ?? "investigation produced no evidence";
-			await api.investigations.updateStatus({
-				id: data.investigationId,
-				status: "failed",
-				error: message,
-			});
-			await api.timeline.create({
-				incidentId: data.incidentId,
-				type: "investigation_completed",
-				title: "AI Investigation Failed",
-				description: message,
-				source: "ai_worker",
-				metadata: { investigationId: data.investigationId, error: message },
-			});
-			return failureResult(data, message);
+			return failureResult(
+				data,
+				outcome.error ?? "investigation produced no evidence",
+			);
 		}
 
-		// 5b. Persist the full ordered-evidence report JSON plus the flattened
-		// summary/rootCause and the next-steps as relational Recommendation rows.
-		const report = outcome.report;
-		await api.investigations.writeResult({
-			id: data.investigationId,
-			status: "completed",
-			summary: report.summary,
-			rootCause: report.rootCause ?? undefined,
-			rootCauseCategory: report.rootCauseCategory ?? undefined,
-			report,
-			recommendations: report.nextSteps.map((step) => ({
-				title: step.title,
-				description: step.detail,
-				priority: step.priority ?? undefined,
-				category: "investigation",
-				actionable: true,
-			})),
-		});
-
+		// 4b. The store already persisted the full ordered-evidence report JSON
+		// plus the flattened summary/rootCause and the next-steps as relational
+		// Recommendation rows.
 		await job.updateProgress({
 			percent: 100,
 			message: "Investigation complete",
 		});
 		logger.info(`Job ${job.id} completed`);
-		return successResult(data, report);
+		return successResult(data, outcome.report);
 	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`Job failed: ${errorMessage}`, error);

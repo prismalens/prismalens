@@ -9,8 +9,8 @@
  *
  * Methods:
  *  - initialize  -> { protocolVersion, serverInfo: { name, version } }
- *  - investigate -> drives investigateIncidentStream, emitting an
- *      `investigate/event` NOTIFICATION per canonical event, then resolving with
+ *  - investigate -> drives the shared conductor (`conductRun`, ADR-0018), emitting
+ *      an `investigate/event` NOTIFICATION per canonical event, then resolving with
  *      { runId, report }. A no-evidence run resolves to a JSON-RPC error (-32000).
  *
  * Robustness: a malformed or failed request becomes a JSON-RPC error response —
@@ -19,8 +19,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import type { InvestigationReport } from "@prismalens/contracts";
-import { investigateIncidentStream } from "@prismalens/engine";
+import { conductRun } from "@prismalens/engine";
 import {
 	JSONRPCErrorException,
 	type JSONRPCRequest,
@@ -29,6 +28,7 @@ import {
 } from "json-rpc-2.0";
 import { loadConfig } from "../config/loader.js";
 import { resolveRepoSlug } from "../core/detect-repo.js";
+import { createFileSessionStore } from "../core/file-session-store.js";
 import {
 	type ResolvedInvestigation,
 	resolveInvestigation,
@@ -174,65 +174,40 @@ export async function runJsonRpcServer(
 		const { context, harness, synth, harnessName, fidelity } = resolved;
 		const primaryAlert = context.alerts[0];
 
-		// Persist to the session workspace exactly as the investigate command does.
+		// Persist to the session workspace exactly as the investigate command does,
+		// wrapped as a conductRun store adapter (ADR-0018).
 		const runId = randomUUID();
 		const repoSlug = await resolveRepoSlug(config.repo, cwd);
 		const sessions = createSessionManager(config.workspace.base_dir);
-		await sessions.create({
+		const fileSession = createFileSessionStore(sessions, {
 			runId,
 			alertname: primaryAlert.alertname,
 			agent: harnessName,
 			...(repoSlug ? { repo: repoSlug } : {}),
 		});
 
-		// Drive the supervisor LIVE: append each canonical event to the session AND
-		// emit it as an `investigate/event` notification; capture the report event.
-		let report: InvestigationReport | null = null;
-		let lastErrorMessage: string | undefined;
-		try {
-			for await (const event of investigateIncidentStream({
-				context,
-				harness,
-				synth,
-				fidelity,
-				runId,
-			})) {
-				await sessions.appendEvent(runId, event);
-				notify("investigate/event", { runId, event });
-				if (event.kind === "report") report = event.report;
-				else if (event.kind === "error") lastErrorMessage = event.message;
-			}
-		} catch (err) {
-			await sessions.update(runId, { status: "errored" });
+		// Drive the supervisor LIVE via the shared conductor: emit each canonical
+		// event as an `investigate/event` notification; conductRun owns persistence
+		// + the terminal report/no-evidence/error outcome.
+		const outcome = await conductRun(
+			{ context, harness, synth, fidelity, runId },
+			{
+				sink: (event) => {
+					notify("investigate/event", { runId, event });
+				},
+				store: fileSession.store,
+			},
+		);
+
+		if (!outcome.report) {
 			throw new JSONRPCErrorException(
-				`Investigation failed: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-				INTERNAL_ERROR,
+				outcome.error ?? "investigation produced no evidence",
+				outcome.failureKind === "no-evidence" ? NO_EVIDENCE : INTERNAL_ERROR,
 				{ runId },
 			);
 		}
 
-		// No-evidence guard (mirrors the engine): a branch that gathered nothing and
-		// errored emits no report — surface a JSON-RPC error, not a fabricated RCA.
-		if (!report) {
-			await sessions.update(runId, { status: "errored" });
-			throw new JSONRPCErrorException(
-				`investigation produced no evidence — the harness branch failed: ${
-					lastErrorMessage ?? "no evidence gathered"
-				}`,
-				NO_EVIDENCE,
-				{ runId },
-			);
-		}
-
-		await sessions.writeReport(runId, report);
-		await sessions.update(runId, {
-			status: "done",
-			completedAt: new Date().toISOString(),
-		});
-
-		return { runId, report };
+		return { runId: outcome.runId, report: outcome.report };
 	};
 
 	const server = new JSONRPCServer();

@@ -4,17 +4,17 @@
  * Seeds a read-only root-cause investigation from a firing alert (piped on stdin
  * as a FiringAlert JSON, or synthesized from `--query`), rents a Tier-2 harness
  * (deepagents over ACP, or Claude Code over the Agent SDK), drives the Tier-1
- * supervisor LIVE (`investigateIncidentStream`), persists each canonical event as
- * it arrives, and renders the ordered-evidence report (ADR-0002).
+ * supervisor LIVE via the shared conductor (`conductRun`, ADR-0018), and renders
+ * the ordered-evidence report (ADR-0002).
  *
  * BYO-key (ADR-0006): provider creds come from the environment
  * (OLLAMA_ / OPENAI_ vars), never hard-bound here. The harness investigates
  * READ-ONLY.
  *
- * LIVE (ADR-0007/0010): the supervisor yields CanonicalEvents as they happen; this
- * command appends each to the session AND prints a one-line timeline entry, then
- * renders the synthesized report once the terminal `report` event arrives. The
- * ~/.prismalens workspace stays as the durable record.
+ * LIVE (ADR-0007/0010): `conductRun` fans each CanonicalEvent to a file-session
+ * STORE (append) and a terminal-line SINK, then this command renders the
+ * synthesized report once the run resolves. The ~/.prismalens workspace stays as
+ * the durable record.
  */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
@@ -26,11 +26,12 @@ import type {
 	NextStep,
 	RuledOut,
 } from "@prismalens/contracts";
-import { investigateIncidentStream } from "@prismalens/engine";
+import { conductRun } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
 import { resolveRepoSlug } from "../core/detect-repo.js";
+import { createFileSessionStore } from "../core/file-session-store.js";
 import { parseStdin } from "../core/parse-stdin.js";
 import {
 	type ResolvedInvestigation,
@@ -170,10 +171,11 @@ export default defineCommand({
 			);
 		}
 
-		// (2) Create the run workspace + session under workspace.base_dir.
+		// (2) Create the run workspace + session under workspace.base_dir, wrapped as
+		// a conductRun store adapter (ADR-0018).
 		const runId = randomUUID();
 		const sessions = createSessionManager(config.workspace.base_dir);
-		const session = await sessions.create({
+		const fileSession = createFileSessionStore(sessions, {
 			runId,
 			alertname: primaryAlert.alertname,
 			agent: harnessName,
@@ -184,57 +186,26 @@ export default defineCommand({
 			`Investigating "${primaryAlert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
 		);
 
-		// (3) Drive the supervisor LIVE: append each canonical event to the session
-		// as it arrives and print a one-line timeline entry; capture the terminal
-		// `report` event for the renderer below.
-		let report: InvestigationReport | null = null;
-		let lastErrorMessage: string | undefined;
-		try {
-			for await (const event of investigateIncidentStream({
-				context,
-				harness,
-				synth,
-				fidelity,
-				runId,
-			})) {
-				await sessions.appendEvent(runId, event);
-				if (event.kind === "report") {
-					report = event.report;
-				} else {
-					if (event.kind === "error") lastErrorMessage = event.message;
+		// (3) Drive the supervisor LIVE via the shared conductor: print a one-line
+		// timeline entry per event; conductRun owns persistence + the terminal
+		// report/no-evidence/error outcome.
+		const outcome = await conductRun(
+			{ context, harness, synth, fidelity, runId },
+			{
+				sink: (event) => {
 					const entry = liveTimelineEntry(event);
 					if (entry) line(entry);
-				}
-			}
-		} catch (err) {
-			await sessions.update(runId, { status: "errored" });
-			consola.error(
-				`Investigation failed: ${err instanceof Error ? err.message : String(err)}`,
-			);
+				},
+				store: fileSession.store,
+			},
+		);
+
+		if (!outcome.report) {
+			consola.error(outcome.error);
 			process.exitCode = 1;
 			return;
 		}
-
-		// No-report failure path: a branch that gathered no evidence and errored
-		// emits no `report` event — surface the transport failure rather than a
-		// fabricated RCA (mirrors the engine's no-evidence guard).
-		if (!report) {
-			await sessions.update(runId, { status: "errored" });
-			consola.error(
-				`Investigation produced no evidence — the harness branch failed: ${
-					lastErrorMessage ?? "no evidence gathered"
-				}`,
-			);
-			process.exitCode = 1;
-			return;
-		}
-
-		// Persist the report + mark the session done.
-		await sessions.writeReport(runId, report);
-		await sessions.update(runId, {
-			status: "done",
-			completedAt: new Date().toISOString(),
-		});
+		const report = outcome.report;
 
 		// (4) Output. --output writes report JSON to a file; --json prints it to
 		// stdout; otherwise render the ordered-evidence report for humans.
@@ -251,7 +222,9 @@ export default defineCommand({
 
 		if (!quiet) {
 			renderReport(report);
-			success(`Report saved to ${join(session.workspacePath, "report.json")}`);
+			success(
+				`Report saved to ${join(fileSession.workspacePath(), "report.json")}`,
+			);
 		}
 	},
 });

@@ -1,33 +1,56 @@
 /**
  * Conduct one investigation: drive the supervisor stream, fan every canonical
- * event to a SINK, and return the terminal outcome. The sink is the only thing
- * that varies across runtimes:
+ * event to a SINK, and drive a durable STORE through its lifecycle, returning the
+ * terminal outcome. Two ports vary across runtimes; the drive-loop + lifecycle
+ * ordering are owned here ONCE (architecture-review candidate #2 — the drive-loop
+ * was otherwise hand-rolled in each consumer):
  *
- *   - CLI `investigate`  → render a terminal timeline line
- *   - CLI `serve`        → emit a JSON-RPC `investigate/event` notification
- *   - web worker         → publish to the Redis stream channel (→ SSE → UI)
- *   - standalone         → append to the `~/.prismalens` events file
+ *   - SINK  (live/ephemeral) — every canonical event as it streams:
+ *       CLI `investigate` → a terminal timeline line
+ *       CLI `serve`       → a JSON-RPC `investigate/event` notification
+ *       web worker        → publish to the Redis stream channel (→ SSE → UI)
+ *       standalone        → append to the `~/.prismalens` events file
+ *   - STORE (durable lifecycle) — create → append(per event) → finish|fail:
+ *       CLI  → sessions.create → appendEvent → writeReport+done | update(errored)
+ *       worker → status(running)+timeline(started) → NO-OP append →
+ *                writeResult+timeline(completed) | status(failed)+timeline(failed)
  *
- * Collapses the drive-loop + no-evidence outcome logic that was otherwise
- * duplicated across each consumer (architecture-review candidate #2).
- *
- * Persistence LIFECYCLE (create/update a session or a DB row) stays with the
- * CALLER because it varies (file vs DB vs none); the conductor owns only the
- * stream, the sink fan-out, and deriving `{ report | error }`. The no-evidence
- * guard lives in {@link investigateIncidentStream} — it simply emits no `report`
- * event when a branch gathered nothing, so `report` stays null here.
+ * The engine stays db/env-clean (ADR-0011): the caller supplies a {@link
+ * InvestigationStore} adapter, and `conductRun` owns the create→append→finish/fail
+ * ordering. The report-capture lives HERE (the terminal `report` event), not in the
+ * sink. The no-evidence guard lives in {@link investigateIncidentStream} — it emits
+ * no `report` event when a branch gathered nothing, so `report` stays null here and
+ * we resolve `store.fail` instead of laundering a fabricated report.
  */
 import { randomUUID } from "node:crypto";
-import type { CanonicalEvent, InvestigationReport } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	InvestigationReport,
+} from "@prismalens/contracts";
 import {
 	type InvestigateOptions,
 	investigateIncidentStream,
 } from "./investigate.js";
 
 /** Receives every canonical event as it streams. May be async (awaited in order). */
-export type InvestigationSink = (
-	event: CanonicalEvent,
-) => void | Promise<void>;
+export type InvestigationSink = (event: CanonicalEvent) => void | Promise<void>;
+
+/**
+ * The durable lifecycle port (ADR-0018): the persistence that varies per runtime
+ * (file/session vs DB row vs none). `conductRun` calls these in a fixed order —
+ * `create` once, `append` per event (incl. the terminal report event), then exactly
+ * one of `finish` / `fail`.
+ */
+export interface InvestigationStore {
+	/** Open the durable record before the stream starts. */
+	create(): Promise<void>;
+	/** Persist one canonical event (worker relays via Redis only → no-op). */
+	append(event: CanonicalEvent): Promise<void>;
+	/** Fold the synthesized report into the record + mark it done. */
+	finish(report: InvestigationReport): Promise<void>;
+	/** Mark the record failed (no-evidence branch or a thrown transport error). */
+	fail(error: string): Promise<void>;
+}
 
 export interface ConductedOutcome {
 	runId: string;
@@ -35,31 +58,45 @@ export interface ConductedOutcome {
 	report: InvestigationReport | null;
 	/** Failure message when no report was produced (no-evidence / transport error). */
 	error: string | null;
+	/** Which terminal path resolved: clean report, no-evidence, or a thrown error. */
+	failureKind: "none" | "no-evidence" | "error";
 }
 
 /**
- * Run the investigation to completion, fanning each event to `sink`, and return
- * the terminal outcome. Never throws on a failed branch — a no-evidence / errored
- * run resolves with `{ report: null, error }` so callers can persist the failure
- * without a try/catch around the stream.
+ * Run the investigation to completion, fanning each event to `sink` and driving
+ * `store` through its lifecycle, and return the terminal outcome. Never throws on a
+ * failed branch — a no-evidence / errored run resolves with `{ report: null, error,
+ * failureKind }` after persisting the failure, so callers need no try/catch around
+ * the stream.
  */
-export async function conductInvestigation(
+export async function conductRun(
 	opts: InvestigateOptions,
-	sink: InvestigationSink,
+	io: { sink: InvestigationSink; store: InvestigationStore },
 ): Promise<ConductedOutcome> {
 	const runId = opts.runId ?? randomUUID();
+	await io.store.create();
+
 	let report: InvestigationReport | null = null;
 	let lastError: string | null = null;
-
-	for await (const event of investigateIncidentStream({ ...opts, runId })) {
-		await sink(event);
-		if (event.kind === "report") report = event.report;
-		else if (event.kind === "error") lastError = event.message;
+	try {
+		for await (const event of investigateIncidentStream({ ...opts, runId })) {
+			await io.sink(event);
+			await io.store.append(event);
+			if (event.kind === "report") report = event.report;
+			else if (event.kind === "error") lastError = event.message;
+		}
+	} catch (err) {
+		const msg = String((err as { message?: unknown } | null)?.message ?? err);
+		await io.store.fail(msg);
+		return { runId, report: null, error: msg, failureKind: "error" };
 	}
 
-	return {
-		runId,
-		report,
-		error: report ? null : (lastError ?? "investigation produced no evidence"),
-	};
+	if (report) {
+		await io.store.finish(report);
+		return { runId, report, error: null, failureKind: "none" };
+	}
+
+	const err = lastError ?? "investigation produced no evidence";
+	await io.store.fail(err);
+	return { runId, report: null, error: err, failureKind: "no-evidence" };
 }
