@@ -6,6 +6,7 @@ import {
   getAllowedHosts,
   type LLMProviderId,
 } from '@prismalens/config/llm';
+import { pingModel } from '@prismalens/config/model';
 import type {
   LlmSettings,
   ModelMetadata,
@@ -388,13 +389,20 @@ export class LlmSettingsService {
     }
   }
 
+  /**
+   * Validate a provider + model + credential by resolving the model through the
+   * shared Vercel AI SDK resolver ({@link pingModel} in `@prismalens/config/model`)
+   * and running a ~1-token generation. ADR-0013: this proves the selected model is
+   * actually callable — not merely that a key parses — and replaces the old
+   * hand-maintained per-provider `/models` URL + auth table.
+   */
   async testLlmConnectionWithEnv(
     provider: LLMProviderId,
-    _model?: string,
+    model?: string,
     baseUrl?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const providerMeta = LLM_PROVIDERS[provider as LLMProviderId];
+      const providerMeta = LLM_PROVIDERS[provider];
       if (!providerMeta) {
         return { success: false, error: `Unknown provider: ${provider}` };
       }
@@ -402,115 +410,43 @@ export class LlmSettingsService {
       const envVarName = providerMeta.envVar;
       const apiKey = envVarName ? process.env[envVarName] : undefined;
 
-      if (envVarName && !apiKey) {
+      // Cloud providers require a key; ollama/custom endpoints may be keyless.
+      const requiresKey = provider !== 'ollama' && provider !== 'custom';
+      if (requiresKey && !apiKey) {
         return {
           success: false,
           error: `API key not configured. Set ${envVarName} environment variable.`,
         };
       }
 
-      // Resolve base URL: explicit param > env var > provider default
+      // Resolve base URL: explicit param > env var > provider default.
       const resolvedBaseUrl =
         baseUrl ||
         (provider === 'ollama'
           ? process.env.PRISMALENS_OLLAMA_BASE_URL || 'http://localhost:11434'
           : undefined);
 
-      // Allowlist check: validate base URL before making server-side requests
+      // Allowlist check (SSRF): validate the host before any server-side call.
       if (resolvedBaseUrl) {
         validateBaseUrl(resolvedBaseUrl, provider);
       }
 
-      return await this.pingLlmProvider(provider, apiKey, resolvedBaseUrl);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Connection failed',
-      };
-    }
-  }
+      // The AI SDK talks to the OpenAI-compatible endpoint; ollama's lives at /v1
+      // (custom base URLs already carry their own suffix).
+      const sdkBaseUrl =
+        provider === 'ollama' && resolvedBaseUrl
+          ? `${resolvedBaseUrl.replace(/\/+$/, '')}/v1`
+          : resolvedBaseUrl;
 
-  /**
-   * Validate provider credentials with a lightweight, dependency-free request.
-   *
-   * Lists models (or pings the local daemon for Ollama) rather than running a
-   * generation — enough to confirm the key + endpoint are valid without spending
-   * tokens, and keeps the API free of any LLM SDK (ADR-0011: the engine owns
-   * model execution; the API only manages provider settings).
-   */
-  private async pingLlmProvider(
-    provider: LLMProviderId,
-    apiKey: string | undefined,
-    baseUrl: string | undefined,
-  ): Promise<{ success: boolean; error?: string }> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10_000);
-    try {
-      let url: string;
-      const headers: Record<string, string> = {};
-
-      switch (provider) {
-        case 'anthropic':
-          url = 'https://api.anthropic.com/v1/models';
-          headers['x-api-key'] = apiKey ?? '';
-          headers['anthropic-version'] = '2023-06-01';
-          break;
-        case 'openai':
-          url = 'https://api.openai.com/v1/models';
-          headers.Authorization = `Bearer ${apiKey ?? ''}`;
-          break;
-        case 'groq':
-          url = 'https://api.groq.com/openai/v1/models';
-          headers.Authorization = `Bearer ${apiKey ?? ''}`;
-          break;
-        case 'google':
-          url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey ?? '')}`;
-          break;
-        case 'ollama': {
-          const base =
-            baseUrl ||
-            process.env.PRISMALENS_OLLAMA_BASE_URL ||
-            'http://localhost:11434';
-          url = `${base.replace(/\/$/, '')}/api/tags`;
-          if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-          break;
-        }
-        default: {
-          // custom — OpenAI-compatible; baseUrl already includes the /v1 suffix
-          if (!baseUrl) {
-            return {
-              success: false,
-              error: 'Base URL is required for custom providers.',
-            };
-          }
-          url = `${baseUrl.replace(/\/$/, '')}/models`;
-          if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-          break;
-        }
-      }
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-        redirect: 'error',
+      return await pingModel(provider, model, {
+        apiKey,
+        baseURL: sdkBaseUrl,
       });
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error:
-            `Provider returned ${response.status} ${response.statusText}`.trim(),
-        };
-      }
-      return { success: true };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Connection failed',
       };
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 

@@ -23,4 +23,5 @@ export {
 	// Helper functions
 	getApiKeyEnvVar,
 	getAllowedHosts,
+	getDefaultModel,
 } from "./providers/llm.js";
