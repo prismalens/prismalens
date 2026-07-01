@@ -22,17 +22,13 @@ import { z } from "zod";
 export const AgentConfigSchema = z.object({
 	default: z.enum(HARNESS_IDS).default("deepagents"),
 	/**
-	 * Provider-prefixed model id (e.g. "openai:gpt-oss:120b"). Omit to let the
-	 * chosen harness pick its own default.
+	 * BARE model id (e.g. "gpt-oss:120b") — the chosen harness applies its own
+	 * provider prefix (ADR-0017: deepagents prepends "openai:"; Claude Code takes it
+	 * bare). Also reused as the Tier-1 reduce model id. Omit to let the harness pick
+	 * its own default.
 	 */
 	model: z.string().optional(),
 	timeout_ms: z.number().positive().default(1_800_000),
-	permissions: z
-		.enum(["default", "permissionless", "restricted"])
-		.default("default"),
-	shell_allow_list: z
-		.array(z.string())
-		.default(["gh", "amtool", "sentry-cli", "pd", "curl", "jq", "grep", "cat"]),
 });
 
 export const BudgetConfigSchema = z.object({

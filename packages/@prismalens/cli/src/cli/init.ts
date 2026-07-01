@@ -22,7 +22,6 @@ const CONFIG_FILENAME = "prismalens.config.yaml";
 
 /** Render a commented default config, sourcing live values from schema defaults. */
 function renderDefaultConfig(d: PlConfig): string {
-	const allowList = d.agent.shell_allow_list.join(", ");
 	const harnessOptions = AgentConfigSchema.shape.default
 		.removeDefault()
 		.options.join(" | ");
@@ -38,13 +37,11 @@ function renderDefaultConfig(d: PlConfig): string {
 agent:
   # Which agent harness to rent: ${harnessOptions}
   default: ${d.agent.default}
-  # Provider-prefixed model id, e.g. "openai:gpt-oss:120b".
+  # BARE model id, e.g. "gpt-oss:120b" — the harness applies its own provider prefix.
   # Omit to let the chosen harness pick its own default.
-  # model: openai:gpt-oss:120b
+  # model: gpt-oss:120b
   # Per-run wall-clock budget for the harness (ms).
   timeout_ms: ${d.agent.timeout_ms}
-  # Shell commands auto-approved for the harness (read-only by intent).
-  shell_allow_list: [${allowList}]
 
 # Read-only telemetry + app endpoints the harness may query. Point these at your
 # stack; defaults assume a local dev setup.

@@ -12,6 +12,7 @@
  * CLI can bundle without server config. It also OWNS alert coercion + harness
  * construction (review candidate #3) so callers only name a harness + pass config.
  */
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	type FiringAlert,
 	type IncidentContext,
@@ -141,30 +142,45 @@ interface BuildHarnessOpts {
 	initTimeoutMs?: number;
 }
 
-/** Build the Tier-2 harness runner for a backend name (throws on unknown/unbuilt). */
+/**
+ * Build the Tier-2 harness runner for a backend name (throws on unknown/unbuilt).
+ * The provider prefix comes from the registry (ADR-0017) — `agent.model` is a
+ * canonical-BARE id, so deepagents' `openai:` prefix is applied HERE, once, instead
+ * of the field being ambiguously "already-prefixed" (the old `openai:openai:` risk).
+ */
 function buildHarness(
 	harnessName: string,
 	cwd: string,
 	opts: BuildHarnessOpts,
 ): HarnessRunner {
+	const descriptor = HARNESS_REGISTRY[harnessName as HarnessId];
+	if (!descriptor) throw new Error(`Unknown harness: ${harnessName}`);
+	if (!descriptor.implemented) {
+		throw new Error(`The '${harnessName}' harness is not implemented yet.`);
+	}
+
+	// Apply the harness's provider prefix to the bare model id (registry-driven).
+	const model =
+		opts.model && descriptor.modelPrefix
+			? `${descriptor.modelPrefix}${opts.model}`
+			: opts.model;
+
 	switch (harnessName) {
 		case "deepagents":
 			return deepAgentsHarness({
 				cwd,
 				...(opts.initTimeoutMs ? { initTimeoutMs: opts.initTimeoutMs } : {}),
-				// agent.model is a bare id; deepagents wants a provider prefix.
-				...(opts.model ? { model: `openai:${opts.model}` } : {}),
+				...(model ? { model } : {}),
 				...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
 			});
 		case "claude-code":
 			return claudeCodeHarness({
 				cwd,
-				...(opts.model ? { model: opts.model } : {}),
+				...(model ? { model } : {}),
 			});
-		case "codex":
-			throw new Error("The 'codex' harness is not implemented yet.");
 		default:
-			throw new Error(`Unknown harness: ${harnessName}`);
+			// Registry marks it implemented but no runner is wired — a programming error.
+			throw new Error(`No runner wired for harness: ${harnessName}`);
 	}
 }
 

@@ -7,5 +7,9 @@
 export {
 	HARNESS_BINARY,
 	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessDescriptor,
 	type HarnessId,
+	type HarnessTransport,
+	type PermissionFidelity,
 } from "./providers/harness.js";
