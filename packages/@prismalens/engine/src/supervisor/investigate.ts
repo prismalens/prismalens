@@ -10,7 +10,9 @@
 import { randomUUID } from "node:crypto";
 import type {
 	CanonicalEvent,
+	FiringAlert,
 	InvestigationReport,
+	TelemetryEndpoints,
 } from "@prismalens/contracts";
 import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
@@ -21,8 +23,7 @@ import {
 	type ClaudeCodeConfig,
 	runClaudeCodeBranch,
 } from "../runner/claude-code-runner.js";
-import { runDeepAgentsBranch } from "../runner/run-branch.js";
-import type { FiringAlert } from "./alert-source.js";
+import { runDeepAgentsBranch } from "../runner/acp-run-branch.js";
 import { type SynthesisModelConfig, synthesizeReport } from "./synthesize.js";
 
 /**
@@ -51,15 +52,6 @@ export function claudeCodeHarness(
 	cfg: Omit<ClaudeCodeConfig, "prompt">,
 ): HarnessRunner {
 	return (prompt, ctx) => runClaudeCodeBranch({ ...cfg, prompt }, ctx);
-}
-
-export interface TelemetryEndpoints {
-	/** Prometheus base URL as seen by the harness (host: http://localhost:9090). */
-	prometheusUrl: string;
-	/** Alertmanager base URL (host: http://localhost:9093). */
-	alertmanagerUrl: string;
-	/** The application's own API base URL (host: http://localhost:5000). */
-	apiUrl: string;
 }
 
 export interface InvestigateOptions {

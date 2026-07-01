@@ -90,7 +90,6 @@ The seed alert comes from **one of**:
 | `--config <path>` | Path to a `prismalens.config.yaml` (skips the upward config search). |
 | `--model <id>` | Override `agent.model` — a bare model id, e.g. `gpt-oss:120b`. |
 | `--harness <name>` | Tier-2 backend: `deepagents` \| `claude-code` \| `codex`. Defaults to `agent.default`. |
-| `--runtime <name>` | `process` \| `tmux`. Only `process` (the in-process engine) is supported in this build; other values warn and fall back. |
 | `--json` | Print the `InvestigationReport` as JSON to stdout (suppresses the human renderer; implies quiet). |
 | `--output <file>` | Also write the `InvestigationReport` JSON to this file. |
 | `--quiet` | Suppress progress + the human renderer (errors still go to stderr). |
@@ -267,9 +266,6 @@ budget:
   max_concurrent_sub_agents: 3
   max_total_sub_agents: 10
   max_retries: 2
-
-plugins:
-  runtime: process               # process (in-process engine) | tmux (legacy opt-in)
 
 logging:
   level: info                    # debug | info | warn | error

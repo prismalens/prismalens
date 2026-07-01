@@ -28,6 +28,7 @@ import {
 	resolveInvestigation,
 } from "../core/run-investigation.js";
 import { createSessionManager } from "../core/session.js";
+import type { JsonRpcId, JsonRpcRequest, OutgoingMessage } from "./types.js";
 
 const PROTOCOL_VERSION = 1;
 
@@ -39,42 +40,6 @@ const INVALID_PARAMS = -32602;
 const INTERNAL_ERROR = -32603;
 /** No evidence gathered — the harness branch failed (mirrors the engine guard). */
 const NO_EVIDENCE = -32000;
-
-// ---------------------------------------------------------------------------
-// Wire types
-// ---------------------------------------------------------------------------
-
-type JsonRpcId = string | number | null;
-
-interface JsonRpcRequest {
-	jsonrpc: "2.0";
-	id?: JsonRpcId;
-	method: string;
-	params?: unknown;
-}
-
-interface JsonRpcSuccess {
-	jsonrpc: "2.0";
-	id: JsonRpcId;
-	result: unknown;
-}
-
-interface JsonRpcErrorResponse {
-	jsonrpc: "2.0";
-	id: JsonRpcId;
-	error: { code: number; message: string; data?: unknown };
-}
-
-interface JsonRpcNotification {
-	jsonrpc: "2.0";
-	method: string;
-	params: unknown;
-}
-
-type OutgoingMessage =
-	| JsonRpcSuccess
-	| JsonRpcErrorResponse
-	| JsonRpcNotification;
 
 /** Thrown by a method handler to produce a JSON-RPC error response (never crashes). */
 class RpcError extends Error {

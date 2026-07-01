@@ -12,12 +12,11 @@
  * CLI can bundle without server config. It also OWNS alert coercion + harness
  * construction (review candidate #3) so callers only name a harness + pass config.
  */
-import type { FiringAlert } from "../supervisor/alert-source.js";
+import type { FiringAlert, TelemetryEndpoints } from "@prismalens/contracts";
 import {
 	claudeCodeHarness,
 	deepAgentsHarness,
 	type HarnessRunner,
-	type TelemetryEndpoints,
 } from "../supervisor/investigate.js";
 import type { SynthesisModelConfig } from "../supervisor/synthesize.js";
 

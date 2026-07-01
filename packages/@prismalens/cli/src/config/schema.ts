@@ -7,7 +7,6 @@
  *    ("deepagents" | "claude-code" | "codex"), not the old "deepagents-cli" et al.
  *  - `agent.model` is now OPTIONAL — each harness has its own default (deepagents:
  *    "openai:gpt-oss:120b"; Claude Code: the CLI/subscription default).
- *  - `plugins.runtime` defaults to "process" (M2 in-process engine), not "tmux".
  *  - ADDED `telemetry` — the engine's TelemetryEndpoints (read-only surfaces the
  *    rented harness queries).
  *  - DROPPED the gatherer/analyst/verifier role taxonomy: `harness.roles` +
@@ -16,11 +15,12 @@
  *    two-tier engine decompose is N=1 (one alert → one rented branch → reduce), so
  *    the role machinery is gone.
  */
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 
 /** Tier-2 harness backend the supervisor rents (ADR-0008). */
 export const AgentConfigSchema = z.object({
-	default: z.enum(["deepagents", "claude-code", "codex"]).default("deepagents"),
+	default: z.enum(HARNESS_IDS).default("deepagents"),
 	/**
 	 * Provider-prefixed model id (e.g. "openai:gpt-oss:120b"). Omit to let the
 	 * chosen harness pick its own default.
@@ -45,11 +45,6 @@ export const BudgetConfigSchema = z.object({
 
 export const WorkspaceConfigSchema = z.object({
 	base_dir: z.string().default("~/.prismalens"),
-});
-
-/** In-process by default (M2 in-process engine); tmux is an opt-in legacy runtime. */
-export const PluginsConfigSchema = z.object({
-	runtime: z.enum(["process", "tmux"]).default("process"),
 });
 
 export const LoggingConfigSchema = z.object({
@@ -98,7 +93,6 @@ export const PlConfigSchema = z.object({
 	agent: optionalWithDefaults(AgentConfigSchema),
 	budget: optionalWithDefaults(BudgetConfigSchema),
 	workspace: optionalWithDefaults(WorkspaceConfigSchema),
-	plugins: optionalWithDefaults(PluginsConfigSchema),
 	telemetry: optionalWithDefaults(TelemetryConfigSchema),
 	alert_sources: AlertSourceConfigSchema.optional().transform(
 		(val) => val ?? {},

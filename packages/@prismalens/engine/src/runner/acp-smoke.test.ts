@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { runDeepAgentsBranch } from "./run-branch.js";
+import { runDeepAgentsBranch } from "./acp-run-branch.js";
 
 const KEY = process.env.OLLAMA_API_KEY;
 const rawModel = process.env.OLLAMA_MODEL ?? "gpt-oss:120b";

@@ -16,6 +16,7 @@ export {
 	// Static metadata
 	LLM_PROVIDERS,
 	LLM_PROVIDER_IDS,
+	LLM_CREDENTIAL_ENV_VARS,
 	type LLMProviderId,
 	// Zod schemas (for provider ID validation only)
 	llmProviderIdSchema,

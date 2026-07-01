@@ -89,6 +89,15 @@ export const LLM_PROVIDER_IDS = Object.keys(LLM_PROVIDERS) as [
 ];
 
 /**
+ * All credential env-var names across providers, derived from LLM_PROVIDERS.
+ * Single source of truth for "which env vars can hold an LLM credential" —
+ * consumed by tooling (e.g. the CLI `doctor`) instead of re-listing them.
+ */
+export const LLM_CREDENTIAL_ENV_VARS: readonly string[] = Object.values(
+	LLM_PROVIDERS,
+).map((provider) => provider.envVar);
+
+/**
  * Zod schema for provider IDs - dynamically derived from LLM_PROVIDERS.
  * Use this for basic validation of provider selection in UI.
  */

@@ -14,6 +14,10 @@
 			"types": "./dist/llm.d.ts",
 			"import": "./dist/llm.js"
 		},
+		"./harness": {
+			"types": "./dist/harness.d.ts",
+			"import": "./dist/harness.js"
+		},
 		"./mcp": {
 			"types": "./dist/mcp.d.ts",
 			"import": "./dist/mcp.js"

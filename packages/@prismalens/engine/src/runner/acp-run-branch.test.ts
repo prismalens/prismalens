@@ -1,7 +1,7 @@
 import { CanonicalEventSchema } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import type { AcpStreamItem } from "./acp-client.js";
-import { runBranch } from "./run-branch.js";
+import { runBranch } from "./acp-run-branch.js";
 
 const FIXED = new Date("2026-06-29T00:00:00.000Z");
 const ctx = {

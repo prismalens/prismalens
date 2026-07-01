@@ -380,3 +380,23 @@ export type NextStep = z.infer<typeof NextStepSchema>;
 export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
+
+// ENGINE INVESTIGATION INPUTS (ADR-0008) — the seed alert + telemetry surfaces
+
+/** A firing alert, normalised from the Alertmanager v2 API. */
+export const FiringAlertSchema = z.object({
+	alertname: z.string(),
+	severity: z.string().nullable(),
+	labels: z.record(z.string()),
+	annotations: z.record(z.string()),
+	startsAt: z.string().nullable(),
+});
+export type FiringAlert = z.infer<typeof FiringAlertSchema>;
+
+/** Read-only telemetry + app endpoints the harness may query. */
+export const TelemetryEndpointsSchema = z.object({
+	prometheusUrl: z.string(),
+	alertmanagerUrl: z.string(),
+	apiUrl: z.string(),
+});
+export type TelemetryEndpoints = z.infer<typeof TelemetryEndpointsSchema>;

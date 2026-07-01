@@ -6,7 +6,7 @@
  *  - HARD: the configured harness binary is on PATH
  *      (deepagents -> "deepagents", claude-code -> "claude", codex -> "codex")
  *  - HARD: an LLM credential is present
- *      (OLLAMA_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY, or, for claude-code,
+ *      (any provider credential env var from LLM_PROVIDERS, or, for claude-code,
  *       a signed-in ~/.claude/.credentials.json)
  *  - SOFT: workspace.base_dir is writable
  *
@@ -17,27 +17,16 @@ import { accessSync, existsSync, constants as fsConstants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { HARNESS_BINARY, type HarnessId } from "@prismalens/config/harness";
+import { LLM_CREDENTIAL_ENV_VARS } from "@prismalens/config/llm";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
 import { type PlConfig, PlConfigSchema } from "../config/schema.js";
 import { resolveBaseDir } from "../core/session.js";
 
-/** Harness backend -> the binary it shells out to. Keyed by the schema enum so it
- *  stays exhaustive if a new backend is added. */
-type Harness = PlConfig["agent"]["default"];
-const HARNESS_BINARY: Record<Harness, string> = {
-	deepagents: "deepagents",
-	"claude-code": "claude",
-	codex: "codex",
-};
-
-/** The env vars any harness can use as an LLM credential. */
-const CREDENTIAL_ENV_VARS = [
-	"OLLAMA_API_KEY",
-	"OPENAI_API_KEY",
-	"ANTHROPIC_API_KEY",
-] as const;
+/** The harness selected in config; keys the shared HARNESS_BINARY map. */
+type Harness = HarnessId;
 
 interface Check {
 	name: string;
@@ -82,7 +71,7 @@ function checkHarness(harness: Harness): Check {
 }
 
 function checkCredential(harness: Harness): Check {
-	const envVar = CREDENTIAL_ENV_VARS.find(
+	const envVar = LLM_CREDENTIAL_ENV_VARS.find(
 		(name) => (process.env[name]?.length ?? 0) > 0,
 	);
 	const credentialsFile = join(homedir(), ".claude", ".credentials.json");
@@ -108,7 +97,7 @@ function checkCredential(harness: Harness): Check {
 	const hint =
 		harness === "claude-code"
 			? "set ANTHROPIC_API_KEY or sign in with `claude` (creates ~/.claude/.credentials.json)"
-			: `set one of ${CREDENTIAL_ENV_VARS.join(", ")}`;
+			: `set one of ${LLM_CREDENTIAL_ENV_VARS.join(", ")}`;
 	return {
 		name: "LLM credential",
 		pass: false,

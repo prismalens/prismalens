@@ -71,12 +71,6 @@ export default defineCommand({
 			description:
 				"Tier-2 harness backend. Defaults to agent.default in config.",
 		},
-		runtime: {
-			type: "enum",
-			options: ["process", "tmux"],
-			description:
-				"Execution runtime. Only 'process' (the in-process engine) is supported in this build.",
-		},
 		json: {
 			type: "boolean",
 			default: false,
@@ -126,12 +120,6 @@ export default defineCommand({
 			cwd,
 			cliOverrides: { ...(args.model ? { model: args.model } : {}) },
 		});
-
-		if (args.runtime && args.runtime !== "process") {
-			consola.warn(
-				`runtime "${args.runtime}" is not supported in this build; using the in-process engine.`,
-			);
-		}
 
 		let resolved: ResolvedInvestigation;
 		try {

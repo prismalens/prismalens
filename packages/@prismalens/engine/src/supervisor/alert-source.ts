@@ -6,15 +6,7 @@
  * as the starting point for the investigation. (This mirrors PrismaLens's own
  * Alertmanager/webhook alert ingestion.)
  */
-
-/** A firing alert, normalised from the Alertmanager v2 API. */
-export interface FiringAlert {
-	alertname: string;
-	severity: string | null;
-	labels: Record<string, string>;
-	annotations: Record<string, string>;
-	startsAt: string | null;
-}
+import type { FiringAlert } from "@prismalens/contracts";
 
 function isRecord(x: unknown): x is Record<string, unknown> {
 	return x !== null && typeof x === "object";
