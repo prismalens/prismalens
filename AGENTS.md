@@ -25,6 +25,13 @@ copies of sources) — navigable as an Obsidian graph.
 services couple, a faster path to a source — capture it with `/mage-learn` into
 the hub. Capture the reusable *insight + procedure + pointers*, never a copy.
 
+**Cross-link, don't just file.** A standalone note is write-only — it won't be
+recalled at the point of need unless the doc you read there links to it. So when
+you capture a research/option `note`, wire its `[[wikilink]]` **inline into the
+specific ADR section(s) it bears on** (and those ADRs' `## Relations`),
+**bidirectionally** (note→ADR and ADR→note), then `mage index`. See the hub note
+`cross-link-research-into-decisions` for the procedure + the failure it prevents.
+
 **Commit hygiene:** mage never commits for you. It suggests `git` commands; you
 run them.
 <!-- END mage -->
