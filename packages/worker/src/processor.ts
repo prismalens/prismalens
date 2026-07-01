@@ -152,6 +152,7 @@ async function processJobInternal(
 				context: resolved.context,
 				harness: resolved.harness,
 				synth: resolved.synth,
+				fidelity: resolved.fidelity,
 				runId,
 			},
 			async (event) => {
@@ -277,6 +278,9 @@ async function buildRequest(
 			...INVESTIGATION_DEFAULTS.telemetry,
 		}),
 		harness: process.env.PRISMALENS_HARNESS ?? "deepagents",
+		// The single posture dial (ADR-0017): the worker is always read-only in
+		// Phase A — no per-run override, no native passthrough.
+		permissionMode: "read-only",
 		model: llmConfig.model,
 		cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
 		synth: {

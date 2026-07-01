@@ -16,6 +16,7 @@ import type {
 	CanonicalEvent,
 	InvestigationContext,
 	InvestigationReport,
+	RunFidelity,
 } from "@prismalens/contracts";
 import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
@@ -41,15 +42,51 @@ export type HarnessRunner = (
 	ctx: AdapterContext,
 ) => AsyncGenerator<CanonicalEvent>;
 
-/** deepagents over ACP — the zero-setup, read-only-by-default local harness. */
+/**
+ * deepagents over ACP — the zero-setup, read-only-by-default local harness. The
+ * permission policy always stays {@link autoAllowReadOnly} (COOPERATIVE — deepagents
+ * cannot hard-enforce without a sandbox); the ADR-0017 `native` passthrough maps to
+ * the CLI's real enforcers (`-S` shellAllowList / `--sandbox`) via the arg vector.
+ */
 export function deepAgentsHarness(
-	cfg: Omit<AcpClientConfig, "prompt">,
+	cfg: Omit<AcpClientConfig, "prompt"> & {
+		/** ADR-0017 native passthrough → shellAllowList/sandbox/extraArgs. */
+		native?: Record<string, unknown>;
+	},
 ): HarnessRunner {
+	const { native, ...rest } = cfg;
+	const nativeCfg = mapDeepAgentsNative(native);
 	return (prompt, ctx) =>
 		runDeepAgentsBranch(
-			{ ...cfg, prompt, permission: cfg.permission ?? autoAllowReadOnly },
+			{
+				...rest,
+				...nativeCfg,
+				prompt,
+				permission: cfg.permission ?? autoAllowReadOnly,
+			},
 			ctx,
 		);
+}
+
+/** Map the deepagents `native` object → the AcpClientConfig enforcer fields (ADR-0017). */
+function mapDeepAgentsNative(
+	native: Record<string, unknown> | undefined,
+): Pick<AcpClientConfig, "shellAllowList" | "sandbox" | "extraArgs"> {
+	if (!native) return {};
+	const out: Pick<AcpClientConfig, "shellAllowList" | "sandbox" | "extraArgs"> =
+		{};
+	if (Array.isArray(native.shellAllowList)) {
+		out.shellAllowList = native.shellAllowList.filter(
+			(x): x is string => typeof x === "string",
+		);
+	}
+	if (native.sandbox === true) out.sandbox = true;
+	if (Array.isArray(native.args)) {
+		out.extraArgs = native.args.filter(
+			(x): x is string => typeof x === "string",
+		);
+	}
+	return out;
 }
 
 /** Claude Code over the Agent SDK — the deep path (subagent tree, read-only). */
@@ -72,6 +109,11 @@ export interface InvestigateOptions {
 	synth: SynthesisModelConfig;
 	/** Investigation run id (== Investigation.id). Generated if omitted. */
 	runId?: string;
+	/**
+	 * The HONEST enforcement fidelity this run applied (ADR-0017 §4). Attached
+	 * deterministically onto the emitted report — never LLM-authored.
+	 */
+	fidelity?: RunFidelity;
 }
 
 export interface InvestigationResult {
@@ -107,7 +149,9 @@ export async function* investigateIncidentStream(
 		runId,
 		seq: collected.length,
 		ts: new Date().toISOString(),
-		report,
+		// Attach the deterministic fidelity AFTER synthesis (ADR-0017): the LLM never
+		// generates it — reduce() omits it, we spread it on here.
+		report: opts.fidelity ? { ...report, fidelity: opts.fidelity } : report,
 	};
 }
 

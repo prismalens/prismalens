@@ -71,6 +71,17 @@ export default defineCommand({
 			description:
 				"Tier-2 harness backend. Defaults to agent.default in config.",
 		},
+		mode: {
+			type: "enum",
+			options: ["read-only", "supervised", "auto", "dangerous"],
+			description:
+				"Permission posture the harness runs under (ADR-0017). Defaults to agent.permissions.mode in config (read-only).",
+		},
+		dangerouslySkipPermissions: {
+			type: "boolean",
+			default: false,
+			description: "Alias for --mode dangerous.",
+		},
 		service: {
 			type: "string",
 			description:
@@ -126,6 +137,12 @@ export default defineCommand({
 		// Session label: config `repo` (owner/name) wins; else git auto-detect; else none.
 		const repoSlug = await resolveRepoSlug(config.repo, cwd);
 
+		// The single posture dial (ADR-0017): --dangerously-skip-permissions wins over
+		// --mode, aliasing straight to "dangerous".
+		const permissionMode = args.dangerouslySkipPermissions
+			? "dangerous"
+			: args.mode;
+
 		let resolved: ResolvedInvestigation;
 		try {
 			resolved = resolveInvestigation(
@@ -135,6 +152,7 @@ export default defineCommand({
 					...(args.repo ? { repo: args.repo } : {}),
 					...(args.harness ? { harness: args.harness } : {}),
 					...(args.service ? { service: args.service } : {}),
+					...(permissionMode ? { permissionMode } : {}),
 				},
 				config,
 			);
@@ -143,7 +161,7 @@ export default defineCommand({
 			process.exitCode = 1;
 			return;
 		}
-		const { context, harness, synth, harnessName } = resolved;
+		const { context, harness, synth, harnessName, fidelity } = resolved;
 		const primaryAlert = context.alerts[0];
 
 		if (!synth.apiKey) {
@@ -176,6 +194,7 @@ export default defineCommand({
 				context,
 				harness,
 				synth,
+				fidelity,
 				runId,
 			})) {
 				await sessions.appendEvent(runId, event);

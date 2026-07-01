@@ -15,8 +15,27 @@
  *    two-tier engine decompose is N=1 (one alert → one rented branch → reduce), so
  *    the role machinery is gone.
  */
-import { HARNESS_IDS } from "@prismalens/config/harness";
+import { HARNESS_IDS, PERMISSION_MODES } from "@prismalens/config/harness";
 import { z } from "zod";
+
+/**
+ * The single posture dial (ADR-0017) — prismalens does not build a permission
+ * policy engine; it exposes this one dial and translates it to each harness's
+ * native config. Defaults to the safest posture, `read-only`.
+ */
+export const PermissionConfigSchema = z.object({
+	mode: z.enum(PERMISSION_MODES).default("read-only"),
+});
+
+/**
+ * Arbitrary harness-native passthrough (ADR-0017) — e.g. Agent SDK query options
+ * for `claude-code`, or `shellAllowList`/`sandbox`/`args` for `deepagents`. Kept
+ * untyped here (per-harness runners narrow it); prismalens does not validate the
+ * shape, it defers to the harness.
+ */
+export const HarnessNativeConfigSchema = z.object({
+	native: z.record(z.string(), z.unknown()).optional(),
+});
 
 /** Tier-2 harness backend the supervisor rents (ADR-0008). */
 export const AgentConfigSchema = z.object({
@@ -29,6 +48,8 @@ export const AgentConfigSchema = z.object({
 	 */
 	model: z.string().optional(),
 	timeout_ms: z.number().positive().default(1_800_000),
+	/** The posture dial (ADR-0017). Defaults to `read-only`. */
+	permissions: optionalWithDefaults(PermissionConfigSchema),
 });
 
 export const BudgetConfigSchema = z.object({
@@ -129,6 +150,11 @@ export const PlConfigSchema = z.object({
 		(val) => val ?? {},
 	),
 	logging: optionalWithDefaults(LoggingConfigSchema),
+	/** Per-harness native passthrough (ADR-0017), keyed by harness id. */
+	harnesses: z
+		.record(z.string(), HarnessNativeConfigSchema)
+		.optional()
+		.transform((val) => val ?? {}),
 });
 
 export type PlConfigInput = z.input<typeof PlConfigSchema>;

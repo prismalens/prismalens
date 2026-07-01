@@ -76,7 +76,9 @@ export async function synthesizeReport(
 	try {
 		const { object } = await generateObject({
 			model,
-			schema: InvestigationReportSchema,
+			// fidelity is run-metadata, attached deterministically AFTER synthesis
+			// (ADR-0017) — the LLM must NOT generate it, so omit it from the schema.
+			schema: InvestigationReportSchema.omit({ fidelity: true }),
 			prompt: basePrompt,
 		});
 		return object;

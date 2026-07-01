@@ -74,6 +74,18 @@ export const NextStepSchema = z.object({
 	priority: RecommendationPrioritySchema.nullable().optional(),
 });
 
+/**
+ * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
+ * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
+ */
+export const RunFidelitySchema = z.object({
+	harness: z.string(),
+	mode: z.string(),
+	fidelity: z.enum(["enforced", "cooperative", "advisory"]),
+	mechanism: z.string(),
+});
+export type RunFidelity = z.infer<typeof RunFidelitySchema>;
+
 export const InvestigationReportSchema = z.object({
 	summary: z.string().min(1),
 	rootCause: z.string().nullable(),
@@ -83,6 +95,12 @@ export const InvestigationReportSchema = z.object({
 	ruledOut: z.array(RuledOutSchema),
 	coverage: CoverageSchema,
 	nextSteps: z.array(NextStepSchema),
+	/**
+	 * Run-metadata, ADR-0017 honest fidelity — the enforcement the harness
+	 * actually applied. Attached deterministically after synthesis; never
+	 * LLM-generated.
+	 */
+	fidelity: RunFidelitySchema.nullable().optional(),
 });
 
 // =============================================================================

@@ -10,6 +10,7 @@
  * JSON-RPC `serve` path stay in lockstep, unchanged.
  */
 import { resolve } from "node:path";
+import type { PermissionMode } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { getDefaultModel } from "@prismalens/config/llm";
 import type { ServiceContext } from "@prismalens/contracts";
@@ -36,6 +37,8 @@ export interface ResolveInvestigationArgs {
 	 * service label. Covers `--query` runs that carry no labels (ADR-0015 §4).
 	 */
 	service?: string;
+	/** The posture dial override (ADR-0017); else `config.agent.permissions.mode`. */
+	permissionMode?: string;
 }
 
 /**
@@ -80,13 +83,24 @@ export function resolveInvestigation(
 			}
 		: undefined;
 
+	// The single posture dial (ADR-0017): --mode / RPC `mode` wins; else
+	// `agent.permissions.mode` (defaults to "read-only"). Native passthrough is
+	// per-harness config, keyed by the resolved harness name.
+	const harnessName = args.harness ?? config.agent.default;
+	const permissionMode =
+		(args.permissionMode as PermissionMode | undefined) ??
+		config.agent.permissions.mode;
+	const harnessNative = config.harnesses[harnessName]?.native;
+
 	const request: InvestigationRequest = {
 		alert: args.alert,
 		query: args.query,
 		...(service ? { service } : {}),
 		...(repos ? { repos } : {}),
 		...(logs ? { logs } : {}),
-		harness: args.harness ?? config.agent.default,
+		harness: harnessName,
+		permissionMode,
+		...(harnessNative ? { harnessNative } : {}),
 		model: config.agent.model,
 		cwd,
 		telemetry: {

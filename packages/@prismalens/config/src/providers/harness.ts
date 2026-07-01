@@ -90,3 +90,52 @@ export const HARNESS_BINARY: Record<HarnessId, string> = {
 	"claude-code": HARNESS_REGISTRY["claude-code"].binary,
 	codex: HARNESS_REGISTRY.codex.binary,
 };
+
+/**
+ * The single posture dial (ADR-0017): prismalens does not build a permission policy
+ * engine — it exposes this one dial, translates it to each harness's native config,
+ * and reports the HONEST fidelity that resulted (see `resolvePermissionOutcome`).
+ */
+export const PERMISSION_MODES = [
+	"read-only",
+	"supervised",
+	"auto",
+	"dangerous",
+] as const;
+
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
+/** The resolved permission fidelity for a given harness + posture (ADR-0017 §4). */
+export interface PermissionOutcome {
+	mode: PermissionMode;
+	fidelity: PermissionFidelity;
+	mechanism: string;
+}
+
+/**
+ * Resolve the HONEST fidelity a harness delivers for a posture (ADR-0017 §4). Pure —
+ * ignores any harness `native` passthrough. `read-only`/`supervised` defer to the
+ * registry's read-only guarantee for this harness; `auto`/`dangerous` apply no
+ * read-only floor and are always `advisory`.
+ */
+export function resolvePermissionOutcome(
+	harnessId: HarnessId,
+	mode: PermissionMode,
+): PermissionOutcome {
+	const registry = HARNESS_REGISTRY[harnessId];
+	if (mode === "read-only" || mode === "supervised") {
+		return {
+			mode,
+			fidelity: registry.readOnlyFidelity,
+			mechanism: registry.readOnlyMechanism,
+		};
+	}
+	return {
+		mode,
+		fidelity: "advisory",
+		mechanism:
+			mode === "dangerous"
+				? "full access — no restrictions applied"
+				: "writes auto-accepted — no read-only floor",
+	};
+}

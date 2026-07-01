@@ -11,5 +11,9 @@ export {
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessTransport,
+	PERMISSION_MODES,
 	type PermissionFidelity,
+	type PermissionMode,
+	type PermissionOutcome,
+	resolvePermissionOutcome,
 } from "./providers/harness.js";

@@ -74,6 +74,10 @@ interface InvestigateParams {
 	model?: string;
 	config?: string;
 	service?: string;
+	/** The posture dial (ADR-0017): "read-only" | "supervised" | "auto" | "dangerous". */
+	mode?: string;
+	/** Alias for `mode: "dangerous"` — wins over `mode` when true. */
+	dangerouslySkipPermissions?: boolean;
 }
 
 /** Coerce raw RPC params into the typed investigate shape (drops anything else). */
@@ -93,6 +97,11 @@ function parseInvestigateParams(raw: unknown): InvestigateParams {
 	if (config) out.config = config;
 	const service = str(p.service);
 	if (service) out.service = service;
+	const mode = str(p.mode);
+	if (mode) out.mode = mode;
+	if (typeof p.dangerouslySkipPermissions === "boolean") {
+		out.dangerouslySkipPermissions = p.dangerouslySkipPermissions;
+	}
 	return out;
 }
 
@@ -137,6 +146,12 @@ export async function runJsonRpcServer(
 			cliOverrides: { ...(params.model ? { model: params.model } : {}) },
 		});
 
+		// The single posture dial (ADR-0017): dangerouslySkipPermissions wins over
+		// mode, aliasing straight to "dangerous".
+		const permissionMode = params.dangerouslySkipPermissions
+			? "dangerous"
+			: params.mode;
+
 		let resolved: ResolvedInvestigation;
 		try {
 			resolved = resolveInvestigation(
@@ -146,6 +161,7 @@ export async function runJsonRpcServer(
 					...(params.repo ? { repo: params.repo } : {}),
 					...(params.harness ? { harness: params.harness } : {}),
 					...(params.service ? { service: params.service } : {}),
+					...(permissionMode ? { permissionMode } : {}),
 				},
 				config,
 			);
@@ -155,7 +171,7 @@ export async function runJsonRpcServer(
 				INVALID_PARAMS,
 			);
 		}
-		const { context, harness, synth, harnessName } = resolved;
+		const { context, harness, synth, harnessName, fidelity } = resolved;
 		const primaryAlert = context.alerts[0];
 
 		// Persist to the session workspace exactly as the investigate command does.
@@ -178,6 +194,7 @@ export async function runJsonRpcServer(
 				context,
 				harness,
 				synth,
+				fidelity,
 				runId,
 			})) {
 				await sessions.appendEvent(runId, event);

@@ -12,13 +12,20 @@
  * CLI can bundle without server config. It also OWNS alert coercion + harness
  * construction (review candidate #3) so callers only name a harness + pass config.
  */
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import {
+	HARNESS_REGISTRY,
+	type HarnessId,
+	type PermissionMode,
+	type PermissionOutcome,
+	resolvePermissionOutcome,
+} from "@prismalens/config/harness";
 import {
 	type FiringAlert,
 	type IncidentContext,
 	type InvestigationContext,
 	InvestigationContextSchema,
 	type LogSystemContext,
+	type RunFidelity,
 	type ServiceContext,
 	singleAlertContext,
 	type TelemetryEndpoints,
@@ -57,6 +64,18 @@ export interface InvestigationRequest {
 	incident?: IncidentContext;
 	/** Tier-2 harness backend: "deepagents" | "claude-code" | "codex". */
 	harness: string;
+	/**
+	 * The single posture dial (ADR-0017). Absent → "read-only" (the safe default).
+	 * Translated to each harness's NATIVE config by its runner; prismalens does not
+	 * build a policy engine.
+	 */
+	permissionMode?: PermissionMode;
+	/**
+	 * The chosen harness's native passthrough (ADR-0017): arbitrary harness-specific
+	 * config (Agent SDK query options / deepagents shellAllowList/sandbox/args) that
+	 * the runner spreads BENEATH prismalens's posture-derived floor.
+	 */
+	harnessNative?: Record<string, unknown>;
 	/** Bare model id (e.g. "gpt-oss:120b"); the harness applies its own prefixing. */
 	model?: string;
 	/** Absolute working dir the harness reads (shell-first source root). */
@@ -83,6 +102,12 @@ export interface ResolvedInvestigation {
 	cwd: string;
 	/** The resolved harness backend name (for session/run labelling). */
 	harnessName: string;
+	/**
+	 * The HONEST enforcement fidelity this run actually applied (ADR-0017 §4),
+	 * computed from (harness, mode). Threaded into the report deterministically —
+	 * never LLM-authored.
+	 */
+	fidelity: RunFidelity;
 }
 
 /**
@@ -102,10 +127,24 @@ export function resolveInvestigation(
 				...(req.logs ? { logs: req.logs } : {}),
 			});
 
+	const mode = req.permissionMode ?? "read-only";
+	const outcome: PermissionOutcome = resolvePermissionOutcome(
+		req.harness as HarnessId,
+		mode,
+	);
+	const fidelity: RunFidelity = {
+		harness: req.harness,
+		mode,
+		fidelity: outcome.fidelity,
+		mechanism: outcome.mechanism,
+	};
+
 	const harness = buildHarness(req.harness, req.cwd, {
 		model: req.model,
 		harnessEnv: req.harnessEnv,
 		initTimeoutMs: req.initTimeoutMs,
+		permissionMode: mode,
+		native: req.harnessNative,
 	});
 
 	return {
@@ -114,6 +153,7 @@ export function resolveInvestigation(
 		synth: req.synth,
 		cwd: req.cwd,
 		harnessName: req.harness,
+		fidelity,
 	};
 }
 
@@ -140,6 +180,10 @@ interface BuildHarnessOpts {
 	model?: string;
 	harnessEnv?: Record<string, string | undefined>;
 	initTimeoutMs?: number;
+	/** The posture dial (ADR-0017), forwarded to the harness runner for translation. */
+	permissionMode?: PermissionMode;
+	/** The chosen harness's native passthrough (ADR-0017). */
+	native?: Record<string, unknown>;
 }
 
 /**
@@ -172,11 +216,14 @@ function buildHarness(
 				...(opts.initTimeoutMs ? { initTimeoutMs: opts.initTimeoutMs } : {}),
 				...(model ? { model } : {}),
 				...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
+				...(opts.native ? { native: opts.native } : {}),
 			});
 		case "claude-code":
 			return claudeCodeHarness({
 				cwd,
 				...(model ? { model } : {}),
+				...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
+				...(opts.native ? { native: opts.native } : {}),
 			});
 		default:
 			// Registry marks it implemented but no runner is wired — a programming error.

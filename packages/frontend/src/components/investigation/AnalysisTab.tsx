@@ -1,12 +1,53 @@
+import type {
+	InvestigationWithRelations,
+	RunFidelity,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import type { InvestigationWithRelations } from "@prismalens/contracts";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PriorityBadge } from "./investigation.utils";
 
 interface AnalysisTabProps {
 	investigation: InvestigationWithRelations;
+}
+
+/**
+ * Honest run-metadata badge (ADR-0017) — surfaces the enforcement the rented
+ * harness actually applied. Green = enforced, amber = cooperative, red = advisory.
+ * Mechanism is shown on hover; nothing is inferred client-side.
+ */
+function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
+	const tone =
+		fidelity.fidelity === "enforced"
+			? "border-green-600 text-green-700 dark:text-green-400"
+			: fidelity.fidelity === "cooperative"
+				? "border-amber-600 text-amber-700 dark:text-amber-400"
+				: "border-red-600 text-red-700 dark:text-red-500";
+
+	return (
+		<TooltipProvider>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Badge variant="outline" className={`gap-1 ${tone}`}>
+						<span className="font-mono">{fidelity.mode}</span>
+						<span className="opacity-60">·</span>
+						<span className="capitalize">{fidelity.fidelity}</span>
+					</Badge>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs">
+					<span className="font-mono">{fidelity.harness}</span> —{" "}
+					{fidelity.mechanism}
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
 }
 
 export function AnalysisTab({ investigation }: AnalysisTabProps) {
@@ -17,7 +58,10 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 			{/* Root Cause */}
 			<Card>
 				<CardHeader>
-					<CardTitle className="text-base">Root Cause Analysis</CardTitle>
+					<div className="flex items-center justify-between gap-3">
+						<CardTitle className="text-base">Root Cause Analysis</CardTitle>
+						{report?.fidelity && <FidelityBadge fidelity={report.fidelity} />}
+					</div>
 				</CardHeader>
 				<CardContent>
 					{investigation.rootCause ? (

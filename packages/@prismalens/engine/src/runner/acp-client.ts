@@ -64,8 +64,17 @@ export interface AcpClientConfig {
 	command?: string;
 	/** Model id passed via `-M`. Default `"openai:gpt-oss:120b"`. */
 	model?: string;
-	/** Full arg vector override; when set, `model` is ignored. Default `["--acp","-M",model]`. */
+	/** Full arg vector override; when set, `model`/native args are ignored. Default `["--acp","-M",model]`. */
 	args?: string[];
+	/**
+	 * Native passthrough (ADR-0017): deepagents shell allow-list → `-S csv`. When set,
+	 * turns the cooperative read-only posture into a real shell restriction.
+	 */
+	shellAllowList?: string[];
+	/** Native passthrough (ADR-0017): run the harness sandboxed → `--sandbox`. */
+	sandbox?: boolean;
+	/** Native passthrough (ADR-0017): extra CLI args appended after the derived ones. */
+	extraArgs?: string[];
 	/** Extra env merged OVER `process.env` (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
 	env?: NodeJS.ProcessEnv;
 	/** MCP servers offered to the session. Default `[]`. */
@@ -80,6 +89,21 @@ export interface AcpClientConfig {
 
 const DEFAULT_COMMAND = "deepagents";
 const DEFAULT_MODEL = "openai:gpt-oss:120b";
+
+/**
+ * Build the deepagents arg vector from the model + native passthrough (ADR-0017):
+ * the base `--acp -M <model>`, then the read-only enforcers `-S <csv>` / `--sandbox`,
+ * then any extra args. The full `args` override (when set) bypasses this entirely.
+ */
+function buildAcpArgs(model: string, config: AcpClientConfig): string[] {
+	const args = ["--acp", "-M", model];
+	if (config.shellAllowList?.length) {
+		args.push("-S", config.shellAllowList.join(","));
+	}
+	if (config.sandbox) args.push("--sandbox");
+	if (config.extraArgs?.length) args.push(...config.extraArgs);
+	return args;
+}
 const DEFAULT_INIT_TIMEOUT_MS = 30_000;
 const DEFAULT_PROMPT_TIMEOUT_MS = 180_000;
 const STDERR_TAIL = 500;
@@ -102,7 +126,7 @@ export async function* runAcpBranch(
 ): AsyncGenerator<AcpStreamItem> {
 	const command = config.command ?? DEFAULT_COMMAND;
 	const model = config.model ?? DEFAULT_MODEL;
-	const args = config.args ?? ["--acp", "-M", model];
+	const args = config.args ?? buildAcpArgs(model, config);
 	const permission = config.permission ?? autoAllowReadOnly;
 	const initTimeout = config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
 	const promptTimeout = config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS;
