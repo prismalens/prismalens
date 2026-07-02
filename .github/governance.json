@@ -60,7 +60,7 @@
 		"enforcement": "active",
 		"conditions": {
 			"ref_name": {
-				"include": ["refs/heads/first"],
+				"include": ["refs/heads/main"],
 				"exclude": []
 			}
 		},
