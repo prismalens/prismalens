@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CheckCircle } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -21,7 +21,10 @@ export interface SetupWizardProps {
 	initialStep?: SetupStep;
 }
 
-export function SetupWizard({ redirect, initialStep = "account" }: SetupWizardProps) {
+export function SetupWizard({
+	redirect,
+	initialStep = "account",
+}: SetupWizardProps) {
 	const navigate = useNavigate();
 	const [currentStep, setCurrentStep] = useState<SetupStep>(initialStep);
 

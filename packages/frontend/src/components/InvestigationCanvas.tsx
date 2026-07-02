@@ -12,10 +12,10 @@ import ReactFlow, {
 	Background,
 	Controls,
 	MiniMap,
+	type Node,
 	ReactFlowProvider,
 	useEdgesState,
 	useNodesState,
-	type Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -26,7 +26,10 @@ import type {
 import { chartColors } from "@prismalens/design-tokens/colors";
 
 import { AgentNode, CanvasExportMenu, StartEndNode } from "@/components/canvas";
-import { getAgentMiniMapColor, transformExecutionsToCanvas } from "@/lib/canvas";
+import {
+	getAgentMiniMapColor,
+	transformExecutionsToCanvas,
+} from "@/lib/canvas";
 import { NodeDetailsPanel } from "./canvas/NodeDetailsPanel";
 
 // Register custom node types
@@ -86,7 +89,9 @@ function InvestigationCanvasInner({
 	// MiniMap node colors based on agent type (dynamic)
 	const minimapNodeColor = useCallback((node: Node) => {
 		if (node.type === "startEnd") {
-			return node.data.status === "failed" ? chartColors.node.error : chartColors.node.default;
+			return node.data.status === "failed"
+				? chartColors.node.error
+				: chartColors.node.default;
 		}
 		if (node.type === "agent" && node.data.agentName) {
 			return getAgentMiniMapColor(node.data.agentName);

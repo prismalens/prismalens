@@ -1,71 +1,71 @@
 import {
-  IsBoolean,
-  IsNotEmpty,
-  IsNumber,
-  IsObject,
-  IsOptional,
-  IsString,
-  IsUrl,
-  IsUUID,
-} from 'class-validator';
+	IsBoolean,
+	IsNotEmpty,
+	IsNumber,
+	IsObject,
+	IsOptional,
+	IsString,
+	IsUrl,
+	IsUUID,
+} from "class-validator";
 
 export class CreateIntegrationDto {
-  @IsString()
-  @IsNotEmpty()
-  templateId!: string;
+	@IsString()
+	@IsNotEmpty()
+	templateId!: string;
 
-  @IsString()
-  label!: string;
+	@IsString()
+	label!: string;
 
-  @IsOptional()
-  @IsString()
-  clientId?: string;
+	@IsOptional()
+	@IsString()
+	clientId?: string;
 
-  @IsOptional()
-  @IsString()
-  clientSecret?: string;
+	@IsOptional()
+	@IsString()
+	clientSecret?: string;
 
-  @IsOptional()
-  @IsString({ each: true })
-  scopes?: string[];
+	@IsOptional()
+	@IsString({ each: true })
+	scopes?: string[];
 
-  @IsOptional()
-  @IsUrl()
-  callbackUrl?: string;
+	@IsOptional()
+	@IsUrl()
+	callbackUrl?: string;
 }
 
 export class CreateConnectionDto {
-  @IsUUID()
-  integrationId!: string;
+	@IsUUID()
+	integrationId!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  label!: string;
+	@IsString()
+	@IsNotEmpty()
+	label!: string;
 
-  @IsObject()
-  credentials!: Record<string, string>;
+	@IsObject()
+	credentials!: Record<string, string>;
 
-  @IsOptional()
-  @IsObject()
-  connectionConfig?: Record<string, string>;
+	@IsOptional()
+	@IsObject()
+	connectionConfig?: Record<string, string>;
 }
 
 export class CreateServiceIntegrationDto {
-  @IsUUID()
-  serviceId!: string;
+	@IsUUID()
+	serviceId!: string;
 
-  @IsUUID()
-  connectionId!: string;
+	@IsUUID()
+	connectionId!: string;
 
-  @IsOptional()
-  @IsObject()
-  config?: Record<string, unknown>;
+	@IsOptional()
+	@IsObject()
+	config?: Record<string, unknown>;
 
-  @IsOptional()
-  @IsNumber()
-  priority?: number;
+	@IsOptional()
+	@IsNumber()
+	priority?: number;
 
-  @IsOptional()
-  @IsBoolean()
-  isEnabled?: boolean;
+	@IsOptional()
+	@IsBoolean()
+	isEnabled?: boolean;
 }

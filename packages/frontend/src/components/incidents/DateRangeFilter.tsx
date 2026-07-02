@@ -5,9 +5,10 @@
  * All dates are handled in UTC for API calls, displayed in local timezone.
  */
 
-import { useState } from "react";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
+import { useState } from "react";
+import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -16,7 +17,6 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { DateRange } from "react-day-picker";
 
 export type QuickRange =
 	| "today"

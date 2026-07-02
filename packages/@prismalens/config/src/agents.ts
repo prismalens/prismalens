@@ -11,11 +11,11 @@
  */
 
 export {
-	INVESTIGATION_AGENTS,
 	AGENT_IDS,
-	ROUTABLE_AGENT_IDS,
 	type AgentId,
 	type AgentRole,
-	type RoutableAgentId,
 	agentIdSchema,
+	INVESTIGATION_AGENTS,
+	ROUTABLE_AGENT_IDS,
+	type RoutableAgentId,
 } from "./providers/agents.js";

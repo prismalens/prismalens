@@ -5,32 +5,22 @@
  * action items checklist, and auto-save on blur.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import type {
+	ActionItem,
+	PostmortemWithRelations,
+} from "@prismalens/contracts";
 import {
-	FileText,
-	CheckCircle2,
 	AlertCircle,
-	Sparkles,
+	CheckCircle2,
+	FileText,
+	Plus,
 	Save,
 	Send,
+	Sparkles,
 	Trash2,
-	Plus,
 	X,
 } from "lucide-react";
-import type { PostmortemWithRelations, ActionItem } from "@prismalens/contracts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { useCallback, useEffect, useState } from "react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -42,14 +32,27 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
-	usePostmortemByIncident,
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
 	useCreatePostmortem,
-	useUpdatePostmortem,
-	usePublishPostmortem,
 	useDeletePostmortem,
+	usePostmortemByIncident,
+	usePublishPostmortem,
+	useUpdatePostmortem,
 } from "@/lib/api/hooks";
+import { cn } from "@/lib/utils";
 
 export interface PostmortemEditorProps {
 	incidentId: string;
@@ -483,7 +486,9 @@ export function PostmortemEditor({
 											onBlur={handleActionItemBlur}
 											placeholder="Action item title..."
 											disabled={isPublished}
-											className={cn(item.completed && "line-through opacity-60")}
+											className={cn(
+												item.completed && "line-through opacity-60",
+											)}
 										/>
 										<div className="flex items-center gap-2">
 											<Select

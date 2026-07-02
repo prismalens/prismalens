@@ -62,8 +62,7 @@ export const githubApp: AuthTemplate = {
 			label: "Private Key",
 			type: "textarea",
 			required: true,
-			description:
-				"PEM-encoded private key generated for your GitHub App",
+			description: "PEM-encoded private key generated for your GitHub App",
 			sensitive: true,
 		},
 		{

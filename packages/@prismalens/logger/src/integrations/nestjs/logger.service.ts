@@ -1,6 +1,10 @@
-import { Injectable, type LoggerService as NestLoggerService, Scope } from "@nestjs/common";
-import { Logger } from "../../core/logger.js";
+import {
+	Injectable,
+	type LoggerService as NestLoggerService,
+	Scope,
+} from "@nestjs/common";
 import { enrichContext, getRequestId } from "../../core/context.js";
+import { Logger } from "../../core/logger.js";
 
 /**
  * NestJS LoggerService implementation that integrates with wide events.
@@ -51,7 +55,10 @@ export class LoggerService implements NestLoggerService {
 	log(message: unknown, ...optionalParams: unknown[]): void {
 		const ctx = this.extractContext(optionalParams);
 		const logger = ctx ? this.logger.child(ctx) : this.logger;
-		logger.info(this.formatMessage(message), ...this.extractArgs(optionalParams));
+		logger.info(
+			this.formatMessage(message),
+			...this.extractArgs(optionalParams),
+		);
 	}
 
 	error(message: unknown, ...optionalParams: unknown[]): void {
@@ -67,20 +74,29 @@ export class LoggerService implements NestLoggerService {
 			syntheticError.stack = stack;
 			logger.error(this.formatMessage(message), syntheticError);
 		} else {
-			logger.error(this.formatMessage(message), ...this.extractArgs(optionalParams));
+			logger.error(
+				this.formatMessage(message),
+				...this.extractArgs(optionalParams),
+			);
 		}
 	}
 
 	warn(message: unknown, ...optionalParams: unknown[]): void {
 		const ctx = this.extractContext(optionalParams);
 		const logger = ctx ? this.logger.child(ctx) : this.logger;
-		logger.warn(this.formatMessage(message), ...this.extractArgs(optionalParams));
+		logger.warn(
+			this.formatMessage(message),
+			...this.extractArgs(optionalParams),
+		);
 	}
 
 	debug?(message: unknown, ...optionalParams: unknown[]): void {
 		const ctx = this.extractContext(optionalParams);
 		const logger = ctx ? this.logger.child(ctx) : this.logger;
-		logger.debug(this.formatMessage(message), ...this.extractArgs(optionalParams));
+		logger.debug(
+			this.formatMessage(message),
+			...this.extractArgs(optionalParams),
+		);
 	}
 
 	verbose?(message: unknown, ...optionalParams: unknown[]): void {

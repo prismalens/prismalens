@@ -27,7 +27,8 @@ export function validateFieldValues(
 		} else if (value && field.pattern) {
 			const regex = new RegExp(field.pattern);
 			if (!regex.test(value)) {
-				errors[field.name] = field.description ?? `${field.label} has an invalid format`;
+				errors[field.name] =
+					field.description ?? `${field.label} has an invalid format`;
 			}
 		}
 	}

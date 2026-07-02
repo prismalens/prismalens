@@ -63,7 +63,10 @@ export function enrichContext(data: Partial<WideEvent>): void {
 		scope.wideEvent.request = { ...scope.wideEvent.request, ...data.request };
 	}
 	if (data.response) {
-		scope.wideEvent.response = { ...scope.wideEvent.response, ...data.response };
+		scope.wideEvent.response = {
+			...scope.wideEvent.response,
+			...data.response,
+		};
 	}
 	if (data.tags) {
 		scope.wideEvent.tags = [...(scope.wideEvent.tags || []), ...data.tags];

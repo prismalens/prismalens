@@ -12,7 +12,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { ProviderModelSelector, type ProviderInfo } from "./ProviderModelSelector";
+import {
+	type ProviderInfo,
+	ProviderModelSelector,
+} from "./ProviderModelSelector";
 
 export interface AgentMeta {
 	id: AgentId;

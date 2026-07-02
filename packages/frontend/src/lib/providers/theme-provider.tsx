@@ -4,9 +4,9 @@
  * Server-side theme management using cookies to prevent flicker.
  */
 
-import { createContext, use, type ReactNode } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { type Theme, setThemeServerFn } from "@/lib/theme";
+import { createContext, type ReactNode, use } from "react";
+import { setThemeServerFn, type Theme } from "@/lib/theme";
 
 interface ThemeContextValue {
 	theme: Theme;
@@ -27,9 +27,7 @@ export function ThemeProvider({ children, theme }: ThemeProviderProps) {
 		setThemeServerFn({ data: val }).then(() => router.invalidate());
 	}
 
-	return (
-		<ThemeContext value={{ theme, setTheme }}>{children}</ThemeContext>
-	);
+	return <ThemeContext value={{ theme, setTheme }}>{children}</ThemeContext>;
 }
 
 export function useTheme() {

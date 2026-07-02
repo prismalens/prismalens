@@ -5,25 +5,27 @@
  * date range filtering, and TanStack Table.
  */
 
-import { useState, useMemo } from "react";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, BarChart3, List } from "lucide-react";
-
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
-
-import { orpc } from "@/lib/api/orpc-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	createFileRoute,
+	useNavigate,
+	useSearch,
+} from "@tanstack/react-router";
+import { BarChart3, List, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
+import type { DateRangeValue } from "@/components/incidents";
+import {
+	DateRangeFilter,
+	IncidentAnalytics,
+	IncidentDataTable,
+	IncidentFilters,
+	IncidentStatsBar,
+} from "@/components/incidents";
 import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-	IncidentFilters,
-	IncidentDataTable,
-	DateRangeFilter,
-	IncidentStatsBar,
-	IncidentAnalytics,
-} from "@/components/incidents";
-import type { DateRangeValue } from "@/components/incidents";
+import { orpc } from "@/lib/api/orpc-client";
 
 // Search params type
 interface IncidentSearchParams {
@@ -125,7 +127,11 @@ function IncidentsPage() {
 		setStatusFilter("all");
 		setSeverityFilter("all");
 		setPriorityFilter("all");
-		updateSearchParams({ status: undefined, severity: undefined, priority: undefined });
+		updateSearchParams({
+			status: undefined,
+			severity: undefined,
+			priority: undefined,
+		});
 	};
 
 	const handleDateRangeChange = (value: DateRangeValue) => {
@@ -146,12 +152,12 @@ function IncidentsPage() {
 			// "Active" means not resolved or closed - we'll handle this client-side
 			setStatusFilter("all");
 		} else {
-			setStatusFilter(status as IncidentStatus | "all" || "all");
+			setStatusFilter((status as IncidentStatus | "all") || "all");
 		}
 	};
 
 	const handleSeverityFilterFromStats = (severity: string | undefined) => {
-		setSeverityFilter(severity as Severity | "all" || "all");
+		setSeverityFilter((severity as Severity | "all") || "all");
 	};
 
 	// Update URL search params
@@ -176,11 +182,13 @@ function IncidentsPage() {
 				title="Incidents"
 				subtitle={
 					<>
-						<span className="text-foreground">{incidents.length}</span> incidents
+						<span className="text-foreground">{incidents.length}</span>{" "}
+						incidents
 						{activeCount > 0 && (
 							<>
-								{" "}&bull;{" "}
-								<span className="text-foreground">{activeCount}</span> active
+								{" "}
+								&bull; <span className="text-foreground">{activeCount}</span>{" "}
+								active
 							</>
 						)}
 					</>
@@ -234,7 +242,9 @@ function IncidentsPage() {
 						incidents={incidents}
 						onFilterStatus={handleStatusFilterFromStats}
 						onFilterSeverity={handleSeverityFilterFromStats}
-						activeStatusFilter={statusFilter !== "all" ? statusFilter : undefined}
+						activeStatusFilter={
+							statusFilter !== "all" ? statusFilter : undefined
+						}
 						activeSeverityFilter={
 							severityFilter !== "all" ? severityFilter : undefined
 						}
@@ -253,9 +263,13 @@ function IncidentsPage() {
 				<TabsContent value="analytics" className="mt-4">
 					<IncidentAnalytics
 						incidents={incidents}
-						days={dateRange.from && dateRange.to
-							? Math.ceil((dateRange.to.getTime() - dateRange.from.getTime()) / (1000 * 60 * 60 * 24))
-							: 30
+						days={
+							dateRange.from && dateRange.to
+								? Math.ceil(
+										(dateRange.to.getTime() - dateRange.from.getTime()) /
+											(1000 * 60 * 60 * 24),
+									)
+								: 30
 						}
 						onSeverityFilter={(severity) => {
 							setSeverityFilter(severity as Severity);
@@ -263,7 +277,11 @@ function IncidentsPage() {
 						}}
 						onServiceFilter={(serviceId) => {
 							// Navigate to service detail page
-							navigate({ to: "/services/$id", params: { id: serviceId }, search: { tab: "overview" } });
+							navigate({
+								to: "/services/$id",
+								params: { id: serviceId },
+								search: { tab: "overview" },
+							});
 						}}
 					/>
 				</TabsContent>

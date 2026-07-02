@@ -7,20 +7,13 @@
  * Supports different config UI based on integration type (GitHub, Prometheus, etc.)
  */
 
-import { useState, useEffect, useMemo } from "react";
-import {
-	Check,
-	Globe,
-	Loader2,
-	Lock,
-	Search,
-	Star,
-} from "lucide-react";
 import type {
 	GitOrganization,
 	GitRepository,
 	ServiceIntegrationWithStatus,
 } from "@prismalens/contracts";
+import { Check, Globe, Loader2, Lock, Search, Star } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -347,7 +340,9 @@ function GitHubConfigEditor({
 				<Label>Repository Access</Label>
 				<RadioGroup
 					value={repoMode}
-					onValueChange={(v: string) => onRepoModeChange(v as "all" | "specific")}
+					onValueChange={(v: string) =>
+						onRepoModeChange(v as "all" | "specific")
+					}
 				>
 					<div className="flex items-center space-x-2">
 						<RadioGroupItem value="all" id="all" />

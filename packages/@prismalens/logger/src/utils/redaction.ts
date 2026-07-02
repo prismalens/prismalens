@@ -44,7 +44,9 @@ const REDACTED = "[REDACTED]";
  * Redact sensitive data from a wide event.
  * Creates a new object, does not mutate the original.
  */
-export function redactSensitiveData(event: Partial<WideEvent>): Partial<WideEvent> {
+export function redactSensitiveData(
+	event: Partial<WideEvent>,
+): Partial<WideEvent> {
 	const result = { ...event };
 
 	// Redact request headers
@@ -90,7 +92,9 @@ export function redactSensitiveData(event: Partial<WideEvent>): Partial<WideEven
 /**
  * Redact sensitive headers.
  */
-function redactHeaders(headers: Record<string, string>): Record<string, string> {
+function redactHeaders(
+	headers: Record<string, string>,
+): Record<string, string> {
 	const result: Record<string, string> = {};
 	for (const [key, value] of Object.entries(headers)) {
 		if (SENSITIVE_HEADERS.has(key.toLowerCase())) {

@@ -309,7 +309,8 @@ export function ImportFromVcsDialog({
 				});
 			}
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "Batch import failed";
+			const message =
+				err instanceof Error ? err.message : "Batch import failed";
 			for (const repo of repos) {
 				results.push({ name: repo.fullName, success: false, error: message });
 			}
@@ -351,8 +352,7 @@ export function ImportFromVcsDialog({
 					<DialogDescription>
 						{step === "connection" &&
 							"Select a VCS connection to import repositories from."}
-						{step === "browse" &&
-							"Browse and select repositories to import."}
+						{step === "browse" && "Browse and select repositories to import."}
 						{step === "review" && "Review and import selected repositories."}
 					</DialogDescription>
 				</DialogHeader>
@@ -578,23 +578,23 @@ export function ImportFromVcsDialog({
 
 						{/* Bulk tier selection */}
 						{createServices && (
-						<div className="flex items-center gap-3">
-							<span className="text-sm font-medium">Default tier:</span>
-							<Select
-								value={bulkTier}
-								onValueChange={(v) => setBulkTier(v as ServiceTier)}
-							>
-								<SelectTrigger className="w-48">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="tier_1">Tier 1 - Critical</SelectItem>
-									<SelectItem value="tier_2">Tier 2 - High</SelectItem>
-									<SelectItem value="tier_3">Tier 3 - Medium</SelectItem>
-									<SelectItem value="tier_4">Tier 4 - Low</SelectItem>
-								</SelectContent>
-							</Select>
-						</div>
+							<div className="flex items-center gap-3">
+								<span className="text-sm font-medium">Default tier:</span>
+								<Select
+									value={bulkTier}
+									onValueChange={(v) => setBulkTier(v as ServiceTier)}
+								>
+									<SelectTrigger className="w-48">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="tier_1">Tier 1 - Critical</SelectItem>
+										<SelectItem value="tier_2">Tier 2 - High</SelectItem>
+										<SelectItem value="tier_3">Tier 3 - Medium</SelectItem>
+										<SelectItem value="tier_4">Tier 4 - Low</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
 						)}
 
 						{/* Selected repos preview */}
@@ -616,8 +616,9 @@ export function ImportFromVcsDialog({
 						</div>
 
 						<p className="text-sm text-muted-foreground">
-							{selectedRepos.size} repositor{selectedRepos.size !== 1 ? "ies" : "y"}{" "}
-							will be imported{createServices ? " with services" : ""}.
+							{selectedRepos.size} repositor
+							{selectedRepos.size !== 1 ? "ies" : "y"} will be imported
+							{createServices ? " with services" : ""}.
 						</p>
 					</div>
 				)}

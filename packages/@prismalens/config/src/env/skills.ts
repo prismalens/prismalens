@@ -29,9 +29,7 @@ export const skillsSchema = z.object({
 	PRISMALENS_ADDITIONAL_SKILLS_DIR: z
 		.string()
 		.optional()
-		.describe(
-			"Additional skills directory path (merged with built-in skills)",
-		),
+		.describe("Additional skills directory path (merged with built-in skills)"),
 
 	// =============================================================================
 	// MCP Server Configuration

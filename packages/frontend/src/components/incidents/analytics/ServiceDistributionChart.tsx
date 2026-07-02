@@ -4,6 +4,8 @@
  * Horizontal bar chart showing incidents by service
  */
 
+import type { IncidentWithRelations } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { useMemo } from "react";
 import {
 	Bar,
@@ -14,10 +16,11 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
-import type { IncidentWithRelations } from "@prismalens/contracts";
-import { chartColors } from "@prismalens/design-tokens/colors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { groupIncidentsByService, type BarChartDataPoint } from "@/lib/analytics";
+import {
+	type BarChartDataPoint,
+	groupIncidentsByService,
+} from "@/lib/analytics";
 
 interface ServiceDistributionChartProps {
 	incidents: IncidentWithRelations[];
@@ -30,14 +33,11 @@ export function ServiceDistributionChart({
 	onServiceClick,
 	className,
 }: ServiceDistributionChartProps) {
-	const data = useMemo(
-		() => groupIncidentsByService(incidents),
-		[incidents]
-	);
+	const data = useMemo(() => groupIncidentsByService(incidents), [incidents]);
 
 	const total = useMemo(
 		() => data.reduce((sum, d) => sum + d.value, 0),
-		[data]
+		[data],
 	);
 
 	const handleClick = (data: BarChartDataPoint) => {

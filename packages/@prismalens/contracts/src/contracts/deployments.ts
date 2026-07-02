@@ -24,7 +24,12 @@ export const deploymentsContract = {
 			tags: ["deployments"],
 		})
 		.input(BatchCreateDeploymentsSchema)
-		.output(z.object({ created: z.number().int(), deployments: z.array(DeploymentSchema) })),
+		.output(
+			z.object({
+				created: z.number().int(),
+				deployments: z.array(DeploymentSchema),
+			}),
+		),
 
 	/**
 	 * List all deployments
@@ -37,12 +42,16 @@ export const deploymentsContract = {
 			summary: "List all deployments",
 			tags: ["deployments"],
 		})
-		.input(PaginationSchema.extend({
-			connectionId: z.string().uuid().optional(),
-			serviceId: z.string().uuid().optional(),
-			search: z.string().optional(),
-		}))
-		.output(z.object({ data: z.array(DeploymentSchema), total: z.number().int() })),
+		.input(
+			PaginationSchema.extend({
+				connectionId: z.string().uuid().optional(),
+				serviceId: z.string().uuid().optional(),
+				search: z.string().optional(),
+			}),
+		)
+		.output(
+			z.object({ data: z.array(DeploymentSchema), total: z.number().int() }),
+		),
 
 	/**
 	 * Count unlinked deployments (not linked to any service)

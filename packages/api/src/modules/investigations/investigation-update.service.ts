@@ -7,9 +7,9 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
+import type { Alert, Incident, Investigation } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { InvestigationTriggerService } from "./investigation-trigger.service.js";
-import type { Alert, Incident, Investigation } from "@prismalens/database";
 
 /**
  * Update strategy for new alerts during investigation
@@ -176,7 +176,7 @@ export class InvestigationUpdateService {
 	): Promise<void> {
 		this.logger.warn(
 			`Investigation ${investigation.id} received alert ${event.alertId} ` +
-			`(severity: ${event.alert.severity}) — notification not yet implemented (Phase 5C-2)`,
+				`(severity: ${event.alert.severity}) — notification not yet implemented (Phase 5C-2)`,
 		);
 		this.logger.debug(`Alert ${event.alertId} title: ${event.alert.title}`);
 		// TODO(Phase-5C-2): When checkpoint persistence is implemented,

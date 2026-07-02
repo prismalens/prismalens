@@ -4,8 +4,22 @@
  * Displays incidents in a table with actions
  */
 
-import { Link } from "@tanstack/react-router";
 import type { IncidentWithRelations } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
+import {
+	AlertTriangle,
+	CheckCircle,
+	Clock,
+	Eye,
+	FileText,
+	Search,
+} from "lucide-react";
+import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Table,
 	TableBody,
@@ -14,26 +28,12 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { EmptyState } from "@/components/ui/empty-state";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import {
-	Eye,
-	CheckCircle,
-	Search,
-	AlertTriangle,
-	Clock,
-	FileText,
-} from "lucide-react";
 
 export interface IncidentTableProps {
 	incidents: IncidentWithRelations[];
@@ -136,7 +136,11 @@ export function IncidentTable({
 									<SeverityBadge severity={incident.severity} />
 								</TableCell>
 								<TableCell>
-									<Badge className={priorityColors[incident.priority] || "bg-gray-500"}>
+									<Badge
+										className={
+											priorityColors[incident.priority] || "bg-gray-500"
+										}
+									>
 										{incident.priority.toUpperCase()}
 									</Badge>
 								</TableCell>
@@ -186,7 +190,10 @@ export function IncidentTable({
 										<Tooltip>
 											<TooltipTrigger asChild>
 												<Button variant="ghost" size="icon" asChild>
-													<Link to="/incidents/$id" params={{ id: incident.id }}>
+													<Link
+														to="/incidents/$id"
+														params={{ id: incident.id }}
+													>
 														<Eye className="h-4 w-4" />
 													</Link>
 												</Button>

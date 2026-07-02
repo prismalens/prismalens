@@ -122,10 +122,7 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 		if (!response.ok) {
 			// Read body only to detect revocation; never expose raw body in errors
 			const errorText = await response.text().catch(() => "");
-			if (
-				response.status === 400 &&
-				errorText.includes("invalid_grant")
-			) {
+			if (response.status === 400 && errorText.includes("invalid_grant")) {
 				throw new Error("Refresh token revoked");
 			}
 			throw new Error(`Token refresh failed (HTTP ${response.status})`);
@@ -281,8 +278,7 @@ export class TokenRefresher {
 
 		if (!needsRefresh) {
 			const token =
-				(credentials.accessToken as string) ??
-				(credentials.apiKey as string);
+				(credentials.accessToken as string) ?? (credentials.apiKey as string);
 			if (token) return token;
 			throw new Error(`Connection ${connectionId} has no access token`);
 		}

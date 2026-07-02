@@ -26,7 +26,11 @@ export const tierLabels: Record<string, string> = {
 	tier_4: "Low",
 };
 
-export function DeploymentStatusIndicator({ status }: { status: string | null }) {
+export function DeploymentStatusIndicator({
+	status,
+}: {
+	status: string | null;
+}) {
 	const colors: Record<string, string> = {
 		live: "text-green-500",
 		active: "text-green-500",
@@ -37,8 +41,12 @@ export function DeploymentStatusIndicator({ status }: { status: string | null })
 		failed: "text-red-500",
 		error: "text-red-500",
 	};
-	const colorClass = status ? (colors[status.toLowerCase()] ?? "text-muted-foreground") : "text-muted-foreground";
-	return createElement(Cloud, { className: `h-3 w-3 flex-shrink-0 ${colorClass}` });
+	const colorClass = status
+		? (colors[status.toLowerCase()] ?? "text-muted-foreground")
+		: "text-muted-foreground";
+	return createElement(Cloud, {
+		className: `h-3 w-3 flex-shrink-0 ${colorClass}`,
+	});
 }
 
 export function formatTimeAgo(dateStr: string): string {

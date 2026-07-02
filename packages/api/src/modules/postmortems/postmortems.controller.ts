@@ -13,14 +13,14 @@ export class PostmortemsController {
 	postmortems() {
 		return {
 			// GET /postmortems/incident/:incidentId - Get postmortem by incident ID
-			getByIncidentId: implement(
-				postmortemsContract.getByIncidentId,
-			).handler(async ({ input }) => {
-				const postmortem = await this.postmortemsService.getByIncidentId(
-					input.incidentId,
-				);
-				return postmortem ? this.serializePostmortem(postmortem) : null;
-			}),
+			getByIncidentId: implement(postmortemsContract.getByIncidentId).handler(
+				async ({ input }) => {
+					const postmortem = await this.postmortemsService.getByIncidentId(
+						input.incidentId,
+					);
+					return postmortem ? this.serializePostmortem(postmortem) : null;
+				},
+			),
 
 			// GET /postmortems/:id - Get postmortem by ID
 			get: implement(postmortemsContract.get).handler(async ({ input }) => {
@@ -76,7 +76,9 @@ export class PostmortemsController {
 		};
 	}
 
-	private serializePostmortem(postmortem: Record<string, any>): PostmortemWithRelations {
+	private serializePostmortem(
+		postmortem: Record<string, any>,
+	): PostmortemWithRelations {
 		const serialized: any = {
 			id: postmortem.id,
 			incidentId: postmortem.incidentId,

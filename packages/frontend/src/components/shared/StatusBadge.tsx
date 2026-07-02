@@ -10,7 +10,11 @@ export interface StatusBadgeProps {
 
 const statusConfig: Record<
 	string,
-	{ label: string; variant: "default" | "destructive" | "outline" | "secondary"; className: string }
+	{
+		label: string;
+		variant: "default" | "destructive" | "outline" | "secondary";
+		className: string;
+	}
 > = {
 	// Alert statuses
 	triggered: {
@@ -69,10 +73,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
 	};
 
 	return (
-		<Badge
-			variant={config.variant}
-			className={cn(config.className, className)}
-		>
+		<Badge variant={config.variant} className={cn(config.className, className)}>
 			{config.label}
 		</Badge>
 	);

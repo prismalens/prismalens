@@ -1,40 +1,48 @@
-import { IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type } from "class-transformer";
+import {
+	IsArray,
+	IsBoolean,
+	IsObject,
+	IsOptional,
+	IsString,
+	IsUUID,
+	ValidateNested,
+} from "class-validator";
 
 export class CreateRepositoryDto {
-  @IsUUID()
-  connectionId!: string;
+	@IsUUID()
+	connectionId!: string;
 
-  @IsString()
-  fullName!: string;
+	@IsString()
+	fullName!: string;
 
-  @IsString()
-  url!: string;
+	@IsString()
+	url!: string;
 
-  @IsOptional()
-  @IsString()
-  description?: string;
+	@IsOptional()
+	@IsString()
+	description?: string;
 
-  @IsOptional()
-  @IsString()
-  language?: string;
+	@IsOptional()
+	@IsString()
+	language?: string;
 
-  @IsOptional()
-  @IsString()
-  defaultBranch?: string;
+	@IsOptional()
+	@IsString()
+	defaultBranch?: string;
 
-  @IsOptional()
-  @IsBoolean()
-  isPrivate?: boolean;
+	@IsOptional()
+	@IsBoolean()
+	isPrivate?: boolean;
 
-  @IsOptional()
-  @IsObject()
-  metadata?: Record<string, unknown>;
+	@IsOptional()
+	@IsObject()
+	metadata?: Record<string, unknown>;
 }
 
 export class BatchCreateRepositoriesDto {
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CreateRepositoryDto)
-  repositories!: CreateRepositoryDto[];
+	@IsArray()
+	@ValidateNested({ each: true })
+	@Type(() => CreateRepositoryDto)
+	repositories!: CreateRepositoryDto[];
 }

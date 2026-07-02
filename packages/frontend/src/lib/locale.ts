@@ -9,10 +9,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import {
 	baseLocale,
-	locales,
-	cookieName,
 	cookieMaxAge,
+	cookieName,
 	type Locale,
+	locales,
 } from "@/lib/paraglide/runtime.js";
 
 export type { Locale };

@@ -10,10 +10,7 @@ import type {
 	GitOrganization,
 	GitRepository,
 } from "@prismalens/config/integrations";
-import type {
-	GitProvider,
-	GitProviderContext,
-} from "../git.interface.js";
+import type { GitProvider, GitProviderContext } from "../git.interface.js";
 import type { AuthenticatedRequestFn } from "../types.js";
 
 // GitHub API response types (snake_case)
@@ -57,9 +54,7 @@ interface GitHubUser {
 async function json<T>(response: Response): Promise<T> {
 	if (!response.ok) {
 		const errorText = await response.text();
-		throw new Error(
-			`GitHub API error: ${response.status} - ${errorText}`,
-		);
+		throw new Error(`GitHub API error: ${response.status} - ${errorText}`);
 	}
 	return response.json() as Promise<T>;
 }
@@ -108,7 +103,10 @@ async function paginateInstallationRepos(
 
 	while (path) {
 		const response = await request("GET", path);
-		const data = await json<{ total_count: number; repositories: GitHubRepo[] }>(response);
+		const data = await json<{
+			total_count: number;
+			repositories: GitHubRepo[];
+		}>(response);
 		results.push(...data.repositories);
 		path = getNextPagePath(response);
 	}
@@ -226,14 +224,8 @@ export class GitHubProvider implements GitProvider {
 		ref?: string,
 	): Promise<GitFileContent> {
 		// repo is "owner/name" — encode each segment; path segments are also encoded
-		const encodedRepo = repo
-			.split("/")
-			.map(encodeURIComponent)
-			.join("/");
-		const encodedPath = path
-			.split("/")
-			.map(encodeURIComponent)
-			.join("/");
+		const encodedRepo = repo.split("/").map(encodeURIComponent).join("/");
+		const encodedPath = path.split("/").map(encodeURIComponent).join("/");
 		const url = ref
 			? `/repos/${encodedRepo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`
 			: `/repos/${encodedRepo}/contents/${encodedPath}`;
@@ -243,9 +235,7 @@ export class GitHubProvider implements GitProvider {
 
 		let decodedContent = content.content;
 		if (content.encoding === "base64") {
-			decodedContent = Buffer.from(content.content, "base64").toString(
-				"utf-8",
-			);
+			decodedContent = Buffer.from(content.content, "base64").toString("utf-8");
 		}
 
 		return {

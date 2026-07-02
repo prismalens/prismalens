@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { TableCell, TableRow } from "./table";
 import { cn } from "../../lib/utils";
+import { TableCell, TableRow } from "./table";
 
 interface EmptyStateProps {
 	icon?: LucideIcon;

@@ -1,9 +1,9 @@
-import { FolderGit2, GitBranch, Link2, Rocket } from "lucide-react";
 import type {
 	ServiceIntegrationWithStatus,
 	ServiceWithRelations,
 	TopologyEdge,
 } from "@prismalens/contracts";
+import { FolderGit2, GitBranch, Link2, Rocket } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,11 @@ interface ServiceOverviewTabProps {
 	integrations: ServiceIntegrationWithStatus[];
 }
 
-export function ServiceOverviewTab({ service, topology, integrations }: ServiceOverviewTabProps) {
+export function ServiceOverviewTab({
+	service,
+	topology,
+	integrations,
+}: ServiceOverviewTabProps) {
 	const repos = service.repositories ?? [];
 	const deploys = service.deployments ?? [];
 
@@ -87,18 +91,20 @@ export function ServiceOverviewTab({ service, topology, integrations }: ServiceO
 						</div>
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">Active Incidents</span>
-							<span className="font-medium">
-								{service.incidentCount ?? 0}
-							</span>
+							<span className="font-medium">{service.incidentCount ?? 0}</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Upstream Dependencies</span>
+							<span className="text-muted-foreground">
+								Upstream Dependencies
+							</span>
 							<span className="font-medium">
 								{topology?.upstream?.length ?? 0}
 							</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Downstream Dependents</span>
+							<span className="text-muted-foreground">
+								Downstream Dependents
+							</span>
 							<span className="font-medium">
 								{topology?.downstream?.length ?? 0}
 							</span>
@@ -136,13 +142,17 @@ export function ServiceOverviewTab({ service, topology, integrations }: ServiceO
 									<GitBranch className="h-3 w-3 text-muted-foreground flex-shrink-0" />
 									<span className="truncate">{sr.repository.fullName}</span>
 									{sr.isPrimary && (
-										<Badge variant="default" className="text-xs">PRIMARY</Badge>
+										<Badge variant="default" className="text-xs">
+											PRIMARY
+										</Badge>
 									)}
 								</div>
 							))}
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">No linked repositories</p>
+						<p className="text-sm text-muted-foreground">
+							No linked repositories
+						</p>
 					)}
 				</CardContent>
 			</Card>
@@ -171,7 +181,9 @@ export function ServiceOverviewTab({ service, topology, integrations }: ServiceO
 							))}
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">No linked deployments</p>
+						<p className="text-sm text-muted-foreground">
+							No linked deployments
+						</p>
 					)}
 				</CardContent>
 			</Card>
@@ -188,10 +200,15 @@ export function ServiceOverviewTab({ service, topology, integrations }: ServiceO
 					<CardContent>
 						<div className="space-y-1 text-sm">
 							{integrations.map((integ) => (
-								<div key={integ.connectionId} className="flex items-center gap-2">
+								<div
+									key={integ.connectionId}
+									className="flex items-center gap-2"
+								>
 									<span className="truncate">{integ.templateId}</span>
 									<Badge
-										variant={integ.status === "ACTIVE" ? "default" : "secondary"}
+										variant={
+											integ.status === "ACTIVE" ? "default" : "secondary"
+										}
 										className="text-xs capitalize"
 									>
 										{integ.status}

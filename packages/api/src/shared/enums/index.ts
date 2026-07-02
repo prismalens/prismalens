@@ -7,29 +7,29 @@
  * @module shared/enums
  */
 import {
-  ServiceTypeSchema,
-  ServiceTierSchema,
-  DependencyTypeSchema,
-  DependencyCriticalitySchema,
-  SeveritySchema,
-  AlertStatusSchema,
-  IncidentStatusSchema,
-  PrioritySchema,
-  WorkflowStatusSchema,
-  RootCauseCategorySchema,
-  AgentTypeSchema,
-  ExecutionStatusSchema,
-  ToolExecutionStatusSchema,
-  ToolCategorySchema,
-  RecommendationPrioritySchema,
-  RecommendationCategorySchema,
-  UrgencySchema,
-  EffortEstimateSchema,
-  RecommendationStatusSchema,
-  TimelineEntryTypeSchema,
-  TimelineSourceSchema,
-  CorrelationActionSchema,
-} from '@prismalens/contracts/schemas';
+	AgentTypeSchema,
+	AlertStatusSchema,
+	CorrelationActionSchema,
+	DependencyCriticalitySchema,
+	DependencyTypeSchema,
+	EffortEstimateSchema,
+	ExecutionStatusSchema,
+	IncidentStatusSchema,
+	PrioritySchema,
+	RecommendationCategorySchema,
+	RecommendationPrioritySchema,
+	RecommendationStatusSchema,
+	RootCauseCategorySchema,
+	ServiceTierSchema,
+	ServiceTypeSchema,
+	SeveritySchema,
+	TimelineEntryTypeSchema,
+	TimelineSourceSchema,
+	ToolCategorySchema,
+	ToolExecutionStatusSchema,
+	UrgencySchema,
+	WorkflowStatusSchema,
+} from "@prismalens/contracts/schemas";
 
 // =============================================================================
 // RUNTIME ENUM OBJECTS — compatible with @IsEnum() decorator
@@ -76,36 +76,36 @@ export const CorrelationAction = CorrelationActionSchema.enum;
 export type ServiceType = (typeof ServiceType)[keyof typeof ServiceType];
 export type ServiceTier = (typeof ServiceTier)[keyof typeof ServiceTier];
 export type DependencyType =
-  (typeof DependencyType)[keyof typeof DependencyType];
+	(typeof DependencyType)[keyof typeof DependencyType];
 export type DependencyCriticality =
-  (typeof DependencyCriticality)[keyof typeof DependencyCriticality];
+	(typeof DependencyCriticality)[keyof typeof DependencyCriticality];
 export type Severity = (typeof Severity)[keyof typeof Severity];
 export type AlertStatus = (typeof AlertStatus)[keyof typeof AlertStatus];
 export type IncidentStatus =
-  (typeof IncidentStatus)[keyof typeof IncidentStatus];
+	(typeof IncidentStatus)[keyof typeof IncidentStatus];
 export type Priority = (typeof Priority)[keyof typeof Priority];
 export type WorkflowStatus =
-  (typeof WorkflowStatus)[keyof typeof WorkflowStatus];
+	(typeof WorkflowStatus)[keyof typeof WorkflowStatus];
 export type RootCauseCategory =
-  (typeof RootCauseCategory)[keyof typeof RootCauseCategory];
+	(typeof RootCauseCategory)[keyof typeof RootCauseCategory];
 export type AgentType = (typeof AgentType)[keyof typeof AgentType];
 export type ExecutionStatus =
-  (typeof ExecutionStatus)[keyof typeof ExecutionStatus];
+	(typeof ExecutionStatus)[keyof typeof ExecutionStatus];
 export type ToolExecutionStatus =
-  (typeof ToolExecutionStatus)[keyof typeof ToolExecutionStatus];
+	(typeof ToolExecutionStatus)[keyof typeof ToolExecutionStatus];
 export type ToolCategory = (typeof ToolCategory)[keyof typeof ToolCategory];
 export type RecommendationPriority =
-  (typeof RecommendationPriority)[keyof typeof RecommendationPriority];
+	(typeof RecommendationPriority)[keyof typeof RecommendationPriority];
 export type RecommendationCategory =
-  (typeof RecommendationCategory)[keyof typeof RecommendationCategory];
+	(typeof RecommendationCategory)[keyof typeof RecommendationCategory];
 export type Urgency = (typeof Urgency)[keyof typeof Urgency];
 export type EffortEstimate =
-  (typeof EffortEstimate)[keyof typeof EffortEstimate];
+	(typeof EffortEstimate)[keyof typeof EffortEstimate];
 export type RecommendationStatus =
-  (typeof RecommendationStatus)[keyof typeof RecommendationStatus];
+	(typeof RecommendationStatus)[keyof typeof RecommendationStatus];
 export type TimelineEntryType =
-  (typeof TimelineEntryType)[keyof typeof TimelineEntryType];
+	(typeof TimelineEntryType)[keyof typeof TimelineEntryType];
 export type TimelineSource =
-  (typeof TimelineSource)[keyof typeof TimelineSource];
+	(typeof TimelineSource)[keyof typeof TimelineSource];
 export type CorrelationAction =
-  (typeof CorrelationAction)[keyof typeof CorrelationAction];
+	(typeof CorrelationAction)[keyof typeof CorrelationAction];

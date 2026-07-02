@@ -100,13 +100,17 @@ export class AlertMappingController {
 	private serializeRule(rule: Record<string, any>): AlertMappingRule {
 		return {
 			...rule,
-			matchCriteria: rule.conditions ? JSON.parse(rule.conditions) : (rule.matchCriteria ?? {}),
+			matchCriteria: rule.conditions
+				? JSON.parse(rule.conditions)
+				: (rule.matchCriteria ?? {}),
 			createdAt: rule.createdAt?.toISOString(),
 			updatedAt: rule.updatedAt?.toISOString(),
 		} as AlertMappingRule;
 	}
 
-	private serializeRuleWithService(rule: Record<string, any>): AlertMappingRuleWithService {
+	private serializeRuleWithService(
+		rule: Record<string, any>,
+	): AlertMappingRuleWithService {
 		const serialized = this.serializeRule(rule) as any;
 
 		if (rule.service) {

@@ -1,5 +1,6 @@
 import type { AlertStatus, Severity } from "@prismalens/contracts";
-
+import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
@@ -7,8 +8,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
 
 export interface AlertFiltersProps {
 	status: AlertStatus | "all";
@@ -47,7 +46,10 @@ export function AlertFilters({
 
 	return (
 		<div className="flex items-center gap-4">
-			<Select value={status} onValueChange={(v) => onStatusChange(v as AlertStatus | "all")}>
+			<Select
+				value={status}
+				onValueChange={(v) => onStatusChange(v as AlertStatus | "all")}
+			>
 				<SelectTrigger className="w-[180px]">
 					<SelectValue placeholder="Filter by status" />
 				</SelectTrigger>
@@ -60,7 +62,10 @@ export function AlertFilters({
 				</SelectContent>
 			</Select>
 
-			<Select value={severity} onValueChange={(v) => onSeverityChange(v as Severity | "all")}>
+			<Select
+				value={severity}
+				onValueChange={(v) => onSeverityChange(v as Severity | "all")}
+			>
 				<SelectTrigger className="w-[180px]">
 					<SelectValue placeholder="Filter by severity" />
 				</SelectTrigger>

@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { Loader2, Search } from "lucide-react";
-
 import type { ServiceType } from "@prismalens/contracts";
+import { Loader2, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,9 +20,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useAddServiceDependency, useServices } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-
-import { useServices, useAddServiceDependency } from "@/lib/api/hooks";
 
 interface AddDependencyDialogProps {
 	open: boolean;
@@ -175,10 +173,7 @@ export function AddDependencyDialog({
 					<div className="grid grid-cols-2 gap-3">
 						<div className="space-y-1.5">
 							<label className="text-sm font-medium">Type</label>
-							<Select
-								value={dependencyType}
-								onValueChange={setDependencyType}
-							>
+							<Select value={dependencyType} onValueChange={setDependencyType}>
 								<SelectTrigger>
 									<SelectValue />
 								</SelectTrigger>
@@ -205,9 +200,7 @@ export function AddDependencyDialog({
 						</div>
 					</div>
 
-					{error && (
-						<p className="text-sm text-destructive">{error}</p>
-					)}
+					{error && <p className="text-sm text-destructive">{error}</p>}
 				</div>
 
 				<DialogFooter>

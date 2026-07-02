@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	CheckCircle,
@@ -13,15 +13,10 @@ import {
 	Trash2,
 	Zap,
 } from "lucide-react";
-import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
 	useConnections,
@@ -31,8 +26,8 @@ import {
 	useUpdateIntegration,
 } from "@/lib/api/hooks";
 import { AddIntegrationDialog } from "./AddIntegrationDialog";
-import { EditIntegrationDialog } from "./EditIntegrationDialog";
 import { DeleteIntegrationDialog } from "./DeleteIntegrationDialog";
+import { EditIntegrationDialog } from "./EditIntegrationDialog";
 import { getTemplateIcon } from "./integration-utils";
 
 export function IntegrationsTab() {
@@ -100,7 +95,10 @@ export function IntegrationsTab() {
 		integrationId: string,
 		template: AuthTemplateResponse,
 	) => {
-		if (template.postCreationAction === "navigate" && template.postCreationNavigateTo) {
+		if (
+			template.postCreationAction === "navigate" &&
+			template.postCreationNavigateTo
+		) {
 			await navigate({
 				to: template.postCreationNavigateTo,
 				search: {
@@ -120,8 +118,7 @@ export function IntegrationsTab() {
 						headers: { "Content-Type": "application/json" },
 					},
 				);
-				if (!res.ok)
-					throw new Error(`OAuth authorize failed: ${res.status}`);
+				if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
 				const { redirectUrl } = await res.json();
 				window.location.href = redirectUrl;
 			} catch {
@@ -213,7 +210,6 @@ export function IntegrationsTab() {
 
 	return (
 		<div className="space-y-6">
-
 			{/* Webhook URLs */}
 			<Card>
 				<CardHeader>
@@ -222,7 +218,8 @@ export function IntegrationsTab() {
 						<CardTitle>Webhook URLs</CardTitle>
 					</div>
 					<p className="text-sm text-muted-foreground">
-						Copy these URLs into your monitoring tools to send alerts to PrismaLens.
+						Copy these URLs into your monitoring tools to send alerts to
+						PrismaLens.
 					</p>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -230,9 +227,7 @@ export function IntegrationsTab() {
 						<div className="flex items-center gap-3">
 							<Zap className="h-5 w-5 text-muted-foreground" />
 							<div>
-								<p className="font-medium text-sm">
-									Prometheus AlertManager
-								</p>
+								<p className="font-medium text-sm">Prometheus AlertManager</p>
 								<code className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/prometheus
 								</code>
@@ -242,10 +237,7 @@ export function IntegrationsTab() {
 							variant="ghost"
 							size="sm"
 							onClick={() =>
-								handleCopyUrl(
-									`${webhookBaseUrl}/prometheus`,
-									"prometheus",
-								)
+								handleCopyUrl(`${webhookBaseUrl}/prometheus`, "prometheus")
 							}
 						>
 							{copiedUrl === "prometheus" ? (
@@ -260,9 +252,7 @@ export function IntegrationsTab() {
 						<div className="flex items-center gap-3">
 							<Link2 className="h-5 w-5 text-muted-foreground" />
 							<div>
-								<p className="font-medium text-sm">
-									Generic Webhook
-								</p>
+								<p className="font-medium text-sm">Generic Webhook</p>
 								<code className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/generic
 								</code>
@@ -272,10 +262,7 @@ export function IntegrationsTab() {
 							variant="ghost"
 							size="sm"
 							onClick={() =>
-								handleCopyUrl(
-									`${webhookBaseUrl}/generic`,
-									"generic",
-								)
+								handleCopyUrl(`${webhookBaseUrl}/generic`, "generic")
 							}
 						>
 							{copiedUrl === "generic" ? (
@@ -302,8 +289,8 @@ export function IntegrationsTab() {
 						</Button>
 					</div>
 					<p className="text-sm text-muted-foreground">
-						Register external service providers. Connections are managed
-						in the Connections tab.
+						Register external service providers. Connections are managed in the
+						Connections tab.
 					</p>
 				</CardHeader>
 				<CardContent>
@@ -332,13 +319,9 @@ export function IntegrationsTab() {
 								<tbody>
 									{integrations.map((integration) => {
 										const template = templates?.find(
-											(t) =>
-												t.id === integration.templateId,
+											(t) => t.id === integration.templateId,
 										);
-										const connCount =
-											connectionCounts.get(
-												integration.id,
-											) ?? 0;
+										const connCount = connectionCounts.get(integration.id) ?? 0;
 
 										return (
 											<tr
@@ -348,13 +331,10 @@ export function IntegrationsTab() {
 												<td className="px-4 py-3">
 													<div className="flex items-center gap-2">
 														<span className="text-muted-foreground">
-															{getTemplateIcon(
-																integration.templateId,
-															)}
+															{getTemplateIcon(integration.templateId)}
 														</span>
 														<span className="font-medium text-sm">
-															{template?.name ??
-																integration.templateId}
+															{template?.name ?? integration.templateId}
 														</span>
 													</div>
 												</td>
@@ -375,9 +355,7 @@ export function IntegrationsTab() {
 															variant="ghost"
 															size="sm"
 															onClick={() =>
-																handleEditIntegration(
-																	integration.id,
-																)
+																handleEditIntegration(integration.id)
 															}
 														>
 															<Pencil className="h-4 w-4" />
@@ -386,13 +364,9 @@ export function IntegrationsTab() {
 															variant="ghost"
 															size="sm"
 															onClick={() => {
-																setDeleteTargetId(
-																	integration.id,
-																);
+																setDeleteTargetId(integration.id);
 																setDeleteError(null);
-																setShowDeleteDialog(
-																	true,
-																);
+																setShowDeleteDialog(true);
 															}}
 														>
 															<Trash2 className="h-4 w-4 text-destructive" />

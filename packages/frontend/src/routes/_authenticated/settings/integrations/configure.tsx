@@ -8,7 +8,6 @@
  * Also used for GitHub App installation selection.
  */
 
-import { useState } from "react";
 import {
 	createFileRoute,
 	useNavigate,
@@ -21,19 +20,20 @@ import {
 	CheckCircle,
 	Loader2,
 } from "lucide-react";
-import { getIntegrationIcon } from "@/lib/integration-icons";
+import { useState } from "react";
 import { GitRepoSelector } from "@/components/settings/GitRepoSelector";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-	useConnection,
 	useConnectGitHubInstallation,
+	useConnection,
 	useGitHubInstallations,
 	useGitOrganizations,
 	useGitRepositories,
 	useUpdateConnectionConfig,
 } from "@/lib/api/hooks";
+import { getIntegrationIcon } from "@/lib/integration-icons";
 
 // Search params type
 interface ConfigureSearchParams {
@@ -46,15 +46,10 @@ interface ConfigureSearchParams {
 export const Route = createFileRoute(
 	"/_authenticated/settings/integrations/configure",
 )({
-	validateSearch: (
-		search: Record<string, unknown>,
-	): ConfigureSearchParams => ({
+	validateSearch: (search: Record<string, unknown>): ConfigureSearchParams => ({
 		connectionId:
-			typeof search.connectionId === "string"
-				? search.connectionId
-				: undefined,
-		provider:
-			typeof search.provider === "string" ? search.provider : undefined,
+			typeof search.connectionId === "string" ? search.connectionId : undefined,
+		provider: typeof search.provider === "string" ? search.provider : undefined,
 		integrationId:
 			typeof search.integrationId === "string"
 				? search.integrationId
@@ -88,10 +83,7 @@ function ConfigureIntegrationPage() {
 
 	// Standard OAuth configure flow (existing)
 	return (
-		<StandardConfigurePage
-			connectionId={connectionId}
-			provider={provider}
-		/>
+		<StandardConfigurePage connectionId={connectionId} provider={provider} />
 	);
 }
 
@@ -149,8 +141,8 @@ function GitHubAppInstallationWizard({
 								GitHub App Connected
 							</h2>
 							<p className="text-muted-foreground mb-6">
-								Installation token generated. The token will
-								auto-refresh every hour.
+								Installation token generated. The token will auto-refresh every
+								hour.
 							</p>
 							<Button onClick={onDone}>Done</Button>
 						</div>
@@ -172,9 +164,7 @@ function GitHubAppInstallationWizard({
 							{getIntegrationIcon("github", "h-6 w-6")}
 						</div>
 						<div>
-							<h1 className="text-xl font-semibold">
-								Select Installation
-							</h1>
+							<h1 className="text-xl font-semibold">Select Installation</h1>
 							<p className="text-sm text-muted-foreground">
 								Choose which organization or account to connect
 							</p>
@@ -184,9 +174,7 @@ function GitHubAppInstallationWizard({
 
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-base">
-							Available Installations
-						</CardTitle>
+						<CardTitle className="text-base">Available Installations</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{isLoading && (
@@ -203,11 +191,7 @@ function GitHubAppInstallationWizard({
 										? error.message
 										: "Failed to load installations"}
 								</p>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => refetch()}
-								>
+								<Button variant="outline" size="sm" onClick={() => refetch()}>
 									Retry
 								</Button>
 							</div>
@@ -220,8 +204,7 @@ function GitHubAppInstallationWizard({
 									No installations found
 								</p>
 								<p className="text-sm text-muted-foreground mb-4">
-									Install the GitHub App on an organization or
-									account first.
+									Install the GitHub App on an organization or account first.
 								</p>
 								<Button variant="outline" size="sm" onClick={() => refetch()}>
 									Refresh
@@ -246,9 +229,7 @@ function GitHubAppInstallationWizard({
 										<div className="flex items-center gap-3">
 											<Building2 className="h-5 w-5 text-muted-foreground" />
 											<div>
-												<p className="font-medium">
-													{inst.account.login}
-												</p>
+												<p className="font-medium">{inst.account.login}</p>
 												<div className="flex items-center gap-2 mt-1">
 													<Badge variant="outline" className="text-xs">
 														{inst.account.type}
@@ -263,12 +244,7 @@ function GitHubAppInstallationWizard({
 										</div>
 										<Button
 											size="sm"
-											onClick={() =>
-												handleConnect(
-													inst.id,
-													inst.account.login,
-												)
-											}
+											onClick={() => handleConnect(inst.id, inst.account.login)}
 											disabled={connectingId !== null}
 										>
 											{connectingId === inst.id ? (
@@ -299,9 +275,7 @@ function StandardConfigurePage({
 	provider?: string;
 }) {
 	const navigate = useNavigate();
-	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(
-		undefined,
-	);
+	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(undefined);
 
 	const {
 		data: connection,
@@ -382,8 +356,8 @@ function StandardConfigurePage({
 								Missing Connection ID
 							</h2>
 							<p className="text-muted-foreground mb-4">
-								No connection ID was provided. Please return to settings
-								and try again.
+								No connection ID was provided. Please return to settings and try
+								again.
 							</p>
 							<Button onClick={handleCancel}>
 								<ArrowLeft className="h-4 w-4 mr-2" />
@@ -441,9 +415,7 @@ function StandardConfigurePage({
 						<ArrowLeft className="h-5 w-5" />
 					</Button>
 					<div className="flex items-center gap-3">
-						<div className="flex-shrink-0">
-							{getProviderIcon()}
-						</div>
+						<div className="flex-shrink-0">{getProviderIcon()}</div>
 						<div>
 							<h1 className="text-xl font-semibold">
 								Configure {getProviderDisplayName()}

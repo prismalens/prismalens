@@ -10,9 +10,8 @@
  */
 
 import { betterAuth } from "better-auth";
-import { organization } from "better-auth/plugins";
-import { admin } from "better-auth/plugins";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { admin, organization } from "better-auth/plugins";
 
 /**
  * Create the Better Auth instance.

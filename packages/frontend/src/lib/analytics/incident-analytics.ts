@@ -8,12 +8,12 @@
 import type { Incident, IncidentWithRelations } from "@prismalens/contracts";
 import { chartColors } from "@prismalens/design-tokens/colors";
 import {
+	differenceInDays,
 	format,
+	parseISO,
 	startOfDay,
 	startOfWeek,
-	differenceInDays,
 	subDays,
-	parseISO,
 } from "date-fns";
 
 // =============================================================================
@@ -79,14 +79,14 @@ export const SEVERITY_COLORS: Record<string, string> = {
  */
 export function calculateMTTR(incidents: Incident[]): number | null {
 	const resolvedWithTime = incidents.filter(
-		(i) => i.status === "resolved" && i.timeToResolve != null
+		(i) => i.status === "resolved" && i.timeToResolve != null,
 	);
 
 	if (resolvedWithTime.length === 0) return null;
 
 	const totalMs = resolvedWithTime.reduce(
 		(sum, i) => sum + (i.timeToResolve ?? 0),
-		0
+		0,
 	);
 	return Math.round(totalMs / resolvedWithTime.length / 60000); // Convert ms to minutes
 }
@@ -97,14 +97,14 @@ export function calculateMTTR(incidents: Incident[]): number | null {
  */
 export function calculateMTTA(incidents: Incident[]): number | null {
 	const acknowledgedWithTime = incidents.filter(
-		(i) => i.timeToAcknowledge != null
+		(i) => i.timeToAcknowledge != null,
 	);
 
 	if (acknowledgedWithTime.length === 0) return null;
 
 	const totalMs = acknowledgedWithTime.reduce(
 		(sum, i) => sum + (i.timeToAcknowledge ?? 0),
-		0
+		0,
 	);
 	return Math.round(totalMs / acknowledgedWithTime.length / 60000);
 }
@@ -113,12 +113,12 @@ export function calculateMTTA(incidents: Incident[]): number | null {
  * Calculate percentage of incidents with AI investigations
  */
 export function calculateAIAssistedPercent(
-	incidents: IncidentWithRelations[]
+	incidents: IncidentWithRelations[],
 ): number {
 	if (incidents.length === 0) return 0;
 
 	const withInvestigations = incidents.filter(
-		(i) => i.investigations && i.investigations.length > 0
+		(i) => i.investigations && i.investigations.length > 0,
 	);
 
 	return Math.round((withInvestigations.length / incidents.length) * 100);
@@ -129,7 +129,7 @@ export function calculateAIAssistedPercent(
  */
 export function calculateTrendPercentage(
 	current: number,
-	previous: number
+	previous: number,
 ): number {
 	if (previous === 0) return current > 0 ? 100 : 0;
 	return Math.round(((current - previous) / previous) * 100);
@@ -145,7 +145,7 @@ export function calculateTrendPercentage(
 export function groupIncidentsByDate(
 	incidents: Incident[],
 	granularity: "day" | "week" = "day",
-	days: number = 30
+	days: number = 30,
 ): TimeSeriesDataPoint[] {
 	const now = new Date();
 	const startDate = subDays(now, days);
@@ -193,7 +193,7 @@ export function groupIncidentsByDate(
 export function groupMTTRByDate(
 	incidents: Incident[],
 	granularity: "day" | "week" = "day",
-	days: number = 30
+	days: number = 30,
 ): MTTRDataPoint[] {
 	const now = new Date();
 	const startDate = subDays(now, days);
@@ -251,7 +251,7 @@ export function groupMTTRByDate(
  * Group incidents by severity for pie chart
  */
 export function groupIncidentsBySeverity(
-	incidents: Incident[]
+	incidents: Incident[],
 ): PieChartDataPoint[] {
 	const severityCount = new Map<string, number>();
 
@@ -276,7 +276,7 @@ export function groupIncidentsBySeverity(
  * Group incidents by service for bar chart
  */
 export function groupIncidentsByService(
-	incidents: IncidentWithRelations[]
+	incidents: IncidentWithRelations[],
 ): BarChartDataPoint[] {
 	const serviceCount = new Map<string, { count: number; id: string | null }>();
 
@@ -311,7 +311,7 @@ export function groupIncidentsByService(
  */
 export function calculateAnalyticsSummary(
 	currentIncidents: IncidentWithRelations[],
-	previousIncidents: IncidentWithRelations[]
+	previousIncidents: IncidentWithRelations[],
 ): AnalyticsSummary {
 	const currentTotal = currentIncidents.length;
 	const previousTotal = previousIncidents.length;
@@ -339,7 +339,10 @@ export function calculateAnalyticsSummary(
 				? calculateTrendPercentage(currentMTTA, previousMTTA)
 				: null,
 		aiAssistedPercent: currentAIPercent,
-		aiAssistedTrend: calculateTrendPercentage(currentAIPercent, previousAIPercent),
+		aiAssistedTrend: calculateTrendPercentage(
+			currentAIPercent,
+			previousAIPercent,
+		),
 	};
 }
 
@@ -377,7 +380,7 @@ export function formatTrend(trend: number | null): string {
  */
 export function getTrendColor(
 	trend: number | null,
-	lowerIsBetter: boolean = false
+	lowerIsBetter: boolean = false,
 ): string {
 	if (trend == null) return "text-muted-foreground";
 	if (trend === 0) return "text-muted-foreground";

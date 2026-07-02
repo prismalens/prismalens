@@ -8,9 +8,6 @@ export {
 	// Types
 	type AnalyticsSummary,
 	type BarChartDataPoint,
-	type MTTRDataPoint,
-	type PieChartDataPoint,
-	type TimeSeriesDataPoint,
 	// Metrics
 	calculateAIAssistedPercent,
 	calculateAnalyticsSummary,
@@ -23,9 +20,12 @@ export {
 	getTrendColor,
 	// Grouping
 	groupIncidentsByDate,
-	groupIncidentsBySeverity,
 	groupIncidentsByService,
+	groupIncidentsBySeverity,
 	groupMTTRByDate,
+	type MTTRDataPoint,
+	type PieChartDataPoint,
 	// Constants
 	SEVERITY_COLORS,
+	type TimeSeriesDataPoint,
 } from "./incident-analytics";

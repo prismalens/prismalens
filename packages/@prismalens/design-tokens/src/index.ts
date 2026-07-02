@@ -1,11 +1,9 @@
+export { durations, easings } from "./animations.js";
 export {
 	brandColors,
-	zinc,
+	chartColors,
 	indigo,
 	semanticColors,
-	chartColors,
+	zinc,
 } from "./colors.js";
-
 export { fontFamilies, fontSizes } from "./fonts.js";
-
-export { durations, easings } from "./animations.js";

@@ -18,6 +18,17 @@ export {
 	useResolveAlert,
 	useUpdateAlert,
 } from "./use-alerts-orpc";
+// Deployment hooks
+export {
+	deploymentKeys,
+	useBatchCreateDeployments,
+	useDeleteDeployment,
+	useDeployment,
+	useDeployments,
+	useLinkDeployment,
+	useUnlinkDeployment,
+	useUnlinkedDeploymentCount,
+} from "./use-deployments-orpc";
 // Incident hooks
 export {
 	incidentKeys,
@@ -31,6 +42,38 @@ export {
 	useResolveIncident,
 	useUpdateIncident,
 } from "./use-incidents-orpc";
+// Integration hooks
+export {
+	integrationsKeys,
+	serviceIntegrationsKeys,
+	useConnectGitHubInstallation,
+	useConnection,
+	useConnectionDeletionImpact,
+	useConnections,
+	useCreateConnection,
+	useCreateIntegration,
+	useCreateServiceIntegration,
+	useDeleteConnection,
+	useDeleteIntegration,
+	useDeleteServiceIntegration,
+	// GitHub App hooks
+	useGitHubInstallations,
+	// Git / Service integration hooks
+	useGitOrganizations,
+	useGitRepositories,
+	useIntegrationDeletionImpact,
+	useIntegrations,
+	// Service integration hooks
+	useServiceIntegrations,
+	useTemplate,
+	// New names (three-layer model)
+	useTemplates,
+	useTestConnection,
+	useUpdateConnection,
+	useUpdateConnectionConfig,
+	useUpdateIntegration,
+	useUpdateServiceIntegration,
+} from "./use-integrations-orpc";
 // Investigation hooks
 export {
 	investigationKeys,
@@ -41,7 +84,18 @@ export {
 	useInvestigations,
 	useInvestigationsByIncident,
 } from "./use-investigations-orpc";
-
+// Ollama hooks
+export { useOllamaModels } from "./use-ollama-models";
+// Postmortem hooks
+export {
+	postmortemKeys,
+	useCreatePostmortem,
+	useDeletePostmortem,
+	usePostmortem,
+	usePostmortemByIncident,
+	usePublishPostmortem,
+	useUpdatePostmortem,
+} from "./use-postmortems-orpc";
 // Recommendation hooks
 export {
 	recommendationKeys,
@@ -53,84 +107,6 @@ export {
 	useRecommendationsByInvestigation,
 	useUpdateRecommendation,
 } from "./use-recommendations-orpc";
-// Service hooks
-export {
-	serviceKeys,
-	useAddServiceDependency,
-	useCreateService,
-	useDeleteService,
-	useRemoveServiceDependency,
-	useService,
-	useServices,
-	useServiceTopology,
-	useUpdateService,
-	useUpdateServiceDependency,
-} from "./use-services-orpc";
-
-// Settings hooks
-export {
-	llmCredentialKeys,
-	llmSettingsKeys,
-	useDeleteLlmCredential,
-	useFactoryReset,
-	useInvestigationLimits,
-	useInvestigationPolicies,
-	useLlmCredentialStatus,
-	useLlmEnvStatus,
-	useLlmModels,
-	useLlmSettings,
-	useResetData,
-	useSaveLlmCredential,
-	useTestLlmConnectionWithEnv,
-	useUpdateInvestigationLimits,
-	useUpdateInvestigationPolicy,
-	useUpdateLlmSettings,
-} from "./use-settings-orpc";
-
-// Integration hooks
-export {
-	integrationsKeys,
-	serviceIntegrationsKeys,
-	// New names (three-layer model)
-	useTemplates,
-	useTemplate,
-	useIntegrations,
-	useCreateIntegration,
-	useUpdateIntegration,
-	useDeleteIntegration,
-	useIntegrationDeletionImpact,
-	useConnectionDeletionImpact,
-	useConnections,
-	useConnection,
-	useCreateConnection,
-	useUpdateConnection,
-	useDeleteConnection,
-	useTestConnection,
-	// Git / Service integration hooks
-	useGitOrganizations,
-	useGitRepositories,
-	useUpdateConnectionConfig,
-	// GitHub App hooks
-	useGitHubInstallations,
-	useConnectGitHubInstallation,
-	// Service integration hooks
-	useServiceIntegrations,
-	useCreateServiceIntegration,
-	useUpdateServiceIntegration,
-	useDeleteServiceIntegration,
-} from "./use-integrations-orpc";
-
-// Deployment hooks
-export {
-	deploymentKeys,
-	useBatchCreateDeployments,
-	useDeleteDeployment,
-	useDeployment,
-	useDeployments,
-	useLinkDeployment,
-	useUnlinkedDeploymentCount,
-	useUnlinkDeployment,
-} from "./use-deployments-orpc";
 
 // Repository hooks
 export {
@@ -154,13 +130,40 @@ export {
 	useSuggestions,
 	useTriggerDiscovery,
 } from "./use-service-discovery-orpc";
-
-// Ollama hooks
-export { useOllamaModels } from "./use-ollama-models";
-
+// Service hooks
+export {
+	serviceKeys,
+	useAddServiceDependency,
+	useCreateService,
+	useDeleteService,
+	useRemoveServiceDependency,
+	useService,
+	useServices,
+	useServiceTopology,
+	useUpdateService,
+	useUpdateServiceDependency,
+} from "./use-services-orpc";
+// Settings hooks
+export {
+	llmCredentialKeys,
+	llmSettingsKeys,
+	useDeleteLlmCredential,
+	useFactoryReset,
+	useInvestigationLimits,
+	useInvestigationPolicies,
+	useLlmCredentialStatus,
+	useLlmEnvStatus,
+	useLlmModels,
+	useLlmSettings,
+	useResetData,
+	useSaveLlmCredential,
+	useTestLlmConnectionWithEnv,
+	useUpdateInvestigationLimits,
+	useUpdateInvestigationPolicy,
+	useUpdateLlmSettings,
+} from "./use-settings-orpc";
 // Setup hooks
 export { useCreateOwner } from "./use-setup-orpc";
-
 // Timeline hooks
 export {
 	timelineKeys,
@@ -169,14 +172,3 @@ export {
 	useTimeline,
 	useTimelineEntry,
 } from "./use-timeline-orpc";
-
-// Postmortem hooks
-export {
-	postmortemKeys,
-	useCreatePostmortem,
-	useDeletePostmortem,
-	usePostmortem,
-	usePostmortemByIncident,
-	usePublishPostmortem,
-	useUpdatePostmortem,
-} from "./use-postmortems-orpc";

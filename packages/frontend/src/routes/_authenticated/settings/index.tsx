@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { PageHeader } from "@/components/layout";
 import {
 	AIProviderSettings,
 	DangerZoneSettings,
@@ -10,11 +11,15 @@ import {
 	InvestigationSettings,
 } from "@/components/settings";
 import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
-import { PageHeader } from "@/components/layout";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
-type SettingsTab = "ai" | "investigation" | "integrations" | "connections" | "danger";
+type SettingsTab =
+	| "ai"
+	| "investigation"
+	| "integrations"
+	| "connections"
+	| "danger";
 
 const TABS: { value: SettingsTab; label: string }[] = [
 	{ value: "ai", label: "AI Provider" },
@@ -58,9 +63,7 @@ function SettingsPage() {
 							<li key={t.value}>
 								<button
 									type="button"
-									onClick={() =>
-										navigate({ search: { tab: t.value } })
-									}
+									onClick={() => navigate({ search: { tab: t.value } })}
 									className={cn(
 										"w-full text-left text-sm px-3 py-2 rounded-md transition-colors",
 										tab === t.value

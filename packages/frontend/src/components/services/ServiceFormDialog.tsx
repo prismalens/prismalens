@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import {
 	SERVICE_TIER_METADATA,
 	type ServiceTier,
 	type ServiceType,
 	type ServiceWithRelations,
 } from "@prismalens/contracts";
+import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { TagInput } from "@/components/shared/TagInput";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -27,7 +28,6 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { TagInput } from "@/components/shared/TagInput";
 import { useCreateService, useUpdateService } from "@/lib/api/hooks";
 
 export interface ServiceFormDialogProps {

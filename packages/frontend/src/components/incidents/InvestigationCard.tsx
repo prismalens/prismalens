@@ -5,15 +5,11 @@
  * Used in the InvestigationProgress component to display multiple investigations.
  */
 
-import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import {
-	ChevronDown,
-	ChevronRight,
-	Clock,
-	ExternalLink,
-} from "lucide-react";
 import type { Investigation, WorkflowStatus } from "@prismalens/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight, Clock, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import InvestigationCanvas from "@/components/InvestigationCanvas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +18,6 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import InvestigationCanvas from "@/components/InvestigationCanvas";
 
 export interface InvestigationCardProps {
 	investigation: Investigation & {
@@ -54,7 +49,7 @@ export interface InvestigationCardProps {
 }
 
 function getStatusVariant(
-	status: string
+	status: string,
 ): "default" | "secondary" | "destructive" | "outline" {
 	switch (status) {
 		case "completed":
@@ -115,14 +110,14 @@ export function InvestigationCard({
 	// Calculate total duration
 	const totalDuration = investigation.agentExecutions?.reduce(
 		(sum, exec) => sum + (exec.executionTimeMs ?? 0),
-		0
+		0,
 	);
 
 	// Get tool count
 	const toolCount =
 		investigation.agentExecutions?.reduce(
 			(sum, exec) => sum + (exec.toolExecutions?.length ?? 0),
-			0
+			0,
 		) ?? 0;
 
 	return (

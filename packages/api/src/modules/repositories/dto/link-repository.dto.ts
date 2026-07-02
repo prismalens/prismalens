@@ -1,14 +1,14 @@
-import { IsBoolean, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUUID } from "class-validator";
 
 export class LinkRepositoryDto {
-  @IsUUID()
-  serviceId!: string;
+	@IsUUID()
+	serviceId!: string;
 
-  @IsOptional()
-  @IsString()
-  subPath?: string;
+	@IsOptional()
+	@IsString()
+	subPath?: string;
 
-  @IsOptional()
-  @IsBoolean()
-  isPrimary?: boolean;
+	@IsOptional()
+	@IsBoolean()
+	isPrimary?: boolean;
 }

@@ -15,9 +15,9 @@ import {
 	Post,
 	UseGuards,
 } from "@nestjs/common";
-import { LicenseService, type LicenseState } from "./license.service.js";
-import { Public } from "../auth/public.decorator.js";
 import { InternalGuard } from "../../infrastructure/internal/guards/internal.guard.js";
+import { Public } from "../auth/public.decorator.js";
+import { LicenseService, type LicenseState } from "./license.service.js";
 
 // =============================================================================
 // DTOs

@@ -8,10 +8,10 @@
 
 import type { AgentExecutionWithTools } from "@prismalens/contracts";
 import { chartColors } from "@prismalens/design-tokens/colors";
+import { toPng } from "html-to-image";
 import { Download, FileJson, Image } from "lucide-react";
 import { useCallback, useState } from "react";
-import { useReactFlow, getRectOfNodes, getTransformForBounds } from "reactflow";
-import { toPng } from "html-to-image";
+import { getRectOfNodes, getTransformForBounds, useReactFlow } from "reactflow";
 
 import { Button } from "@/components/ui/button";
 import {

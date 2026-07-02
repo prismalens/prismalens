@@ -1,0 +1,116 @@
+# Build / typecheck / test / lint for every PR and every push to a trunk.
+#
+# This is a pnpm + Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ
+# worker + shared @prismalens/* packages). The jobs mirror the commands a
+# contributor runs locally (see CONTRIBUTING.md).
+#
+# The step order matters and is not obvious — it was derived by running a clean
+# checkout, not a warm working tree:
+#
+#  1. The Prisma client is GENERATED, not committed (generated/ is gitignored), so
+#     `pnpm db:generate` must run before anything that imports @prisma/client.
+#  2. `prisma.config.ts` imports @prismalens/config, so that ONE package must be
+#     built before db:generate can load the config. The full build can't run first
+#     because the database package's tsc build imports the client that db:generate
+#     has not produced yet. Hence: build config -> generate -> full build.
+#  3. Typecheck runs AFTER build: the frontend's tsc needs routeTree.gen.ts and the
+#     sibling packages' emitted .d.ts, both produced by the build.
+#  4. Lint (Biome) only reads source — no build or generate needed.
+#
+# All three jobs are wired as REQUIRED status checks in .github/governance.json.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [first, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build config (prerequisite for Prisma generate)
+        run: pnpm --filter=@prismalens/config build
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build config (prerequisite for Prisma generate)
+        run: pnpm --filter=@prismalens/config build
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  lint:
+    name: Lint (Biome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Biome reads source only — no build or Prisma generate required.
+      - name: Biome check (format + lint)
+        run: pnpm format-and-lint

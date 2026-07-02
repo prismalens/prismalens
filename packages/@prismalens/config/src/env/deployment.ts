@@ -30,7 +30,10 @@ export const deploymentSchema = z.object({
 		),
 	[SecretEnvVars.INTERNAL_SECRET]: z
 		.string()
-		.min(32, `${SecretEnvVars.INTERNAL_SECRET} must be at least 32 characters when set`)
+		.min(
+			32,
+			`${SecretEnvVars.INTERNAL_SECRET} must be at least 32 characters when set`,
+		)
 		.optional()
 		.describe(
 			"Shared secret for internal API communication. " +
@@ -40,7 +43,10 @@ export const deploymentSchema = z.object({
 	// Authentication (Better Auth)
 	[SecretEnvVars.AUTH_SECRET]: z
 		.string()
-		.min(32, `${SecretEnvVars.AUTH_SECRET} must be at least 32 characters when set`)
+		.min(
+			32,
+			`${SecretEnvVars.AUTH_SECRET} must be at least 32 characters when set`,
+		)
 		.optional()
 		.describe(
 			"Secret for Better Auth session signing. " +
@@ -52,8 +58,8 @@ export const deploymentSchema = z.object({
 		.string()
 		.optional()
 		.describe("SMTP server hostname for sending invitation emails"),
-	PRISMALENS_SMTP_PORT: z
-		.coerce.number()
+	PRISMALENS_SMTP_PORT: z.coerce
+		.number()
 		.default(587)
 		.describe("SMTP server port (default: 587)"),
 	PRISMALENS_SMTP_USER: z

@@ -1,8 +1,6 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-
-import { useIntegrationDeletionImpact } from "@/lib/api/hooks";
 import { MutationError } from "@/components/shared/MutationError";
 import {
 	AlertDialog,
@@ -15,6 +13,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIntegrationDeletionImpact } from "@/lib/api/hooks";
 import { DeletionImpactSection } from "./DeletionImpactSection";
 
 interface DeleteIntegrationDialogProps {
@@ -48,9 +47,8 @@ export function DeleteIntegrationDialog({
 				<AlertDialogHeader>
 					<AlertDialogTitle>Delete Integration?</AlertDialogTitle>
 					<AlertDialogDescription>
-						This will permanently delete the{" "}
-						<strong>{integrationLabel}</strong> integration and all
-						associated data.
+						This will permanently delete the <strong>{integrationLabel}</strong>{" "}
+						integration and all associated data.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 
@@ -66,17 +64,13 @@ export function DeleteIntegrationDialog({
 
 				<MutationError error={error} />
 				<AlertDialogFooter>
-					<AlertDialogCancel onClick={onCancel}>
-						Cancel
-					</AlertDialogCancel>
+					<AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
 					<AlertDialogAction
 						onClick={onDelete}
 						className="bg-destructive hover:bg-destructive/90"
 						disabled={isDeleting || isLoading}
 					>
-						{isDeleting && (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						)}
+						{isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						Delete
 					</AlertDialogAction>
 				</AlertDialogFooter>

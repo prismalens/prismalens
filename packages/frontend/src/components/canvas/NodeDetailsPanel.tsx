@@ -7,7 +7,10 @@
  * Includes execution metrics, token usage, and tool executions.
  */
 
-import type { AgentExecutionWithTools, ToolExecution } from "@prismalens/contracts";
+import type {
+	AgentExecutionWithTools,
+	ToolExecution,
+} from "@prismalens/contracts";
 import {
 	CheckCircle,
 	ChevronDown,
@@ -34,12 +37,12 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
 import {
 	formatExecutionTime,
 	formatTokenCount,
 	getAgentStyle,
 } from "@/lib/canvas";
+import { cn } from "@/lib/utils";
 import { StatusIndicator } from "./StatusIndicator";
 
 export interface NodeDetailsPanelProps {
@@ -48,7 +51,9 @@ export interface NodeDetailsPanelProps {
 }
 
 export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps) {
-	const execution = node?.data?.execution as AgentExecutionWithTools | undefined;
+	const execution = node?.data?.execution as
+		| AgentExecutionWithTools
+		| undefined;
 	const isOpen = !!node && !!execution;
 
 	if (!execution) {
@@ -116,13 +121,17 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps) {
 								{execution.startedAt && (
 									<div className="flex justify-between">
 										<span className="text-muted-foreground">Started</span>
-										<span>{new Date(execution.startedAt).toLocaleString()}</span>
+										<span>
+											{new Date(execution.startedAt).toLocaleString()}
+										</span>
 									</div>
 								)}
 								{execution.completedAt && (
 									<div className="flex justify-between">
 										<span className="text-muted-foreground">Completed</span>
-										<span>{new Date(execution.completedAt).toLocaleString()}</span>
+										<span>
+											{new Date(execution.completedAt).toLocaleString()}
+										</span>
 									</div>
 								)}
 							</div>

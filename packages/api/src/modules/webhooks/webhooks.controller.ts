@@ -1,12 +1,12 @@
 import { Controller, Logger, UseGuards } from "@nestjs/common";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
-import { ThrottlerGuard, Throttle } from "@nestjs/throttler";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
 import { Severity } from "../../shared/enums/index.js";
 import type { GenericWebhookDto } from "./dto/index.js";
-import { WebhookResult, WebhooksService } from "./webhooks.service.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
+import { WebhookResult, WebhooksService } from "./webhooks.service.js";
 
 @Public()
 @Controller()

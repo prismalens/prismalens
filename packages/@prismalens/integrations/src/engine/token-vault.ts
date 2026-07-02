@@ -46,7 +46,9 @@ export class TokenVault {
 			authTagLength: AUTH_TAG_LENGTH,
 		});
 		decipher.setAuthTag(authTag);
-		return decipher.update(ciphertext).toString("utf8") + decipher.final("utf8");
+		return (
+			decipher.update(ciphertext).toString("utf8") + decipher.final("utf8")
+		);
 	}
 
 	encryptJSON<T>(data: T): Buffer {

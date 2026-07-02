@@ -6,17 +6,10 @@
 
 import type { RecommendationWithRelations } from "@prismalens/contracts";
 import { formatDistanceToNow } from "date-fns";
-import {
-	CheckCircle,
-	Clock,
-	Lightbulb,
-	Play,
-	XCircle,
-} from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle, Clock, Lightbulb, Play, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export interface RecommendationsListProps {
 	recommendations: RecommendationWithRelations[];
@@ -66,13 +59,16 @@ export function RecommendationsList({
 		);
 	}
 
-	const pendingCount = recommendations.filter((r) => r.status === "pending").length;
+	const pendingCount = recommendations.filter(
+		(r) => r.status === "pending",
+	).length;
 
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<div className="text-sm text-muted-foreground">
-					{recommendations.length} recommendation{recommendations.length !== 1 ? "s" : ""}
+					{recommendations.length} recommendation
+					{recommendations.length !== 1 ? "s" : ""}
 					{pendingCount > 0 && ` (${pendingCount} pending)`}
 				</div>
 			</div>
@@ -99,8 +95,11 @@ export function RecommendationsList({
 										)}
 									</div>
 									<div className="flex flex-col items-end gap-1">
-										<Badge className={priorityColors[rec.priority] || "bg-gray-500"}>
-											{rec.priority.charAt(0).toUpperCase() + rec.priority.slice(1)}
+										<Badge
+											className={priorityColors[rec.priority] || "bg-gray-500"}
+										>
+											{rec.priority.charAt(0).toUpperCase() +
+												rec.priority.slice(1)}
 										</Badge>
 										{rec.category && (
 											<Badge variant="outline" className="text-xs">

@@ -8,6 +8,7 @@
  * - Per-service overrides (custom config for this service)
  */
 
+import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import {
 	AlertCircle,
 	Check,
@@ -19,7 +20,6 @@ import {
 	Settings2,
 	Trash2,
 } from "lucide-react";
-import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +39,10 @@ export interface ServiceIntegrationsTabProps {
 	integrations: ServiceIntegrationWithStatus[];
 	isLoading: boolean;
 	onCreateOverride: (connectionId: string) => void;
-	onEditOverride: (overrideId: string, integration: ServiceIntegrationWithStatus) => void;
+	onEditOverride: (
+		overrideId: string,
+		integration: ServiceIntegrationWithStatus,
+	) => void;
 	onDeleteOverride: (overrideId: string) => void;
 }
 
@@ -169,8 +172,7 @@ export function ServiceIntegrationsTab({
 												<ConnectionStatusBadge status={integration.status} />
 											</div>
 											<p className="text-sm text-muted-foreground">
-												{integration.templateName} •{" "}
-												{integration.category}
+												{integration.templateName} • {integration.category}
 											</p>
 										</div>
 									</div>
@@ -246,8 +248,7 @@ export function ServiceIntegrationsTab({
 												<ConnectionStatusBadge status={integration.status} />
 											</div>
 											<p className="text-sm text-muted-foreground">
-												{integration.templateName} •{" "}
-												{integration.category}
+												{integration.templateName} • {integration.category}
 											</p>
 											{/* Show override config summary */}
 											{integration.serviceConfig && (

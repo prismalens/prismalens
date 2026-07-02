@@ -1,8 +1,20 @@
-import { useState } from "react";
+import type {
+	RepositoryWithServices,
+	ServiceWithRelations,
+} from "@prismalens/contracts";
 import { FolderGit2, Link2, Loader2, Trash2 } from "lucide-react";
-import type { RepositoryWithServices, ServiceWithRelations } from "@prismalens/contracts";
-
-import { useDeleteRepository, useLinkRepository } from "@/lib/api/hooks";
+import { useState } from "react";
+import { MutationError } from "@/components/shared/MutationError";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,17 +31,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { MutationError } from "@/components/shared/MutationError";
+import { useDeleteRepository, useLinkRepository } from "@/lib/api/hooks";
 
 interface UnlinkedReposDialogProps {
 	open: boolean;

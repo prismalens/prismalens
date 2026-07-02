@@ -19,8 +19,8 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { getAppDataDir } from "@prismalens/config/investigation";
 import { join, resolve } from "node:path";
+import { getAppDataDir } from "@prismalens/config/investigation";
 import type {
 	CanonicalEvent,
 	InvestigationReport,

@@ -1,11 +1,11 @@
 import "dotenv/config";
 
-import { Worker } from "bullmq";
-import { Redis } from "ioredis";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLogger } from "@prismalens/logger/standalone";
+import { Worker } from "bullmq";
+import { Redis } from "ioredis";
 import { config, redisUrl } from "./config.js";
 
 const logger = createLogger({
@@ -30,14 +30,10 @@ const processorFile = fs.existsSync(processorTs)
 	? processorTs
 	: path.join(__dirname, "processor.js");
 
-const worker = new Worker(
-	config.PRISMALENS_WORKER_QUEUE_NAME,
-	processorFile,
-	{
-		connection: redisConnection,
-		concurrency: config.PRISMALENS_WORKER_CONCURRENCY,
-	},
-);
+const worker = new Worker(config.PRISMALENS_WORKER_QUEUE_NAME, processorFile, {
+	connection: redisConnection,
+	concurrency: config.PRISMALENS_WORKER_CONCURRENCY,
+});
 
 worker.on("completed", (job) => {
 	logger.info(`Job ${job.id} completed`);
@@ -47,9 +43,7 @@ worker.on("failed", (job, err) => {
 	logger.error(`Job ${job?.id} failed`, err);
 });
 
-logger.info(
-	`Started processing queue: ${config.PRISMALENS_WORKER_QUEUE_NAME}`,
-);
+logger.info(`Started processing queue: ${config.PRISMALENS_WORKER_QUEUE_NAME}`);
 logger.info(
 	`Redis: ${config.PRISMALENS_REDIS_HOST}:${config.PRISMALENS_REDIS_PORT}/${config.PRISMALENS_REDIS_DB}`,
 );

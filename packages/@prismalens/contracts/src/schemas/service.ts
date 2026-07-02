@@ -138,6 +138,10 @@ export type UpdateDependencyInput = z.infer<typeof UpdateDependencySchema>;
 export type ServiceWithRelations = z.infer<typeof ServiceWithRelationsSchema>;
 export type ServiceListQuery = z.infer<typeof ServiceListQuerySchema>;
 export type ServiceListResponse = z.infer<typeof ServiceListResponseSchema>;
-export type ServiceInvestigationConfig = z.infer<typeof ServiceInvestigationConfigSchema>;
+export type ServiceInvestigationConfig = z.infer<
+	typeof ServiceInvestigationConfigSchema
+>;
 export type TopologyEdge = z.infer<typeof TopologyEdgeSchema>;
-export type ServiceRepositoryNested = z.infer<typeof ServiceRepositoryNestedSchema>;
+export type ServiceRepositoryNested = z.infer<
+	typeof ServiceRepositoryNestedSchema
+>;

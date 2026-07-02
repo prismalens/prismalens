@@ -18,8 +18,10 @@ import { orpc } from "../orpc-client";
 export const timelineKeys = {
 	all: () => orpc.timeline.key(),
 	lists: () => orpc.timeline.list.key(),
-	list: (incidentId: string, filters?: Partial<Omit<TimelineQuery, "incidentId">>) =>
-		orpc.timeline.list.key({ input: { incidentId, ...filters } }),
+	list: (
+		incidentId: string,
+		filters?: Partial<Omit<TimelineQuery, "incidentId">>,
+	) => orpc.timeline.list.key({ input: { incidentId, ...filters } }),
 	detail: (id: string) => orpc.timeline.get.key({ input: { id } }),
 };
 

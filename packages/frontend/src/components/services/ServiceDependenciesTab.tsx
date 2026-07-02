@@ -8,12 +8,22 @@ import { serviceTypeIcons } from "./service-detail.utils";
 interface ServiceDependenciesTabProps {
 	topology?: {
 		upstream: Array<{
-			service: { id: string; name: string; displayName?: string | null; type: string };
+			service: {
+				id: string;
+				name: string;
+				displayName?: string | null;
+				type: string;
+			};
 			dependencyType: string;
 			criticality: string;
 		}>;
 		downstream: Array<{
-			service: { id: string; name: string; displayName?: string | null; type: string };
+			service: {
+				id: string;
+				name: string;
+				displayName?: string | null;
+				type: string;
+			};
 			dependencyType: string;
 			criticality: string;
 		}>;
@@ -89,8 +99,7 @@ export function ServiceDependenciesTab({
 											onClick={() =>
 												onEditDependency({
 													dependencyId: edge.service.id,
-													name:
-														edge.service.displayName || edge.service.name,
+													name: edge.service.displayName || edge.service.name,
 													type: edge.dependencyType,
 													criticality: edge.criticality,
 												})
@@ -169,7 +178,6 @@ export function ServiceDependenciesTab({
 					)}
 				</div>
 			</div>
-
 		</div>
 	);
 }

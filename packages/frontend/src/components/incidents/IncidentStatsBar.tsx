@@ -60,7 +60,12 @@ export function IncidentStatsBar({
 }: IncidentStatsBarProps) {
 	// Calculate stats
 	const total = incidents.length;
-	const activeStatuses = ["triggered", "investigating", "identified", "monitoring"];
+	const activeStatuses = [
+		"triggered",
+		"investigating",
+		"identified",
+		"monitoring",
+	];
 	const activeCount = incidents.filter((i) =>
 		activeStatuses.includes(i.status),
 	).length;
@@ -107,7 +112,9 @@ export function IncidentStatsBar({
 						activeStatusFilter === "active" && "bg-muted",
 					)}
 				>
-					<span className="text-2xl font-bold text-orange-500">{activeCount}</span>
+					<span className="text-2xl font-bold text-orange-500">
+						{activeCount}
+					</span>
 					<span className="text-xs text-muted-foreground">Active</span>
 				</button>
 
@@ -119,36 +126,41 @@ export function IncidentStatsBar({
 
 				{/* By Severity */}
 				<div className="flex items-center gap-2 pl-8">
-					<span className="text-xs text-muted-foreground mr-2">By Severity:</span>
-					{(["critical", "high", "medium", "low", "info"] as const).map((severity) => {
-						const count = bySeverity[severity] || 0;
-						if (count === 0) return null;
+					<span className="text-xs text-muted-foreground mr-2">
+						By Severity:
+					</span>
+					{(["critical", "high", "medium", "low", "info"] as const).map(
+						(severity) => {
+							const count = bySeverity[severity] || 0;
+							if (count === 0) return null;
 
-						return (
-							<button
-								key={severity}
-								type="button"
-								onClick={() => {
-									onFilterSeverity?.(
-										activeSeverityFilter === severity ? undefined : severity,
-									);
-									onFilterStatus?.(undefined);
-								}}
-								className={cn(
-									"flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:bg-muted",
-									activeSeverityFilter === severity && "bg-muted ring-1 ring-primary",
-								)}
-							>
-								<span
+							return (
+								<button
+									key={severity}
+									type="button"
+									onClick={() => {
+										onFilterSeverity?.(
+											activeSeverityFilter === severity ? undefined : severity,
+										);
+										onFilterStatus?.(undefined);
+									}}
 									className={cn(
-										"w-2 h-2 rounded-full",
-										severityColors[severity],
+										"flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:bg-muted",
+										activeSeverityFilter === severity &&
+											"bg-muted ring-1 ring-primary",
 									)}
-								/>
-								<span className="text-sm font-medium">{count}</span>
-							</button>
-						);
-					})}
+								>
+									<span
+										className={cn(
+											"w-2 h-2 rounded-full",
+											severityColors[severity],
+										)}
+									/>
+									<span className="text-sm font-medium">{count}</span>
+								</button>
+							);
+						},
+					)}
 				</div>
 			</div>
 		</Card>

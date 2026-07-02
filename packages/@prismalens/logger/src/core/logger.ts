@@ -1,11 +1,15 @@
-import pino, { type Logger as PinoLogger } from "pino";
 import { getConfig } from "@prismalens/config";
+import pino, { type Logger as PinoLogger } from "pino";
 import type { LogEntry, LoggerOptions } from "../types/log-entry.js";
 import type { LogLevel, ServiceInfo, WideEvent } from "../types/wide-event.js";
-import { enrichContext, getCurrentWideEvent, getRequestScope } from "./context.js";
-import { TailSampler } from "./sampler.js";
 import { redactSensitiveData } from "../utils/redaction.js";
 import { truncatePayload } from "../utils/truncation.js";
+import {
+	enrichContext,
+	getCurrentWideEvent,
+	getRequestScope,
+} from "./context.js";
+import { TailSampler } from "./sampler.js";
 
 const LOG_LEVELS: Record<LogLevel, number> = {
 	debug: 20,
@@ -136,7 +140,9 @@ export class Logger {
 	error(message: string, error?: Error | unknown, ...args: unknown[]): void {
 		const errorObj = error instanceof Error ? error : undefined;
 		const extraArgs =
-			error instanceof Error ? args : [error, ...args].filter((a) => a !== undefined);
+			error instanceof Error
+				? args
+				: [error, ...args].filter((a) => a !== undefined);
 		this.log("error", message, extraArgs, errorObj);
 	}
 
@@ -185,7 +191,12 @@ export class Logger {
 	/**
 	 * Internal log method.
 	 */
-	private log(level: LogLevel, message: string, args: unknown[], error?: Error): void {
+	private log(
+		level: LogLevel,
+		message: string,
+		args: unknown[],
+		error?: Error,
+	): void {
 		const entry: LogEntry = {
 			level,
 			message,
@@ -236,10 +247,12 @@ export class Logger {
 
 		// Use Pino to emit the log
 		const pinoLevel = PINO_LEVEL_MAP[level];
-		(this.pino[pinoLevel as keyof PinoLogger] as (obj: unknown, msg: string) => void)(
-			logObj,
-			message,
-		);
+		(
+			this.pino[pinoLevel as keyof PinoLogger] as (
+				obj: unknown,
+				msg: string,
+			) => void
+		)(logObj, message);
 	}
 
 	/**

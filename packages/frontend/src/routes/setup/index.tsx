@@ -1,9 +1,5 @@
-import {
-	createFileRoute,
-	isRedirect,
-	redirect,
-} from "@tanstack/react-router";
 import type { SetupStep } from "@prismalens/contracts";
+import { createFileRoute, isRedirect, redirect } from "@tanstack/react-router";
 import { SetupWizard } from "@/components/setup";
 import { client } from "@/lib/api/orpc-client";
 
