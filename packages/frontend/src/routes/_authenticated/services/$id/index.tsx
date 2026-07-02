@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	FolderGit2,
 	GitBranch,
@@ -10,25 +10,25 @@ import {
 	Pencil,
 	Rocket,
 	Search,
-	Server,
+	type Server,
 	Trash2,
 } from "lucide-react";
-import type {
-	ServiceIntegrationWithStatus,
-} from "@prismalens/contracts";
-
-import { orpc } from "@/lib/api/orpc-client";
-import {
-	useCreateServiceIntegration,
-	useDeleteServiceIntegration,
-	useGitOrganizations,
-	useGitRepositories,
-	useRemoveServiceDependency,
-	useServiceIntegrations,
-	useUpdateServiceIntegration,
-} from "@/lib/api/hooks";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { DetailPage, PageHeader } from "@/components/layout";
+import { AddDependencyDialog } from "@/components/services/AddDependencyDialog";
+import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
+import { EditDependencyDialog } from "@/components/services/EditDependencyDialog";
+import { ServiceDependenciesTab } from "@/components/services/ServiceDependenciesTab";
+import { ServiceDeploymentsTab } from "@/components/services/ServiceDeploymentsTab";
+import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
+import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
+import { ServiceIntegrationOverrideDialog } from "@/components/services/ServiceIntegrationOverrideDialog";
+import { ServiceIntegrationsTab } from "@/components/services/ServiceIntegrationsTab";
+import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigationTab";
+import { ServiceOverviewTab } from "@/components/services/ServiceOverviewTab";
+import { ServiceRepositoriesTab } from "@/components/services/ServiceRepositoriesTab";
+import { tierLabels } from "@/components/services/service-detail.utils";
+import { MutationError } from "@/components/shared/MutationError";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -39,29 +39,32 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DetailPage, PageHeader } from "@/components/layout";
-import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
-import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
-import { ServiceIntegrationsTab } from "@/components/services/ServiceIntegrationsTab";
-import { ServiceIntegrationOverrideDialog } from "@/components/services/ServiceIntegrationOverrideDialog";
-import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigationTab";
-import { AddDependencyDialog } from "@/components/services/AddDependencyDialog";
-import { EditDependencyDialog } from "@/components/services/EditDependencyDialog";
-import { MutationError } from "@/components/shared/MutationError";
-import { ServiceOverviewTab } from "@/components/services/ServiceOverviewTab";
-import { ServiceRepositoriesTab } from "@/components/services/ServiceRepositoriesTab";
-import { ServiceDeploymentsTab } from "@/components/services/ServiceDeploymentsTab";
-import { ServiceDependenciesTab } from "@/components/services/ServiceDependenciesTab";
-import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
-import { tierLabels } from "@/components/services/service-detail.utils";
+import {
+	useCreateServiceIntegration,
+	useDeleteServiceIntegration,
+	useGitOrganizations,
+	useGitRepositories,
+	useRemoveServiceDependency,
+	useServiceIntegrations,
+	useUpdateServiceIntegration,
+} from "@/lib/api/hooks";
+import { orpc } from "@/lib/api/orpc-client";
 
-type ServiceTab = "overview" | "repositories" | "deployments" | "integrations" | "investigation" | "dependencies";
+type ServiceTab =
+	| "overview"
+	| "repositories"
+	| "deployments"
+	| "integrations"
+	| "investigation"
+	| "dependencies";
 
 const TABS: { value: ServiceTab; label: string; icon: typeof Server }[] = [
 	{ value: "overview", label: "Overview", icon: Info },
@@ -97,9 +100,7 @@ function ServiceDetailPage() {
 	const [editingOverrideId, setEditingOverrideId] = useState<string | null>(
 		null,
 	);
-	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(
-		undefined,
-	);
+	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(undefined);
 	const [editingDep, setEditingDep] = useState<{
 		dependencyId: string;
 		name: string;
@@ -239,8 +240,7 @@ function ServiceDetailPage() {
 		);
 	}
 
-	const existingDepIds =
-		topology?.upstream?.map((d) => d.service.id) ?? [];
+	const existingDepIds = topology?.upstream?.map((d) => d.service.id) ?? [];
 
 	const header = (
 		<PageHeader
@@ -249,13 +249,13 @@ function ServiceDetailPage() {
 			subtitle={
 				<span className="flex items-center gap-2">
 					<span className="font-mono">{service.name}</span>
-					<Badge variant="outline">{tierLabels[service.tier] || service.tier}</Badge>
+					<Badge variant="outline">
+						{tierLabels[service.tier] || service.tier}
+					</Badge>
 					<Badge variant="secondary" className="capitalize">
 						{service.type}
 					</Badge>
-					{service.team && (
-						<span>{service.team}</span>
-					)}
+					{service.team && <span>{service.team}</span>}
 				</span>
 			}
 			actions={
@@ -297,7 +297,13 @@ function ServiceDetailPage() {
 				onTabChange={(t) => navigate({ search: { tab: t } })}
 				header={header}
 			>
-				{tab === "overview" && <ServiceOverviewTab service={service} topology={topology} integrations={integrations} />}
+				{tab === "overview" && (
+					<ServiceOverviewTab
+						service={service}
+						topology={topology}
+						integrations={integrations}
+					/>
+				)}
 				{tab === "repositories" && (
 					<ServiceRepositoriesTab serviceId={id} service={service} />
 				)}
@@ -319,10 +325,7 @@ function ServiceDetailPage() {
 					</>
 				)}
 				{tab === "investigation" && (
-					<ServiceInvestigationTab
-						serviceId={id}
-						metadata={service.metadata}
-					/>
+					<ServiceInvestigationTab serviceId={id} metadata={service.metadata} />
 				)}
 				{tab === "dependencies" && (
 					<ServiceDependenciesTab

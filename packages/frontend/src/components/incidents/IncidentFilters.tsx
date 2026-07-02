@@ -4,7 +4,8 @@
  * Filter controls for the incidents list page
  */
 
-import type { IncidentStatus, Severity, Priority } from "@prismalens/contracts";
+import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -13,7 +14,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { X } from "lucide-react";
 
 export interface IncidentFiltersProps {
 	status: IncidentStatus | "all";
@@ -62,7 +62,8 @@ export function IncidentFilters({
 	onPriorityChange,
 	onClear,
 }: IncidentFiltersProps) {
-	const hasFilters = status !== "all" || severity !== "all" || priority !== "all";
+	const hasFilters =
+		status !== "all" || severity !== "all" || priority !== "all";
 
 	return (
 		<div className="flex flex-wrap items-center gap-3">

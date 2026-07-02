@@ -1,14 +1,15 @@
 /**
  * Settings schemas for LLM configuration
  */
+
 import {
-	llmProviderIdSchema,
-	type LLMProviderId,
-} from "@prismalens/config/llm";
-import {
-	agentIdSchema,
 	type AgentId as AgentIdType,
+	agentIdSchema,
 } from "@prismalens/config/agents";
+import {
+	type LLMProviderId,
+	llmProviderIdSchema,
+} from "@prismalens/config/llm";
 import { z } from "zod";
 
 // =============================================================================
@@ -65,7 +66,9 @@ export type LlmCredentialStatus = z.infer<typeof LlmCredentialStatusSchema>;
 export const LlmCredentialStatusResponseSchema = z.object({
 	providers: z.record(llmProviderIdSchema, LlmCredentialStatusSchema),
 });
-export type LlmCredentialStatusResponse = z.infer<typeof LlmCredentialStatusResponseSchema>;
+export type LlmCredentialStatusResponse = z.infer<
+	typeof LlmCredentialStatusResponseSchema
+>;
 
 // =============================================================================
 // INVESTIGATION POLICIES
@@ -274,9 +277,7 @@ export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
 export const LlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.nullable(),
 	providers: z.record(LlmProviderIdSchema, LlmProviderConfigSchema),
-	agentOverrides: z
-		.record(AgentIdSchema, AgentOverrideConfigSchema)
-		.optional(),
+	agentOverrides: z.record(AgentIdSchema, AgentOverrideConfigSchema).optional(),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
 
@@ -307,9 +308,7 @@ export const UpdateLlmSettingsSchema = z.object({
 	providers: z
 		.record(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
 		.optional(),
-	agentOverrides: z
-		.record(AgentIdSchema, AgentOverrideConfigSchema)
-		.optional(),
+	agentOverrides: z.record(AgentIdSchema, AgentOverrideConfigSchema).optional(),
 });
 export type UpdateLlmSettings = z.infer<typeof UpdateLlmSettingsSchema>;
 
@@ -354,13 +353,15 @@ export const TestLlmConnectionInputSchema = z.object({
 	model: z.string().max(256).optional(),
 	baseUrl: z.string().url().max(512).optional(),
 });
-export type TestLlmConnectionInput = z.infer<typeof TestLlmConnectionInputSchema>;
+export type TestLlmConnectionInput = z.infer<
+	typeof TestLlmConnectionInputSchema
+>;
 
 // =============================================================================
 // MCP SERVER CONFIGURATION
 // =============================================================================
 
-import { mcpServerIdSchema, type MCPServerId } from "@prismalens/config/mcp";
+import { type MCPServerId, mcpServerIdSchema } from "@prismalens/config/mcp";
 
 /**
  * MCP server ID schema - re-exported from @prismalens/config
@@ -428,7 +429,9 @@ export type McpStatusResponse = z.infer<typeof McpStatusResponseSchema>;
 export const TestMcpConnectionInputSchema = z.object({
 	serverId: McpServerIdSchema,
 });
-export type TestMcpConnectionInput = z.infer<typeof TestMcpConnectionInputSchema>;
+export type TestMcpConnectionInput = z.infer<
+	typeof TestMcpConnectionInputSchema
+>;
 
 /**
  * Test MCP connection result

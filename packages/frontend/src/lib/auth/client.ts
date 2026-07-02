@@ -9,14 +9,14 @@
  */
 
 import {
+	admin,
 	authClient,
-	signIn,
-	signUp,
-	signOut,
-	useSession,
 	getSession,
 	organization,
-	admin,
+	signIn,
+	signOut,
+	signUp,
+	useSession,
 } from "@prismalens/auth/client";
 
 // Re-export everything from the auth package

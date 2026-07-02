@@ -1,4 +1,7 @@
-import { ToolCategory, ToolExecutionStatus } from "../../../shared/enums/index.js";
+import type {
+	ToolCategory,
+	ToolExecutionStatus,
+} from "../../../shared/enums/index.js";
 
 /**
  * DTO for creating a tool execution record

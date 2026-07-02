@@ -1,13 +1,8 @@
 "use client";
 
-import type { ModelMetadata } from "@prismalens/contracts";
 import type { LLMProviderId } from "@prismalens/config/llm";
-import {
-	AlertCircle,
-	Check,
-	Search,
-	X,
-} from "lucide-react";
+import type { ModelMetadata } from "@prismalens/contracts";
+import { AlertCircle, Check, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +76,7 @@ export function ProviderModelSelector({
 			? filtered.filter(
 					(m) =>
 						m.name.toLowerCase().includes(search.toLowerCase()) ||
-						m.id.toLowerCase().includes(search.toLowerCase())
+						m.id.toLowerCase().includes(search.toLowerCase()),
 				)
 			: filtered;
 	}, [models, selectedProvider, search]);
@@ -97,7 +92,9 @@ export function ProviderModelSelector({
 	const isProviderReady = envStatus[selectedProvider]?.isReady ?? false;
 	const providerEnvVar = envStatus[selectedProvider]?.envVarName;
 	const selectedProviderInfo = providers.find((p) => p.id === selectedProvider);
-	const showBaseUrl = selectedProviderInfo?.baseUrlRequired || selectedProviderInfo?.defaultBaseUrl;
+	const showBaseUrl =
+		selectedProviderInfo?.baseUrlRequired ||
+		selectedProviderInfo?.defaultBaseUrl;
 
 	return (
 		<div className="flex border rounded-lg overflow-hidden bg-background">
@@ -116,7 +113,7 @@ export function ProviderModelSelector({
 								"w-full justify-start px-3 py-2.5 h-auto rounded-none flex items-center gap-2",
 								isSelected
 									? "bg-background border-r-2 border-primary"
-									: "hover:bg-muted/50"
+									: "hover:bg-muted/50",
 							)}
 						>
 							{!hideStatusIcons &&
@@ -133,7 +130,7 @@ export function ProviderModelSelector({
 							<span
 								className={cn(
 									"text-sm truncate",
-									!hideStatusIcons && !ready && "text-muted-foreground"
+									!hideStatusIcons && !ready && "text-muted-foreground",
 								)}
 							>
 								{p.name}
@@ -186,12 +183,18 @@ export function ProviderModelSelector({
 				{/* Base URL (for Ollama, Custom, etc.) */}
 				{showBaseUrl && onBaseUrlChange && (
 					<div className="p-2 border-b space-y-1">
-						<Label htmlFor="provider-base-url" className="text-xs font-medium text-muted-foreground">
+						<Label
+							htmlFor="provider-base-url"
+							className="text-xs font-medium text-muted-foreground"
+						>
 							Base URL
 						</Label>
 						<Input
 							id="provider-base-url"
-							placeholder={selectedProviderInfo?.defaultBaseUrl || "http://localhost:8000/v1"}
+							placeholder={
+								selectedProviderInfo?.defaultBaseUrl ||
+								"http://localhost:8000/v1"
+							}
 							value={baseUrl ?? ""}
 							onChange={(e) => onBaseUrlChange(e.target.value)}
 							className="h-8 text-sm font-mono"
@@ -200,7 +203,12 @@ export function ProviderModelSelector({
 				)}
 
 				{/* Model area — fixed min-height to prevent layout shift between providers */}
-				<div className={cn("flex flex-col", compact ? "min-h-[200px]" : "min-h-[300px]")}>
+				<div
+					className={cn(
+						"flex flex-col",
+						compact ? "min-h-[200px]" : "min-h-[300px]",
+					)}
+				>
 					{filteredModels.length > 0 ? (
 						<>
 							{/* Search */}
@@ -273,12 +281,19 @@ export function ProviderModelSelector({
 						/* No model catalog — show model name input */
 						onCustomModelChange && (
 							<div className="p-3 space-y-1.5">
-								<Label htmlFor="custom-model-name" className="text-xs font-medium text-muted-foreground">
+								<Label
+									htmlFor="custom-model-name"
+									className="text-xs font-medium text-muted-foreground"
+								>
 									Model name
 								</Label>
 								<Input
 									id="custom-model-name"
-									placeholder={selectedProvider === "ollama" ? "e.g., llama3.3" : "e.g., gpt-4o"}
+									placeholder={
+										selectedProvider === "ollama"
+											? "e.g., llama3.3"
+											: "e.g., gpt-4o"
+									}
 									value={customModel}
 									onChange={(e) => onCustomModelChange(e.target.value)}
 									className="h-8 text-sm"

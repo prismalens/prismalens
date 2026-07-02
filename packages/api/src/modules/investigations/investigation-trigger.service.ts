@@ -12,8 +12,8 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
+import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { Incident, Service, Alert } from "@prismalens/database";
 
 /**
  * Trigger decision result
@@ -147,8 +147,15 @@ export class InvestigationTriggerService {
 		}
 
 		if (config.autoInvestigate === "critical_high") {
-			const severity = incident.severity as "critical" | "high" | "medium" | "low" | "info";
-			if (config.triggerOnSeverities.includes(severity as "critical" | "high")) {
+			const severity = incident.severity as
+				| "critical"
+				| "high"
+				| "medium"
+				| "low"
+				| "info";
+			if (
+				config.triggerOnSeverities.includes(severity as "critical" | "high")
+			) {
 				return {
 					shouldTrigger: true,
 					triggerType: "auto_critical",

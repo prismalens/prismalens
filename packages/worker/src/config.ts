@@ -1,4 +1,4 @@
-import { getWorkerConfig, buildRedisUrl } from "@prismalens/config";
+import { buildRedisUrl, getWorkerConfig } from "@prismalens/config";
 
 const config = getWorkerConfig();
 

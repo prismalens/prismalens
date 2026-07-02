@@ -12,8 +12,8 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTheme } from "@/lib/providers/theme-provider";
 import * as m from "@/lib/paraglide/messages.js";
+import { useTheme } from "@/lib/providers/theme-provider";
 
 export function ThemeToggle() {
 	const { theme, setTheme } = useTheme();

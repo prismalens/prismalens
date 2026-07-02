@@ -16,7 +16,14 @@ export const TemplateFieldOptionSchema = z.object({
 export const TemplateFieldSchema = z.object({
 	name: z.string(),
 	label: z.string(),
-	type: z.enum(["string", "password", "select", "number", "boolean", "textarea"]),
+	type: z.enum([
+		"string",
+		"password",
+		"select",
+		"number",
+		"boolean",
+		"textarea",
+	]),
 	default: z.string().optional(),
 	required: z.boolean().optional(),
 	placeholder: z.string().optional(),
@@ -147,19 +154,19 @@ export const IntegrationQuerySchema = z.object({
 // GIT PROVIDER SCHEMAS (from @prismalens/config — single source of truth)
 // =============================================================================
 
-export {
-	GitOrganizationSchema,
-	GitRepositorySchema,
-	GitFileContentSchema,
-	CapabilitySchema,
-	PermissionRequirementSchema,
-} from "@prismalens/config/integrations";
 export type {
+	Capability,
+	GitFileContent,
 	GitOrganization,
 	GitRepository,
-	GitFileContent,
-	Capability,
 	PermissionRequirement,
+} from "@prismalens/config/integrations";
+export {
+	CapabilitySchema,
+	GitFileContentSchema,
+	GitOrganizationSchema,
+	GitRepositorySchema,
+	PermissionRequirementSchema,
 } from "@prismalens/config/integrations";
 
 // =============================================================================
@@ -236,23 +243,35 @@ export const ConnectInstallationSchema = z.object({
 // =============================================================================
 
 export const DeletionImpactSchema = z.object({
-	connections: z.array(z.object({
-		id: z.string().uuid(),
-		label: z.string(),
-	})),
-	repositories: z.array(z.object({
-		id: z.string().uuid(),
-		fullName: z.string(),
-	})),
-	deployments: z.array(z.object({
-		id: z.string().uuid(),
-		name: z.string(),
-	})),
-	affectedServices: z.array(z.object({
-		id: z.string().uuid(),
-		name: z.string(),
-		impact: z.enum(["repo_link_lost", "deployment_link_lost", "integration_override_lost"]),
-	})),
+	connections: z.array(
+		z.object({
+			id: z.string().uuid(),
+			label: z.string(),
+		}),
+	),
+	repositories: z.array(
+		z.object({
+			id: z.string().uuid(),
+			fullName: z.string(),
+		}),
+	),
+	deployments: z.array(
+		z.object({
+			id: z.string().uuid(),
+			name: z.string(),
+		}),
+	),
+	affectedServices: z.array(
+		z.object({
+			id: z.string().uuid(),
+			name: z.string(),
+			impact: z.enum([
+				"repo_link_lost",
+				"deployment_link_lost",
+				"integration_override_lost",
+			]),
+		}),
+	),
 	suggestionsCount: z.number().int(),
 });
 
@@ -266,7 +285,9 @@ export type Integration = z.infer<typeof IntegrationSchema>;
 export type CreateIntegrationInput = z.infer<typeof CreateIntegrationSchema>;
 export type UpdateIntegrationInput = z.infer<typeof UpdateIntegrationSchema>;
 export type Connection = z.infer<typeof ConnectionSchema>;
-export type ConnectionWithIntegration = z.infer<typeof ConnectionWithIntegrationSchema>;
+export type ConnectionWithIntegration = z.infer<
+	typeof ConnectionWithIntegrationSchema
+>;
 export type CreateConnectionInput = z.infer<typeof CreateConnectionSchema>;
 export type UpdateConnectionInput = z.infer<typeof UpdateConnectionSchema>;
 export type OAuthStartResponse = z.infer<typeof OAuthStartResponseSchema>;
@@ -276,13 +297,21 @@ export type IntegrationQuery = z.infer<typeof IntegrationQuerySchema>;
 
 // Service integration types
 export type ServiceIntegration = z.infer<typeof ServiceIntegrationSchema>;
-export type CreateServiceIntegrationInput = z.infer<typeof CreateServiceIntegrationSchema>;
-export type UpdateServiceIntegrationInput = z.infer<typeof UpdateServiceIntegrationSchema>;
-export type ServiceIntegrationWithStatus = z.infer<typeof ServiceIntegrationWithStatusSchema>;
+export type CreateServiceIntegrationInput = z.infer<
+	typeof CreateServiceIntegrationSchema
+>;
+export type UpdateServiceIntegrationInput = z.infer<
+	typeof UpdateServiceIntegrationSchema
+>;
+export type ServiceIntegrationWithStatus = z.infer<
+	typeof ServiceIntegrationWithStatusSchema
+>;
 
 // GitHub App types
 export type GitHubInstallation = z.infer<typeof GitHubInstallationSchema>;
-export type ConnectInstallationInput = z.infer<typeof ConnectInstallationSchema>;
+export type ConnectInstallationInput = z.infer<
+	typeof ConnectInstallationSchema
+>;
 
 // Deletion impact types
 export type DeletionImpact = z.infer<typeof DeletionImpactSchema>;

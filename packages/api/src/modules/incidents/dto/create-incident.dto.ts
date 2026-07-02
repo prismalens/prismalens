@@ -1,4 +1,4 @@
-import { Priority, Severity } from "../../../shared/enums/index.js";
+import type { Priority, Severity } from "../../../shared/enums/index.js";
 
 /**
  * DTO for creating an incident

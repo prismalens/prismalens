@@ -133,7 +133,10 @@ const sourceLabels: Record<TimelineSource, string> = {
 	ai_worker: "ai",
 };
 
-const sourceBadgeVariants: Record<TimelineSource, "default" | "secondary" | "outline"> = {
+const sourceBadgeVariants: Record<
+	TimelineSource,
+	"default" | "secondary" | "outline"
+> = {
 	system: "secondary",
 	user: "default",
 	ai_worker: "outline",
@@ -178,14 +181,19 @@ export function TimelineEntry({
 				<div
 					className={cn(
 						"w-6 h-6 rounded-full flex items-center justify-center shrink-0",
-						style.bgColor
+						style.bgColor,
 					)}
 				>
 					<Icon className={cn("w-3.5 h-3.5", style.color)} />
 				</div>
 				<span className="text-sm flex-1 truncate">{title}</span>
-				<Badge variant={sourceBadgeVariants[source]} className="text-xs shrink-0">
-					{source === "user" && user ? getUserDisplayName(user) : sourceLabels[source]}
+				<Badge
+					variant={sourceBadgeVariants[source]}
+					className="text-xs shrink-0"
+				>
+					{source === "user" && user
+						? getUserDisplayName(user)
+						: sourceLabels[source]}
 				</Badge>
 			</div>
 		);
@@ -202,7 +210,7 @@ export function TimelineEntry({
 						"w-8 h-8 rounded-full flex items-center justify-center",
 						style.bgColor,
 						"border",
-						style.borderColor
+						style.borderColor,
 					)}
 				>
 					<Icon className={cn("w-4 h-4", style.color)} />
@@ -213,7 +221,9 @@ export function TimelineEntry({
 				<div className="flex items-center justify-between gap-2">
 					<span className="font-medium">{title}</span>
 					<Badge variant={sourceBadgeVariants[source]} className="text-xs">
-						{source === "user" && user ? getUserDisplayName(user) : sourceLabels[source]}
+						{source === "user" && user
+							? getUserDisplayName(user)
+							: sourceLabels[source]}
 					</Badge>
 				</div>
 				{description && (

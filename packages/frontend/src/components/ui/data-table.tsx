@@ -2,17 +2,18 @@
 
 import {
 	type ColumnDef,
-	type SortingState,
 	flexRender,
 	getCoreRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
+	type SortingState,
 	useReactTable,
 } from "@tanstack/react-table";
-import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Table,
 	TableBody,
@@ -21,7 +22,6 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
 
 interface DataTableProps<TData, TValue> {
 	columns: ColumnDef<TData, TValue>[];
@@ -80,8 +80,7 @@ export function DataTable<TData, TValue>({
 									<TableHead
 										key={header.id}
 										className={
-											enableSorting &&
-											header.column.getCanSort()
+											enableSorting && header.column.getCanSort()
 												? "cursor-pointer select-none"
 												: undefined
 										}
@@ -101,9 +100,8 @@ export function DataTable<TData, TValue>({
 											({
 												asc: " \u2191",
 												desc: " \u2193",
-											}[
-												header.column.getIsSorted() as string
-											] ?? null)}
+											}[header.column.getIsSorted() as string] ??
+												null)}
 									</TableHead>
 								))}
 							</TableRow>
@@ -124,17 +122,9 @@ export function DataTable<TData, TValue>({
 							table.getRowModel().rows.map((row) => (
 								<TableRow
 									key={row.id}
-									data-state={
-										row.getIsSelected() && "selected"
-									}
-									className={
-										onRowClick
-											? "cursor-pointer"
-											: undefined
-									}
-									onClick={() =>
-										onRowClick?.(row.original)
-									}
+									data-state={row.getIsSelected() && "selected"}
+									className={onRowClick ? "cursor-pointer" : undefined}
+									onClick={() => onRowClick?.(row.original)}
 								>
 									{row.getVisibleCells().map((cell) => (
 										<TableCell key={cell.id}>

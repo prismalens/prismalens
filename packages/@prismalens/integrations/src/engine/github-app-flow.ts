@@ -116,19 +116,14 @@ async function getInstallationToken(
 /**
  * List all installations for the GitHub App.
  */
-async function listInstallations(
-	jwt: string,
-): Promise<GitHubInstallation[]> {
-	const response = await fetch(
-		`${GITHUB_API}/app/installations`,
-		{
-			headers: {
-				Authorization: `Bearer ${jwt}`,
-				Accept: "application/vnd.github.v3+json",
-			},
-			signal: timeoutSignal(),
+async function listInstallations(jwt: string): Promise<GitHubInstallation[]> {
+	const response = await fetch(`${GITHUB_API}/app/installations`, {
+		headers: {
+			Authorization: `Bearer ${jwt}`,
+			Accept: "application/vnd.github.v3+json",
 		},
-	);
+		signal: timeoutSignal(),
+	});
 
 	if (!response.ok) {
 		throw new Error(
@@ -158,9 +153,7 @@ async function getInstallation(
 	);
 
 	if (!response.ok) {
-		throw new Error(
-			`GitHub get installation failed (HTTP ${response.status})`,
-		);
+		throw new Error(`GitHub get installation failed (HTTP ${response.status})`);
 	}
 
 	return (await response.json()) as GitHubInstallation;
@@ -170,10 +163,7 @@ async function getInstallation(
  * Check if a token is expired or expiring soon.
  * Default buffer: 5 minutes (GitHub App tokens last 1 hour).
  */
-function isTokenExpired(
-	expiresAt: Date | string,
-	bufferMs = 300_000,
-): boolean {
+function isTokenExpired(expiresAt: Date | string, bufferMs = 300_000): boolean {
 	const expiry =
 		typeof expiresAt === "string"
 			? new Date(expiresAt).getTime()

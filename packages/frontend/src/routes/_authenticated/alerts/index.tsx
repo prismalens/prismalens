@@ -1,13 +1,11 @@
-import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
-
 import type { AlertStatus, Severity } from "@prismalens/contracts";
-
-import { orpc } from "@/lib/api/orpc-client";
-import { Button } from "@/components/ui/button";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import { RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { AlertFilters, AlertsTable } from "@/components/alerts";
+import { Button } from "@/components/ui/button";
+import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/alerts/")({
 	component: AlertsPage,
@@ -23,7 +21,7 @@ function AlertsPage() {
 		...(statusFilter !== "all" && { status: statusFilter }),
 		...(severityFilter !== "all" && { severity: severityFilter }),
 		limit: 50,
-	}
+	};
 
 	// Fetch alerts
 	const {
@@ -35,8 +33,8 @@ function AlertsPage() {
 
 	// Fetch stats
 	const { data: stats } = useQuery(
-		orpc.alerts.getStats.queryOptions({ input: {} })
-	)
+		orpc.alerts.getStats.queryOptions({ input: {} }),
+	);
 
 	// Acknowledge mutation
 	const acknowledgeMutation = useMutation({
@@ -44,7 +42,7 @@ function AlertsPage() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["alerts"] });
 		},
-	})
+	});
 
 	// Resolve mutation
 	const resolveMutation = useMutation({
@@ -52,20 +50,20 @@ function AlertsPage() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["alerts"] });
 		},
-	})
+	});
 
 	const handleAcknowledge = (alertId: string) => {
 		acknowledgeMutation.mutate({ id: alertId });
-	}
+	};
 
 	const handleResolve = (alertId: string) => {
 		resolveMutation.mutate({ id: alertId });
-	}
+	};
 
 	const handleClearFilters = () => {
 		setStatusFilter("all");
 		setSeverityFilter("all");
-	}
+	};
 
 	return (
 		<div className="space-y-6">
@@ -83,7 +81,9 @@ function AlertsPage() {
 					onClick={() => refetch()}
 					disabled={isRefetching}
 				>
-					<RefreshCw className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+					<RefreshCw
+						className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
+					/>
 					Refresh
 				</Button>
 			</div>
@@ -97,15 +97,21 @@ function AlertsPage() {
 					</div>
 					<div>
 						<span className="text-muted-foreground">Triggered:</span>{" "}
-						<span className="font-medium">{stats.byStatus?.triggered || 0}</span>
+						<span className="font-medium">
+							{stats.byStatus?.triggered || 0}
+						</span>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Acknowledged:</span>{" "}
-						<span className="font-medium">{stats.byStatus?.acknowledged || 0}</span>
+						<span className="font-medium">
+							{stats.byStatus?.acknowledged || 0}
+						</span>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Correlated:</span>{" "}
-						<span className="font-medium">{stats.byStatus?.correlated || 0}</span>
+						<span className="font-medium">
+							{stats.byStatus?.correlated || 0}
+						</span>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Resolved:</span>{" "}
@@ -131,6 +137,5 @@ function AlertsPage() {
 				onResolve={handleResolve}
 			/>
 		</div>
-	)
+	);
 }
-

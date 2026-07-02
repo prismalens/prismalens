@@ -160,9 +160,7 @@ export function useConnectionDeletionImpact(id: string | null) {
 /**
  * Fetch all connections with integration info
  */
-export function useConnections(params?: {
-	templateId?: string;
-}) {
+export function useConnections(params?: { templateId?: string }) {
 	return useQuery(
 		orpc.integrations.listConnections.queryOptions({
 			input: params ?? {},

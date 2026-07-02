@@ -124,7 +124,8 @@ export function formatWideEventText(event: Partial<WideEvent>): string {
 	// Status code
 	if (event.response?.status_code) {
 		const code = event.response.status_code;
-		const color = code >= 500 ? COLORS.red : code >= 400 ? COLORS.yellow : COLORS.green;
+		const color =
+			code >= 500 ? COLORS.red : code >= 400 ? COLORS.yellow : COLORS.green;
 		parts.push(`${color}${code}${COLORS.reset}`);
 	}
 

@@ -4,6 +4,8 @@
  * Line chart showing incident count by day or week
  */
 
+import type { Incident } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { useMemo, useState } from "react";
 import {
 	Area,
@@ -14,11 +16,12 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
-import type { Incident } from "@prismalens/contracts";
-import { chartColors } from "@prismalens/design-tokens/colors";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { groupIncidentsByDate, type TimeSeriesDataPoint } from "@/lib/analytics";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	groupIncidentsByDate,
+	type TimeSeriesDataPoint,
+} from "@/lib/analytics";
 
 interface IncidentsOverTimeChartProps {
 	incidents: Incident[];
@@ -35,12 +38,12 @@ export function IncidentsOverTimeChart({
 
 	const data = useMemo(
 		() => groupIncidentsByDate(incidents, granularity, days),
-		[incidents, granularity, days]
+		[incidents, granularity, days],
 	);
 
 	const total = useMemo(
 		() => data.reduce((sum, d) => sum + d.value, 0),
-		[data]
+		[data],
 	);
 
 	return (
@@ -75,9 +78,23 @@ export function IncidentsOverTimeChart({
 					<ResponsiveContainer width="100%" height={200}>
 						<AreaChart data={data}>
 							<defs>
-								<linearGradient id="incidentGradient" x1="0" y1="0" x2="0" y2="1">
-									<stop offset="5%" stopColor={chartColors.primary} stopOpacity={0.3} />
-									<stop offset="95%" stopColor={chartColors.primary} stopOpacity={0} />
+								<linearGradient
+									id="incidentGradient"
+									x1="0"
+									y1="0"
+									x2="0"
+									y2="1"
+								>
+									<stop
+										offset="5%"
+										stopColor={chartColors.primary}
+										stopOpacity={0.3}
+									/>
+									<stop
+										offset="95%"
+										stopColor={chartColors.primary}
+										stopOpacity={0}
+									/>
 								</linearGradient>
 							</defs>
 							<CartesianGrid strokeDasharray="3 3" className="stroke-muted" />

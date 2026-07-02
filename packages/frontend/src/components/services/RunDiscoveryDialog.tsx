@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Loader2, GitBranch, Rocket } from "lucide-react";
+import { GitBranch, Loader2, Rocket } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,17 +41,23 @@ function getCategory(conn: ConnectionInfo): string {
 
 function getCategoryLabel(category: string): string {
 	switch (category) {
-		case "vcs": return "VCS Providers";
-		case "deployment": return "Deployment Platforms";
-		default: return "Other";
+		case "vcs":
+			return "VCS Providers";
+		case "deployment":
+			return "Deployment Platforms";
+		default:
+			return "Other";
 	}
 }
 
 function getCategoryIcon(category: string) {
 	switch (category) {
-		case "vcs": return GitBranch;
-		case "deployment": return Rocket;
-		default: return GitBranch;
+		case "vcs":
+			return GitBranch;
+		case "deployment":
+			return Rocket;
+		default:
+			return GitBranch;
 	}
 }
 
@@ -118,7 +124,12 @@ export function RunDiscoveryDialog({
 	};
 
 	const getConnectionLabel = (conn: ConnectionInfo): string => {
-		return conn.label || conn.integration?.label || conn.integration?.templateId || "Unknown";
+		return (
+			conn.label ||
+			conn.integration?.label ||
+			conn.integration?.templateId ||
+			"Unknown"
+		);
 	};
 
 	return (
@@ -142,7 +153,13 @@ export function RunDiscoveryDialog({
 								<div className="flex items-center gap-2">
 									<Checkbox
 										id={`group-${category}`}
-										checked={allSelected ? true : someSelected ? "indeterminate" : false}
+										checked={
+											allSelected
+												? true
+												: someSelected
+													? "indeterminate"
+													: false
+										}
 										onCheckedChange={() => toggleGroup(category)}
 									/>
 									<Label
@@ -200,9 +217,7 @@ export function RunDiscoveryDialog({
 						onClick={handleRun}
 						disabled={selectedIds.size === 0 || isPending}
 					>
-						{isPending && (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						)}
+						{isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						Scan Selected ({selectedIds.size})
 					</Button>
 				</DialogFooter>

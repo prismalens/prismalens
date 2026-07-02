@@ -7,10 +7,9 @@
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { Brain, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 // Investigation reference type (from incident relations)
@@ -27,7 +26,10 @@ export interface InvestigationProgressProps {
 	isStarting?: boolean;
 }
 
-const statusConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+const statusConfig: Record<
+	string,
+	{ label: string; icon: React.ReactNode; color: string }
+> = {
 	pending: {
 		label: "Pending",
 		icon: <Clock className="h-4 w-4" />,
@@ -70,7 +72,9 @@ export function InvestigationProgress({
 	onStartInvestigation,
 	isStarting,
 }: InvestigationProgressProps) {
-	const hasRunningInvestigation = investigations.some((inv) => inv.status === "running");
+	const hasRunningInvestigation = investigations.some(
+		(inv) => inv.status === "running",
+	);
 
 	if (investigations.length === 0) {
 		return (
@@ -105,7 +109,8 @@ export function InvestigationProgress({
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<div className="text-sm text-muted-foreground">
-					{investigations.length} investigation{investigations.length !== 1 ? "s" : ""}
+					{investigations.length} investigation
+					{investigations.length !== 1 ? "s" : ""}
 				</div>
 				{onStartInvestigation && !hasRunningInvestigation && (
 					<Button
@@ -131,7 +136,8 @@ export function InvestigationProgress({
 
 			<div className="grid gap-3">
 				{investigations.map((investigation) => {
-					const config = statusConfig[investigation.status] || statusConfig.pending;
+					const config =
+						statusConfig[investigation.status] || statusConfig.pending;
 					const progress = getProgressValue(investigation.status);
 
 					return (
@@ -163,9 +169,12 @@ export function InvestigationProgress({
 									{investigation.completedAt && (
 										<div className="text-muted-foreground">
 											Completed{" "}
-											{formatDistanceToNow(new Date(investigation.completedAt), {
-												addSuffix: true,
-											})}
+											{formatDistanceToNow(
+												new Date(investigation.completedAt),
+												{
+													addSuffix: true,
+												},
+											)}
 										</div>
 									)}
 								</div>

@@ -1,9 +1,14 @@
-import { Global, Module, type DynamicModule, type Provider } from "@nestjs/common";
+import {
+	type DynamicModule,
+	Global,
+	Module,
+	type Provider,
+} from "@nestjs/common";
 import { APP_INTERCEPTOR } from "@nestjs/core";
-import { LoggerService } from "./logger.service.js";
-import { WideEventInterceptor } from "./request.interceptor.js";
 import { Logger } from "../../core/logger.js";
 import type { ServiceInfo } from "../../types/wide-event.js";
+import { LoggerService } from "./logger.service.js";
+import { WideEventInterceptor } from "./request.interceptor.js";
 
 /**
  * Options for configuring the LoggerModule.

@@ -4,21 +4,21 @@
  * Main analytics dashboard showing stats cards and charts
  */
 
-import { useMemo } from "react";
-import { TrendingDown, TrendingUp, Minus } from "lucide-react";
 import type { IncidentWithRelations } from "@prismalens/contracts";
+import { Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import {
 	calculateAnalyticsSummary,
 	formatDuration,
 	formatTrend,
 	getTrendColor,
 } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 import { IncidentsOverTimeChart } from "./IncidentsOverTimeChart";
 import { MTTRTrendChart } from "./MTTRTrendChart";
-import { SeverityDistributionChart } from "./SeverityDistributionChart";
 import { ServiceDistributionChart } from "./ServiceDistributionChart";
+import { SeverityDistributionChart } from "./SeverityDistributionChart";
 
 interface IncidentAnalyticsProps {
 	incidents: IncidentWithRelations[];
@@ -78,7 +78,7 @@ export function IncidentAnalytics({
 }: IncidentAnalyticsProps) {
 	const summary = useMemo(
 		() => calculateAnalyticsSummary(incidents, previousIncidents),
-		[incidents, previousIncidents]
+		[incidents, previousIncidents],
 	);
 
 	return (

@@ -4,22 +4,20 @@
 # worker + shared @prismalens/* packages). The jobs mirror the commands a
 # contributor runs locally (see CONTRIBUTING.md).
 #
-# Two things this pipeline has to get right that aren't obvious:
+# The step order matters and is not obvious — it was derived by running a clean
+# checkout, not a warm working tree:
 #
-#  1. The Prisma client is GENERATED, not committed — `generated/` is gitignored.
-#     Nothing that imports `@prisma/client` will typecheck/build/test until we run
-#     `pnpm db:generate`, so every job that touches the code does it first.
+#  1. The Prisma client is GENERATED, not committed (generated/ is gitignored), so
+#     `pnpm db:generate` must run before anything that imports @prisma/client.
+#  2. `prisma.config.ts` imports @prismalens/config, so that ONE package must be
+#     built before db:generate can load the config. The full build can't run first
+#     because the database package's tsc build imports the client that db:generate
+#     has not produced yet. Hence: build config -> generate -> full build.
+#  3. Typecheck runs AFTER build: the frontend's tsc needs routeTree.gen.ts and the
+#     sibling packages' emitted .d.ts, both produced by the build.
+#  4. Lint (Biome) only reads source — no build or generate needed.
 #
-#  2. Linting is Biome (`pnpm format-and-lint` -> `biome check .`), NOT `pnpm lint`.
-#     `pnpm lint` (turbo run lint) currently errors — there is no `lint` task in
-#     turbo.json — so it is intentionally not used here.
-#
-# Required vs advisory (see .github/governance.json):
-#   - "Build & typecheck" is the REQUIRED status check — it is green on the trunk.
-#   - "Test" and "Lint (Biome)" are RED on the trunk today (pre-existing api test
-#     failures + a backlog of Biome findings). They run on every PR so the status
-#     is visible, but they are deliberately NOT required yet. Promote each to a
-#     required check in governance.json once it is green.
+# All three jobs are wired as REQUIRED status checks in .github/governance.json.
 name: CI
 
 on:
@@ -35,7 +33,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # REQUIRED check. Keep this green — branch protection gates merge on it.
   build:
     name: Build & typecheck
     runs-on: ubuntu-latest
@@ -54,16 +51,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build config (prerequisite for Prisma generate)
+        run: pnpm --filter=@prismalens/config build
+
       - name: Generate Prisma client
         run: pnpm db:generate
-
-      - name: Typecheck
-        run: pnpm typecheck
 
       - name: Build
         run: pnpm build
 
-  # ADVISORY (not required yet): the suite has pre-existing failures on the trunk.
+      - name: Typecheck
+        run: pnpm typecheck
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -82,13 +81,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build config (prerequisite for Prisma generate)
+        run: pnpm --filter=@prismalens/config build
+
       - name: Generate Prisma client
         run: pnpm db:generate
+
+      - name: Build
+        run: pnpm build
 
       - name: Test
         run: pnpm test
 
-  # ADVISORY (not required yet): Biome has a backlog of findings to clear.
   lint:
     name: Lint (Biome)
     runs-on: ubuntu-latest
@@ -107,5 +111,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Biome check
+      # Biome reads source only — no build or Prisma generate required.
+      - name: Biome check (format + lint)
         run: pnpm format-and-lint

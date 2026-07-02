@@ -1,20 +1,25 @@
-import { useState } from "react";
-import { ExternalLink, Plus, Unlink } from "lucide-react";
 import type { ServiceWithRelations } from "@prismalens/contracts";
-
-import { useUnlinkDeployment } from "@/lib/api/hooks";
+import { ExternalLink, Plus, Unlink } from "lucide-react";
+import { useState } from "react";
+import { MutationError } from "@/components/shared/MutationError";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MutationError } from "@/components/shared/MutationError";
+import { useUnlinkDeployment } from "@/lib/api/hooks";
 import { LinkDeploymentDialog } from "./LinkDeploymentDialog";
-import { DeploymentStatusIndicator, formatTimeAgo } from "./service-detail.utils";
+import {
+	DeploymentStatusIndicator,
+	formatTimeAgo,
+} from "./service-detail.utils";
 
 interface ServiceDeploymentsTabProps {
 	serviceId: string;
 	service: ServiceWithRelations;
 }
 
-export function ServiceDeploymentsTab({ serviceId, service }: ServiceDeploymentsTabProps) {
+export function ServiceDeploymentsTab({
+	serviceId,
+	service,
+}: ServiceDeploymentsTabProps) {
 	const [showLinkDialog, setShowLinkDialog] = useState(false);
 	const deploys = service.deployments ?? [];
 	const unlinkDeploy = useUnlinkDeployment();
@@ -26,7 +31,11 @@ export function ServiceDeploymentsTab({ serviceId, service }: ServiceDeployments
 				<h3 className="text-sm font-medium">
 					Linked Deployments ({deploys.length})
 				</h3>
-				<Button size="sm" variant="outline" onClick={() => setShowLinkDialog(true)}>
+				<Button
+					size="sm"
+					variant="outline"
+					onClick={() => setShowLinkDialog(true)}
+				>
 					<Plus className="h-4 w-4 mr-1" />
 					Link Deployment
 				</Button>
@@ -51,9 +60,13 @@ export function ServiceDeploymentsTab({ serviceId, service }: ServiceDeployments
 										{dep.status && (
 											<Badge
 												variant={
-													["live", "active", "running"].includes(dep.status.toLowerCase())
+													["live", "active", "running"].includes(
+														dep.status.toLowerCase(),
+													)
 														? "default"
-														: ["suspended", "paused"].includes(dep.status.toLowerCase())
+														: ["suspended", "paused"].includes(
+																	dep.status.toLowerCase(),
+																)
 															? "secondary"
 															: "destructive"
 												}
@@ -80,7 +93,9 @@ export function ServiceDeploymentsTab({ serviceId, service }: ServiceDeployments
 											</a>
 										)}
 										{dep.lastDeployedAt && (
-											<span>Last deployed: {formatTimeAgo(dep.lastDeployedAt)}</span>
+											<span>
+												Last deployed: {formatTimeAgo(dep.lastDeployedAt)}
+											</span>
 										)}
 									</div>
 								</div>
@@ -89,9 +104,7 @@ export function ServiceDeploymentsTab({ serviceId, service }: ServiceDeployments
 									size="sm"
 									className="text-destructive hover:text-destructive"
 									disabled={unlinkDeploy.isPending}
-									onClick={() =>
-										unlinkDeploy.mutate({ id: dep.id })
-									}
+									onClick={() => unlinkDeploy.mutate({ id: dep.id })}
 								>
 									<Unlink className="h-4 w-4 mr-1" />
 									Unlink

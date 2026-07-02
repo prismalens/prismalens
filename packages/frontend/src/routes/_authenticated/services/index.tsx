@@ -1,5 +1,10 @@
-import { useState, useCallback } from "react";
+import type {
+	ServiceTier,
+	ServiceType,
+	ServiceWithRelations,
+} from "@prismalens/contracts";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
 	AlertCircle,
 	ChevronLeft,
@@ -13,18 +18,18 @@ import {
 	Sparkles,
 	X,
 } from "lucide-react";
-import type { ColumnDef } from "@tanstack/react-table";
-
-import type {
-	ServiceTier,
-	ServiceType,
-	ServiceWithRelations,
-} from "@prismalens/contracts";
-
-import { useConnections, useDeployments, useRepositories, useServices, useSuggestions, useUnlinkedDeploymentCount, useUnlinkedRepositoryCount } from "@/lib/api/hooks";
+import { useCallback, useState } from "react";
 import { PageHeader } from "@/components/layout";
-import { Button } from "@/components/ui/button";
+import { ImportFromVcsDialog } from "@/components/services/ImportFromVcsDialog";
+import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
+import { ServiceList } from "@/components/services/ServiceList";
+import { tierLabels } from "@/components/services/service-detail.utils";
+import { UnlinkedDeploymentsDialog } from "@/components/services/UnlinkedDeploymentsDialog";
+import { UnlinkedReposDialog } from "@/components/services/UnlinkedReposDialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
+import { DebouncedSearchInput } from "@/components/ui/debounced-search-input";
 import {
 	Select,
 	SelectContent,
@@ -32,14 +37,15 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { DataTable } from "@/components/ui/data-table";
-import { DebouncedSearchInput } from "@/components/ui/debounced-search-input";
-import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
-import { ImportFromVcsDialog } from "@/components/services/ImportFromVcsDialog";
-import { ServiceList } from "@/components/services/ServiceList";
-import { UnlinkedDeploymentsDialog } from "@/components/services/UnlinkedDeploymentsDialog";
-import { UnlinkedReposDialog } from "@/components/services/UnlinkedReposDialog";
-import { tierLabels } from "@/components/services/service-detail.utils";
+import {
+	useConnections,
+	useDeployments,
+	useRepositories,
+	useServices,
+	useSuggestions,
+	useUnlinkedDeploymentCount,
+	useUnlinkedRepositoryCount,
+} from "@/lib/api/hooks";
 
 const PAGE_SIZE = 25;
 
@@ -62,7 +68,6 @@ const serviceTiers: { value: ServiceTier | "all"; label: string }[] = [
 	{ value: "tier_4", label: "Tier 4 - Low" },
 ];
 
-
 type ServicesSearch = {
 	type?: string;
 	tier?: string;
@@ -77,10 +82,7 @@ export const Route = createFileRoute("/_authenticated/services/")({
 		tier: typeof raw.tier === "string" ? raw.tier : undefined,
 		search: typeof raw.search === "string" ? raw.search : undefined,
 		page: typeof raw.page === "number" ? raw.page : 1,
-		view:
-			raw.view === "grid" || raw.view === "table"
-				? raw.view
-				: "table",
+		view: raw.view === "grid" || raw.view === "table" ? raw.view : "table",
 	}),
 	component: ServicesPage,
 });
@@ -99,9 +101,7 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 					className="hover:text-primary"
 				>
 					<div>
-						<p className="font-medium">
-							{s.displayName || s.name}
-						</p>
+						<p className="font-medium">{s.displayName || s.name}</p>
 						{s.displayName && (
 							<p className="text-xs text-muted-foreground font-mono">
 								{s.name}
@@ -134,9 +134,7 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 		accessorKey: "team",
 		header: "Team",
 		cell: ({ row }) => (
-			<span className="text-muted-foreground">
-				{row.original.team || "—"}
-			</span>
+			<span className="text-muted-foreground">{row.original.team || "—"}</span>
 		),
 	},
 	{
@@ -161,11 +159,7 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 						</Badge>
 					))}
 					{deploys.map((d) => (
-						<Badge
-							key={d.id}
-							variant="outline"
-							className="text-xs"
-						>
+						<Badge key={d.id} variant="outline" className="text-xs">
 							🚀 {d.name} ({d.status})
 						</Badge>
 					))}
@@ -181,7 +175,8 @@ function ServicesPage() {
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showImportDialog, setShowImportDialog] = useState(false);
 	const [showUnlinkedReposDialog, setShowUnlinkedReposDialog] = useState(false);
-	const [showUnlinkedDeploymentsDialog, setShowUnlinkedDeploymentsDialog] = useState(false);
+	const [showUnlinkedDeploymentsDialog, setShowUnlinkedDeploymentsDialog] =
+		useState(false);
 	const [bannerDismissed, setBannerDismissed] = useState(false);
 
 	const typeFilter = (searchParams.type || "all") as ServiceType | "all";
@@ -325,55 +320,56 @@ function ServicesPage() {
 			/>
 
 			{/* Unlinked Resources Banner */}
-			{(unlinkedReposCount > 0 || unlinkedDeploymentsCount > 0) && !bannerDismissed && (
-				<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50 text-sm">
-					<div className="flex items-center gap-2">
-						<AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-						<span>
-							{[
-								unlinkedReposCount > 0
-									? `${unlinkedReposCount} repositor${unlinkedReposCount !== 1 ? "ies" : "y"}`
-									: null,
-								unlinkedDeploymentsCount > 0
-									? `${unlinkedDeploymentsCount} deployment${unlinkedDeploymentsCount !== 1 ? "s" : ""}`
-									: null,
-							]
-								.filter(Boolean)
-								.join(" and ")}{" "}
-							not linked to any service.
-						</span>
-					</div>
-					<div className="flex items-center gap-2 flex-shrink-0">
-						{unlinkedReposCount > 0 && (
+			{(unlinkedReposCount > 0 || unlinkedDeploymentsCount > 0) &&
+				!bannerDismissed && (
+					<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50 text-sm">
+						<div className="flex items-center gap-2">
+							<AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+							<span>
+								{[
+									unlinkedReposCount > 0
+										? `${unlinkedReposCount} repositor${unlinkedReposCount !== 1 ? "ies" : "y"}`
+										: null,
+									unlinkedDeploymentsCount > 0
+										? `${unlinkedDeploymentsCount} deployment${unlinkedDeploymentsCount !== 1 ? "s" : ""}`
+										: null,
+								]
+									.filter(Boolean)
+									.join(" and ")}{" "}
+								not linked to any service.
+							</span>
+						</div>
+						<div className="flex items-center gap-2 flex-shrink-0">
+							{unlinkedReposCount > 0 && (
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setShowUnlinkedReposDialog(true)}
+								>
+									Repos ({unlinkedReposCount})
+								</Button>
+							)}
+							{unlinkedDeploymentsCount > 0 && (
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setShowUnlinkedDeploymentsDialog(true)}
+								>
+									<Rocket className="h-3 w-3 mr-1" />
+									Deployments ({unlinkedDeploymentsCount})
+								</Button>
+							)}
 							<Button
-								variant="outline"
+								variant="ghost"
 								size="sm"
-								onClick={() => setShowUnlinkedReposDialog(true)}
+								className="h-7 w-7 p-0"
+								onClick={() => setBannerDismissed(true)}
 							>
-								Repos ({unlinkedReposCount})
+								<X className="h-3 w-3" />
 							</Button>
-						)}
-						{unlinkedDeploymentsCount > 0 && (
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={() => setShowUnlinkedDeploymentsDialog(true)}
-							>
-								<Rocket className="h-3 w-3 mr-1" />
-								Deployments ({unlinkedDeploymentsCount})
-							</Button>
-						)}
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-7 w-7 p-0"
-							onClick={() => setBannerDismissed(true)}
-						>
-							<X className="h-3 w-3" />
-						</Button>
+						</div>
 					</div>
-				</div>
-			)}
+				)}
 
 			{/* Filters */}
 			<div className="flex flex-wrap items-center gap-3">
@@ -460,7 +456,11 @@ function ServicesPage() {
 					isLoading={isLoading}
 					emptyMessage="No services found"
 					onRowClick={(row) =>
-						navigate({ to: "/services/$id", params: { id: row.id }, search: { tab: "overview" } })
+						navigate({
+							to: "/services/$id",
+							params: { id: row.id },
+							search: { tab: "overview" },
+						})
 					}
 				/>
 			) : (

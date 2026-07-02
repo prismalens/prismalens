@@ -5,7 +5,7 @@
  * from a git provider connection (GitHub, GitLab, BitBucket).
  */
 
-import { useState, useMemo } from "react";
+import type { GitOrganization, GitRepository } from "@prismalens/contracts";
 import {
 	Building2,
 	Check,
@@ -17,7 +17,7 @@ import {
 	Search,
 	Star,
 } from "lucide-react";
-import type { GitOrganization, GitRepository } from "@prismalens/contracts";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

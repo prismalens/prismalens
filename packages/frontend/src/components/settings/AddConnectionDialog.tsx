@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Loader2 } from "lucide-react";
 import type {
 	AuthTemplateResponse,
 	Integration,
 } from "@prismalens/contracts/schemas";
+import { Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,7 +87,8 @@ export function AddConnectionDialog({
 
 	const selectedTemplate = templates?.find(
 		(t: AuthTemplateResponse) =>
-			t.id === (isNewTemplate ? selectedTemplateId : selectedIntegration?.templateId),
+			t.id ===
+			(isNewTemplate ? selectedTemplateId : selectedIntegration?.templateId),
 	);
 
 	// Simple auth templates without an existing integration — one integration per template
@@ -154,15 +155,12 @@ export function AddConnectionDialog({
 						headers: { "Content-Type": "application/json" },
 					},
 				);
-				if (!res.ok)
-					throw new Error(`OAuth authorize failed: ${res.status}`);
+				if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
 				const { redirectUrl } = await res.json();
 				window.location.href = redirectUrl;
 			} catch (err) {
 				setError(
-					err instanceof Error
-						? err
-						: new Error("Failed to start OAuth flow"),
+					err instanceof Error ? err : new Error("Failed to start OAuth flow"),
 				);
 			}
 			return;
@@ -233,15 +231,15 @@ export function AddConnectionDialog({
 			} catch (connErr) {
 				// Compensate: clean up auto-created integration if connection failed
 				if (createdNewIntegration) {
-					await deleteIntegration.mutateAsync({ id: integrationId }).catch(() => {});
+					await deleteIntegration
+						.mutateAsync({ id: integrationId })
+						.catch(() => {});
 				}
 				throw connErr;
 			}
 		} catch (err) {
 			setError(
-				err instanceof Error
-					? err
-					: new Error("Failed to create connection"),
+				err instanceof Error ? err : new Error("Failed to create connection"),
 			);
 		}
 	};
@@ -281,20 +279,14 @@ export function AddConnectionDialog({
 													t.id === integration.templateId,
 											);
 											return (
-												<SelectItem
-													key={integration.id}
-													value={integration.id}
-												>
+												<SelectItem key={integration.id} value={integration.id}>
 													<div className="flex items-center gap-2">
 														<span className="text-muted-foreground">
 															{getTemplateIcon(integration.templateId)}
 														</span>
 														<span>{integration.label}</span>
 														{template && (
-															<Badge
-																variant="outline"
-																className="ml-1 text-xs"
-															>
+															<Badge variant="outline" className="ml-1 text-xs">
 																{template.authModeLabel}
 															</Badge>
 														)}
@@ -307,25 +299,24 @@ export function AddConnectionDialog({
 								{hasAvailableTemplates && (
 									<SelectGroup>
 										<SelectLabel>Available providers</SelectLabel>
-										{availableTemplates.map((template: AuthTemplateResponse) => (
-											<SelectItem
-												key={`new:${template.id}`}
-												value={`${NEW_TEMPLATE_PREFIX}${template.id}`}
-											>
-												<div className="flex items-center gap-2">
-													<span className="text-muted-foreground">
-														{getTemplateIcon(template.id)}
-													</span>
-													<span>{template.name}</span>
-													<Badge
-														variant="secondary"
-														className="ml-1 text-xs"
-													>
-														{template.authModeLabel}
-													</Badge>
-												</div>
-											</SelectItem>
-										))}
+										{availableTemplates.map(
+											(template: AuthTemplateResponse) => (
+												<SelectItem
+													key={`new:${template.id}`}
+													value={`${NEW_TEMPLATE_PREFIX}${template.id}`}
+												>
+													<div className="flex items-center gap-2">
+														<span className="text-muted-foreground">
+															{getTemplateIcon(template.id)}
+														</span>
+														<span>{template.name}</span>
+														<Badge variant="secondary" className="ml-1 text-xs">
+															{template.authModeLabel}
+														</Badge>
+													</div>
+												</SelectItem>
+											),
+										)}
 									</SelectGroup>
 								)}
 							</SelectContent>
@@ -377,19 +368,11 @@ export function AddConnectionDialog({
 				</div>
 				<MutationError error={error} className="mb-2" />
 				<DialogFooter>
-					<Button
-						variant="outline"
-						onClick={() => handleOpenChange(false)}
-					>
+					<Button variant="outline" onClick={() => handleOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button
-						onClick={handleSave}
-						disabled={!selectedValue || isPending}
-					>
-						{isPending && (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						)}
+					<Button onClick={handleSave} disabled={!selectedValue || isPending}>
+						{isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						{selectedTemplate?.connectionCreationMode === "oauth_redirect"
 							? "Connect with OAuth"
 							: isNewTemplate

@@ -5,13 +5,13 @@
  */
 
 export {
+	type AgentStyle,
+	type CanvasNode,
 	formatExecutionTime,
 	formatTokenCount,
 	getAgentMiniMapColor,
 	getAgentStyle,
 	getStatusColor,
-	transformExecutionsToCanvas,
-	type AgentStyle,
-	type CanvasNode,
 	type TransformResult,
+	transformExecutionsToCanvas,
 } from "./transform-executions";

@@ -1,4 +1,10 @@
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from "class-validator";
+import {
+	IsDateString,
+	IsEnum,
+	IsOptional,
+	IsString,
+	IsUUID,
+} from "class-validator";
 import { WorkflowStatus } from "../../../shared/enums/index.js";
 
 /**

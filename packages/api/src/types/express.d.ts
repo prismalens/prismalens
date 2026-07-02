@@ -8,11 +8,11 @@
  * the `role` field (string | undefined), `banned`, `banReason`, `banExpires`.
  */
 
-import type { Session, UserWithRole } from '@prismalens/auth';
+import type { Session, UserWithRole } from "@prismalens/auth";
 
-declare module 'express' {
-  interface Request {
-    user?: UserWithRole;
-    session?: Session;
-  }
+declare module "express" {
+	interface Request {
+		user?: UserWithRole;
+		session?: Session;
+	}
 }

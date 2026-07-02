@@ -29,8 +29,7 @@ pnpm install
 pnpm build        # turbo run build
 pnpm typecheck    # turbo run typecheck
 pnpm test         # turbo run test
-pnpm lint         # turbo run lint
-pnpm format-and-lint        # biome check .
+pnpm format-and-lint        # biome check . (lint + format)
 pnpm format-and-lint:fix    # biome check . --write
 ```
 

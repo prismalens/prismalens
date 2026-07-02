@@ -50,8 +50,7 @@ export class AuthManager {
 		token: string,
 		template?: AuthTemplate | null,
 	): Promise<Record<string, string>> {
-		const credentials =
-			await this.deps.getConnectionCredentials(connectionId);
+		const credentials = await this.deps.getConnectionCredentials(connectionId);
 
 		// Collect default values from template fields (fallback for missing credentials)
 		const defaults: Record<string, string> = {};
@@ -87,9 +86,7 @@ export class AuthManager {
 	 * Get fully interpolated auth headers for a connection.
 	 * Resolves the token first, then applies template.authenticate.headers.
 	 */
-	async getAuthHeaders(
-		connectionId: string,
-	): Promise<Record<string, string>> {
+	async getAuthHeaders(connectionId: string): Promise<Record<string, string>> {
 		const token = await this.resolveAccessToken(connectionId);
 
 		const template = await this.deps.getTemplateForConnection(connectionId);
@@ -182,15 +179,12 @@ export class AuthManager {
 				});
 			}
 			if (!retryResponse.ok) {
-				throw new ProviderError(
-					`Provider returned ${retryResponse.status}`,
-					{
-						connectionId,
-						httpStatus: retryResponse.status,
-						templateId: template?.id,
-						provider: template?.name,
-					},
-				);
+				throw new ProviderError(`Provider returned ${retryResponse.status}`, {
+					connectionId,
+					httpStatus: retryResponse.status,
+					templateId: template?.id,
+					provider: template?.name,
+				});
 			}
 			return retryResponse;
 		}
@@ -243,8 +237,7 @@ export class AuthManager {
 		} catch (error) {
 			return {
 				success: false,
-				error:
-					error instanceof Error ? error.message : "Connection failed",
+				error: error instanceof Error ? error.message : "Connection failed",
 			};
 		}
 	}

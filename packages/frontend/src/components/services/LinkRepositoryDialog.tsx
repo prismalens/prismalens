@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { Loader2, Search, GitBranch } from "lucide-react";
+import { GitBranch, Loader2, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLinkRepository, useRepositories } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-
-import { useRepositories, useLinkRepository } from "@/lib/api/hooks";
 
 interface LinkRepositoryDialogProps {
 	open: boolean;
@@ -132,17 +131,14 @@ export function LinkRepositoryDialog({
 										type="button"
 										className={cn(
 											"w-full flex items-center justify-between gap-2 p-2 rounded text-left text-sm hover:bg-muted/50 transition-colors",
-											selectedId === repo.id &&
-												"bg-muted border border-border",
+											selectedId === repo.id && "bg-muted border border-border",
 										)}
 										onClick={() => setSelectedId(repo.id)}
 									>
 										<div className="min-w-0">
 											<div className="flex items-center gap-1.5">
 												<GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-												<p className="font-medium truncate">
-													{repo.fullName}
-												</p>
+												<p className="font-medium truncate">{repo.fullName}</p>
 											</div>
 											{repo.description && (
 												<p className="text-xs text-muted-foreground truncate ml-5">
@@ -170,7 +166,8 @@ export function LinkRepositoryDialog({
 							onChange={(e) => setSubPath(e.target.value)}
 						/>
 						<p className="text-xs text-muted-foreground">
-							For monorepos, specify the path to this service within the repository.
+							For monorepos, specify the path to this service within the
+							repository.
 						</p>
 					</div>
 
@@ -185,9 +182,7 @@ export function LinkRepositoryDialog({
 						</Label>
 					</div>
 
-					{error && (
-						<p className="text-sm text-destructive">{error}</p>
-					)}
+					{error && <p className="text-sm text-destructive">{error}</p>}
 				</div>
 
 				<DialogFooter>

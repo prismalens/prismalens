@@ -13,15 +13,15 @@
  */
 
 export {
+	getAllowedHosts,
+	// Helper functions
+	getApiKeyEnvVar,
+	getDefaultModel,
+	LLM_CREDENTIAL_ENV_VARS,
+	LLM_PROVIDER_IDS,
 	// Static metadata
 	LLM_PROVIDERS,
-	LLM_PROVIDER_IDS,
-	LLM_CREDENTIAL_ENV_VARS,
 	type LLMProviderId,
 	// Zod schemas (for provider ID validation only)
 	llmProviderIdSchema,
-	// Helper functions
-	getApiKeyEnvVar,
-	getAllowedHosts,
-	getDefaultModel,
 } from "./providers/llm.js";

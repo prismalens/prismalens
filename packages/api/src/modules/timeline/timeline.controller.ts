@@ -67,7 +67,9 @@ export class TimelineController {
 		} as TimelineEntry;
 	}
 
-	private serializeTimelineEntryWithRelations(entry: Record<string, any>): TimelineEntryWithRelations {
+	private serializeTimelineEntryWithRelations(
+		entry: Record<string, any>,
+	): TimelineEntryWithRelations {
 		const serialized = this.serializeTimelineEntry(entry) as any;
 
 		if (entry.user) {

@@ -9,7 +9,12 @@ import {
 } from "fs";
 import { join, resolve, sep } from "path";
 import { ensureAppDataDir, getAppDataDir } from "./app-data.js";
-import { FILE_SUFFIX, SecretEnvVars, type SecretEnvVar, secretFileName } from "./secrets.js";
+import {
+	FILE_SUFFIX,
+	type SecretEnvVar,
+	SecretEnvVars,
+	secretFileName,
+} from "./secrets.js";
 
 const KEY_LENGTH = 32; // 32 bytes = 64 hex chars
 
@@ -107,4 +112,3 @@ export function getOrCreateInternalSecret(): string {
 export function getOrCreateAuthSecret(): string {
 	return getOrCreateSecret(SecretEnvVars.AUTH_SECRET);
 }
-

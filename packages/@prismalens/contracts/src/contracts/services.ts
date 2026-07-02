@@ -114,10 +114,12 @@ export const servicesContract = {
 			tags: ["services"],
 		})
 		.input(
-			z.object({
-				id: z.string().uuid(),
-				dependencyId: z.string().uuid(),
-			}).merge(UpdateDependencySchema),
+			z
+				.object({
+					id: z.string().uuid(),
+					dependencyId: z.string().uuid(),
+				})
+				.merge(UpdateDependencySchema),
 		)
 		.output(ServiceDependencySchema),
 

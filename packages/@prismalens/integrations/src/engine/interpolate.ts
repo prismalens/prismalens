@@ -18,7 +18,7 @@ export function interpolateWithFunctions(
 	context: Record<string, string>,
 ): string {
 	const base64Regex = /\{\{base64\((.+?)\)\}\}/g;
-	let result = template.replace(base64Regex, (_, expr: string) => {
+	const result = template.replace(base64Regex, (_, expr: string) => {
 		const resolved = expr.replace(/(\w+)/g, (m: string) => {
 			return context[m] ?? m;
 		});

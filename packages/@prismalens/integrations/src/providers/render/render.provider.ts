@@ -64,9 +64,7 @@ async function json<T>(response: Response): Promise<T> {
 /**
  * Map Render service types to a normalized status.
  */
-function mapRenderStatus(
-	service: RenderServiceItem["service"],
-): string {
+function mapRenderStatus(service: RenderServiceItem["service"]): string {
 	if (service.suspended === "suspended") return "suspended";
 	return "live";
 }
@@ -202,7 +200,10 @@ export class RenderProvider implements DeploymentProvider {
 		} catch (error) {
 			// Projects API may not be available or user may have no projects.
 			// Graceful fallback — services will be listed without project context.
-			console.warn("[RenderProvider] fetchProjectMap failed (non-blocking):", error);
+			console.warn(
+				"[RenderProvider] fetchProjectMap failed (non-blocking):",
+				error,
+			);
 		}
 
 		return map;

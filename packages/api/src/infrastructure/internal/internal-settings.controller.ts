@@ -49,16 +49,21 @@ export class InternalSettingsController {
 		credentials: Record<string, string>;
 	}> {
 		const settings = await this.llmSettingsService.getLlmSettings();
-		const provider = settings.activeProvider
-			?? (process.env.PRISMALENS_LLM_PROVIDER as LLMProviderId | undefined)
-			?? null;
+		const provider =
+			settings.activeProvider ??
+			(process.env.PRISMALENS_LLM_PROVIDER as LLMProviderId | undefined) ??
+			null;
 		const model = provider
-			? settings.providers[provider as LLMProviderId]?.model ?? process.env.PRISMALENS_LLM_MODEL ?? null
-			: process.env.PRISMALENS_LLM_MODEL ?? null;
+			? (settings.providers[provider as LLMProviderId]?.model ??
+				process.env.PRISMALENS_LLM_MODEL ??
+				null)
+			: (process.env.PRISMALENS_LLM_MODEL ?? null);
 
 		const credentials: Record<string, string> = {};
 		if (provider) {
-			const apiKey = this.llmSettingsService.resolveApiKey(provider as LLMProviderId);
+			const apiKey = this.llmSettingsService.resolveApiKey(
+				provider as LLMProviderId,
+			);
 			const envVar = getApiKeyEnvVar(provider as LLMProviderId);
 			if (envVar && apiKey) {
 				credentials[envVar] = apiKey;

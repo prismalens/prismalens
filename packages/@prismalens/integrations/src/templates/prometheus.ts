@@ -50,7 +50,7 @@ export const prometheus: AuthTemplate = {
 	],
 	authenticate: {
 		headers: {
-			Authorization: "Basic {{base64(username + \":\" + apiKey)}}",
+			Authorization: 'Basic {{base64(username + ":" + apiKey)}}',
 		},
 	},
 	proxy: {

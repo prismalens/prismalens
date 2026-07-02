@@ -6,7 +6,13 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": [
+			"**",
+			"!**/routeTree.gen.ts",
+			"!packages/frontend/src/app.css",
+			"!packages/@prismalens/design-tokens/css/tailwind-preset.css"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -15,7 +21,18 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true
+			"recommended": true,
+			"a11y": {
+				"noLabelWithoutControl": "warn",
+				"noStaticElementInteractions": "warn",
+				"useKeyWithClickEvents": "warn"
+			},
+			"correctness": {
+				"useExhaustiveDependencies": "warn"
+			},
+			"suspicious": {
+				"noArrayIndexKey": "warn"
+			}
 		}
 	},
 	"javascript": {

@@ -1,4 +1,11 @@
-import { Controller, Param, ParseUUIDPipe, Sse, UseGuards, type MessageEvent } from "@nestjs/common";
+import {
+	Controller,
+	type MessageEvent,
+	Param,
+	ParseUUIDPipe,
+	Sse,
+	UseGuards,
+} from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Observable } from "rxjs";
 import { StreamRelayService } from "./stream-relay.service.js";

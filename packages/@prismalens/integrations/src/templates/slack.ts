@@ -44,11 +44,7 @@ export const slack: AuthTemplate = {
 		// DERIVED from requiredPermissions — always in sync
 		scopes: slackPermissions.map((p) => p.key),
 		tokenAuthMethod: "body",
-		tokenResponseMetadata: [
-			"incoming_webhook.url",
-			"bot_user_id",
-			"team.id",
-		],
+		tokenResponseMetadata: ["incoming_webhook.url", "bot_user_id", "team.id"],
 		clientCredentialSource: "both",
 	},
 	authenticate: {

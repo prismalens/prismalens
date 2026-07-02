@@ -1,11 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import {
-	ExternalLink,
-	Loader2,
-} from "lucide-react";
 import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,10 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	useCreateIntegration,
-	useTemplates,
-} from "@/lib/api/hooks";
+import { useCreateIntegration, useTemplates } from "@/lib/api/hooks";
 import { validateFieldValues } from "@/lib/credential-schema";
 import { DynamicCredentialForm } from "./DynamicCredentialForm";
 import { getTemplateIcon } from "./integration-utils";
@@ -87,8 +81,10 @@ export function AddIntegrationDialog({
 		if (!selectedTemplate) return;
 		setError(null);
 
-		const hasOAuthCreds = selectedTemplate.connectionCreationMode === "oauth_redirect";
-		const integrationFields = selectedTemplate.integrationCredentialFields ?? [];
+		const hasOAuthCreds =
+			selectedTemplate.connectionCreationMode === "oauth_redirect";
+		const integrationFields =
+			selectedTemplate.integrationCredentialFields ?? [];
 
 		// Validate OAuth inline fields
 		if (hasOAuthCreds) {
@@ -152,39 +148,41 @@ export function AddIntegrationDialog({
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-3 py-4">
-						{templates?.filter((t) => t.authMode !== "api_key" && t.authMode !== "basic").map((template) => (
-							<button
-								key={template.id}
-								type="button"
-								onClick={() => handlePickTemplate(template)}
-								className="w-full flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
-							>
-								<span className="text-muted-foreground">
-									{getTemplateIcon(template.id)}
-								</span>
-								<div className="flex-1">
-									<p className="font-medium">{template.name}</p>
-									<p className="text-sm text-muted-foreground">
-										{template.category}
-									</p>
-								</div>
-								<Badge variant="outline">
-									{template.authModeLabel}
-								</Badge>
-								{template.setupDocsUrl && (
-									<a
-										href={template.setupDocsUrl}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="p-1 text-muted-foreground hover:text-foreground"
-										title="Setup guide"
-										onClick={(e) => e.stopPropagation()}
-									>
-										<ExternalLink className="h-3.5 w-3.5" />
-									</a>
-								)}
-							</button>
-						))}
+						{templates
+							?.filter(
+								(t) => t.authMode !== "api_key" && t.authMode !== "basic",
+							)
+							.map((template) => (
+								<button
+									key={template.id}
+									type="button"
+									onClick={() => handlePickTemplate(template)}
+									className="w-full flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
+								>
+									<span className="text-muted-foreground">
+										{getTemplateIcon(template.id)}
+									</span>
+									<div className="flex-1">
+										<p className="font-medium">{template.name}</p>
+										<p className="text-sm text-muted-foreground">
+											{template.category}
+										</p>
+									</div>
+									<Badge variant="outline">{template.authModeLabel}</Badge>
+									{template.setupDocsUrl && (
+										<a
+											href={template.setupDocsUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="p-1 text-muted-foreground hover:text-foreground"
+											title="Setup guide"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<ExternalLink className="h-3.5 w-3.5" />
+										</a>
+									)}
+								</button>
+							))}
 					</div>
 				</DialogContent>
 			</Dialog>
@@ -196,8 +194,7 @@ export function AddIntegrationDialog({
 		selectedTemplate?.connectionCreationMode === "oauth_redirect";
 	const hasIntegrationCreds =
 		(selectedTemplate?.integrationCredentialFields?.length ?? 0) > 0;
-	const needsNoCreds =
-		!needsOAuthCreds && !hasIntegrationCreds;
+	const needsNoCreds = !needsOAuthCreds && !hasIntegrationCreds;
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
@@ -247,9 +244,7 @@ export function AddIntegrationDialog({
 									value={oauthClientId}
 									onChange={(e) => setOauthClientId(e.target.value)}
 									placeholder="OAuth App Client ID"
-									aria-invalid={
-										showErrors && !oauthClientId ? true : undefined
-									}
+									aria-invalid={showErrors && !oauthClientId ? true : undefined}
 								/>
 								{showErrors && !oauthClientId && (
 									<p className="text-sm text-destructive">
@@ -286,8 +281,8 @@ export function AddIntegrationDialog({
 										: "/api/integrations/oauth/callback"}
 								</code>
 								<p className="text-xs text-muted-foreground">
-									Set this as the Redirect URL in your{" "}
-									{selectedTemplate?.name} app settings
+									Set this as the Redirect URL in your {selectedTemplate?.name}{" "}
+									app settings
 								</p>
 							</div>
 						</>

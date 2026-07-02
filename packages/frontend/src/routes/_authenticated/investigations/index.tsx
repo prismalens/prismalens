@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import type { WorkflowStatus } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { formatDistanceToNow } from "date-fns";
 import {
 	Activity,
 	AlertCircle,
@@ -9,11 +10,7 @@ import {
 	RefreshCw,
 	Search,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-
-import type { WorkflowStatus } from "@prismalens/contracts";
-
-import { orpc } from "@/lib/api/orpc-client";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,6 +30,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/investigations/")({
 	component: InvestigationsPage,
@@ -49,12 +47,12 @@ const workflowStatuses: { value: WorkflowStatus | "all"; label: string }[] = [
 function InvestigationsPage() {
 	const [statusFilter, setStatusFilter] = useState<WorkflowStatus | "all">(
 		"all",
-	)
+	);
 
 	// Build query params
 	const queryParams: { status?: WorkflowStatus; limit: number } = {
 		limit: 50,
-	}
+	};
 	if (statusFilter !== "all") {
 		queryParams.status = statusFilter;
 	}
@@ -69,7 +67,7 @@ function InvestigationsPage() {
 
 	const handleClearFilters = () => {
 		setStatusFilter("all");
-	}
+	};
 
 	const hasFilters = statusFilter !== "all";
 
@@ -79,7 +77,7 @@ function InvestigationsPage() {
 		running: investigations.filter((i) => i.status === "running").length,
 		completed: investigations.filter((i) => i.status === "completed").length,
 		failed: investigations.filter((i) => i.status === "failed").length,
-	}
+	};
 
 	return (
 		<div className="space-y-6">
@@ -210,9 +208,12 @@ function InvestigationsPage() {
 										</TableCell>
 										<TableCell className="text-sm text-muted-foreground">
 											{investigation.startedAt
-												? formatDistanceToNow(new Date(investigation.startedAt), {
-														addSuffix: true,
-													})
+												? formatDistanceToNow(
+														new Date(investigation.startedAt),
+														{
+															addSuffix: true,
+														},
+													)
 												: "-"}
 										</TableCell>
 										<TableCell className="text-sm text-muted-foreground">
@@ -233,9 +234,8 @@ function InvestigationsPage() {
 				</Card>
 			)}
 		</div>
-	)
+	);
 }
-
 
 function StatusBadge({ status }: { status: string }) {
 	const statusConfig = {
@@ -262,7 +262,7 @@ function StatusBadge({ status }: { status: string }) {
 			className:
 				"bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 		},
-	}
+	};
 
 	const config =
 		statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
@@ -273,7 +273,7 @@ function StatusBadge({ status }: { status: string }) {
 			<Icon className="w-3 h-3 mr-1" />
 			{status}
 		</Badge>
-	)
+	);
 }
 
 function calculateDuration(start: string, end: string): string {
@@ -332,5 +332,5 @@ function InvestigationsTableSkeleton() {
 				</Table>
 			</CardContent>
 		</Card>
-	)
+	);
 }

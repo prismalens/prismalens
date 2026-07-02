@@ -1,5 +1,10 @@
+import {
+	enrichContext,
+	getRequestId,
+	getTraceId,
+	runInRequestContext,
+} from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
-import { runInRequestContext, enrichContext, getRequestId, getTraceId } from "../../core/context.js";
 import type { ServiceInfo, WideEvent } from "../../types/wide-event.js";
 
 /**
@@ -66,26 +71,29 @@ export async function runWithWideEvent<T>(
 ): Promise<T> {
 	const logger = Logger.getInstance();
 
-	return runInRequestContext(async () => {
-		try {
-			const result = await fn();
-			logger.emitWideEvent();
-			return result;
-		} catch (error) {
-			enrichContext({
-				error: {
-					type: (error as Error).name || "Error",
-					message: (error as Error).message,
-					stack: (error as Error).stack,
-				},
-			});
-			logger.emitWideEvent();
-			throw error;
-		}
-	}, {
-		request_id: jobId,
-		...initialContext,
-	}) as Promise<T>;
+	return runInRequestContext(
+		async () => {
+			try {
+				const result = await fn();
+				logger.emitWideEvent();
+				return result;
+			} catch (error) {
+				enrichContext({
+					error: {
+						type: (error as Error).name || "Error",
+						message: (error as Error).message,
+						stack: (error as Error).stack,
+					},
+				});
+				logger.emitWideEvent();
+				throw error;
+			}
+		},
+		{
+			request_id: jobId,
+			...initialContext,
+		},
+	) as Promise<T>;
 }
 
 /**
@@ -98,26 +106,29 @@ export function runWithWideEventSync<T>(
 ): T {
 	const logger = Logger.getInstance();
 
-	return runInRequestContext(() => {
-		try {
-			const result = fn();
-			logger.emitWideEvent();
-			return result;
-		} catch (error) {
-			enrichContext({
-				error: {
-					type: (error as Error).name || "Error",
-					message: (error as Error).message,
-					stack: (error as Error).stack,
-				},
-			});
-			logger.emitWideEvent();
-			throw error;
-		}
-	}, {
-		request_id: jobId,
-		...initialContext,
-	}) as T;
+	return runInRequestContext(
+		() => {
+			try {
+				const result = fn();
+				logger.emitWideEvent();
+				return result;
+			} catch (error) {
+				enrichContext({
+					error: {
+						type: (error as Error).name || "Error",
+						message: (error as Error).message,
+						stack: (error as Error).stack,
+					},
+				});
+				logger.emitWideEvent();
+				throw error;
+			}
+		},
+		{
+			request_id: jobId,
+			...initialContext,
+		},
+	) as T;
 }
 
 // Re-export context utilities for manual enrichment

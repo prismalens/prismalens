@@ -46,7 +46,8 @@ export function DynamicCredentialForm({
 		<div className="space-y-4">
 			{visibleFields.map((field) => {
 				const error = errors[field.name];
-				const shouldShowError = error && (showErrors || touched.has(field.name));
+				const shouldShowError =
+					error && (showErrors || touched.has(field.name));
 				const isRequired = field.required === true;
 				const isReadonly = field.readonly === true;
 
@@ -73,9 +74,7 @@ export function DynamicCredentialForm({
 										variant="ghost"
 										size="sm"
 										type="button"
-										onClick={() =>
-											navigator.clipboard.writeText(displayValue)
-										}
+										onClick={() => navigator.clipboard.writeText(displayValue)}
 									>
 										<Copy className="h-4 w-4" />
 									</Button>
@@ -94,9 +93,7 @@ export function DynamicCredentialForm({
 					<div key={field.name} className="space-y-2">
 						<Label htmlFor={`cred-${field.name}`}>
 							{field.label}
-							{isRequired && (
-								<span className="text-destructive ml-1">*</span>
-							)}
+							{isRequired && <span className="text-destructive ml-1">*</span>}
 						</Label>
 						{field.type === "textarea" ? (
 							<>
@@ -133,7 +130,11 @@ export function DynamicCredentialForm({
 						) : (
 							<Input
 								id={`cred-${field.name}`}
-								type={field.type === "password" || field.sensitive ? "password" : "text"}
+								type={
+									field.type === "password" || field.sensitive
+										? "password"
+										: "text"
+								}
 								value={values[field.name] ?? ""}
 								onChange={(e) => handleChange(field.name, e.target.value)}
 								onBlur={() => handleBlur(field.name)}

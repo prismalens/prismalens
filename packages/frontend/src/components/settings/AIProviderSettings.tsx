@@ -44,8 +44,11 @@ import {
 	useUpdateLlmSettings,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-import { ProviderModelSelector, type ProviderInfo } from "./ProviderModelSelector";
-import { AgentOverrideItem, type AgentMeta } from "./AgentOverrideItem";
+import { type AgentMeta, AgentOverrideItem } from "./AgentOverrideItem";
+import {
+	type ProviderInfo,
+	ProviderModelSelector,
+} from "./ProviderModelSelector";
 
 // Transform LLM_PROVIDERS from config into UI-friendly format
 const PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
@@ -111,12 +114,16 @@ export function AIProviderSettings() {
 	const [maxTokens, setMaxTokens] = useState<number | undefined>(undefined);
 	const [advancedOptions, setAdvancedOptions] = useState("");
 	const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
-	const [advancedOptionsError, setAdvancedOptionsError] = useState<string | null>(null);
+	const [advancedOptionsError, setAdvancedOptionsError] = useState<
+		string | null
+	>(null);
 	const [agentOverridesOpen, setAgentOverridesOpen] = useState(false);
 
 	// Per-agent state - track which agent's selector is expanded and their provider selection
 	const [expandedAgent, setExpandedAgent] = useState<AgentId | null>(null);
-	const [agentProviders, setAgentProviders] = useState<Partial<Record<AgentId, string>>>({});
+	const [agentProviders, setAgentProviders] = useState<
+		Partial<Record<AgentId, string>>
+	>({});
 
 	// Credential management state
 	const [apiKeyInput, setApiKeyInput] = useState("");
@@ -135,9 +142,10 @@ export function AIProviderSettings() {
 	const providerCredStatus = credentialStatus?.providers?.[selectedProvider];
 
 	// Ollama local models (fetched from base URL)
-	const ollamaBaseUrl = selectedProvider === "ollama"
-		? (baseUrl || LLM_PROVIDERS.ollama.defaultBaseUrl)
-		: undefined;
+	const ollamaBaseUrl =
+		selectedProvider === "ollama"
+			? baseUrl || LLM_PROVIDERS.ollama.defaultBaseUrl
+			: undefined;
 	const { data: ollamaModels } = useOllamaModels(ollamaBaseUrl);
 
 	// Merge cloud models (models.dev) with local Ollama models
@@ -151,14 +159,19 @@ export function AIProviderSettings() {
 	allModelsRef.current = allModels;
 
 	// Convert envStatus to format for ProviderModelSelector
-	const envStatusMap = useMemo<Record<string, { isReady: boolean; envVarName?: string }>>(
+	const envStatusMap = useMemo<
+		Record<string, { isReady: boolean; envVarName?: string }>
+	>(
 		() =>
 			envStatus?.providers
 				? Object.fromEntries(
 						Object.entries(envStatus.providers).map(([id, status]) => [
 							id,
-							{ isReady: status.isReady, envVarName: status.envVarName ?? undefined },
-						])
+							{
+								isReady: status.isReady,
+								envVarName: status.envVarName ?? undefined,
+							},
+						]),
 					)
 				: {},
 		[envStatus?.providers],
@@ -173,8 +186,12 @@ export function AIProviderSettings() {
 					id: p.id,
 					name: p.name,
 					free: p.free,
-					baseUrlRequired: "baseUrlRequired" in config ? config.baseUrlRequired : undefined,
-					defaultBaseUrl: "defaultBaseUrl" in config ? (config.defaultBaseUrl as string) : undefined,
+					baseUrlRequired:
+						"baseUrlRequired" in config ? config.baseUrlRequired : undefined,
+					defaultBaseUrl:
+						"defaultBaseUrl" in config
+							? (config.defaultBaseUrl as string)
+							: undefined,
 				};
 			}),
 		[],
@@ -206,7 +223,9 @@ export function AIProviderSettings() {
 			);
 		} else {
 			// Reset to defaults for unconfigured provider — first API model or empty
-			const firstApiModel = allModelsRef.current.find((m) => m.provider === selectedProvider);
+			const firstApiModel = allModelsRef.current.find(
+				(m) => m.provider === selectedProvider,
+			);
 			setSelectedModel(firstApiModel?.id || "");
 			setBaseUrl("");
 			setTemperature(0.1);
@@ -253,7 +272,9 @@ export function AIProviderSettings() {
 				parsedAdvancedOptions = JSON.parse(advancedOptions);
 				setAdvancedOptionsError(null);
 			} catch {
-				setAdvancedOptionsError("Invalid JSON. Please fix the syntax and try again.");
+				setAdvancedOptionsError(
+					"Invalid JSON. Please fix the syntax and try again.",
+				);
 				return;
 			}
 		} else {
@@ -274,9 +295,7 @@ export function AIProviderSettings() {
 						advancedOptions: parsedAdvancedOptions,
 						...(providerInfo?.defaultBaseUrl || baseUrl
 							? {
-									baseUrl:
-										baseUrl ||
-										providerInfo?.defaultBaseUrl,
+									baseUrl: baseUrl || providerInfo?.defaultBaseUrl,
 								}
 							: {}),
 					},
@@ -290,7 +309,9 @@ export function AIProviderSettings() {
 	};
 
 	const isLoading = envLoading || settingsLoading;
-	const hasApiKey = providerEnvStatus?.isReady || (providerCredStatus != null && providerCredStatus.activeSource !== "none");
+	const hasApiKey =
+		providerEnvStatus?.isReady ||
+		(providerCredStatus != null && providerCredStatus.activeSource !== "none");
 	const canTest = hasApiKey && (selectedModel || customModel);
 	const canSave = selectedModel || customModel;
 
@@ -361,7 +382,9 @@ export function AIProviderSettings() {
 								selectedModel={selectedModel}
 								customModel={customModel}
 								baseUrl={baseUrl}
-								onProviderChange={(p) => setSelectedProvider(p as LLMProviderId)}
+								onProviderChange={(p) =>
+									setSelectedProvider(p as LLMProviderId)
+								}
 								onModelChange={(model) => {
 									setSelectedModel(model);
 									setCustomModel("");
@@ -383,7 +406,7 @@ export function AIProviderSettings() {
 							)}
 							{providerCredStatus?.activeSource === "db" && !isUpdatingKey ? (
 								<div className="flex items-center gap-3">
-									<Badge variant="secondary" >
+									<Badge variant="secondary">
 										<CheckCircle className="h-3 w-3 mr-1" />
 										Stored (encrypted)
 									</Badge>
@@ -403,13 +426,20 @@ export function AIProviderSettings() {
 										size="sm"
 										className="text-destructive hover:text-destructive"
 										onClick={() => {
-											if (!window.confirm("Remove the stored API key for this provider?")) return;
+											if (
+												!window.confirm(
+													"Remove the stored API key for this provider?",
+												)
+											)
+												return;
 											deleteCredential.mutate(
 												{ provider: selectedProvider },
 												{
 													onError: (err) =>
 														setCredentialError(
-															err instanceof Error ? err.message : "Failed to delete credential",
+															err instanceof Error
+																? err.message
+																: "Failed to delete credential",
 														),
 												},
 											);
@@ -423,20 +453,24 @@ export function AIProviderSettings() {
 										)}
 									</Button>
 								</div>
-							) : providerCredStatus?.activeSource === "env" && !isUpdatingKey ? (
+							) : providerCredStatus?.activeSource === "env" &&
+								!isUpdatingKey ? (
 								<div className="flex items-center gap-3">
 									<Badge variant="secondary">
 										Using env var ({provider?.envVar})
 									</Badge>
 								</div>
 							) : null}
-							{(providerCredStatus?.activeSource === "none" || isUpdatingKey) && (
+							{(providerCredStatus?.activeSource === "none" ||
+								isUpdatingKey) && (
 								<div className="flex items-center gap-2">
 									<Input
 										type="password"
 										autoComplete="off"
 										aria-label={`API key for ${provider?.name ?? selectedProvider}`}
-										placeholder={isUpdatingKey ? "Enter new API key" : "Enter your API key"}
+										placeholder={
+											isUpdatingKey ? "Enter new API key" : "Enter your API key"
+										}
 										value={apiKeyInput}
 										onChange={(e) => setApiKeyInput(e.target.value)}
 									/>
@@ -454,7 +488,9 @@ export function AIProviderSettings() {
 													},
 													onError: (err) =>
 														setCredentialError(
-															err instanceof Error ? err.message : "Failed to save credential",
+															err instanceof Error
+																? err.message
+																: "Failed to save credential",
 														),
 												},
 											);
@@ -482,25 +518,26 @@ export function AIProviderSettings() {
 									)}
 								</div>
 							)}
-							{provider?.helpUrl && providerCredStatus?.activeSource === "none" && !isUpdatingKey && (
-								<p className="text-xs text-muted-foreground">
-									Get a key:{" "}
-									<a
-										href={provider.helpUrl}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-primary hover:underline"
-									>
-										{provider.helpUrl}
-									</a>
-								</p>
-							)}
+							{provider?.helpUrl &&
+								providerCredStatus?.activeSource === "none" &&
+								!isUpdatingKey && (
+									<p className="text-xs text-muted-foreground">
+										Get a key:{" "}
+										<a
+											href={provider.helpUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-primary hover:underline"
+										>
+											{provider.helpUrl}
+										</a>
+									</p>
+								)}
 						</div>
 					)}
 
 					{/* Configuration Options */}
 					<div className="space-y-4 pt-4 border-t">
-
 						{/* Temperature Slider */}
 						<div className="space-y-3">
 							<div className="flex items-center justify-between">
@@ -567,7 +604,9 @@ export function AIProviderSettings() {
 									className="font-mono text-sm min-h-[100px]"
 								/>
 								{advancedOptionsError && (
-									<p className="text-xs text-destructive mt-1">{advancedOptionsError}</p>
+									<p className="text-xs text-destructive mt-1">
+										{advancedOptionsError}
+									</p>
 								)}
 								<p className="text-xs text-muted-foreground mt-2">
 									Provider-specific options in JSON format. These are passed

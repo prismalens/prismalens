@@ -5,14 +5,14 @@
  * Integrates with Paraglide JS for type-safe translations.
  */
 
-import { createContext, use, type ReactNode } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { createContext, type ReactNode, use } from "react";
+import { setLocaleServerFn } from "@/lib/locale";
 import {
+	type Locale,
 	locales,
 	setLocale as setParaglideLocale,
-	type Locale,
 } from "@/lib/paraglide/runtime.js";
-import { setLocaleServerFn } from "@/lib/locale";
 
 interface LanguageContextValue {
 	locale: Locale;

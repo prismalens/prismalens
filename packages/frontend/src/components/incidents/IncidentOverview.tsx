@@ -71,9 +71,7 @@ export function IncidentOverview({
 				</CardHeader>
 				<CardContent>
 					<div className="text-2xl font-bold">{incident.alertCount}</div>
-					<p className="text-xs text-muted-foreground">
-						Correlated alerts
-					</p>
+					<p className="text-xs text-muted-foreground">Correlated alerts</p>
 				</CardContent>
 			</Card>
 
@@ -124,7 +122,9 @@ export function IncidentOverview({
 			{incident.customerImpact && (
 				<Card className="md:col-span-2 lg:col-span-4">
 					<CardHeader>
-						<CardTitle className="text-sm font-medium">Customer Impact</CardTitle>
+						<CardTitle className="text-sm font-medium">
+							Customer Impact
+						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p className="text-sm">{incident.customerImpact}</p>
@@ -136,7 +136,9 @@ export function IncidentOverview({
 			{incident.affectedSystems && incident.affectedSystems.length > 0 && (
 				<Card className="md:col-span-2 lg:col-span-4">
 					<CardHeader>
-						<CardTitle className="text-sm font-medium">Affected Systems</CardTitle>
+						<CardTitle className="text-sm font-medium">
+							Affected Systems
+						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<div className="flex flex-wrap gap-2">
@@ -154,10 +156,14 @@ export function IncidentOverview({
 			{incident.correlationReason && (
 				<Card className="md:col-span-2 lg:col-span-4">
 					<CardHeader>
-						<CardTitle className="text-sm font-medium">Correlation Reason</CardTitle>
+						<CardTitle className="text-sm font-medium">
+							Correlation Reason
+						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<p className="text-sm text-muted-foreground">{incident.correlationReason}</p>
+						<p className="text-sm text-muted-foreground">
+							{incident.correlationReason}
+						</p>
 					</CardContent>
 				</Card>
 			)}

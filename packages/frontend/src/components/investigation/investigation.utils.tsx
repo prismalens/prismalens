@@ -1,9 +1,4 @@
-import {
-	Activity,
-	AlertCircle,
-	CheckCircle,
-	Clock,
-} from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -48,11 +43,9 @@ export function InvestigationStatusBadge({ status }: { status: string }) {
 
 export function PriorityBadge({ priority }: { priority: string }) {
 	const colors: Record<string, string> = {
-		critical:
-			"bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+		critical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
 		high: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-		medium:
-			"bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+		medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 		low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
 	};
 

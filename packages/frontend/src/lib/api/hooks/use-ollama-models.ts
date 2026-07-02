@@ -41,7 +41,7 @@ export function useOllamaModels(baseUrl: string | undefined) {
 		queryFn: async () => {
 			// Protocol validation — block non-http(s) schemes
 			const parsed = new URL(baseUrl!);
-			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+			if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
 				throw new Error(`Unsupported protocol: ${parsed.protocol}`);
 			}
 			// Use parsed.origin to prevent path/query injection from raw baseUrl

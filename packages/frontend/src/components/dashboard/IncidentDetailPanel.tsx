@@ -1,9 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import {
-	Brain,
-	ExternalLink,
-} from "lucide-react";
+import { Brain, ExternalLink } from "lucide-react";
 
 import { InvestigationStatusBadge } from "@/components/investigation/investigation.utils";
 
@@ -34,7 +31,10 @@ export interface IncidentDetailPanelProps {
 	isLlmConfigured: boolean;
 }
 
-export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetailPanelProps) {
+export function IncidentDetailPanel({
+	incident,
+	isLlmConfigured,
+}: IncidentDetailPanelProps) {
 	const latestInvestigation = incident.investigations?.[0];
 
 	return (
@@ -46,12 +46,35 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 							<span className="text-xs text-muted-foreground font-mono">
 								INC-{incident.id.slice(0, 8)}
 							</span>
-							<SeverityBadge severity={incident.severity as "critical" | "high" | "medium" | "low" | "info"} />
-							<StatusBadge status={incident.status as "triggered" | "acknowledged" | "investigating" | "identified" | "monitoring" | "resolved" | "closed" | "correlated" | "suppressed"} />
+							<SeverityBadge
+								severity={
+									incident.severity as
+										| "critical"
+										| "high"
+										| "medium"
+										| "low"
+										| "info"
+								}
+							/>
+							<StatusBadge
+								status={
+									incident.status as
+										| "triggered"
+										| "acknowledged"
+										| "investigating"
+										| "identified"
+										| "monitoring"
+										| "resolved"
+										| "closed"
+										| "correlated"
+										| "suppressed"
+								}
+							/>
 						</div>
 						<CardTitle className="text-lg">{incident.title}</CardTitle>
 						<p className="text-sm text-muted-foreground mt-1">
-							Service: {incident.service?.name || "Unknown"} • {incident.alertCount ?? 0} alerts
+							Service: {incident.service?.name || "Unknown"} •{" "}
+							{incident.alertCount ?? 0} alerts
 						</p>
 					</div>
 					<Button variant="outline" size="sm" asChild>
@@ -65,7 +88,9 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 				<Tabs defaultValue="overview" className="space-y-4">
 					<TabsList>
 						<TabsTrigger value="overview">Overview</TabsTrigger>
-						<TabsTrigger value="alerts">Alerts ({incident.alertCount ?? 0})</TabsTrigger>
+						<TabsTrigger value="alerts">
+							Alerts ({incident.alertCount ?? 0})
+						</TabsTrigger>
 						<TabsTrigger value="investigation">Investigation</TabsTrigger>
 						<TabsTrigger value="timeline">Timeline</TabsTrigger>
 					</TabsList>
@@ -74,7 +99,9 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 						{incident.description && (
 							<div>
 								<h4 className="text-sm font-medium mb-1">Description</h4>
-								<p className="text-sm text-muted-foreground">{incident.description}</p>
+								<p className="text-sm text-muted-foreground">
+									{incident.description}
+								</p>
 							</div>
 						)}
 						<div className="grid grid-cols-2 gap-4">
@@ -86,14 +113,20 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 							</div>
 							<div className="p-3 rounded-lg bg-muted/50">
 								<div className="text-xs text-muted-foreground">Alerts</div>
-								<div className="text-lg font-semibold">{incident.alertCount ?? 0}</div>
+								<div className="text-lg font-semibold">
+									{incident.alertCount ?? 0}
+								</div>
 							</div>
 						</div>
 					</TabsContent>
 
 					<TabsContent value="alerts">
 						<div className="text-sm text-muted-foreground text-center py-8">
-							<Link to="/incidents/$id" params={{ id: incident.id }} className="text-primary hover:underline">
+							<Link
+								to="/incidents/$id"
+								params={{ id: incident.id }}
+								className="text-primary hover:underline"
+							>
 								View all {incident.alertCount ?? 0} alerts in incident detail
 							</Link>
 						</div>
@@ -104,10 +137,15 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 							<div className="space-y-3">
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-2">
-										<InvestigationStatusBadge status={latestInvestigation.status} />
+										<InvestigationStatusBadge
+											status={latestInvestigation.status}
+										/>
 									</div>
 									<Button variant="outline" size="sm" asChild>
-										<Link to="/investigations/$id" params={{ id: latestInvestigation.id }}>
+										<Link
+											to="/investigations/$id"
+											params={{ id: latestInvestigation.id }}
+										>
 											View Canvas
 										</Link>
 									</Button>
@@ -132,7 +170,9 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 						) : (
 							<div className="flex flex-col items-center justify-center py-8">
 								<Brain className="h-8 w-8 text-muted-foreground/50 mb-2" />
-								<p className="text-sm text-muted-foreground mb-3">No investigation yet</p>
+								<p className="text-sm text-muted-foreground mb-3">
+									No investigation yet
+								</p>
 								{isLlmConfigured ? (
 									<Button size="sm" asChild>
 										<Link to="/incidents/$id" params={{ id: incident.id }}>
@@ -151,7 +191,11 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 
 					<TabsContent value="timeline">
 						<div className="text-sm text-muted-foreground text-center py-8">
-							<Link to="/incidents/$id" params={{ id: incident.id }} className="text-primary hover:underline">
+							<Link
+								to="/incidents/$id"
+								params={{ id: incident.id }}
+								className="text-primary hover:underline"
+							>
 								View full timeline in incident detail
 							</Link>
 						</div>
@@ -175,4 +219,3 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 		</>
 	);
 }
-

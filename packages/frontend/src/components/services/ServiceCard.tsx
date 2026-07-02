@@ -4,16 +4,12 @@
  * Displays a service in a card format with linked sources
  */
 
-import { Link } from "@tanstack/react-router";
 import type { ServiceWithRelations } from "@prismalens/contracts";
-import {
-	AlertTriangle,
-	GitBranch,
-} from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Link } from "@tanstack/react-router";
+import { AlertTriangle, GitBranch } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { serviceTypeIcons } from "./service-detail.utils";
 
 export interface ServiceCardProps {
@@ -142,7 +138,11 @@ export function ServiceCard({ service }: ServiceCardProps) {
 						{service.team && <span>Team: {service.team}</span>}
 					</div>
 					<Button variant="ghost" size="sm" asChild>
-						<Link to="/services/$id" params={{ id: service.id }} search={{ tab: "overview" }}>
+						<Link
+							to="/services/$id"
+							params={{ id: service.id }}
+							search={{ tab: "overview" }}
+						>
 							View
 						</Link>
 					</Button>

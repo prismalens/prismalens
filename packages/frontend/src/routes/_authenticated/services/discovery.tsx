@@ -1,9 +1,25 @@
-import { useState } from "react";
+import type {
+	ServiceSuggestion,
+	SuggestionStatus,
+} from "@prismalens/contracts";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { ServiceSuggestion, SuggestionStatus } from "@prismalens/contracts";
-
+import { ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { useState } from "react";
+import { PageHeader } from "@/components/layout";
+import { AcceptSuggestionDialog } from "@/components/services/AcceptSuggestionDialog";
+import { RunDiscoveryDialog } from "@/components/services/RunDiscoveryDialog";
+import { MutationError } from "@/components/shared/MutationError";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import {
 	useAcceptBulkSuggestions,
 	useConnections,
@@ -12,20 +28,6 @@ import {
 	useSuggestions,
 	useTriggerDiscovery,
 } from "@/lib/api/hooks";
-import { PageHeader } from "@/components/layout";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { DataTable } from "@/components/ui/data-table";
-import { AcceptSuggestionDialog } from "@/components/services/AcceptSuggestionDialog";
-import { RunDiscoveryDialog } from "@/components/services/RunDiscoveryDialog";
-import { MutationError } from "@/components/shared/MutationError";
 
 const PAGE_SIZE = 25;
 
@@ -55,8 +57,12 @@ export const Route = createFileRoute("/_authenticated/services/discovery")({
 });
 
 function DiscoveryPage() {
-	const [statusFilter, setStatusFilter] = useState<SuggestionStatus | "all">("pending");
-	const [sourceTypeFilter, setSourceTypeFilter] = useState<"repository" | "deployment" | "all">("all");
+	const [statusFilter, setStatusFilter] = useState<SuggestionStatus | "all">(
+		"pending",
+	);
+	const [sourceTypeFilter, setSourceTypeFilter] = useState<
+		"repository" | "deployment" | "all"
+	>("all");
 	const [page, setPage] = useState(1);
 	const [acceptingSuggestion, setAcceptingSuggestion] =
 		useState<ServiceSuggestion | null>(null);
@@ -67,7 +73,8 @@ function DiscoveryPage() {
 
 	// Fetch suggestions
 	const { data: suggestions = [], isLoading } = useSuggestions({
-		status: statusFilter !== "all" ? statusFilter as SuggestionStatus : undefined,
+		status:
+			statusFilter !== "all" ? (statusFilter as SuggestionStatus) : undefined,
 		sourceType: sourceTypeFilter !== "all" ? sourceTypeFilter : undefined,
 		limit: PAGE_SIZE,
 		offset,
@@ -96,7 +103,9 @@ function DiscoveryPage() {
 		const failed = results.filter((r) => r.status === "rejected");
 		if (failed.length > 0) {
 			setDiscoveryError(
-				new Error(`${failed.length} of ${connectionIds.length} connections failed`),
+				new Error(
+					`${failed.length} of ${connectionIds.length} connections failed`,
+				),
 			);
 		}
 	};
@@ -233,7 +242,10 @@ function DiscoveryPage() {
 
 			{/* Filters */}
 			<div className="flex items-center gap-3">
-				<Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as SuggestionStatus | "all")}>
+				<Select
+					value={statusFilter}
+					onValueChange={(v) => setStatusFilter(v as SuggestionStatus | "all")}
+				>
 					<SelectTrigger className="w-[160px]">
 						<SelectValue />
 					</SelectTrigger>
@@ -245,7 +257,12 @@ function DiscoveryPage() {
 						))}
 					</SelectContent>
 				</Select>
-				<Select value={sourceTypeFilter} onValueChange={(v) => setSourceTypeFilter(v as "repository" | "deployment" | "all")}>
+				<Select
+					value={sourceTypeFilter}
+					onValueChange={(v) =>
+						setSourceTypeFilter(v as "repository" | "deployment" | "all")
+					}
+				>
 					<SelectTrigger className="w-[160px]">
 						<SelectValue />
 					</SelectTrigger>

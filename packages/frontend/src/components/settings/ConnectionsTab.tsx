@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
 import {
 	AlertCircle,
 	CheckCircle,
@@ -11,14 +11,9 @@ import {
 	Sparkles,
 	Trash2,
 } from "lucide-react";
-import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
 	Select,
@@ -36,12 +31,9 @@ import {
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import { AddConnectionDialog } from "./AddConnectionDialog";
-import { EditConnectionDialog } from "./EditConnectionDialog";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
-import {
-	ConnectionStatusBadge,
-	getTemplateIcon,
-} from "./integration-utils";
+import { EditConnectionDialog } from "./EditConnectionDialog";
+import { ConnectionStatusBadge, getTemplateIcon } from "./integration-utils";
 
 export function ConnectionsTab() {
 	const {
@@ -74,9 +66,9 @@ export function ConnectionsTab() {
 	const [deleteError, setDeleteError] = useState<Error | null>(null);
 
 	// Test results
-	const [testingConnectionId, setTestingConnectionId] = useState<
-		string | null
-	>(null);
+	const [testingConnectionId, setTestingConnectionId] = useState<string | null>(
+		null,
+	);
 	const [testResults, setTestResults] = useState<
 		Record<string, { success: boolean; error?: string }>
 	>({});
@@ -145,9 +137,7 @@ export function ConnectionsTab() {
 		if (!selectedConnectionId) return;
 		setEditError(null);
 
-		const connection = connections?.find(
-			(c) => c.id === selectedConnectionId,
-		);
+		const connection = connections?.find((c) => c.id === selectedConnectionId);
 		const template = templates?.find(
 			(t: AuthTemplateResponse) => t.id === connection?.templateId,
 		);
@@ -167,15 +157,12 @@ export function ConnectionsTab() {
 						headers: { "Content-Type": "application/json" },
 					},
 				);
-				if (!res.ok)
-					throw new Error(`OAuth authorize failed: ${res.status}`);
+				if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
 				const { redirectUrl } = await res.json();
 				window.location.href = redirectUrl;
 			} catch (err) {
 				setEditError(
-					err instanceof Error
-						? err
-						: new Error("Failed to re-authorize"),
+					err instanceof Error ? err : new Error("Failed to re-authorize"),
 				);
 			}
 			return;
@@ -197,9 +184,7 @@ export function ConnectionsTab() {
 			setSelectedConnectionId(null);
 		} catch (err) {
 			setEditError(
-				err instanceof Error
-					? err
-					: new Error("Failed to update connection"),
+				err instanceof Error ? err : new Error("Failed to update connection"),
 			);
 		}
 	};
@@ -214,9 +199,7 @@ export function ConnectionsTab() {
 			setSelectedConnectionId(null);
 		} catch (err) {
 			setDeleteError(
-				err instanceof Error
-					? err
-					: new Error("Failed to delete connection"),
+				err instanceof Error ? err : new Error("Failed to delete connection"),
 			);
 		}
 	};
@@ -238,8 +221,7 @@ export function ConnectionsTab() {
 				...prev,
 				[connectionId]: {
 					success: false,
-					error:
-						err instanceof Error ? err.message : "Test failed",
+					error: err instanceof Error ? err.message : "Test failed",
 				},
 			}));
 		} finally {
@@ -309,64 +291,47 @@ export function ConnectionsTab() {
 						</Button>
 					</div>
 					<div className="flex items-center gap-3 pt-2">
-						<Select
-							value={providerFilter}
-							onValueChange={setProviderFilter}
-						>
+						<Select value={providerFilter} onValueChange={setProviderFilter}>
 							<SelectTrigger className="w-[180px]">
 								<SelectValue placeholder="All providers" />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="all">
-									All providers
-								</SelectItem>
+								<SelectItem value="all">All providers</SelectItem>
 								{uniqueTemplateIds.map((tid) => {
 									const t = templates?.find(
-										(tmpl: AuthTemplateResponse) =>
-											tmpl.id === tid,
+										(tmpl: AuthTemplateResponse) => tmpl.id === tid,
 									);
 									return (
-										<SelectItem
-											key={tid}
-											value={tid ?? ""}
-										>
+										<SelectItem key={tid} value={tid ?? ""}>
 											{t?.name ?? tid}
 										</SelectItem>
 									);
 								})}
 							</SelectContent>
 						</Select>
-					<Select
-						value={statusFilter}
-						onValueChange={setStatusFilter}
-					>
-						<SelectTrigger className="w-[180px]">
-							<SelectValue placeholder="All statuses" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All statuses</SelectItem>
-							<SelectItem value="ACTIVE">Active</SelectItem>
-							<SelectItem value="TOKEN_EXPIRED">
-								Token Expired
-							</SelectItem>
-							<SelectItem value="REFRESH_FAILED">
-								Refresh Failed
-							</SelectItem>
-							<SelectItem value="CREDENTIALS_INVALID">
-								Credentials Invalid
-							</SelectItem>
-							<SelectItem value="REVOKED">Revoked</SelectItem>
-							<SelectItem value="ERROR">Error</SelectItem>
-						</SelectContent>
-					</Select>
+						<Select value={statusFilter} onValueChange={setStatusFilter}>
+							<SelectTrigger className="w-[180px]">
+								<SelectValue placeholder="All statuses" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All statuses</SelectItem>
+								<SelectItem value="ACTIVE">Active</SelectItem>
+								<SelectItem value="TOKEN_EXPIRED">Token Expired</SelectItem>
+								<SelectItem value="REFRESH_FAILED">Refresh Failed</SelectItem>
+								<SelectItem value="CREDENTIALS_INVALID">
+									Credentials Invalid
+								</SelectItem>
+								<SelectItem value="REVOKED">Revoked</SelectItem>
+								<SelectItem value="ERROR">Error</SelectItem>
+							</SelectContent>
+						</Select>
 					</div>
 				</CardHeader>
 				<CardContent>
 					{filteredConnections && filteredConnections.length > 0 ? (
 						<div className="space-y-3">
 							{filteredConnections.map((connection) => {
-								const testResult =
-									testResults[connection.id];
+								const testResult = testResults[connection.id];
 
 								return (
 									<div
@@ -374,29 +339,21 @@ export function ConnectionsTab() {
 										className="flex items-center justify-between p-4 border rounded-lg"
 									>
 										<div className="flex items-center gap-3">
-											{getTemplateIcon(
-												connection.templateId ?? "",
-											)}
+											{getTemplateIcon(connection.templateId ?? "")}
 											<div>
 												<div className="flex items-center gap-2">
 													<span className="font-medium">
 														{connection.label ||
-															(connection.integration
-																?.label ??
-															connection.templateName ??
-															"Connection")}
+															(connection.integration?.label ??
+																connection.templateName ??
+																"Connection")}
 													</span>
-													<ConnectionStatusBadge
-														status={
-															connection.status
-														}
-													/>
+													<ConnectionStatusBadge status={connection.status} />
 												</div>
 												<p className="text-sm text-muted-foreground">
 													{connection.templateName}
 													{connection.integration
-														? connection.integration
-																.enabled
+														? connection.integration.enabled
 															? " • Enabled"
 															: " • Disabled"
 														: ""}
@@ -412,9 +369,7 @@ export function ConnectionsTab() {
 												</p>
 												{connection.lastErrorMessage && (
 													<p className="text-xs text-destructive mt-1">
-														{
-															connection.lastErrorMessage
-														}
+														{connection.lastErrorMessage}
 													</p>
 												)}
 												{testResult && (
@@ -437,18 +392,10 @@ export function ConnectionsTab() {
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() =>
-													handleTestConnection(
-														connection.id,
-													)
-												}
-												disabled={
-													testingConnectionId ===
-													connection.id
-												}
+												onClick={() => handleTestConnection(connection.id)}
+												disabled={testingConnectionId === connection.id}
 											>
-												{testingConnectionId ===
-												connection.id ? (
+												{testingConnectionId === connection.id ? (
 													<Loader2 className="h-4 w-4 animate-spin" />
 												) : (
 													<Sparkles className="h-4 w-4" />
@@ -457,11 +404,7 @@ export function ConnectionsTab() {
 											<Button
 												variant="ghost"
 												size="sm"
-												onClick={() =>
-													handleEditConnection(
-														connection.id,
-													)
-												}
+												onClick={() => handleEditConnection(connection.id)}
 											>
 												<Pencil className="h-4 w-4" />
 											</Button>
@@ -469,9 +412,7 @@ export function ConnectionsTab() {
 												variant="ghost"
 												size="sm"
 												onClick={() => {
-													setSelectedConnectionId(
-														connection.id,
-													);
+													setSelectedConnectionId(connection.id);
 													setDeleteError(null);
 													setShowDeleteDialog(true);
 												}}

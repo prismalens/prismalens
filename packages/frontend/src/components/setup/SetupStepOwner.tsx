@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import {
 	AlertCircle,
 	ArrowRight,
@@ -9,6 +8,7 @@ import {
 	Loader2,
 	Shield,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -188,7 +188,11 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 							/>
 						</div>
 
-						<Button type="submit" className="w-full" disabled={createOwner.isPending}>
+						<Button
+							type="submit"
+							className="w-full"
+							disabled={createOwner.isPending}
+						>
 							{createOwner.isPending ? (
 								<>
 									<Loader2 className="mr-2 h-4 w-4 animate-spin" />

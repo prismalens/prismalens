@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -122,10 +122,7 @@ export function EditDependencyDialog({
 					>
 						Cancel
 					</Button>
-					<Button
-						onClick={handleSave}
-						disabled={updateDependency.isPending}
-					>
+					<Button onClick={handleSave} disabled={updateDependency.isPending}>
 						{updateDependency.isPending ? (
 							<>
 								<Loader2 className="h-4 w-4 mr-2 animate-spin" />

@@ -1,7 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import type { TimelineEntryType } from "@prismalens/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	CorrelatedAlerts,
 	IncidentDetailHeader,
@@ -13,7 +12,11 @@ import {
 } from "@/components/incidents";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCreateTimelineEntry, useLlmSettings, useTimeline } from "@/lib/api/hooks";
+import {
+	useCreateTimelineEntry,
+	useLlmSettings,
+	useTimeline,
+} from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/")({
@@ -43,10 +46,8 @@ function IncidentDetailPage() {
 	});
 
 	// Fetch timeline entries for this incident
-	const {
-		data: timelineEntries = [],
-		isLoading: isLoadingTimeline,
-	} = useTimeline(id);
+	const { data: timelineEntries = [], isLoading: isLoadingTimeline } =
+		useTimeline(id);
 
 	// Create timeline entry mutation
 	const createTimelineEntryMutation = useCreateTimelineEntry();
@@ -57,7 +58,7 @@ function IncidentDetailPage() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["incidents"] });
 		},
-	})
+	});
 
 	// Investigate mutation
 	const investigateMutation = useMutation({
@@ -67,10 +68,13 @@ function IncidentDetailPage() {
 			queryClient.invalidateQueries({ queryKey: ["investigations"] });
 			// Navigate to the investigation
 			if (data.investigationId) {
-				navigate({ to: "/investigations/$id", params: { id: data.investigationId } });
+				navigate({
+					to: "/investigations/$id",
+					params: { id: data.investigationId },
+				});
 			}
 		},
-	})
+	});
 
 	// Resolve mutation
 	const resolveMutation = useMutation({
@@ -78,7 +82,7 @@ function IncidentDetailPage() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["incidents"] });
 		},
-	})
+	});
 
 	// Recommendation mutations
 	const completeRecommendationMutation = useMutation({
@@ -86,23 +90,23 @@ function IncidentDetailPage() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["recommendations"] });
 		},
-	})
+	});
 
 	const handleAcknowledge = () => {
 		updateMutation.mutate({ id, status: "investigating" });
-	}
+	};
 
 	const handleInvestigate = () => {
 		investigateMutation.mutate({ id });
-	}
+	};
 
 	const handleResolve = () => {
 		resolveMutation.mutate({ id });
-	}
+	};
 
 	const handleCompleteRecommendation = (recId: string) => {
 		completeRecommendationMutation.mutate({ id: recId, status: "completed" });
-	}
+	};
 
 	const handleDismissRecommendation = (recId: string) => {
 		completeRecommendationMutation.mutate({ id: recId, status: "rejected" });
@@ -136,7 +140,7 @@ function IncidentDetailPage() {
 					{incidentError?.message || "Incident not found"}
 				</p>
 			</div>
-		)
+		);
 	}
 
 	return (
@@ -212,14 +216,11 @@ function IncidentDetailPage() {
 				</TabsContent>
 
 				<TabsContent value="postmortem">
-					<PostmortemEditor
-						incidentId={id}
-						incidentTitle={incident.title}
-					/>
+					<PostmortemEditor incidentId={id} incidentTitle={incident.title} />
 				</TabsContent>
 			</Tabs>
 		</div>
-	)
+	);
 }
 
 function IncidentDetailSkeleton() {
@@ -251,5 +252,5 @@ function IncidentDetailSkeleton() {
 				</div>
 			</div>
 		</div>
-	)
+	);
 }
