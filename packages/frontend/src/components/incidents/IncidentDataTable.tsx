@@ -4,19 +4,51 @@
  * TanStack Table implementation with sorting and pagination
  */
 
-import { useState } from "react";
+import type {
+	IncidentStatus,
+	IncidentWithRelations,
+	Severity,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import type { IncidentWithRelations } from "@prismalens/contracts";
 import {
 	type ColumnDef,
-	type SortingState,
-	type PaginationState,
 	flexRender,
 	getCoreRowModel,
-	getSortedRowModel,
 	getPaginationRowModel,
+	getSortedRowModel,
+	type PaginationState,
+	type SortingState,
 	useReactTable,
 } from "@tanstack/react-table";
+import {
+	AlertTriangle,
+	ArrowDown,
+	ArrowUp,
+	ArrowUpDown,
+	Brain,
+	CheckCircle,
+	ChevronLeft,
+	ChevronRight,
+	ChevronsLeft,
+	ChevronsRight,
+	Clock,
+	Eye,
+	FileText,
+	Search,
+} from "lucide-react";
+import { useState } from "react";
+import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Table,
 	TableBody,
@@ -25,41 +57,12 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import {
-	Eye,
-	CheckCircle,
-	Search,
-	AlertTriangle,
-	Clock,
-	FileText,
-	ChevronLeft,
-	ChevronRight,
-	ChevronsLeft,
-	ChevronsRight,
-	ArrowUpDown,
-	ArrowUp,
-	ArrowDown,
-	Brain,
-} from "lucide-react";
-import type { Severity, IncidentStatus } from "@prismalens/contracts";
 
 export interface IncidentDataTableProps {
 	incidents: IncidentWithRelations[];
@@ -91,13 +94,7 @@ function formatTimeAgo(date: string): string {
 }
 
 // Sortable header component
-function SortableHeader({
-	column,
-	title,
-}: {
-	column: any;
-	title: string;
-}) {
+function SortableHeader({ column, title }: { column: any; title: string }) {
 	const sorted = column.getIsSorted();
 
 	return (
@@ -120,7 +117,11 @@ function SortableHeader({
 }
 
 // Investigations badge showing count and status
-function InvestigationsBadge({ incident }: { incident: IncidentWithRelations }) {
+function InvestigationsBadge({
+	incident,
+}: {
+	incident: IncidentWithRelations;
+}) {
 	const investigations = incident.investigations ?? [];
 	const count = investigations.length;
 
@@ -129,7 +130,9 @@ function InvestigationsBadge({ incident }: { incident: IncidentWithRelations }) 
 	}
 
 	const running = investigations.filter((i) => i.status === "running").length;
-	const completed = investigations.filter((i) => i.status === "completed").length;
+	const completed = investigations.filter(
+		(i) => i.status === "completed",
+	).length;
 	const failed = investigations.filter((i) => i.status === "failed").length;
 
 	return (
@@ -196,7 +199,10 @@ const createColumns = (
 		size: 100,
 		sortingFn: (rowA, rowB) => {
 			const order = ["critical", "high", "medium", "low", "info"];
-			return order.indexOf(rowA.original.severity) - order.indexOf(rowB.original.severity);
+			return (
+				order.indexOf(rowA.original.severity) -
+				order.indexOf(rowB.original.severity)
+			);
 		},
 	},
 	{
@@ -254,7 +260,9 @@ const createColumns = (
 	},
 	{
 		accessorKey: "triggeredAt",
-		header: ({ column }) => <SortableHeader column={column} title="Triggered" />,
+		header: ({ column }) => (
+			<SortableHeader column={column} title="Triggered" />
+		),
 		cell: ({ row }) => (
 			<Tooltip>
 				<TooltipTrigger>
@@ -413,12 +421,15 @@ export function IncidentDataTable({
 				<div className="flex items-center justify-between px-2">
 					<div className="flex items-center gap-2 text-sm text-muted-foreground">
 						<span>
-							Showing {table.getRowModel().rows.length} of {incidents.length} incidents
+							Showing {table.getRowModel().rows.length} of {incidents.length}{" "}
+							incidents
 						</span>
 					</div>
 					<div className="flex items-center gap-6">
 						<div className="flex items-center gap-2">
-							<span className="text-sm text-muted-foreground">Rows per page</span>
+							<span className="text-sm text-muted-foreground">
+								Rows per page
+							</span>
 							<Select
 								value={String(pagination.pageSize)}
 								onValueChange={(value) => {

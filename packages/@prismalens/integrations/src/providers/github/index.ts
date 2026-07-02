@@ -5,7 +5,6 @@
  * Canonical locations: ../types.ts, ../git.interface.ts
  */
 
-export type { AuthenticatedRequestFn } from "../types.js";
 export type {
 	GitProvider,
 	GitProviderContext,
@@ -16,4 +15,5 @@ export {
 	isGitProviderSupported,
 	resolveGitProviderName,
 } from "../index.js";
+export type { AuthenticatedRequestFn } from "../types.js";
 export { GitHubProvider } from "./github.provider.js";

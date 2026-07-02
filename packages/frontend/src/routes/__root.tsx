@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import {
 	createRootRouteWithContext,
 	HeadContent,
@@ -7,19 +9,17 @@ import {
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AlertTriangle, Frown, ServerOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/Navbar";
+import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
-import { ThemeProvider } from "@/lib/providers/theme-provider";
-import { LanguageProvider } from "@/lib/providers/language-provider";
-import { getThemeServerFn } from "@/lib/theme";
 import { getLocaleServerFn } from "@/lib/locale";
-import { queryClient, type RouterContext } from "@/router";
 import * as m from "@/lib/paraglide/messages.js";
+import { LanguageProvider } from "@/lib/providers/language-provider";
+import { ThemeProvider } from "@/lib/providers/theme-provider";
+import { getThemeServerFn } from "@/lib/theme";
+import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
 
 export const Route = createRootRouteWithContext<RouterContext>()({

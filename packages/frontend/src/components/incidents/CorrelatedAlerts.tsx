@@ -4,29 +4,33 @@
  * Shows alerts that are linked to the incident
  */
 
-import { Link } from "@tanstack/react-router";
 import type { AlertWithRelations } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { Bell } from "lucide-react";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export interface CorrelatedAlertsProps {
 	alerts: AlertWithRelations[];
 	onAcknowledge?: (alertId: string) => void;
 }
 
-export function CorrelatedAlerts({ alerts, onAcknowledge }: CorrelatedAlertsProps) {
+export function CorrelatedAlerts({
+	alerts,
+	onAcknowledge,
+}: CorrelatedAlertsProps) {
 	if (alerts.length === 0) {
 		return (
 			<Card>
 				<CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
 					<Bell className="h-12 w-12 mb-4 opacity-50" />
 					<p className="text-lg font-medium">No correlated alerts</p>
-					<p className="text-sm">Alerts will appear here when they are correlated to this incident</p>
+					<p className="text-sm">
+						Alerts will appear here when they are correlated to this incident
+					</p>
 				</CardContent>
 			</Card>
 		);
@@ -35,7 +39,8 @@ export function CorrelatedAlerts({ alerts, onAcknowledge }: CorrelatedAlertsProp
 	return (
 		<div className="space-y-4">
 			<div className="text-sm text-muted-foreground">
-				{alerts.length} alert{alerts.length !== 1 ? "s" : ""} correlated to this incident
+				{alerts.length} alert{alerts.length !== 1 ? "s" : ""} correlated to this
+				incident
 			</div>
 
 			<div className="grid gap-3">
@@ -73,7 +78,9 @@ export function CorrelatedAlerts({ alerts, onAcknowledge }: CorrelatedAlertsProp
 										</Link>
 									)}
 									<span>
-										{formatDistanceToNow(new Date(alert.triggeredAt), { addSuffix: true })}
+										{formatDistanceToNow(new Date(alert.triggeredAt), {
+											addSuffix: true,
+										})}
 									</span>
 									{alert.source && <span>Source: {alert.source}</span>}
 								</div>

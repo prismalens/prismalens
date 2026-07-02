@@ -30,9 +30,7 @@ export function StatusIndicator({
 	switch (status) {
 		case "completed":
 			return (
-				<CheckCircle
-					className={cn(sizeClass, "text-green-500", className)}
-				/>
+				<CheckCircle className={cn(sizeClass, "text-green-500", className)} />
 			);
 		case "running":
 			return (
@@ -41,17 +39,9 @@ export function StatusIndicator({
 				/>
 			);
 		case "failed":
-			return (
-				<XCircle
-					className={cn(sizeClass, "text-red-500", className)}
-				/>
-			);
+			return <XCircle className={cn(sizeClass, "text-red-500", className)} />;
 		case "pending":
 		default:
-			return (
-				<Circle
-					className={cn(sizeClass, "text-zinc-400", className)}
-				/>
-			);
+			return <Circle className={cn(sizeClass, "text-zinc-400", className)} />;
 	}
 }

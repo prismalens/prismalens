@@ -36,7 +36,7 @@ async function bootstrap() {
 	// as ConfigService isn't available until App is created.
 
 	const protocol = getConfig().PRISMALENS_PROTOCOL || "http";
-	let httpsOptions;
+	let httpsOptions: { key: Buffer; cert: Buffer } | undefined;
 
 	if (protocol === "https") {
 		const keyPath = getConfig().PRISMALENS_SSL_KEY;
@@ -72,7 +72,8 @@ async function bootstrap() {
 	// Load encrypted LLM credentials from DB into process.env
 	// This must run early so LLM factories can resolve API keys from env
 	const llmSettingsService = app.get(
-		(await import("./core/settings/llm-settings.service.js")).LlmSettingsService,
+		(await import("./core/settings/llm-settings.service.js"))
+			.LlmSettingsService,
 	);
 	await llmSettingsService.loadLlmCredentialsToEnv();
 

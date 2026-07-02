@@ -33,7 +33,16 @@ export class OAuth2Flow {
 	async startAuthorization(
 		params: StartAuthorizationParams,
 	): Promise<{ url: string; state: string }> {
-		const { template, integrationId, userId, organizationId, clientId, callbackUrl, scopes, connectionConfig } = params;
+		const {
+			template,
+			integrationId,
+			userId,
+			organizationId,
+			clientId,
+			callbackUrl,
+			scopes,
+			connectionConfig,
+		} = params;
 
 		if (!template.oauth2) {
 			throw new Error(`Template '${template.id}' does not have oauth2 config`);
@@ -87,7 +96,9 @@ export class OAuth2Flow {
 	async handleCallback(
 		code: string,
 		stateToken: string,
-		getClientCredentials: (integrationId: string) => Promise<{ clientId: string; clientSecret: string }>,
+		getClientCredentials: (
+			integrationId: string,
+		) => Promise<{ clientId: string; clientSecret: string }>,
 	): Promise<{
 		tokenResult: TokenResult;
 		oauthState: OAuthStateData;
@@ -189,15 +200,15 @@ export class OAuth2Flow {
 
 		if (!response.ok) {
 			const errorText = await response.text();
-			throw new Error(`Token exchange failed (${response.status}): ${errorText}`);
+			throw new Error(
+				`Token exchange failed (${response.status}): ${errorText}`,
+			);
 		}
 
 		const data = (await response.json()) as Record<string, unknown>;
 
 		if (data.error) {
-			throw new Error(
-				`OAuth error: ${data.error_description ?? data.error}`,
-			);
+			throw new Error(`OAuth error: ${data.error_description ?? data.error}`);
 		}
 
 		const metadata: Record<string, unknown> = {};

@@ -3,9 +3,11 @@ import type { AlertWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { Bell, CheckCircle, ExternalLink, Eye } from "lucide-react";
-
+import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Table,
 	TableBody,
@@ -14,15 +16,12 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export interface AlertsTableProps {
 	alerts: AlertWithRelations[];
@@ -36,12 +35,24 @@ function LoadingSkeleton() {
 		<>
 			{[...Array(5)].map((_, i) => (
 				<TableRow key={i}>
-					<TableCell><Skeleton className="h-4 w-[200px]" /></TableCell>
-					<TableCell><Skeleton className="h-6 w-[80px]" /></TableCell>
-					<TableCell><Skeleton className="h-6 w-[100px]" /></TableCell>
-					<TableCell><Skeleton className="h-4 w-[120px]" /></TableCell>
-					<TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
-					<TableCell><Skeleton className="h-8 w-[120px]" /></TableCell>
+					<TableCell>
+						<Skeleton className="h-4 w-[200px]" />
+					</TableCell>
+					<TableCell>
+						<Skeleton className="h-6 w-[80px]" />
+					</TableCell>
+					<TableCell>
+						<Skeleton className="h-6 w-[100px]" />
+					</TableCell>
+					<TableCell>
+						<Skeleton className="h-4 w-[120px]" />
+					</TableCell>
+					<TableCell>
+						<Skeleton className="h-4 w-[100px]" />
+					</TableCell>
+					<TableCell>
+						<Skeleton className="h-8 w-[120px]" />
+					</TableCell>
 				</TableRow>
 			))}
 		</>
@@ -90,7 +101,10 @@ export function AlertsTable({
 								<TableRow key={alert.id}>
 									<TableCell className="font-medium">
 										<div className="flex flex-col gap-1">
-											<span className="truncate max-w-[280px]" title={alert.title}>
+											<span
+												className="truncate max-w-[280px]"
+												title={alert.title}
+											>
 												{alert.title}
 											</span>
 											{alert.incident && (
@@ -128,7 +142,9 @@ export function AlertsTable({
 									<TableCell className="text-sm text-muted-foreground">
 										<Tooltip>
 											<TooltipTrigger>
-												{formatDistanceToNow(new Date(alert.triggeredAt), { addSuffix: true })}
+												{formatDistanceToNow(new Date(alert.triggeredAt), {
+													addSuffix: true,
+												})}
 											</TooltipTrigger>
 											<TooltipContent>
 												{new Date(alert.triggeredAt).toLocaleString()}
@@ -151,25 +167,30 @@ export function AlertsTable({
 													<TooltipContent>Acknowledge</TooltipContent>
 												</Tooltip>
 											)}
-											{(alert.status === "triggered" || alert.status === "acknowledged") && onResolve && (
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<Button
-															variant="outline"
-															size="sm"
-															onClick={() => onResolve(alert.id)}
-														>
-															<CheckCircle className="h-4 w-4" />
-														</Button>
-													</TooltipTrigger>
-													<TooltipContent>Resolve</TooltipContent>
-												</Tooltip>
-											)}
+											{(alert.status === "triggered" ||
+												alert.status === "acknowledged") &&
+												onResolve && (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Button
+																variant="outline"
+																size="sm"
+																onClick={() => onResolve(alert.id)}
+															>
+																<CheckCircle className="h-4 w-4" />
+															</Button>
+														</TooltipTrigger>
+														<TooltipContent>Resolve</TooltipContent>
+													</Tooltip>
+												)}
 											{alert.incident && (
 												<Tooltip>
 													<TooltipTrigger asChild>
 														<Button variant="outline" size="sm" asChild>
-															<Link to="/incidents/$id" params={{ id: alert.incident.id }}>
+															<Link
+																to="/incidents/$id"
+																params={{ id: alert.incident.id }}
+															>
 																<ExternalLink className="h-4 w-4" />
 															</Link>
 														</Button>

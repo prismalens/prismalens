@@ -8,8 +8,8 @@
  * - Manage organization invitations
  */
 
+import { adminClient, organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
-import { organizationClient, adminClient } from "better-auth/client/plugins";
 
 /**
  * Build an absolute base URL for the Better Auth client.
@@ -33,7 +33,9 @@ function getDefaultBaseURL(): string {
  *
  * @param baseURL - Absolute URL of the auth API (defaults to auto-detected origin + /api/auth)
  */
-export function createPrismaLensAuthClient(baseURL: string = getDefaultBaseURL()) {
+export function createPrismaLensAuthClient(
+	baseURL: string = getDefaultBaseURL(),
+) {
 	return createAuthClient({
 		baseURL,
 		plugins: [

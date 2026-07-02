@@ -40,9 +40,8 @@ export const Route = createFileRoute("/_authenticated")({
 		// Setup complete — verify the user has a valid session.
 		// Uses TanStack Query cache to avoid re-fetching on every navigation.
 		// Actual session lifetime is managed by Better Auth cookies (7 days).
-		const session = await context.queryClient.ensureQueryData(
-			sessionQueryOptions,
-		);
+		const session =
+			await context.queryClient.ensureQueryData(sessionQueryOptions);
 		if (!session) {
 			throw redirect({
 				to: "/auth/login",

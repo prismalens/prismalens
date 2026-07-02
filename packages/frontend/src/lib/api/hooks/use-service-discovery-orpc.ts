@@ -1,12 +1,12 @@
 "use client";
 
+import type { SourceType, SuggestionStatus } from "@prismalens/contracts";
 /**
  * Service discovery hooks using oRPC client
  *
  * Hooks for triggering discovery, managing suggestions, and bulk operations.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SourceType, SuggestionStatus } from "@prismalens/contracts";
 import { orpc } from "../orpc-client";
 import { serviceKeys } from "./use-services-orpc";
 

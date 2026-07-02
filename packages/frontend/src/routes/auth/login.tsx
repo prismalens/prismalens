@@ -1,18 +1,13 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { getSession, signIn } from "@/lib/auth";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getSession, signIn } from "@/lib/auth";
 
 export const Route = createFileRoute("/auth/login")({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -62,8 +57,7 @@ function LoginPage() {
 
 			// Redirect to original page or dashboard on success
 			// Only allow same-origin relative paths to prevent open redirect
-			const safePath =
-				redirectTo?.startsWith("/") ? redirectTo : "/";
+			const safePath = redirectTo?.startsWith("/") ? redirectTo : "/";
 			navigate({ to: safePath });
 		} catch {
 			setError("An unexpected error occurred. Please try again.");
@@ -77,9 +71,7 @@ function LoginPage() {
 			<div className="w-full max-w-md">
 				<Card>
 					<CardHeader className="text-center">
-						<CardTitle className="text-2xl">
-							Sign in to PrismaLens
-						</CardTitle>
+						<CardTitle className="text-2xl">Sign in to PrismaLens</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{/* Error Alert */}
@@ -124,7 +116,9 @@ function LoginPage() {
 										size="icon"
 										onClick={() => setShowPassword(!showPassword)}
 										className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-										aria-label={showPassword ? "Hide password" : "Show password"}
+										aria-label={
+											showPassword ? "Hide password" : "Show password"
+										}
 									>
 										{showPassword ? (
 											<EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -135,11 +129,7 @@ function LoginPage() {
 								</div>
 							</div>
 
-							<Button
-								type="submit"
-								className="w-full"
-								disabled={isLoading}
-							>
+							<Button type="submit" className="w-full" disabled={isLoading}>
 								{isLoading ? (
 									<>
 										<Loader2 className="mr-2 h-4 w-4 animate-spin" />

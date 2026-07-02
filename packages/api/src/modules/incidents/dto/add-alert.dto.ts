@@ -3,6 +3,6 @@
  * Reserved for future use.
  */
 export class AddAlertDto {
-  /** Alert ID to add to the incident */
-  alertId!: string;
+	/** Alert ID to add to the incident */
+	alertId!: string;
 }

@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { Loader2, Search, Rocket } from "lucide-react";
+import { Loader2, Rocket, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-
 import { useDeployments, useLinkDeployment } from "@/lib/api/hooks";
+import { cn } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
 	live: "text-green-500",
@@ -65,9 +64,7 @@ export function LinkDeploymentDialog({
 	const filteredDeployments = useMemo(() => {
 		const deployments = deploymentResponse?.data ?? [];
 		// Show only unlinked deployments (serviceId is null) or not already linked to this service
-		return deployments.filter(
-			(d) => !excludedIds.has(d.id) && !d.serviceId,
-		);
+		return deployments.filter((d) => !excludedIds.has(d.id) && !d.serviceId);
 	}, [deploymentResponse, excludedIds]);
 
 	const handleClose = useCallback(() => {
@@ -163,9 +160,7 @@ export function LinkDeploymentDialog({
 												{deployment.deploymentType && (
 													<span>{deployment.deploymentType}</span>
 												)}
-												{deployment.region && (
-													<span>{deployment.region}</span>
-												)}
+												{deployment.region && <span>{deployment.region}</span>}
 												{deployment.url && (
 													<span className="truncate max-w-[200px]">
 														{deployment.url}
@@ -179,9 +174,7 @@ export function LinkDeploymentDialog({
 						)}
 					</div>
 
-					{error && (
-						<p className="text-sm text-destructive">{error}</p>
-					)}
+					{error && <p className="text-sm text-destructive">{error}</p>}
 				</div>
 
 				<DialogFooter>

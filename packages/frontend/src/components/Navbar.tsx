@@ -7,15 +7,8 @@
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import {
-	NavigationMenu,
-	NavigationMenuList,
-	NavigationMenuItem,
-	NavigationMenuLink,
-	navigationMenuTriggerStyle,
-} from "@/components/ui/navigation-menu";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +19,14 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSession, signOut } from "@/lib/auth";
+import {
+	NavigationMenu,
+	NavigationMenuItem,
+	NavigationMenuLink,
+	NavigationMenuList,
+	navigationMenuTriggerStyle,
+} from "@/components/ui/navigation-menu";
+import { signOut, useSession } from "@/lib/auth";
 import * as m from "@/lib/paraglide/messages.js";
 
 export function Navbar() {
@@ -102,7 +102,9 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
-										<Link to="/settings" search={{ tab: "ai" }}>{m.nav_settings()}</Link>
+										<Link to="/settings" search={{ tab: "ai" }}>
+											{m.nav_settings()}
+										</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>
 							</NavigationMenuList>
@@ -144,7 +146,12 @@ function UserMenu() {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
+				<Button
+					variant="ghost"
+					size="icon"
+					className="rounded-full"
+					aria-label="User menu"
+				>
 					<Avatar className="h-8 w-8">
 						<AvatarFallback className="bg-primary text-primary-foreground text-xs">
 							{getInitials(user.name)}
@@ -162,10 +169,7 @@ function UserMenu() {
 					</div>
 				</DropdownMenuLabel>
 				<DropdownMenuSeparator />
-				<DropdownMenuItem
-					onClick={handleSignOut}
-					className="cursor-pointer"
-				>
+				<DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
 					<LogOut className="mr-2 h-4 w-4" />
 					Sign out
 				</DropdownMenuItem>

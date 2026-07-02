@@ -62,7 +62,10 @@ export function truncatePayload(
 	}
 
 	// Truncate external call metrics
-	if (result.metrics?.external_calls && result.metrics.external_calls.length > 50) {
+	if (
+		result.metrics?.external_calls &&
+		result.metrics.external_calls.length > 50
+	) {
 		result.metrics = {
 			...result.metrics,
 			external_calls: [
@@ -121,5 +124,7 @@ export function truncateString(str: string, maxLength: number): string {
 	if (str.length <= maxLength) {
 		return str;
 	}
-	return str.substring(0, maxLength - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+	return (
+		str.substring(0, maxLength - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
+	);
 }

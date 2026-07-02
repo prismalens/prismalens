@@ -1,8 +1,6 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-
-import { useConnectionDeletionImpact } from "@/lib/api/hooks";
 import { MutationError } from "@/components/shared/MutationError";
 import {
 	AlertDialog,
@@ -15,6 +13,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConnectionDeletionImpact } from "@/lib/api/hooks";
 import { DeletionImpactSection } from "./DeletionImpactSection";
 
 interface DeleteConnectionDialogProps {
@@ -46,8 +45,8 @@ export function DeleteConnectionDialog({
 				<AlertDialogHeader>
 					<AlertDialogTitle>Delete Connection?</AlertDialogTitle>
 					<AlertDialogDescription>
-						This will remove this connection. The integration itself
-						will remain.
+						This will remove this connection. The integration itself will
+						remain.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 
@@ -57,25 +56,18 @@ export function DeleteConnectionDialog({
 						<Skeleton className="h-4 w-3/4" />
 					</div>
 				) : impact ? (
-					<DeletionImpactSection
-						impact={impact}
-						showConnections={false}
-					/>
+					<DeletionImpactSection impact={impact} showConnections={false} />
 				) : null}
 
 				<MutationError error={error} />
 				<AlertDialogFooter>
-					<AlertDialogCancel onClick={onCancel}>
-						Cancel
-					</AlertDialogCancel>
+					<AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
 					<AlertDialogAction
 						onClick={onDelete}
 						className="bg-destructive hover:bg-destructive/90"
 						disabled={isDeleting || isLoading}
 					>
-						{isDeleting && (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						)}
+						{isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						Delete
 					</AlertDialogAction>
 				</AlertDialogFooter>

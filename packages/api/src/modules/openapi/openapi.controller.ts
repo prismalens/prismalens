@@ -1,79 +1,85 @@
-import { Controller, Get, Header, Res } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config/dist/index.js'
-import { OpenAPIGenerator } from '@orpc/openapi'
-import { ZodToJsonSchemaConverter } from '@orpc/zod'
-import { EnvironmentVariables } from '@prismalens/config'
-import { contract } from '@prismalens/contracts'
-import type { Response } from 'express'
-import { Public } from '../../core/auth/public.decorator.js'
+import { Controller, Get, Header, Res } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config/dist/index.js";
+import { OpenAPIGenerator } from "@orpc/openapi";
+import { ZodToJsonSchemaConverter } from "@orpc/zod";
+import { EnvironmentVariables } from "@prismalens/config";
+import { contract } from "@prismalens/contracts";
+import type { Response } from "express";
+import { Public } from "../../core/auth/public.decorator.js";
 
 @Public()
 @Controller()
 export class OpenAPIController {
-  private cachedSpec: object | null = null
+	private cachedSpec: object | null = null;
 
-  constructor(private configService: ConfigService<EnvironmentVariables>) { }
+	constructor(private configService: ConfigService<EnvironmentVariables>) {}
 
-  @Get('openapi.json')
-  @Header('Content-Type', 'application/json')
-  async getOpenAPISpec() {
-    if (this.cachedSpec) {
-      return this.cachedSpec
-    }
+	@Get("openapi.json")
+	@Header("Content-Type", "application/json")
+	async getOpenAPISpec() {
+		if (this.cachedSpec) {
+			return this.cachedSpec;
+		}
 
-    const generator = new OpenAPIGenerator({
-      schemaConverters: [new ZodToJsonSchemaConverter()],
-    })
+		const generator = new OpenAPIGenerator({
+			schemaConverters: [new ZodToJsonSchemaConverter()],
+		});
 
-    const spec = await generator.generate(contract, {
-      info: {
-        title: 'PrismaLens API',
-        version: '1.0.0',
-        description:
-          'PrismaLens Community Edition API - Incident management and root cause analysis platform',
-        contact: {
-          name: 'PrismaLens Team',
-          url: 'https://github.com/prismalens-org/prismalens',
-        },
-        license: {
-          name: 'ELv2',
-          url: 'https://www.elastic.co/licensing/elastic-license',
-        },
-      },
-      servers: [
-        {
-          url: `${this.configService.get('PRISMALENS_PROTOCOL')}://${this.configService.get('PRISMALENS_HOST')}:${this.configService.get('PRISMALENS_PORT')}/api`,
-          description: 'Current server',
-        },
-        {
-          url: '/api',
-          description: 'Relative path',
-        },
-      ],
-      tags: [
-        { name: 'alerts', description: 'Alert management' },
-        { name: 'incidents', description: 'Incident management' },
-        { name: 'investigations', description: 'AI-powered investigations' },
-        { name: 'recommendations', description: 'Recommendations management' },
-        { name: 'services', description: 'Service catalog management' },
-        { name: 'webhooks', description: 'Webhook ingestion endpoints' },
-        { name: 'events', description: 'Event management' },
-        { name: 'timeline', description: 'Incident timeline entries' },
-        { name: 'correlation', description: 'Alert correlation rules' },
-        { name: 'integrations', description: 'External integrations' },
-        { name: 'service-discovery', description: 'Service discovery suggestions' },
-        { name: 'alert-mapping', description: 'Alert to service mapping rules' },
-      ],
-    })
+		const spec = await generator.generate(contract, {
+			info: {
+				title: "PrismaLens API",
+				version: "1.0.0",
+				description:
+					"PrismaLens Community Edition API - Incident management and root cause analysis platform",
+				contact: {
+					name: "PrismaLens Team",
+					url: "https://github.com/prismalens-org/prismalens",
+				},
+				license: {
+					name: "ELv2",
+					url: "https://www.elastic.co/licensing/elastic-license",
+				},
+			},
+			servers: [
+				{
+					url: `${this.configService.get("PRISMALENS_PROTOCOL")}://${this.configService.get("PRISMALENS_HOST")}:${this.configService.get("PRISMALENS_PORT")}/api`,
+					description: "Current server",
+				},
+				{
+					url: "/api",
+					description: "Relative path",
+				},
+			],
+			tags: [
+				{ name: "alerts", description: "Alert management" },
+				{ name: "incidents", description: "Incident management" },
+				{ name: "investigations", description: "AI-powered investigations" },
+				{ name: "recommendations", description: "Recommendations management" },
+				{ name: "services", description: "Service catalog management" },
+				{ name: "webhooks", description: "Webhook ingestion endpoints" },
+				{ name: "events", description: "Event management" },
+				{ name: "timeline", description: "Incident timeline entries" },
+				{ name: "correlation", description: "Alert correlation rules" },
+				{ name: "integrations", description: "External integrations" },
+				{
+					name: "service-discovery",
+					description: "Service discovery suggestions",
+				},
+				{
+					name: "alert-mapping",
+					description: "Alert to service mapping rules",
+				},
+			],
+		});
 
-    this.cachedSpec = spec
-    return spec
-  }
+		this.cachedSpec = spec;
+		return spec;
+	}
 
-  @Get('docs')
-  @Header('Content-Type', 'text/html')
-  async getScalarDocs(@Res() res: Response) {
-    const html = `
+	@Get("docs")
+	@Header("Content-Type", "text/html")
+	async getScalarDocs(@Res() res: Response) {
+		const html = `
 <!DOCTYPE html>
 <html>
   <head>
@@ -101,7 +107,7 @@ export class OpenAPIController {
     </script>
   </body>
 </html>
-    `
-    res.send(html)
-  }
+    `;
+		res.send(html);
+	}
 }

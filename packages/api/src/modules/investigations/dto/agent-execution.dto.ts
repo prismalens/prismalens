@@ -1,4 +1,7 @@
-import { AgentType, ExecutionStatus } from "../../../shared/enums/index.js";
+import type {
+	AgentType,
+	ExecutionStatus,
+} from "../../../shared/enums/index.js";
 
 /**
  * DTO for creating an agent execution record

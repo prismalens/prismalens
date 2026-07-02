@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
 	CanActivate,
 	ExecutionContext,
@@ -5,7 +6,6 @@ import {
 	Logger,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import type { EnvironmentVariables } from "@prismalens/config";
 import type { Request } from "express";
 
@@ -45,10 +45,7 @@ export class WebhookSignatureGuard implements CanActivate {
 		try {
 			const sigBuf = Buffer.from(signature);
 			const expBuf = Buffer.from(expected);
-			if (
-				sigBuf.length !== expBuf.length ||
-				!timingSafeEqual(sigBuf, expBuf)
-			) {
+			if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
 				this.logger.warn("Webhook rejected: invalid signature");
 				return false;
 			}

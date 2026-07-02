@@ -26,7 +26,12 @@ export const repositoriesContract = {
 			tags: ["repositories"],
 		})
 		.input(BatchCreateRepositoriesSchema)
-		.output(z.object({ created: z.number().int(), repositories: z.array(RepositorySchema) })),
+		.output(
+			z.object({
+				created: z.number().int(),
+				repositories: z.array(RepositorySchema),
+			}),
+		),
 
 	/**
 	 * List all repositories
@@ -39,11 +44,18 @@ export const repositoriesContract = {
 			summary: "List all repositories",
 			tags: ["repositories"],
 		})
-		.input(PaginationSchema.extend({
-			connectionId: z.string().uuid().optional(),
-			search: z.string().optional(),
-		}))
-		.output(z.object({ data: z.array(RepositoryWithServicesSchema), total: z.number().int() })),
+		.input(
+			PaginationSchema.extend({
+				connectionId: z.string().uuid().optional(),
+				search: z.string().optional(),
+			}),
+		)
+		.output(
+			z.object({
+				data: z.array(RepositoryWithServicesSchema),
+				total: z.number().int(),
+			}),
+		),
 
 	/**
 	 * Count unlinked repositories (not linked to any service)

@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface PageHeaderProps {
 	title: string;
@@ -9,7 +9,12 @@ interface PageHeaderProps {
 	backLink?: { label: string; to: string };
 }
 
-export function PageHeader({ title, subtitle, actions, backLink }: PageHeaderProps) {
+export function PageHeader({
+	title,
+	subtitle,
+	actions,
+	backLink,
+}: PageHeaderProps) {
 	return (
 		<div>
 			{backLink && (

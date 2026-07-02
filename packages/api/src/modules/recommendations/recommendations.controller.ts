@@ -118,7 +118,9 @@ export class RecommendationsController {
 		} as unknown as Recommendation;
 	}
 
-	private serializeRecommendationWithRelations(rec: Record<string, any>): RecommendationWithRelations {
+	private serializeRecommendationWithRelations(
+		rec: Record<string, any>,
+	): RecommendationWithRelations {
 		const serialized = this.serializeRecommendation(rec) as any;
 
 		if (rec.investigation) {

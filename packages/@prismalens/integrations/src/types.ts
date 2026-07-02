@@ -8,7 +8,12 @@ import { z } from "zod";
 // AUTH MODE
 // =============================================================================
 
-export const AuthModeSchema = z.enum(["api_key", "basic", "oauth2", "github_app"]);
+export const AuthModeSchema = z.enum([
+	"api_key",
+	"basic",
+	"oauth2",
+	"github_app",
+]);
 export type AuthMode = z.infer<typeof AuthModeSchema>;
 
 // =============================================================================
@@ -23,7 +28,14 @@ export const TemplateFieldOptionSchema = z.object({
 export const TemplateFieldSchema = z.object({
 	name: z.string(),
 	label: z.string(),
-	type: z.enum(["string", "password", "select", "number", "boolean", "textarea"]),
+	type: z.enum([
+		"string",
+		"password",
+		"select",
+		"number",
+		"boolean",
+		"textarea",
+	]),
 	default: z.string().optional(),
 	required: z.boolean().optional(),
 	placeholder: z.string().optional(),
@@ -149,4 +161,3 @@ export interface TokenResult {
 	grantedScopes?: string[];
 	metadata?: Record<string, unknown>;
 }
-

@@ -1,11 +1,11 @@
 import {
+	type CallHandler,
+	type ExecutionContext,
 	Injectable,
 	type NestInterceptor,
-	type ExecutionContext,
-	type CallHandler,
 } from "@nestjs/common";
 import type { Observable } from "rxjs";
-import { tap, catchError, finalize } from "rxjs";
+import { catchError, finalize, tap } from "rxjs";
 import { enrichContext } from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
 import type { WideEvent } from "../../types/wide-event.js";
@@ -108,7 +108,13 @@ export class WideEventInterceptor implements NestInterceptor {
 				});
 			}),
 			catchError(
-				(error: Error & { status?: number; statusCode?: number; code?: string }) => {
+				(
+					error: Error & {
+						status?: number;
+						statusCode?: number;
+						code?: string;
+					},
+				) => {
 					// Enrich with error data on failure
 					enrichContext({
 						error: {

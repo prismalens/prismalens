@@ -55,7 +55,7 @@ export function ModelCard({
 				"flex items-start gap-3",
 				selected && !disabled && "bg-accent border-border",
 				!selected && !disabled && "hover:bg-accent/50",
-				disabled && "opacity-50 cursor-not-allowed"
+				disabled && "opacity-50 cursor-not-allowed",
 			)}
 		>
 			{/* Selection indicator */}
@@ -64,7 +64,7 @@ export function ModelCard({
 					"w-4 h-4 rounded-full border-2 mt-0.5 flex-shrink-0 flex items-center justify-center",
 					selected && !disabled
 						? "border-primary bg-primary"
-						: "border-muted-foreground/40"
+						: "border-muted-foreground/40",
 				)}
 			>
 				{selected && !disabled && (
@@ -78,7 +78,7 @@ export function ModelCard({
 					<span
 						className={cn(
 							"font-medium text-sm truncate",
-							disabled && "text-muted-foreground"
+							disabled && "text-muted-foreground",
 						)}
 					>
 						{model.name}
@@ -101,7 +101,7 @@ export function ModelCard({
 							variant="secondary"
 							className={cn(
 								"text-[10px] px-1.5 py-0 h-4",
-								disabled && "opacity-50"
+								disabled && "opacity-50",
 							)}
 						>
 							<Wrench className="h-2.5 w-2.5 mr-0.5" />
@@ -113,7 +113,7 @@ export function ModelCard({
 							variant="secondary"
 							className={cn(
 								"text-[10px] px-1.5 py-0 h-4",
-								disabled && "opacity-50"
+								disabled && "opacity-50",
 							)}
 						>
 							<Sparkles className="h-2.5 w-2.5 mr-0.5" />

@@ -1,11 +1,10 @@
-import { useState } from "react";
-import { FolderGit2, GitBranch, Plus, Unlink } from "lucide-react";
 import type { ServiceWithRelations } from "@prismalens/contracts";
-
-import { useUnlinkRepository } from "@/lib/api/hooks";
+import { FolderGit2, GitBranch, Plus, Unlink } from "lucide-react";
+import { useState } from "react";
+import { MutationError } from "@/components/shared/MutationError";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MutationError } from "@/components/shared/MutationError";
+import { useUnlinkRepository } from "@/lib/api/hooks";
 import { LinkRepositoryDialog } from "./LinkRepositoryDialog";
 
 interface ServiceRepositoriesTabProps {
@@ -13,7 +12,10 @@ interface ServiceRepositoriesTabProps {
 	service: ServiceWithRelations;
 }
 
-export function ServiceRepositoriesTab({ serviceId, service }: ServiceRepositoriesTabProps) {
+export function ServiceRepositoriesTab({
+	serviceId,
+	service,
+}: ServiceRepositoriesTabProps) {
 	const [showLinkDialog, setShowLinkDialog] = useState(false);
 	const repos = service.repositories ?? [];
 	const unlinkRepo = useUnlinkRepository();
@@ -25,7 +27,11 @@ export function ServiceRepositoriesTab({ serviceId, service }: ServiceRepositori
 				<h3 className="text-sm font-medium">
 					Linked Repositories ({repos.length})
 				</h3>
-				<Button size="sm" variant="outline" onClick={() => setShowLinkDialog(true)}>
+				<Button
+					size="sm"
+					variant="outline"
+					onClick={() => setShowLinkDialog(true)}
+				>
 					<Plus className="h-4 w-4 mr-1" />
 					Link Repository
 				</Button>
@@ -48,7 +54,9 @@ export function ServiceRepositoriesTab({ serviceId, service }: ServiceRepositori
 											{sr.repository.fullName}
 										</span>
 										{sr.isPrimary && (
-											<Badge variant="default" className="text-xs">PRIMARY</Badge>
+											<Badge variant="default" className="text-xs">
+												PRIMARY
+											</Badge>
 										)}
 									</div>
 									<div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">

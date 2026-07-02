@@ -2,8 +2,11 @@
  * Providers — barrel exports + factories
  */
 
-// Shared types
-export type { AuthenticatedRequestFn } from "./types.js";
+// Deployment provider
+export type {
+	DeploymentProvider,
+	DeploymentProviderFactory,
+} from "./deployment.interface.js";
 
 // Git provider
 export type {
@@ -12,13 +15,9 @@ export type {
 	GitProviderFactory,
 } from "./git.interface.js";
 export { GitHubProvider } from "./github/github.provider.js";
-
-// Deployment provider
-export type {
-	DeploymentProvider,
-	DeploymentProviderFactory,
-} from "./deployment.interface.js";
 export { RenderProvider } from "./render/render.provider.js";
+// Shared types
+export type { AuthenticatedRequestFn } from "./types.js";
 export { VercelProvider } from "./vercel/vercel.provider.js";
 
 // ── Git provider factory ──

@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
+import { Loader2 } from "lucide-react";
 
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
@@ -93,9 +93,7 @@ export function EditConnectionDialog({
 						Cancel
 					</Button>
 					<Button onClick={onSave} disabled={isSaving}>
-						{isSaving && (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						)}
+						{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						{template?.connectionCreationMode === "oauth_redirect"
 							? "Re-authorize"
 							: "Update Connection"}

@@ -5,21 +5,21 @@
  * Simplified for Community/Enterprise model.
  */
 
-import { applyDecorators, SetMetadata, UseGuards } from '@nestjs/common';
-import { LICENSE_TIERS } from './license.constants.js';
-import type { LicenseFeature, LicenseTierType } from './license.constants.js';
+import { applyDecorators, SetMetadata, UseGuards } from "@nestjs/common";
+import type { LicenseFeature, LicenseTierType } from "./license.constants.js";
+import { LICENSE_TIERS } from "./license.constants.js";
 import {
-  LicenseFeatureGuard,
-  LicenseGuard,
-  LicenseTierGuard,
-} from './license.guard.js';
+	LicenseFeatureGuard,
+	LicenseGuard,
+	LicenseTierGuard,
+} from "./license.guard.js";
 
 // =============================================================================
 // METADATA KEYS
 // =============================================================================
 
-export const REQUIRES_FEATURE_KEY = 'license:requires_feature';
-export const REQUIRES_TIER_KEY = 'license:requires_tier';
+export const REQUIRES_FEATURE_KEY = "license:requires_feature";
+export const REQUIRES_TIER_KEY = "license:requires_tier";
 
 // =============================================================================
 // DECORATORS
@@ -37,10 +37,10 @@ export const REQUIRES_TIER_KEY = 'license:requires_tier';
  * ```
  */
 const RequiresFeature = (feature: LicenseFeature) =>
-  applyDecorators(
-    SetMetadata(REQUIRES_FEATURE_KEY, feature),
-    UseGuards(LicenseFeatureGuard),
-  );
+	applyDecorators(
+		SetMetadata(REQUIRES_FEATURE_KEY, feature),
+		UseGuards(LicenseFeatureGuard),
+	);
 
 /**
  * Require a minimum license tier to access this route.
@@ -54,10 +54,10 @@ const RequiresFeature = (feature: LicenseFeature) =>
  * ```
  */
 const RequiresTier = (tier: LicenseTierType) =>
-  applyDecorators(
-    SetMetadata(REQUIRES_TIER_KEY, tier),
-    UseGuards(LicenseTierGuard),
-  );
+	applyDecorators(
+		SetMetadata(REQUIRES_TIER_KEY, tier),
+		UseGuards(LicenseTierGuard),
+	);
 
 /**
  * Apply all license checks: feature and tier.
@@ -74,25 +74,25 @@ const RequiresTier = (tier: LicenseTierType) =>
  * ```
  */
 const RequiresLicense = (options: {
-  feature?: LicenseFeature;
-  tier?: LicenseTierType;
+	feature?: LicenseFeature;
+	tier?: LicenseTierType;
 }) => {
-  const decorators: Array<
-    ClassDecorator | MethodDecorator | PropertyDecorator
-  > = [];
+	const decorators: Array<
+		ClassDecorator | MethodDecorator | PropertyDecorator
+	> = [];
 
-  if (options.feature) {
-    decorators.push(SetMetadata(REQUIRES_FEATURE_KEY, options.feature));
-  }
+	if (options.feature) {
+		decorators.push(SetMetadata(REQUIRES_FEATURE_KEY, options.feature));
+	}
 
-  if (options.tier) {
-    decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
-  }
+	if (options.tier) {
+		decorators.push(SetMetadata(REQUIRES_TIER_KEY, options.tier));
+	}
 
-  // Use the combined guard
-  decorators.push(UseGuards(LicenseGuard));
+	// Use the combined guard
+	decorators.push(UseGuards(LicenseGuard));
 
-  return applyDecorators(...decorators);
+	return applyDecorators(...decorators);
 };
 
 /**

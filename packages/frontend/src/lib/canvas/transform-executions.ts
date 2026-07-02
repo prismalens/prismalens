@@ -5,8 +5,6 @@
  * representation for the Investigation Canvas.
  */
 
-import type { Edge, Node } from "reactflow";
-import { MarkerType } from "reactflow";
 import type {
 	AgentExecutionWithTools,
 	ExecutionStatus,
@@ -22,6 +20,8 @@ import {
 	Search,
 	Stethoscope,
 } from "lucide-react";
+import type { Edge, Node } from "reactflow";
+import { MarkerType } from "reactflow";
 
 // =============================================================================
 // TYPES
@@ -66,7 +66,7 @@ export interface TransformResult {
 function hashString(str: string): number {
 	let hash = 0;
 	for (let i = 0; i < str.length; i++) {
-		hash = ((hash << 5) - hash) + str.charCodeAt(i);
+		hash = (hash << 5) - hash + str.charCodeAt(i);
 		hash |= 0;
 	}
 	return Math.abs(hash);
@@ -121,7 +121,6 @@ const KNOWN_AGENT_OVERRIDES: Record<string, Partial<AgentStyle>> = {
 	validateAlerts: { displayName: "Validate Alerts", icon: CheckCircle },
 	runCommander: { displayName: "Run Commander", icon: Brain },
 	writeToApi: { displayName: "Save Results", icon: Database },
-
 };
 
 /**
@@ -238,8 +237,7 @@ export function transformExecutionsToCanvas(
 		// Create edge from previous node
 		const isAnimated =
 			execution.status === "running" ||
-			(execution.status === "pending" &&
-				investigationStatus === "running");
+			(execution.status === "pending" && investigationStatus === "running");
 
 		edges.push({
 			id: `edge-${previousNodeId}-${nodeId}`,
@@ -256,10 +254,7 @@ export function transformExecutionsToCanvas(
 	});
 
 	// Create END node if investigation is completed or failed
-	if (
-		investigationStatus === "completed" ||
-		investigationStatus === "failed"
-	) {
+	if (investigationStatus === "completed" || investigationStatus === "failed") {
 		const endNodeId = "end";
 		nodes.push({
 			id: endNodeId,

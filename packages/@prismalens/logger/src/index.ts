@@ -51,20 +51,19 @@
  * ```
  */
 
-// Core exports
-export * from "./types/index.js";
-export * from "./core/index.js";
-export * from "./utils/index.js";
-
-// Convenience re-exports
-export { Logger, getLogger, createChildLogger } from "./core/logger.js";
 export {
 	enrichContext,
+	getCurrentWideEvent,
 	getRequestId,
-	getTraceId,
 	getSpanId,
+	getTraceId,
 	hasRequestContext,
 	runInRequestContext,
-	getCurrentWideEvent,
 } from "./core/context.js";
+export * from "./core/index.js";
+// Convenience re-exports
+export { createChildLogger, getLogger, Logger } from "./core/logger.js";
 export { TailSampler } from "./core/sampler.js";
+// Core exports
+export * from "./types/index.js";
+export * from "./utils/index.js";

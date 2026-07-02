@@ -14,7 +14,6 @@
 		"dev": "turbo run dev",
 		"dev:api": "turbo run dev --filter=@prismalens/api",
 		"dev:frontend": "turbo run dev --filter=@prismalens/frontend",
-		"lint": "turbo run lint",
 		"test": "turbo run test",
 		"typecheck": "turbo run typecheck",
 		"clean": "turbo run clean && rm -rf node_modules",

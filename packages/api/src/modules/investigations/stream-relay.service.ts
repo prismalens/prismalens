@@ -1,5 +1,5 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { EventEmitter } from "node:events";
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import type { CanonicalEvent } from "@prismalens/contracts";
 
 /** Ring buffer size per investigation */
@@ -171,13 +171,8 @@ export class StreamRelayService implements OnModuleDestroy {
 	private sweepStaleBuffers(): void {
 		const now = Date.now();
 		for (const [id, buffer] of this.buffers) {
-			if (
-				!buffer.done &&
-				now - buffer.createdAt > MAX_ACTIVE_BUFFER_AGE_MS
-			) {
-				this.logger.warn(
-					`Cleaning up stale buffer for investigation ${id}`,
-				);
+			if (!buffer.done && now - buffer.createdAt > MAX_ACTIVE_BUFFER_AGE_MS) {
+				this.logger.warn(`Cleaning up stale buffer for investigation ${id}`);
 				this.complete(id);
 			}
 		}

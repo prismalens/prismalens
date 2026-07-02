@@ -1,3 +1,4 @@
+import type { WriteStream } from "node:fs";
 import {
 	createWriteStream,
 	existsSync,
@@ -8,8 +9,7 @@ import {
 	unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { WriteStream } from "node:fs";
-import { getConfig, getAppDataDir } from "@prismalens/config";
+import { getAppDataDir, getConfig } from "@prismalens/config";
 import type { LogLevel } from "../types/wide-event.js";
 import type { Transport, TransportOptions } from "./transport.js";
 
@@ -39,9 +39,12 @@ export class FileTransport implements Transport {
 	constructor(options: FileTransportOptions = {}) {
 		const config = getConfig();
 
-		this.maxFileCount = options.maxFileCount ?? config.PRISMALENS_LOG_FILE_COUNT_MAX;
+		this.maxFileCount =
+			options.maxFileCount ?? config.PRISMALENS_LOG_FILE_COUNT_MAX;
 		this.maxFileSizeBytes =
-			(options.maxFileSizeMb ?? config.PRISMALENS_LOG_FILE_SIZE_MAX) * 1024 * 1024;
+			(options.maxFileSizeMb ?? config.PRISMALENS_LOG_FILE_SIZE_MAX) *
+			1024 *
+			1024;
 		this.fileName = options.fileName ?? config.PRISMALENS_LOG_FILE_NAME;
 
 		// Determine log directory
@@ -106,7 +109,9 @@ export class FileTransport implements Transport {
 
 		// Handle stream errors
 		this.stream.on("error", (err) => {
-			console.error(`[FileTransport] Error writing to log file: ${err.message}`);
+			console.error(
+				`[FileTransport] Error writing to log file: ${err.message}`,
+			);
 		});
 	}
 

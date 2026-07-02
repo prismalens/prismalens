@@ -4,12 +4,7 @@ import { SERVICE_TIER_METADATA } from "@prismalens/contracts/schemas";
 import { Clock, Loader2, Settings2, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -155,7 +150,10 @@ export function InvestigationSettings() {
 												)
 											}
 										/>
-										<Label htmlFor={`${policy.tier}-requiresApproval`} className="text-sm font-normal">
+										<Label
+											htmlFor={`${policy.tier}-requiresApproval`}
+											className="text-sm font-normal"
+										>
 											Requires approval
 										</Label>
 									</div>
@@ -164,14 +162,13 @@ export function InvestigationSettings() {
 											id={`${policy.tier}-pageOnCall`}
 											checked={policy.pageOnCall}
 											onCheckedChange={(checked) =>
-												handlePolicyChange(
-													policy.tier,
-													"pageOnCall",
-													!!checked,
-												)
+												handlePolicyChange(policy.tier, "pageOnCall", !!checked)
 											}
 										/>
-										<Label htmlFor={`${policy.tier}-pageOnCall`} className="text-sm font-normal">
+										<Label
+											htmlFor={`${policy.tier}-pageOnCall`}
+											className="text-sm font-normal"
+										>
 											Page on-call
 										</Label>
 									</div>
@@ -187,7 +184,10 @@ export function InvestigationSettings() {
 												)
 											}
 										/>
-										<Label htmlFor={`${policy.tier}-postToSlack`} className="text-sm font-normal">
+										<Label
+											htmlFor={`${policy.tier}-postToSlack`}
+											className="text-sm font-normal"
+										>
 											Post to Slack
 										</Label>
 									</div>
@@ -306,15 +306,21 @@ export function InvestigationSettings() {
 						<div className="flex items-center gap-8 text-sm">
 							<div>
 								<span className="text-muted-foreground">Max Concurrent:</span>{" "}
-								<span className="font-medium">{limits?.maxConcurrent || 5}</span>
+								<span className="font-medium">
+									{limits?.maxConcurrent || 5}
+								</span>
 							</div>
 							<div>
 								<span className="text-muted-foreground">Timeout:</span>{" "}
-								<span className="font-medium">{limits?.timeoutMinutes || 30}m</span>
+								<span className="font-medium">
+									{limits?.timeoutMinutes || 30}m
+								</span>
 							</div>
 							<div>
 								<span className="text-muted-foreground">Max Tool Calls:</span>{" "}
-								<span className="font-medium">{limits?.maxToolCalls || 100}</span>
+								<span className="font-medium">
+									{limits?.maxToolCalls || 100}
+								</span>
 							</div>
 						</div>
 					)}

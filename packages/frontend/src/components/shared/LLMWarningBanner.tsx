@@ -12,7 +12,10 @@ export interface LLMWarningBannerProps {
 	incidentCount?: number;
 }
 
-export function LLMWarningBanner({ className, incidentCount }: LLMWarningBannerProps) {
+export function LLMWarningBanner({
+	className,
+	incidentCount,
+}: LLMWarningBannerProps) {
 	const message = incidentCount
 		? `You have ${incidentCount} active incident${incidentCount > 1 ? "s" : ""} that could benefit from AI investigation. Configure an AI provider to get started.`
 		: "Configure an AI provider to enable automated incident investigation and recommendations.";
@@ -20,16 +23,17 @@ export function LLMWarningBanner({ className, incidentCount }: LLMWarningBannerP
 	return (
 		<Alert
 			variant="default"
-			className={cn("border-amber-500 bg-amber-50 dark:bg-amber-950/20", className)}
+			className={cn(
+				"border-amber-500 bg-amber-50 dark:bg-amber-950/20",
+				className,
+			)}
 		>
 			<AlertTriangle className="h-4 w-4 text-amber-600" />
 			<AlertTitle className="text-amber-900 dark:text-amber-200">
 				AI Provider Not Configured
 			</AlertTitle>
 			<AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-				<span className="text-amber-800 dark:text-amber-300">
-					{message}
-				</span>
+				<span className="text-amber-800 dark:text-amber-300">{message}</span>
 				<Button variant="outline" size="sm" asChild className="w-fit">
 					<Link to="/settings" search={{ tab: "ai" }}>
 						<Settings className="h-4 w-4 mr-2" />

@@ -1,6 +1,6 @@
+import type { AgentExecutionWithTools } from "@prismalens/contracts";
 import { formatDistanceToNow } from "date-fns";
 import { Brain } from "lucide-react";
-import type { AgentExecutionWithTools } from "@prismalens/contracts";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,9 @@ interface AgentExecutionsTabProps {
 	agentExecutions: AgentExecutionWithTools[];
 }
 
-export function AgentExecutionsTab({ agentExecutions }: AgentExecutionsTabProps) {
+export function AgentExecutionsTab({
+	agentExecutions,
+}: AgentExecutionsTabProps) {
 	if (agentExecutions.length === 0) {
 		return (
 			<Card>
@@ -30,10 +32,7 @@ export function AgentExecutionsTab({ agentExecutions }: AgentExecutionsTabProps)
 	return (
 		<div className="space-y-4">
 			{agentExecutions.map((agent) => (
-				<Card
-					key={agent.id}
-					className="border-l-4 border-l-gray-500"
-				>
+				<Card key={agent.id} className="border-l-4 border-l-gray-500">
 					<CardHeader className="pb-2">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-3">

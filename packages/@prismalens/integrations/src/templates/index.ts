@@ -41,8 +41,6 @@ export function getTemplatesByCategory(
 	return getAllTemplates().filter((t) => t.category === category);
 }
 
-export function getTemplatesByAuthMode(
-	authMode: string,
-): AuthTemplate[] {
+export function getTemplatesByAuthMode(authMode: string): AuthTemplate[] {
 	return getAllTemplates().filter((t) => t.authMode === authMode);
 }

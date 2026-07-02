@@ -1,12 +1,12 @@
 "use client";
 
+import type { ServiceListQuery } from "@prismalens/contracts";
 /**
  * Service hooks using oRPC client
  *
  * Type-safe hooks for service catalog operations using oRPC with TanStack Query.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ServiceListQuery } from "@prismalens/contracts";
 import { orpc } from "../orpc-client";
 
 /**

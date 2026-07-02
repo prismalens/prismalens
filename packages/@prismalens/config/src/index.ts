@@ -50,12 +50,12 @@ import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
 import {
 	generateEncryptionKey,
+	getOrCreateAuthSecret,
 	getOrCreateEncryptionKey,
 	getOrCreateInternalSecret,
-	getOrCreateAuthSecret,
 } from "./utils/encryption-key.js";
-import { SecretEnvVars, FILE_SUFFIX } from "./utils/secrets.js";
-import { buildRedisUrl, buildRedisOptions } from "./utils/redis-url.js";
+import { buildRedisOptions, buildRedisUrl } from "./utils/redis-url.js";
+import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
@@ -71,9 +71,9 @@ export {
 	getOrCreateAuthSecret,
 };
 
-// Re-export secret constants
-export { SecretEnvVars, FILE_SUFFIX, secretFileName } from "./utils/secrets.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
+// Re-export secret constants
+export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
 
 // Re-export Redis utilities
 export { buildRedisUrl, buildRedisOptions };

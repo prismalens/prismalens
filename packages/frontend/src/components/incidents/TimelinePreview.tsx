@@ -96,7 +96,7 @@ export function TimelinePreview({
 						onClick={onViewAll}
 						className={cn(
 							"w-full text-sm text-primary hover:underline mt-3 pt-3 border-t",
-							"flex items-center justify-center gap-1"
+							"flex items-center justify-center gap-1",
 						)}
 					>
 						View full timeline

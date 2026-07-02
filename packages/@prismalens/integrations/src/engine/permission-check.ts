@@ -36,9 +36,7 @@ export function checkGitHubAppPermissions(
 				level: requiredLevel,
 				reason: perm.reason,
 			});
-		} else if (
-			(levelOrder[granted] ?? 0) < (levelOrder[requiredLevel] ?? 0)
-		) {
+		} else if ((levelOrder[granted] ?? 0) < (levelOrder[requiredLevel] ?? 0)) {
 			missing.push({
 				key: perm.key,
 				level: requiredLevel,

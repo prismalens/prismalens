@@ -1,8 +1,17 @@
-import { useState } from "react";
-import { Link2, Loader2, Rocket, Trash2 } from "lucide-react";
 import type { Deployment, ServiceWithRelations } from "@prismalens/contracts";
-
-import { useDeleteDeployment, useLinkDeployment } from "@/lib/api/hooks";
+import { Link2, Loader2, Rocket, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { MutationError } from "@/components/shared/MutationError";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,17 +28,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { MutationError } from "@/components/shared/MutationError";
+import { useDeleteDeployment, useLinkDeployment } from "@/lib/api/hooks";
 
 interface UnlinkedDeploymentsDialogProps {
 	open: boolean;
@@ -105,9 +104,7 @@ export function UnlinkedDeploymentsDialog({
 								className="flex items-center justify-between p-3 border rounded-lg"
 							>
 								<div className="min-w-0 flex-1">
-									<p className="font-medium text-sm truncate">
-										{deploy.name}
-									</p>
+									<p className="font-medium text-sm truncate">{deploy.name}</p>
 									<div className="flex items-center gap-2 mt-0.5">
 										{deploy.status && (
 											<Badge variant="outline" className="text-xs">

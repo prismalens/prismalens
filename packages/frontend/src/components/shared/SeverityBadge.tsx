@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
 import type { Severity } from "@prismalens/contracts";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export interface SeverityBadgeProps {
@@ -9,7 +9,11 @@ export interface SeverityBadgeProps {
 
 const severityConfig: Record<
 	Severity,
-	{ label: string; variant: "default" | "destructive" | "outline" | "secondary"; className: string }
+	{
+		label: string;
+		variant: "default" | "destructive" | "outline" | "secondary";
+		className: string;
+	}
 > = {
 	critical: {
 		label: "Critical",
@@ -42,10 +46,7 @@ export function SeverityBadge({ severity, className }: SeverityBadgeProps) {
 	const config = severityConfig[severity] || severityConfig.info;
 
 	return (
-		<Badge
-			variant={config.variant}
-			className={cn(config.className, className)}
-		>
+		<Badge variant={config.variant} className={cn(config.className, className)}>
 			{config.label}
 		</Badge>
 	);

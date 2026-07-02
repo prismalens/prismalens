@@ -4,25 +4,25 @@
  * Line chart showing Mean Time to Resolve trend over time
  */
 
+import type { Incident } from "@prismalens/contracts";
+import { chartColors } from "@prismalens/design-tokens/colors";
 import { useMemo, useState } from "react";
 import {
+	CartesianGrid,
 	Line,
 	LineChart,
-	CartesianGrid,
+	ReferenceLine,
 	ResponsiveContainer,
 	Tooltip,
 	XAxis,
 	YAxis,
-	ReferenceLine,
 } from "recharts";
-import type { Incident } from "@prismalens/contracts";
-import { chartColors } from "@prismalens/design-tokens/colors";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-	groupMTTRByDate,
-	formatDuration,
 	calculateMTTR,
+	formatDuration,
+	groupMTTRByDate,
 	type MTTRDataPoint,
 } from "@/lib/analytics";
 
@@ -41,14 +41,11 @@ export function MTTRTrendChart({
 
 	const data = useMemo(
 		() => groupMTTRByDate(incidents, granularity, days),
-		[incidents, granularity, days]
+		[incidents, granularity, days],
 	);
 
 	// Filter to only show days with data
-	const filteredData = useMemo(
-		() => data.filter((d) => d.count > 0),
-		[data]
-	);
+	const filteredData = useMemo(() => data.filter((d) => d.count > 0), [data]);
 
 	const avgMTTR = useMemo(() => calculateMTTR(incidents), [incidents]);
 
@@ -116,7 +113,8 @@ export function MTTRTrendChart({
 												MTTR: {formatDuration(data.mttr)}
 											</p>
 											<p className="text-xs text-muted-foreground">
-												{data.count} incident{data.count !== 1 ? "s" : ""} resolved
+												{data.count} incident{data.count !== 1 ? "s" : ""}{" "}
+												resolved
 											</p>
 										</div>
 									);

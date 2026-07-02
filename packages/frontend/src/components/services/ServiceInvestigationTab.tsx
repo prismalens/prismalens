@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useUpdateService } from "@/lib/api/hooks";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
+import { useUpdateService } from "@/lib/api/hooks";
 
 type TriggerPolicy = "always" | "critical_and_high" | "critical_only" | "never";
 
@@ -93,10 +93,7 @@ export function ServiceInvestigationTab({
 						className="space-y-3"
 					>
 						{TRIGGER_OPTIONS.map((option) => (
-							<div
-								key={option.value}
-								className="flex items-center space-x-2"
-							>
+							<div key={option.value} className="flex items-center space-x-2">
 								<RadioGroupItem
 									value={option.value}
 									id={`trigger-${option.value}`}
@@ -116,8 +113,8 @@ export function ServiceInvestigationTab({
 				</CardHeader>
 				<CardContent>
 					<Label htmlFor="investigation-context">
-						Additional context for AI agents investigating incidents
-						on this service
+						Additional context for AI agents investigating incidents on this
+						service
 					</Label>
 					<Textarea
 						id="investigation-context"
@@ -151,10 +148,7 @@ export function ServiceInvestigationTab({
 			</Card>
 
 			<div className="flex items-center gap-3">
-				<Button
-					onClick={handleSave}
-					disabled={updateService.isPending}
-				>
+				<Button onClick={handleSave} disabled={updateService.isPending}>
 					{updateService.isPending ? "Saving..." : "Save"}
 				</Button>
 				{saved && (

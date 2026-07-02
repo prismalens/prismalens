@@ -100,7 +100,9 @@ export class CorrelationController {
 	private serializeRule(rule: Record<string, any>): CorrelationRule {
 		return {
 			...rule,
-			matchCriteria: rule.conditions ? JSON.parse(rule.conditions) : (rule.matchCriteria ?? {}),
+			matchCriteria: rule.conditions
+				? JSON.parse(rule.conditions)
+				: (rule.matchCriteria ?? {}),
 			createdAt: rule.createdAt?.toISOString(),
 			updatedAt: rule.updatedAt?.toISOString(),
 		} as CorrelationRule;

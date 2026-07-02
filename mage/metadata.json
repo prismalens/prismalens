@@ -1,9 +1,9 @@
 {
-  "schema": "mage.v1",
-  "mode": "external",
-  "project": "prismalens-platform",
-  "hub_path": "/home/sumit/prismalens-org/prismalens-docs-hub",
-  "hub_repo": "https://github.com/Sumit1993/prismalens-docs-hub.git",
-  "hub_refs": [],
-  "linked_at": "2026-06-03T19:38:55Z"
+	"schema": "mage.v1",
+	"mode": "external",
+	"project": "prismalens-platform",
+	"hub_path": "/home/sumit/prismalens-org/prismalens-docs-hub",
+	"hub_repo": "https://github.com/Sumit1993/prismalens-docs-hub.git",
+	"hub_refs": [],
+	"linked_at": "2026-06-03T19:38:55Z"
 }

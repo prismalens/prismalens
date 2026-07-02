@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type {
 	TimelineEntryType,
 	TimelineEntryWithRelations,
@@ -8,6 +7,7 @@ import type {
 } from "@prismalens/contracts";
 import { format, isToday, isYesterday } from "date-fns";
 import { ClipboardList, Plus } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -65,7 +65,7 @@ function formatDateHeader(dateString: string): string {
 }
 
 function groupEntriesByDate(
-	entries: TimelineEntryWithRelations[]
+	entries: TimelineEntryWithRelations[],
 ): Map<string, TimelineEntryWithRelations[]> {
 	const grouped = new Map<string, TimelineEntryWithRelations[]>();
 
@@ -100,7 +100,8 @@ export function TimelineTab({
 
 	// Sort by occurredAt descending (most recent first)
 	const sortedEntries = [...filteredEntries].sort(
-		(a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+		(a, b) =>
+			new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
 	);
 
 	// Group by date
@@ -199,9 +200,9 @@ export function TimelineTab({
 					<ClipboardList className="w-12 h-12 text-muted-foreground mb-4" />
 					<h3 className="text-lg font-medium">No activity yet</h3>
 					<p className="text-sm text-muted-foreground max-w-sm mt-1">
-						Timeline entries will appear here as the incident progresses.
-						System events, investigation updates, and user actions are all
-						recorded automatically.
+						Timeline entries will appear here as the incident progresses. System
+						events, investigation updates, and user actions are all recorded
+						automatically.
 					</p>
 					{onCreateEntry && (
 						<Button

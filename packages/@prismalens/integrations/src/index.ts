@@ -11,15 +11,15 @@ export type {
 } from "./engine/index.js";
 // Engine
 export {
-	assertCapability,
 	AuthError,
 	AuthManager,
+	assertCapability,
 	CapabilityNotSupportedError,
+	CredentialsInvalidError,
 	checkGitHubAppPermissions,
 	checkOAuthScopes,
-	CredentialsInvalidError,
-	getCapabilities,
 	GitHubAppFlow,
+	getCapabilities,
 	hasCapability,
 	interpolate,
 	interpolateRecord,
@@ -32,8 +32,11 @@ export {
 	TokenRefresher,
 	TokenVault,
 } from "./engine/index.js";
-// Providers — shared types
-export type { AuthenticatedRequestFn } from "./providers/types.js";
+// Providers — deployment
+export type {
+	DeploymentProvider,
+	DeploymentProviderFactory,
+} from "./providers/deployment.interface.js";
 // Providers — git
 export type {
 	GitProvider,
@@ -41,22 +44,17 @@ export type {
 	GitProviderFactory,
 } from "./providers/git.interface.js";
 export {
+	createDeploymentProvider,
 	createGitProvider,
 	GitHubProvider,
-	isGitProviderSupported,
-	resolveGitProviderName,
-} from "./providers/index.js";
-// Providers — deployment
-export type {
-	DeploymentProvider,
-	DeploymentProviderFactory,
-} from "./providers/deployment.interface.js";
-export {
-	createDeploymentProvider,
 	isDeploymentProviderSupported,
+	isGitProviderSupported,
 	RenderProvider,
 	resolveDeploymentProviderName,
+	resolveGitProviderName,
 } from "./providers/index.js";
+// Providers — shared types
+export type { AuthenticatedRequestFn } from "./providers/types.js";
 // Templates
 export {
 	getAllTemplates,
@@ -69,7 +67,7 @@ export {
 	render,
 	slack,
 	slackToken,
-// placeholder
+	// placeholder
 } from "./templates/index.js";
 export type {
 	AuthMode,

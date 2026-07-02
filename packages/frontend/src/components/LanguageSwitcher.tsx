@@ -12,8 +12,8 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useLanguage } from "@/lib/providers/language-provider";
 import type { Locale } from "@/lib/paraglide/runtime.js";
+import { useLanguage } from "@/lib/providers/language-provider";
 
 const localeNames: Record<Locale, string> = {
 	en: "English",

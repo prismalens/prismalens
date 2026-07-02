@@ -8,17 +8,17 @@
  * Returns undefined if parsing fails or values aren't strings.
  */
 export function safeParseJsonArray(value: unknown): string[] | undefined {
-  if (value === null || value === undefined) return undefined;
+	if (value === null || value === undefined) return undefined;
 
-  try {
-    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-    if (!Array.isArray(parsed)) return undefined;
-    return parsed.every((v) => typeof v === 'string')
-      ? (parsed as string[])
-      : undefined;
-  } catch {
-    return undefined;
-  }
+	try {
+		const parsed = typeof value === "string" ? JSON.parse(value) : value;
+		if (!Array.isArray(parsed)) return undefined;
+		return parsed.every((v) => typeof v === "string")
+			? (parsed as string[])
+			: undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -26,16 +26,16 @@ export function safeParseJsonArray(value: unknown): string[] | undefined {
  * Returns undefined if parsing fails.
  */
 export function safeParseJsonObject(
-  value: unknown,
+	value: unknown,
 ): Record<string, unknown> | undefined {
-  if (value === null || value === undefined) return undefined;
+	if (value === null || value === undefined) return undefined;
 
-  try {
-    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-      return undefined;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
+	try {
+		const parsed = typeof value === "string" ? JSON.parse(value) : value;
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+			return undefined;
+		return parsed as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
 }

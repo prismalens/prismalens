@@ -1,6 +1,5 @@
-import { lazy, Suspense, useEffect } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	Activity,
 	AlertCircle,
@@ -11,19 +10,19 @@ import {
 	Search,
 	XCircle,
 } from "lucide-react";
-
-import { orpc } from "@/lib/api/orpc-client";
-import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
-import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
-import { InvestigationStreamPanel } from "@/components/investigation/InvestigationStreamPanel";
+import { lazy, Suspense, useEffect } from "react";
 import { AgentExecutionsTab } from "@/components/investigation/AgentExecutionsTab";
 import { AnalysisTab } from "@/components/investigation/AnalysisTab";
 import { InvestigationDetailSkeleton } from "@/components/investigation/InvestigationDetailSkeleton";
+import { InvestigationStreamPanel } from "@/components/investigation/InvestigationStreamPanel";
 import { InvestigationStatusBadge } from "@/components/investigation/investigation.utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
+import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
+import { orpc } from "@/lib/api/orpc-client";
 
 // Dynamically import React Flow to avoid SSR issues
 const InvestigationCanvas = lazy(
@@ -47,11 +46,10 @@ function InvestigationDetailPage() {
 		isRefetching,
 	} = useQuery(
 		orpc.investigations.get.queryOptions({ input: { id: investigationId } }),
-	)
+	);
 
 	const isActive =
-		investigation?.status === "running" ||
-		investigation?.status === "pending";
+		investigation?.status === "running" || investigation?.status === "pending";
 
 	// SSE stream for real-time progress
 	const stream = useInvestigationStream(investigationId, {
@@ -77,11 +75,8 @@ function InvestigationDetailPage() {
 		}),
 		enabled: !!investigation,
 		// Only poll if SSE is not streaming (fallback mode)
-		refetchInterval:
-			isActive && stream.status === "error"
-				? 3000
-				: false,
-	})
+		refetchInterval: isActive && stream.status === "error" ? 3000 : false,
+	});
 
 	if (isLoading) {
 		return <InvestigationDetailSkeleton />;
@@ -107,7 +102,7 @@ function InvestigationDetailPage() {
 					</p>
 				</div>
 			</div>
-		)
+		);
 	}
 
 	const jobProgress = statusData?.job?.progress ?? 0;
@@ -175,7 +170,9 @@ function InvestigationDetailPage() {
 				<Card>
 					<CardContent className="py-4">
 						<div className="flex items-center justify-between mb-2">
-							<span className="text-sm font-medium">Investigation Progress</span>
+							<span className="text-sm font-medium">
+								Investigation Progress
+							</span>
 							<span className="text-sm text-muted-foreground">
 								{jobProgress}%
 							</span>
@@ -246,5 +243,5 @@ function InvestigationDetailPage() {
 				</TabsContent>
 			</Tabs>
 		</div>
-	)
+	);
 }

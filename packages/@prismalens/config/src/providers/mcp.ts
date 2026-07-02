@@ -226,10 +226,9 @@ export function buildDefaultMCPConfig(
 
 		// Build header value from template
 		const token = credentials.accessToken || credentials.apiKey || "";
-		const headerValue = credMapping.headerTemplate.replace(
-			"${credentials.accessToken}",
-			token,
-		).replace("${credentials.apiKey}", token);
+		const headerValue = credMapping.headerTemplate
+			.replace("${credentials.accessToken}", token)
+			.replace("${credentials.apiKey}", token);
 
 		return {
 			serverId,
@@ -263,7 +262,14 @@ export function buildDefaultMCPConfig(
 			transport: {
 				type: "stdio",
 				command: "docker",
-				args: ["run", "-i", "--rm", "-e", credMapping.envVar, server.dockerImage],
+				args: [
+					"run",
+					"-i",
+					"--rm",
+					"-e",
+					credMapping.envVar,
+					server.dockerImage,
+				],
 				env: { [credMapping.envVar]: token },
 			},
 			toolFilter:

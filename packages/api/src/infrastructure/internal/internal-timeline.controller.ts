@@ -1,17 +1,17 @@
 import {
-  Body,
-  Controller,
-  HttpCode,
-  HttpStatus,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
-import { ApiExcludeController } from '@nestjs/swagger';
-import { Public } from '../../core/auth/public.decorator.js';
-import { TimelineService } from '../../modules/timeline/timeline.service.js';
-import { TimelineSource } from '../../shared/enums/index.js';
-import { CreateTimelineEntryDto } from './dto/index.js';
-import { InternalGuard } from './guards/internal.guard.js';
+	Body,
+	Controller,
+	HttpCode,
+	HttpStatus,
+	Post,
+	UseGuards,
+} from "@nestjs/common";
+import { ApiExcludeController } from "@nestjs/swagger";
+import { Public } from "../../core/auth/public.decorator.js";
+import { TimelineService } from "../../modules/timeline/timeline.service.js";
+import { TimelineSource } from "../../shared/enums/index.js";
+import { CreateTimelineEntryDto } from "./dto/index.js";
+import { InternalGuard } from "./guards/internal.guard.js";
 
 /**
  * Internal API for timeline operations.
@@ -21,25 +21,25 @@ import { InternalGuard } from './guards/internal.guard.js';
  */
 @Public()
 @ApiExcludeController()
-@Controller('internal/timeline')
+@Controller("internal/timeline")
 @UseGuards(InternalGuard)
 export class InternalTimelineController {
-  constructor(private readonly timelineService: TimelineService) { }
+	constructor(private readonly timelineService: TimelineService) {}
 
-  /**
-   * Create a timeline entry (real-time during investigation)
-   * Typically used for 'investigation_started' events
-   */
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async addEntry(@Body() dto: CreateTimelineEntryDto) {
-    return this.timelineService.create({
-      incidentId: dto.incidentId,
-      type: dto.type,
-      title: dto.title,
-      description: dto.description,
-      metadata: dto.metadata,
-      source: dto.source ?? TimelineSource.ai_worker,
-    });
-  }
+	/**
+	 * Create a timeline entry (real-time during investigation)
+	 * Typically used for 'investigation_started' events
+	 */
+	@Post()
+	@HttpCode(HttpStatus.CREATED)
+	async addEntry(@Body() dto: CreateTimelineEntryDto) {
+		return this.timelineService.create({
+			incidentId: dto.incidentId,
+			type: dto.type,
+			title: dto.title,
+			description: dto.description,
+			metadata: dto.metadata,
+			source: dto.source ?? TimelineSource.ai_worker,
+		});
+	}
 }

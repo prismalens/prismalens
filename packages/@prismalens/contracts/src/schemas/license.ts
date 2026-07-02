@@ -3,7 +3,11 @@
  * Stores license key, entitlements, quotas, and validation state.
  */
 import { z } from "zod";
-import { DateStringSchema, LicenseTierSchema, LicenseTypeSchema } from "./common.js";
+import {
+	DateStringSchema,
+	LicenseTierSchema,
+	LicenseTypeSchema,
+} from "./common.js";
 
 export const LicenseInfoSchema = z.object({
 	id: z.string().uuid(),

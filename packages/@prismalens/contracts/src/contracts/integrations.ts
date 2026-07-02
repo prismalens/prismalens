@@ -11,6 +11,7 @@ import {
 	CreateConnectionSchema,
 	CreateIntegrationSchema,
 	CreateServiceIntegrationSchema,
+	DeletionImpactSchema,
 	GitHubInstallationSchema,
 	GitOrganizationSchema,
 	GitRepositorySchema,
@@ -24,7 +25,6 @@ import {
 	UpdateConnectionSchema,
 	UpdateIntegrationSchema,
 	UpdateServiceIntegrationSchema,
-	DeletionImpactSchema,
 } from "../schemas/index.js";
 
 export const integrationsContract = {
@@ -329,11 +329,13 @@ export const oauthContract = {
 			summary: "Handle OAuth callback",
 			tags: ["oauth"],
 		})
-		.input(z.object({
-			code: z.string().optional(),
-			state: z.string().optional(),
-			error: z.string().optional(),
-			error_description: z.string().optional(),
-		}))
+		.input(
+			z.object({
+				code: z.string().optional(),
+				state: z.string().optional(),
+				error: z.string().optional(),
+				error_description: z.string().optional(),
+			}),
+		)
 		.output(z.void()),
 };

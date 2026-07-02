@@ -4,7 +4,9 @@ import { z } from "zod";
  * Log level configuration.
  * Hierarchy: debug < info < warn < error
  */
-const logLevelSchema = z.enum(["debug", "info", "warn", "error"]).default("info");
+const logLevelSchema = z
+	.enum(["debug", "info", "warn", "error"])
+	.default("info");
 export type LogLevel = z.infer<typeof logLevelSchema>;
 
 /**

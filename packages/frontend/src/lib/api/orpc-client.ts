@@ -10,7 +10,7 @@ import { createORPCClient } from "@orpc/client";
 import type { ContractRouterClient } from "@orpc/contract";
 import { OpenAPILink } from "@orpc/openapi-client/fetch";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { contract, type Contract } from "@prismalens/contracts";
+import { type Contract, contract } from "@prismalens/contracts";
 
 /**
  * API base URL

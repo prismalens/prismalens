@@ -4,10 +4,11 @@
  * Shows incident title, severity, status, and quick actions
  */
 
-import { Link } from "@tanstack/react-router";
 import type { IncidentWithRelations } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
 import { ArrowLeft, CheckCircle, Play, Search, XCircle } from "lucide-react";
-
+import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +17,6 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export interface IncidentDetailHeaderProps {
 	incident: IncidentWithRelations;
@@ -47,7 +46,9 @@ export function IncidentDetailHeader({
 	investigateDisabledReason,
 }: IncidentDetailHeaderProps) {
 	const canAcknowledge = incident.status === "triggered";
-	const canInvestigate = ["triggered", "investigating"].includes(incident.status);
+	const canInvestigate = ["triggered", "investigating"].includes(
+		incident.status,
+	);
 	const canResolve = !["resolved", "closed"].includes(incident.status);
 
 	return (
@@ -75,7 +76,9 @@ export function IncidentDetailHeader({
 					{/* Badges */}
 					<div className="flex flex-wrap items-center gap-2">
 						<SeverityBadge severity={incident.severity} />
-						<Badge className={priorityColors[incident.priority] || "bg-gray-500"}>
+						<Badge
+							className={priorityColors[incident.priority] || "bg-gray-500"}
+						>
 							{incident.priority.toUpperCase()}
 						</Badge>
 						<StatusBadge status={incident.status} />
@@ -93,14 +96,15 @@ export function IncidentDetailHeader({
 
 					{/* Description */}
 					{incident.description && (
-						<p className="text-muted-foreground max-w-2xl">{incident.description}</p>
+						<p className="text-muted-foreground max-w-2xl">
+							{incident.description}
+						</p>
 					)}
 
 					{/* Meta info */}
 					<div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
 						<span>
-							Triggered:{" "}
-							{new Date(incident.triggeredAt).toLocaleString()}
+							Triggered: {new Date(incident.triggeredAt).toLocaleString()}
 						</span>
 						{incident.acknowledgedAt && (
 							<span>
@@ -110,8 +114,7 @@ export function IncidentDetailHeader({
 						)}
 						{incident.resolvedAt && (
 							<span>
-								Resolved:{" "}
-								{new Date(incident.resolvedAt).toLocaleString()}
+								Resolved: {new Date(incident.resolvedAt).toLocaleString()}
 							</span>
 						)}
 						<span>{incident.alertCount} alert(s)</span>

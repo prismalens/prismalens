@@ -16,12 +16,10 @@ import { Badge } from "@/components/ui/badge";
 
 // Template icon helper — uses template.id
 export function getTemplateIcon(templateId: string) {
-	if (templateId.startsWith("github"))
-		return <Github className="h-5 w-5" />;
+	if (templateId.startsWith("github")) return <Github className="h-5 w-5" />;
 	if (templateId.startsWith("slack"))
 		return <MessageSquare className="h-5 w-5" />;
-	if (templateId.startsWith("prometheus"))
-		return <Zap className="h-5 w-5" />;
+	if (templateId.startsWith("prometheus")) return <Zap className="h-5 w-5" />;
 	return <Link2 className="h-5 w-5" />;
 }
 
@@ -56,4 +54,3 @@ export function ConnectionStatusBadge({ status }: { status: string }) {
 			return <Badge variant="outline">{status}</Badge>;
 	}
 }
-

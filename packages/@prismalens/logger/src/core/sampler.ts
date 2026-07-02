@@ -1,5 +1,5 @@
 import type { LoggingConfig } from "@prismalens/config";
-import type { SamplingDecision, SamplerOptions } from "../types/sampling.js";
+import type { SamplerOptions, SamplingDecision } from "../types/sampling.js";
 import type { WideEvent } from "../types/wide-event.js";
 
 /**

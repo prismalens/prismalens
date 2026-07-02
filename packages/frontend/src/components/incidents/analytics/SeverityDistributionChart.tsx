@@ -4,11 +4,14 @@
  * Pie chart showing incidents by severity level
  */
 
+import type { Incident } from "@prismalens/contracts";
 import { useMemo } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import type { Incident } from "@prismalens/contracts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { groupIncidentsBySeverity, type PieChartDataPoint } from "@/lib/analytics";
+import {
+	groupIncidentsBySeverity,
+	type PieChartDataPoint,
+} from "@/lib/analytics";
 
 interface SeverityDistributionChartProps {
 	incidents: Incident[];
@@ -21,14 +24,11 @@ export function SeverityDistributionChart({
 	onSeverityClick,
 	className,
 }: SeverityDistributionChartProps) {
-	const data = useMemo(
-		() => groupIncidentsBySeverity(incidents),
-		[incidents]
-	);
+	const data = useMemo(() => groupIncidentsBySeverity(incidents), [incidents]);
 
 	const total = useMemo(
 		() => data.reduce((sum, d) => sum + d.value, 0),
-		[data]
+		[data],
 	);
 
 	const handleClick = (data: PieChartDataPoint) => {
@@ -91,6 +91,7 @@ export function SeverityDistributionChart({
 						<div className="flex flex-col gap-2">
 							{data.map((entry) => (
 								<button
+									type="button"
 									key={entry.name}
 									onClick={() => handleClick(entry)}
 									disabled={!onSeverityClick}

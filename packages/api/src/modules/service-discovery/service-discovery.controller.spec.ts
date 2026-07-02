@@ -1,269 +1,285 @@
-import { Logger } from '@nestjs/common';
-import { Test, type TestingModule } from '@nestjs/testing';
-import { ServiceDiscoveryController } from './service-discovery.controller.js';
-import { ServiceDiscoveryService } from './service-discovery.service.js';
+import { Logger } from "@nestjs/common";
+import { Test, type TestingModule } from "@nestjs/testing";
+import { ServiceDiscoveryController } from "./service-discovery.controller.js";
+import { ServiceDiscoveryService } from "./service-discovery.service.js";
 
 const mockServiceDiscoveryService = {
-  discoverFromConnection: jest.fn(),
-  acceptSuggestion: jest.fn(),
-  rejectSuggestion: jest.fn(),
-  acceptMultiple: jest.fn(),
+	discoverFromConnection: jest.fn(),
+	acceptSuggestion: jest.fn(),
+	rejectSuggestion: jest.fn(),
+	acceptMultiple: jest.fn(),
 };
 
-describe('ServiceDiscoveryController (BDD)', () => {
-  let controller: ServiceDiscoveryController;
-  let service: ServiceDiscoveryService;
+// Every handler calls requireAdmin(context), which reads
+// context.request.user.role. Supply an admin context so the business logic runs.
+const adminContext = {
+	request: { user: { id: "user-1", role: "admin" } },
+};
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+describe("ServiceDiscoveryController (BDD)", () => {
+	let controller: ServiceDiscoveryController;
+	let service: ServiceDiscoveryService;
 
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [ServiceDiscoveryController],
-      providers: [
-        {
-          provide: ServiceDiscoveryService,
-          useValue: mockServiceDiscoveryService,
-        },
-      ],
-    }).compile();
+	beforeEach(async () => {
+		jest.clearAllMocks();
+		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 
-    controller = module.get<ServiceDiscoveryController>(
-      ServiceDiscoveryController,
-    );
-    service = module.get<ServiceDiscoveryService>(ServiceDiscoveryService);
-  });
+		const module: TestingModule = await Test.createTestingModule({
+			controllers: [ServiceDiscoveryController],
+			providers: [
+				{
+					provide: ServiceDiscoveryService,
+					useValue: mockServiceDiscoveryService,
+				},
+			],
+		}).compile();
 
-  // Unwrap oRPC ImplementedProcedure objects: each value is a DecoratedProcedure
-  // whose actual handler function lives at ['~orpc'].handler
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function getHandlers(): any {
-    const procedures = controller.serviceDiscovery() as Record<string, any>;
-    return Object.fromEntries(
-      Object.entries(procedures).map(([key, proc]) => [
-        key,
-        proc?.['~orpc']?.handler ?? proc,
-      ]),
-    );
-  }
+		controller = module.get<ServiceDiscoveryController>(
+			ServiceDiscoveryController,
+		);
+		service = module.get<ServiceDiscoveryService>(ServiceDiscoveryService);
+	});
 
-  describe('triggerDiscovery', () => {
-    it('should trigger discovery for connection', async () => {
-      const connectionId = 'conn-123';
-      const suggestions = [
-        {
-          id: 'sugg-1',
-          suggestedName: 'service-1',
-          displayName: 'Service 1',
-          repository: 'org/repo',
-          subPath: null,
-          isMonorepo: false,
-          status: 'pending',
-          metadata: '{}',
-          connectionId: connectionId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
+	// Unwrap oRPC ImplementedProcedure objects: each value is a DecoratedProcedure
+	// whose actual handler function lives at ['~orpc'].handler
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function getHandlers(): any {
+		const procedures = controller.serviceDiscovery() as Record<string, any>;
+		return Object.fromEntries(
+			Object.entries(procedures).map(([key, proc]) => [
+				key,
+				proc?.["~orpc"]?.handler ?? proc,
+			]),
+		);
+	}
 
-      mockServiceDiscoveryService.discoverFromConnection.mockResolvedValue(
-        suggestions,
-      );
+	describe("triggerDiscovery", () => {
+		it("should trigger discovery for connection", async () => {
+			const connectionId = "conn-123";
+			const suggestions = [
+				{
+					id: "sugg-1",
+					suggestedName: "service-1",
+					displayName: "Service 1",
+					repository: "org/repo",
+					subPath: null,
+					isMonorepo: false,
+					status: "pending",
+					metadata: "{}",
+					connectionId: connectionId,
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+			];
 
-      const handlers = getHandlers();
-      const result = await handlers.triggerDiscovery({
-        input: { connectionId },
-      } as any);
+			mockServiceDiscoveryService.discoverFromConnection.mockResolvedValue(
+				suggestions,
+			);
 
-      expect(result.discovered).toBe(1);
-      expect(service.discoverFromConnection).toHaveBeenCalledWith(connectionId);
-    });
+			const handlers = getHandlers();
+			const result = await handlers.triggerDiscovery({
+				input: { connectionId },
+				context: adminContext,
+			} as any);
 
-    it('should log discovery trigger', async () => {
-      const connectionId = 'conn-123';
-      mockServiceDiscoveryService.discoverFromConnection.mockResolvedValue([]);
+			expect(result.discovered).toBe(1);
+			expect(service.discoverFromConnection).toHaveBeenCalledWith(connectionId);
+		});
 
-      const handlers = getHandlers();
-      await handlers.triggerDiscovery({
-        input: { connectionId },
-      } as any);
+		it("should log discovery trigger", async () => {
+			const connectionId = "conn-123";
+			mockServiceDiscoveryService.discoverFromConnection.mockResolvedValue([]);
 
-      expect(Logger.prototype.log).toHaveBeenCalledWith(
-        expect.stringContaining('Triggering service discovery'),
-      );
-    });
-  });
+			const handlers = getHandlers();
+			await handlers.triggerDiscovery({
+				input: { connectionId },
+				context: adminContext,
+			} as any);
 
-  describe('acceptSuggestion', () => {
-    it('should accept suggestion without overrides', async () => {
-      const suggestionId = 'sugg-123';
-      const createdService = {
-        id: 'service-123',
-        name: 'my-api',
-      };
+			expect(Logger.prototype.log).toHaveBeenCalledWith(
+				expect.stringContaining("Triggering service discovery"),
+			);
+		});
+	});
 
-      mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue(
-        createdService,
-      );
+	describe("acceptSuggestion", () => {
+		it("should accept suggestion without overrides", async () => {
+			const suggestionId = "sugg-123";
+			const createdService = {
+				id: "service-123",
+				name: "my-api",
+			};
 
-      const handlers = getHandlers();
-      const result = await handlers.acceptSuggestion({
-        input: { id: suggestionId },
-      } as any);
+			mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue(
+				createdService,
+			);
 
-      expect(result).toEqual({
-        serviceId: 'service-123',
-        serviceName: 'my-api',
-      });
-      expect(service.acceptSuggestion).toHaveBeenCalledWith(suggestionId, {});
-    });
+			const handlers = getHandlers();
+			const result = await handlers.acceptSuggestion({
+				input: { id: suggestionId },
+				context: adminContext,
+			} as any);
 
-    it('should accept suggestion with overrides', async () => {
-      const suggestionId = 'sugg-123';
-      const overrides = {
-        name: 'custom-name',
-        displayName: 'Custom Display Name',
-        description: 'Custom description',
-        type: 'microservice',
-        team: 'platform',
-      };
+			expect(result).toEqual({
+				serviceId: "service-123",
+				serviceName: "my-api",
+			});
+			expect(service.acceptSuggestion).toHaveBeenCalledWith(suggestionId, {});
+		});
 
-      const createdService = {
-        id: 'service-123',
-        name: 'custom-name',
-      };
+		it("should accept suggestion with overrides", async () => {
+			const suggestionId = "sugg-123";
+			const overrides = {
+				name: "custom-name",
+				displayName: "Custom Display Name",
+				description: "Custom description",
+				type: "microservice",
+				team: "platform",
+			};
 
-      mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue(
-        createdService,
-      );
+			const createdService = {
+				id: "service-123",
+				name: "custom-name",
+			};
 
-      const handlers = getHandlers();
-      const result = await handlers.acceptSuggestion({
-        input: { id: suggestionId, ...overrides },
-      } as any);
+			mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue(
+				createdService,
+			);
 
-      expect(result).toEqual({
-        serviceId: 'service-123',
-        serviceName: 'custom-name',
-      });
-      expect(service.acceptSuggestion).toHaveBeenCalledWith(
-        suggestionId,
-        overrides,
-      );
-    });
+			const handlers = getHandlers();
+			const result = await handlers.acceptSuggestion({
+				input: { id: suggestionId, ...overrides },
+				context: adminContext,
+			} as any);
 
-    it('should log suggestion acceptance', async () => {
-      const suggestionId = 'sugg-123';
-      mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue({
-        id: 'service-123',
-        name: 'service',
-      });
+			expect(result).toEqual({
+				serviceId: "service-123",
+				serviceName: "custom-name",
+			});
+			expect(service.acceptSuggestion).toHaveBeenCalledWith(
+				suggestionId,
+				overrides,
+			);
+		});
 
-      const handlers = getHandlers();
-      await handlers.acceptSuggestion({
-        input: { id: suggestionId },
-      } as any);
+		it("should log suggestion acceptance", async () => {
+			const suggestionId = "sugg-123";
+			mockServiceDiscoveryService.acceptSuggestion.mockResolvedValue({
+				id: "service-123",
+				name: "service",
+			});
 
-      expect(Logger.prototype.log).toHaveBeenCalledWith(
-        expect.stringContaining('Accepting service suggestion'),
-      );
-    });
-  });
+			const handlers = getHandlers();
+			await handlers.acceptSuggestion({
+				input: { id: suggestionId },
+				context: adminContext,
+			} as any);
 
-  describe('rejectSuggestion', () => {
-    it('should reject a suggestion', async () => {
-      const suggestionId = 'sugg-123';
-      mockServiceDiscoveryService.rejectSuggestion.mockResolvedValue({
-        id: suggestionId,
-        suggestedName: 'my-api',
-        displayName: 'My API',
-        repository: 'org/repo',
-        subPath: null,
-        isMonorepo: false,
-        status: 'rejected',
-        metadata: '{}',
-        connectionId: 'conn-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+			expect(Logger.prototype.log).toHaveBeenCalledWith(
+				expect.stringContaining("Accepting service suggestion"),
+			);
+		});
+	});
 
-      const handlers = getHandlers();
-      await handlers.rejectSuggestion({
-        input: { id: suggestionId },
-      } as any);
+	describe("rejectSuggestion", () => {
+		it("should reject a suggestion", async () => {
+			const suggestionId = "sugg-123";
+			mockServiceDiscoveryService.rejectSuggestion.mockResolvedValue({
+				id: suggestionId,
+				suggestedName: "my-api",
+				displayName: "My API",
+				repository: "org/repo",
+				subPath: null,
+				isMonorepo: false,
+				status: "rejected",
+				metadata: "{}",
+				connectionId: "conn-1",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
 
-      expect(service.rejectSuggestion).toHaveBeenCalledWith(suggestionId);
-    });
+			const handlers = getHandlers();
+			await handlers.rejectSuggestion({
+				input: { id: suggestionId },
+				context: adminContext,
+			} as any);
 
-    it('should log suggestion rejection', async () => {
-      const suggestionId = 'sugg-123';
-      mockServiceDiscoveryService.rejectSuggestion.mockResolvedValue({
-        id: suggestionId,
-        suggestedName: 'my-api',
-        displayName: 'My API',
-        repository: 'org/repo',
-        subPath: null,
-        isMonorepo: false,
-        status: 'rejected',
-        metadata: '{}',
-        connectionId: 'conn-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+			expect(service.rejectSuggestion).toHaveBeenCalledWith(suggestionId);
+		});
 
-      const handlers = getHandlers();
-      await handlers.rejectSuggestion({
-        input: { id: suggestionId },
-      } as any);
+		it("should log suggestion rejection", async () => {
+			const suggestionId = "sugg-123";
+			mockServiceDiscoveryService.rejectSuggestion.mockResolvedValue({
+				id: suggestionId,
+				suggestedName: "my-api",
+				displayName: "My API",
+				repository: "org/repo",
+				subPath: null,
+				isMonorepo: false,
+				status: "rejected",
+				metadata: "{}",
+				connectionId: "conn-1",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
 
-      expect(Logger.prototype.log).toHaveBeenCalledWith(
-        expect.stringContaining('Rejecting service suggestion'),
-      );
-    });
-  });
+			const handlers = getHandlers();
+			await handlers.rejectSuggestion({
+				input: { id: suggestionId },
+				context: adminContext,
+			} as any);
 
-  describe('acceptBulkSuggestions', () => {
-    it('should accept multiple suggestions', async () => {
-      const suggestionIds = ['sugg-1', 'sugg-2'];
+			expect(Logger.prototype.log).toHaveBeenCalledWith(
+				expect.stringContaining("Rejecting service suggestion"),
+			);
+		});
+	});
 
-      const services = [
-        { id: 'service-1', name: 'service-1' },
-        { id: 'service-2', name: 'service-2' },
-      ];
+	describe("acceptBulkSuggestions", () => {
+		it("should accept multiple suggestions", async () => {
+			const suggestionIds = ["sugg-1", "sugg-2"];
 
-      mockServiceDiscoveryService.acceptMultiple.mockResolvedValue(services);
+			const services = [
+				{ id: "service-1", name: "service-1" },
+				{ id: "service-2", name: "service-2" },
+			];
 
-      const handlers = getHandlers();
-      const result = await handlers.acceptBulkSuggestions({
-        input: { suggestionIds },
-      } as any);
+			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue(services);
 
-      expect(result.accepted).toBe(2);
-      expect(service.acceptMultiple).toHaveBeenCalledWith(suggestionIds);
-    });
+			const handlers = getHandlers();
+			const result = await handlers.acceptBulkSuggestions({
+				input: { suggestionIds },
+				context: adminContext,
+			} as any);
 
-    it('should handle empty suggestion list', async () => {
-      mockServiceDiscoveryService.acceptMultiple.mockResolvedValue([]);
+			expect(result.accepted).toBe(2);
+			expect(service.acceptMultiple).toHaveBeenCalledWith(suggestionIds);
+		});
 
-      const handlers = getHandlers();
-      const result = await handlers.acceptBulkSuggestions({
-        input: { suggestionIds: [] },
-      } as any);
+		it("should handle empty suggestion list", async () => {
+			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue([]);
 
-      expect(result.accepted).toBe(0);
-    });
+			const handlers = getHandlers();
+			const result = await handlers.acceptBulkSuggestions({
+				input: { suggestionIds: [] },
+				context: adminContext,
+			} as any);
 
-    it('should log bulk acceptance', async () => {
-      mockServiceDiscoveryService.acceptMultiple.mockResolvedValue([]);
+			expect(result.accepted).toBe(0);
+		});
 
-      const handlers = getHandlers();
-      await handlers.acceptBulkSuggestions({
-        input: { suggestionIds: ['sugg-1', 'sugg-2', 'sugg-3'] },
-      } as any);
+		it("should log bulk acceptance", async () => {
+			mockServiceDiscoveryService.acceptMultiple.mockResolvedValue([]);
 
-      expect(Logger.prototype.log).toHaveBeenCalledWith(
-        expect.stringContaining('Accepting 3 service suggestions'),
-      );
-    });
-  });
+			const handlers = getHandlers();
+			await handlers.acceptBulkSuggestions({
+				input: { suggestionIds: ["sugg-1", "sugg-2", "sugg-3"] },
+				context: adminContext,
+			} as any);
+
+			expect(Logger.prototype.log).toHaveBeenCalledWith(
+				expect.stringContaining("Accepting 3 service suggestions"),
+			);
+		});
+	});
 });

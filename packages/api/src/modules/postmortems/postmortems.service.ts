@@ -235,7 +235,9 @@ export class PostmortemsService {
 	/**
 	 * Format action items from recommendations
 	 */
-	private formatActionItems(recommendations: any[] | undefined): string | undefined {
+	private formatActionItems(
+		recommendations: any[] | undefined,
+	): string | undefined {
 		if (!recommendations?.length) return undefined;
 
 		const actionItems = recommendations.map((r, index) => ({
