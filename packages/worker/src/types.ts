@@ -28,9 +28,6 @@ export interface InvestigationResult {
 	findings: {
 		rootCause?: string;
 		summary?: string;
-		confidence?: number;
-		dataSourcesUsed?: string[];
-		dataQuality?: Record<string, unknown>;
 	};
 	recommendations: Array<{
 		title: string;
@@ -55,7 +52,6 @@ export interface InvestigationResult {
 			result?: unknown;
 			status?: ToolExecutionStatus;
 			executionTimeMs?: number;
-			confidence?: number;
 		}>;
 	}>;
 	error?: string;

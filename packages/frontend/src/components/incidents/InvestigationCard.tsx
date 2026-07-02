@@ -12,7 +12,6 @@ import {
 	ChevronRight,
 	Clock,
 	ExternalLink,
-	Target,
 } from "lucide-react";
 import type { Investigation, WorkflowStatus } from "@prismalens/contracts";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +35,6 @@ export interface InvestigationCardProps {
 			executionTimeMs: number | null;
 			inputTokens: number | null;
 			outputTokens: number | null;
-			confidence: number | null;
 			error: string | null;
 			toolExecutions?: Array<{
 				id: string;
@@ -155,12 +153,6 @@ export function InvestigationCard({
 										<Clock className="h-3 w-3" />
 										{formatDuration(totalDuration ?? null)}
 									</span>
-									{investigation.confidence != null && (
-										<span className="flex items-center gap-1">
-											<Target className="h-3 w-3" />
-											{Math.round(investigation.confidence * 100)}% confidence
-										</span>
-									)}
 									<span>{toolCount} tools executed</span>
 								</div>
 							</div>

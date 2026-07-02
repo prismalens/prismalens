@@ -239,7 +239,7 @@ export type DangerOperationResult = z.infer<typeof DangerOperationResultSchema>;
 // =============================================================================
 
 /**
- * Agent IDs for per-agent overrides - imported from @prismalens/agents
+ * Agent IDs for per-agent overrides - imported from @prismalens/config/agents
  */
 export const AgentIdSchema = agentIdSchema;
 export type AgentId = AgentIdType;

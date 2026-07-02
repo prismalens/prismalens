@@ -107,19 +107,6 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps) {
 									)}
 								/>
 							</div>
-
-							{execution.confidence !== null && execution.confidence !== undefined && (
-								<div className="mt-3 p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
-									<div className="flex items-center justify-between">
-										<span className="text-sm text-purple-700 dark:text-purple-300">
-											Confidence
-										</span>
-										<span className="text-lg font-semibold text-purple-900 dark:text-purple-100">
-											{(execution.confidence * 100).toFixed(0)}%
-										</span>
-									</div>
-								</div>
-							)}
 						</section>
 
 						{/* Timestamps */}

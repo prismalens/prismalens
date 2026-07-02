@@ -92,7 +92,6 @@ export function CanvasExportMenu({
 				startedAt: exec.startedAt,
 				completedAt: exec.completedAt,
 				executionTimeMs: exec.executionTimeMs,
-				confidence: exec.confidence,
 				inputTokens: exec.inputTokens,
 				outputTokens: exec.outputTokens,
 				error: exec.error,

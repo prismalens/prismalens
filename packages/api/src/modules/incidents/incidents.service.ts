@@ -16,7 +16,6 @@ export type IncidentWithRelations = Incident & {
     summary: string | null;
     rootCause: string | null;
     rootCauseCategory: string | null;
-    confidence: number | null;
     createdAt: Date;
   }>;
   postmortem?: {
@@ -126,7 +125,6 @@ export class IncidentsService {
             summary: true,
             rootCause: true,
             rootCauseCategory: true,
-            confidence: true,
             createdAt: true,
           },
           orderBy: { createdAt: 'desc' },
@@ -158,7 +156,6 @@ export class IncidentsService {
             summary: true,
             rootCause: true,
             rootCauseCategory: true,
-            confidence: true,
             createdAt: true,
           },
           orderBy: { createdAt: 'desc' },
@@ -211,7 +208,6 @@ export class IncidentsService {
             summary: true,
             rootCause: true,
             rootCauseCategory: true,
-            confidence: true,
             createdAt: true,
           },
         },

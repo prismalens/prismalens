@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
 import type { ServiceSuggestion } from "@prismalens/contracts";
-
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -20,7 +20,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useAcceptSuggestion } from "@/lib/api/hooks";
 
 const SERVICE_TYPES = [
@@ -61,7 +60,7 @@ export function AcceptSuggestionDialog({
 		try {
 			await acceptSuggestion.mutateAsync({
 				id: suggestion.id,
-				type: type || undefined,
+				type: SERVICE_TYPES.find((t) => t === type),
 				team: team || undefined,
 			});
 			onOpenChange(false);
@@ -148,10 +147,7 @@ export function AcceptSuggestionDialog({
 					<Button variant="outline" onClick={() => handleOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button
-						onClick={handleAccept}
-						disabled={acceptSuggestion.isPending}
-					>
+					<Button onClick={handleAccept} disabled={acceptSuggestion.isPending}>
 						{acceptSuggestion.isPending && (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 						)}

@@ -1,11 +1,9 @@
 import {
 	IsEnum,
 	IsInt,
-	IsNumber,
 	IsObject,
 	IsOptional,
 	IsString,
-	Max,
 	Min,
 } from "class-validator";
 import {
@@ -40,12 +38,6 @@ export class ToolExecutionDto {
 	@IsInt()
 	@Min(0)
 	executionTimeMs?: number;
-
-	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(1)
-	confidence?: number;
 
 	@IsOptional()
 	@IsString()

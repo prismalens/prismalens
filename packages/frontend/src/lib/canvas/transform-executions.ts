@@ -43,7 +43,6 @@ export interface CanvasNode extends Node {
 		agentName?: string;
 		executionTimeMs?: number | null;
 		toolCount?: number;
-		confidence?: number | null;
 		inputTokens?: number | null;
 		outputTokens?: number | null;
 		error?: string | null;
@@ -229,7 +228,6 @@ export function transformExecutionsToCanvas(
 				agentName: execution.agentName,
 				executionTimeMs: execution.executionTimeMs,
 				toolCount,
-				confidence: execution.confidence,
 				inputTokens: execution.inputTokens,
 				outputTokens: execution.outputTokens,
 				error: execution.error,

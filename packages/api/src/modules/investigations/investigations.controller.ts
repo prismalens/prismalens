@@ -1,17 +1,33 @@
 import { Controller, UseGuards } from "@nestjs/common";
-import { Implement, implement, ORPCError } from "@orpc/nest";
 import { ThrottlerGuard } from "@nestjs/throttler";
-import type { AgentExecution, Investigation, Recommendation, ToolExecution } from "@prismalens/database";
+import { Implement, implement, ORPCError } from "@orpc/nest";
+import type {
+	AgentName,
+	AgentType as ContractAgentType,
+	ExecutionStatus,
+	InvestigationReport,
+	RootCauseCategory,
+	ToolCategory,
+	ToolExecutionStatus,
+	WorkflowStatus,
+} from "@prismalens/contracts";
 import { investigationsContract } from "@prismalens/contracts";
-import type { WorkflowStatus, RootCauseCategory, AgentName, AgentType as ContractAgentType, ExecutionStatus, ToolExecutionStatus, ToolCategory } from "@prismalens/contracts";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
-import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
-import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
+import type {
+	AgentExecution,
+	Investigation,
+	Recommendation,
+	ToolExecution,
+} from "@prismalens/database";
 import type { AgentExecutionDto } from "../../infrastructure/internal/dto/agent-execution.dto.js";
+import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
-import { type InvestigationWithRelations, InvestigationsService } from "./investigations.service.js";
-import { ProgressService } from "./progress.service.js";
-import { safeParseJsonObject, safeParseJsonArray } from "../../shared/utils/json-utils.js";
+import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import {
+	InvestigationsService,
+	type InvestigationWithRelations,
+} from "./investigations.service.js";
 
 @Controller()
 @UseGuards(ThrottlerGuard)
@@ -19,7 +35,6 @@ export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,
 		private readonly queueService: QueueService,
-		private readonly progressService: ProgressService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -146,7 +161,7 @@ export class InvestigationsController {
 						input.status,
 						undefined,
 						input.error,
-						input.langGraphThreadId,
+						input.harnessThreadId,
 					);
 					return this.serializeInvestigation(updated || investigation);
 				},
@@ -171,14 +186,17 @@ export class InvestigationsController {
 						incidentId: investigation.incidentId,
 						summary: input.summary,
 						rootCause: input.rootCause,
-						rootCauseCategory: input.rootCauseCategory as DtoRootCauseCategory | undefined,
-						confidence: input.confidence,
-						dataQuality: input.dataQuality as Record<string, number> | undefined,
-						dataSourcesUsed: input.dataSourcesUsed,
-						rawOutput: input.rawOutput,
+						rootCauseCategory: input.rootCauseCategory as
+							| DtoRootCauseCategory
+							| undefined,
+						report: input.report,
 						error: input.error,
-						agentExecutions: input.agentExecutions as AgentExecutionDto[] | undefined,
-						recommendations: input.recommendations as RecommendationDto[] | undefined,
+						agentExecutions: input.agentExecutions as
+							| AgentExecutionDto[]
+							| undefined,
+						recommendations: input.recommendations as
+							| RecommendationDto[]
+							| undefined,
 					};
 
 					const updated =
@@ -191,20 +209,6 @@ export class InvestigationsController {
 					);
 				},
 			),
-
-			// GET /investigations/:id/progress - Get real-time progress from checkpoints
-			getProgress: implement(investigationsContract.getProgress).handler(
-				async ({ input }) => {
-					return this.progressService.getProgress(input.id);
-				},
-			),
-
-			// GET /investigations/:id/progress/history - Get progress history
-			getProgressHistory: implement(
-				investigationsContract.getProgressHistory,
-			).handler(async ({ input }) => {
-				return this.progressService.getProgressHistory(input.id);
-			}),
 		};
 	}
 
@@ -217,24 +221,29 @@ export class InvestigationsController {
 			completedAt: investigation.completedAt?.toISOString() ?? null,
 			summary: investigation.summary ?? null,
 			rootCause: investigation.rootCause ?? null,
-			rootCauseCategory: (investigation.rootCauseCategory as RootCauseCategory | null) ?? null,
-			confidence: investigation.confidence ?? null,
-			dataQuality: safeParseJsonObject(investigation.dataQuality) ?? null,
-			dataSourcesUsed: safeParseJsonArray(investigation.dataSourcesUsed) ?? null,
-			rawOutput: safeParseJsonObject(investigation.rawOutput) ?? null,
+			rootCauseCategory:
+				(investigation.rootCauseCategory as RootCauseCategory | null) ?? null,
+			report:
+				(safeParseJsonObject(
+					investigation.report,
+				) as InvestigationReport | null) ?? null,
 			error: investigation.error ?? null,
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),
 		};
 	}
 
-	private serializeInvestigationWithRelations(investigation: InvestigationWithRelations) {
+	private serializeInvestigationWithRelations(
+		investigation: InvestigationWithRelations,
+	) {
 		const base = this.serializeInvestigation(investigation);
 
 		return {
 			...base,
 			agentExecutions: investigation.agentExecutions
-				? investigation.agentExecutions.map((e) => this.serializeAgentExecution(e))
+				? investigation.agentExecutions.map((e) =>
+						this.serializeAgentExecution(e),
+					)
 				: undefined,
 			recommendations: investigation.recommendations
 				? investigation.recommendations.map((r: Recommendation) => ({
@@ -247,7 +256,9 @@ export class InvestigationsController {
 		};
 	}
 
-	private serializeAgentExecution(execution: AgentExecution & { toolExecutions: ToolExecution[] }) {
+	private serializeAgentExecution(
+		execution: AgentExecution & { toolExecutions: ToolExecution[] },
+	) {
 		return {
 			id: execution.id,
 			investigationId: execution.investigationId,
@@ -258,7 +269,6 @@ export class InvestigationsController {
 			completedAt: execution.completedAt?.toISOString() ?? null,
 			executionTimeMs: execution.executionTimeMs ?? null,
 			output: safeParseJsonObject(execution.output) ?? null,
-			confidence: execution.confidence ?? null,
 			inputTokens: execution.inputTokens ?? null,
 			outputTokens: execution.outputTokens ?? null,
 			error: execution.error ?? null,
@@ -272,7 +282,6 @@ export class InvestigationsController {
 				result: safeParseJsonObject(t.result) ?? null,
 				status: t.status as ToolExecutionStatus,
 				executionTimeMs: t.executionTimeMs ?? null,
-				confidence: t.confidence ?? null,
 				dataQuality: t.dataQuality ?? null,
 				error: t.error ?? null,
 				executedAt: t.executedAt.toISOString(),

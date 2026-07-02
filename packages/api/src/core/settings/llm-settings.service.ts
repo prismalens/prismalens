@@ -1,5 +1,4 @@
 import { Injectable, Inject, forwardRef, Logger } from '@nestjs/common';
-import { createLLM, type LLMProviderConfig } from '@prismalens/agents';
 import {
   LLM_PROVIDERS,
   LLM_PROVIDER_IDS,
@@ -7,6 +6,7 @@ import {
   getAllowedHosts,
   type LLMProviderId,
 } from '@prismalens/config/llm';
+import { pingModel } from '@prismalens/config/model';
 import type {
   LlmSettings,
   ModelMetadata,
@@ -389,13 +389,20 @@ export class LlmSettingsService {
     }
   }
 
+  /**
+   * Validate a provider + model + credential by resolving the model through the
+   * shared Vercel AI SDK resolver ({@link pingModel} in `@prismalens/config/model`)
+   * and running a ~1-token generation. ADR-0013: this proves the selected model is
+   * actually callable — not merely that a key parses — and replaces the old
+   * hand-maintained per-provider `/models` URL + auth table.
+   */
   async testLlmConnectionWithEnv(
     provider: LLMProviderId,
     model?: string,
     baseUrl?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const providerMeta = LLM_PROVIDERS[provider as LLMProviderId];
+      const providerMeta = LLM_PROVIDERS[provider];
       if (!providerMeta) {
         return { success: false, error: `Unknown provider: ${provider}` };
       }
@@ -403,54 +410,38 @@ export class LlmSettingsService {
       const envVarName = providerMeta.envVar;
       const apiKey = envVarName ? process.env[envVarName] : undefined;
 
-      if (envVarName && !apiKey) {
+      // Cloud providers require a key; ollama/custom endpoints may be keyless.
+      const requiresKey = provider !== 'ollama' && provider !== 'custom';
+      if (requiresKey && !apiKey) {
         return {
           success: false,
           error: `API key not configured. Set ${envVarName} environment variable.`,
         };
       }
 
-      let testModel = model;
-      if (!testModel) {
-        const settings = await this.getLlmSettings();
-        testModel = settings.providers[provider]?.model;
-      }
-      if (!testModel) {
-        // Fetch first available model from registry as fallback
-        const { models } = await this.getAvailableModels(provider);
-        testModel = models[0]?.id;
-      }
-      if (!testModel) {
-        return {
-          success: false,
-          error: 'No model specified and none available from registry.',
-        };
-      }
-
-      // Resolve base URL: explicit param > env var > provider default
+      // Resolve base URL: explicit param > env var > provider default.
       const resolvedBaseUrl =
         baseUrl ||
         (provider === 'ollama'
           ? process.env.PRISMALENS_OLLAMA_BASE_URL || 'http://localhost:11434'
           : undefined);
 
-      // Allowlist check: validate base URL before making server-side requests
+      // Allowlist check (SSRF): validate the host before any server-side call.
       if (resolvedBaseUrl) {
         validateBaseUrl(resolvedBaseUrl, provider);
       }
 
-      const llmConfig: LLMProviderConfig = {
-        provider: provider as LLMProviderConfig['provider'],
-        model: testModel,
-        ...(resolvedBaseUrl && { baseURL: resolvedBaseUrl }),
-        temperature: 0,
-        maxTokens: 50,
-      };
+      // The AI SDK talks to the OpenAI-compatible endpoint; ollama's lives at /v1
+      // (custom base URLs already carry their own suffix).
+      const sdkBaseUrl =
+        provider === 'ollama' && resolvedBaseUrl
+          ? `${resolvedBaseUrl.replace(/\/+$/, '')}/v1`
+          : resolvedBaseUrl;
 
-      const llm = createLLM(llmConfig);
-      await llm.invoke('Reply with just "OK" to confirm connection.');
-
-      return { success: true };
+      return await pingModel(provider, model, {
+        apiKey,
+        baseURL: sdkBaseUrl,
+      });
     } catch (error) {
       return {
         success: false,

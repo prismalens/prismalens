@@ -139,6 +139,22 @@ export const ToolCategorySchema = z.enum([
 	"analysis",
 ]);
 
+// Ordered-evidence epistemics (ADR-0002) — replaces numeric confidence.
+// Ranking + discrete status carry certainty; no probability scores.
+export const HypothesisStatusSchema = z.enum([
+	"confirmed", // direct evidence
+	"supported", // consistent with evidence
+	"speculative", // no evidence yet
+	"refuted",
+]);
+
+export const EvidenceStatusSchema = z.enum([
+	"verified", // a tool directly showed it
+	"inferred", // reasoned, not directly observed
+]);
+
+export const EvidenceDirectionSchema = z.enum(["supports", "contradicts"]);
+
 // Recommendations
 export const RecommendationPrioritySchema = z.enum([
 	"critical",
@@ -305,6 +321,9 @@ export type AgentType = z.infer<typeof AgentTypeSchema>;
 export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
 export type ToolExecutionStatus = z.infer<typeof ToolExecutionStatusSchema>;
 export type ToolCategory = z.infer<typeof ToolCategorySchema>;
+export type HypothesisStatus = z.infer<typeof HypothesisStatusSchema>;
+export type EvidenceStatus = z.infer<typeof EvidenceStatusSchema>;
+export type EvidenceDirection = z.infer<typeof EvidenceDirectionSchema>;
 export type RecommendationPriority = z.infer<
 	typeof RecommendationPrioritySchema
 >;

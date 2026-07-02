@@ -3,15 +3,16 @@ import { z } from "zod";
 /**
  * LLM Provider Metadata
  *
- * Single source of truth for all supported LLM providers.
- * Models are fetched live from models.dev — no hardcoded model lists.
- * LangChain handles actual config validation — we don't duplicate it.
+ * Single source of truth for all supported LLM providers. Model *catalogs* are
+ * fetched live from models.dev (no hardcoded model lists); each provider carries a
+ * `defaultModel` used when the user hasn't picked one (ADR-0013). Actual model
+ * calls go through `@prismalens/config/model` — the Vercel AI SDK resolver.
  *
  * @example
  * ```typescript
  * const provider = LLM_PROVIDERS.anthropic;
- * console.log(provider.docsUrl); // Link to LangChain docs
- * console.log(provider.logoUrl); // models.dev logo URL
+ * console.log(provider.defaultModel); // "claude-sonnet-4-5"
+ * console.log(provider.logoUrl);      // models.dev logo URL
  * ```
  */
 export const LLM_PROVIDERS = {
@@ -19,7 +20,7 @@ export const LLM_PROVIDERS = {
 		id: "anthropic",
 		name: "Anthropic",
 		helpUrl: "https://console.anthropic.com/settings/keys",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/anthropic",
+		defaultModel: "claude-sonnet-4-5",
 		envVar: "ANTHROPIC_API_KEY",
 		logoUrl: "https://models.dev/logos/anthropic.svg",
 		allowedHosts: ["api.anthropic.com"] as string[],
@@ -28,7 +29,7 @@ export const LLM_PROVIDERS = {
 		id: "openai",
 		name: "OpenAI",
 		helpUrl: "https://platform.openai.com/api-keys",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/openai",
+		defaultModel: "gpt-5-mini",
 		envVar: "OPENAI_API_KEY",
 		logoUrl: "https://models.dev/logos/openai.svg",
 		allowedHosts: ["api.openai.com"] as string[],
@@ -37,7 +38,7 @@ export const LLM_PROVIDERS = {
 		id: "google",
 		name: "Google Gemini",
 		helpUrl: "https://aistudio.google.com",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/google_generativeai",
+		defaultModel: "gemini-2.5-flash",
 		envVar: "GOOGLE_API_KEY",
 		logoUrl: "https://models.dev/logos/google.svg",
 		allowedHosts: ["generativelanguage.googleapis.com"] as string[],
@@ -46,7 +47,7 @@ export const LLM_PROVIDERS = {
 		id: "ollama",
 		name: "Ollama",
 		helpUrl: "https://ollama.ai",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/ollama",
+		defaultModel: "gpt-oss:20b",
 		envVar: "OLLAMA_API_KEY", // Optional — for Ollama Cloud
 		baseUrlRequired: false,
 		defaultBaseUrl: "http://localhost:11434",
@@ -58,7 +59,7 @@ export const LLM_PROVIDERS = {
 		id: "groq",
 		name: "Groq",
 		helpUrl: "https://console.groq.com/keys",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/groq",
+		defaultModel: "llama-3.3-70b-versatile",
 		envVar: "GROQ_API_KEY",
 		free: true,
 		logoUrl: "https://models.dev/logos/groq.svg",
@@ -68,7 +69,7 @@ export const LLM_PROVIDERS = {
 		id: "custom",
 		name: "Custom (OpenAI)",
 		helpUrl: "https://platform.openai.com/docs/api-reference",
-		docsUrl: "https://js.langchain.com/docs/integrations/chat/openai",
+		defaultModel: null,
 		envVar: "CUSTOM_LLM_API_KEY",
 		baseUrlRequired: true,
 		defaultBaseUrl: "http://localhost:8000/v1",
@@ -87,6 +88,15 @@ export const LLM_PROVIDER_IDS = Object.keys(LLM_PROVIDERS) as [
 	LLMProviderId,
 	...LLMProviderId[],
 ];
+
+/**
+ * All credential env-var names across providers, derived from LLM_PROVIDERS.
+ * Single source of truth for "which env vars can hold an LLM credential" —
+ * consumed by tooling (e.g. the CLI `doctor`) instead of re-listing them.
+ */
+export const LLM_CREDENTIAL_ENV_VARS: readonly string[] = Object.values(
+	LLM_PROVIDERS,
+).map((provider) => provider.envVar);
 
 /**
  * Zod schema for provider IDs - dynamically derived from LLM_PROVIDERS.
@@ -108,6 +118,15 @@ export const llmProviderIdSchema = z.enum(LLM_PROVIDER_IDS);
  */
 export function getApiKeyEnvVar(providerId: LLMProviderId): string {
 	return LLM_PROVIDERS[providerId].envVar;
+}
+
+/**
+ * The default model id for a provider, or `null` when the user must choose one
+ * (custom endpoints have no canonical default). ADR-0013 default-model strategy:
+ * an explicit choice wins; otherwise this per-provider fallback is used.
+ */
+export function getDefaultModel(providerId: LLMProviderId): string | null {
+	return LLM_PROVIDERS[providerId].defaultModel;
 }
 
 /**

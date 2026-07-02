@@ -4,11 +4,9 @@ import {
 	IsDateString,
 	IsEnum,
 	IsInt,
-	IsNumber,
 	IsObject,
 	IsOptional,
 	IsString,
-	Max,
 	Min,
 	ValidateNested,
 } from "class-validator";
@@ -46,12 +44,6 @@ export class AgentExecutionDto {
 	@IsOptional()
 	@IsObject()
 	output?: Record<string, unknown>;
-
-	@IsOptional()
-	@IsNumber()
-	@Min(0)
-	@Max(1)
-	confidence?: number;
 
 	@IsOptional()
 	@IsInt()

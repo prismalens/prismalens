@@ -1,30 +1,31 @@
+import type { CanonicalEvent } from "@prismalens/contracts";
 import { useEffect, useRef, useState } from "react";
 
-/** Raw LangGraph stream tuple: [mode, data] */
-export type StreamTuple = [string, unknown];
-
-/** Maximum number of tuples to keep in state for rendering */
-const MAX_TUPLES = 200;
+/** Maximum number of canonical events to keep in state for rendering */
+const MAX_EVENTS = 200;
 
 interface StreamState {
-	tuples: StreamTuple[];
+	events: CanonicalEvent[];
 	status: "idle" | "connecting" | "streaming" | "completed" | "error";
-	currentNode: string | null;
-	latestMessage: string | null;
+	/** Latest agent "thinking" text, for the header summary line. */
+	latestText: string | null;
 }
 
 const INITIAL_STATE: StreamState = {
-	tuples: [],
+	events: [],
 	status: "idle",
-	currentNode: null,
-	latestMessage: null,
+	latestText: null,
 };
 
+/** The terminal control marker the SSE controller sends after the last event. */
+type DoneMarker = { type: "done" };
+
 /**
- * SSE hook for real-time investigation stream events.
+ * SSE hook for real-time investigation stream events (ADR-0008 canonical stream).
  *
- * Connects to GET /api/investigations/:id/stream and receives
- * raw LangGraph [mode, data] tuples.
+ * Connects to GET /api/investigations/:id/stream and receives `CanonicalEvent`s
+ * (kind-tagged: agent_step / tool_result / branch_done / error / report), then a
+ * final `{ type: "done" }` marker. Supersedes the old LangGraph `[mode, data]` parse.
  *
  * @param investigationId Investigation ID to stream
  * @param options.enabled Whether to enable the SSE connection (default: false)
@@ -50,35 +51,34 @@ export function useInvestigationStream(
 
 		source.onmessage = (e) => {
 			try {
-				const tuple = JSON.parse(e.data) as StreamTuple;
-				const [mode, data] = tuple;
+				const parsed = JSON.parse(e.data) as CanonicalEvent | DoneMarker;
 
-				// "__done__" sentinel means the stream is complete
-				if (mode === "__done__") {
-					setState((prev) => ({ ...prev, status: "completed" }));
+				// Terminal marker — the stream ended cleanly.
+				if ("type" in parsed && parsed.type === "done") {
+					setState((prev) => ({
+						...prev,
+						status: prev.status === "error" ? "error" : "completed",
+					}));
 					source.close();
 					return;
 				}
 
+				const event = parsed as CanonicalEvent;
 				setState((prev) => {
-					const d = data as Record<string, unknown>;
-					const newTuples = [...prev.tuples, tuple];
+					const events = [...prev.events, event];
 					return {
-						tuples:
-							newTuples.length > MAX_TUPLES
-								? newTuples.slice(-MAX_TUPLES)
-								: newTuples,
-						status: "streaming",
-						// "tasks" mode: { name: "scout", ... } — node starting/finishing
-						currentNode:
-							mode === "tasks" && d.name
-								? (d.name as string)
-								: prev.currentNode,
-						// "custom" mode: { type: "progress", message: "..." }
-						latestMessage:
-							mode === "custom" && d.type === "progress"
-								? (d.message as string)
-								: prev.latestMessage,
+						events:
+							events.length > MAX_EVENTS ? events.slice(-MAX_EVENTS) : events,
+						status:
+							event.kind === "report"
+								? "completed"
+								: event.kind === "error"
+									? "error"
+									: "streaming",
+						latestText:
+							event.kind === "agent_step" && event.text.trim()
+								? event.text.trim()
+								: prev.latestText,
 					};
 				});
 			} catch {

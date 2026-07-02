@@ -27,7 +27,6 @@ export interface IncidentDetailPanelProps {
 		investigations?: Array<{
 			id: string;
 			status: string;
-			confidence?: number | null;
 			rootCause?: string | null;
 			createdAt: string;
 		}>;
@@ -106,11 +105,6 @@ export function IncidentDetailPanel({ incident, isLlmConfigured }: IncidentDetai
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-2">
 										<InvestigationStatusBadge status={latestInvestigation.status} />
-										{latestInvestigation.confidence && (
-											<span className="text-sm text-muted-foreground">
-												{Math.round(latestInvestigation.confidence * 100)}% confidence
-											</span>
-										)}
 									</div>
 									<Button variant="outline" size="sm" asChild>
 										<Link to="/investigations/$id" params={{ id: latestInvestigation.id }}>

@@ -1,8 +1,0 @@
-{
-  "node_version": "22",
-  "dependencies": ["."],
-  "graphs": {
-    "investigation": "./src/graph/investigation-graph.ts:investigationGraph"
-  },
-  "env": ".env"
-}

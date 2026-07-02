@@ -15,8 +15,8 @@ export * from "./incident.js";
 export * from "./incident-similarity.js";
 export * from "./integration.js";
 export * from "./investigation.js";
-export * from "./investigation-progress.js";
 export * from "./license.js";
+export * from "./postmortem.js";
 export * from "./recommendation.js";
 export * from "./repository.js";
 // Entity schemas
@@ -24,5 +24,4 @@ export * from "./service.js";
 export * from "./service-discovery.js";
 export * from "./settings.js";
 export * from "./timeline.js";
-export * from "./postmortem.js";
 export * from "./webhook.js";

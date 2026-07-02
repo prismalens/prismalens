@@ -1,0 +1,109 @@
+/**
+ * Claude Code harness runner (Tier-2 deep path, ADR-0008). Drives the Claude Agent
+ * SDK (`query()` — which spawns the user's Claude Code CLI + subscription) and
+ * yields the canonical event stream via {@link ClaudeCodeAdapter}.
+ *
+ * Headless + read-only: `permissionMode: "bypassPermissions"` (no interactive
+ * prompts) with mutation tools blocked via `disallowedTools`. The Agent SDK's
+ * `canUseTool` programmatic gate is the cleaner HITL seam for the act phase later
+ * (ADR-0009); for Phase-1 read-only diagnosis the deny-list + bypass is enough.
+ * The stream ALWAYS terminates (result → branch_done/error, or a thrown failure).
+ */
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+	HARNESS_REGISTRY,
+	type PermissionMode,
+} from "@prismalens/config/harness";
+import type { CanonicalEvent } from "@prismalens/contracts";
+import type { AdapterContext } from "../adapter/acp-adapter.js";
+import {
+	ClaudeCodeAdapter,
+	type SdkMessage,
+} from "../adapter/claude-code-adapter.js";
+
+export interface ClaudeCodeConfig {
+	/** Working directory the agent runs in (it reads the app source here). */
+	cwd: string;
+	/** The investigation prompt (first user turn). */
+	prompt: string;
+	/** Claude model id; omit to use the CLI/subscription default. */
+	model?: string;
+	/** Hard cap on agent turns (runaway guard). */
+	maxTurns?: number;
+	/** Tools the agent may NOT use. Default blocks mutation (read-only). */
+	disallowedTools?: string[];
+	/** External cancellation. */
+	abortController?: AbortController;
+	/**
+	 * prismalens posture dial (ADR-0017). Absent → "read-only". Translated to the
+	 * Agent SDK's native permissionMode + a disallowedTools read-only floor:
+	 *  - read-only/supervised → bypassPermissions + deny Edit/Write/… (deny holds
+	 *    under bypass AND unions with the user's own settings.json deny; headless-safe)
+	 *  - auto                 → acceptEdits, no floor
+	 *  - dangerous            → bypassPermissions, no floor
+	 */
+	permissionMode?: PermissionMode;
+	/**
+	 * Native passthrough (ADR-0017): arbitrary Agent SDK query options. Spread FIRST,
+	 * so prismalens's posture keys (settingSources/permissionMode/disallowedTools) win.
+	 */
+	native?: Record<string, unknown>;
+}
+
+// The read-only floor is the registry SSOT (ADR-0017 Amendment 2) — the SAME array
+// the reported fidelity mechanism is derived from, so enforcement can't drift from
+// what the report claims.
+const READ_ONLY_DENY = [
+	...(HARNESS_REGISTRY["claude-code"].readOnlyDeny ?? []),
+];
+
+export async function* runClaudeCodeBranch(
+	config: ClaudeCodeConfig,
+	ctx: AdapterContext,
+): AsyncGenerator<CanonicalEvent> {
+	const adapter = new ClaudeCodeAdapter(ctx);
+	let sawTerminal = false;
+	// Translate the prismalens posture (ADR-0017) → the Agent SDK's native config.
+	const mode: PermissionMode = config.permissionMode ?? "read-only";
+	const readOnlyFloor = mode === "read-only" || mode === "supervised";
+	// auto → acceptEdits (no floor); read-only/supervised/dangerous → bypassPermissions.
+	const permissionMode = mode === "auto" ? "acceptEdits" : "bypassPermissions";
+	// Read-only floor: deny mutation tools. The SDK checks DENY rules BEFORE the
+	// permission mode, so this holds even under bypassPermissions and unions with the
+	// user's own settings.json deny (deny-wins). auto/dangerous apply NO floor.
+	const disallowedTools = readOnlyFloor
+		? (config.disallowedTools ?? READ_ONLY_DENY)
+		: config.disallowedTools;
+	try {
+		const response = query({
+			prompt: config.prompt,
+			options: {
+				// NATIVE PASSTHROUGH first, so our posture keys below win on overlap.
+				...(config.native ?? {}),
+				cwd: config.cwd,
+				...(config.model ? { model: config.model } : {}),
+				// Behave as the real Claude Code harness (its tools + subagents).
+				systemPrompt: { type: "preset", preset: "claude_code" },
+				...(config.maxTurns ? { maxTurns: config.maxTurns } : {}),
+				...(config.abortController
+					? { abortController: config.abortController }
+					: {}),
+				// prismalens posture-derived keys LAST — the read-only floor wins.
+				settingSources: ["user", "project", "local"],
+				permissionMode,
+				...(disallowedTools ? { disallowedTools } : {}),
+			},
+		});
+		for await (const message of response) {
+			const m = message as unknown as SdkMessage;
+			for (const ev of adapter.normalize(m)) yield ev;
+			if (m.type === "result") {
+				sawTerminal = true;
+				yield adapter.terminalFromResult(m);
+			}
+		}
+		if (!sawTerminal) yield adapter.branchDone("submitted");
+	} catch (err) {
+		yield adapter.error(err instanceof Error ? err.message : String(err));
+	}
+}

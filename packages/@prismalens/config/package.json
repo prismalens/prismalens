@@ -14,6 +14,10 @@
 			"types": "./dist/llm.d.ts",
 			"import": "./dist/llm.js"
 		},
+		"./harness": {
+			"types": "./dist/harness.d.ts",
+			"import": "./dist/harness.js"
+		},
 		"./mcp": {
 			"types": "./dist/mcp.d.ts",
 			"import": "./dist/mcp.js"
@@ -25,6 +29,14 @@
 		"./integrations": {
 			"types": "./dist/integrations.d.ts",
 			"import": "./dist/integrations.js"
+		},
+		"./investigation": {
+			"types": "./dist/investigation.d.ts",
+			"import": "./dist/investigation.js"
+		},
+		"./model": {
+			"types": "./dist/model.d.ts",
+			"import": "./dist/model.js"
 		}
 	},
 	"scripts": {
@@ -34,6 +46,12 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@ai-sdk/anthropic": "^4.0.4",
+		"@ai-sdk/google": "^4.0.3",
+		"@ai-sdk/groq": "^4.0.2",
+		"@ai-sdk/openai": "^4.0.4",
+		"@ai-sdk/openai-compatible": "^3.0.1",
+		"ai": "^7.0.4",
 		"zod": "^3.23.0"
 	},
 	"devDependencies": {

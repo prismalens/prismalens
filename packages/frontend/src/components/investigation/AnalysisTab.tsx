@@ -1,21 +1,67 @@
+import type {
+	InvestigationWithRelations,
+	RunFidelity,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import type { InvestigationWithRelations } from "@prismalens/contracts";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PriorityBadge } from "./investigation.utils";
 
 interface AnalysisTabProps {
 	investigation: InvestigationWithRelations;
 }
 
+/**
+ * Honest run-metadata badge (ADR-0017) — surfaces the enforcement the rented
+ * harness actually applied. Green = enforced, amber = cooperative, red = advisory.
+ * Mechanism is shown on hover; nothing is inferred client-side.
+ */
+function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
+	const tone =
+		fidelity.fidelity === "enforced"
+			? "border-green-600 text-green-700 dark:text-green-400"
+			: fidelity.fidelity === "cooperative"
+				? "border-amber-600 text-amber-700 dark:text-amber-400"
+				: "border-red-600 text-red-700 dark:text-red-500";
+
+	return (
+		<TooltipProvider>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Badge variant="outline" className={`gap-1 ${tone}`}>
+						<span className="font-mono">{fidelity.mode}</span>
+						<span className="opacity-60">·</span>
+						<span className="capitalize">{fidelity.fidelity}</span>
+					</Badge>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs">
+					<span className="font-mono">{fidelity.harness}</span> —{" "}
+					{fidelity.mechanism}
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+}
+
 export function AnalysisTab({ investigation }: AnalysisTabProps) {
+	const report = investigation.report ?? null;
+
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
 			{/* Root Cause */}
 			<Card>
 				<CardHeader>
-					<CardTitle className="text-base">Root Cause Analysis</CardTitle>
+					<div className="flex items-center justify-between gap-3">
+						<CardTitle className="text-base">Root Cause Analysis</CardTitle>
+						{report?.fidelity && <FidelityBadge fidelity={report.fidelity} />}
+					</div>
 				</CardHeader>
 				<CardContent>
 					{investigation.rootCause ? (
@@ -23,17 +69,13 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 							<p className="text-purple-900 dark:text-purple-100 font-medium">
 								{investigation.rootCause}
 							</p>
-							<div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-								{investigation.confidence && (
-									<span className="text-purple-700 dark:text-purple-300">
-										Confidence:{" "}
-										{(investigation.confidence * 100).toFixed(0)}%
-									</span>
-								)}
-								{investigation.rootCauseCategory && (
-									<Badge variant="outline">{investigation.rootCauseCategory}</Badge>
-								)}
-							</div>
+							{investigation.rootCauseCategory && (
+								<div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+									<Badge variant="outline">
+										{investigation.rootCauseCategory}
+									</Badge>
+								</div>
+							)}
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">
@@ -43,28 +85,122 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 				</CardContent>
 			</Card>
 
-			{/* Data Sources */}
+			{/* Coverage — what was queried vs not (ADR-0002, auditable) */}
 			<Card>
 				<CardHeader>
-					<CardTitle className="text-base">Data Sources Used</CardTitle>
+					<CardTitle className="text-base">Coverage</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{investigation.dataSourcesUsed &&
-					investigation.dataSourcesUsed.length > 0 ? (
-						<div className="flex flex-wrap gap-2">
-							{investigation.dataSourcesUsed.map((source) => (
-								<Badge key={source} variant="secondary">
-									{source}
-								</Badge>
-							))}
+					{report ? (
+						<div className="space-y-3 text-sm">
+							<div>
+								<p className="text-muted-foreground mb-1">Queried</p>
+								{report.coverage.queried.length > 0 ? (
+									<div className="flex flex-wrap gap-2">
+										{report.coverage.queried.map((source) => (
+											<Badge key={source} variant="secondary">
+												{source}
+											</Badge>
+										))}
+									</div>
+								) : (
+									<p className="text-muted-foreground">None recorded</p>
+								)}
+							</div>
+							{report.coverage.notQueried.length > 0 && (
+								<div>
+									<p className="text-muted-foreground mb-1">Not queried</p>
+									<div className="flex flex-wrap gap-2">
+										{report.coverage.notQueried.map((source) => (
+											<Badge key={source} variant="outline">
+												{source}
+											</Badge>
+										))}
+									</div>
+								</div>
+							)}
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">
-							No data sources recorded
+							No coverage recorded
 						</p>
 					)}
 				</CardContent>
 			</Card>
+
+			{/* Hypotheses — ordered most → least plausible (ADR-0002) */}
+			{report && report.hypotheses.length > 0 && (
+				<Card className="md:col-span-2">
+					<CardHeader>
+						<CardTitle className="text-base">
+							Hypotheses ({report.hypotheses.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<ol className="space-y-3">
+							{report.hypotheses.map((hypothesis, i) => (
+								<li
+									key={`${i}-${hypothesis.statement}`}
+									className="p-3 bg-muted rounded-lg"
+								>
+									<div className="flex items-start justify-between gap-3">
+										<p className="font-medium">
+											{i + 1}. {hypothesis.statement}
+										</p>
+										<Badge variant="outline">{hypothesis.status}</Badge>
+									</div>
+									{hypothesis.evidence.length > 0 && (
+										<ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+											{hypothesis.evidence.map((evidence, j) => (
+												<li
+													key={`${j}-${evidence.observation}`}
+													className="flex gap-2"
+												>
+													<span className="shrink-0 font-mono text-xs uppercase">
+														{evidence.direction}
+													</span>
+													<span>
+														{evidence.observation}
+														<span className="ml-1 italic">
+															({evidence.source})
+														</span>
+													</span>
+												</li>
+											))}
+										</ul>
+									)}
+								</li>
+							))}
+						</ol>
+					</CardContent>
+				</Card>
+			)}
+
+			{/* Ruled Out */}
+			{report && report.ruledOut.length > 0 && (
+				<Card className="md:col-span-2">
+					<CardHeader>
+						<CardTitle className="text-base">
+							Ruled Out ({report.ruledOut.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-3">
+							{report.ruledOut.map((item, i) => (
+								<div
+									key={`${i}-${item.statement}`}
+									className="p-3 bg-muted rounded-lg"
+								>
+									<p className="font-medium">{item.statement}</p>
+									<p className="text-sm text-muted-foreground mt-1">
+										{item.why}
+									</p>
+								</div>
+							))}
+						</div>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Recommendations */}
 			<Card className="md:col-span-2">

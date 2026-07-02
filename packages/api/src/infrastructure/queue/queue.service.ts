@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import type { StreamTuple } from '@prismalens/agents';
+import { CanonicalEventSchema } from '@prismalens/contracts';
 import { buildRedisUrl, getConfig } from '@prismalens/config';
 import type { ConnectionOptions } from 'bullmq';
 import { Queue, QueueEvents } from 'bullmq';
@@ -222,9 +222,11 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     const investigationId = channel.slice(prefix.length);
 
     try {
-      const event = JSON.parse(message) as StreamTuple;
+      const parsed = JSON.parse(message) as unknown;
 
-      if (event[0] === '__done__') {
+      // The worker emits a terminal ["__done__", {}] sentinel to close the
+      // stream; every other message is a CanonicalEvent.
+      if (Array.isArray(parsed) && parsed[0] === '__done__') {
         this.streamRelay.complete(investigationId);
         this.redisSubscriber?.unsubscribe(channel).catch((err) => {
           this.logger.warn(
@@ -232,7 +234,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
           );
         });
       } else {
-        this.streamRelay.emit(investigationId, event);
+        const parsedEvent = CanonicalEventSchema.safeParse(parsed);
+        if (!parsedEvent.success) {
+          this.logger.warn(
+            `Dropped invalid CanonicalEvent on ${channel} for investigation ${investigationId}: ${parsedEvent.error.message}`,
+          );
+          return;
+        }
+        this.streamRelay.emit(investigationId, parsedEvent.data);
       }
     } catch {
       this.logger.warn(`Failed to parse Redis stream message on ${channel}`);

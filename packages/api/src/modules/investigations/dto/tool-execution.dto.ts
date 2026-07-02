@@ -11,6 +11,5 @@ export class CreateToolExecutionDto {
 	result?: Record<string, unknown>;
 	status?: ToolExecutionStatus;
 	executionTimeMs?: number;
-	confidence?: number;
 	error?: string;
 }
