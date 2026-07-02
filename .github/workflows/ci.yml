@@ -1,0 +1,111 @@
+# Build / typecheck / test / lint for every PR and every push to a trunk.
+#
+# This is a pnpm + Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ
+# worker + shared @prismalens/* packages). The jobs mirror the commands a
+# contributor runs locally (see CONTRIBUTING.md).
+#
+# Two things this pipeline has to get right that aren't obvious:
+#
+#  1. The Prisma client is GENERATED, not committed — `generated/` is gitignored.
+#     Nothing that imports `@prisma/client` will typecheck/build/test until we run
+#     `pnpm db:generate`, so every job that touches the code does it first.
+#
+#  2. Linting is Biome (`pnpm format-and-lint` -> `biome check .`), NOT `pnpm lint`.
+#     `pnpm lint` (turbo run lint) currently errors — there is no `lint` task in
+#     turbo.json — so it is intentionally not used here.
+#
+# Required vs advisory (see .github/governance.json):
+#   - "Build & typecheck" is the REQUIRED status check — it is green on the trunk.
+#   - "Test" and "Lint (Biome)" are RED on the trunk today (pre-existing api test
+#     failures + a backlog of Biome findings). They run on every PR so the status
+#     is visible, but they are deliberately NOT required yet. Promote each to a
+#     required check in governance.json once it is green.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [first, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # REQUIRED check. Keep this green — branch protection gates merge on it.
+  build:
+    name: Build & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+  # ADVISORY (not required yet): the suite has pre-existing failures on the trunk.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Test
+        run: pnpm test
+
+  # ADVISORY (not required yet): Biome has a backlog of findings to clear.
+  lint:
+    name: Lint (Biome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome check
+        run: pnpm format-and-lint
