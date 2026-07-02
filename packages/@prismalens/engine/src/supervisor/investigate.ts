@@ -108,11 +108,11 @@ export async function* investigateIncidentStream(
 		collected.push(ev);
 		yield ev;
 	}
-	// No-evidence guard: a branch that gathered nothing and errored must NOT be
-	// laundered into a fabricated report — the error event already conveyed failure.
-	const terminal = collected.at(-1);
+	// No-evidence guard: a run that gathered zero tool_results must NOT be laundered
+	// into a fabricated report, regardless of terminal (error OR branch_done) — ADR-0002
+	// ordered-evidence / the Constitution's "no evidence → no report" rule.
 	const toolResults = collected.filter((e) => e.kind === "tool_result").length;
-	if (toolResults === 0 && terminal?.kind === "error") return;
+	if (toolResults === 0) return;
 	const report = await reduce(opts.context, collected, opts.synth);
 	yield {
 		kind: "report",

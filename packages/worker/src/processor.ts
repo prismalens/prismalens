@@ -260,7 +260,11 @@ async function buildRequest(
 			apiKey,
 			...(synthIsOpenAiCompat ? { baseURL } : {}),
 		},
-		harnessEnv: { OPENAI_API_KEY: apiKey, OPENAI_BASE_URL: baseURL },
+		// Same gate as `synth` above: OPENAI_BASE_URL only applies to OpenAI-compatible providers.
+		harnessEnv: {
+			OPENAI_API_KEY: apiKey,
+			...(synthIsOpenAiCompat ? { OPENAI_BASE_URL: baseURL } : {}),
+		},
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};
 }

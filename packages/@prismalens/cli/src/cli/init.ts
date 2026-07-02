@@ -40,8 +40,6 @@ agent:
   # BARE model id, e.g. "gpt-oss:120b" — the harness applies its own provider prefix.
   # Omit to let the chosen harness pick its own default.
   # model: gpt-oss:120b
-  # Per-run wall-clock budget for the harness (ms).
-  timeout_ms: ${d.agent.timeout_ms}
 
 # Read-only telemetry + app endpoints the harness may query. Point these at your
 # stack; defaults assume a local dev setup.
@@ -50,8 +48,7 @@ telemetry:
   alertmanagerUrl: ${INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl}
   apiUrl: ${INVESTIGATION_DEFAULTS.telemetry.apiUrl}
 
-# Read-only log-query system the harness may curl (Loki, Elasticsearch, …). Distinct
-# from \`logging\` below (the CLI's own log-output level/format).
+# Read-only log-query system the harness may curl (Loki, Elasticsearch, …).
 # logs:
 #   kind: loki
 #   url: http://localhost:3100
@@ -68,11 +65,6 @@ telemetry:
 # Where runs, events, and reports are stored.
 workspace:
   base_dir: ${d.workspace.base_dir}
-
-# Logging.
-logging:
-  level: ${d.logging.level}
-  format: ${d.logging.format}
 `;
 }
 

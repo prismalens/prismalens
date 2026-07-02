@@ -33,19 +33,18 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 	it("applies built-in defaults when no config file is present", async () => {
 		const config = await loadConfig({ cwd: dir });
 		expect(config.agent.default).toBe("deepagents");
-		expect(config.budget.tokens).toBe(500_000);
+		expect(config.workspace.base_dir).toBe("~/.prismalens");
 	});
 
 	it("project-local overrides project; unrelated project values survive (deep-merge)", async () => {
 		writeProject(
-			"agent:\n  model: project-model\nbudget:\n  tokens: 111\ntelemetry:\n  apiUrl: http://project\n",
+			"agent:\n  model: project-model\ntelemetry:\n  apiUrl: http://project\n",
 		);
 		writeLocal("agent:\n  model: local-model\n");
 
 		const config = await loadConfig({ cwd: dir });
 		expect(config.agent.model).toBe("local-model"); // local wins
 		expect(config.telemetry.apiUrl).toBe("http://project"); // project survives
-		expect(config.budget.tokens).toBe(111); // project survives
 	});
 
 	it("CLI overrides beat every file layer", async () => {

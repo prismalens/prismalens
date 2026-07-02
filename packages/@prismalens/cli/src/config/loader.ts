@@ -38,14 +38,6 @@ export interface CliOverrides {
 	agent?: string;
 	/** agent.model. */
 	model?: string;
-	/** agent.timeout_ms + budget.timeout_ms (ms). */
-	timeout?: number;
-	/** budget.tokens. */
-	budgetTokens?: number;
-	/** budget.max_concurrent_sub_agents. */
-	maxAgents?: number;
-	/** logging.level = "debug". */
-	verbose?: boolean;
 	prometheusUrl?: string;
 	alertmanagerUrl?: string;
 	apiUrl?: string;
@@ -154,14 +146,7 @@ function applyCliOverrides(
 	const agent: Record<string, unknown> = {};
 	if (o.agent !== undefined) agent.default = o.agent;
 	if (o.model !== undefined) agent.model = o.model;
-	if (o.timeout !== undefined) agent.timeout_ms = o.timeout;
 	if (Object.keys(agent).length > 0) patch.agent = agent;
-
-	const budget: Record<string, unknown> = {};
-	if (o.budgetTokens !== undefined) budget.tokens = o.budgetTokens;
-	if (o.maxAgents !== undefined) budget.max_concurrent_sub_agents = o.maxAgents;
-	if (o.timeout !== undefined) budget.timeout_ms = o.timeout;
-	if (Object.keys(budget).length > 0) patch.budget = budget;
 
 	const telemetry: Record<string, unknown> = {};
 	if (o.prometheusUrl !== undefined) telemetry.prometheusUrl = o.prometheusUrl;
@@ -169,8 +154,6 @@ function applyCliOverrides(
 		telemetry.alertmanagerUrl = o.alertmanagerUrl;
 	if (o.apiUrl !== undefined) telemetry.apiUrl = o.apiUrl;
 	if (Object.keys(telemetry).length > 0) patch.telemetry = telemetry;
-
-	if (o.verbose) patch.logging = { level: "debug" };
 
 	return deepMerge(config, patch);
 }

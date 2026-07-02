@@ -73,7 +73,7 @@ export interface AcpClientConfig {
 	 * mapping hop; ADR-0017 Amendment 2).
 	 */
 	native?: Record<string, unknown>;
-	/** Extra env merged OVER `process.env` (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
+	/** Extra env merged OVER the safe allowlist (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
 	env?: NodeJS.ProcessEnv;
 	/** MCP servers offered to the session. Default `[]`. */
 	mcpServers?: unknown[];
@@ -87,6 +87,27 @@ export interface AcpClientConfig {
 
 const DEFAULT_COMMAND = "deepagents";
 const DEFAULT_MODEL = "openai:gpt-oss:120b";
+
+/**
+ * Own-secret isolation (ADR-0009): allowlist, not denylist — only pass the child a
+ * bare-minimum shell environment, never prismalens's own process.env verbatim (which
+ * would leak ENCRYPTION_KEY, PRISMALENS_INTERNAL_SECRET, OLLAMA_API_KEY, etc. into the
+ * rented harness). Full sandboxing of the child is ADR-0020/Phase B.1.
+ */
+const SAFE_ENV_ALLOWLIST = [
+	"PATH",
+	"HOME",
+	"USER",
+	"LOGNAME",
+	"SHELL",
+	"LANG",
+	"LC_ALL",
+	"LC_CTYPE",
+	"TERM",
+	"TMPDIR",
+	"TZ",
+	"PWD",
+] as const;
 
 /**
  * Build the deepagents arg vector from the model + native passthrough (ADR-0017):
@@ -131,9 +152,16 @@ export async function* runAcpBranch(
 	const initTimeout = config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
 	const promptTimeout = config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS;
 
+	// Own-secret isolation (ADR-0009): allowlist a bare shell env, then layer config.env
+	// (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …) on top so it always wins.
+	const safeEnv: Record<string, string> = {};
+	for (const key of SAFE_ENV_ALLOWLIST) {
+		const value = process.env[key];
+		if (value !== undefined) safeEnv[key] = value;
+	}
 	const child = spawn(command, args, {
 		cwd: config.cwd,
-		env: { ...process.env, ...config.env },
+		env: { ...safeEnv, ...config.env },
 		stdio: ["pipe", "pipe", "pipe"],
 	});
 
@@ -268,7 +296,11 @@ export async function* runAcpBranch(
 		});
 		finish();
 	});
-	child.on("exit", (code, signal) => {
+	// Use 'close', not 'exit': 'exit' can fire before stdout is fully drained, so a
+	// clean exit(0) racing the final result would be misreported as a transport error.
+	// 'close' only fires once the child's stdio streams have ended, by which point a
+	// result already on the wire has been read and `finished` set.
+	child.on("close", (code, signal) => {
 		if (finished) return;
 		const tail = stderrChunks.join("").trim().slice(-STDERR_TAIL);
 		pushItem({

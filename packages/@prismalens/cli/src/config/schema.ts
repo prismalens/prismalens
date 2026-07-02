@@ -47,26 +47,12 @@ export const AgentConfigSchema = z.object({
 	 * its own default.
 	 */
 	model: z.string().optional(),
-	timeout_ms: z.number().positive().default(1_800_000),
 	/** The posture dial (ADR-0017). Defaults to `read-only`. */
 	permissions: optionalWithDefaults(PermissionConfigSchema),
 });
 
-export const BudgetConfigSchema = z.object({
-	tokens: z.number().positive().default(500_000),
-	timeout_ms: z.number().positive().default(1_800_000),
-	max_concurrent_sub_agents: z.number().int().min(1).max(10).default(3),
-	max_total_sub_agents: z.number().int().min(1).max(50).default(10),
-	max_retries: z.number().int().min(0).max(5).default(2),
-});
-
 export const WorkspaceConfigSchema = z.object({
 	base_dir: z.string().default("~/.prismalens"),
-});
-
-export const LoggingConfigSchema = z.object({
-	level: z.enum(["debug", "info", "warn", "error"]).default("info"),
-	format: z.enum(["json", "text"]).default("json"),
 });
 
 /**
@@ -93,11 +79,7 @@ export const ServiceConfigSchema = z.object({
 	depends_on: z.array(z.string()).default([]),
 });
 
-/**
- * A read-only log-query system the harness may curl (Loki/Elasticsearch/…). Kept
- * DISTINCT from `logging` (below), which is the CLI's own log-output level/format —
- * a different concern that happens to share the word.
- */
+/** A read-only log-query system the harness may curl (Loki/Elasticsearch/…). */
 export const LogSourceConfigSchema = z.object({
 	kind: z.string().optional(),
 	url: z.string().optional(),
@@ -140,16 +122,14 @@ export const PlConfigSchema = z.object({
 		.record(z.string(), ServiceConfigSchema)
 		.optional()
 		.transform((val) => val ?? {}),
-	/** Read-only log-query system the harness may query (distinct from `logging`). */
+	/** Read-only log-query system the harness may query. */
 	logs: optionalWithDefaults(LogSourceConfigSchema),
 	agent: optionalWithDefaults(AgentConfigSchema),
-	budget: optionalWithDefaults(BudgetConfigSchema),
 	workspace: optionalWithDefaults(WorkspaceConfigSchema),
 	telemetry: optionalWithDefaults(TelemetryConfigSchema),
 	alert_sources: AlertSourceConfigSchema.optional().transform(
 		(val) => val ?? {},
 	),
-	logging: optionalWithDefaults(LoggingConfigSchema),
 	/** Per-harness native passthrough (ADR-0017), keyed by harness id. */
 	harnesses: z
 		.record(z.string(), HarnessNativeConfigSchema)

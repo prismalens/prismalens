@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import type { CanonicalEvent } from '@prismalens/contracts';
+import { CanonicalEventSchema } from '@prismalens/contracts';
 import { buildRedisUrl, getConfig } from '@prismalens/config';
 import type { ConnectionOptions } from 'bullmq';
 import { Queue, QueueEvents } from 'bullmq';
@@ -234,7 +234,14 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
           );
         });
       } else {
-        this.streamRelay.emit(investigationId, parsed as CanonicalEvent);
+        const parsedEvent = CanonicalEventSchema.safeParse(parsed);
+        if (!parsedEvent.success) {
+          this.logger.warn(
+            `Dropped invalid CanonicalEvent on ${channel} for investigation ${investigationId}: ${parsedEvent.error.message}`,
+          );
+          return;
+        }
+        this.streamRelay.emit(investigationId, parsedEvent.data);
       }
     } catch {
       this.logger.warn(`Failed to parse Redis stream message on ${channel}`);
