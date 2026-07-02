@@ -1,5 +1,5 @@
 # Enforce that PR titles follow Conventional Commits. The repo squash-merges, so a
-# PR's title becomes the commit subject on the trunk (`first`). Keeping titles
+# PR's title becomes the commit subject on the trunk (`main`). Keeping titles
 # conventional keeps history readable and changelog-ready.
 #
 # This validates the PR TITLE, not local branch commits (those get squashed away) —

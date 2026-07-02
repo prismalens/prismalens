@@ -5,10 +5,9 @@ incident-investigation app. Contributions of all sizes are welcome.
 
 ## Ground rules
 
-- **The trunk branch is `first`, and it is protected.** Every change lands
+- **The trunk branch is `main`, and it is protected.** Every change lands
   through a pull request; direct pushes to the trunk are not allowed (for
-  anyone, including the maintainer). (`main` exists but is an empty initial
-  commit — open PRs against **`first`**.)
+  anyone, including the maintainer).
 - **Never commit secrets.** No API keys, tokens, connection strings, or private
   content. prismalens runs against real infrastructure under read-only
   credentials by design — keep that contract intact.
@@ -44,14 +43,14 @@ The dev login is `admin@prismalens.dev` / `admin123`.
 
 ## Making a change
 
-1. **Branch** off `first`: `git checkout -b fix/short-description first`.
+1. **Branch** off `main`: `git checkout -b fix/short-description main`.
 2. **Write or update tests** where it makes sense; fix the implementation, not
    the test, unless the test is wrong.
 3. Make sure `pnpm typecheck`, `pnpm build`, `pnpm test`, and
    `pnpm format-and-lint` all pass.
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):
    `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `perf:`.
-5. **Open a PR** against `first`. The **PR title** must be a valid conventional
+5. **Open a PR** against `main`. The **PR title** must be a valid conventional
    commit — a required check enforces it (the repo squash-merges, so the PR
    title becomes the trunk commit subject).
 

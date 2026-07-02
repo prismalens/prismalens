@@ -1,6 +1,6 @@
 <!--
-Thanks for contributing to prismalens! The trunk (`first`) is protected: every
-change lands via a pull request. Open this PR against `first`, not `main`.
+Thanks for contributing to prismalens! The trunk (`main`) is protected: every
+change lands via a pull request. Open this PR against `main`.
 Keep PRs focused and small where you can.
 -->
 
@@ -18,7 +18,7 @@ Keep PRs focused and small where you can.
 
 ## Checklist
 
-- [ ] PR is opened against `first`
+- [ ] PR is opened against `main`
 - [ ] PR title follows Conventional Commits (`feat:`, `fix:`, `docs:`, ...) — it
       becomes the squashed commit subject
 - [ ] `pnpm typecheck`, `pnpm build`, `pnpm test`, and `pnpm format-and-lint`

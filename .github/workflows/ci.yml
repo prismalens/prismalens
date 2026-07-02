@@ -23,7 +23,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [first, main]
+    branches: [main]
 
 permissions:
   contents: read

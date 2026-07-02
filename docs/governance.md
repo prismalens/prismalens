@@ -19,8 +19,7 @@ clicked into the GitHub UI) versioned, reviewable, and reproducible.
 
 ## The ruleset
 
-Targets the trunk branch **`first`** (GitHub's default branch is the empty
-`main` — see note below) and enforces:
+Targets the trunk branch **`main`** and enforces:
 
 - no branch deletion, no force-push (`deletion`, `non_fast_forward`);
 - changes land via PR (`pull_request`, 0 required approvals — solo-friendly);
@@ -48,11 +47,10 @@ manage rulesets or repo administration.
 
 ## Notes & gotchas
 
-- **Sequencing:** apply the ruleset only *after* the `pr-title` workflow exists on
-  `first`. A required status check that has never reported will block every PR.
-- **Default branch:** GitHub's default is `main` (an empty initial commit); the
-  real trunk is `first`. The ruleset targets `first` explicitly. Consider setting
-  the GitHub default branch to `first` to remove the mismatch.
+- **Sequencing:** apply the ruleset only *after* the CI workflows exist on
+  `main`. A required status check that has never reported will block every PR.
+- **Default branch:** `main` is both GitHub's default branch and the protected
+  trunk.
 - **Private repos:** repository rulesets require GitHub Pro for private repos. The
   script warns and continues; settings and labels still apply.
 - **Reusable:** the script is repo-agnostic (`--repo`), so the same mechanism can
