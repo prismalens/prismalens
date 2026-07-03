@@ -4,10 +4,10 @@ import { ServiceDiscoveryController } from "./service-discovery.controller.js";
 import { ServiceDiscoveryService } from "./service-discovery.service.js";
 
 const mockServiceDiscoveryService = {
-	discoverFromConnection: jest.fn(),
-	acceptSuggestion: jest.fn(),
-	rejectSuggestion: jest.fn(),
-	acceptMultiple: jest.fn(),
+	discoverFromConnection: vi.fn(),
+	acceptSuggestion: vi.fn(),
+	rejectSuggestion: vi.fn(),
+	acceptMultiple: vi.fn(),
 };
 
 // Every handler calls requireAdmin(context), which reads
@@ -21,8 +21,8 @@ describe("ServiceDiscoveryController (BDD)", () => {
 	let service: ServiceDiscoveryService;
 
 	beforeEach(async () => {
-		jest.clearAllMocks();
-		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+		vi.clearAllMocks();
+		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [ServiceDiscoveryController],

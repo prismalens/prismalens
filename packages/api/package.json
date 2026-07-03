@@ -15,10 +15,9 @@
 		"start:debug": "nest start --debug --watch",
 		"start:prod": "node dist/main",
 		"lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-		"test": "NODE_OPTIONS=--experimental-vm-modules jest",
-		"test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
-		"test:cov": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
-		"test:e2e": "jest --config ./test/jest-e2e.json",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:cov": "vitest run --coverage",
 		"typecheck": "tsc --noEmit",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"openapi:generate": "tsx scripts/generate-openapi.ts"
@@ -56,19 +55,20 @@
 		"@nestjs/schematics": "^11.1.0",
 		"@nestjs/testing": "^11.1.27",
 		"@nestjs/throttler": "^6.5.0",
+		"@swc/core": "^1.15.43",
 		"@types/express": "^5.0.6",
-		"@types/jest": "^30.0.0",
 		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "^4.1.9",
 		"eslint": "catalog:",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-prettier": "^5.5.6",
 		"globals": "^17.7.0",
-		"jest": "^30.4.2",
 		"prettier": "^3.9.4",
-		"ts-jest": "^29.4.11",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.62.1"
+		"typescript-eslint": "^8.62.1",
+		"unplugin-swc": "^1.5.9",
+		"vitest": "catalog:"
 	},
 	"engines": {
 		"node": ">=24.0.0"

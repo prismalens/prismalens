@@ -8,12 +8,12 @@ import type {
 } from "./dto/index.js";
 
 const mockAlertMappingService = {
-	create: jest.fn(),
-	findAll: jest.fn(),
-	findById: jest.fn(),
-	update: jest.fn(),
-	delete: jest.fn(),
-	resolveServiceForAlert: jest.fn(),
+	create: vi.fn(),
+	findAll: vi.fn(),
+	findById: vi.fn(),
+	update: vi.fn(),
+	delete: vi.fn(),
+	resolveServiceForAlert: vi.fn(),
 };
 
 describe("AlertMappingController (BDD)", () => {
@@ -21,8 +21,8 @@ describe("AlertMappingController (BDD)", () => {
 	let service: AlertMappingService;
 
 	beforeEach(async () => {
-		jest.clearAllMocks();
-		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+		vi.clearAllMocks();
+		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 
 		const module: TestingModule = await Test.createTestingModule({
 			controllers: [AlertMappingController],

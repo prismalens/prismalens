@@ -9,11 +9,11 @@ import { RecommendationsService } from "./recommendations.service.js";
 // Mock PrismaService to avoid Prisma import.meta issues
 const mockPrismaService = {
 	recommendation: {
-		findUnique: jest.fn(),
-		findMany: jest.fn(),
-		update: jest.fn(),
-		count: jest.fn(),
-		groupBy: jest.fn(),
+		findUnique: vi.fn(),
+		findMany: vi.fn(),
+		update: vi.fn(),
+		count: vi.fn(),
+		groupBy: vi.fn(),
 	},
 };
 
@@ -21,8 +21,8 @@ describe("RecommendationsService (BDD)", () => {
 	let service: RecommendationsService;
 
 	beforeEach(async () => {
-		jest.clearAllMocks();
-		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+		vi.clearAllMocks();
+		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
