@@ -51,7 +51,7 @@ export const Route = createFileRoute("/_authenticated/incidents/")({
 
 function IncidentsPage() {
 	const queryClient = useQueryClient();
-	const navigate = useNavigate({ from: "/incidents" });
+	const navigate = useNavigate({ from: "/incidents/" });
 	const searchParams = useSearch({ from: "/_authenticated/incidents/" });
 
 	// Local state for filters

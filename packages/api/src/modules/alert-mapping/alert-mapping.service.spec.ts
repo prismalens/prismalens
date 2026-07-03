@@ -12,14 +12,14 @@ import type {
 
 const mockPrismaService = {
 	alertMappingRule: {
-		create: jest.fn(),
-		findUnique: jest.fn(),
-		findMany: jest.fn(),
-		update: jest.fn(),
-		delete: jest.fn(),
+		create: vi.fn(),
+		findUnique: vi.fn(),
+		findMany: vi.fn(),
+		update: vi.fn(),
+		delete: vi.fn(),
 	},
 	service: {
-		findUnique: jest.fn(),
+		findUnique: vi.fn(),
 	},
 };
 
@@ -27,10 +27,10 @@ describe("AlertMappingService (BDD)", () => {
 	let service: AlertMappingService;
 
 	beforeEach(async () => {
-		jest.clearAllMocks();
-		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
-		jest.spyOn(Logger.prototype, "debug").mockImplementation(() => {});
-		jest.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+		vi.clearAllMocks();
+		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+		vi.spyOn(Logger.prototype, "debug").mockImplementation(() => {});
+		vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [

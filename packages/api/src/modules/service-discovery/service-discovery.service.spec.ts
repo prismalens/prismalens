@@ -44,39 +44,39 @@ function createMockConnection(
 
 const mockPrismaService = {
 	connection: {
-		findUnique: jest.fn(),
+		findUnique: vi.fn(),
 	},
 	serviceSuggestion: {
-		findMany: jest.fn(),
-		findFirst: jest.fn(),
-		findUnique: jest.fn(),
-		create: jest.fn(),
-		update: jest.fn(),
+		findMany: vi.fn(),
+		findFirst: vi.fn(),
+		findUnique: vi.fn(),
+		create: vi.fn(),
+		update: vi.fn(),
 	},
 	service: {
-		create: jest.fn(),
-		findUnique: jest.fn(),
+		create: vi.fn(),
+		findUnique: vi.fn(),
 	},
 	deployment: {
-		create: jest.fn(),
+		create: vi.fn(),
 	},
-	$transaction: jest.fn(),
+	$transaction: vi.fn(),
 };
 
 const mockCredentialsService = {
-	decrypt: jest.fn().mockReturnValue({}),
+	decrypt: vi.fn().mockReturnValue({}),
 };
 
 const mockIntegrationsService = {
-	getGitRepositories: jest.fn().mockResolvedValue([]),
-	createRequestFn: jest.fn(),
+	getGitRepositories: vi.fn().mockResolvedValue([]),
+	createRequestFn: vi.fn(),
 };
 
 describe("ServiceDiscoveryService (BDD)", () => {
 	let service: ServiceDiscoveryService;
 
 	beforeEach(async () => {
-		jest.clearAllMocks();
+		vi.clearAllMocks();
 		// Re-apply $transaction mock after clearAllMocks — supports both
 		// batched (array) and interactive (callback) transaction forms
 		mockPrismaService.$transaction.mockImplementation((arg: unknown) => {
@@ -87,9 +87,9 @@ describe("ServiceDiscoveryService (BDD)", () => {
 			}
 			return Promise.resolve(arg);
 		});
-		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
-		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
-		jest.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+		vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [

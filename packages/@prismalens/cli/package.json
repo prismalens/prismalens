@@ -17,17 +17,17 @@
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"@prismalens/engine": "workspace:*",
-		"citty": "^0.2.1",
+		"citty": "^0.2.2",
 		"consola": "^3.4.2",
 		"env-paths": "^4.0.0",
 		"json-rpc-2.0": "^1.7.1",
-		"yaml": "^2.8.2",
-		"zod": "^3.25.76"
+		"yaml": "^2.9.0",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@types/node": "^22.10.5",
-		"tsx": "^4.7.0",
-		"typescript": "^5.7.3",
-		"vitest": "^3.2.0"
+		"@types/node": "catalog:",
+		"tsx": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	}
 }
