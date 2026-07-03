@@ -11,10 +11,14 @@ import { describe, expect, it, vi } from "vitest";
 // event publisher) — stub it so importing the module for this pure-function test
 // stays hermetic (no network).
 vi.mock("ioredis", () => ({
-	Redis: vi.fn(() => ({
-		publish: vi.fn(),
-		quit: vi.fn(),
-	})),
+	// Vitest 4 requires a constructable implementation for `new Redis(...)`;
+	// an arrow function is not a constructor, so use a `function`.
+	Redis: vi.fn(function MockRedis() {
+		return {
+			publish: vi.fn(),
+			quit: vi.fn(),
+		};
+	}),
 }));
 
 const { buildHarnessEnv, speaksOpenAiProtocol } = await import(

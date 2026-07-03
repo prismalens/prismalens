@@ -24,9 +24,9 @@
 		"ioredis": "^5.11.1"
 	},
 	"devDependencies": {
-		"@types/node": "^22.20.0",
+		"@types/node": "^24.13.2",
 		"tsx": "^4.22.5",
 		"typescript": "^5.9.3",
-		"vitest": "^3.2.6"
+		"vitest": "^4.1.9"
 	}
 }

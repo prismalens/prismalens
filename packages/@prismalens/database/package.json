@@ -36,7 +36,7 @@
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.13",
-		"@types/node": "^22.20.0",
+		"@types/node": "^24.13.2",
 		"@types/pg": "^8.20.0",
 		"prisma": "^7.8.0",
 		"typescript": "^5.9.3"
