@@ -46,6 +46,7 @@ export class InternalSettingsController {
 	async getLlmCredentials(): Promise<{
 		provider: string | null;
 		model: string | null;
+		baseUrl: string | null;
 		credentials: Record<string, string>;
 	}> {
 		const settings = await this.llmSettingsService.getLlmSettings();
@@ -59,6 +60,14 @@ export class InternalSettingsController {
 				null)
 			: (process.env.PRISMALENS_LLM_MODEL ?? null);
 
+		// The user-configured base URL (validated against the provider allowlist on
+		// save) — without it the worker can only ever use the hardcoded default,
+		// which mis-points ollama-local and `custom` deployments (ledger:
+		// worker-provider-hardwiring).
+		const baseUrl = provider
+			? (settings.providers[provider as LLMProviderId]?.baseUrl ?? null)
+			: null;
+
 		const credentials: Record<string, string> = {};
 		if (provider) {
 			const apiKey = this.llmSettingsService.resolveApiKey(
@@ -70,6 +79,6 @@ export class InternalSettingsController {
 			}
 		}
 
-		return { provider, model, credentials };
+		return { provider, model, baseUrl, credentials };
 	}
 }
