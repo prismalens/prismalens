@@ -21,8 +21,8 @@
 		"consola": "^3.4.2",
 		"env-paths": "^4.0.0",
 		"json-rpc-2.0": "^1.7.1",
-		"yaml": "^2.8.2",
-		"zod": "^3.25.76"
+		"yaml": "^2.9.0",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@types/node": "^22.10.5",

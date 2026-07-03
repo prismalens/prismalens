@@ -13,15 +13,15 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@orpc/client": "^1.13.2",
-		"@orpc/contract": "^1.13.2",
+		"@orpc/client": "^1.14.6",
+		"@orpc/contract": "^1.14.6",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"@prismalens/engine": "workspace:*",
 		"@prismalens/logger": "workspace:*",
-		"bullmq": "^5.34.0",
-		"dotenv": "^16.4.7",
-		"ioredis": "^5.4.2"
+		"bullmq": "^5.79.2",
+		"dotenv": "^17.4.2",
+		"ioredis": "^5.11.1"
 	},
 	"devDependencies": {
 		"@types/node": "^22.10.5",
