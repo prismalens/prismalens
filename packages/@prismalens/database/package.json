@@ -27,19 +27,19 @@
 		"db:seed": "prisma db seed --config prisma.config.ts"
 	},
 	"dependencies": {
-		"@prisma/adapter-better-sqlite3": "^7.2.0",
-		"@prisma/adapter-pg": "^7.2.0",
-		"@prisma/client": "^7.2.0",
+		"@prisma/adapter-better-sqlite3": "^7.8.0",
+		"@prisma/adapter-pg": "^7.8.0",
+		"@prisma/client": "^7.8.0",
 		"@prismalens/config": "workspace:*",
 		"dotenv": "^16.6.1",
-		"pg": "^8.16.3"
+		"pg": "^8.22.0"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.13",
-		"@types/node": "^22.10.0",
-		"@types/pg": "^8.16.0",
-		"prisma": "^7.2.0",
-		"typescript": "^5.7.0"
+		"@types/node": "^22.20.0",
+		"@types/pg": "^8.20.0",
+		"prisma": "^7.8.0",
+		"typescript": "^5.9.3"
 	},
 	"engines": {
 		"node": ">=24.0.0"

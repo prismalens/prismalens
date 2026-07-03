@@ -40,7 +40,7 @@ export const Route = createFileRoute("/_authenticated/settings/")({
 
 function SettingsPage() {
 	const { tab } = Route.useSearch();
-	const navigate = useNavigate({ from: "/settings" });
+	const navigate = useNavigate({ from: "/settings/" });
 	const queryClient = useQueryClient();
 
 	// Invalidate settings-related queries when switching tabs so data is fresh

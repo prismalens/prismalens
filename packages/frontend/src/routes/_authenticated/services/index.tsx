@@ -171,7 +171,7 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 
 function ServicesPage() {
 	const searchParams = Route.useSearch();
-	const navigate = useNavigate({ from: "/services" });
+	const navigate = useNavigate({ from: "/services/" });
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showImportDialog, setShowImportDialog] = useState(false);
 	const [showUnlinkedReposDialog, setShowUnlinkedReposDialog] = useState(false);

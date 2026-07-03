@@ -26,13 +26,13 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@orpc/contract": "^1.0.0",
+		"@orpc/contract": "^1.14.6",
 		"@prismalens/config": "workspace:*",
-		"zod": "^3.24.0"
+		"zod": "^3.25.76"
 	},
 	"devDependencies": {
-		"@types/node": "^22.10.0",
-		"typescript": "^5.7.0"
+		"@types/node": "^22.20.0",
+		"typescript": "^5.9.3"
 	},
 	"engines": {
 		"node": ">=24.0.0"

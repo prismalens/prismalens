@@ -87,7 +87,7 @@ export const Route = createFileRoute("/_authenticated/services/$id/")({
 function ServiceDetailPage() {
 	const { id } = Route.useParams();
 	const { tab } = Route.useSearch();
-	const navigate = useNavigate({ from: "/services/$id" });
+	const navigate = useNavigate({ from: "/services/$id/" });
 	const [showEditDialog, setShowEditDialog] = useState(false);
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 	const [showAddDepDialog, setShowAddDepDialog] = useState(false);

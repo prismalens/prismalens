@@ -21,7 +21,7 @@ jobs:
     name: Sync governance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Apply governance
         env:
           # PAT with Administration: read/write. Falls back to GITHUB_TOKEN, which
