@@ -50,6 +50,7 @@ const redisPublisher = new Redis(redisUrl, {
 async function fetchLlmConfig(): Promise<{
 	provider: string | null;
 	model: string | null;
+	baseUrl: string | null;
 	credentials: Record<string, string>;
 }> {
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
@@ -81,6 +82,7 @@ async function fetchLlmConfig(): Promise<{
 	return response.json() as Promise<{
 		provider: string | null;
 		model: string | null;
+		baseUrl: string | null;
 		credentials: Record<string, string>;
 	}>;
 }
@@ -207,6 +209,34 @@ async function processJobInternal(
 }
 
 /**
+ * Derive the `deepagents` harness env from the active Tier-1 provider (ADR-0013
+ * scope boundary: deepagents only speaks the OpenAI protocol via `OPENAI_*` env,
+ * so both vars must be gated the same way — leaking `apiKey` into `OPENAI_API_KEY`
+ * for a non-OpenAI-shaped provider (anthropic/google/groq) would hand the harness a
+ * secret it can't use and silently mis-wire it (worker-provider-hardwiring ledger
+ * item). `openai` itself always qualifies; ollama/custom qualify because they speak
+ * the OpenAI protocol too (and additionally need the base URL to leave localhost).
+ */
+export function speaksOpenAiProtocol(provider: LLMProviderId): boolean {
+	return (
+		provider === "openai" || provider === "ollama" || provider === "custom"
+	);
+}
+
+export function buildHarnessEnv(
+	synthProvider: LLMProviderId,
+	apiKey: string,
+	baseURL: string,
+): Record<string, string> {
+	const isOpenAiCompat =
+		synthProvider === "ollama" || synthProvider === "custom";
+	return {
+		...(speaksOpenAiProtocol(synthProvider) ? { OPENAI_API_KEY: apiKey } : {}),
+		...(isOpenAiCompat ? { OPENAI_BASE_URL: baseURL } : {}),
+	};
+}
+
+/**
  * Build the engine investigation request from the job + LLM settings.
  * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
  * stopgap); connectors are Phase D. BYO-key (ADR-0006) from the LLM settings.
@@ -238,17 +268,33 @@ async function buildRequest(
 		incident = null;
 	}
 
-	const baseURL = INVESTIGATION_DEFAULTS.synth.baseURL;
+	// The user-configured base URL (validated server-side against the provider
+	// allowlist) wins; the hardcoded default is only the last resort for an
+	// unconfigured ollama-cloud setup. Without this, `custom` and ollama-local
+	// deployments were silently pointed at the default endpoint.
+	const baseURL = llmConfig.baseUrl ?? INVESTIGATION_DEFAULTS.synth.baseURL;
 	// Tier-1 reduce runs on the user's chosen provider (ADR-0013 resolver); a base
 	// URL is only needed for the OpenAI-compatible providers (ollama/custom).
 	const synthProvider = llmConfig.provider as LLMProviderId;
 	const synthIsOpenAiCompat =
 		synthProvider === "ollama" || synthProvider === "custom";
+	const harness = process.env.PRISMALENS_HARNESS ?? "deepagents";
+	// deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): fail
+	// the job with a clear reason up front instead of dispatching a run that dies
+	// deep in the harness with an opaque missing-credential error.
+	if (harness === "deepagents" && !speaksOpenAiProtocol(synthProvider)) {
+		throw new Error(
+			`Harness "deepagents" only supports OpenAI-protocol providers ` +
+				`(openai/ollama/custom); active provider is "${synthProvider}". ` +
+				`Switch provider or set PRISMALENS_HARNESS to a harness that ` +
+				`supports it (e.g. claude-code for anthropic).`,
+		);
+	}
 	return {
 		context: assembleInvestigationContext(incident, data, {
 			...INVESTIGATION_DEFAULTS.telemetry,
 		}),
-		harness: process.env.PRISMALENS_HARNESS ?? "deepagents",
+		harness,
 		// The single posture dial (ADR-0017): the worker is always read-only in
 		// Phase A — no per-run override, no native passthrough.
 		permissionMode: "read-only",
@@ -260,11 +306,7 @@ async function buildRequest(
 			apiKey,
 			...(synthIsOpenAiCompat ? { baseURL } : {}),
 		},
-		// Same gate as `synth` above: OPENAI_BASE_URL only applies to OpenAI-compatible providers.
-		harnessEnv: {
-			OPENAI_API_KEY: apiKey,
-			...(synthIsOpenAiCompat ? { OPENAI_BASE_URL: baseURL } : {}),
-		},
+		harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};
 }

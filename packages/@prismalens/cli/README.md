@@ -246,8 +246,6 @@ var is an error).
 agent:
   default: deepagents            # deepagents | claude-code | codex
   # model: openai:gpt-oss:120b   # provider-prefixed; omit to let the harness default
-  timeout_ms: 1800000            # per-run wall-clock budget for the harness
-  shell_allow_list: [gh, amtool, sentry-cli, pd, curl, jq, grep, cat]
 
 # Read-only telemetry + app endpoints the harness may query.
 telemetry:
@@ -259,17 +257,13 @@ telemetry:
 workspace:
   base_dir: ~/.prismalens
 
-# Tier-1 reduce + retry budget.
-budget:
-  tokens: 500000
-  timeout_ms: 1800000
-  max_concurrent_sub_agents: 3
-  max_total_sub_agents: 10
-  max_retries: 2
-
-logging:
-  level: info                    # debug | info | warn | error
-  format: json                   # json | text
+# Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
+# rented harness. For `deepagents` (driven over ACP), `shellAllowList` becomes the
+# `-S csv` allow-listed shell commands.
+harnesses:
+  deepagents:
+    native:
+      shellAllowList: [gh, amtool, sentry-cli, pd, curl, jq, grep, cat]
 ```
 
 Notes:
@@ -277,6 +271,10 @@ Notes:
   The `--model` flag passes a **bare** id (e.g. `gpt-oss:120b`); for `deepagents` the
   CLI prefixes it with `openai:`.
 - `telemetry.*` defaults to host-local URLs when unset.
+- There is currently no `agent.timeout_ms`, `budget.*`, or `logging.*` config —
+  an overall per-run wall-clock budget and a Tier-1 reduce token/retry budget are
+  planned alongside the Phase B.1 Sandbox port's resource limits (ADR-0020), not
+  wired yet.
 
 ### BYO-key environment (ADR-0006)
 
