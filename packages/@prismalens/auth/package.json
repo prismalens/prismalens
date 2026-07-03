@@ -22,14 +22,14 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"better-auth": "~1.6.23"
+		"better-auth": "catalog:"
 	},
 	"peerDependencies": {
 		"@prismalens/database": "workspace:*"
 	},
 	"devDependencies": {
-		"@types/node": "^24.13.2",
-		"typescript": "^5.9.3"
+		"@types/node": "catalog:",
+		"typescript": "catalog:"
 	},
 	"engines": {
 		"node": ">=24.0.0"

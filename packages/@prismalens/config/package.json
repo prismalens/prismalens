@@ -51,12 +51,12 @@
 		"@ai-sdk/groq": "^4.0.5",
 		"@ai-sdk/openai": "^4.0.7",
 		"@ai-sdk/openai-compatible": "^3.0.5",
-		"ai": "^7.0.14",
-		"zod": "^3.25.76"
+		"ai": "catalog:",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@types/node": "^24.13.2",
-		"typescript": "^5.9.3"
+		"@types/node": "catalog:",
+		"typescript": "catalog:"
 	},
 	"engines": {
 		"node": ">=22.0.0"
