@@ -115,6 +115,12 @@ export interface InvestigationRequest {
 	 * the ACP (deepagents) path consumes it — the Agent SDK path runs in-process.
 	 */
 	limits?: SandboxLimits;
+	/**
+	 * Per-alert fan-out cap (ADR-0016 decision 2): the max branches the supervisor
+	 * runs for a multi-alert context. Optional; omitted ⇒ the engine default. The
+	 * CLI wires it from `agent.max_branches`; the worker leaves it defaulted.
+	 */
+	maxBranches?: number;
 }
 
 export interface ResolvedInvestigation {
@@ -132,6 +138,12 @@ export interface ResolvedInvestigation {
 	 * never LLM-authored.
 	 */
 	fidelity: RunFidelity;
+	/**
+	 * Per-alert fan-out cap (ADR-0016 decision 2), passed straight through from the
+	 * request. Undefined ⇒ the engine default applies at decompose. Callers spread it
+	 * onto {@link InvestigateOptions} for conductRun.
+	 */
+	maxBranches?: number;
 }
 
 /**
@@ -215,6 +227,7 @@ export function resolveInvestigation(
 		cwd: req.cwd,
 		harnessName: req.harness,
 		fidelity,
+		...(req.maxBranches !== undefined ? { maxBranches: req.maxBranches } : {}),
 	};
 }
 

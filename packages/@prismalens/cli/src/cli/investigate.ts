@@ -227,7 +227,8 @@ export default defineCommand({
 				process.exitCode = 1;
 				return;
 			}
-			const { context, harness, synth, harnessName, fidelity } = resolved;
+			const { context, harness, synth, harnessName, fidelity, maxBranches } =
+				resolved;
 			const primaryAlert = context.alerts[0];
 
 			if (!synth.apiKey) {
@@ -255,7 +256,14 @@ export default defineCommand({
 			// timeline entry per event; conductRun owns persistence + the terminal
 			// report/no-evidence/error outcome.
 			const outcome = await conductRun(
-				{ context, harness, synth, fidelity, runId },
+				{
+					context,
+					harness,
+					synth,
+					fidelity,
+					runId,
+					...(maxBranches !== undefined ? { maxBranches } : {}),
+				},
 				{
 					sink: (event) => {
 						const entry = liveTimelineEntry(event);

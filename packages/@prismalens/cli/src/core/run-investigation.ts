@@ -127,6 +127,11 @@ export function resolveInvestigation(
 			? { requestedSandbox: args.requestedSandbox }
 			: {}),
 		...(limits ? { limits } : {}),
+		// Per-alert fan-out cap (ADR-0016 decision 2): wire `agent.max_branches` when
+		// set; unset leaves the engine default (mirrors the `limits` thread-through).
+		...(config.agent.max_branches
+			? { maxBranches: config.agent.max_branches }
+			: {}),
 		model: config.agent.model,
 		cwd,
 		telemetry: {

@@ -78,6 +78,12 @@ export const AgentConfigSchema = z.object({
 	 * omitted section means "no caps" (the object defaults to `{}` after parse).
 	 */
 	limits: optionalWithDefaults(AgentLimitsConfigSchema),
+	/**
+	 * Per-alert fan-out cap (ADR-0016 decision 2): the max branches the supervisor
+	 * runs when a context carries multiple alerts. Optional — omitted ⇒ the engine
+	 * default (3). A single-alert run always uses one branch regardless.
+	 */
+	max_branches: z.number().int().positive().optional(),
 });
 
 export const WorkspaceConfigSchema = z.object({

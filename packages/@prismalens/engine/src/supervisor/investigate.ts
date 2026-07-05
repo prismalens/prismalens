@@ -80,6 +80,12 @@ export interface InvestigateOptions {
 	/** Investigation run id (== Investigation.id). Generated if omitted. */
 	runId?: string;
 	/**
+	 * Per-alert fan-out cap (ADR-0016 decision 2) — the max branches decompose emits
+	 * for a multi-alert context, and the fan-out concurrency ceiling. Optional; omitted
+	 * ⇒ the engine default ({@link DEFAULT_MAX_BRANCHES}). A single-alert run ignores it.
+	 */
+	maxBranches?: number;
+	/**
 	 * The HONEST enforcement fidelity this run applied (ADR-0017 §4). Attached
 	 * deterministically onto the emitted report — never LLM-authored.
 	 */
@@ -102,7 +108,16 @@ export async function* investigateIncidentStream(
 	opts: InvestigateOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const runId = opts.runId ?? randomUUID();
-	const branches = decompose(opts.context);
+	// Per-alert fan-out (ADR-0016 decision 2): decompose caps the branch count; all
+	// capped branches then run concurrently (fan-out's default concurrency == the
+	// branch count, so passing maxBranches again would be inert — FanOutOptions.
+	// concurrency exists for direct callers that want a lower ceiling). Defaults
+	// apply when maxBranches is omitted, so the single-alert path is unchanged.
+	const maxBranches = opts.maxBranches;
+	const branches = decompose(
+		opts.context,
+		maxBranches !== undefined ? { maxBranches } : {},
+	);
 	const collected: CanonicalEvent[] = [];
 	for await (const ev of fanOut(branches, opts.harness, runId)) {
 		collected.push(ev);

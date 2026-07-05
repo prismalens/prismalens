@@ -171,7 +171,8 @@ export async function runJsonRpcServer(
 				INVALID_PARAMS,
 			);
 		}
-		const { context, harness, synth, harnessName, fidelity } = resolved;
+		const { context, harness, synth, harnessName, fidelity, maxBranches } =
+			resolved;
 		const primaryAlert = context.alerts[0];
 
 		// Persist to the session workspace exactly as the investigate command does,
@@ -190,7 +191,14 @@ export async function runJsonRpcServer(
 		// event as an `investigate/event` notification; conductRun owns persistence
 		// + the terminal report/no-evidence/error outcome.
 		const outcome = await conductRun(
-			{ context, harness, synth, fidelity, runId },
+			{
+				context,
+				harness,
+				synth,
+				fidelity,
+				runId,
+				...(maxBranches !== undefined ? { maxBranches } : {}),
+			},
 			{
 				sink: (event) => {
 					notify("investigate/event", { runId, event });
