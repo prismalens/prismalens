@@ -44,10 +44,10 @@ export type HarnessRunner = (
 
 /**
  * deepagents over ACP — the zero-setup, read-only-by-default local harness. The
- * permission policy always stays {@link autoAllowReadOnly} (COOPERATIVE — deepagents
- * cannot hard-enforce without a sandbox); the ADR-0017 `native` passthrough rides on
- * AcpClientConfig and is turned into the real enforcers (`-S` shellAllowList /
- * `--sandbox`) by the ACP arg builder — no intermediate mapping hop (ADR-0017 Amdt 2).
+ * permission policy always stays {@link autoAllowReadOnly} (COOPERATIVE — the
+ * published deepagents-acp binary has no hard enforcers); real enforcement is the
+ * Sandbox port's job (ADR-0020/B.1). The ADR-0017 `native` passthrough rides on
+ * AcpClientConfig as extra CLI args — no intermediate mapping hop (ADR-0017 Amdt 2).
  */
 export function deepAgentsHarness(
 	cfg: Omit<AcpClientConfig, "prompt">,

@@ -29,9 +29,9 @@ export const PermissionConfigSchema = z.object({
 
 /**
  * Arbitrary harness-native passthrough (ADR-0017) — e.g. Agent SDK query options
- * for `claude-code`, or `shellAllowList`/`sandbox`/`args` for `deepagents`. Kept
- * untyped here (per-harness runners narrow it); prismalens does not validate the
- * shape, it defers to the harness.
+ * for `claude-code`, or `args` (extra CLI args) for `deepagents`. Kept untyped
+ * here (per-harness runners narrow it); prismalens does not validate the shape,
+ * it defers to the harness.
  */
 export const HarnessNativeConfigSchema = z.object({
 	native: z.record(z.string(), z.unknown()).optional(),

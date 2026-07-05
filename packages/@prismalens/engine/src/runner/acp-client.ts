@@ -1,7 +1,8 @@
 /**
  * ACP transport client — drives a rented harness over the Agent Client Protocol
- * (`deepagents --acp`, JSON-RPC over stdio) and yields a flat, typed stream of
- * branch items (ADR-0008, Slice 0).
+ * (`deepagents-acp`, JSON-RPC over stdio) and yields a flat, typed stream of
+ * branch items (ADR-0008, Slice 0). The child is spawned into a {@link Sandbox}
+ * (ADR-0020) — the `process` floor by default.
  *
  * Lifecycle per branch: spawn → `initialize` → `session/new` → `session/prompt`,
  * relaying every `session/update` notification as an `{ kind:"update" }` item and
@@ -18,7 +19,8 @@
  * BYO-key (ADR-0006): the model + credentials are injected via `model`/`env`; the
  * engine never hard-binds a provider.
  */
-import { spawn } from "node:child_process";
+import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
+import type { Sandbox } from "../sandbox/types.js";
 import { createInterface } from "node:readline";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 
@@ -60,21 +62,29 @@ export interface AcpClientConfig {
 	cwd: string;
 	/** The investigation prompt sent as the first `session/prompt`. */
 	prompt: string;
-	/** Harness binary. Default `"deepagents"`. */
+	/** Harness binary. Default `"deepagents-acp"` (ACP-on-stdio by default). */
 	command?: string;
-	/** Model id passed via `-M`. Default `"openai:gpt-oss:120b"`. */
+	/** Model id passed via `-m`. Default `"openai:gpt-oss:120b"`. */
 	model?: string;
-	/** Full arg vector override; when set, `model`/native args are ignored. Default `["--acp","-M",model]`. */
+	/** Full arg vector override; when set, `model`/native args are ignored. Default `["-m",model]`. */
 	args?: string[];
 	/**
 	 * Native passthrough (ADR-0017): deepagents-specific config, turned into the arg
-	 * vector by {@link buildAcpArgs} — `shellAllowList` → `-S csv`, `sandbox` →
-	 * `--sandbox`, `args` → extra CLI args. Passed through verbatim (no intermediate
-	 * mapping hop; ADR-0017 Amendment 2).
+	 * vector by {@link buildAcpArgs} — `args` → extra CLI args, verbatim (no
+	 * intermediate mapping hop; ADR-0017 Amendment 2). The published binary has no
+	 * shell-allowlist or sandbox flags: read-only stays cooperative until the
+	 * Sandbox port's enforced providers land (ADR-0020/B.1).
 	 */
 	native?: Record<string, unknown>;
-	/** Extra env merged OVER the safe allowlist (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
+	/** Extra env merged OVER the sandbox's safe base env (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
 	env?: NodeJS.ProcessEnv;
+	/**
+	 * The isolation boundary the harness is spawned into (ADR-0020). Default: a
+	 * fresh `process`-floor sandbox (own-secret scrub, cooperative fidelity),
+	 * destroyed when the run ends. Callers pass an enforced provider (srt/E2B in
+	 * B.1) to upgrade — and then own its lifecycle.
+	 */
+	sandbox?: Sandbox;
 	/** MCP servers offered to the session. Default `[]`. */
 	mcpServers?: unknown[];
 	/** How to answer permission requests. Default {@link autoAllowReadOnly}. */
@@ -85,43 +95,22 @@ export interface AcpClientConfig {
 	promptTimeoutMs?: number;
 }
 
-const DEFAULT_COMMAND = "deepagents";
+const DEFAULT_COMMAND = "deepagents-acp";
 const DEFAULT_MODEL = "openai:gpt-oss:120b";
 
 /**
- * Own-secret isolation (ADR-0009): allowlist, not denylist — only pass the child a
- * bare-minimum shell environment, never prismalens's own process.env verbatim (which
- * would leak ENCRYPTION_KEY, PRISMALENS_INTERNAL_SECRET, OLLAMA_API_KEY, etc. into the
- * rented harness). Full sandboxing of the child is ADR-0020/Phase B.1.
- */
-const SAFE_ENV_ALLOWLIST = [
-	"PATH",
-	"HOME",
-	"USER",
-	"LOGNAME",
-	"SHELL",
-	"LANG",
-	"LC_ALL",
-	"LC_CTYPE",
-	"TERM",
-	"TMPDIR",
-	"TZ",
-	"PWD",
-] as const;
-
-/**
- * Build the deepagents arg vector from the model + native passthrough (ADR-0017):
- * the base `--acp -M <model>`, then the read-only enforcers `-S <csv>` / `--sandbox`,
- * then any extra args. The full `args` override (when set) bypasses this entirely.
+ * Build the deepagents-acp arg vector from the model + native passthrough
+ * (ADR-0017): the base `-m <model>`, then any extra args. The published binary
+ * serves ACP on stdio by default and takes no shell-allowlist/sandbox flags
+ * (verified against `deepagents-acp --help`, B.1 spike 2026-07-03) — isolation is
+ * the Sandbox port's job (ADR-0020), not an argv knob. The full `args` override
+ * (when set) bypasses this entirely.
  */
 function buildAcpArgs(model: string, config: AcpClientConfig): string[] {
-	const args = ["--acp", "-M", model];
+	const args = ["-m", model];
 	const native = config.native ?? {};
 	const strings = (v: unknown): string[] =>
 		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-	const shellAllowList = strings(native.shellAllowList);
-	if (shellAllowList.length) args.push("-S", shellAllowList.join(","));
-	if (native.sandbox === true) args.push("--sandbox");
 	args.push(...strings(native.args));
 	return args;
 }
@@ -152,17 +141,14 @@ export async function* runAcpBranch(
 	const initTimeout = config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
 	const promptTimeout = config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS;
 
-	// Own-secret isolation (ADR-0009): allowlist a bare shell env, then layer config.env
-	// (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …) on top so it always wins.
-	const safeEnv: Record<string, string> = {};
-	for (const key of SAFE_ENV_ALLOWLIST) {
-		const value = process.env[key];
-		if (value !== undefined) safeEnv[key] = value;
-	}
-	const child = spawn(command, args, {
+	// The harness is spawned INTO a Sandbox (ADR-0020) — the provider owns env
+	// hygiene (ADR-0009 own-secret allowlist in the floor) and the boundary. A
+	// caller-supplied sandbox is caller-owned; the default floor is ours to destroy.
+	const sandbox = config.sandbox ?? createProcessFloorSandbox();
+	const ownsSandbox = config.sandbox === undefined;
+	const child = sandbox.spawn(command, args, {
 		cwd: config.cwd,
-		env: { ...safeEnv, ...config.env },
-		stdio: ["pipe", "pipe", "pipe"],
+		env: config.env,
 	});
 
 	// --- queue plumbing: readline callbacks push items; the generator drains them ---
@@ -372,5 +358,8 @@ export async function* runAcpBranch(
 		for (const p of pending.values()) p.reject(new Error("ACP client closing"));
 		pending.clear();
 		if (!child.killed) child.kill();
+		// Only tear down the boundary we created; a caller-supplied sandbox is
+		// caller-owned (they may run more branches in it — B.2 fan-out).
+		if (ownsSandbox) await sandbox.destroy();
 	}
 }

@@ -258,12 +258,14 @@ workspace:
   base_dir: ~/.prismalens
 
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
-# rented harness. For `deepagents` (driven over ACP), `shellAllowList` becomes the
-# `-S csv` allow-listed shell commands.
+# rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over
+# ACP), `args` is appended verbatim to the CLI invocation. The binary has no
+# shell-allowlist or sandbox flags — read-only is cooperative until the Sandbox
+# port's enforced providers land (ADR-0020/B.1).
 harnesses:
   deepagents:
     native:
-      shellAllowList: [gh, amtool, sentry-cli, pd, curl, jq, grep, cat]
+      args: [--memory, ./AGENTS.md]
 ```
 
 Notes:
