@@ -42,12 +42,19 @@ if [ "$NODE_MAJOR" -ge 22 ]; then ok "node $(node -v)"; else bad "node $(node -v
 
 echo "== 2/5 OS sandbox primitive =="
 if [ "$(uname -s)" = "Linux" ]; then
-	if command -v bwrap >/dev/null; then
-		ok "bubblewrap present ($(bwrap --version 2>/dev/null || echo unknown))"
-	else
-		echo "  installing bubblewrap (needs sudo)..."
-		sudo apt-get install -y bubblewrap >/dev/null 2>&1 && ok "bubblewrap installed" || { bad "could not install bubblewrap — install it manually"; exit 1; }
+	# srt's Linux prerequisites (README §"Platform-Specific Dependencies"):
+	# bubblewrap (sandbox), socat (proxy bridge — REQUIRED for egress), ripgrep.
+	NEED=()
+	command -v bwrap  >/dev/null || NEED+=(bubblewrap)
+	command -v socat  >/dev/null || NEED+=(socat)
+	command -v rg     >/dev/null || NEED+=(ripgrep)
+	if [ "${#NEED[@]}" -gt 0 ]; then
+		echo "  installing srt prerequisites (${NEED[*]}) — needs sudo..."
+		sudo apt-get install -y "${NEED[@]}" >/dev/null 2>&1 || { bad "could not install: ${NEED[*]} — install them manually"; exit 1; }
 	fi
+	for tool in bwrap socat rg; do
+		command -v "$tool" >/dev/null && ok "$tool present" || bad "$tool missing (srt egress needs socat; sandbox needs bwrap)"
+	done
 	# Ubuntu 24.04+ restricts unprivileged user namespaces; srt documents the sysctl.
 	RESTRICT_FILE=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
 	if [ -f "$RESTRICT_FILE" ] && [ "$(cat "$RESTRICT_FILE")" = "1" ]; then
@@ -115,14 +122,29 @@ EOF
 	}
 	ALLOWED=$(probe_code https://registry.npmjs.org/)
 	DENIED=$(probe_code https://example.com/)
+	# Control: with no sandbox, does egress work at all here? Distinguishes a dead
+	# proxy bridge (both 000 AND the host has egress) from a genuinely offline box.
+	HOST=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 https://registry.npmjs.org/ 2>/dev/null || true)
+	HOST=${HOST:-000}
 	rm -f "$SETTINGS"
-	echo "  allowed(registry.npmjs.org)=$ALLOWED denied(example.com)=$DENIED"
+	echo "  in-sandbox: allowed(registry.npmjs.org)=$ALLOWED denied(example.com)=$DENIED · host(no-sandbox)=$HOST"
 	if [ "$DENIED" != "000" ]; then
-		bad "EGRESS GATE FAILED — the denied domain got through ($DENIED). Do NOT flip the sandbox default; report the outputs above."
+		bad "EGRESS GATE FAILED — the denied domain got through ($DENIED); the allowlist is not enforcing. Do NOT flip the sandbox default; report the outputs above."
 	elif [ "$ALLOWED" != "000" ]; then
-		ok "EGRESS GATE PASSED — allowed reached, denied blocked (record in the hub: flips agent.sandbox default to auto)"
+		ok "EGRESS GATE PASSED — allowed reached, denied blocked. Report this so agent.sandbox default can flip to auto."
+	elif [ "$HOST" != "000" ]; then
+		# Both in-sandbox probes fail but the host has egress ⇒ srt's in-netns proxy
+		# bridge (socat → host mux) is not carrying traffic. Confirmed on WSL2/NAT
+		# 2026-07-05 with all deps present — an srt/WSL limitation, NOT a prismalens
+		# config bug (the mux comes up; the sandbox just can't reach it). Effect: a
+		# harness under `--sandbox srt` gets NO egress here, so it cannot query
+		# telemetry. Stay on the `process` floor locally (its egress works — the host
+		# line proves it); enforced egress is E2B's job in cloud (ADR-0020), not srt
+		# on a laptop. Try WSL mirrored networking (networkingMode=mirrored in
+		# /etc/wsl.conf + `wsl --shutdown`) as a possible fix, then re-probe."
+		bad "EGRESS BRIDGE DEAD — the sandbox has NO egress (both 000) though the host does ($HOST). srt's proxy bridge isn't reaching the sandbox on this WSL2 setup. Keep agent.sandbox=process locally; see the comment above for the mirrored-networking experiment."
 	else
-		bad "INCONCLUSIVE — both blocked: srt's egress proxy bridge is not working in this environment (known in nested containers). Re-run on a real host/WSL2."
+		warn "INCONCLUSIVE — the host itself has no egress ($HOST); can't judge the allowlist. Re-run on a connected machine."
 	fi
 else
 	echo "  skipped (run with --probe — this is the B.1 roadmap gate, ~1 min)"
