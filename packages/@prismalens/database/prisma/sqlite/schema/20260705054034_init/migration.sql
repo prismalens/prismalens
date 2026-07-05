@@ -1,6 +1,7 @@
 -- CreateTable
 CREATE TABLE "services" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "name" TEXT NOT NULL,
     "displayName" TEXT,
     "description" TEXT,
@@ -18,6 +19,7 @@ CREATE TABLE "services" (
 -- CreateTable
 CREATE TABLE "repositories" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "connectionId" TEXT NOT NULL,
     "fullName" TEXT NOT NULL,
     "url" TEXT NOT NULL,
@@ -46,6 +48,7 @@ CREATE TABLE "service_repositories" (
 -- CreateTable
 CREATE TABLE "deployments" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "serviceId" TEXT,
     "connectionId" TEXT NOT NULL,
     "externalId" TEXT NOT NULL,
@@ -80,6 +83,7 @@ CREATE TABLE "service_dependencies" (
 -- CreateTable
 CREATE TABLE "events" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "source" TEXT NOT NULL,
     "sourceEventId" TEXT,
     "eventType" TEXT NOT NULL,
@@ -94,6 +98,7 @@ CREATE TABLE "events" (
 -- CreateTable
 CREATE TABLE "alerts" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "dedupKey" TEXT NOT NULL,
     "fingerprint" TEXT,
     "externalId" TEXT,
@@ -122,6 +127,7 @@ CREATE TABLE "alerts" (
 -- CreateTable
 CREATE TABLE "incidents" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "number" INTEGER NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT,
@@ -151,6 +157,7 @@ CREATE TABLE "incidents" (
 -- CreateTable
 CREATE TABLE "investigations" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "incidentId" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'pending',
     "startedAt" DATETIME,
@@ -240,6 +247,7 @@ CREATE TABLE "timeline_entries" (
 -- CreateTable
 CREATE TABLE "postmortems" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "incidentId" TEXT NOT NULL,
     "title" TEXT,
     "summary" TEXT,
@@ -262,6 +270,7 @@ CREATE TABLE "postmortems" (
 -- CreateTable
 CREATE TABLE "change_events" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "type" TEXT NOT NULL,
     "source" TEXT NOT NULL,
     "timestamp" DATETIME NOT NULL,
@@ -286,6 +295,7 @@ CREATE TABLE "incident_similarities" (
 -- CreateTable
 CREATE TABLE "correlation_rules" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "enabled" BOOLEAN NOT NULL DEFAULT true,
@@ -300,6 +310,7 @@ CREATE TABLE "correlation_rules" (
 -- CreateTable
 CREATE TABLE "settings" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "key" TEXT NOT NULL,
     "value" TEXT NOT NULL,
     "type" TEXT NOT NULL DEFAULT 'string',
@@ -312,6 +323,7 @@ CREATE TABLE "settings" (
 -- CreateTable
 CREATE TABLE "alert_mapping_rules" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "priority" INTEGER NOT NULL DEFAULT 100,
@@ -442,6 +454,7 @@ CREATE TABLE "invitation" (
 -- CreateTable
 CREATE TABLE "integrations" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "templateId" TEXT NOT NULL,
     "templateVersion" TEXT,
     "label" TEXT NOT NULL,
@@ -457,6 +470,7 @@ CREATE TABLE "integrations" (
 -- CreateTable
 CREATE TABLE "connections" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
     "integrationId" TEXT NOT NULL,
     "label" TEXT NOT NULL DEFAULT '',
     "userId" TEXT NOT NULL,

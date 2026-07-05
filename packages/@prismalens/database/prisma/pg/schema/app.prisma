@@ -312,6 +312,7 @@ enum ChangeEventType {
 /// A Service is a pure logical entity — source tracking lives in Repository and Deployment.
 model Service {
   id           String      @id @default(uuid())
+  tenantId     String?     // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   name         String      @unique // Unique identifier, e.g., "api-gateway", "user-service"
   displayName  String? // Human-readable name, e.g., "API Gateway"
   description  String?
@@ -344,6 +345,7 @@ model Service {
 /// Repository represents a code source from a VCS provider (GitHub, GitLab, etc.)
 model Repository {
   id            String   @id @default(uuid())
+  tenantId      String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   connectionId  String
   fullName      String               // "org/repo"
   url           String               // "https://github.com/org/repo"
@@ -381,6 +383,7 @@ model ServiceRepository {
 /// Deployment represents a running instance from a deployment platform (Render, Vercel, etc.)
 model Deployment {
   id              String    @id @default(uuid())
+  tenantId        String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   serviceId       String?              // nullable — can exist unlinked
   connectionId    String
   externalId      String               // Provider's service/deployment ID
@@ -435,6 +438,7 @@ model ServiceDependency {
 /// Events are immutable - they capture exactly what was received.
 model Event {
   id            String    @id @default(uuid())
+  tenantId      String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   source        String // Source system: "prometheus", "github", "render", "generic"
   sourceEventId String? // ID from source system for deduplication
   eventType     String // Event type: "alert", "deployment", "commit", "incident"
@@ -466,6 +470,7 @@ model Event {
 /// Alerts have a simple lifecycle: triggered → acknowledged → resolved
 model Alert {
   id              String      @id @default(uuid())
+  tenantId        String?     // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   dedupKey        String      @unique // Hash of (source + title + severity) for deduplication
   fingerprint     String? // Content fingerprint for similarity matching
   externalId      String?     @unique // Original ID from source system
@@ -514,6 +519,7 @@ model Alert {
 /// This is the main work unit in PrismaLens. AI workers investigate incidents.
 model Incident {
   id                String         @id @default(uuid())
+  tenantId          String?        // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   number            Int            @unique @default(autoincrement()) // Human-readable: INC-123
   title             String
   description       String?
@@ -565,6 +571,7 @@ model Incident {
 /// Each investigation runs the multi-agent workflow (Alert → Gatherer → Analyzer → Recommender).
 model Investigation {
   id                String             @id @default(uuid())
+  tenantId          String?            // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   incidentId        String
   status            WorkflowStatus     @default(pending)
   startedAt         DateTime?
@@ -721,6 +728,7 @@ model TimelineEntry {
 /// Created after incident resolution to capture what happened and what to improve.
 model Postmortem {
   id              String           @id @default(uuid())
+  tenantId        String?          // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   incidentId      String           @unique // One postmortem per incident
   title           String?
   summary         String? // Executive summary
@@ -755,6 +763,7 @@ model Postmortem {
 /// Tracks deployments, commits, config changes that may cause incidents.
 model ChangeEvent {
   id          String          @id @default(uuid())
+  tenantId    String?         // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   type        ChangeEventType
   source      String // render, github, manual, argocd, etc.
   timestamp   DateTime
@@ -809,6 +818,7 @@ model IncidentSimilarity {
 /// Rules define conditions for when alerts should be correlated together.
 model CorrelationRule {
   id                String            @id @default(uuid())
+  tenantId          String?           // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   name              String            @unique
   description       String?
   enabled           Boolean           @default(true)
@@ -843,6 +853,7 @@ model CorrelationRule {
 /// Stores key-value pairs for runtime configuration.
 model Setting {
   id          String           @id @default(uuid())
+  tenantId    String?          // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   key         String           @unique
   value       String // Value stored as JSON string
   type        SettingType      @default(string)
@@ -871,6 +882,7 @@ model Setting {
 /// Allows matching alerts based on labels, tags, source, or title patterns.
 model AlertMappingRule {
   id          String  @id @default(uuid())
+  tenantId    String? // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   name        String
   description String?
   priority    Int     @default(100) // Lower = higher priority

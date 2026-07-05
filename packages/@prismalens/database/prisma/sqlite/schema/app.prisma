@@ -20,6 +20,7 @@
 /// A Service is a pure logical entity — source tracking lives in Repository and Deployment.
 model Service {
   id           String  @id @default(uuid())
+  tenantId     String? // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   name         String  @unique
   displayName  String?
   description  String?
@@ -51,6 +52,7 @@ model Service {
 /// Repository represents a code source from a VCS provider
 model Repository {
   id            String   @id @default(uuid())
+  tenantId      String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   connectionId  String
   fullName      String               // "org/repo"
   url           String               // "https://github.com/org/repo"
@@ -88,6 +90,7 @@ model ServiceRepository {
 /// Deployment represents a running instance from a deployment platform
 model Deployment {
   id              String    @id @default(uuid())
+  tenantId        String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   serviceId       String?
   connectionId    String
   externalId      String
@@ -135,6 +138,7 @@ model ServiceDependency {
 /// Raw event from monitoring systems (immutable)
 model Event {
   id            String    @id @default(uuid())
+  tenantId      String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   source        String // prometheus, github, render, generic
   sourceEventId String?
   eventType     String // alert, deployment, commit
@@ -159,6 +163,7 @@ model Event {
 /// Deduplicated, normalized alert
 model Alert {
   id              String    @id @default(uuid())
+  tenantId        String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   dedupKey        String    @unique // Hash for deduplication
   fingerprint     String? // Content fingerprint for similarity
   externalId      String?   @unique
@@ -201,6 +206,7 @@ model Alert {
 /// Incident - correlated alerts representing a single business problem
 model Incident {
   id                String    @id @default(uuid())
+  tenantId          String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   number            Int       @unique // Managed by application (no autoincrement in SQLite)
   title             String
   description       String?
@@ -246,6 +252,7 @@ model Incident {
 /// AI-driven investigation of an incident
 model Investigation {
   id                String    @id @default(uuid())
+  tenantId          String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   incidentId        String
   status            String    @default("pending") // pending, running, completed, failed, cancelled
   startedAt         DateTime?
@@ -378,6 +385,7 @@ model TimelineEntry {
 /// Postmortem for post-incident learnings
 model Postmortem {
   id              String    @id @default(uuid())
+  tenantId        String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   incidentId      String    @unique
   title           String?
   summary         String?
@@ -411,6 +419,7 @@ model Postmortem {
 /// Tracks deployments, commits, config changes that may cause incidents
 model ChangeEvent {
   id          String   @id @default(uuid())
+  tenantId    String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   type        String // deployment, config, migration, commit, rollback
   source      String // render, github, manual, argocd, etc.
   timestamp   DateTime
@@ -460,6 +469,7 @@ model IncidentSimilarity {
 /// Correlation rule for grouping alerts into incidents
 model CorrelationRule {
   id                String   @id @default(uuid())
+  tenantId          String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   name              String   @unique
   description       String?
   enabled           Boolean  @default(true)
@@ -482,6 +492,7 @@ model CorrelationRule {
 /// System settings and configuration
 model Setting {
   id          String   @id @default(uuid())
+  tenantId    String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   key         String   @unique
   value       String // JSON
   type        String   @default("string") // string, number, boolean, json, encrypted
@@ -506,6 +517,7 @@ model Setting {
 /// Alert mapping rule for routing incoming alerts to services.
 model AlertMappingRule {
   id          String  @id @default(uuid())
+  tenantId    String? // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   name        String
   description String?
   priority    Int     @default(100) // Lower = higher priority

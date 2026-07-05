@@ -27,7 +27,7 @@
 		},
 		"@prismalens/database#build": {
 			"dependsOn": ["^build", "db:generate"],
-			"outputs": ["dist/**", "prisma/generated/**"]
+			"outputs": ["dist/**"]
 		},
 		"@prismalens/database#typecheck": {
 			"dependsOn": ["^build", "db:generate"]

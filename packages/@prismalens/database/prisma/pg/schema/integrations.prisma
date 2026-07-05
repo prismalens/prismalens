@@ -37,6 +37,7 @@ enum SuggestionStatus {
 /// For API key providers: just a label and templateId reference.
 model Integration {
   id              String       @id @default(uuid())
+  tenantId        String?      // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   templateId      String       // References AuthTemplate.id from @prismalens/integrations
   templateVersion String?      // Template semver at creation time (e.g., "1.0.0")
   label           String       // User-friendly name, e.g., "Production GitHub"
@@ -66,6 +67,7 @@ model Integration {
 ///   oauth2:  { accessToken, refreshToken, tokenType }
 model Connection {
   id                  String           @id @default(uuid())
+  tenantId            String?          // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   integrationId       String
   label               String           @default("") // User-friendly name to distinguish multiple connections
   userId              String           // User who created this connection
