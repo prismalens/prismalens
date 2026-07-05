@@ -271,13 +271,34 @@ model Investigation {
   triggerType   String? // manual, auto_critical, auto_tier, alert_threshold, scheduled, re_trigger
   triggerReason String?
 
-  incident        Incident         @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   agentExecutions AgentExecution[]
   recommendations Recommendation[]
+  events          InvestigationEvent[]
 
   @@index([incidentId])
   @@index([status])
   @@map("investigations")
+}
+
+/// Durable server-side canonical event record (ADR-0018 store.append) — one row per
+/// CanonicalEvent, the batched target that retired the worker store's no-op append.
+/// Keyed idempotently by (investigationId, branchId, seq): (branchId, seq) is the
+/// canonical stream's per-branch identity, so batch retries are no-ops. The
+/// branchId-less terminal `report` event is stored under the "__report__" sentinel.
+model InvestigationEvent {
+  id              String   @id @default(uuid())
+  investigationId String
+  seq             Int // CanonicalEvent.seq (per-branch monotonic)
+  branchId        String // CanonicalEvent.branchId; "__report__" for the terminal report event
+  event           String // JSON: the full CanonicalEvent
+  createdAt       DateTime @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@unique([investigationId, branchId, seq])
+  @@index([investigationId, seq])
+  @@map("investigation_events")
 }
 
 /// Agent execution within an investigation

@@ -14,7 +14,14 @@ import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts";
 import { singleAlertContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { conductRun, type InvestigationStore } from "./conductor.js";
-import type { HarnessRunner, InvestigateOptions } from "./investigate.js";
+import {
+	CANCELLED_MESSAGE,
+	type HarnessRunner,
+	type InvestigateOptions,
+} from "./investigate.js";
+
+/** Flush pending micro/macrotasks so a fire-and-forget generator.return() settles. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const TELEMETRY = {
 	prometheusUrl: "http://prom:9090",
@@ -166,5 +173,90 @@ describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
 			error: "transport exploded",
 			failureKind: "error",
 		});
+	});
+});
+
+describe("conductRun — cooperative cancellation (CANCEL slice, ADR-0018)", () => {
+	it("abort mid-stream: consumption stops, the branch generator is returned, resolves cancelled", async () => {
+		const controller = new AbortController();
+		let branchReturned = false;
+		let secondEventPulled = false;
+
+		// A SLOW branch: it yields one event, then would take 10s to produce the next.
+		// Aborting after the first event must stop consumption WITHOUT waiting for (or
+		// pulling) the second — and its `finally` must run when the generator is returned.
+		const harness: HarnessRunner = async function* (_prompt, ctx) {
+			try {
+				yield agentStep(ctx.runId, ctx.branchId, 0);
+				await new Promise((r) => setTimeout(r, 10_000));
+				secondEventPulled = true;
+				yield agentStep(ctx.runId, ctx.branchId, 1);
+			} finally {
+				branchReturned = true;
+			}
+		};
+
+		const { store, calls, failedWith } = recordingStore();
+		const seen: CanonicalEvent[] = [];
+
+		const outcome = await conductRun(
+			{ ...optsWith(harness), signal: controller.signal },
+			{
+				// Abort the moment the first event lands — synchronously, so the next loop
+				// step short-circuits before pulling the wedged branch again.
+				sink: (e) => {
+					seen.push(e);
+					if (e.kind === "agent_step") controller.abort();
+				},
+				store,
+			},
+		);
+
+		await flush();
+
+		expect(outcome).toEqual({
+			runId: "run-1",
+			report: null,
+			error: CANCELLED_MESSAGE,
+			failureKind: "cancelled",
+		});
+		// The slow second event was never consumed; the branch generator was cleaned up.
+		expect(secondEventPulled).toBe(false);
+		expect(branchReturned).toBe(true);
+		// The stream terminated with ONE distinguishable `error` event (no new kind), and
+		// the sink saw it — so the live UI renders the cancellation.
+		expect(seen.map((e) => e.kind)).toEqual(["agent_step", "error"]);
+		expect(seen[1]).toMatchObject({
+			kind: "error",
+			message: CANCELLED_MESSAGE,
+		});
+		// The store recorded events but was NOT driven to finish/fail on cancel — the
+		// caller owns the terminal "cancelled" write (the store has no cancel verb).
+		expect(calls).toEqual(["create", "append:agent_step", "append:error"]);
+		expect(calls).not.toContain("finish");
+		expect(calls).not.toContain("fail");
+		expect(failedWith).toEqual([]);
+	});
+
+	it("a signal that never aborts is inert — a normal no-evidence run is unaffected", async () => {
+		const controller = new AbortController();
+		const harness: HarnessRunner = async function* (_prompt, ctx) {
+			yield agentStep(ctx.runId, ctx.branchId, 0);
+			yield errorEvent(ctx.runId, ctx.branchId, 1, "harness branch failed");
+		};
+		const { store, calls } = recordingStore();
+
+		const outcome = await conductRun(
+			{ ...optsWith(harness), signal: controller.signal },
+			{ sink: () => {}, store },
+		);
+
+		expect(outcome.failureKind).toBe("no-evidence");
+		expect(calls).toEqual([
+			"create",
+			"append:agent_step",
+			"append:error",
+			"fail",
+		]);
 	});
 });

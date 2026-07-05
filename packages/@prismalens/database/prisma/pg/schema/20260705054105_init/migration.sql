@@ -331,6 +331,18 @@ CREATE TABLE "recommendations" (
 );
 
 -- CreateTable
+CREATE TABLE "investigation_events" (
+    "id" TEXT NOT NULL,
+    "investigationId" TEXT NOT NULL,
+    "seq" INTEGER NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "event" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "investigation_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "timeline_entries" (
     "id" TEXT NOT NULL,
     "incidentId" TEXT NOT NULL,
@@ -763,6 +775,12 @@ CREATE INDEX "recommendations_status_idx" ON "recommendations"("status");
 CREATE INDEX "recommendations_priority_idx" ON "recommendations"("priority");
 
 -- CreateIndex
+CREATE INDEX "investigation_events_investigationId_seq_idx" ON "investigation_events"("investigationId", "seq");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "investigation_events_investigationId_branchId_seq_key" ON "investigation_events"("investigationId", "branchId", "seq");
+
+-- CreateIndex
 CREATE INDEX "timeline_entries_incidentId_idx" ON "timeline_entries"("incidentId");
 
 -- CreateIndex
@@ -935,6 +953,9 @@ ALTER TABLE "tool_executions" ADD CONSTRAINT "tool_executions_agentExecutionId_f
 
 -- AddForeignKey
 ALTER TABLE "recommendations" ADD CONSTRAINT "recommendations_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "investigation_events" ADD CONSTRAINT "investigation_events_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "timeline_entries" ADD CONSTRAINT "timeline_entries_incidentId_fkey" FOREIGN KEY ("incidentId") REFERENCES "incidents"("id") ON DELETE CASCADE ON UPDATE CASCADE;

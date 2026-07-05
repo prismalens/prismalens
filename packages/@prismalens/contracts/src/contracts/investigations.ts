@@ -6,7 +6,9 @@ import { z } from "zod";
 import {
 	AgentExecutionWithToolsSchema,
 	CreateInvestigationSchema,
+	GetInvestigationEventsSchema,
 	IdParamSchema,
+	InvestigationEventsPageSchema,
 	InvestigationQuerySchema,
 	InvestigationSchema,
 	InvestigationStatusSchema,
@@ -71,6 +73,22 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(InvestigationStatusSchema),
+
+	/**
+	 * Get the durable canonical event record for replay/history (ADR-0018).
+	 * Paginated by an exclusive `seq` cursor; events are parsed through the
+	 * CanonicalEvent schema on the way out.
+	 * GET /investigations/:id/events
+	 */
+	getEvents: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/events",
+			summary: "Get the durable canonical event record (replay/history)",
+			tags: ["investigations"],
+		})
+		.input(GetInvestigationEventsSchema)
+		.output(InvestigationEventsPageSchema),
 
 	/**
 	 * Get agent executions for an investigation

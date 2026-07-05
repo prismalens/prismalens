@@ -30,6 +30,7 @@ import type {
 import {
 	type InvestigateOptions,
 	investigateIncidentStream,
+	isCancelledError,
 } from "./investigate.js";
 
 /** Receives every canonical event as it streams. May be async (awaited in order). */
@@ -56,10 +57,16 @@ export interface ConductedOutcome {
 	runId: string;
 	/** The synthesized report, or null when the branch gathered no evidence. */
 	report: InvestigationReport | null;
-	/** Failure message when no report was produced (no-evidence / transport error). */
+	/** Failure message when no report was produced (no-evidence / transport / cancelled). */
 	error: string | null;
-	/** Which terminal path resolved: clean report, no-evidence, or a thrown error. */
-	failureKind: "none" | "no-evidence" | "error";
+	/**
+	 * Which terminal path resolved: clean report, no-evidence, a thrown error, or a
+	 * caller-requested `cancelled` (the run's AbortSignal fired mid-stream). On
+	 * `cancelled` the STORE is left untouched — it has no cancel verb and its `fail`
+	 * would record "failed", not "cancelled" — so the caller (the worker) owns the
+	 * terminal "cancelled" status write from this outcome.
+	 */
+	failureKind: "none" | "no-evidence" | "error" | "cancelled";
 }
 
 /**
@@ -78,17 +85,30 @@ export async function conductRun(
 
 	let report: InvestigationReport | null = null;
 	let lastError: string | null = null;
+	let cancelled = false;
 	try {
 		for await (const event of investigateIncidentStream({ ...opts, runId })) {
 			await io.sink(event);
 			await io.store.append(event);
 			if (event.kind === "report") report = event.report;
-			else if (event.kind === "error") lastError = event.message;
+			else if (event.kind === "error") {
+				lastError = event.message;
+				// The stream's cancellation sentinel (an `error` event, no new contract
+				// kind) — resolve a distinct `cancelled` outcome the caller persists as
+				// status "cancelled", NOT store.fail's "failed".
+				if (isCancelledError(event.message)) cancelled = true;
+			}
 		}
 	} catch (err) {
 		const msg = String((err as { message?: unknown } | null)?.message ?? err);
 		await io.store.fail(msg);
 		return { runId, report: null, error: msg, failureKind: "error" };
+	}
+
+	// Cancelled: leave the store untouched (it has no cancel verb; the caller writes the
+	// terminal "cancelled" record from this outcome).
+	if (cancelled) {
+		return { runId, report: null, error: lastError, failureKind: "cancelled" };
 	}
 
 	if (report) {

@@ -231,6 +231,17 @@ CREATE TABLE "recommendations" (
 );
 
 -- CreateTable
+CREATE TABLE "investigation_events" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "investigationId" TEXT NOT NULL,
+    "seq" INTEGER NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "event" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "investigation_events_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "timeline_entries" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "incidentId" TEXT NOT NULL,
@@ -639,6 +650,12 @@ CREATE INDEX "recommendations_status_idx" ON "recommendations"("status");
 
 -- CreateIndex
 CREATE INDEX "recommendations_priority_idx" ON "recommendations"("priority");
+
+-- CreateIndex
+CREATE INDEX "investigation_events_investigationId_seq_idx" ON "investigation_events"("investigationId", "seq");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "investigation_events_investigationId_branchId_seq_key" ON "investigation_events"("investigationId", "branchId", "seq");
 
 -- CreateIndex
 CREATE INDEX "timeline_entries_incidentId_idx" ON "timeline_entries"("incidentId");

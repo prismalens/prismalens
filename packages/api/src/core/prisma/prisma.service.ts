@@ -40,6 +40,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.investigation;
 	}
 
+	get investigationEvent() {
+		return prisma.investigationEvent;
+	}
+
 	get incident() {
 		return prisma.incident;
 	}

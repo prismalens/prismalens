@@ -44,7 +44,17 @@ export interface AcpPermissionRequest {
 	toolCall?: { title?: string; toolCallId?: string };
 }
 
-/** Decide how to answer a permission request: pick an option, or reject. */
+/**
+ * Decide how to answer a permission request: pick an option, or reject.
+ *
+ * ACT-PHASE SEAM (document-only, ADR-0009 responsibility 2): the approval-gated act
+ * phase rides THIS seam later. A mutating tool call surfaces here as a
+ * `session/request_permission`; the future act phase supplies a policy that suspends
+ * the run and routes the decision to a human (HITL approve/deny) instead of the
+ * read-only {@link autoAllowReadOnly} auto-allow, WITHOUT touching the transport. No
+ * implementation in the CANCEL slice — this note only marks the extension point (the
+ * Agent SDK's `canUseTool` gate in claude-code-runner.ts is the analogous seam there).
+ */
 export type PermissionPolicy = (
 	req: AcpPermissionRequest,
 ) => { optionId: string } | { reject: true };

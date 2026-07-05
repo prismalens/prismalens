@@ -1,13 +1,20 @@
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import type {
-	AgentExecution,
-	Investigation,
-	Recommendation,
-	ToolExecution,
+import type { CanonicalEvent } from "@prismalens/contracts";
+import {
+	CanonicalEventSchema,
+	INVESTIGATION_REPORT_BRANCH,
+} from "@prismalens/contracts";
+import {
+	type AgentExecution,
+	type Investigation,
+	Prisma,
+	type Recommendation,
+	type ToolExecution,
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
@@ -387,6 +394,100 @@ export class InvestigationsService {
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Append a batch of canonical events to the durable record (ADR-0018
+	 * `store.append`). Idempotent: each row is keyed on
+	 * `(investigationId, branchId, seq)`, so a duplicate from a batch retry is a
+	 * no-op (P2002 swallowed), not an error. The terminal `report` event carries no
+	 * `branchId`, so it lands under the {@link INVESTIGATION_REPORT_BRANCH} sentinel.
+	 *
+	 * Insert strategy — SQLite's `createMany` has no `skipDuplicates` (the generated
+	 * client omits it), so a per-row insert that swallows the unique violation is the
+	 * dialect-agnostic idempotency path. PostgreSQL could use
+	 * `createMany({ skipDuplicates: true })`, but keeping ONE path avoids a
+	 * dialect branch and behaves identically on retry. Batches are small (≤25).
+	 *
+	 * @returns how many rows were newly inserted vs skipped as duplicates.
+	 */
+	async appendEvents(
+		investigationId: string,
+		events: CanonicalEvent[],
+	): Promise<{ inserted: number; duplicates: number }> {
+		let inserted = 0;
+		let duplicates = 0;
+		for (const event of events) {
+			const branchId =
+				"branchId" in event ? event.branchId : INVESTIGATION_REPORT_BRANCH;
+			try {
+				await this.prisma.investigationEvent.create({
+					data: {
+						investigationId,
+						seq: event.seq,
+						branchId,
+						// Stored as JSON text (sqlite String / pg JSONB) and re-parsed on
+						// read — mirrors the report/overlay dialect split.
+						event: JSON.stringify(event),
+					},
+				});
+				inserted++;
+			} catch (error) {
+				if (
+					error instanceof Prisma.PrismaClientKnownRequestError &&
+					error.code === "P2002"
+				) {
+					duplicates++;
+					continue;
+				}
+				throw error;
+			}
+		}
+		return { inserted, duplicates };
+	}
+
+	/**
+	 * Read a page of the durable canonical event record for replay/history
+	 * (ADR-0018). Paginated by an exclusive `seq` cursor; each stored blob is parsed
+	 * back through {@link CanonicalEventSchema} on the way out (a corrupt row is
+	 * dropped + logged, never surfaced). Ordered by `(seq, branchId)`.
+	 *
+	 * NOTE: `seq` is per-branch monotonic (fan-out, B.2), so across N branches the
+	 * same `seq` recurs; the cursor is best-effort history ordering, not a globally
+	 * unique key. The single-branch case (today) has a globally monotonic `seq`.
+	 *
+	 * @returns the parsed events plus the `nextCursor` (`seq` to resume from, or null).
+	 */
+	async getEvents(
+		investigationId: string,
+		cursor: number | undefined,
+		limit: number,
+	): Promise<{ events: CanonicalEvent[]; nextCursor: number | null }> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId,
+				...(cursor !== undefined ? { seq: { gt: cursor } } : {}),
+			},
+			orderBy: [{ seq: "asc" }, { branchId: "asc" }],
+			take: limit,
+		});
+
+		const events: CanonicalEvent[] = [];
+		for (const row of rows) {
+			const obj = safeParseJsonObject(row.event);
+			const parsed = obj ? CanonicalEventSchema.safeParse(obj) : null;
+			if (parsed?.success) {
+				events.push(parsed.data);
+			} else {
+				this.logger.warn(
+					`Dropped corrupt durable event row ${row.id} for investigation ${investigationId}`,
+				);
+			}
+		}
+
+		const nextCursor =
+			rows.length === limit ? (rows[rows.length - 1]?.seq ?? null) : null;
+		return { events, nextCursor };
 	}
 
 	/**

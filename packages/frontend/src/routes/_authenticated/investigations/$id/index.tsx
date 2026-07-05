@@ -21,7 +21,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
-import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
+import {
+	investigationKeys,
+	useCancelInvestigation,
+} from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 
 // Dynamically import React Flow to avoid SSR issues
@@ -50,6 +53,11 @@ function InvestigationDetailPage() {
 
 	const isActive =
 		investigation?.status === "running" || investigation?.status === "pending";
+
+	// Cancel a running/pending run (CANCEL slice, ADR-0018): the API publishes to the
+	// Redis cancel channel (202-semantics) and the worker owns the terminal status; the
+	// stream's terminal event + completion refetch update the view.
+	const cancelInvestigation = useCancelInvestigation();
 
 	// SSE stream for real-time progress
 	const stream = useInvestigationStream(investigationId, {
@@ -148,9 +156,16 @@ function InvestigationDetailPage() {
 					</Button>
 					{(investigation.status === "running" ||
 						investigation.status === "pending") && (
-						<Button variant="destructive" size="sm">
+						<Button
+							variant="destructive"
+							size="sm"
+							onClick={() =>
+								cancelInvestigation.mutate({ id: investigationId })
+							}
+							disabled={cancelInvestigation.isPending}
+						>
 							<XCircle className="h-4 w-4 mr-2" />
-							Cancel
+							{cancelInvestigation.isPending ? "Cancelling..." : "Cancel"}
 						</Button>
 					)}
 				</div>

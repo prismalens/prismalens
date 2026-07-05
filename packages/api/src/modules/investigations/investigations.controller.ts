@@ -29,6 +29,13 @@ import {
 	type InvestigationWithRelations,
 } from "./investigations.service.js";
 
+/** Statuses a run cannot be cancelled from — it has already stopped. */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+	"completed",
+	"failed",
+	"cancelled",
+]);
+
 @Controller()
 @UseGuards(ThrottlerGuard)
 export class InvestigationsController {
@@ -105,6 +112,25 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/events - Durable canonical event record (replay)
+			getEvents: implement(investigationsContract.getEvents).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					return this.investigationsService.getEvents(
+						input.id,
+						input.cursor,
+						input.limit,
+					);
+				},
+			),
+
 			// GET /investigations/:id/agents - Get agent executions
 			getAgentExecutions: implement(
 				investigationsContract.getAgentExecutions,
@@ -124,10 +150,14 @@ export class InvestigationsController {
 				return executions.map((e) => this.serializeAgentExecution(e));
 			}),
 
-			// POST /investigations/:id/cancel - Cancel an investigation
+			// POST /investigations/:id/cancel - Request cancellation of a running run.
+			// 202-semantics (CANCEL slice, ADR-0018): publish to the Redis cancel channel
+			// and return; the WORKER owns the terminal "cancelled" status write (it aborts
+			// the run, tears down the harness/sandbox, and persists status + timeline).
+			// The API does NOT flip the status here — a fire-and-forget publish keeps the
+			// honest terminal record with the component that actually stopped the run.
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
-					// Mark investigation as cancelled by updating status
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -136,12 +166,18 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
-					// Update status to cancelled
-					const updated = await this.investigationsService.updateStatus(
-						input.id,
-						"cancelled",
-					);
-					return this.serializeInvestigation(updated || investigation);
+					// Reject cancel for a run that already reached a terminal state — there
+					// is nothing to stop, and a stale cancel must not resurrect/relabel it.
+					if (TERMINAL_STATUSES.has(investigation.status)) {
+						throw new ORPCError("CONFLICT", {
+							message: `Investigation ${input.id} is already ${investigation.status}`,
+						});
+					}
+					await this.queueService.publishCancel(input.id);
+					// Return the still-running investigation unchanged; the terminal
+					// "cancelled" state arrives via the worker + the SSE stream's terminal
+					// event (the UI refetches on stream completion).
+					return this.serializeInvestigation(investigation);
 				},
 			),
 

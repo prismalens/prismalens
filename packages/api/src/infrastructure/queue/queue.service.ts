@@ -80,6 +80,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	// Redis subscriber for stream relay
 	private redisSubscriber: Redis | null = null;
 
+	// Redis publisher for out-of-band control messages (the cancel channel). A
+	// subscriber connection cannot publish, so this is a separate client.
+	private redisPublisher: Redis | null = null;
+
 	constructor(private streamRelay: StreamRelayService) {}
 
 	async onModuleInit() {
@@ -132,6 +136,11 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				this.handleRedisStreamMessage(channel, message);
 			});
 
+			// Publisher for the cancel control channel (CANCEL slice, ADR-0018).
+			this.redisPublisher = new Redis(redisUrl, {
+				maxRetriesPerRequest: null,
+			});
+
 			this.logger.log("Queue service initialized with Redis");
 		} catch (error) {
 			this.logger.error(
@@ -143,6 +152,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	async onModuleDestroy() {
 		if (this.redisSubscriber) {
 			await this.redisSubscriber.quit();
+		}
+		if (this.redisPublisher) {
+			await this.redisPublisher.quit();
 		}
 		if (this.queueEvents) {
 			await this.queueEvents.close();
@@ -181,6 +193,26 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		);
 
 		return job.id ?? null;
+	}
+
+	/**
+	 * Publish a cancel request for an investigation (CANCEL slice, ADR-0018).
+	 *
+	 * Fire-and-forget 202-semantics: the running worker subscribes to
+	 * `investigation:cancel:{id}` and aborts its run on this message; the worker then
+	 * owns the terminal "cancelled" status write. Returns whether the message was
+	 * published (false if Redis is unavailable). Idempotent — a cancel for an already
+	 * finished run simply reaches no listener.
+	 */
+	async publishCancel(investigationId: string): Promise<boolean> {
+		if (!this.redisPublisher) {
+			this.logger.warn("Redis publisher not available - cancel not published");
+			return false;
+		}
+		const channel = `investigation:cancel:${investigationId}`;
+		await this.redisPublisher.publish(channel, "cancel");
+		this.logger.log(`Published cancel for investigation ${investigationId}`);
+		return true;
 	}
 
 	/**

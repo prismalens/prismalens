@@ -1,8 +1,10 @@
 import {
+	BadRequestException,
 	Body,
 	Controller,
 	HttpCode,
 	HttpStatus,
+	Logger,
 	NotFoundException,
 	Param,
 	Patch,
@@ -10,6 +12,11 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
+import type { CanonicalEvent } from "@prismalens/contracts";
+import {
+	AppendInvestigationEventsSchema,
+	CanonicalEventSchema,
+} from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import {
@@ -29,7 +36,52 @@ import { InternalGuard } from "./guards/internal.guard.js";
 @Controller("internal/investigations")
 @UseGuards(InternalGuard)
 export class InternalInvestigationsController {
+	private readonly logger = new Logger(InternalInvestigationsController.name);
+
 	constructor(private readonly investigationsService: InvestigationsService) {}
+
+	/**
+	 * Bulk-append canonical events to the durable record (ADR-0018 `store.append`).
+	 * Called by the worker store's batched flush. Each event is validated with
+	 * {@link CanonicalEventSchema}; an invalid one is dropped + logged (NEVER a 500 —
+	 * one bad event must not fail the batch). The insert is idempotent, so a batch
+	 * retry is a no-op. Returns the accepted/dropped counts.
+	 */
+	@Post(":id/events")
+	@HttpCode(HttpStatus.OK)
+	async appendEvents(
+		@Param("id") id: string,
+		@Body() body: unknown,
+	): Promise<{ accepted: number; dropped: number }> {
+		const envelope = AppendInvestigationEventsSchema.safeParse(body);
+		if (!envelope.success) {
+			// A malformed envelope (not `{ events: [...] }`) is a client error — distinct
+			// from a per-event validation drop.
+			throw new BadRequestException(
+				"Expected body shape { events: unknown[] }",
+			);
+		}
+
+		const valid: CanonicalEvent[] = [];
+		let dropped = 0;
+		for (const raw of envelope.data.events) {
+			const parsed = CanonicalEventSchema.safeParse(raw);
+			if (parsed.success) {
+				valid.push(parsed.data);
+			} else {
+				dropped++;
+				this.logger.warn(
+					`Dropped invalid canonical event for investigation ${id}: ${parsed.error.message}`,
+				);
+			}
+		}
+
+		if (valid.length > 0) {
+			await this.investigationsService.appendEvents(id, valid);
+		}
+
+		return { accepted: valid.length, dropped };
+	}
 
 	/**
 	 * Update investigation status (real-time updates during execution)

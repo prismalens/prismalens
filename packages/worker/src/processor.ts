@@ -132,7 +132,25 @@ async function processJobInternal(
 	// its teardown in the finally below. Especially load-bearing for `e2b`: a leaked
 	// remote VM keeps costing until its timeout.
 	let sandbox: Sandbox | undefined;
+	// Cooperative cancellation (CANCEL slice, ADR-0018): a DEDICATED Redis subscriber
+	// listens on this job's cancel channel; a message aborts the run's AbortSignal, which
+	// conductRun threads into the engine (stop consuming the merged stream → cascade the
+	// child kill + run-owned sandbox teardown). The subscription is torn down in the
+	// finally. A subscriber connection cannot also publish, hence a connection of its own.
+	const abortController = new AbortController();
+	const cancelChannel = `investigation:cancel:${data.investigationId}`;
+	const cancelSubscriber = new Redis(redisUrl, { maxRetriesPerRequest: null });
 	try {
+		cancelSubscriber.on("message", (channel: string) => {
+			if (channel === cancelChannel) {
+				logger.info(
+					`Cancel requested for investigation ${data.investigationId}`,
+				);
+				abortController.abort();
+			}
+		});
+		await cancelSubscriber.subscribe(cancelChannel);
+
 		// 1. runId == the investigation id.
 		const runId = data.investigationId;
 
@@ -159,6 +177,8 @@ async function processJobInternal(
 			investigationId: data.investigationId,
 			incidentId: data.incidentId,
 			runId,
+			apiBaseUrl: workerConfig.PRISMALENS_WORKER_API_URL,
+			internalSecret: process.env.PRISMALENS_INTERNAL_SECRET,
 		});
 		const outcome = await conductRun(
 			{
@@ -167,11 +187,22 @@ async function processJobInternal(
 				synth: resolved.synth,
 				fidelity: resolved.fidelity,
 				runId,
+				signal: abortController.signal,
 			},
 			{ sink, store },
 		);
 		// Terminal sentinel for the API relay.
 		await redisPublisher.publish(channel, JSON.stringify(["__done__", {}]));
+
+		// 4a-cancel. Cancelled by request (a Redis cancel message flipped the signal):
+		// conductRun left the store untouched, so the worker owns the terminal write —
+		// persist status "cancelled" + a timeline entry, then RETURN a cancelled result.
+		// Never throw: a throw would let BullMQ retry a user-cancelled run.
+		if (outcome.failureKind === "cancelled") {
+			logger.info(`Job ${job.id} cancelled`);
+			await persistCancelled(data);
+			return cancelledResult(data);
+		}
 
 		await job.updateProgress({ percent: 90, message: "Persisting results..." });
 
@@ -218,6 +249,14 @@ async function processJobInternal(
 		}
 		throw error;
 	} finally {
+		// Tear down the per-job cancel subscription (CANCEL slice) — always, so a leaked
+		// subscriber connection cannot outlive the job.
+		try {
+			cancelSubscriber.removeAllListeners();
+			await cancelSubscriber.quit();
+		} catch (e) {
+			logger.error("Failed to close cancel subscriber", e);
+		}
 		if (sandbox) {
 			try {
 				await sandbox.destroy();
@@ -226,6 +265,42 @@ async function processJobInternal(
 			}
 		}
 	}
+}
+
+/**
+ * Persist the terminal "cancelled" record (CANCEL slice, ADR-0018). conductRun leaves
+ * the store untouched on cancel (it has no cancel verb), so the worker writes the status
+ * + a timeline entry directly. Reuses the `investigation_completed` timeline type (no
+ * dedicated cancelled type in the contract) with a distinguishing title.
+ */
+async function persistCancelled(data: InvestigationJobData): Promise<void> {
+	await api.investigations.updateStatus({
+		id: data.investigationId,
+		status: "cancelled",
+		error: "Investigation cancelled",
+	});
+	await api.timeline.create({
+		incidentId: data.incidentId,
+		type: "investigation_completed",
+		title: "Investigation cancelled",
+		description: "The investigation was cancelled before it completed.",
+		source: "ai_worker",
+		metadata: { investigationId: data.investigationId },
+	});
+}
+
+/** A cancelled job result — returned (not thrown) so BullMQ marks the job done, no retry. */
+function cancelledResult(data: InvestigationJobData): InvestigationResult {
+	return {
+		success: false,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {},
+		recommendations: [],
+		agentExecutions: [],
+		error: "Investigation cancelled",
+		errorType: "cancelled",
+	};
 }
 
 /**

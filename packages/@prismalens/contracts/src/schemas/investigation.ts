@@ -426,6 +426,65 @@ export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
 
+// =============================================================================
+// DURABLE EVENT RECORD (ADR-0018 store.append) — bulk-append + replay/history
+// =============================================================================
+// The worker's durable STORE persists every CanonicalEvent to InvestigationEvent
+// rows (batched). These schemas cover the wire shapes: the internal bulk-append
+// payload (validated per-event, invalid ones dropped) and the public replay page.
+
+/**
+ * The sentinel `branchId` under which the terminal `report` event — the one
+ * CanonicalEvent kind that carries no `branchId` — is stored, so the durable
+ * record's idempotency key `(investigationId, branchId, seq)` stays well-defined
+ * for every event kind.
+ */
+export const INVESTIGATION_REPORT_BRANCH = "__report__";
+
+/** The internal bulk-append body — a batch of raw events, each validated per-item. */
+export const AppendInvestigationEventsSchema = z.object({
+	events: z.array(z.unknown()),
+});
+export type AppendInvestigationEventsInput = z.infer<
+	typeof AppendInvestigationEventsSchema
+>;
+
+/** The internal bulk-append result — how many rows were accepted vs dropped. */
+export const AppendInvestigationEventsResultSchema = z.object({
+	accepted: z.number().int(),
+	dropped: z.number().int(),
+});
+export type AppendInvestigationEventsResult = z.infer<
+	typeof AppendInvestigationEventsResultSchema
+>;
+
+/**
+ * Query for the public replay/history endpoint — paginate by a `seq` cursor
+ * (exclusive: rows with `seq > cursor`). Combined with the `:id` path param.
+ */
+export const GetInvestigationEventsSchema = z.object({
+	id: z.string().uuid(),
+	/** Exclusive `seq` cursor; omit for the first page. */
+	cursor: z.coerce.number().int().min(0).optional(),
+	limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+export type GetInvestigationEventsInput = z.infer<
+	typeof GetInvestigationEventsSchema
+>;
+
+/**
+ * A page of durable canonical events (parsed back through the schema on the way
+ * OUT). `nextCursor` is the `seq` to pass as the next query's `cursor`, or null at
+ * the end of the record.
+ */
+export const InvestigationEventsPageSchema = z.object({
+	events: z.array(CanonicalEventSchema),
+	nextCursor: z.number().int().nullable(),
+});
+export type InvestigationEventsPage = z.infer<
+	typeof InvestigationEventsPageSchema
+>;
+
 // ENGINE INVESTIGATION INPUTS (ADR-0008) — the seed alert + telemetry surfaces
 
 /** A firing alert, normalised from the Alertmanager v2 API. */
