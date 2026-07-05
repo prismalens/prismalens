@@ -14,7 +14,9 @@
  * dropped events — it never throws. The terminal events (the report / error that the
  * conductor buffers via `append` before calling `finish`/`fail`) are drained by a
  * synchronous flush at the TOP of `finish`/`fail`, before the status/result writes,
- * so the durable record is complete when the row flips terminal.
+ * so the durable record is complete when the row flips terminal. The conductor's
+ * `cancelled` outcome calls neither finish nor fail, so it invokes {@link flush}
+ * directly to drain the same buffered tail before it resolves.
  */
 import type { ContractRouterClient } from "@orpc/contract";
 import type {
@@ -207,6 +209,16 @@ export function createDbInvestigationStore(
 					actionable: true,
 				})),
 			});
+		},
+
+		async flush() {
+			// Synchronous drain for the conductor's cancelled path (which calls neither
+			// finish nor fail): push the buffered tail — incl. the terminal CANCELLED
+			// `error` event — out now, so a cancelled run's durable record is complete
+			// instead of stranded on the unref'd timer. Reuses the same serial flush the
+			// timer/size triggers use, so it can never double-send a batch (doFlush takes
+			// the whole buffer synchronously).
+			await flush();
 		},
 
 		async fail(error: string) {

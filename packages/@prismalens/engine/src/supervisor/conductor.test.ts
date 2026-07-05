@@ -100,6 +100,9 @@ function recordingStore(): {
 				calls.push("fail");
 				failedWith.push(err);
 			},
+			flush: async () => {
+				calls.push("flush");
+			},
 		},
 	};
 }
@@ -230,9 +233,15 @@ describe("conductRun — cooperative cancellation (CANCEL slice, ADR-0018)", () 
 			kind: "error",
 			message: CANCELLED_MESSAGE,
 		});
-		// The store recorded events but was NOT driven to finish/fail on cancel — the
-		// caller owns the terminal "cancelled" write (the store has no cancel verb).
-		expect(calls).toEqual(["create", "append:agent_step", "append:error"]);
+		// The store recorded events and was FLUSHED (draining the buffered tail incl. the
+		// terminal CANCELLED `error` event) but was NOT driven to finish/fail on cancel —
+		// the caller owns the terminal "cancelled" write (the store has no cancel verb).
+		expect(calls).toEqual([
+			"create",
+			"append:agent_step",
+			"append:error",
+			"flush",
+		]);
 		expect(calls).not.toContain("finish");
 		expect(calls).not.toContain("fail");
 		expect(failedWith).toEqual([]);

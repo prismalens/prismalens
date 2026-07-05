@@ -232,6 +232,29 @@ export class InvestigationsService {
 	}
 
 	/**
+	 * Cancel a still-PENDING investigation (CANCEL slice, ADR-0018). When a run is
+	 * cancelled before any worker picks it up, the queued job is removed directly (no
+	 * worker is subscribed to its cancel channel) and the API owns the terminal write —
+	 * there is no worker to persist "cancelled". Flips the status and records a timeline
+	 * entry, mirroring the worker's cancelled record for a running run.
+	 */
+	async cancelPending(
+		id: string,
+		incidentId: string,
+	): Promise<Investigation | null> {
+		const updated = await this.updateStatus(id, "cancelled");
+		await this.timelineService.create({
+			incidentId,
+			type: TimelineEntryType.investigation_completed,
+			title: "Investigation cancelled",
+			description: "The investigation was cancelled before it started.",
+			source: TimelineSource.system,
+			metadata: { investigationId: id },
+		});
+		return updated;
+	}
+
+	/**
 	 * Write full investigation result with all relations (atomic transaction)
 	 * Used by Python worker via internal API
 	 * Writes: investigation, agent_executions, tool_executions, recommendations, incident update, timeline
@@ -444,6 +467,30 @@ export class InvestigationsService {
 			}
 		}
 		return { inserted, duplicates };
+	}
+
+	/**
+	 * Delete the durable canonical event record for an investigation (ADR-0018 B.4).
+	 *
+	 * Called by the worker at the START of a BullMQ RETRY (attempt 2+): each attempt's
+	 * events are keyed on `(investigationId, branchId, seq)`, so a retry's rows collide
+	 * with the failed attempt's and get swallowed as duplicates (P2002) — leaving the
+	 * durable record showing the FAILED attempt's events for a run that later completed.
+	 * Clearing first gives each attempt a fresh record. Idempotent (deleteMany of zero
+	 * rows is a no-op).
+	 *
+	 * @returns how many rows were deleted.
+	 */
+	async clearEvents(investigationId: string): Promise<number> {
+		const { count } = await this.prisma.investigationEvent.deleteMany({
+			where: { investigationId },
+		});
+		if (count > 0) {
+			this.logger.log(
+				`Cleared ${count} durable event(s) for investigation ${investigationId} (retry)`,
+			);
+		}
+		return count;
 	}
 
 	/**

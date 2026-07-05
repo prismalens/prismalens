@@ -158,6 +158,45 @@ describe("createDbInvestigationStore — batched durable append", () => {
 		);
 	});
 
+	it("flush() drains the buffered tail synchronously (the conductor's cancelled path)", async () => {
+		const appendEvents = vi.fn().mockResolvedValue(undefined);
+		const { store } = makeStore(appendEvents);
+
+		await store.append(evt(1));
+		await store.append(evt(2));
+		// No size/timer trigger yet — the tail is still buffered.
+		expect(appendEvents).not.toHaveBeenCalled();
+
+		await store.flush();
+
+		expect(appendEvents).toHaveBeenCalledTimes(1);
+		expect(appendEvents.mock.calls[0][0]).toHaveLength(2);
+	});
+
+	it("flush() cannot double-send: a pending timer flush and flush() drain the buffer once", async () => {
+		vi.useFakeTimers();
+		const appendEvents = vi.fn().mockResolvedValue(undefined);
+		const { store } = makeStore(appendEvents);
+
+		await store.append(evt(1));
+		// flush() takes the whole buffer and cancels the pending timer; the later timer
+		// fire finds an empty buffer and is a no-op.
+		await store.flush();
+		await vi.advanceTimersByTimeAsync(FLUSH_INTERVAL_MS);
+
+		expect(appendEvents).toHaveBeenCalledTimes(1);
+		expect(appendEvents.mock.calls[0][0]).toHaveLength(1);
+	});
+
+	it("flush() on an empty buffer is a no-op", async () => {
+		const appendEvents = vi.fn().mockResolvedValue(undefined);
+		const { store } = makeStore(appendEvents);
+
+		await store.flush();
+
+		expect(appendEvents).not.toHaveBeenCalled();
+	});
+
 	it("never throws when a flush fails — it logs, drops, and counts the batch", async () => {
 		const warnSpy = vi
 			.spyOn(Logger.prototype, "warn")

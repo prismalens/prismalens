@@ -28,6 +28,7 @@ function stepEvent(seq: number): CanonicalEvent {
 function makeController() {
 	const service = {
 		appendEvents: vi.fn().mockResolvedValue({ inserted: 0, duplicates: 0 }),
+		clearEvents: vi.fn().mockResolvedValue(0),
 	};
 	const controller = new InternalInvestigationsController(
 		service as unknown as InvestigationsService,
@@ -81,5 +82,31 @@ describe("InternalInvestigationsController.appendEvents (bulk-append)", () => {
 		await expect(
 			controller.appendEvents(INV_ID, { notEvents: true }),
 		).rejects.toBeInstanceOf(BadRequestException);
+	});
+});
+
+describe("InternalInvestigationsController.clearEvents (retry fresh-record)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+	});
+
+	it("deletes the durable record and reports the deleted count", async () => {
+		const { controller, service } = makeController();
+		service.clearEvents.mockResolvedValue(7);
+
+		const result = await controller.clearEvents(INV_ID);
+
+		expect(service.clearEvents).toHaveBeenCalledWith(INV_ID);
+		expect(result).toEqual({ deleted: 7 });
+	});
+
+	it("is a no-op when there is nothing to clear (0 rows)", async () => {
+		const { controller, service } = makeController();
+		service.clearEvents.mockResolvedValue(0);
+
+		const result = await controller.clearEvents(INV_ID);
+
+		expect(result).toEqual({ deleted: 0 });
 	});
 });

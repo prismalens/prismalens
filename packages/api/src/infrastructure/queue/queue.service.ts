@@ -216,6 +216,39 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	/**
+	 * Remove a still-queued investigation job directly (CANCEL slice, ADR-0018).
+	 *
+	 * A PENDING run has no worker subscribed to its cancel channel yet (the worker only
+	 * subscribes once it STARTS the job), and Redis pub/sub has no retention — so a
+	 * `publishCancel` would be dropped and the queued job would later run to completion.
+	 * Removing the job from the queue is the reliable stop for that state.
+	 *
+	 * Returns whether the job was removed. `false` when: the queue is unavailable, the
+	 * job is gone, OR a worker grabbed it in the race and BullMQ refuses to remove a
+	 * locked/active job — the caller then falls back to the publish path (the worker now
+	 * owns the run). Never throws; a removal failure is a signal, not an error.
+	 */
+	async removeJob(jobId: string): Promise<boolean> {
+		if (!this.investigationQueue) {
+			this.logger.warn("Queue not available - job not removed");
+			return false;
+		}
+		const job = await this.investigationQueue.getJob(jobId);
+		if (!job) return false;
+		try {
+			await job.remove();
+			this.logger.log(`Removed queued investigation job ${jobId}`);
+			return true;
+		} catch (error) {
+			// BullMQ throws when removing a locked (active) job — a worker took it mid-race.
+			this.logger.warn(
+				`Could not remove job ${jobId} (likely already active): ${(error as Error).message}`,
+			);
+			return false;
+		}
+	}
+
+	/**
 	 * Get status of a job by ID.
 	 */
 	async getJobStatus(jobId: string): Promise<{

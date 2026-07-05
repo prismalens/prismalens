@@ -150,12 +150,16 @@ export class InvestigationsController {
 				return executions.map((e) => this.serializeAgentExecution(e));
 			}),
 
-			// POST /investigations/:id/cancel - Request cancellation of a running run.
-			// 202-semantics (CANCEL slice, ADR-0018): publish to the Redis cancel channel
-			// and return; the WORKER owns the terminal "cancelled" status write (it aborts
-			// the run, tears down the harness/sandbox, and persists status + timeline).
-			// The API does NOT flip the status here — a fire-and-forget publish keeps the
-			// honest terminal record with the component that actually stopped the run.
+			// POST /investigations/:id/cancel - Request cancellation of a run.
+			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
+			//   - RUNNING: 202-semantics — publish to the Redis cancel channel and return.
+			//     A subscribed worker aborts the run, tears down the harness/sandbox, and
+			//     owns the terminal "cancelled" write. The API does NOT flip status here.
+			//   - PENDING (queued): no worker is subscribed yet, and Redis pub/sub has no
+			//     retention — a publish would be dropped and the job would later run to
+			//     completion. Remove the queued job directly and write the terminal
+			//     "cancelled" record HERE (the API owns it; no worker has the run). If
+			//     removal fails (a worker grabbed it in the race), fall through to publish.
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
@@ -172,6 +176,19 @@ export class InvestigationsController {
 						throw new ORPCError("CONFLICT", {
 							message: `Investigation ${input.id} is already ${investigation.status}`,
 						});
+					}
+					if (investigation.status === "pending") {
+						const jobId = `investigation-${input.id}`;
+						const removed = await this.queueService.removeJob(jobId);
+						if (removed) {
+							const cancelled = await this.investigationsService.cancelPending(
+								input.id,
+								investigation.incidentId,
+							);
+							return this.serializeInvestigation(cancelled ?? investigation);
+						}
+						// Lost the race — a worker started the job. Fall through to publish
+						// so that worker owns the terminal write.
 					}
 					await this.queueService.publishCancel(input.id);
 					// Return the still-running investigation unchanged; the terminal

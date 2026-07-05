@@ -15,11 +15,13 @@ import { InvestigationsService } from "./investigations.service.js";
 const mockInvestigationsService = {
 	findById: vi.fn(),
 	updateStatus: vi.fn(),
+	cancelPending: vi.fn(),
 };
 
 const mockQueueService = {
 	publishCancel: vi.fn(),
 	getJobStatus: vi.fn(),
+	removeJob: vi.fn(),
 };
 
 function investigation(id: string, status: string) {
@@ -76,19 +78,53 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 
 		expect(mockQueueService.publishCancel).toHaveBeenCalledWith("inv-1");
 		// The endpoint does NOT persist a terminal status — the worker owns that write.
-		expect(mockInvestigationsService.updateStatus).not.toHaveBeenCalled();
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+		// A running run is never removed from the queue (it is already active).
+		expect(mockQueueService.removeJob).not.toHaveBeenCalled();
 		expect(result.status).toBe("running");
 	});
 
-	it("pending run: also cancellable (publishes)", async () => {
+	it("pending run: removes the queued job and writes the terminal 'cancelled' record (no publish)", async () => {
 		mockInvestigationsService.findById.mockResolvedValue(
 			investigation("inv-2", "pending"),
 		);
+		mockQueueService.removeJob.mockResolvedValue(true);
+		mockInvestigationsService.cancelPending.mockResolvedValue(
+			investigation("inv-2", "cancelled"),
+		);
+
+		const result = await cancelHandler()({ input: { id: "inv-2" } });
+
+		// A pending run has no subscribed worker — removing the job is the reliable stop.
+		expect(mockQueueService.removeJob).toHaveBeenCalledWith(
+			"investigation-inv-2",
+		);
+		// The API owns the terminal write for a pending cancel (no worker has the run).
+		expect(mockInvestigationsService.cancelPending).toHaveBeenCalledWith(
+			"inv-2",
+			"inc-1",
+		);
+		// No fire-and-forget publish — pub/sub would be dropped with no subscriber.
+		expect(mockQueueService.publishCancel).not.toHaveBeenCalled();
+		expect(result.status).toBe("cancelled");
+	});
+
+	it("pending run but the worker won the race: removal fails → falls through to publish", async () => {
+		mockInvestigationsService.findById.mockResolvedValue(
+			investigation("inv-4", "pending"),
+		);
+		// removeJob returns false when a worker grabbed (locked) the job mid-race.
+		mockQueueService.removeJob.mockResolvedValue(false);
 		mockQueueService.publishCancel.mockResolvedValue(true);
 
-		await cancelHandler()({ input: { id: "inv-2" } });
+		await cancelHandler()({ input: { id: "inv-4" } });
 
-		expect(mockQueueService.publishCancel).toHaveBeenCalledWith("inv-2");
+		expect(mockQueueService.removeJob).toHaveBeenCalledWith(
+			"investigation-inv-4",
+		);
+		// The worker now owns the run → the publish path (worker owns the terminal write).
+		expect(mockQueueService.publishCancel).toHaveBeenCalledWith("inv-4");
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
 	});
 
 	it.each([

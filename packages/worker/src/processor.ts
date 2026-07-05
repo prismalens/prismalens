@@ -93,6 +93,40 @@ async function fetchLlmConfig(): Promise<{
 }
 
 /**
+ * Clear the durable canonical event record for an investigation (ADR-0018 B.4) before a
+ * BullMQ RETRY. Attempt 2+ would otherwise collide with attempt 1's rows on
+ * `(investigationId, branchId, seq)` and be dropped as duplicates (P2002), leaving the
+ * record showing the FAILED attempt's events. Same X-Internal-Secret pattern as the
+ * bulk-append/LLM-config fetch. Throws on a missing secret or non-2xx so the caller can
+ * log it (best-effort — a clear failure must not block the retry).
+ */
+async function clearDurableEvents(investigationId: string): Promise<void> {
+	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
+	if (!internalSecret) {
+		// No secret ⇒ the durable record was never written (poster throws on every
+		// flush), so there is nothing to clear.
+		return;
+	}
+	const url = new URL(
+		`/internal/investigations/${investigationId}/events/clear`,
+		workerConfig.PRISMALENS_WORKER_API_URL,
+	);
+	const response = await fetch(url.toString(), {
+		method: "POST",
+		headers: {
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		signal: AbortSignal.timeout(10_000),
+	});
+	if (!response.ok) {
+		throw new Error(
+			`clear-events failed: ${response.status} ${response.statusText}`,
+		);
+	}
+}
+
+/**
  * Process an investigation job from the queue.
  */
 export default async function processInvestigationJob(
@@ -150,6 +184,19 @@ async function processJobInternal(
 			}
 		});
 		await cancelSubscriber.subscribe(cancelChannel);
+
+		// BullMQ RETRY (attempt 2+): the prior attempt left a stale durable event record
+		// whose rows would collide with this attempt's on (investigationId, branchId, seq)
+		// and be swallowed as duplicates — so the record would show the FAILED attempt's
+		// events. Clear it so each attempt owns a fresh record. Best-effort: a clear
+		// failure logs and proceeds (never blocks the retry).
+		if (job.attemptsMade > 0) {
+			try {
+				await clearDurableEvents(data.investigationId);
+			} catch (e) {
+				logger.error("Failed to clear stale durable events on retry", e);
+			}
+		}
 
 		// 1. runId == the investigation id.
 		const runId = data.investigationId;

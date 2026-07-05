@@ -51,6 +51,14 @@ export interface InvestigationStore {
 	finish(report: InvestigationReport): Promise<void>;
 	/** Mark the record failed (no-evidence branch or a thrown transport error). */
 	fail(error: string): Promise<void>;
+	/**
+	 * Synchronously drain any buffered durable writes (optional). `finish`/`fail` own
+	 * this drain on their own paths, but the `cancelled` outcome calls NEITHER — so
+	 * `conductRun` invokes `flush` on cancel to force the buffered tail (incl. the
+	 * terminal CANCELLED `error` event) out before it resolves. A store that persists
+	 * synchronously (CLI/no-op) omits it.
+	 */
+	flush?(): Promise<void>;
 }
 
 export interface ConductedOutcome {
@@ -105,9 +113,13 @@ export async function conductRun(
 		return { runId, report: null, error: msg, failureKind: "error" };
 	}
 
-	// Cancelled: leave the store untouched (it has no cancel verb; the caller writes the
-	// terminal "cancelled" record from this outcome).
+	// Cancelled: the store gets no finish/fail (it has no cancel verb; the caller writes
+	// the terminal "cancelled" record from this outcome). But a buffered store (the
+	// worker's) would otherwise lose its unflushed tail — up to a batch of events INCL.
+	// the terminal CANCELLED `error` event — to an unref'd fire-and-forget timer, so
+	// drain it synchronously here before resolving.
 	if (cancelled) {
+		await io.store.flush?.();
 		return { runId, report: null, error: lastError, failureKind: "cancelled" };
 	}
 

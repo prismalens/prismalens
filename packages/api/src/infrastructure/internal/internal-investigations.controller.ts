@@ -84,6 +84,21 @@ export class InternalInvestigationsController {
 	}
 
 	/**
+	 * Clear the durable canonical event record (ADR-0018 B.4). Called by the worker at
+	 * the START of a BullMQ RETRY so each attempt owns a FRESH record — attempt 2's
+	 * events would otherwise collide with attempt 1's on `(investigationId, branchId,
+	 * seq)` and be swallowed as duplicates (P2002), leaving the record showing the failed
+	 * attempt's events for a run that later completes. Idempotent (deleting zero rows is
+	 * a no-op). Same X-Internal-Secret guard as the bulk-append above.
+	 */
+	@Post(":id/events/clear")
+	@HttpCode(HttpStatus.OK)
+	async clearEvents(@Param("id") id: string): Promise<{ deleted: number }> {
+		const deleted = await this.investigationsService.clearEvents(id);
+		return { deleted };
+	}
+
+	/**
 	 * Update investigation status (real-time updates during execution)
 	 * Called when job starts (running), fails, or is cancelled
 	 */

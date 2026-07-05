@@ -30,7 +30,11 @@ import {
 } from "../runner/claude-code-runner.js";
 import { decompose } from "./decompose.js";
 import { fanOut } from "./fan-out.js";
-import { reduce, type SynthesisModelConfig } from "./synthesize.js";
+import {
+	type ReportModel,
+	reduce,
+	type SynthesisModelConfig,
+} from "./synthesize.js";
 
 /**
  * A Tier-2 harness as the supervisor sees it: given the investigation prompt and a
@@ -101,6 +105,12 @@ export interface InvestigateOptions {
 	 * `failureKind: "cancelled"` outcome (the store has no cancel verb).
 	 */
 	signal?: AbortSignal;
+	/**
+	 * Test seam: override the reduce-step model (the one supervisor LLM call). Defaults
+	 * to the real LLM (see {@link reduce}); injected in hermetic tests to exercise the
+	 * synthesis boundary — e.g. the abort-during-reduce guard — with no live call.
+	 */
+	model?: ReportModel;
 }
 
 /**
@@ -118,6 +128,23 @@ const CANCELLED_BRANCH_ID = "supervisor";
 /** True when an `error` event's message is the cancellation sentinel above. */
 export function isCancelledError(message: string): boolean {
 	return message === CANCELLED_MESSAGE;
+}
+
+/**
+ * The ONE distinguishable terminal `error` event an aborted run emits (no new contract
+ * kind). Emitted from every cancel exit — mid-stream abort AND an abort landing around
+ * the terminal reduce() — so the conductor reads a single `cancelled` outcome shape.
+ */
+function cancelledErrorEvent(runId: string, seq: number): CanonicalEvent {
+	return {
+		kind: "error",
+		runId,
+		branchId: CANCELLED_BRANCH_ID,
+		path: [],
+		seq,
+		ts: new Date().toISOString(),
+		message: CANCELLED_MESSAGE,
+	};
 }
 
 /** One merged-stream step, or the abort interrupting a step parked on a slow branch. */
@@ -239,15 +266,7 @@ export async function* investigateIncidentStream(
 	// and stop — no reduce(), no fabricated report. The no-evidence honesty (ADR-0002)
 	// applies verbatim: an interrupted run has not earned a report.
 	if (cancelled) {
-		yield {
-			kind: "error",
-			runId,
-			branchId: CANCELLED_BRANCH_ID,
-			path: [],
-			seq: collected.length,
-			ts: new Date().toISOString(),
-			message: CANCELLED_MESSAGE,
-		};
+		yield cancelledErrorEvent(runId, collected.length);
 		return;
 	}
 
@@ -256,7 +275,23 @@ export async function* investigateIncidentStream(
 	// ordered-evidence / the Constitution's "no evidence → no report" rule.
 	const toolResults = collected.filter((e) => e.kind === "tool_result").length;
 	if (toolResults === 0) return;
-	const report = await reduce(opts.context, collected, opts.synth);
+
+	// Abort landing AFTER the merged stream drained but BEFORE synthesis: the drive-loop
+	// can no longer observe it (there is nothing left to pull), so guard reduce() here.
+	// An interrupted run has not earned a report — emit the same terminal cancelled event
+	// and stop, do NOT spend the supervisor LLM call.
+	if (opts.signal?.aborted) {
+		yield cancelledErrorEvent(runId, collected.length);
+		return;
+	}
+	const report = await reduce(opts.context, collected, opts.synth, opts.model);
+	// Abort landing DURING reduce(): the LLM call is not itself abortable (out of scope),
+	// so it ran to completion — but its result is DISCARDED. A cancelled run persists no
+	// report, mirroring the mid-stream abort branch (ADR-0002).
+	if (opts.signal?.aborted) {
+		yield cancelledErrorEvent(runId, collected.length);
+		return;
+	}
 	yield {
 		kind: "report",
 		runId,
