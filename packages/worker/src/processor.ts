@@ -380,12 +380,14 @@ export function buildHarnessEnv(
 
 /**
  * Parse the `PRISMALENS_SANDBOX` knob (ADR-0020) into a {@link SandboxMode}. Defaults to
- * `process` — the cooperative floor — TODAY; flipping the server default to an
- * enforced-mandatory boundary (`e2b`) is Phase D packaging, not this slice. An unknown
- * value fails LOUDLY rather than silently degrading to the floor.
+ * `auto` — srt when its egress bridge is healthy (the self-check, B.1.1), else the
+ * cooperative process floor; the degrade is honest, never silent. Making `auto` the default
+ * is safe precisely because of that self-check. Making an enforced boundary MANDATORY
+ * (`e2b`, no floor fallback) is Phase D packaging, not this slice. An unknown value fails
+ * LOUDLY rather than silently degrading to the floor.
  */
 export function parseSandboxMode(raw: string | undefined): SandboxMode {
-	const value = raw ?? "process";
+	const value = raw ?? "auto";
 	if ((SANDBOX_MODES as readonly string[]).includes(value)) {
 		return value as SandboxMode;
 	}
@@ -397,21 +399,25 @@ export function parseSandboxMode(raw: string | undefined): SandboxMode {
 /**
  * Mirror the CLI's sandbox guard (cli/src/cli/investigate.ts): only ACP-transport
  * harnesses are spawned as a child the engine can place inside a boundary — the Agent
- * SDK / subprocess harnesses run their own way — so a NON-`process` sandbox request for a
- * non-ACP harness must FAIL THE JOB FAST with an actionable message, never silently
- * record an enforcement that did not apply (ADR-0017 honest fidelity). Returns whether
- * the harness takes a sandbox, so the caller resolves one only when it will be consumed.
+ * SDK / subprocess harnesses run their own way. FAIL THE JOB FAST only when the mode
+ * DEMANDS an enforced boundary (`srt`/`e2b`) a non-ACP harness cannot honour (ADR-0017
+ * honest fidelity — never record an enforcement that did not apply). `auto` and `process`
+ * on a non-ACP harness take NO sandbox and DO NOT throw: `auto` means best-effort, and the
+ * best available for an in-process harness is none — nothing is claimed, nothing is
+ * dishonest. Returns whether the harness takes a sandbox, so the caller resolves one only
+ * when it will be consumed.
  */
 export function harnessTakesSandbox(
 	harness: HarnessId,
 	mode: SandboxMode,
 ): boolean {
 	const takesSandbox = HARNESS_REGISTRY[harness]?.transport === "acp";
-	if (!takesSandbox && mode !== "process") {
+	const demandsEnforcedBoundary = mode === "srt" || mode === "e2b";
+	if (!takesSandbox && demandsEnforcedBoundary) {
 		throw new Error(
-			`Harness "${harness}" cannot run inside a sandbox yet (it is not spawned as ` +
-				`a child process). Set PRISMALENS_SANDBOX=process or use an ACP harness ` +
-				`(deepagents).`,
+			`Harness "${harness}" cannot run inside an enforced sandbox (${mode}) yet — it ` +
+				`is not spawned as a child process. Set PRISMALENS_SANDBOX=auto or process ` +
+				`(no enforced boundary), or use an ACP harness (deepagents).`,
 		);
 	}
 	return takesSandbox;
@@ -448,6 +454,31 @@ export function deriveWorkerAllowedHosts(
 		}
 	}
 	return [...hosts];
+}
+
+/**
+ * The egress SELF-CHECK target (ADR-0020 B.1.1) for the worker: the FIRST configured,
+ * parseable FULL URL among the worker's own API URL and the INVESTIGATION_DEFAULTS
+ * telemetry endpoints — handed to `auto` as `probeUrl` so its throwaway srt boundary curls
+ * a REAL endpoint (not a fabricated `https://<host>/`). `undefined` when none parse, in
+ * which case `auto` floors rather than standing up a zero-egress boundary (FIX 6).
+ */
+export function workerProbeUrl(): string | undefined {
+	const candidates = [
+		workerConfig.PRISMALENS_WORKER_API_URL,
+		INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
+		INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
+		INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+	];
+	for (const url of candidates) {
+		if (!url) continue;
+		try {
+			return new URL(url).href;
+		} catch {
+			// not a parseable URL — skip; a malformed endpoint is no probe target
+		}
+	}
+	return undefined;
 }
 
 /**
@@ -506,11 +537,12 @@ async function buildRequest(
 	}
 
 	// Isolation boundary (ADR-0020 B.1.3): the PRISMALENS_SANDBOX knob selects it; the
-	// server default is still `process` (the enforced-mandatory flip is Phase D
+	// server default is now `auto` — srt when its egress bridge is healthy (self-check,
+	// B.1.1), else the process floor (the enforced-MANDATORY flip is still Phase D
 	// packaging). Guard first (mirror the CLI): a non-`process` request for a non-ACP
-	// harness fails the job fast; then resolve an enforced boundary only for the ACP
-	// harness, with an allowlist derived from the LLM + telemetry hosts. The resolved
-	// sandbox is CALLER-OWNED — processJobInternal destroys it after the run.
+	// harness fails the job fast; then resolve a boundary only for the ACP harness, with
+	// an allowlist derived from the LLM + telemetry hosts. The resolved sandbox is
+	// CALLER-OWNED — processJobInternal destroys it after the run.
 	const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
 	const takesSandbox = harnessTakesSandbox(harness as HarnessId, sandboxMode);
 	let sandbox: Sandbox | undefined;
@@ -519,7 +551,21 @@ async function buildRequest(
 			synthProvider,
 			synthIsOpenAiCompat ? [baseURL] : [],
 		);
-		sandbox = resolveSandbox(sandboxMode, { allowedDomains }).sandbox;
+		// ASYNC: `auto` runs an egress self-check (B.1.1) before trusting srt for this
+		// egress-needing run. Log the honest reason on a degrade (ADR-0017) so an
+		// operator sees the worker fell back to the cooperative floor, never a silent
+		// downgrade.
+		const probeUrl = workerProbeUrl();
+		const selection = await resolveSandbox(sandboxMode, {
+			allowedDomains,
+			...(probeUrl ? { probeUrl } : {}),
+		});
+		if (selection.degradeReason) {
+			logger.warn(
+				`Sandbox '${sandboxMode}' degraded to ${selection.actual}: ${selection.degradeReason}`,
+			);
+		}
+		sandbox = selection.sandbox;
 	}
 
 	return {

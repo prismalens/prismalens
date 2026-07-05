@@ -95,7 +95,7 @@ export default defineCommand({
 			type: "enum",
 			options: [...SANDBOX_MODES],
 			description:
-				"Isolation boundary the harness runs in (ADR-0020): process (cooperative floor), srt (enforced), or auto. Defaults to agent.sandbox in config (process).",
+				"Isolation boundary the harness runs in (ADR-0020): process (cooperative floor), srt (enforced), or auto. Defaults to agent.sandbox in config (auto — srt when its egress bridge is healthy, else the process floor).",
 		},
 		service: {
 			type: "string",
@@ -160,42 +160,49 @@ export default defineCommand({
 
 		// Resolve the isolation boundary (ADR-0020): --sandbox wins over agent.sandbox.
 		// Only ACP-transport harnesses are spawned as a child the engine can place
-		// inside a boundary (the Agent SDK harness runs in-process): an EXPLICIT
-		// sandbox request for a harness that cannot honour it fails fast (ADR-0017 —
-		// never claim an enforcement that would not apply), while the mere `process`
-		// default is skipped silently. Fail fast on an explicit `srt` request we
-		// cannot honour; `auto` degrades to the floor (surfaced below). The sandbox
-		// is CALLER-OWNED — destroyed in the finally.
+		// inside a boundary (the Agent SDK harness runs in-process). Fail fast ONLY when
+		// the mode DEMANDS an enforced boundary (`srt`/`e2b`) a non-ACP harness cannot
+		// honour (ADR-0017 — never claim an enforcement that would not apply). `auto` and
+		// `process` with a non-ACP harness run WITHOUT a sandbox silently: `auto` means
+		// best-effort, and the best available for an in-process harness is none — nothing
+		// is claimed, so nothing is dishonest. The sandbox is CALLER-OWNED — destroyed in
+		// the finally.
 		const harnessName =
 			(args.harness as HarnessId | undefined) ?? config.agent.default;
-		const harnessTakesSandbox =
-			HARNESS_REGISTRY[harnessName]?.transport === "acp";
 		const sandboxMode =
 			(args.sandbox as SandboxMode | undefined) ?? config.agent.sandbox;
+		const guard = resolveSandboxGuard(harnessName, sandboxMode);
+		const harnessTakesSandbox = guard.takesSandbox;
 		let selection: SandboxSelection | null = null;
-		if (!harnessTakesSandbox && (args.sandbox || sandboxMode !== "process")) {
+		if (guard.blocked) {
 			consola.error(
-				`Harness "${harnessName}" cannot run inside a sandbox yet (it is not ` +
-					`spawned as a child process). Drop --sandbox / agent.sandbox or use ` +
-					`an ACP harness (deepagents).`,
+				`Harness "${harnessName}" cannot run inside an enforced sandbox ` +
+					`(${sandboxMode}) yet — it is not spawned as a child process. Use ` +
+					`--sandbox auto or process (no enforced boundary), or an ACP harness ` +
+					`(deepagents).`,
 			);
 			process.exitCode = 1;
 			return;
 		}
 		if (harnessTakesSandbox) {
 			try {
-				selection = resolveSandbox(sandboxMode, {
+				const probeUrl = firstProbeUrl(config);
+				selection = await resolveSandbox(sandboxMode, {
 					allowedDomains: collectAllowedDomains(config),
+					...(probeUrl ? { probeUrl } : {}),
 				});
 			} catch (err) {
 				consola.error(err instanceof Error ? err.message : String(err));
 				process.exitCode = 1;
 				return;
 			}
-			// Honest fidelity (ADR-0017): a silent degrade would mislead — name it.
+			// Honest fidelity (ADR-0017): a silent degrade would mislead — name it, with
+			// the self-check's reason (srt absent, or its egress bridge dead — B.1.1).
 			if (sandboxMode === "auto" && selection.actual !== "srt") {
 				consola.warn(
-					`Sandbox 'auto': srt unavailable — running in the ${selection.actual} (cooperative, not an OS boundary).`,
+					`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${
+						selection.degradeReason ?? "srt unavailable"
+					}.`,
 				);
 			} else if (selection.actual === "srt") {
 				info("Sandbox: srt (enforced OS boundary).");
@@ -335,6 +342,48 @@ function collectAllowedDomains(config: PlConfig): string[] {
 		}
 	}
 	return [...hosts];
+}
+
+/**
+ * The egress SELF-CHECK target (ADR-0020 B.1.1): the FIRST configured, parseable FULL URL
+ * among the telemetry + log surfaces — handed to `auto` as `probeUrl` so its throwaway srt
+ * boundary curls a REAL endpoint (not a fabricated `https://<host>/`). Kept as a full URL
+ * on purpose (path/port matter for the probe); `undefined` when nothing is configured, in
+ * which case `auto` floors rather than standing up a zero-egress boundary (FIX 6).
+ */
+function firstProbeUrl(config: PlConfig): string | undefined {
+	const urls = [
+		config.telemetry.prometheusUrl,
+		config.telemetry.alertmanagerUrl,
+		config.telemetry.apiUrl,
+		config.logs.url,
+	];
+	for (const url of urls) {
+		if (!url) continue;
+		try {
+			return new URL(url).href;
+		} catch {
+			// not a parseable URL — skip; a malformed endpoint is no probe target
+		}
+	}
+	return undefined;
+}
+
+/**
+ * The sandbox guard (ADR-0020/0017), mirrored in the worker's `harnessTakesSandbox`: only
+ * ACP-transport harnesses are spawned as a child the engine can place inside a boundary.
+ * Returns whether this harness `takesSandbox` and whether the request is `blocked` — the
+ * fail-fast case where a mode that DEMANDS an enforced boundary (`srt`/`e2b`) was asked of a
+ * non-ACP harness. `auto`/`process` are never blocked: they run WITHOUT a sandbox on an
+ * in-process harness, claiming nothing, so nothing is dishonest.
+ */
+export function resolveSandboxGuard(
+	harness: HarnessId,
+	mode: SandboxMode,
+): { takesSandbox: boolean; blocked: boolean } {
+	const takesSandbox = HARNESS_REGISTRY[harness]?.transport === "acp";
+	const demandsEnforcedBoundary = mode === "srt" || mode === "e2b";
+	return { takesSandbox, blocked: !takesSandbox && demandsEnforcedBoundary };
 }
 
 // ---------------------------------------------------------------------------

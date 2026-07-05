@@ -11,7 +11,7 @@ import { isSrtAvailable } from "./srt.js";
 
 describe("resolveSandbox", () => {
 	it("process → the cooperative floor, honestly labelled", async () => {
-		const sel = resolveSandbox("process");
+		const sel = await resolveSandbox("process");
 		expect(sel.requested).toBe("process");
 		expect(sel.actual).toBe("process-floor");
 		expect(sel.sandbox.id).toBe("process-floor");
@@ -27,44 +27,50 @@ describe("resolveSandbox", () => {
 	// needs an API key, so selecting it on a laptop would be wrong. `auto` only ever
 	// yields srt or the floor, so its `actual` can never be "e2b".
 	describe.skipIf(isE2bAvailable())("when E2B is unavailable", () => {
-		it("e2b throws a clear, actionable error (never silently downgrades)", () => {
-			expect(() => resolveSandbox("e2b")).toThrowError(
+		it("e2b rejects with a clear, actionable error (never silently downgrades)", async () => {
+			await expect(resolveSandbox("e2b")).rejects.toThrowError(
 				/e2b sandbox unavailable/,
 			);
 		});
 	});
 
 	it("auto never selects the explicit-only e2b provider", async () => {
-		const sel = resolveSandbox("auto");
+		const sel = await resolveSandbox("auto");
 		expect(sel.actual).not.toBe("e2b");
 		expect(["srt", "process-floor"]).toContain(sel.actual);
 		await sel.sandbox.destroy();
 	});
 
 	describe.skipIf(isSrtAvailable())("when srt is unavailable", () => {
-		it("auto degrades to the floor with actual=process-floor", async () => {
-			const sel = resolveSandbox("auto");
+		it("auto degrades to the floor with actual=process-floor + a reason", async () => {
+			// No allowlist ⇒ the binary-absence gate fires before any egress probe.
+			const sel = await resolveSandbox("auto");
 			expect(sel.requested).toBe("auto");
 			expect(sel.actual).toBe("process-floor");
 			expect(sel.sandbox.fidelity).toBe("cooperative");
+			expect(sel.degradeReason).toBe("srt unavailable");
 			await sel.sandbox.destroy();
 		});
 
-		it("srt throws (never silently downgrades an explicit request)", () => {
-			expect(() => resolveSandbox("srt")).toThrowError(
+		it("srt rejects (never silently downgrades an explicit request)", async () => {
+			await expect(resolveSandbox("srt")).rejects.toThrowError(
 				/srt sandbox unavailable/,
 			);
 		});
 	});
 
 	describe.skipIf(!isSrtAvailable())("when srt is available", () => {
-		it("auto and srt both select the enforced srt provider", async () => {
-			const auto = resolveSandbox("auto");
-			expect(auto.actual).toBe("srt");
-			expect(auto.sandbox.fidelity).toBe("enforced");
+		it("auto without a probeUrl floors (no egress allowlist derivable); explicit srt is enforced", async () => {
+			// No probeUrl ⇒ an enforced zero-egress boundary would starve the harness, so
+			// `auto` floors with the honest reason (FIX 6) rather than standing srt up blind.
+			const auto = await resolveSandbox("auto");
+			expect(auto.actual).toBe("process-floor");
+			expect(auto.sandbox.fidelity).toBe("cooperative");
+			expect(auto.degradeReason).toMatch(/no egress allowlist derivable/);
 			await auto.sandbox.destroy();
 
-			const srt = resolveSandbox("srt");
+			// Explicit `srt` keeps today's zero-egress behaviour — the user's call, no probe.
+			const srt = await resolveSandbox("srt");
 			expect(srt.requested).toBe("srt");
 			expect(srt.actual).toBe("srt");
 			await srt.sandbox.destroy();

@@ -68,11 +68,12 @@ export const AgentConfigSchema = z.object({
 	permissions: optionalWithDefaults(PermissionConfigSchema),
 	/**
 	 * The isolation boundary the harness runs in (ADR-0020): `process` (the always-on
-	 * cooperative floor), `srt` (enforced OS boundary), or `auto` (srt if available,
-	 * else the floor — honest degrade). Defaults to `process`; flipping the default to
-	 * `auto` is a later deliberate change (B.1.1 egress gate).
+	 * cooperative floor), `srt` (enforced OS boundary), or `auto` (srt WHEN its egress
+	 * bridge is healthy — the self-check, B.1.1 — else the floor; the degrade is honest,
+	 * never silent). Defaults to `auto`: honest precisely BECAUSE of the self-check, which
+	 * is what makes it safe to prefer the enforced boundary by default.
 	 */
-	sandbox: z.enum(SANDBOX_MODES).default("process"),
+	sandbox: z.enum(SANDBOX_MODES).default("auto"),
 	/**
 	 * Best-effort resource caps for the sandboxed harness (ADR-0020). Optional; an
 	 * omitted section means "no caps" (the object defaults to `{}` after parse).

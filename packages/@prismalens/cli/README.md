@@ -246,6 +246,11 @@ var is an error).
 agent:
   default: deepagents            # deepagents | claude-code | codex
   # model: openai:gpt-oss:120b   # provider-prefixed; omit to let the harness default
+  sandbox: auto                  # auto | process | srt — isolation boundary (ADR-0020).
+                                 # auto (default): srt (enforced OS boundary) WHEN its
+                                 # egress bridge is healthy (a self-check catches WSL
+                                 # mirrored-networking blackouts), else the cooperative
+                                 # process floor — the degrade is logged, never silent.
 
 # Read-only telemetry + app endpoints the harness may query.
 telemetry:

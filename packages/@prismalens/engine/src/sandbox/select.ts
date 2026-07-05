@@ -10,18 +10,30 @@
  *                 E2B is unavailable. EXPLICIT-ONLY — `auto` never reaches for it: E2B is
  *                 a remote service needing an `E2B_API_KEY`, so silently selecting it on a
  *                 laptop would be wrong. It is chosen deliberately in server placement.
- *   - `auto`    — srt if available, else the floor (Desktop's "on if available, else
- *                 degrade — honestly" default; ADR-0020 table). The degrade is visible
- *                 in the returned `actual`. `auto` considers only local providers.
+ *   - `auto`    — srt if available AND its egress bridge actually carries traffic, else
+ *                 the floor (Desktop's "on if available, else degrade — honestly" default;
+ *                 ADR-0020 table). The degrade is visible in `actual` + `degradeReason`.
+ *                 `auto` considers only local providers.
  *
- * The default wired into config today is `process` (see the CLI schema); flipping the
- * default to `auto` is a later deliberate change once the egress gate (B.1.1) clears.
+ * `auto`'s EGRESS SELF-CHECK (B.1.1): `isSrtAvailable` only sees srt's binary, not whether
+ * its in-netns relay carries traffic. On WSL mirrored networking the mux logs "bridges
+ * ready" yet every sandboxed request returns curl 000 (verified on real WSL2) — a silent
+ * total-egress blackout. So `auto` probes srt's bridge ({@link probeSrtEgress}) against a
+ * REAL `probeUrl` the caller derived from config and degrades to the floor when it is dead.
+ * When NO `probeUrl` is derivable at all, `auto` also floors (FIX 6): an enforced
+ * zero-egress boundary would starve the harness of its own model endpoint, so that is a
+ * degrade to name, not a silent srt selection.
+ *
+ * The config default is `auto` (see the CLI schema) — honest precisely BECAUSE of this
+ * self-check: `auto` never silently claims an OS boundary whose egress is broken.
  */
 import { createE2bSandbox, type E2bSandboxOptions } from "./e2b.js";
 import { createProcessFloorSandbox } from "./process-floor.js";
 import {
 	createSrtSandbox,
 	isSrtAvailable,
+	probeSrtEgress,
+	type SrtEgressRunner,
 	type SrtSandboxOptions,
 } from "./srt.js";
 import type { Sandbox } from "./types.js";
@@ -32,7 +44,22 @@ export type SandboxMode = (typeof SANDBOX_MODES)[number];
 
 export interface ResolveSandboxOptions
 	extends SrtSandboxOptions,
-		E2bSandboxOptions {}
+		E2bSandboxOptions {
+	/**
+	 * A REAL, full URL for `auto`'s egress self-check (B.1.1) to curl through a throwaway
+	 * srt boundary — chosen by the caller from its configured endpoints (telemetry/logs/api
+	 * URLs). Distinct from `allowedDomains` (which arms the LIVE boundary's egress
+	 * allowlist): this one url is what the PROBE actually hits. Absent ⇒ `auto` floors (FIX
+	 * 6): an enforced zero-egress boundary would starve the harness.
+	 */
+	probeUrl?: string;
+	/**
+	 * TEST SEAM (ADR-0020 egress self-check): the srt-egress runner threaded into
+	 * {@link probeSrtEgress} for `auto`'s health probe. Production omits it (the real
+	 * srt+curl runner is used); hermetic tests inject a fake so no srt is spawned.
+	 */
+	egressRunner?: SrtEgressRunner;
+}
 
 /** A resolved sandbox plus the honest requested-vs-actual pair (ADR-0017). */
 export interface SandboxSelection {
@@ -42,24 +69,43 @@ export interface SandboxSelection {
 	requested: SandboxMode;
 	/** What was actually obtained — the provider id (`"srt"` | `"process-floor"`). */
 	actual: string;
+	/**
+	 * Why `auto` fell short of the enforced provider it hoped for, when it did — srt's
+	 * binary absent, no egress allowlist derivable, or its egress bridge dead (B.1.1).
+	 * Present ONLY on a degrade, so a caller surfaces the honest reason instead of a silent
+	 * downgrade (ADR-0017).
+	 */
+	degradeReason?: string;
+}
+
+/** Build a floor selection carrying the honest reason `auto` degraded. */
+function floorSelection(
+	requested: SandboxMode,
+	degradeReason: string,
+): SandboxSelection {
+	const sandbox = createProcessFloorSandbox();
+	return { sandbox, requested, actual: sandbox.id, degradeReason };
 }
 
 /**
  * Resolve `mode` into a live {@link Sandbox} + honest selection metadata. Throws for an
- * explicit `srt`/`e2b` request whose provider is unavailable; `auto` degrades to the
- * floor instead (and never reaches for `e2b`).
+ * explicit `srt`/`e2b` request whose provider is unavailable; `auto` degrades to the floor
+ * instead (and never reaches for `e2b`). ASYNC because `auto` runs an egress self-check
+ * (B.1.1) — a real srt+curl probe — before trusting srt for an egress-needing run.
  */
-export function resolveSandbox(
+export async function resolveSandbox(
 	mode: SandboxMode,
 	options: ResolveSandboxOptions = {},
-): SandboxSelection {
+): Promise<SandboxSelection> {
 	switch (mode) {
 		case "process": {
 			const sandbox = createProcessFloorSandbox();
 			return { sandbox, requested: mode, actual: sandbox.id };
 		}
 		case "srt": {
-			// Explicit request for enforcement — surface the failure, never degrade.
+			// Explicit request for enforcement — a validated opt-in, so NO probe: construct
+			// or throw loudly. The user asked for srt; second-guessing it here would be
+			// wrong (that honest degrade is `auto`'s job, not an explicit request's).
 			const sandbox = createSrtSandbox(options);
 			return { sandbox, requested: mode, actual: sandbox.id };
 		}
@@ -69,12 +115,36 @@ export function resolveSandbox(
 			return { sandbox, requested: mode, actual: sandbox.id };
 		}
 		case "auto": {
-			if (isSrtAvailable()) {
+			// Binary absent ⇒ floor. isSrtAvailable only sees the binary, so this is the
+			// cheap gate before the (spawn-y) egress probe.
+			if (!isSrtAvailable()) {
+				return floorSelection(mode, "srt unavailable");
+			}
+			// No probeUrl derivable (FIX 6): an enforced zero-egress boundary would starve the
+			// harness of its own model endpoint, so this is a degrade to name — NOT a silent srt
+			// selection. Explicit `srt` (below) still keeps zero-egress when the user forces it.
+			if (options.probeUrl === undefined) {
+				return floorSelection(
+					mode,
+					"no egress allowlist derivable from config — an enforced zero-egress boundary " +
+						"would starve the harness (its own model endpoint included); set telemetry " +
+						"endpoints or force --sandbox srt",
+				);
+			}
+			// srt is only trustworthy if its bridge actually carries traffic on THIS host (WSL
+			// mirrored networking silently blackholes it, B.1.1): probe the REAL probeUrl.
+			const healthy = await probeSrtEgress(
+				options.probeUrl,
+				options.egressRunner ? { runner: options.egressRunner } : {},
+			);
+			if (healthy) {
 				const sandbox = createSrtSandbox(options);
 				return { sandbox, requested: mode, actual: sandbox.id };
 			}
-			const sandbox = createProcessFloorSandbox();
-			return { sandbox, requested: mode, actual: sandbox.id };
+			return floorSelection(
+				mode,
+				"srt egress bridge unhealthy — WSL mirrored networking? Using the process floor",
+			);
 		}
 	}
 }

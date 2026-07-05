@@ -157,6 +157,233 @@ export interface SrtSandboxOptions {
 }
 
 /**
+ * Write srt's settings JSON — allow-only egress (`strictAllowlist`, so non-allowlisted
+ * hosts are HARD-denied regardless of any ask-callback) + workspace-scoped writes — to a
+ * fresh temp dir. Returns the dir + file path; the caller removes the dir. Shared by the
+ * live boundary ({@link createSrtSandbox}) and the egress self-check ({@link probeSrtEgress})
+ * so both spawn srt with byte-identical network semantics.
+ */
+function writeSrtSettings(allowedDomains: string[]): {
+	settingsDir: string;
+	settingsPath: string;
+} {
+	const settingsDir = mkdtempSync(join(tmpdir(), "pl-srt-"));
+	const settingsPath = join(settingsDir, "srt-settings.json");
+	writeFileSync(
+		settingsPath,
+		JSON.stringify({
+			network: {
+				allowedDomains,
+				deniedDomains: [],
+				// Hard-deny non-allowlisted hosts regardless of any ask-callback: srt
+				// only guarantees denial when strictAllowlist is set (its CLI happens
+				// to run without an ask callback today, but "enforced" must not hinge
+				// on that implementation detail — an interactive prompt would also
+				// wedge our piped JSON-RPC stdin).
+				strictAllowlist: true,
+			},
+			filesystem: { denyRead: [], allowWrite: ["."], denyWrite: [] },
+		}),
+	);
+	return { settingsDir, settingsPath };
+}
+
+/**
+ * The internal seam {@link probeSrtEgress} drives to actually exercise the srt boundary:
+ * spawn srt with an allowlist of exactly `[hostname-of-targetUrl]` running `curl` against
+ * the REAL `targetUrl` and RESOLVE with curl's captured `%{http_code}` (an empty string
+ * when srt/curl could not even run). Never rejects — an unreachable bridge is data, not an
+ * exception. Production uses {@link defaultSrtEgressRunner}; hermetic tests inject a fake so
+ * no srt is spawned.
+ */
+export type SrtEgressRunner = (targetUrl: string) => Promise<string>;
+
+/** Overall watchdog for a single egress probe: SIGKILL a wedged srt/curl after this long. */
+export const SRT_EGRESS_WATCHDOG_MS = 15_000;
+
+/**
+ * The promise wrapper shared by {@link defaultSrtEgressRunner} and its hermetic tests: run a
+ * child (produced by `spawnChild`, which reports the captured code through the `finish`
+ * callback it is handed) under an OVERALL WATCHDOG — a `timeoutMs` timer that SIGKILLs the
+ * child and resolves `""` (unhealthy) if it never closes. NEVER rejects and NEVER hangs; a
+ * synchronous throw from `spawnChild` also resolves `""`. The timer is cleared the moment
+ * the child settles, and `unref`ed so a live probe cannot keep the process alive.
+ */
+export function runEgressProbeWithWatchdog(
+	spawnChild: (finish: (code: string) => void) => {
+		kill(signal?: NodeJS.Signals | number): void;
+	},
+	timeoutMs: number = SRT_EGRESS_WATCHDOG_MS,
+): Promise<string> {
+	return new Promise<string>((resolveCode) => {
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (code: string): void => {
+			if (settled) return;
+			settled = true;
+			if (timer) clearTimeout(timer);
+			resolveCode(code);
+		};
+		let child: { kill(signal?: NodeJS.Signals | number): void };
+		try {
+			child = spawnChild(finish);
+		} catch {
+			// srt/curl failed to even spawn ⇒ unhealthy, never a thrown probe.
+			finish("");
+			return;
+		}
+		// A srt boundary whose mux never closes (the exact WSL blackout failure) would
+		// otherwise hang the probe forever; kill it and read the silence as unhealthy.
+		timer = setTimeout(() => {
+			try {
+				child.kill("SIGKILL");
+			} catch {
+				// already gone — the close handler (if any) is a no-op past `settled`
+			}
+			finish("");
+		}, timeoutMs);
+		timer.unref?.();
+	});
+}
+
+/**
+ * The production {@link SrtEgressRunner}: spawn a minimal srt boundary (allowlist exactly
+ * `[hostname-of-targetUrl]`, strictAllowlist) running `curl -sS -o /dev/null -w
+ * '%{http_code}' --max-time 8 <targetUrl>` against the REAL url, and resolve with the
+ * captured http-code string. srt or curl failing to run (unresolvable srt, missing curl,
+ * spawn error), an unparseable target, or an overall-watchdog SIGKILL all resolve to `""` —
+ * read as unhealthy upstream — rather than throwing. Uses the same scrubbed floor env as the
+ * live boundary.
+ */
+function defaultSrtEgressRunner(targetUrl: string): Promise<string> {
+	const entry = resolveSrtEntry();
+	// srt itself unresolvable ⇒ nothing to probe; empty string reads as unhealthy.
+	if (!entry) return Promise.resolve("");
+	let hostname: string;
+	try {
+		hostname = new URL(targetUrl).hostname;
+	} catch {
+		// A caller handing us a non-URL is a bug upstream; treat as unhealthy, never throw.
+		return Promise.resolve("");
+	}
+	const { settingsDir, settingsPath } = writeSrtSettings([hostname]);
+	const srtArgv = [
+		...entry.prefixArgs,
+		"--settings",
+		settingsPath,
+		"--",
+		"curl",
+		"-sS",
+		"-o",
+		"/dev/null",
+		"-w",
+		"%{http_code}",
+		"--max-time",
+		"8",
+		targetUrl,
+	];
+	return runEgressProbeWithWatchdog((finish) => {
+		const child = spawn(entry.command, srtArgv, {
+			env: buildFloorEnv(),
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		const chunks: Buffer[] = [];
+		child.stdout.on("data", (d: Buffer) => chunks.push(d));
+		// srt/curl failed to even spawn ⇒ unhealthy, never a thrown probe.
+		child.on("error", () => finish(""));
+		child.on("close", () => finish(Buffer.concat(chunks).toString().trim()));
+		return child;
+	}).finally(() => {
+		try {
+			rmSync(settingsDir, { recursive: true, force: true });
+		} catch {
+			// best-effort temp cleanup — a leftover settings file is harmless
+		}
+	});
+}
+
+/** TTL for an UNHEALTHY egress verdict — a transient blip must not disable srt for days. */
+export const SRT_EGRESS_UNHEALTHY_TTL_MS = 5 * 60_000;
+
+/**
+ * A memoized egress verdict. A HEALTHY verdict is permanent (no `expiresAt`) — the WSL
+ * networking mode does not turn ON mid-run. An UNHEALTHY verdict carries an `expiresAt` so a
+ * transient blip on a long-lived worker re-probes after {@link SRT_EGRESS_UNHEALTHY_TTL_MS}
+ * instead of disabling srt for the process's whole (possibly days-long) lifetime.
+ */
+interface EgressVerdict {
+	healthy: boolean;
+	/** Wall-clock ms after which this verdict is stale and must be re-probed. */
+	expiresAt?: number;
+}
+
+/** Per-target-URL memo of the egress self-check (healthy = permanent, unhealthy = TTL'd). */
+const egressProbeCache = new Map<string, EgressVerdict>();
+
+/** TEST-ONLY: clear the egress memo so hermetic cases don't leak a verdict across tests. */
+export function __clearSrtEgressCache(): void {
+	egressProbeCache.clear();
+}
+
+export interface ProbeSrtEgressOptions {
+	/**
+	 * TEST SEAM: the {@link SrtEgressRunner} to use. Omitted in production (the real
+	 * srt+curl runner); hermetic tests inject a fake so no srt is ever spawned.
+	 */
+	runner?: SrtEgressRunner;
+	/**
+	 * TEST SEAM: the clock read for TTL comparisons + expiry stamping. Omitted in
+	 * production (`Date.now`); tests inject a fake clock to drive UNHEALTHY-verdict expiry.
+	 */
+	now?: () => number;
+}
+
+/**
+ * EGRESS SELF-CHECK (ADR-0020 B.1.1): does srt's in-netns relay ACTUALLY carry traffic on
+ * THIS host? {@link isSrtAvailable} only sees the binary — it cannot see the WSL-mirrored-
+ * networking failure where srt's mux logs "bridges ready" but every sandboxed request
+ * returns curl 000 while the host itself has egress (verified on real WSL2). So the `auto`
+ * selector, before trusting srt for a run that NEEDS egress, spawns a throwaway srt boundary
+ * allowlisting exactly the target URL's hostname and curls the REAL `targetUrl`: a real HTTP
+ * code (any 3-digit status, not `000`/empty) ⇒ the bridge carries traffic (healthy);
+ * `000`/empty ⇒ a dead bridge (unhealthy). curl-missing or srt-spawn-failure ⇒ unhealthy —
+ * this NEVER throws. Memoized per target URL: a HEALTHY verdict for the process lifetime, an
+ * UNHEALTHY one only until {@link SRT_EGRESS_UNHEALTHY_TTL_MS} elapses (then re-probed).
+ */
+export async function probeSrtEgress(
+	targetUrl: string,
+	opts: ProbeSrtEgressOptions = {},
+): Promise<boolean> {
+	const now = opts.now ?? Date.now;
+	const cached = egressProbeCache.get(targetUrl);
+	// A HEALTHY verdict (no expiry) is always fresh; an UNHEALTHY one is fresh until its TTL.
+	if (
+		cached !== undefined &&
+		(cached.expiresAt === undefined || now() < cached.expiresAt)
+	) {
+		return cached.healthy;
+	}
+	let healthy = false;
+	try {
+		const code = (
+			await (opts.runner ?? defaultSrtEgressRunner)(targetUrl)
+		).trim();
+		// A real HTTP code is three digits and not the curl "could-not-connect" 000.
+		healthy = /^\d{3}$/.test(code) && code !== "000";
+	} catch {
+		// Defensive: a runner that rejects is treated as an unhealthy bridge, not a throw.
+		healthy = false;
+	}
+	egressProbeCache.set(
+		targetUrl,
+		healthy
+			? { healthy: true }
+			: { healthy: false, expiresAt: now() + SRT_EGRESS_UNHEALTHY_TTL_MS },
+	);
+	return healthy;
+}
+
+/**
  * Create an `enforced` srt boundary. Throws (never degrades) when srt cannot be
  * resolved — the caller/selection layer decides what to do about that. One instance
  * per run; `destroy()` reaps stragglers and removes the settings file.
@@ -174,23 +401,8 @@ export function createSrtSandbox(options: SrtSandboxOptions = {}): Sandbox {
 	// The srt settings the spike used: allow-only egress (empty ⇒ no network) and
 	// workspace-scoped writes — ADR-0020's "generous workspace inside a tight box".
 	// Written once at construction; the allowlist is fixed for this boundary's life.
-	const settingsDir = mkdtempSync(join(tmpdir(), "pl-srt-"));
-	const settingsPath = join(settingsDir, "srt-settings.json");
-	writeFileSync(
-		settingsPath,
-		JSON.stringify({
-			network: {
-				allowedDomains: options.allowedDomains ?? [],
-				deniedDomains: [],
-				// Hard-deny non-allowlisted hosts regardless of any ask-callback: srt
-				// only guarantees denial when strictAllowlist is set (its CLI happens
-				// to run without an ask callback today, but "enforced" must not hinge
-				// on that implementation detail — an interactive prompt would also
-				// wedge our piped JSON-RPC stdin).
-				strictAllowlist: true,
-			},
-			filesystem: { denyRead: [], allowWrite: ["."], denyWrite: [] },
-		}),
+	const { settingsDir, settingsPath } = writeSrtSettings(
+		options.allowedDomains ?? [],
 	);
 
 	const children = new Set<SandboxProcess>();

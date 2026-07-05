@@ -81,8 +81,8 @@ describe("speaksOpenAiProtocol (deepagents pre-dispatch guard)", () => {
 });
 
 describe("parseSandboxMode (PRISMALENS_SANDBOX knob, ADR-0020 B.1.3)", () => {
-	it("defaults to the process floor when unset", () => {
-		expect(parseSandboxMode(undefined)).toBe("process");
+	it("defaults to auto when unset (B.1.1 egress-gate flip)", () => {
+		expect(parseSandboxMode(undefined)).toBe("auto");
 	});
 
 	it("accepts every selectable mode", () => {
@@ -102,21 +102,26 @@ describe("parseSandboxMode (PRISMALENS_SANDBOX knob, ADR-0020 B.1.3)", () => {
 describe("harnessTakesSandbox (CLI-mirrored worker guard, ADR-0020/0017)", () => {
 	it("ACP harness (deepagents) takes a sandbox in any mode", () => {
 		expect(harnessTakesSandbox("deepagents", "process")).toBe(true);
+		expect(harnessTakesSandbox("deepagents", "auto")).toBe(true);
 		expect(harnessTakesSandbox("deepagents", "srt")).toBe(true);
 		expect(harnessTakesSandbox("deepagents", "e2b")).toBe(true);
 	});
 
-	it("non-ACP harness in process mode is allowed but takes no sandbox", () => {
+	// FIX 2: plain claude-code under the default `auto` (and `process`) runs WITHOUT a
+	// sandbox — no throw. `auto` is best-effort; the best for an in-process harness is none.
+	it("non-ACP harness in auto or process mode is allowed but takes no sandbox", () => {
+		expect(harnessTakesSandbox("claude-code", "auto")).toBe(false);
 		expect(harnessTakesSandbox("claude-code", "process")).toBe(false);
+		expect(harnessTakesSandbox("codex", "auto")).toBe(false);
 		expect(harnessTakesSandbox("codex", "process")).toBe(false);
 	});
 
-	it("non-ACP harness with a non-process request fails the job fast", () => {
+	it("non-ACP harness fails the job fast ONLY on a mode that demands enforcement (srt/e2b)", () => {
 		expect(() => harnessTakesSandbox("claude-code", "srt")).toThrowError(
-			/cannot run inside a sandbox yet/,
+			/cannot run inside an enforced sandbox/,
 		);
 		expect(() => harnessTakesSandbox("claude-code", "e2b")).toThrowError(
-			/PRISMALENS_SANDBOX=process|ACP harness/,
+			/PRISMALENS_SANDBOX=auto or process|ACP harness/,
 		);
 	});
 });
