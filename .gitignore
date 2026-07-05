@@ -69,8 +69,10 @@ secrets.yaml
 # MCP
 *.playwright-mcp
 
-#Calude
-.claude
+# Claude Code — track shared settings + hooks; ignore per-machine state
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 
 # Internal documentation
 internal-docs
