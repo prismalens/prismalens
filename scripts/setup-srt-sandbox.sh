@@ -134,18 +134,16 @@ EOF
 		ok "EGRESS GATE PASSED — allowed reached, denied blocked. Report this so agent.sandbox default can flip to auto."
 	elif [ "$HOST" != "000" ]; then
 		# Both in-sandbox probes fail but the host has egress ⇒ srt's in-netns proxy
-		# bridge (socat → host mux) is not carrying traffic. Confirmed on WSL2
-		# 2026-07-05 with all deps present — an srt/WSL limitation, NOT a prismalens
-		# config bug (the mux comes up; the sandbox just can't reach it). Effect: a
-		# harness under `--sandbox srt` gets NO egress here, so it cannot query
-		# telemetry. Stay on the `process` floor locally (its egress works — the host
-		# line proves it); enforced egress is E2B's job in cloud (ADR-0020), not srt
-		# on a laptop. NOTE: WSL *mirrored* networking is confirmed NOT to fix this
-		# (tested with mirrored active — its loopback0 isn't inherited by the bwrap
-		# --unshare-net child netns). The untried lever is the OPPOSITE: NAT mode
-		# (remove networkingMode=mirrored from %UserProfile%\.wslconfig + `wsl
-		# --shutdown`), where standard loopback semantics may let the bridge reach in."
-		bad "EGRESS BRIDGE DEAD — the sandbox has NO egress (both 000) though the host does ($HOST). srt's proxy bridge isn't reaching the sandbox on this WSL2 setup. Keep agent.sandbox=process locally; see the comment above (NAT-mode is the untried lever; mirrored is confirmed not to help)."
+		# bridge (socat → host mux) is not carrying traffic. NOT a prismalens config
+		# bug (the mux comes up; the sandbox just can't reach it). Effect: a harness
+		# under `--sandbox srt` gets NO egress here, so it cannot query telemetry.
+		# KNOWN CAUSE + FIX (WSL2, verified 2026-07-05): WSL *mirrored* networking
+		# breaks the bridge (its loopback0 isn't inherited by the bwrap --unshare-net
+		# child netns); switching to *NAT* mode makes the gate PASS. Remove
+		# networkingMode=mirrored from %UserProfile%\.wslconfig, run `wsl
+		# --shutdown`, then re-probe. Enforced egress is also E2B's job in cloud
+		# (ADR-0020), independent of this bridge.
+		bad "EGRESS BRIDGE DEAD — the sandbox has NO egress (both 000) though the host does ($HOST). Likely WSL mirrored networking: switch to NAT (remove networkingMode=mirrored from %UserProfile%\\.wslconfig, wsl --shutdown) and re-run — that made the gate pass on 2026-07-05."
 	else
 		warn "INCONCLUSIVE — the host itself has no egress ($HOST); can't judge the allowlist. Re-run on a connected machine."
 	fi
