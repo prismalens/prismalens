@@ -9,6 +9,36 @@
  */
 import type { Readable, Writable } from "node:stream";
 
+/**
+ * Best-effort resource limits (ADR-0020: "resource limits are part of the contract —
+ * CPU/mem/disk quota + wall-clock timeout"). Each field is a REQUEST honoured
+ * per-provider on a best-effort basis — a provider that cannot enforce a limit does
+ * NOT fake it; it omits that limit from {@link SandboxProcess.appliedLimits} so the
+ * caller can be honest about what actually took effect:
+ *  - `wallClockMs` — enforced by EVERY provider (the process floor included): a
+ *    userspace SIGKILL timer, so it is the one limit that always applies.
+ *  - `memoryMb` / `cpuCores` — need OS help (cgroups). The `process` floor cannot
+ *    enforce them at all; `srt` enforces them only when `systemd-run` is available to
+ *    wrap the child in a scope (srt's own settings expose no such knob).
+ */
+export interface SandboxLimits {
+	/** Wall-clock deadline (ms). Past it the child is SIGKILLed. Always enforced. */
+	wallClockMs?: number;
+	/** Memory ceiling (MB). Best-effort — only where the provider has an OS lever. */
+	memoryMb?: number;
+	/** CPU quota (whole/fractional cores). Best-effort — provider/OS permitting. */
+	cpuCores?: number;
+}
+
+/**
+ * The subset of the requested {@link SandboxLimits} a provider ACTUALLY applied
+ * (ADR-0020 honest-fidelity — the sibling of ADR-0017). A field is present ONLY when
+ * the boundary really enforces it: a `memoryMb` the floor cannot cap is absent here
+ * even though it was asked for, so a caller reading this reports the truth, not the
+ * wish.
+ */
+export type AppliedLimits = SandboxLimits;
+
 /** How to launch a harness inside the sandbox boundary. */
 export interface SandboxSpawnOptions {
 	/** Working directory — the harness workspace, read-write inside the boundary. */
@@ -19,6 +49,11 @@ export interface SandboxSpawnOptions {
 	 * child prismalens's process.env verbatim (ADR-0009 own-secret isolation).
 	 */
 	env?: NodeJS.ProcessEnv;
+	/**
+	 * Best-effort resource caps for this run (ADR-0020). Applied per-provider; what
+	 * actually took effect is reported back on {@link SandboxProcess.appliedLimits}.
+	 */
+	limits?: SandboxLimits;
 }
 
 /**
@@ -32,6 +67,23 @@ export interface SandboxProcess {
 	stdout: Readable;
 	stderr: Readable;
 	killed: boolean;
+	/**
+	 * True once this child was SIGKILLed for exceeding its wall-clock deadline
+	 * (`SandboxLimits.wallClockMs`). The runner reads it on `close` to report a
+	 * timeout DISTINGUISHABLY from an ordinary early exit (ADR-0020 resource-limits
+	 * contract). Providers that enforce limits populate it (`false` until it fires);
+	 * optional so a provider that does not yet honour limits need not set it (a
+	 * missing/`false` value simply reads as "no timeout").
+	 */
+	timedOut?: boolean;
+	/**
+	 * Which of the requested {@link SandboxLimits} this provider ACTUALLY enforced
+	 * (ADR-0020 honest-fidelity). A field is present ONLY when really enforced, so a
+	 * caller reports the truth, not the request. Optional at the port level: a
+	 * provider that does not implement the limits surface leaves it undefined (⇒
+	 * "unknown / none applied"), rather than being forced to claim `{}`.
+	 */
+	readonly appliedLimits?: AppliedLimits;
 	kill(signal?: NodeJS.Signals): boolean;
 	on(event: "error", listener: (err: Error) => void): this;
 	on(

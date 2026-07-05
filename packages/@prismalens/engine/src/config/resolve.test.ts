@@ -48,3 +48,45 @@ describe("resolveInvestigation sandbox guard (ADR-0017 honest fidelity)", () => 
 		expect(resolved.fidelity.mechanism).not.toContain("sandbox=");
 	});
 });
+
+describe("resolveInvestigation structured fidelity.sandbox (ADR-0020 B.1.1 follow-up)", () => {
+	it("is absent when no sandbox is wired", () => {
+		const resolved = resolveInvestigation({
+			...BASE_REQUEST,
+			harness: "deepagents",
+		});
+		expect(resolved.fidelity.sandbox).toBeUndefined();
+	});
+
+	it("defaults requested to the sandbox id when the caller didn't separately know the request", () => {
+		const sandbox = createProcessFloorSandbox();
+		const resolved = resolveInvestigation({
+			...BASE_REQUEST,
+			harness: "deepagents",
+			sandbox,
+		});
+		expect(resolved.fidelity.sandbox).toEqual({
+			requested: "process-floor",
+			actual: "process-floor",
+			fidelity: "cooperative",
+		});
+	});
+
+	it("reports requested !== actual for the auto-degrade case (requested=auto, actual=process-floor)", () => {
+		// Simulates the CLI/worker path: `resolveSandbox("auto")` degraded to the
+		// floor because srt was unavailable; the caller threads its OWN requested
+		// mode string alongside the resolved (degraded) sandbox.
+		const sandbox = createProcessFloorSandbox();
+		const resolved = resolveInvestigation({
+			...BASE_REQUEST,
+			harness: "deepagents",
+			sandbox,
+			requestedSandbox: "auto",
+		});
+		expect(resolved.fidelity.sandbox).toEqual({
+			requested: "auto",
+			actual: "process-floor",
+			fidelity: "cooperative",
+		});
+	});
+});

@@ -68,6 +68,21 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 		delete process.env.PL_TEST_API;
 	});
 
+	it("parses agent.limits (best-effort resource caps, ADR-0020)", async () => {
+		writeProject(
+			"agent:\n  limits:\n    wall_clock_ms: 60000\n    memory_mb: 512\n    cpu_cores: 2\n",
+		);
+		const config = await loadConfig({ cwd: dir });
+		expect(config.agent.limits.wall_clock_ms).toBe(60000);
+		expect(config.agent.limits.memory_mb).toBe(512);
+		expect(config.agent.limits.cpu_cores).toBe(2);
+	});
+
+	it("defaults agent.limits to an empty object when omitted (no lying caps)", async () => {
+		const config = await loadConfig({ cwd: dir });
+		expect(config.agent.limits).toEqual({});
+	});
+
 	it("throws on an unset env-var placeholder", async () => {
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder is the interpolation syntax under test
 		writeProject("telemetry:\n  apiUrl: ${PL_DEFINITELY_UNSET_XYZ}\n");

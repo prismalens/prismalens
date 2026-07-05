@@ -21,9 +21,13 @@ vi.mock("ioredis", () => ({
 	}),
 }));
 
-const { buildHarnessEnv, speaksOpenAiProtocol } = await import(
-	"./processor.js"
-);
+const {
+	buildHarnessEnv,
+	speaksOpenAiProtocol,
+	parseSandboxMode,
+	harnessTakesSandbox,
+	deriveWorkerAllowedHosts,
+} = await import("./processor.js");
 
 const API_KEY = "secret-key";
 const BASE_URL = "http://localhost:11434/v1";
@@ -73,5 +77,73 @@ describe("speaksOpenAiProtocol (deepagents pre-dispatch guard)", () => {
 		expect(speaksOpenAiProtocol("anthropic")).toBe(false);
 		expect(speaksOpenAiProtocol("google")).toBe(false);
 		expect(speaksOpenAiProtocol("groq")).toBe(false);
+	});
+});
+
+describe("parseSandboxMode (PRISMALENS_SANDBOX knob, ADR-0020 B.1.3)", () => {
+	it("defaults to the process floor when unset", () => {
+		expect(parseSandboxMode(undefined)).toBe("process");
+	});
+
+	it("accepts every selectable mode", () => {
+		expect(parseSandboxMode("process")).toBe("process");
+		expect(parseSandboxMode("auto")).toBe("auto");
+		expect(parseSandboxMode("srt")).toBe("srt");
+		expect(parseSandboxMode("e2b")).toBe("e2b");
+	});
+
+	it("rejects an unknown value loudly (never silently degrades)", () => {
+		expect(() => parseSandboxMode("docker")).toThrowError(
+			/Invalid PRISMALENS_SANDBOX/,
+		);
+	});
+});
+
+describe("harnessTakesSandbox (CLI-mirrored worker guard, ADR-0020/0017)", () => {
+	it("ACP harness (deepagents) takes a sandbox in any mode", () => {
+		expect(harnessTakesSandbox("deepagents", "process")).toBe(true);
+		expect(harnessTakesSandbox("deepagents", "srt")).toBe(true);
+		expect(harnessTakesSandbox("deepagents", "e2b")).toBe(true);
+	});
+
+	it("non-ACP harness in process mode is allowed but takes no sandbox", () => {
+		expect(harnessTakesSandbox("claude-code", "process")).toBe(false);
+		expect(harnessTakesSandbox("codex", "process")).toBe(false);
+	});
+
+	it("non-ACP harness with a non-process request fails the job fast", () => {
+		expect(() => harnessTakesSandbox("claude-code", "srt")).toThrowError(
+			/cannot run inside a sandbox yet/,
+		);
+		expect(() => harnessTakesSandbox("claude-code", "e2b")).toThrowError(
+			/PRISMALENS_SANDBOX=process|ACP harness/,
+		);
+	});
+});
+
+describe("deriveWorkerAllowedHosts (egress allowlist, ADR-0020)", () => {
+	const TELEMETRY_HOSTS = ["localhost"]; // prometheus/alertmanager/api all local by default
+
+	it("includes the active provider's allowedHosts plus telemetry surfaces", () => {
+		const hosts = deriveWorkerAllowedHosts("openai");
+		expect(hosts).toContain("api.openai.com");
+		for (const host of TELEMETRY_HOSTS) expect(hosts).toContain(host);
+	});
+
+	it("folds an extra endpoint (the resolved synth base URL) in by hostname", () => {
+		const hosts = deriveWorkerAllowedHosts("ollama", ["https://ollama.com/v1"]);
+		expect(hosts).toContain("ollama.com");
+	});
+
+	it("a null provider allowlist (custom) contributes no provider host, no hole", () => {
+		const hosts = deriveWorkerAllowedHosts("custom");
+		// custom's allowedHosts is null → only telemetry hosts, deduped.
+		expect(hosts).toContain("localhost");
+		expect(new Set(hosts).size).toBe(hosts.length);
+	});
+
+	it("skips an unparseable extra URL rather than opening egress", () => {
+		const hosts = deriveWorkerAllowedHosts("openai", ["not a url"]);
+		expect(hosts).not.toContain("not a url");
 	});
 });

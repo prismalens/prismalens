@@ -19,6 +19,7 @@ import {
 	type InvestigationRequest,
 	type ResolvedInvestigation,
 	type Sandbox,
+	type SandboxLimits,
 } from "@prismalens/engine";
 import type { PlConfig } from "../config/schema.js";
 
@@ -46,6 +47,14 @@ export interface ResolveInvestigationArgs {
 	 * run. Forwarded to the engine so the harness spawns into it.
 	 */
 	sandbox?: Sandbox;
+	/**
+	 * What the CLI asked for (ADR-0020 honest fidelity, structured
+	 * `fidelity.sandbox` field) — `selection.requested` from `resolveSandbox`,
+	 * threaded alongside the resolved `sandbox` so a degrade (e.g. `auto` ->
+	 * `process-floor`) is reported honestly in the run-metadata, not just the
+	 * console warning.
+	 */
+	requestedSandbox?: string;
 }
 
 /**
@@ -99,6 +108,11 @@ export function resolveInvestigation(
 		config.agent.permissions.mode;
 	const harnessNative = config.harnesses[harnessName]?.native;
 
+	// Best-effort resource caps (ADR-0020): map the snake_case config knobs to the
+	// engine's SandboxLimits shape, dropping unset ones so "no cap" stays no cap
+	// (never a lying default). Only present when at least one knob is set.
+	const limits = toSandboxLimits(config.agent.limits);
+
 	const request: InvestigationRequest = {
 		alert: args.alert,
 		query: args.query,
@@ -109,6 +123,10 @@ export function resolveInvestigation(
 		permissionMode,
 		...(harnessNative ? { harnessNative } : {}),
 		...(args.sandbox ? { sandbox: args.sandbox } : {}),
+		...(args.requestedSandbox
+			? { requestedSandbox: args.requestedSandbox }
+			: {}),
+		...(limits ? { limits } : {}),
 		model: config.agent.model,
 		cwd,
 		telemetry: {
@@ -135,6 +153,23 @@ export function resolveInvestigation(
 	};
 
 	return engineResolveInvestigation(request);
+}
+
+/**
+ * Map the parsed `agent.limits` (snake_case, all optional) into the engine's
+ * {@link SandboxLimits} (camelCase), dropping unset knobs. Returns `undefined` when
+ * nothing is set so the request stays limit-free — an omitted cap is never coerced to
+ * a lying value (ADR-0020).
+ */
+function toSandboxLimits(
+	limits: PlConfig["agent"]["limits"],
+): SandboxLimits | undefined {
+	const out: SandboxLimits = {
+		...(limits.wall_clock_ms ? { wallClockMs: limits.wall_clock_ms } : {}),
+		...(limits.memory_mb ? { memoryMb: limits.memory_mb } : {}),
+		...(limits.cpu_cores ? { cpuCores: limits.cpu_cores } : {}),
+	};
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**

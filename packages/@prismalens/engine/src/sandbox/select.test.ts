@@ -5,6 +5,7 @@
  * Hermetic — the srt-dependent assertions are gated on real availability.
  */
 import { describe, expect, it } from "vitest";
+import { isE2bAvailable } from "./e2b.js";
 import { resolveSandbox, SANDBOX_MODES } from "./select.js";
 import { isSrtAvailable } from "./srt.js";
 
@@ -19,7 +20,25 @@ describe("resolveSandbox", () => {
 	});
 
 	it("exposes the selectable modes", () => {
-		expect([...SANDBOX_MODES]).toEqual(["auto", "process", "srt"]);
+		expect([...SANDBOX_MODES]).toEqual(["auto", "process", "srt", "e2b"]);
+	});
+
+	// E2B is EXPLICIT-ONLY (ADR-0020 cloud row): `auto` must never reach for it — it
+	// needs an API key, so selecting it on a laptop would be wrong. `auto` only ever
+	// yields srt or the floor, so its `actual` can never be "e2b".
+	describe.skipIf(isE2bAvailable())("when E2B is unavailable", () => {
+		it("e2b throws a clear, actionable error (never silently downgrades)", () => {
+			expect(() => resolveSandbox("e2b")).toThrowError(
+				/e2b sandbox unavailable/,
+			);
+		});
+	});
+
+	it("auto never selects the explicit-only e2b provider", async () => {
+		const sel = resolveSandbox("auto");
+		expect(sel.actual).not.toBe("e2b");
+		expect(["srt", "process-floor"]).toContain(sel.actual);
+		await sel.sandbox.destroy();
 	});
 
 	describe.skipIf(isSrtAvailable())("when srt is unavailable", () => {

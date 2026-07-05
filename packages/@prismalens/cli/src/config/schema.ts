@@ -38,6 +38,22 @@ export const HarnessNativeConfigSchema = z.object({
 	native: z.record(z.string(), z.unknown()).optional(),
 });
 
+/**
+ * Best-effort resource caps for the sandboxed harness run (ADR-0020: "resource
+ * limits are part of the contract"). All optional with NO defaults — an unset knob
+ * means "no cap", never a value that would lie about being enforced. What actually
+ * takes effect is provider-dependent (the `process` floor enforces only
+ * `wall_clock_ms`; `srt` adds memory/cpu when `systemd-run` is present).
+ */
+export const AgentLimitsConfigSchema = z.object({
+	/** Wall-clock deadline (ms) — enforced by every sandbox provider. */
+	wall_clock_ms: z.number().int().positive().optional(),
+	/** Memory ceiling (MB) — best-effort (srt+systemd-run only). */
+	memory_mb: z.number().int().positive().optional(),
+	/** CPU quota (whole/fractional cores) — best-effort (srt+systemd-run only). */
+	cpu_cores: z.number().positive().optional(),
+});
+
 /** Tier-2 harness backend the supervisor rents (ADR-0008). */
 export const AgentConfigSchema = z.object({
 	default: z.enum(HARNESS_IDS).default("deepagents"),
@@ -57,6 +73,11 @@ export const AgentConfigSchema = z.object({
 	 * `auto` is a later deliberate change (B.1.1 egress gate).
 	 */
 	sandbox: z.enum(SANDBOX_MODES).default("process"),
+	/**
+	 * Best-effort resource caps for the sandboxed harness (ADR-0020). Optional; an
+	 * omitted section means "no caps" (the object defaults to `{}` after parse).
+	 */
+	limits: optionalWithDefaults(AgentLimitsConfigSchema),
 });
 
 export const WorkspaceConfigSchema = z.object({

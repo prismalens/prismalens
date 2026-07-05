@@ -71,3 +71,49 @@ describe("createProcessFloorSandbox", () => {
 		expect(child.killed).toBe(true);
 	});
 });
+
+describe("createProcessFloorSandbox — resource limits (ADR-0020)", () => {
+	it("wallClockMs SIGKILLs a sleeping child and marks it timedOut", async () => {
+		const sandbox = createProcessFloorSandbox();
+		// A child that would otherwise never exit — only the deadline can end it.
+		const child = sandbox.spawn(
+			process.execPath,
+			["-e", "setInterval(() => {}, 1000)"],
+			{ cwd: process.cwd(), limits: { wallClockMs: 50 } },
+		);
+		expect(child.appliedLimits?.wallClockMs).toBe(50);
+		const [, signal] = (await once(child, "close")) as [
+			number | null,
+			NodeJS.Signals | null,
+		];
+		expect(child.timedOut).toBe(true); // the distinguishable timeout marker
+		expect(signal).toBe("SIGKILL");
+		await sandbox.destroy();
+	});
+
+	it("no limits: the child runs to completion, no deadline armed", async () => {
+		const sandbox = createProcessFloorSandbox();
+		const child = sandbox.spawn(process.execPath, ["-e", "process.exit(0)"], {
+			cwd: process.cwd(),
+		});
+		expect(child.appliedLimits).toEqual({}); // nothing applied, nothing claimed
+		const [code] = (await once(child, "close")) as [number | null, unknown];
+		expect(child.timedOut).toBe(false);
+		expect(code).toBe(0);
+		await sandbox.destroy();
+	});
+
+	it("does not fake memory/cpu it cannot enforce (honest appliedLimits)", async () => {
+		const sandbox = createProcessFloorSandbox();
+		const child = sandbox.spawn(process.execPath, ["-e", "process.exit(0)"], {
+			cwd: process.cwd(),
+			limits: { memoryMb: 512, cpuCores: 2 },
+		});
+		// The floor has no OS lever for these — they are absent from the report, not
+		// echoed back as if enforced.
+		expect(child.appliedLimits?.memoryMb).toBeUndefined();
+		expect(child.appliedLimits?.cpuCores).toBeUndefined();
+		await once(child, "close");
+		await sandbox.destroy();
+	});
+});

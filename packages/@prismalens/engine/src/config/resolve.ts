@@ -30,7 +30,7 @@ import {
 	singleAlertContext,
 	type TelemetryEndpoints,
 } from "@prismalens/contracts";
-import type { Sandbox } from "../sandbox/types.js";
+import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 import {
 	claudeCodeHarness,
 	deepAgentsHarness,
@@ -99,6 +99,22 @@ export interface InvestigationRequest {
 	 * Only the deepagents (ACP) path consumes it; the Claude Code path is unaffected.
 	 */
 	sandbox?: Sandbox;
+	/**
+	 * What the caller ASKED for (ADR-0020 honest fidelity, structured
+	 * `fidelity.sandbox` field): the CLI's `--sandbox`/`agent.sandbox` mode or the
+	 * worker's `PRISMALENS_SANDBOX` knob — the request `resolveSandbox` degraded
+	 * (or not) into `sandbox` above. Only meaningful alongside `sandbox`; omitted
+	 * defaults to `sandbox.id` (requested == actual) so a caller that never learned
+	 * a separate request still gets a consistent structured field.
+	 */
+	requestedSandbox?: string;
+	/**
+	 * Best-effort resource caps for the sandboxed harness (ADR-0020): wall-clock
+	 * timeout (enforced by every provider) + memory/cpu (provider/OS permitting).
+	 * Threaded to the sandbox spawn via {@link AcpClientConfig}; like `sandbox`, only
+	 * the ACP (deepagents) path consumes it — the Agent SDK path runs in-process.
+	 */
+	limits?: SandboxLimits;
 }
 
 export interface ResolvedInvestigation {
@@ -167,6 +183,19 @@ export function resolveInvestigation(
 		mode,
 		fidelity: outcome.fidelity,
 		mechanism,
+		// The structured sibling of the mechanism string above (ADR-0020 B.1.1
+		// follow-up) — same requested/actual/fidelity facts, machine-readable.
+		// `requested` defaults to `sandbox.id` when the caller didn't separately
+		// know the request, so the field is never a lie by omission.
+		...(req.sandbox
+			? {
+					sandbox: {
+						requested: req.requestedSandbox ?? req.sandbox.id,
+						actual: req.sandbox.id,
+						fidelity: req.sandbox.fidelity,
+					},
+				}
+			: {}),
 	};
 
 	const harness = buildHarness(req.harness, req.cwd, {
@@ -176,6 +205,7 @@ export function resolveInvestigation(
 		permissionMode: mode,
 		native: req.harnessNative,
 		...(req.sandbox ? { sandbox: req.sandbox } : {}),
+		...(req.limits ? { limits: req.limits } : {}),
 	});
 
 	return {
@@ -217,6 +247,8 @@ interface BuildHarnessOpts {
 	native?: Record<string, unknown>;
 	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) path only. */
 	sandbox?: Sandbox;
+	/** Best-effort resource caps (ADR-0020); deepagents (ACP) path only. */
+	limits?: SandboxLimits;
 }
 
 /**
@@ -251,6 +283,7 @@ function buildHarness(
 				...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
 				...(opts.native ? { native: opts.native } : {}),
 				...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+				...(opts.limits ? { limits: opts.limits } : {}),
 			});
 		case "claude-code":
 			return claudeCodeHarness({

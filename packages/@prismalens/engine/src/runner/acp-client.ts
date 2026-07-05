@@ -23,7 +23,7 @@
 import { createInterface } from "node:readline";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
-import type { Sandbox } from "../sandbox/types.js";
+import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 
 /** One item in a branch's transport stream. Exactly one terminal item ends it. */
 export type AcpStreamItem =
@@ -86,6 +86,13 @@ export interface AcpClientConfig {
 	 * B.1) to upgrade — and then own its lifecycle.
 	 */
 	sandbox?: Sandbox;
+	/**
+	 * Best-effort resource caps for the sandboxed harness (ADR-0020): wall-clock
+	 * timeout (enforced by every provider) + memory/cpu (provider/OS permitting).
+	 * Passed to `sandbox.spawn`; a wall-clock kill surfaces as a distinguishable
+	 * timeout error on the terminal stream item (never a generic early-exit).
+	 */
+	limits?: SandboxLimits;
 	/** MCP servers offered to the session. Default `[]`. */
 	mcpServers?: unknown[];
 	/** How to answer permission requests. Default {@link autoAllowReadOnly}. */
@@ -150,6 +157,7 @@ export async function* runAcpBranch(
 	const child = sandbox.spawn(command, args, {
 		cwd: config.cwd,
 		env: config.env,
+		...(config.limits ? { limits: config.limits } : {}),
 	});
 
 	// --- queue plumbing: readline callbacks push items; the generator drains them ---
@@ -290,10 +298,13 @@ export async function* runAcpBranch(
 	child.on("close", (code, signal) => {
 		if (finished) return;
 		const tail = stderrChunks.join("").trim().slice(-STDERR_TAIL);
-		pushItem({
-			kind: "error",
-			message: `harness exited early (code=${code} signal=${signal})${tail ? `: ${tail}` : ""}`,
-		});
+		// A wall-clock kill (ADR-0020 resource-limits contract) is reported
+		// DISTINGUISHABLY from an ordinary early exit — the sandbox flips `timedOut`
+		// before SIGKILL, so the runner names the deadline instead of a bare signal.
+		const message = child.timedOut
+			? `harness exceeded its wall-clock limit (${config.limits?.wallClockMs}ms) and was killed${tail ? `: ${tail}` : ""}`
+			: `harness exited early (code=${code} signal=${signal})${tail ? `: ${tail}` : ""}`;
+		pushItem({ kind: "error", message });
 		finish();
 	});
 

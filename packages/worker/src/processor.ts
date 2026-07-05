@@ -12,8 +12,9 @@
  * INVESTIGATION_DEFAULTS + env as a local-first stopgap; the full `pl.config.yaml`
  * sourcing (materialised by the web Settings UI) lands with the config-UI work.
  */
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
-import type { LLMProviderId } from "@prismalens/config/llm";
+import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import type {
 	FiringAlert,
 	IncidentContext,
@@ -26,6 +27,10 @@ import {
 	type InvestigationRequest,
 	type InvestigationSink,
 	resolveInvestigation,
+	resolveSandbox,
+	SANDBOX_MODES,
+	type Sandbox,
+	type SandboxMode,
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
@@ -122,12 +127,19 @@ async function processJobInternal(
 		},
 	});
 
+	// The isolation boundary (ADR-0020) is CALLER-OWNED — the acp-client will not
+	// destroy a caller-supplied sandbox (it may span branches, B.2), so the worker owns
+	// its teardown in the finally below. Especially load-bearing for `e2b`: a leaked
+	// remote VM keeps costing until its timeout.
+	let sandbox: Sandbox | undefined;
 	try {
 		// 1. runId == the investigation id.
 		const runId = data.investigationId;
 
 		// 2. Resolve engine inputs (shell-first; BYO-key from LLM settings).
-		const resolved = resolveInvestigation(await buildRequest(data, runId));
+		const built = await buildRequest(data, runId);
+		sandbox = built.sandbox;
+		const resolved = resolveInvestigation(built.request);
 
 		await job.updateProgress({
 			percent: 5,
@@ -205,6 +217,14 @@ async function processJobInternal(
 			logger.error("Failed to update failure status", e);
 		}
 		throw error;
+	} finally {
+		if (sandbox) {
+			try {
+				await sandbox.destroy();
+			} catch (e) {
+				logger.error("Failed to destroy sandbox boundary", e);
+			}
+		}
 	}
 }
 
@@ -237,6 +257,78 @@ export function buildHarnessEnv(
 }
 
 /**
+ * Parse the `PRISMALENS_SANDBOX` knob (ADR-0020) into a {@link SandboxMode}. Defaults to
+ * `process` — the cooperative floor — TODAY; flipping the server default to an
+ * enforced-mandatory boundary (`e2b`) is Phase D packaging, not this slice. An unknown
+ * value fails LOUDLY rather than silently degrading to the floor.
+ */
+export function parseSandboxMode(raw: string | undefined): SandboxMode {
+	const value = raw ?? "process";
+	if ((SANDBOX_MODES as readonly string[]).includes(value)) {
+		return value as SandboxMode;
+	}
+	throw new Error(
+		`Invalid PRISMALENS_SANDBOX="${raw}" — expected one of ${SANDBOX_MODES.join("|")}.`,
+	);
+}
+
+/**
+ * Mirror the CLI's sandbox guard (cli/src/cli/investigate.ts): only ACP-transport
+ * harnesses are spawned as a child the engine can place inside a boundary — the Agent
+ * SDK / subprocess harnesses run their own way — so a NON-`process` sandbox request for a
+ * non-ACP harness must FAIL THE JOB FAST with an actionable message, never silently
+ * record an enforcement that did not apply (ADR-0017 honest fidelity). Returns whether
+ * the harness takes a sandbox, so the caller resolves one only when it will be consumed.
+ */
+export function harnessTakesSandbox(
+	harness: HarnessId,
+	mode: SandboxMode,
+): boolean {
+	const takesSandbox = HARNESS_REGISTRY[harness]?.transport === "acp";
+	if (!takesSandbox && mode !== "process") {
+		throw new Error(
+			`Harness "${harness}" cannot run inside a sandbox yet (it is not spawned as ` +
+				`a child process). Set PRISMALENS_SANDBOX=process or use an ACP harness ` +
+				`(deepagents).`,
+		);
+	}
+	return takesSandbox;
+}
+
+/**
+ * The egress allowlist for an enforced worker sandbox (ADR-0020 "allowlist, not closed,
+ * not open"): the hosts the harness legitimately reaches — the active LLM provider's
+ * `allowedHosts` (config/llm) PLUS the telemetry + app surfaces (INVESTIGATION_DEFAULTS)
+ * and any explicitly-configured extra endpoint (the resolved synth base URL for
+ * ollama/custom). A `null` provider allowlist (`custom`) or an unparseable URL adds no
+ * host — an unset source grants no egress rather than opening a hole. The `process`
+ * floor ignores this; only the enforced providers (srt/e2b) consume it.
+ */
+export function deriveWorkerAllowedHosts(
+	provider: LLMProviderId,
+	extraUrls: string[] = [],
+): string[] {
+	const hosts = new Set<string>();
+	const providerHosts = LLM_PROVIDERS[provider].allowedHosts;
+	if (providerHosts) for (const host of providerHosts) hosts.add(host);
+	const urls = [
+		INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
+		INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
+		INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+		...extraUrls,
+	];
+	for (const url of urls) {
+		if (!url) continue;
+		try {
+			hosts.add(new URL(url).hostname);
+		} catch {
+			// not a parseable URL — skip; no egress hole from a malformed endpoint
+		}
+	}
+	return [...hosts];
+}
+
+/**
  * Build the engine investigation request from the job + LLM settings.
  * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
  * stopgap); connectors are Phase D. BYO-key (ADR-0006) from the LLM settings.
@@ -244,7 +336,7 @@ export function buildHarnessEnv(
 async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
-): Promise<InvestigationRequest> {
+): Promise<{ request: InvestigationRequest; sandbox?: Sandbox }> {
 	const llmConfig = await fetchLlmConfig();
 	if (!llmConfig?.provider || !llmConfig?.model) {
 		throw new Error(
@@ -290,24 +382,52 @@ async function buildRequest(
 				`supports it (e.g. claude-code for anthropic).`,
 		);
 	}
+
+	// Isolation boundary (ADR-0020 B.1.3): the PRISMALENS_SANDBOX knob selects it; the
+	// server default is still `process` (the enforced-mandatory flip is Phase D
+	// packaging). Guard first (mirror the CLI): a non-`process` request for a non-ACP
+	// harness fails the job fast; then resolve an enforced boundary only for the ACP
+	// harness, with an allowlist derived from the LLM + telemetry hosts. The resolved
+	// sandbox is CALLER-OWNED — processJobInternal destroys it after the run.
+	const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
+	const takesSandbox = harnessTakesSandbox(harness as HarnessId, sandboxMode);
+	let sandbox: Sandbox | undefined;
+	if (takesSandbox) {
+		const allowedDomains = deriveWorkerAllowedHosts(
+			synthProvider,
+			synthIsOpenAiCompat ? [baseURL] : [],
+		);
+		sandbox = resolveSandbox(sandboxMode, { allowedDomains }).sandbox;
+	}
+
 	return {
-		context: assembleInvestigationContext(incident, data, {
-			...INVESTIGATION_DEFAULTS.telemetry,
-		}),
-		harness,
-		// The single posture dial (ADR-0017): the worker is always read-only in
-		// Phase A — no per-run override, no native passthrough.
-		permissionMode: "read-only",
-		model: llmConfig.model,
-		cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
-		synth: {
-			providerId: synthProvider,
+		request: {
+			context: assembleInvestigationContext(incident, data, {
+				...INVESTIGATION_DEFAULTS.telemetry,
+			}),
+			harness,
+			// The single posture dial (ADR-0017): the worker is always read-only in
+			// Phase A — no per-run override, no native passthrough.
+			permissionMode: "read-only",
 			model: llmConfig.model,
-			apiKey,
-			...(synthIsOpenAiCompat ? { baseURL } : {}),
+			cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
+			synth: {
+				providerId: synthProvider,
+				model: llmConfig.model,
+				apiKey,
+				...(synthIsOpenAiCompat ? { baseURL } : {}),
+			},
+			harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
+			initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
+			// Resource limits (ADR-0020): unattended server runs get a wall-clock cap so a
+			// wedged harness cannot pin a worker slot forever. Memory/cpu are left unset —
+			// the worker's default `process` floor cannot enforce them, and claiming a cap
+			// it does not apply would be dishonest (they arrive with the enforced cloud
+			// provider, B.1.3). Best-effort per provider.
+			limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
+			...(sandbox ? { sandbox, requestedSandbox: sandboxMode } : {}),
 		},
-		harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
-		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
+		sandbox,
 	};
 }
 

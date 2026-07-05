@@ -213,7 +213,12 @@ export default defineCommand({
 						...(args.harness ? { harness: args.harness } : {}),
 						...(args.service ? { service: args.service } : {}),
 						...(permissionMode ? { permissionMode } : {}),
-						...(selection ? { sandbox: selection.sandbox } : {}),
+						...(selection
+							? {
+									sandbox: selection.sandbox,
+									requestedSandbox: selection.requested,
+								}
+							: {}),
 					},
 					config,
 				);

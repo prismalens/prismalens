@@ -5,8 +5,19 @@
  * `cooperative` and the honest-fidelity surface must say so. The `srt` provider
  * (enforced) supersedes it as the local default when present — Phase B.1.
  */
+import type { ChildProcessByStdio } from "node:child_process";
 import { spawn } from "node:child_process";
-import type { Sandbox, SandboxProcess, SandboxSpawnOptions } from "./types.js";
+import type { Readable, Writable } from "node:stream";
+import type {
+	AppliedLimits,
+	Sandbox,
+	SandboxLimits,
+	SandboxProcess,
+	SandboxSpawnOptions,
+} from "./types.js";
+
+/** A child spawned with a fully-piped stdio tuple — non-null duplex streams. */
+type PipedChild = ChildProcessByStdio<Writable, Readable, Readable>;
 
 /**
  * Own-secret isolation (ADR-0009): only pass the child a bare-minimum shell
@@ -47,6 +58,45 @@ export function buildFloorEnv(
 	return env;
 }
 
+/**
+ * Decorate a freshly-spawned child with the {@link SandboxProcess} limit surface
+ * (ADR-0020 resource-limits contract), shared by EVERY provider so wall-clock
+ * enforcement + honest reporting live in one place:
+ *  - arms a SIGKILL timer for `limits.wallClockMs` (the one limit every provider can
+ *    enforce), cleared when the child closes on its own; when it fires it flips
+ *    {@link SandboxProcess.timedOut} so the runner can distinguish a deadline kill
+ *    from an early exit;
+ *  - stamps {@link SandboxProcess.appliedLimits} — the wall-clock (if armed) plus any
+ *    `enforced` memory/cpu the PROVIDER already arranged out-of-band (srt's
+ *    systemd-run scope). The floor arranges none: it cannot cap memory/cpu without OS
+ *    help and does not pretend to, so those stay absent from the report.
+ * The child is augmented in place (same object identity) so `kill`/`killed` stay
+ * bound to the live process.
+ */
+export function withLimits(
+	child: PipedChild,
+	limits: SandboxLimits | undefined,
+	enforced: Pick<AppliedLimits, "memoryMb" | "cpuCores"> = {},
+): SandboxProcess {
+	const applied: AppliedLimits = { ...enforced };
+	const proc = child as PipedChild & {
+		timedOut: boolean;
+		appliedLimits: AppliedLimits;
+	};
+	proc.timedOut = false;
+	if (limits?.wallClockMs && limits.wallClockMs > 0) {
+		applied.wallClockMs = limits.wallClockMs;
+		const timer = setTimeout(() => {
+			proc.timedOut = true;
+			proc.kill("SIGKILL");
+		}, limits.wallClockMs);
+		timer.unref(); // a pending deadline must not keep the event loop alive
+		child.on("close", () => clearTimeout(timer));
+	}
+	proc.appliedLimits = applied;
+	return proc;
+}
+
 /** Create a `process`-floor boundary. One per run; `destroy()` reaps stragglers. */
 export function createProcessFloorSandbox(): Sandbox {
 	const children = new Set<SandboxProcess>();
@@ -59,9 +109,12 @@ export function createProcessFloorSandbox(): Sandbox {
 				env: buildFloorEnv(options.env),
 				stdio: ["pipe", "pipe", "pipe"],
 			});
-			children.add(child);
-			child.on("close", () => children.delete(child));
-			return child;
+			// The floor enforces ONLY wall-clock (userspace SIGKILL); memory/cpu need
+			// OS help it does not have, so they are reported as unapplied (ADR-0020).
+			const proc = withLimits(child, options.limits);
+			children.add(proc);
+			proc.on("close", () => children.delete(proc));
+			return proc;
 		},
 		async destroy(): Promise<void> {
 			for (const child of children) {
