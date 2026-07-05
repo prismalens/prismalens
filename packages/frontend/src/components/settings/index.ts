@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 export { AIProviderSettings } from "./AIProviderSettings";
 export { ConnectionsTab } from "./ConnectionsTab";
 export {

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the `process`-floor Sandbox provider (ADR-0020/ADR-0009): the
  * child env must be built from the allowlist (never process.env verbatim), the

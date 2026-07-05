@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { SetMetadata } from "@nestjs/common";
 
 export const IS_PUBLIC_KEY = "isPublic";

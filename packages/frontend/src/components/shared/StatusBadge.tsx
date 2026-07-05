@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { AlertStatus, IncidentStatus } from "@prismalens/contracts";
 
 import { Badge } from "@/components/ui/badge";

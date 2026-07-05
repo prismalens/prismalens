@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the honest-fidelity sandbox guard (ADR-0017/ADR-0020): a
  * sandbox may only be claimed when the harness actually consumes it. Only

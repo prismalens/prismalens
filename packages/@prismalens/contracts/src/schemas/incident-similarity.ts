@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Incident Similarity schema — matches DB model (IncidentSimilarity table)
  * Pre-calculated similarity scores for pattern matching between incidents.

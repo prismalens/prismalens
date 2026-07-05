@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Fan-out — run each decomposed Branch on the rented Tier-2 harness and yield the
  * merged canonical stream (ADR-0016). All iterative depth happens INSIDE a branch

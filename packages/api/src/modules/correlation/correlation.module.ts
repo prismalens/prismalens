@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { forwardRef, Module } from "@nestjs/common";
 import { IncidentsModule } from "../incidents/incidents.module.js";
 import { CorrelationController } from "./correlation.controller.js";

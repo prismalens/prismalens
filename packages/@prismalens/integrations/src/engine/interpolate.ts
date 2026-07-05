@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Template interpolation engine for auth header values.
  * Supports {{field}} replacement and {{base64(...)}} function calls.

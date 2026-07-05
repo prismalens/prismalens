@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Resolve the repository label under investigation. Precedence: an explicit
  * config `repo` value (owner/name) wins; else git origin auto-detect from the

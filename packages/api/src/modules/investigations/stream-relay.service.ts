@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { EventEmitter } from "node:events";
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import type { CanonicalEvent } from "@prismalens/contracts";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Investigation defaults — the single home for the FALLBACK values the engine's
  * inputs need when `pl.config.yaml` omits them (review candidate #1; the

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { getConfig } from "@prismalens/config";
 import pino, { type Logger as PinoLogger } from "pino";
 import type { LogEntry, LoggerOptions } from "../types/log-entry.js";

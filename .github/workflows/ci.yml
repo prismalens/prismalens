@@ -91,3 +91,7 @@ jobs:
       # Biome reads source only — no build or Prisma generate required.
       - name: Biome check (format + lint)
         run: pnpm format-and-lint
+
+      # SPDX headers on first-party source; policy in CONTRIBUTING.md.
+      - name: SPDX header check
+        run: pnpm spdx:check

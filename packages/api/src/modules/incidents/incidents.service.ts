@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import type { Alert, Incident } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";

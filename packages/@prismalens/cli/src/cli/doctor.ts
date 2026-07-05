@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * `prismalens doctor` — preflight checklist for the two-tier engine (ADR-0008/0010).
  *

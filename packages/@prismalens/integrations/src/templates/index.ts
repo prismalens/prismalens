@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { AuthTemplate } from "../types.js";
 import { githubApp, githubToken } from "./github.js";
 import { prometheus } from "./prometheus.js";

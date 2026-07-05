@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { InvestigationReport } from "@prismalens/contracts";
 import { Type } from "class-transformer";
 import {

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Tests for the `srt` Sandbox provider (ADR-0020/ADR-0011). Two kinds:
  *  - HERMETIC: when srt is not resolvable (the dependency-light default — the engine

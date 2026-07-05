@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Template-driven OAuth2 authorization flow with PKCE support.
  * DB-backed state via injected interface — no NestJS dependency.

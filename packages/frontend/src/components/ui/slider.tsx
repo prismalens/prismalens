@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import * as React from "react";
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Common schemas shared across all entities
  * Includes enums, pagination, and utility schemas

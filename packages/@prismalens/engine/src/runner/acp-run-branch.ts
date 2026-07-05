@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Branch runner — drives one rented-harness run to completion, yielding the
  * canonical event stream (ADR-0008, Slice 0).

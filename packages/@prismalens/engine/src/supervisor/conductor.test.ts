@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the conductor primitive (ADR-0018): `conductRun` owns the
  * drive-loop + the durable STORE lifecycle (create → append per event → finish|fail)

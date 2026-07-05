@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the internal bulk-append endpoint (ADR-0018 B.4): each event is
  * validated with CanonicalEventSchema; invalid ones are DROPPED + logged (never a

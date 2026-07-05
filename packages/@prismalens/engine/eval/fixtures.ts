@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Golden-incident fixture loader (Phase B.3 pulled-forward eval slice — the plan's
  * "B.3 can't be validated without evals" gap). Lives OUTSIDE `src/` so it never

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Claude Code (Agent SDK) → canonical stream adapter (Tier-2 deep path, ADR-0008).
  *

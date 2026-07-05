@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { SetupStep } from "@prismalens/contracts";
 import { createFileRoute, isRedirect, redirect } from "@tanstack/react-router";
 import { SetupWizard } from "@/components/setup";

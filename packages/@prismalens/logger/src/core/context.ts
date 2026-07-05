@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { RequestScope, WideEvent } from "../types/index.js";
 import { generateRequestId, generateSpanId } from "../utils/id-generator.js";

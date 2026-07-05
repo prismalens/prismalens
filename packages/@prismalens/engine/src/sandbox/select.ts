@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Sandbox selection (ADR-0020 placement-scaled defaults + ADR-0017 honest fidelity):
  * turn a requested `mode` into a concrete {@link Sandbox}, reporting BOTH what was

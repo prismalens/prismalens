@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for fan-out's N>1 concurrency + failure isolation (ADR-0016
  * decision 2). No network / no LLM — fake harness generators only.

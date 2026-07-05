@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Golden-incident scorecard runner (Phase B.3 pulled-forward eval slice — see the
  * hub plan's 004 §B.3: "B.3 can't be validated without evals").

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * AES-256-GCM credential encryption vault.
  * Outputs Buffer (for Prisma Bytes) instead of base64 strings.

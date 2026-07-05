@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * OpenAPI Specification Generator
  *
@@ -31,8 +34,8 @@ async function generateOpenAPISpec() {
 				url: "https://github.com/prismalens-org/prismalens",
 			},
 			license: {
-				name: "ELv2",
-				url: "https://www.elastic.co/licensing/elastic-license",
+				name: "Apache-2.0",
+				url: "https://www.apache.org/licenses/LICENSE-2.0",
 			},
 		},
 		servers: [

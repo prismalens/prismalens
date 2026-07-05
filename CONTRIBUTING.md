@@ -3,10 +3,17 @@
 Thanks for your interest in improving prismalens — a local-first SRE
 incident-investigation tool.
 
-> **Current status:** external code PRs are **not being accepted yet** while
-> the v0.0.x foundations settle. Issues, bug reports, and discussions are very
-> welcome today. Everything below describes how contributions will work once
-> code contributions open up.
+## Contribution status
+
+**prismalens is open source (Apache-2.0) but is not accepting outside code
+contributions yet.** The codebase is moving fast pre-1.0 and the review
+bandwidth goes into the release. What IS very welcome right now: bug reports,
+feature requests, and discussions — use the issue templates. Forking is of
+course fine; that's what the license is for.
+
+When code contributions open, they will be gated by the Developer Certificate
+of Origin (DCO, `Signed-off-by` on every commit) under Apache-2.0
+inbound=outbound. This section will be updated when that happens.
 
 ## Ground rules
 
@@ -67,6 +74,21 @@ The dev login is `admin@prismalens.dev` / `admin123`.
 - Small, cohesive files; explicit error handling at boundaries; no stray
   `console.log` debris and no hardcoded secrets.
 
+## License headers (SPDX)
+
+Every first-party source file (`*.ts`, `*.tsx`, `*.mts`, `*.cts`, `*.mjs`,
+`*.cjs`) starts with:
+
+```
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+```
+
+(after the shebang, for executables). CI enforces this via `pnpm spdx:check`;
+`pnpm spdx:fix` inserts missing headers. Generated code is excluded — paraglide
+output, generated clients, anything under `dist/` — see the `EXCLUDE` list in
+`scripts/spdx-headers.mjs`.
+
 ## Knowledge base (mage)
 
 Durable design and spec knowledge lives in an **external mage hub**, not in this
@@ -86,10 +108,9 @@ a live release process. Every one of those packages (and the rest of
 Contributors touching a publishable package should add a changeset
 (`pnpm changeset`) describing the change; `pnpm changeset:version` applies
 pending changesets to bump versions and changelogs when the time comes. The
-`private` flag flips and actual npm publishing begins only at the Phase G
-relicense (ELv2 → Apache-2.0 — see the mage hub's `003-relicense-apache-cla`
-plan via [AGENTS.md](AGENTS.md)) — until then, changesets accumulate but nothing
-is published to the registry. App-side packages (`@prismalens/api`,
+`private` flag flips and actual npm publishing begins with the R0 CLI release
+(see the mage hub's `005-r0-cli-release` plan via [AGENTS.md](AGENTS.md)) —
+until then, changesets accumulate but nothing is published to the registry. App-side packages (`@prismalens/api`,
 `@prismalens/frontend`, `@prismalens/worker`) are excluded from Changesets
 entirely — they deploy, they don't publish.
 
@@ -100,6 +121,9 @@ issue** — see [SECURITY.md](SECURITY.md).
 
 ## License
 
-prismalens is currently distributed under the [Elastic License 2.0](LICENSE)
-(a relicense to Apache-2.0 is planned). By contributing, you agree that your
-contributions are licensed under the repository's `LICENSE`.
+prismalens is distributed under the [Apache License 2.0](LICENSE) (see also
+[NOTICE](NOTICE)). The hosted cloud / enterprise edition
+(`prismalens-enterprise`) is a separate, **proprietary** product and carries
+none of this repository's licensing. If and when outside code contributions
+are accepted (see [Contribution status](#contribution-status)), they will be
+licensed under Apache-2.0, inbound=outbound, with DCO sign-off.

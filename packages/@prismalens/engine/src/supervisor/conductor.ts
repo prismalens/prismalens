@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Conduct one investigation: drive the supervisor stream, fan every canonical
  * event to a SINK, and drive a durable STORE through its lifecycle, returning the

@@ -4,7 +4,7 @@
 	"description": "PrismaLens API - NestJS REST API server",
 	"author": "PrismaLens Team",
 	"private": true,
-	"license": "ELv2",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "nest start --watch --preserveWatchOutput",

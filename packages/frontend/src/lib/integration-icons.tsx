@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Github, Link2, MessageSquare, Zap } from "lucide-react";
 
 export function getIntegrationIcon(templateId: string, className = "h-5 w-5") {

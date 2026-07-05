@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * prismalens.config.yaml schema (ADR-0010 engine-as-CLI), adapted from the retired
  * pl orchestrator's config to the two-tier engine (ADR-0008).

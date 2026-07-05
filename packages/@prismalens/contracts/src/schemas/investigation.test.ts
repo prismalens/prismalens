@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic parse round-trip for the structured honest-fidelity sandbox field
  * (ADR-0017 honest fidelity + ADR-0020 Sandbox port, B.1.1 follow-up):

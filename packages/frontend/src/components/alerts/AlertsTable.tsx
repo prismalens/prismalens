@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { AlertWithRelations } from "@prismalens/contracts";
 
 import { Link } from "@tanstack/react-router";

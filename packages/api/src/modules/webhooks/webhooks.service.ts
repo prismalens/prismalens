@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";

@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/frontend",
 	"version": "0.1.0",
+	"license": "Apache-2.0",
 	"description": "PrismaLens Frontend - TanStack Start dashboard for incident analysis",
 	"type": "module",
 	"private": true,

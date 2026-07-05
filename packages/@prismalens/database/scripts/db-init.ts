@@ -1,4 +1,7 @@
 #!/usr/bin/env npx tsx
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { execSync } from "child_process";
 /**
  * Smart database initialization script.

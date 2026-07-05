@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Controller, forwardRef, Inject } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { alertsContract } from "@prismalens/contracts";

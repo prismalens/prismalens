@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Live harness depth comparison — runs the SAME firing incident + SAME prompt +
  * SAME Tier-1 reduce model through BOTH Tier-2 harnesses (deepagents/ACP vs Claude

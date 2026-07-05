@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Utility functions for building Redis connection URLs and options from config.
  * Follows the same pattern as database-url.ts.

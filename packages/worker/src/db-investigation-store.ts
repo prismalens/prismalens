@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * DB-backed {@link InvestigationStore} adapter (ADR-0018) — folds the worker's
  * investigation lifecycle (status + timeline + result persistence) into the

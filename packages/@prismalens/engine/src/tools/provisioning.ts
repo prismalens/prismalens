@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Shell-only tool provisioning factory — the local/CLI default (ADR-0011). Builds a
  * read-only {@link ToolProvisioning} scoped to a working directory. The tool-seam

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Tests for the `e2b` Sandbox provider (ADR-0020 cloud row / ADR-0011 dependency-light).
  * Three kinds:

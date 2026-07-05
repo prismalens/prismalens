@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Read JSON from piped stdin (salvaged from the retired pl orchestrator). Used to
  * accept a webhook-shaped alert payload piped into `prismalens investigate`.

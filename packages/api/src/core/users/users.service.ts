@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import { ADMIN_ROLES, type AppRole } from "@prismalens/auth";
 import { AuthService } from "../auth/auth.service.js";

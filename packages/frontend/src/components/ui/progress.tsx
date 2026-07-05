@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import * as ProgressPrimitive from "@radix-ui/react-progress";
 import * as React from "react";
 

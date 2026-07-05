@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * ACP transport client — drives a rented harness over the Agent Client Protocol
  * (`deepagents-acp`, JSON-RPC over stdio) and yields a flat, typed stream of

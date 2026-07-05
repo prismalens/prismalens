@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Tool provisioning — the seam (ADR-0011; candidate ADR-0012) that decides HOW a
  * Tier-2 harness reaches data:

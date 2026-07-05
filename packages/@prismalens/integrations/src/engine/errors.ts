@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Structured error types for the auth lifecycle.
  * Enables callers to handle specific failure modes

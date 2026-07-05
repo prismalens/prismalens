@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * `prismalens serve` — run the JSON-RPC 2.0 server over stdio (ADR-0007/0010).
  *

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Claude Code harness runner (Tier-2 deep path, ADR-0008). Drives the Claude Agent
  * SDK (`query()` — which spawns the user's Claude Code CLI + subscription) and

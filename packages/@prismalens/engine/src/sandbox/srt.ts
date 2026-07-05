@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The `srt` provider (ADR-0020) — the local/desktop `enforced` Sandbox: the harness
  * is spawned THROUGH Anthropic's `@anthropic-ai/sandbox-runtime` (bwrap+seccomp on

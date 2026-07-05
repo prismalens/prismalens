@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the golden-incident scorecard's OFFLINE plumbing (Phase B.3
  * pulled-forward eval slice): fixtures schema-parse into real contracts types, the

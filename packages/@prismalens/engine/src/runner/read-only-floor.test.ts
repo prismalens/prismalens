@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Anti-drift guard (ADR-0017 Amendment 2): the reported read-only fidelity MECHANISM
  * must be DERIVED from the same deny-list the claude-code runner enforces

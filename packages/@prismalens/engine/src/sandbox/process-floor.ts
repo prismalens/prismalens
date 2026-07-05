@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The `process` floor (ADR-0020) — the lightweight, always-on Sandbox provider:
  * own-secret isolation (allowlist, not denylist — ADR-0009) + workspace-scoped cwd.

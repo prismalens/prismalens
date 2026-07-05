@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 "use client";
 
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";

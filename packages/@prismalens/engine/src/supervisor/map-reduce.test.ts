@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the reduce step's map-reduce (ADR-0016 decision 2 / critique C3).
  * No network / no LLM — reduce() takes an INJECTABLE ReportModel, so a stub records

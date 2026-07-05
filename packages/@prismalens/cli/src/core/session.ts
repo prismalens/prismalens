@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Workspace + session manager for engine runs (ADR-0010), simplified from the
  * retired pl orchestrator's session-manager.
