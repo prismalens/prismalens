@@ -26,6 +26,7 @@ export class InvestigationFactory {
 				"unknown",
 			]),
 			report: null,
+			overlay: null,
 			harnessThreadId: null,
 			startedAt: null,
 			completedAt: null,

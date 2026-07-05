@@ -8,6 +8,7 @@ import type {
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
+import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
 	CreateAgentExecutionDto,
@@ -42,6 +43,7 @@ export class InvestigationsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
+		private readonly overlayService: OverlayService,
 	) {}
 
 	/**
@@ -364,6 +366,19 @@ export class InvestigationsService {
 			this.logger.log(
 				`Wrote full result for investigation ${id} with ${dto.agentExecutions?.length ?? 0} agents and ${dto.recommendations?.length ?? 0} recommendations`,
 			);
+
+			// Reduce overlay (ADR-0016 §5c) — enrich the report app-side AFTER it
+			// lands. Fire-and-forget: the canonical report is already persisted and
+			// overlay failure must NEVER fail the investigation write.
+			if (dto.status === "completed") {
+				void this.overlayService.computeOverlay(id).catch((error) => {
+					this.logger.error(
+						`Overlay computation failed for investigation ${id}`,
+						error,
+					);
+				});
+			}
+
 			return this.findById(id);
 		} catch (error) {
 			this.logger.error(

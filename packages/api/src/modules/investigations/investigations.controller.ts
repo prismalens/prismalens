@@ -11,7 +11,7 @@ import type {
 	ToolExecutionStatus,
 	WorkflowStatus,
 } from "@prismalens/contracts";
-import { investigationsContract } from "@prismalens/contracts";
+import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
 import type {
 	AgentExecution,
 	Investigation,
@@ -212,6 +212,13 @@ export class InvestigationsController {
 		};
 	}
 
+	private parseOverlay(raw: Investigation["overlay"]) {
+		const obj = safeParseJsonObject(raw);
+		if (!obj) return null;
+		const parsed = OverlaySchema.safeParse(obj);
+		return parsed.success ? parsed.data : null;
+	}
+
 	private serializeInvestigation(investigation: Investigation) {
 		return {
 			id: investigation.id,
@@ -227,6 +234,9 @@ export class InvestigationsController {
 				(safeParseJsonObject(
 					investigation.report,
 				) as InvestigationReport | null) ?? null,
+			// Reduce overlay (ADR-0016 §5c) — parsed through OverlaySchema so a
+			// malformed/absent blob degrades to null rather than corrupting the payload.
+			overlay: this.parseOverlay(investigation.overlay),
 			error: investigation.error ?? null,
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),

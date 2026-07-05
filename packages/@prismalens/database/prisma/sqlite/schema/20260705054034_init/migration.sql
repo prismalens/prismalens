@@ -166,6 +166,7 @@ CREATE TABLE "investigations" (
     "rootCause" TEXT,
     "rootCauseCategory" TEXT,
     "report" TEXT,
+    "overlay" TEXT,
     "error" TEXT,
     "harnessThreadId" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -262,6 +262,7 @@ CREATE TABLE "investigations" (
     "rootCause" TEXT,
     "rootCauseCategory" "RootCauseCategory",
     "report" JSONB,
+    "overlay" JSONB,
     "error" TEXT,
     "harnessThreadId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

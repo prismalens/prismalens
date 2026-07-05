@@ -1,0 +1,244 @@
+{
+	"name": "config-change-oom",
+	"context": {
+		"alerts": [
+			{
+				"alertname": "PodOOMKilled",
+				"severity": "critical",
+				"labels": {
+					"service": "recommendation-engine",
+					"severity": "critical"
+				},
+				"annotations": {
+					"summary": "recommendation-engine pods being OOMKilled",
+					"description": "recommendation-engine pods restarting with OOMKilled reason"
+				},
+				"startsAt": "2026-07-05T06:55:00Z"
+			}
+		],
+		"telemetry": {
+			"prometheusUrl": "http://prom:9090",
+			"alertmanagerUrl": "http://am:9093",
+			"apiUrl": "http://api:5000"
+		},
+		"incident": {
+			"title": "recommendation-engine repeated OOMKilled",
+			"description": "Pods being killed and restarted with exit code 137",
+			"severity": "critical",
+			"startedAt": "2026-07-05T06:55:00Z"
+		},
+		"service": {
+			"name": "recommendation-engine",
+			"tier": "tier-2",
+			"repo": "prismalens-org/recommendation-engine",
+			"dependsOn": []
+		}
+	},
+	"transcriptEvents": [
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 0,
+			"ts": "2026-07-05T06:57:00Z",
+			"text": "Investigating PodOOMKilled for recommendation-engine. Checking recent cluster events.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-1",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl get events -n prod --field-selector reason=OOMKilling"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 1,
+			"ts": "2026-07-05T06:57:02Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-1",
+				"source": "kubectl get events -n prod --field-selector reason=OOMKilling",
+				"ok": true,
+				"preview": "LAST SEEN   TYPE      REASON      OBJECT                                MESSAGE\n2m          Warning   OOMKilling  pod/recommendation-engine-6f7d8-xk2p  Memory cgroup out of memory: Killed process 1 (java)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 2,
+			"ts": "2026-07-05T06:57:05Z",
+			"text": "Confirming the pod's memory limit and last termination reason.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-2",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl describe pod recommendation-engine-6f7d8-xk2p -n prod"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 3,
+			"ts": "2026-07-05T06:57:07Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-2",
+				"source": "kubectl describe pod recommendation-engine-6f7d8-xk2p -n prod",
+				"ok": true,
+				"preview": "Last State:  Terminated\n  Reason:  OOMKilled\n  Exit Code:  137\nLimits:\n  memory: 512Mi\nRequests:\n  memory: 256Mi"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 4,
+			"ts": "2026-07-05T06:57:10Z",
+			"text": "Checking recent config/deploy history for this service.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-3",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl rollout history deployment/recommendation-engine -n prod"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 5,
+			"ts": "2026-07-05T06:57:12Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-3",
+				"source": "kubectl rollout history deployment/recommendation-engine -n prod",
+				"ok": true,
+				"preview": "REVISION  CHANGE-CAUSE\n17        recommendation-engine:v3.2.1\n18        configmap/recommendation-engine-config updated (cache.max_entries 50000 -> 5000000), deploy by jdoe 2026-07-05T06:40:00Z"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 6,
+			"ts": "2026-07-05T06:57:15Z",
+			"text": "Inspecting the changed ConfigMap value.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-4",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl get configmap recommendation-engine-config -n prod -o yaml | grep cache"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 7,
+			"ts": "2026-07-05T06:57:17Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-4",
+				"source": "kubectl get configmap recommendation-engine-config -n prod -o yaml",
+				"ok": true,
+				"preview": "cache.max_entries: \"5000000\"\ncache.eviction_policy: \"lru\"\n# previous value was 50000 before the 2026-07-05T06:40:00Z change — a 100x increase to the in-memory cache size"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 8,
+			"ts": "2026-07-05T06:57:20Z",
+			"text": "Correlating memory usage growth with the config change timestamp.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-5",
+					"name": "promql",
+					"args": {
+						"query": "container_memory_working_set_bytes{pod=~\"recommendation-engine.*\"}"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 9,
+			"ts": "2026-07-05T06:57:22Z",
+			"result": {
+				"name": "promql",
+				"toolCallId": "tc-5",
+				"source": "PromQL: container_memory_working_set_bytes{pod=~\"recommendation-engine.*\"}",
+				"ok": true,
+				"preview": "06:30 210Mi\n06:41 300Mi\n06:50 480Mi\n06:55 510Mi (OOMKilled at the 512Mi limit)\n(memory climbs steadily right after the 06:40 config change, consistent with an in-memory cache sized 100x larger)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 10,
+			"ts": "2026-07-05T06:57:25Z",
+			"text": "Ruling out node-level memory pressure.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-6",
+					"name": "kubectl",
+					"args": { "cmd": "kubectl top nodes" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111105",
+			"branchId": "root",
+			"path": [],
+			"seq": 11,
+			"ts": "2026-07-05T06:57:27Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-6",
+				"source": "kubectl top nodes",
+				"ok": true,
+				"preview": "All nodes: CPU and memory usage within normal range — no node-level pressure. The OOM is scoped to this pod's own container cgroup limit."
+			}
+		}
+	],
+	"expected": {
+		"rootCauseKeywords": [
+			"cache.max_entries",
+			"config change",
+			"configmap",
+			"memory limit"
+		],
+		"mustNotContain": ["node-level pressure", "node memory pressure"]
+	}
+}

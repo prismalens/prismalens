@@ -16,6 +16,7 @@ import {
 	ToolExecutionStatusSchema,
 	WorkflowStatusSchema,
 } from "./common.js";
+import { OverlaySchema } from "./overlay.js";
 
 // =============================================================================
 // ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
@@ -180,6 +181,12 @@ export const InvestigationSchema = z.object({
 	rootCauseCategory: RootCauseCategorySchema.nullable(),
 	/** The full ordered-evidence report (ADR-0002); supersedes the old confidence/dataQuality/rawOutput columns. */
 	report: InvestigationReportSchema.nullable().optional(),
+	/**
+	 * App-side reduce overlay (ADR-0016 §5c) — post-report enrichment computed
+	 * BESIDE the canonical report (related changes, service-graph proximity, similar
+	 * incidents). Absent until computed; the engine never sees it (ADR-0011).
+	 */
+	overlay: OverlaySchema.nullable().optional(),
 	error: z.string().nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,

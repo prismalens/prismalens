@@ -120,6 +120,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.deployment;
 	}
 
+	get incidentSimilarity() {
+		return prisma.incidentSimilarity;
+	}
+
 	// Better Auth models
 	get session() {
 		return prisma.session;

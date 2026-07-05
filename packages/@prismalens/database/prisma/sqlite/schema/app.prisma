@@ -261,6 +261,7 @@ model Investigation {
   rootCause         String?
   rootCauseCategory String? // code, config, infrastructure, external, unknown
   report            String? // JSON: InvestigationReport
+  overlay           String? // JSON: reduce overlay (ADR-0016 §5c) — app-side post-report enrichment, computed BESIDE the canonical report
   error             String?
   harnessThreadId   String?   @unique // Harness checkpoint thread ID for resume/replay
   createdAt         DateTime  @default(now())

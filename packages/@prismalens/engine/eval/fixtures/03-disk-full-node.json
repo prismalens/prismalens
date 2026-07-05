@@ -1,0 +1,236 @@
+{
+	"name": "disk-full-node",
+	"context": {
+		"alerts": [
+			{
+				"alertname": "NodeDiskPressure",
+				"severity": "critical",
+				"labels": { "service": "search-indexer", "node": "ip-10-0-4-201" },
+				"annotations": {
+					"summary": "Node ip-10-0-4-201 under DiskPressure",
+					"description": "search-indexer pods on ip-10-0-4-201 are CrashLoopBackOff"
+				},
+				"startsAt": "2026-07-05T02:00:00Z"
+			}
+		],
+		"telemetry": {
+			"prometheusUrl": "http://prom:9090",
+			"alertmanagerUrl": "http://am:9093",
+			"apiUrl": "http://api:5000"
+		},
+		"incident": {
+			"title": "search-indexer CrashLoopBackOff on ip-10-0-4-201",
+			"description": "Node reporting DiskPressure, indexer pods repeatedly restarting",
+			"severity": "critical",
+			"startedAt": "2026-07-05T02:00:00Z"
+		},
+		"service": {
+			"name": "search-indexer",
+			"tier": "tier-2",
+			"repo": "prismalens-org/search-indexer",
+			"dependsOn": ["elasticsearch-cluster"]
+		}
+	},
+	"transcriptEvents": [
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 0,
+			"ts": "2026-07-05T02:05:00Z",
+			"text": "Investigating NodeDiskPressure. Checking node status first.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-1",
+					"name": "kubectl",
+					"args": { "cmd": "kubectl get nodes -o wide" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 1,
+			"ts": "2026-07-05T02:05:02Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-1",
+				"source": "kubectl get nodes -o wide",
+				"ok": true,
+				"preview": "NAME               STATUS                     ROLES    AGE\nip-10-0-4-201      Ready,SchedulingDisabled   worker   92d\n(node cordoned by the kubelet's own disk-pressure eviction manager)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 2,
+			"ts": "2026-07-05T02:05:05Z",
+			"text": "Checking the node's reported conditions.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-2",
+					"name": "kubectl",
+					"args": { "cmd": "kubectl describe node ip-10-0-4-201" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 3,
+			"ts": "2026-07-05T02:05:07Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-2",
+				"source": "kubectl describe node ip-10-0-4-201",
+				"ok": true,
+				"preview": "Conditions:\n  Type          Status  Reason\n  DiskPressure  True    KubeletHasDiskPressure\nEvents:\n  Warning  EvictionThresholdMet  kubelet  Attempting to reclaim ephemeral-storage"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 4,
+			"ts": "2026-07-05T02:05:10Z",
+			"text": "Checking actual disk usage on the node.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-3",
+					"name": "ssh",
+					"args": { "cmd": "df -h /var/lib/docker" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 5,
+			"ts": "2026-07-05T02:05:12Z",
+			"result": {
+				"name": "ssh",
+				"toolCallId": "tc-3",
+				"source": "ssh ip-10-0-4-201 -- df -h /var/lib/docker",
+				"ok": true,
+				"preview": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/nvme1n1    100G   99G    0G  100% /var/lib/docker"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 6,
+			"ts": "2026-07-05T02:05:15Z",
+			"text": "Finding what's consuming the disk.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-4",
+					"name": "ssh",
+					"args": { "cmd": "du -sh /var/log/containers/* | sort -rh | head -5" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 7,
+			"ts": "2026-07-05T02:05:17Z",
+			"result": {
+				"name": "ssh",
+				"toolCallId": "tc-4",
+				"source": "ssh ip-10-0-4-201 -- du -sh /var/log/containers/*",
+				"ok": true,
+				"preview": "42G   search-indexer-7f9b6_prod_indexer-8a1c.log\n3.1G  fluentd-daemonset-xk2p_kube-system_fluentd.log\n1.2G  other-service.log\n(search-indexer's own container log dwarfs everything else on the node)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 8,
+			"ts": "2026-07-05T02:05:20Z",
+			"text": "Checking why search-indexer is logging so aggressively.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-5",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl logs search-indexer-7f9b6 -n prod --tail=20"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 9,
+			"ts": "2026-07-05T02:05:22Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-5",
+				"source": "kubectl logs search-indexer-7f9b6 -n prod --tail=20",
+				"ok": true,
+				"preview": "2026-07-05T02:00:11Z WARN retrying failed bulk index request (attempt 45000)\n2026-07-05T02:00:11Z WARN retrying failed bulk index request (attempt 45001)\n[repeats every ~2ms, unbounded retry loop against elasticsearch-cluster, flooding stdout/logs]"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 10,
+			"ts": "2026-07-05T02:05:25Z",
+			"text": "Ruling out memory pressure as a contributing factor.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-6",
+					"name": "promql",
+					"args": {
+						"query": "node_memory_MemAvailable_bytes{instance=\"ip-10-0-4-201\"}"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111103",
+			"branchId": "root",
+			"path": [],
+			"seq": 11,
+			"ts": "2026-07-05T02:05:27Z",
+			"result": {
+				"name": "promql",
+				"toolCallId": "tc-6",
+				"source": "PromQL: node_memory_MemAvailable_bytes{instance=\"ip-10-0-4-201\"}",
+				"ok": true,
+				"preview": "Memory available: 12GB / 32GB — nominal, no memory pressure on this node."
+			}
+		}
+	],
+	"expected": {
+		"rootCauseKeywords": [
+			"disk",
+			"diskpressure",
+			"disk space",
+			"log volume",
+			"full"
+		],
+		"mustNotContain": ["memory pressure", "out of memory"]
+	}
+}

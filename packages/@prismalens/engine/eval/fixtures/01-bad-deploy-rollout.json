@@ -1,0 +1,203 @@
+{
+	"name": "bad-deploy-rollout",
+	"context": {
+		"alerts": [
+			{
+				"alertname": "HighErrorRate",
+				"severity": "critical",
+				"labels": { "service": "checkout-service", "severity": "critical" },
+				"annotations": {
+					"summary": "Error rate above 5% for checkout-service",
+					"description": "5xx rate on checkout-service has exceeded threshold for 5m"
+				},
+				"startsAt": "2026-07-05T08:06:00Z"
+			}
+		],
+		"telemetry": {
+			"prometheusUrl": "http://prom:9090",
+			"alertmanagerUrl": "http://am:9093",
+			"apiUrl": "http://api:5000"
+		},
+		"incident": {
+			"title": "checkout-service 5xx spike",
+			"description": "Customer-facing checkout errors spiking",
+			"severity": "critical",
+			"startedAt": "2026-07-05T08:06:00Z"
+		},
+		"service": {
+			"name": "checkout-service",
+			"tier": "tier-1",
+			"repo": "prismalens-org/checkout-service",
+			"dependsOn": ["payment-service", "inventory-service"]
+		}
+	},
+	"transcriptEvents": [
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 0,
+			"ts": "2026-07-05T08:10:00Z",
+			"text": "Investigating HighErrorRate for checkout-service. Checking recent deploys first.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-1",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl rollout history deployment/checkout-service -n prod"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 1,
+			"ts": "2026-07-05T08:10:02Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-1",
+				"source": "kubectl rollout history deployment/checkout-service -n prod",
+				"ok": true,
+				"preview": "REVISION  CHANGE-CAUSE\n40        checkout-service:v2.13.2\n41        checkout-service:v2.14.0 (deploy by ci-bot 2026-07-05T08:05:00Z)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 2,
+			"ts": "2026-07-05T08:10:05Z",
+			"text": "A new revision rolled out one minute before the alert fired. Correlating error rate with the rollout timestamp.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-2",
+					"name": "promql",
+					"args": {
+						"query": "sum(rate(http_requests_total{service=\"checkout-service\",status=~\"5..\"}[5m]))"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 3,
+			"ts": "2026-07-05T08:10:07Z",
+			"result": {
+				"name": "promql",
+				"toolCallId": "tc-2",
+				"source": "PromQL: sum(rate(http_requests_total{service=\"checkout-service\",status=~\"5..\"}[5m]))",
+				"ok": true,
+				"preview": "08:00  0.02\n08:03  0.02\n08:05  0.03\n08:06  1.85\n08:07  4.21\n08:10  4.30\n(error rate jumps immediately after the 08:05 rollout of v2.14.0)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 4,
+			"ts": "2026-07-05T08:10:10Z",
+			"text": "Checking pod logs for the new revision.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-3",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl logs deploy/checkout-service -n prod --since=10m"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 5,
+			"ts": "2026-07-05T08:10:12Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-3",
+				"source": "kubectl logs deploy/checkout-service -n prod --since=10m",
+				"ok": true,
+				"preview": "panic: nil pointer dereference in pricing.CalculateDiscount (new in v2.14.0)\ngoroutine 42 [running]:\ncheckout-service/pricing.CalculateDiscount()\n\t/app/pricing/discount.go:88\n[repeated on every request touching the discount path]"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 6,
+			"ts": "2026-07-05T08:10:15Z",
+			"text": "Confirming pods are crash-looping on the new revision.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-4",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl describe pod -l app=checkout-service -n prod | tail -30"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 7,
+			"ts": "2026-07-05T08:10:17Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-4",
+				"source": "kubectl describe pod -l app=checkout-service -n prod",
+				"ok": true,
+				"preview": "  Warning  BackOff  2m (x12 over 5m)  kubelet  Back-off restarting failed container\nLast State: Terminated\n  Reason: Error\n  Exit Code: 2\nImage: checkout-service:v2.14.0"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 8,
+			"ts": "2026-07-05T08:10:20Z",
+			"text": "Ruling out node-level resource saturation as a contributing factor.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-5",
+					"name": "promql",
+					"args": { "query": "avg(node_cpu_seconds_total)" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111101",
+			"branchId": "root",
+			"path": [],
+			"seq": 9,
+			"ts": "2026-07-05T08:10:22Z",
+			"result": {
+				"name": "promql",
+				"toolCallId": "tc-5",
+				"source": "PromQL: avg(node_cpu_seconds_total) — cluster CPU utilization",
+				"ok": true,
+				"preview": "All prod nodes CPU utilization nominal (35-45%), no saturation observed."
+			}
+		}
+	],
+	"expected": {
+		"rootCauseKeywords": ["deploy", "rollout", "v2.14.0", "release"],
+		"mustNotContain": ["cpu saturation", "cpu utilization", "node resource"]
+	}
+}
