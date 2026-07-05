@@ -303,7 +303,10 @@ class E2bSandboxProcess extends EventEmitter implements SandboxProcess {
 	}
 
 	/**
-	 * Terminal: the VM/command failed to start — emit `error` (child_process contract).
+	 * Terminal: the VM/command failed to start — emit `error` and ONLY `error` (like
+	 * node's failed-spawn path, which never reaches `close`). Consumers must treat
+	 * `error` as terminal on its own — the ACP runner does (its error handler calls
+	 * finish()); a consumer waiting solely on `close` would hang on this path.
 	 * A failure that arrives AFTER an explicit kill is the kill's own consequence, so it
 	 * degrades to a clean `close` rather than a spurious error.
 	 */
