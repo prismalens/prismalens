@@ -14,6 +14,8 @@ export * from "./runner/acp-client.js";
 export * from "./runner/acp-run-branch.js";
 export * from "./runner/claude-code-runner.js";
 export * from "./sandbox/process-floor.js";
+export * from "./sandbox/select.js";
+export * from "./sandbox/srt.js";
 export * from "./sandbox/types.js";
 export * from "./supervisor/alert-source.js";
 export * from "./supervisor/conductor.js";

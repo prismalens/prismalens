@@ -18,6 +18,7 @@ import {
 	resolveInvestigation as engineResolveInvestigation,
 	type InvestigationRequest,
 	type ResolvedInvestigation,
+	type Sandbox,
 } from "@prismalens/engine";
 import type { PlConfig } from "../config/schema.js";
 
@@ -39,6 +40,12 @@ export interface ResolveInvestigationArgs {
 	service?: string;
 	/** The posture dial override (ADR-0017); else `config.agent.permissions.mode`. */
 	permissionMode?: string;
+	/**
+	 * The resolved isolation boundary (ADR-0020), CALLER-OWNED — the command resolves
+	 * it from `--sandbox`/`agent.sandbox` (`resolveSandbox`) and destroys it after the
+	 * run. Forwarded to the engine so the harness spawns into it.
+	 */
+	sandbox?: Sandbox;
 }
 
 /**
@@ -101,6 +108,7 @@ export function resolveInvestigation(
 		harness: harnessName,
 		permissionMode,
 		...(harnessNative ? { harnessNative } : {}),
+		...(args.sandbox ? { sandbox: args.sandbox } : {}),
 		model: config.agent.model,
 		cwd,
 		telemetry: {

@@ -33,7 +33,9 @@ export const SAFE_ENV_ALLOWLIST = [
  * The floor's child env: the safe allowlist from process.env, with the caller's
  * env (BYO-key) layered on top so it always wins.
  */
-export function buildFloorEnv(extra?: NodeJS.ProcessEnv): Record<string, string> {
+export function buildFloorEnv(
+	extra?: NodeJS.ProcessEnv,
+): Record<string, string> {
 	const env: Record<string, string> = {};
 	for (const key of SAFE_ENV_ALLOWLIST) {
 		const value = process.env[key];

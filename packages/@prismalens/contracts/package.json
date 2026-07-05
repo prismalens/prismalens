@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/contracts",
 	"version": "0.1.0",
+	"private": true,
 	"description": "Shared API contracts and Zod schemas for PrismaLens",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -41,5 +42,8 @@
 	"files": [
 		"dist",
 		"src"
-	]
+	],
+	"publishConfig": {
+		"access": "public"
+	}
 }

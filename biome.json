@@ -62,6 +62,41 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": [
+				"packages/@prismalens/engine/src/**",
+				"packages/@prismalens/cli/src/**"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"@prismalens/database": "engine/cli must not depend on @prismalens/database — that couples them to the app's persistence layer.",
+									"@prismalens/integrations": "engine/cli must not depend on @prismalens/integrations — that couples them to app-side external services.",
+									"@prismalens/auth": "engine/cli must not depend on @prismalens/auth — that couples them to the app's auth layer.",
+									"@prismalens/api": "engine/cli must not depend on @prismalens/api — that couples them to the app.",
+									"@prismalens/worker": "engine/cli must not depend on @prismalens/worker — that couples them to the app.",
+									"@prismalens/frontend": "engine/cli must not depend on @prismalens/frontend — that couples them to the app."
+								},
+								"patterns": [
+									{
+										"group": [
+											"../**/api/**",
+											"../**/worker/**",
+											"../**/frontend/**"
+										],
+										"message": "engine/cli must not reach into packages/api, packages/worker, or packages/frontend via relative import — that breaks the extraction seam."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
 		}
 	]
 }

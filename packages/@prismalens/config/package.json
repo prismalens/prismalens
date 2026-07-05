@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/config",
 	"version": "0.1.0",
+	"private": true,
 	"description": "Shared configuration and environment variable management for PrismaLens",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -64,5 +65,8 @@
 	"files": [
 		"dist",
 		"src"
-	]
+	],
+	"publishConfig": {
+		"access": "public"
+	}
 }

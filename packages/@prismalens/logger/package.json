@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/logger",
 	"version": "0.1.0",
+	"private": true,
 	"description": "Wide events logging with tail sampling for PrismaLens",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -54,5 +55,8 @@
 	"files": [
 		"dist",
 		"src"
-	]
+	],
+	"publishConfig": {
+		"access": "public"
+	}
 }

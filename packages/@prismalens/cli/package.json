@@ -7,6 +7,12 @@
 		"prismalens": "./dist/bin/prismalens.js",
 		"pl": "./dist/bin/prismalens.js"
 	},
+	"files": [
+		"dist"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "tsc",
 		"typecheck": "tsc --noEmit",

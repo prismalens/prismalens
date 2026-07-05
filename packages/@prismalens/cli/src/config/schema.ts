@@ -16,6 +16,7 @@
  *    the role machinery is gone.
  */
 import { HARNESS_IDS, PERMISSION_MODES } from "@prismalens/config/harness";
+import { SANDBOX_MODES } from "@prismalens/engine";
 import { z } from "zod";
 
 /**
@@ -49,6 +50,13 @@ export const AgentConfigSchema = z.object({
 	model: z.string().optional(),
 	/** The posture dial (ADR-0017). Defaults to `read-only`. */
 	permissions: optionalWithDefaults(PermissionConfigSchema),
+	/**
+	 * The isolation boundary the harness runs in (ADR-0020): `process` (the always-on
+	 * cooperative floor), `srt` (enforced OS boundary), or `auto` (srt if available,
+	 * else the floor — honest degrade). Defaults to `process`; flipping the default to
+	 * `auto` is a later deliberate change (B.1.1 egress gate).
+	 */
+	sandbox: z.enum(SANDBOX_MODES).default("process"),
 });
 
 export const WorkspaceConfigSchema = z.object({

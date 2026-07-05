@@ -19,6 +19,7 @@
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	Hypothesis,
@@ -26,10 +27,17 @@ import type {
 	NextStep,
 	RuledOut,
 } from "@prismalens/contracts";
-import { conductRun } from "@prismalens/engine";
+import {
+	conductRun,
+	resolveSandbox,
+	SANDBOX_MODES,
+	type SandboxMode,
+	type SandboxSelection,
+} from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
+import type { PlConfig } from "../config/schema.js";
 import { resolveRepoSlug } from "../core/detect-repo.js";
 import { createFileSessionStore } from "../core/file-session-store.js";
 import { parseStdin } from "../core/parse-stdin.js";
@@ -82,6 +90,12 @@ export default defineCommand({
 			type: "boolean",
 			default: false,
 			description: "Alias for --mode dangerous.",
+		},
+		sandbox: {
+			type: "enum",
+			options: [...SANDBOX_MODES],
+			description:
+				"Isolation boundary the harness runs in (ADR-0020): process (cooperative floor), srt (enforced), or auto. Defaults to agent.sandbox in config (process).",
 		},
 		service: {
 			type: "string",
@@ -144,90 +158,171 @@ export default defineCommand({
 			? "dangerous"
 			: args.mode;
 
-		let resolved: ResolvedInvestigation;
+		// Resolve the isolation boundary (ADR-0020): --sandbox wins over agent.sandbox.
+		// Only ACP-transport harnesses are spawned as a child the engine can place
+		// inside a boundary (the Agent SDK harness runs in-process): an EXPLICIT
+		// sandbox request for a harness that cannot honour it fails fast (ADR-0017 —
+		// never claim an enforcement that would not apply), while the mere `process`
+		// default is skipped silently. Fail fast on an explicit `srt` request we
+		// cannot honour; `auto` degrades to the floor (surfaced below). The sandbox
+		// is CALLER-OWNED — destroyed in the finally.
+		const harnessName =
+			(args.harness as HarnessId | undefined) ?? config.agent.default;
+		const harnessTakesSandbox =
+			HARNESS_REGISTRY[harnessName]?.transport === "acp";
+		const sandboxMode =
+			(args.sandbox as SandboxMode | undefined) ?? config.agent.sandbox;
+		let selection: SandboxSelection | null = null;
+		if (!harnessTakesSandbox && (args.sandbox || sandboxMode !== "process")) {
+			consola.error(
+				`Harness "${harnessName}" cannot run inside a sandbox yet (it is not ` +
+					`spawned as a child process). Drop --sandbox / agent.sandbox or use ` +
+					`an ACP harness (deepagents).`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+		if (harnessTakesSandbox) {
+			try {
+				selection = resolveSandbox(sandboxMode, {
+					allowedDomains: collectAllowedDomains(config),
+				});
+			} catch (err) {
+				consola.error(err instanceof Error ? err.message : String(err));
+				process.exitCode = 1;
+				return;
+			}
+			// Honest fidelity (ADR-0017): a silent degrade would mislead — name it.
+			if (sandboxMode === "auto" && selection.actual !== "srt") {
+				consola.warn(
+					`Sandbox 'auto': srt unavailable — running in the ${selection.actual} (cooperative, not an OS boundary).`,
+				);
+			} else if (selection.actual === "srt") {
+				info("Sandbox: srt (enforced OS boundary).");
+			}
+		}
+
 		try {
-			resolved = resolveInvestigation(
+			let resolved: ResolvedInvestigation;
+			try {
+				resolved = resolveInvestigation(
+					{
+						...(piped ? { alert: piped } : {}),
+						...(args.query ? { query: args.query } : {}),
+						...(args.repo ? { repo: args.repo } : {}),
+						...(args.harness ? { harness: args.harness } : {}),
+						...(args.service ? { service: args.service } : {}),
+						...(permissionMode ? { permissionMode } : {}),
+						...(selection ? { sandbox: selection.sandbox } : {}),
+					},
+					config,
+				);
+			} catch (err) {
+				consola.error(err instanceof Error ? err.message : String(err));
+				process.exitCode = 1;
+				return;
+			}
+			const { context, harness, synth, harnessName, fidelity } = resolved;
+			const primaryAlert = context.alerts[0];
+
+			if (!synth.apiKey) {
+				consola.warn(
+					"No OLLAMA_API_KEY / OPENAI_API_KEY in the environment — the synthesis call will likely fail (BYO-key, ADR-0006).",
+				);
+			}
+
+			// (2) Create the run workspace + session under workspace.base_dir, wrapped as
+			// a conductRun store adapter (ADR-0018).
+			const runId = randomUUID();
+			const sessions = createSessionManager(config.workspace.base_dir);
+			const fileSession = createFileSessionStore(sessions, {
+				runId,
+				alertname: primaryAlert.alertname,
+				agent: harnessName,
+				...(repoSlug ? { repo: repoSlug } : {}),
+			});
+
+			info(
+				`Investigating "${primaryAlert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
+			);
+
+			// (3) Drive the supervisor LIVE via the shared conductor: print a one-line
+			// timeline entry per event; conductRun owns persistence + the terminal
+			// report/no-evidence/error outcome.
+			const outcome = await conductRun(
+				{ context, harness, synth, fidelity, runId },
 				{
-					...(piped ? { alert: piped } : {}),
-					...(args.query ? { query: args.query } : {}),
-					...(args.repo ? { repo: args.repo } : {}),
-					...(args.harness ? { harness: args.harness } : {}),
-					...(args.service ? { service: args.service } : {}),
-					...(permissionMode ? { permissionMode } : {}),
+					sink: (event) => {
+						const entry = liveTimelineEntry(event);
+						if (entry) line(entry);
+					},
+					store: fileSession.store,
 				},
-				config,
 			);
-		} catch (err) {
-			consola.error(err instanceof Error ? err.message : String(err));
-			process.exitCode = 1;
-			return;
-		}
-		const { context, harness, synth, harnessName, fidelity } = resolved;
-		const primaryAlert = context.alerts[0];
 
-		if (!synth.apiKey) {
-			consola.warn(
-				"No OLLAMA_API_KEY / OPENAI_API_KEY in the environment — the synthesis call will likely fail (BYO-key, ADR-0006).",
-			);
-		}
+			if (!outcome.report) {
+				consola.error(outcome.error);
+				process.exitCode = 1;
+				return;
+			}
+			const report = outcome.report;
 
-		// (2) Create the run workspace + session under workspace.base_dir, wrapped as
-		// a conductRun store adapter (ADR-0018).
-		const runId = randomUUID();
-		const sessions = createSessionManager(config.workspace.base_dir);
-		const fileSession = createFileSessionStore(sessions, {
-			runId,
-			alertname: primaryAlert.alertname,
-			agent: harnessName,
-			...(repoSlug ? { repo: repoSlug } : {}),
-		});
+			// (4) Output. --output writes report JSON to a file; --json prints it to
+			// stdout; otherwise render the ordered-evidence report for humans.
+			if (args.output) {
+				const outPath = resolve(args.output);
+				await writeFile(
+					outPath,
+					`${JSON.stringify(report, null, 2)}\n`,
+					"utf-8",
+				);
+				success(`Report written to ${outPath}`);
+			}
 
-		info(
-			`Investigating "${primaryAlert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
-		);
+			if (json) {
+				process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+				return;
+			}
 
-		// (3) Drive the supervisor LIVE via the shared conductor: print a one-line
-		// timeline entry per event; conductRun owns persistence + the terminal
-		// report/no-evidence/error outcome.
-		const outcome = await conductRun(
-			{ context, harness, synth, fidelity, runId },
-			{
-				sink: (event) => {
-					const entry = liveTimelineEntry(event);
-					if (entry) line(entry);
-				},
-				store: fileSession.store,
-			},
-		);
-
-		if (!outcome.report) {
-			consola.error(outcome.error);
-			process.exitCode = 1;
-			return;
-		}
-		const report = outcome.report;
-
-		// (4) Output. --output writes report JSON to a file; --json prints it to
-		// stdout; otherwise render the ordered-evidence report for humans.
-		if (args.output) {
-			const outPath = resolve(args.output);
-			await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf-8");
-			success(`Report written to ${outPath}`);
-		}
-
-		if (json) {
-			process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-			return;
-		}
-
-		if (!quiet) {
-			renderReport(report);
-			success(
-				`Report saved to ${join(fileSession.workspacePath(), "report.json")}`,
-			);
+			if (!quiet) {
+				renderReport(report);
+				success(
+					`Report saved to ${join(fileSession.workspacePath(), "report.json")}`,
+				);
+			}
+		} finally {
+			// The command owns the resolved boundary's lifecycle (ADR-0020) — tear it
+			// down whichever way the run exited (report, no-evidence, error, or throw).
+			if (selection) await selection.sandbox.destroy();
 		}
 	},
 });
+
+/**
+ * The egress allowlist for an enforced sandbox (ADR-0020: allowlist, not closed): the
+ * hostnames of the read-only telemetry + log surfaces the harness is configured to
+ * query. Only explicitly-configured endpoints are allowed — an unset field grants no
+ * egress; non-URL values are skipped (the harness then fails its own query honestly
+ * rather than the sandbox opening a hole). The `process` floor ignores this.
+ */
+function collectAllowedDomains(config: PlConfig): string[] {
+	const urls = [
+		config.telemetry.prometheusUrl,
+		config.telemetry.alertmanagerUrl,
+		config.telemetry.apiUrl,
+		config.logs.url,
+	];
+	const hosts = new Set<string>();
+	for (const url of urls) {
+		if (!url) continue;
+		try {
+			hosts.add(new URL(url).hostname);
+		} catch {
+			// not a parseable URL — skip; no egress hole from a malformed endpoint
+		}
+	}
+	return [...hosts];
+}
 
 // ---------------------------------------------------------------------------
 // Live timeline (one line per streamed canonical event)

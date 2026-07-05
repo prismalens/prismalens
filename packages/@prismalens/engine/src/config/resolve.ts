@@ -30,6 +30,7 @@ import {
 	singleAlertContext,
 	type TelemetryEndpoints,
 } from "@prismalens/contracts";
+import type { Sandbox } from "../sandbox/types.js";
 import {
 	claudeCodeHarness,
 	deepAgentsHarness,
@@ -91,6 +92,13 @@ export interface InvestigationRequest {
 	harnessEnv?: Record<string, string | undefined>;
 	/** ACP cold-start headroom (ms) for the first handshake. */
 	initTimeoutMs?: number;
+	/**
+	 * The isolation boundary the harness is spawned into (ADR-0020), resolved by the
+	 * caller (`resolveSandbox`) and CALLER-OWNED — the caller destroys it after the
+	 * run. Omitted ⇒ the acp-client creates + owns a `process` floor (today's default).
+	 * Only the deepagents (ACP) path consumes it; the Claude Code path is unaffected.
+	 */
+	sandbox?: Sandbox;
 }
 
 export interface ResolvedInvestigation {
@@ -132,11 +140,33 @@ export function resolveInvestigation(
 		req.harness as HarnessId,
 		mode,
 	);
+	// Honest fidelity (ADR-0017): a sandbox may only be CLAIMED when the harness
+	// actually consumes it. Only ACP-transport harnesses are spawned as a child the
+	// engine can place inside the boundary; the Agent SDK harness runs in-process,
+	// so accepting a sandbox for it would record an enforcement that never applied.
+	// Fail loudly instead of silently discarding the requested boundary.
+	if (
+		req.sandbox &&
+		HARNESS_REGISTRY[req.harness as HarnessId]?.transport !== "acp"
+	) {
+		throw new Error(
+			`Harness "${req.harness}" cannot run inside a sandbox yet (it is not ` +
+				`spawned as a child process). Drop --sandbox or use an ACP harness ` +
+				`(deepagents). Sandboxing the Agent SDK harness is a later B.1 slice.`,
+		);
+	}
+	// When the caller wired a boundary the harness consumes, name it in the
+	// run-metadata mechanism alongside the harness's own permission mechanism — the
+	// sandbox is a SEPARATE enforcement axis (an OS boundary the harness runs in),
+	// so it augments the mechanism string rather than overriding the permission fidelity.
+	const mechanism = req.sandbox
+		? `${outcome.mechanism} · sandbox=${req.sandbox.id} (${req.sandbox.fidelity})`
+		: outcome.mechanism;
 	const fidelity: RunFidelity = {
 		harness: req.harness,
 		mode,
 		fidelity: outcome.fidelity,
-		mechanism: outcome.mechanism,
+		mechanism,
 	};
 
 	const harness = buildHarness(req.harness, req.cwd, {
@@ -145,6 +175,7 @@ export function resolveInvestigation(
 		initTimeoutMs: req.initTimeoutMs,
 		permissionMode: mode,
 		native: req.harnessNative,
+		...(req.sandbox ? { sandbox: req.sandbox } : {}),
 	});
 
 	return {
@@ -184,6 +215,8 @@ interface BuildHarnessOpts {
 	permissionMode?: PermissionMode;
 	/** The chosen harness's native passthrough (ADR-0017). */
 	native?: Record<string, unknown>;
+	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) path only. */
+	sandbox?: Sandbox;
 }
 
 /**
@@ -217,6 +250,7 @@ function buildHarness(
 				...(model ? { model } : {}),
 				...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
 				...(opts.native ? { native: opts.native } : {}),
+				...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
 			});
 		case "claude-code":
 			return claudeCodeHarness({

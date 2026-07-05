@@ -19,10 +19,11 @@
  * BYO-key (ADR-0006): the model + credentials are injected via `model`/`env`; the
  * engine never hard-binds a provider.
  */
-import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
-import type { Sandbox } from "../sandbox/types.js";
+
 import { createInterface } from "node:readline";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
+import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
+import type { Sandbox } from "../sandbox/types.js";
 
 /** One item in a branch's transport stream. Exactly one terminal item ends it. */
 export type AcpStreamItem =
