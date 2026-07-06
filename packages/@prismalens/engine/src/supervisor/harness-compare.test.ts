@@ -40,7 +40,8 @@ const CLAUDE_CREDS = join(homedir(), ".claude", ".credentials.json");
 // sreforge's fixed compose host ports; overridable for remapped stacks.
 const TELEMETRY = {
 	prometheusUrl: process.env.SREFORGE_PROMETHEUS_URL ?? "http://localhost:9090",
-	alertmanagerUrl: process.env.SREFORGE_ALERTMANAGER_URL ?? "http://localhost:9093",
+	alertmanagerUrl:
+		process.env.SREFORGE_ALERTMANAGER_URL ?? "http://localhost:9093",
 	apiUrl: process.env.SREFORGE_API_URL ?? "http://localhost:5000",
 };
 
