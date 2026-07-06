@@ -12,9 +12,10 @@
  */
 import { defineCommand } from "citty";
 import { runJsonRpcServer } from "../jsonrpc/server.js";
+import { cliVersion } from "../version.js";
 
 /** Reported as serverInfo.version by `initialize` (matches the CLI's meta.version). */
-const SERVER_VERSION = "0.0.1";
+const SERVER_VERSION = cliVersion();
 
 export default defineCommand({
 	meta: {

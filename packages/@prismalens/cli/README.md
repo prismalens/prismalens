@@ -1,6 +1,7 @@
-# @prismalens/cli
+# prismalens
 
-The PrismaLens **investigation engine CLI** — the `prismalens` (alias `pl`) binary.
+The PrismaLens **investigation engine CLI** — the `prismalens` (alias `pl`) binary,
+published on npm as the unscoped [`prismalens`](https://www.npmjs.com/package/prismalens) package.
 
 Per **ADR-0010**, the engine *is* a CLI: the desktop app and web API drive it
 rather than embedding it. The CLI is a thin **Tier-1 supervisor** that rents a
@@ -26,10 +27,22 @@ invoked.
 
 ---
 
-## Install / build
+## Install
+
+Requires Node.js >= 22.
+
+```bash
+# one-off, nothing installed globally
+npx prismalens doctor
+
+# or install the `prismalens` / `pl` bins globally
+npm install -g prismalens
+```
+
+## Build from source
 
 This package lives in the pnpm + turbo monorepo and is consumed by the rest of the
-platform via `workspace:*`. It is not published standalone (`"private": true`).
+platform via `workspace:*`.
 
 ```bash
 # from the repo root
@@ -38,7 +51,7 @@ pnpm install
 # build the CLI and its workspace deps (@prismalens/contracts, @prismalens/engine)
 pnpm build                      # turbo build (whole monorepo)
 # or just this package + its deps:
-pnpm --filter @prismalens/cli... build
+pnpm --filter prismalens... build
 ```
 
 The build emits `dist/`, exposing two bin entries (identical):
@@ -111,11 +124,11 @@ Runs the JSON-RPC 2.0 server over stdio — the live channel apps drive (see
 Preflight checklist that gates a run. Prints pass/fail per check; exits non-zero
 **iff a hard check fails**.
 
-- **HARD — harness binary on PATH:** `deepagents` → `deepagents`,
+- **HARD — harness binary on PATH:** `deepagents` → `deepagents-acp`,
   `claude-code` → `claude`, `codex` → `codex` (for the harness from config).
-- **HARD — an LLM credential:** any of `OLLAMA_API_KEY` / `OPENAI_API_KEY` /
-  `ANTHROPIC_API_KEY`, or, for `claude-code`, a signed-in
-  `~/.claude/.credentials.json`.
+- **HARD — an LLM credential:** any of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
+  `GOOGLE_API_KEY` / `OLLAMA_API_KEY` / `GROQ_API_KEY` / `CUSTOM_LLM_API_KEY`,
+  or, for `claude-code`, a signed-in `~/.claude/.credentials.json`.
 - **SOFT — workspace writable:** `workspace.base_dir` can be created/written.
 
 ### `init`

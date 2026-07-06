@@ -49,6 +49,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Manifest/exports sanity for the packages that publish to npm (R0.c).
+      - name: publint (publishable packages)
+        run: pnpm publint
+
   test:
     name: Test
     runs-on: ubuntu-latest

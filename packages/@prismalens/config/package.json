@@ -1,8 +1,7 @@
 {
 	"name": "@prismalens/config",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"license": "Apache-2.0",
-	"private": true,
 	"description": "Shared configuration and environment variable management for PrismaLens",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -60,12 +59,25 @@
 		"@types/node": "catalog:",
 		"typescript": "catalog:"
 	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/prismalens/prismalens.git",
+		"directory": "packages/@prismalens/config"
+	},
+	"homepage": "https://prismalens.io",
+	"bugs": "https://github.com/prismalens/prismalens/issues",
+	"keywords": [
+		"prismalens",
+		"config",
+		"providers"
+	],
 	"engines": {
-		"node": ">=22.0.0"
+		"node": ">=22"
 	},
 	"files": [
 		"dist",
-		"src"
+		"src",
+		"NOTICE"
 	],
 	"publishConfig": {
 		"access": "public"

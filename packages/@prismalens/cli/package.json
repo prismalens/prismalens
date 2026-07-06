@@ -1,16 +1,37 @@
 {
-	"name": "@prismalens/cli",
+	"name": "prismalens",
 	"version": "0.0.0",
+	"description": "AI root-cause investigation from your terminal — point it at a repo, pipe it an alert, get an evidence-linked report",
 	"license": "Apache-2.0",
-	"private": true,
 	"type": "module",
 	"bin": {
 		"prismalens": "./dist/bin/prismalens.js",
 		"pl": "./dist/bin/prismalens.js"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"NOTICE"
 	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/prismalens/prismalens.git",
+		"directory": "packages/@prismalens/cli"
+	},
+	"homepage": "https://prismalens.io",
+	"bugs": "https://github.com/prismalens/prismalens/issues",
+	"keywords": [
+		"sre",
+		"incident-response",
+		"root-cause-analysis",
+		"investigation",
+		"observability",
+		"devops",
+		"ai",
+		"cli"
+	],
+	"engines": {
+		"node": ">=22"
+	},
 	"publishConfig": {
 		"access": "public"
 	},

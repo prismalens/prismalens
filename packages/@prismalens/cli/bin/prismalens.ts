@@ -8,6 +8,7 @@
  * a fast `--help` doesn't pull in the engine. Bodies are implemented separately.
  */
 import { type CommandDef, defineCommand, runMain } from "citty";
+import { cliVersion } from "../src/version.js";
 
 // The AI SDK's one-time "AI SDK Warning System" banner prints via console.info
 // (STDOUT) mid-run — noise in the live timeline and corruption in piped JSON.
@@ -22,7 +23,7 @@ const lazy = (name: string) => (): Promise<CommandDef> =>
 const main = defineCommand({
 	meta: {
 		name: "prismalens",
-		version: "0.0.1",
+		version: cliVersion(),
 		description:
 			"PrismaLens investigation engine CLI — drives the two-tier engine (ADR-0008/0010).",
 	},
