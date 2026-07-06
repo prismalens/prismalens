@@ -24,6 +24,8 @@
  * Run: `pnpm --filter @prismalens/engine eval` (offline) or
  *      `PRISMALENS_EVAL_LIVE=1 OLLAMA_API_KEY=... pnpm --filter @prismalens/engine eval`.
  */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { SYNTH_DEFAULTS } from "@prismalens/config/investigation";
 import {
 	getDefaultModel,
@@ -68,10 +70,16 @@ async function main(): Promise<void> {
 	);
 
 	const rows: Array<{ fixture: string } & ScoreResult> = [];
+	const artifacts: Array<{
+		fixture: string;
+		score: ScoreResult;
+		report: unknown;
+	}> = [];
 	for (const fx of fixtures) {
 		const report = await reduce(fx.context, fx.transcriptEvents, synth);
 		const score = scoreReport(report, fx.expected);
 		rows.push({ fixture: fx.name, ...score });
+		artifacts.push({ fixture: fx.name, score, report });
 	}
 
 	printScorecard(rows);
@@ -81,6 +89,32 @@ async function main(): Promise<void> {
 	console.log(
 		`\n${passed}/${fixtures.length} passed (threshold ${THRESHOLD}/${fixtures.length}) — ${ok ? "PASS" : "FAIL"}`,
 	);
+
+	// Persist the full reports (gitignored) so a scorecard fail is adjudicable
+	// after the fact — was it a wrong diagnosis or scorer strictness? Without
+	// this, a LIVE run leaves no artifact to re-read.
+	const outDir = join(import.meta.dirname, "results");
+	mkdirSync(outDir, { recursive: true });
+	const outFile = join(
+		outDir,
+		`live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+	);
+	writeFileSync(
+		outFile,
+		JSON.stringify(
+			{
+				model: `${synth.providerId}/${synth.model}`,
+				passed,
+				total: fixtures.length,
+				threshold: THRESHOLD,
+				results: artifacts,
+			},
+			null,
+			1,
+		),
+	);
+	console.log(`Full reports written to ${outFile}`);
+
 	process.exitCode = ok ? 0 : 1;
 }
 
