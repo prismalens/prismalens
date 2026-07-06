@@ -124,12 +124,7 @@ export default defineCommand({
 		const json = Boolean(args.json);
 		// In --json mode stdout must be machine-clean, so suppress all info-level
 		// chatter (consola routes info/log/success to stdout, warn/error to stderr).
-		// The AI SDK's one-time "AI SDK Warning System" banner prints via console.log
-		// (stdout!) and would corrupt piped JSON — turn its warning logging off.
-		if (json) {
-			(globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS =
-				false;
-		}
+		// The AI SDK's stdout warning banner is disabled bin-wide (bin/prismalens.ts).
 		const quiet = Boolean(args.quiet) || json;
 		const info = (msg: string): void => {
 			if (!quiet) consola.info(msg);

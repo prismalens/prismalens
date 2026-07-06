@@ -6,6 +6,12 @@
  */
 import { type CommandDef, defineCommand, runMain } from "citty";
 
+// The AI SDK's one-time "AI SDK Warning System" banner prints via console.info
+// (STDOUT) mid-run — noise in the live timeline and corruption in piped JSON.
+// Off for the whole CLI; real per-warning notices still reach stderr via
+// process.emitWarning.
+(globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
+
 /** Lazily import a command body's default export from src/cli. */
 const lazy = (name: string) => (): Promise<CommandDef> =>
 	import(`../src/cli/${name}.js`).then((m) => m.default as CommandDef);
