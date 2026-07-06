@@ -142,7 +142,20 @@ interface JsonRpcMessage {
 	method?: string;
 	params?: Record<string, unknown>;
 	result?: unknown;
-	error?: { code?: number; message?: string };
+	error?: { code?: number; message?: string; data?: unknown };
+}
+
+/**
+ * Flatten a JSON-RPC error into one actionable line. Servers hide the useful
+ * part in `error.data` (deepagents-acp puts install hints in `data.details`)
+ * while `message` is a generic "Internal error" — surface both, truncated.
+ */
+function jsonRpcErrorText(error: NonNullable<JsonRpcMessage["error"]>): string {
+	const head = error.message ?? `ACP error ${error.code}`;
+	if (error.data === undefined) return head;
+	const data =
+		typeof error.data === "string" ? error.data : JSON.stringify(error.data);
+	return `${head} — ${data.slice(0, 500)}`;
 }
 
 /**
@@ -278,9 +291,7 @@ export async function* runAcpBranch(
 			if (p) {
 				pending.delete(msg.id);
 				if (msg.error) {
-					p.reject(
-						new Error(msg.error.message ?? `ACP error ${msg.error.code}`),
-					);
+					p.reject(new Error(jsonRpcErrorText(msg.error)));
 				} else {
 					p.resolve(msg.result);
 				}
