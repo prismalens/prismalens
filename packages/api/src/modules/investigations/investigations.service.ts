@@ -158,6 +158,33 @@ export class InvestigationsService {
 	}
 
 	/**
+	 * Apply a status write with the cancelled-is-sticky rule (CANCEL slice,
+	 * ADR-0018): a user's terminal "cancelled" is never overwritten by a late or
+	 * retried worker write. The guard rides in the UPDATE's WHERE so check-and-write
+	 * is one statement; a blocked (or missing-row) write returns null.
+	 */
+	private async applyStatusUpdate(
+		id: string,
+		status: string,
+		updateData: Record<string, unknown>,
+	): Promise<Investigation | null> {
+		const { count } = await this.prisma.investigation.updateMany({
+			where: {
+				id,
+				...(status === "cancelled" ? {} : { NOT: { status: "cancelled" } }),
+			},
+			data: updateData,
+		});
+		if (count === 0) {
+			this.logger.warn(
+				`Status write "${status}" for investigation ${id} skipped (missing or already cancelled)`,
+			);
+			return null;
+		}
+		return this.prisma.investigation.findUnique({ where: { id } });
+	}
+
+	/**
 	 * Update investigation status
 	 */
 	async updateStatus(
@@ -178,10 +205,7 @@ export class InvestigationsService {
 				updateData.completedAt = new Date();
 			}
 
-			return await this.prisma.investigation.update({
-				where: { id },
-				data: updateData,
-			});
+			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
 			return null;
 		}
@@ -222,10 +246,7 @@ export class InvestigationsService {
 				updateData.harnessThreadId = harnessThreadId;
 			}
 
-			return await this.prisma.investigation.update({
-				where: { id },
-				data: updateData,
-			});
+			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
 			return null;
 		}
@@ -241,13 +262,14 @@ export class InvestigationsService {
 	async cancelPending(
 		id: string,
 		incidentId: string,
+		description = "The investigation was cancelled before it started.",
 	): Promise<Investigation | null> {
 		const updated = await this.updateStatus(id, "cancelled");
 		await this.timelineService.create({
 			incidentId,
 			type: TimelineEntryType.investigation_completed,
 			title: "Investigation cancelled",
-			description: "The investigation was cancelled before it started.",
+			description,
 			source: TimelineSource.system,
 			metadata: { investigationId: id },
 		});
@@ -266,10 +288,19 @@ export class InvestigationsService {
 		try {
 			const investigation = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { incidentId: true },
+				select: { incidentId: true, status: true },
 			});
 
 			if (!investigation) return null;
+
+			// Cancelled is sticky (CANCEL slice): a late or retried worker must not
+			// overwrite the user's cancellation with a completed/failed result.
+			if (investigation.status === "cancelled") {
+				this.logger.warn(
+					`Result write for investigation ${id} skipped — already cancelled`,
+				);
+				return null;
+			}
 
 			// Use transaction for atomic writes
 			await this.prisma.$transaction(async (tx) => {
@@ -398,10 +429,12 @@ export class InvestigationsService {
 			);
 
 			// Reduce overlay (ADR-0016 §5c) — enrich the report app-side AFTER it
-			// lands. Fire-and-forget: the canonical report is already persisted and
-			// overlay failure must NEVER fail the investigation write.
+			// lands. AWAITED so the worker's __done__ sentinel (published once its
+			// writeResult call returns) cannot beat the overlay row to the UI's
+			// completion refetch; still guarded, because overlay failure must NEVER
+			// fail the investigation write.
 			if (dto.status === "completed") {
-				void this.overlayService.computeOverlay(id).catch((error) => {
+				await this.overlayService.computeOverlay(id).catch((error) => {
 					this.logger.error(
 						`Overlay computation failed for investigation ${id}`,
 						error,
@@ -500,8 +533,11 @@ export class InvestigationsService {
 	 * dropped + logged, never surfaced). Ordered by `(seq, branchId)`.
 	 *
 	 * NOTE: `seq` is per-branch monotonic (fan-out, B.2), so across N branches the
-	 * same `seq` recurs; the cursor is best-effort history ordering, not a globally
-	 * unique key. The single-branch case (today) has a globally monotonic `seq`.
+	 * same `seq` recurs and the numeric cursor cannot address inside a same-seq
+	 * group. A page therefore never splits a seq group: trailing rows sharing the
+	 * page's final seq are held back for the next page (whose `gt` cursor re-reads
+	 * the whole group). A group larger than `limit` is returned whole in one
+	 * oversized page — group size is bounded by the branch count, not the record.
 	 *
 	 * @returns the parsed events plus the `nextCursor` (`seq` to resume from, or null).
 	 */
@@ -516,11 +552,28 @@ export class InvestigationsService {
 				...(cursor !== undefined ? { seq: { gt: cursor } } : {}),
 			},
 			orderBy: [{ seq: "asc" }, { branchId: "asc" }],
-			take: limit,
+			// One extra row detects whether the page's final seq group is complete.
+			take: limit + 1,
 		});
 
+		let page = rows;
+		let nextCursor: number | null = null;
+		if (rows.length > limit) {
+			const overflowSeq = rows[limit]?.seq;
+			page = rows.filter((row) => row.seq !== overflowSeq);
+			if (page.length === 0) {
+				// The whole fetch is one seq group wider than the limit: return the
+				// entire group rather than looping forever on the same cursor.
+				page = await this.prisma.investigationEvent.findMany({
+					where: { investigationId, seq: overflowSeq },
+					orderBy: [{ branchId: "asc" }],
+				});
+			}
+			nextCursor = page[page.length - 1]?.seq ?? null;
+		}
+
 		const events: CanonicalEvent[] = [];
-		for (const row of rows) {
+		for (const row of page) {
 			const obj = safeParseJsonObject(row.event);
 			const parsed = obj ? CanonicalEventSchema.safeParse(obj) : null;
 			if (parsed?.success) {
@@ -532,8 +585,6 @@ export class InvestigationsService {
 			}
 		}
 
-		const nextCursor =
-			rows.length === limit ? (rows[rows.length - 1]?.seq ?? null) : null;
 		return { events, nextCursor };
 	}
 

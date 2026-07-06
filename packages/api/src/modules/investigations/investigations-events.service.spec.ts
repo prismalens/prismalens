@@ -187,7 +187,8 @@ describe("InvestigationsService — durable event record", () => {
 			).toEqual({ investigationId: INV_ID });
 		});
 
-		it("applies the exclusive seq cursor and reports nextCursor when the page is full", async () => {
+		it("applies the exclusive seq cursor and reports nextCursor when more rows exist", async () => {
+			// take = limit + 1: the overflow row (seq 3) proves there is a next page.
 			mockPrisma.investigationEvent.findMany.mockResolvedValueOnce([
 				{
 					id: "r2",
@@ -195,14 +196,81 @@ describe("InvestigationsService — durable event record", () => {
 					branchId: "branch-1",
 					event: JSON.stringify(stepEvent(2)),
 				},
+				{
+					id: "r3",
+					seq: 3,
+					branchId: "branch-1",
+					event: JSON.stringify(stepEvent(3)),
+				},
 			]);
 
 			const page = await service.getEvents(INV_ID, 1, 1);
 
+			expect(page.events).toHaveLength(1);
+			expect(page.events[0]).toMatchObject({ seq: 2 });
 			expect(page.nextCursor).toBe(2);
+			const query = mockPrisma.investigationEvent.findMany.mock.calls[0][0];
+			expect(query.where).toEqual({ investigationId: INV_ID, seq: { gt: 1 } });
+			expect(query.take).toBe(2);
+		});
+
+		it("never splits a same-seq fan-out group across a page boundary", async () => {
+			// limit 3, branches b1..b3: page would end mid-group at seq 2 — the whole
+			// seq-2 group is held back and re-read by the next page's cursor.
+			mockPrisma.investigationEvent.findMany.mockResolvedValueOnce([
+				{
+					id: "r1",
+					seq: 1,
+					branchId: "b1",
+					event: JSON.stringify(stepEvent(1, "b1")),
+				},
+				{
+					id: "r2",
+					seq: 1,
+					branchId: "b2",
+					event: JSON.stringify(stepEvent(1, "b2")),
+				},
+				{
+					id: "r3",
+					seq: 2,
+					branchId: "b1",
+					event: JSON.stringify(stepEvent(2, "b1")),
+				},
+				{
+					id: "r4",
+					seq: 2,
+					branchId: "b2",
+					event: JSON.stringify(stepEvent(2, "b2")),
+				},
+			]);
+
+			const page = await service.getEvents(INV_ID, undefined, 3);
+
+			expect(page.events).toHaveLength(2);
+			expect(page.events.every((e) => e.seq === 1)).toBe(true);
+			expect(page.nextCursor).toBe(1);
+		});
+
+		it("returns a seq group wider than the limit whole instead of looping", async () => {
+			const group = ["b1", "b2", "b3"].map((b, i) => ({
+				id: `r${i}`,
+				seq: 5,
+				branchId: b,
+				event: JSON.stringify(stepEvent(5, b)),
+			}));
+			// First fetch (take limit+1 = 2): both rows share seq 5 → trimming would
+			// empty the page, so the service refetches the entire group.
+			mockPrisma.investigationEvent.findMany
+				.mockResolvedValueOnce(group.slice(0, 2))
+				.mockResolvedValueOnce(group);
+
+			const page = await service.getEvents(INV_ID, 4, 1);
+
+			expect(page.events).toHaveLength(3);
+			expect(page.nextCursor).toBe(5);
 			expect(
-				mockPrisma.investigationEvent.findMany.mock.calls[0][0].where,
-			).toEqual({ investigationId: INV_ID, seq: { gt: 1 } });
+				mockPrisma.investigationEvent.findMany.mock.calls[1][0].where,
+			).toEqual({ investigationId: INV_ID, seq: 5 });
 		});
 
 		it("drops a corrupt row rather than surfacing it", async () => {

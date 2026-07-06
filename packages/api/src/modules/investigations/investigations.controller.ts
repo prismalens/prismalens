@@ -1,3 +1,4 @@
+import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
@@ -35,6 +36,13 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 	"failed",
 	"cancelled",
 ]);
+
+/**
+ * Grace between cancel-publish retries: long enough for a worker that just locked
+ * the job to reach its cancel subscribe (milliseconds after lock), short enough
+ * that the cancel request stays interactive.
+ */
+const CANCEL_PUBLISH_RETRY_MS = 250;
 
 @Controller()
 @UseGuards(ThrottlerGuard)
@@ -152,14 +160,18 @@ export class InvestigationsController {
 
 			// POST /investigations/:id/cancel - Request cancellation of a run.
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
-			//   - RUNNING: 202-semantics — publish to the Redis cancel channel and return.
-			//     A subscribed worker aborts the run, tears down the harness/sandbox, and
-			//     owns the terminal "cancelled" write. The API does NOT flip status here.
-			//   - PENDING (queued): no worker is subscribed yet, and Redis pub/sub has no
-			//     retention — a publish would be dropped and the job would later run to
-			//     completion. Remove the queued job directly and write the terminal
-			//     "cancelled" record HERE (the API owns it; no worker has the run). If
-			//     removal fails (a worker grabbed it in the race), fall through to publish.
+			//   - RUNNING: publish to the Redis cancel channel. A subscribed worker
+			//     aborts the run, tears down the harness/sandbox, and owns the terminal
+			//     "cancelled" write. Redis pub/sub has no retention, so the publish is
+			//     only a cancel if someone RECEIVED it — zero receivers after the grace
+			//     retries means no worker has the run (crashed worker, stuck record,
+			//     Redis down) and nobody else will ever write the terminal state, so the
+			//     API writes it here. A worker that somehow still finishes later is
+			//     blocked by the cancelled-is-sticky rule in the status writers.
+			//   - PENDING (queued): no worker is subscribed yet — remove the queued job
+			//     directly and write the terminal "cancelled" record HERE. If removal
+			//     fails (a worker grabbed it in the race), fall through to the publish
+			//     path; the grace retries cover the worker's lock→subscribe window.
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
@@ -190,10 +202,22 @@ export class InvestigationsController {
 						// Lost the race — a worker started the job. Fall through to publish
 						// so that worker owns the terminal write.
 					}
-					await this.queueService.publishCancel(input.id);
-					// Return the still-running investigation unchanged; the terminal
-					// "cancelled" state arrives via the worker + the SSE stream's terminal
-					// event (the UI refetches on stream completion).
+					let receivers = await this.queueService.publishCancel(input.id);
+					for (let attempt = 0; receivers === 0 && attempt < 2; attempt++) {
+						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
+						receivers = await this.queueService.publishCancel(input.id);
+					}
+					if (receivers === 0) {
+						const cancelled = await this.investigationsService.cancelPending(
+							input.id,
+							investigation.incidentId,
+							"The investigation was cancelled; no worker held the run.",
+						);
+						return this.serializeInvestigation(cancelled ?? investigation);
+					}
+					// A worker heard the cancel; return the still-running investigation
+					// unchanged — the terminal "cancelled" state arrives via the worker +
+					// the SSE stream's terminal event (the UI refetches on completion).
 					return this.serializeInvestigation(investigation);
 				},
 			),

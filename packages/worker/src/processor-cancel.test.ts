@@ -22,7 +22,10 @@ const mocks = vi.hoisted(() => {
 	}
 	const redisInstances: MockRedis[] = [];
 	const api = {
-		investigations: { updateStatus: vi.fn(async () => ({})) },
+		investigations: {
+			updateStatus: vi.fn(async () => ({})),
+			get: vi.fn(async () => ({ id: "inv-1", status: "running" })),
+		},
 		timeline: { create: vi.fn(async () => ({})) },
 		incidents: { get: vi.fn(async () => ({ id: "inc-1", title: "Boom" })) },
 	};
@@ -125,6 +128,12 @@ function makeJob(investigationId: string, incidentId: string) {
 describe("processor CANCEL path (ADR-0018)", () => {
 	beforeEach(() => {
 		mocks.api.investigations.updateStatus.mockClear();
+		mocks.api.investigations.updateStatus.mockResolvedValue({});
+		mocks.api.investigations.get.mockClear();
+		mocks.api.investigations.get.mockResolvedValue({
+			id: "inv-1",
+			status: "running",
+		});
 		mocks.api.timeline.create.mockClear();
 		mocks.redisInstances.length = 0;
 		mocks.conductRun.mockReset();
@@ -183,6 +192,38 @@ describe("processor CANCEL path (ADR-0018)", () => {
 			expect.objectContaining({ title: "Investigation cancelled" }),
 		);
 		// Returned (not thrown), distinguishably cancelled — BullMQ marks it done, no retry.
+		expect(result.success).toBe(false);
+		expect(result.errorType).toBe("cancelled");
+	});
+
+	it("a persistCancelled failure is swallowed — the job still returns cancelled (no BullMQ retry)", async () => {
+		mocks.conductRun.mockResolvedValue({
+			runId: "inv-1",
+			report: null,
+			error: CANCELLED_MESSAGE,
+			failureKind: "cancelled",
+		});
+		// Transient API failure on the terminal write: must not escape to the outer
+		// catch (which would mark the run "failed" and rethrow into a retry).
+		mocks.api.investigations.updateStatus.mockRejectedValue(
+			new Error("502 upstream"),
+		);
+
+		const result = await processInvestigationJob(makeJob("inv-1", "inc-1"));
+
+		expect(result.success).toBe(false);
+		expect(result.errorType).toBe("cancelled");
+	});
+
+	it("skips the run entirely when the investigation is already cancelled (sticky cancel)", async () => {
+		mocks.api.investigations.get.mockResolvedValue({
+			id: "inv-1",
+			status: "cancelled",
+		});
+
+		const result = await processInvestigationJob(makeJob("inv-1", "inc-1"));
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
 		expect(result.success).toBe(false);
 		expect(result.errorType).toBe("cancelled");
 	});

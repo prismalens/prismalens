@@ -19,13 +19,15 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { conductRun } from "@prismalens/engine";
+import type { HarnessId } from "@prismalens/config/harness";
+import { conductRun, type SandboxSelection } from "@prismalens/engine";
 import {
 	JSONRPCErrorException,
 	type JSONRPCRequest,
 	type JSONRPCResponse,
 	JSONRPCServer,
 } from "json-rpc-2.0";
+import { resolveRunSandbox } from "../cli/investigate.js";
 import { loadConfig } from "../config/loader.js";
 import { resolveRepoSlug } from "../core/detect-repo.js";
 import { createFileSessionStore } from "../core/file-session-store.js";
@@ -152,70 +154,102 @@ export async function runJsonRpcServer(
 			? "dangerous"
 			: params.mode;
 
-		let resolved: ResolvedInvestigation;
+		// Resolve the isolation boundary (ADR-0020) from `agent.sandbox`, exactly as the
+		// `investigate` command does — the serve path must NOT silently drop to the
+		// cooperative floor when config asks for enforcement (ADR-0017). An explicit
+		// srt/e2b that cannot arm (or is asked of a non-ACP harness) becomes a JSON-RPC
+		// error; `auto` degrades honestly, its requested-vs-actual pair threaded into the
+		// run fidelity below. The boundary is CALLER-OWNED — torn down in the finally.
+		const harnessName =
+			(params.harness as HarnessId | undefined) ?? config.agent.default;
+		let selection: SandboxSelection | null;
 		try {
-			resolved = resolveInvestigation(
-				{
-					...(params.alert ? { alert: params.alert } : {}),
-					...(params.query ? { query: params.query } : {}),
-					...(params.repo ? { repo: params.repo } : {}),
-					...(params.harness ? { harness: params.harness } : {}),
-					...(params.service ? { service: params.service } : {}),
-					...(permissionMode ? { permissionMode } : {}),
-				},
-				config,
-			);
+			selection = (
+				await resolveRunSandbox(harnessName, config.agent.sandbox, config)
+			).selection;
 		} catch (err) {
 			throw new JSONRPCErrorException(
 				err instanceof Error ? err.message : String(err),
 				INVALID_PARAMS,
 			);
 		}
-		const { context, harness, synth, harnessName, fidelity, maxBranches } =
-			resolved;
-		const primaryAlert = context.alerts[0];
 
-		// Persist to the session workspace exactly as the investigate command does,
-		// wrapped as a conductRun store adapter (ADR-0018).
-		const runId = randomUUID();
-		const repoSlug = await resolveRepoSlug(config.repo, cwd);
-		const sessions = createSessionManager(config.workspace.base_dir);
-		const fileSession = createFileSessionStore(sessions, {
-			runId,
-			alertname: primaryAlert.alertname,
-			agent: harnessName,
-			...(repoSlug ? { repo: repoSlug } : {}),
-		});
+		try {
+			let resolved: ResolvedInvestigation;
+			try {
+				resolved = resolveInvestigation(
+					{
+						...(params.alert ? { alert: params.alert } : {}),
+						...(params.query ? { query: params.query } : {}),
+						...(params.repo ? { repo: params.repo } : {}),
+						...(params.harness ? { harness: params.harness } : {}),
+						...(params.service ? { service: params.service } : {}),
+						...(permissionMode ? { permissionMode } : {}),
+						...(selection
+							? {
+									sandbox: selection.sandbox,
+									requestedSandbox: selection.requested,
+								}
+							: {}),
+					},
+					config,
+				);
+			} catch (err) {
+				throw new JSONRPCErrorException(
+					err instanceof Error ? err.message : String(err),
+					INVALID_PARAMS,
+				);
+			}
+			const { context, harness, synth, harnessName, fidelity, maxBranches } =
+				resolved;
+			const primaryAlert = context.alerts[0];
 
-		// Drive the supervisor LIVE via the shared conductor: emit each canonical
-		// event as an `investigate/event` notification; conductRun owns persistence
-		// + the terminal report/no-evidence/error outcome.
-		const outcome = await conductRun(
-			{
-				context,
-				harness,
-				synth,
-				fidelity,
+			// Persist to the session workspace exactly as the investigate command does,
+			// wrapped as a conductRun store adapter (ADR-0018).
+			const runId = randomUUID();
+			const repoSlug = await resolveRepoSlug(config.repo, cwd);
+			const sessions = createSessionManager(config.workspace.base_dir);
+			const fileSession = createFileSessionStore(sessions, {
 				runId,
-				...(maxBranches !== undefined ? { maxBranches } : {}),
-			},
-			{
-				sink: (event) => {
-					notify("investigate/event", { runId, event });
+				alertname: primaryAlert.alertname,
+				agent: harnessName,
+				...(repoSlug ? { repo: repoSlug } : {}),
+			});
+
+			// Drive the supervisor LIVE via the shared conductor: emit each canonical
+			// event as an `investigate/event` notification; conductRun owns persistence
+			// + the terminal report/no-evidence/error outcome.
+			const outcome = await conductRun(
+				{
+					context,
+					harness,
+					synth,
+					fidelity,
+					runId,
+					...(maxBranches !== undefined ? { maxBranches } : {}),
 				},
-				store: fileSession.store,
-			},
-		);
-
-		if (!outcome.report) {
-			throw new JSONRPCErrorException(
-				outcome.error ?? "investigation produced no evidence",
-				outcome.failureKind === "no-evidence" ? NO_EVIDENCE : INTERNAL_ERROR,
-				{ runId },
+				{
+					sink: (event) => {
+						notify("investigate/event", { runId, event });
+					},
+					store: fileSession.store,
+				},
 			);
-		}
 
-		return { runId: outcome.runId, report: outcome.report };
+			if (!outcome.report) {
+				throw new JSONRPCErrorException(
+					outcome.error ?? "investigation produced no evidence",
+					outcome.failureKind === "no-evidence" ? NO_EVIDENCE : INTERNAL_ERROR,
+					{ runId },
+				);
+			}
+
+			return { runId: outcome.runId, report: outcome.report };
+		} finally {
+			// The serve path owns the resolved boundary's lifecycle (ADR-0020) — tear it
+			// down whichever way the run exited (report, no-evidence, error, or throw).
+			if (selection) await selection.sandbox.destroy();
+		}
 	};
 
 	const server = new JSONRPCServer();

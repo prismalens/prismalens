@@ -49,6 +49,38 @@ describe("resolveInvestigation sandbox guard (ADR-0017 honest fidelity)", () => 
 	});
 });
 
+describe("resolveInvestigation deepagents inert-native guard (ADR-0017 honest fidelity)", () => {
+	it("rejects deepagents native.sandbox — the flag was dropped, not silently ignored", () => {
+		expect(() =>
+			resolveInvestigation({
+				...BASE_REQUEST,
+				harness: "deepagents",
+				harnessNative: { sandbox: true },
+			}),
+		).toThrow(/no longer maps to anything|--sandbox/);
+	});
+
+	it("rejects deepagents native.shellAllowList for the same reason", () => {
+		expect(() =>
+			resolveInvestigation({
+				...BASE_REQUEST,
+				harness: "deepagents",
+				harnessNative: { shellAllowList: ["git", "ls"] },
+			}),
+		).toThrow(/shellAllowList/);
+	});
+
+	it("still accepts a benign deepagents native passthrough (args)", () => {
+		expect(() =>
+			resolveInvestigation({
+				...BASE_REQUEST,
+				harness: "deepagents",
+				harnessNative: { args: ["--verbose"] },
+			}),
+		).not.toThrow();
+	});
+});
+
 describe("resolveInvestigation structured fidelity.sandbox (ADR-0020 B.1.1 follow-up)", () => {
 	it("is absent when no sandbox is wired", () => {
 		const resolved = resolveInvestigation({

@@ -34,7 +34,7 @@ import {
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
-import type { SandboxedJob } from "bullmq";
+import { type SandboxedJob, UnrecoverableError } from "bullmq";
 import { Redis } from "ioredis";
 import { redisUrl, config as workerConfig } from "./config.js";
 import { createDbInvestigationStore } from "./db-investigation-store.js";
@@ -161,6 +161,22 @@ async function processJobInternal(
 		},
 	});
 
+	// Cancelled is sticky (CANCEL slice): a stalled-job retry, or a job whose cancel
+	// the API already fallback-wrote, must not rerun the investigation. Best-effort —
+	// on an API hiccup the run proceeds, and the API's status writers still refuse
+	// any terminal overwrite of "cancelled".
+	try {
+		const current = await api.investigations.get({ id: data.investigationId });
+		if (current?.status === "cancelled") {
+			logger.info(
+				`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
+			);
+			return cancelledResult(data);
+		}
+	} catch (e) {
+		logger.warn("Could not check investigation status before run", e);
+	}
+
 	// The isolation boundary (ADR-0020) is CALLER-OWNED — the acp-client will not
 	// destroy a caller-supplied sandbox (it may span branches, B.2), so the worker owns
 	// its teardown in the finally below. Especially load-bearing for `e2b`: a leaked
@@ -247,7 +263,15 @@ async function processJobInternal(
 		// Never throw: a throw would let BullMQ retry a user-cancelled run.
 		if (outcome.failureKind === "cancelled") {
 			logger.info(`Job ${job.id} cancelled`);
-			await persistCancelled(data);
+			try {
+				await persistCancelled(data);
+			} catch (e) {
+				// Swallow, never rethrow: the outer catch would overwrite the run as
+				// "failed" and BullMQ would retry a user-cancelled investigation. The
+				// record stays "running" until the user's next cancel click takes the
+				// API's zero-receiver fallback write.
+				logger.error("Failed to persist cancelled status", e);
+			}
 			return cancelledResult(data);
 		}
 
@@ -414,7 +438,10 @@ export function harnessTakesSandbox(
 	const takesSandbox = HARNESS_REGISTRY[harness]?.transport === "acp";
 	const demandsEnforcedBoundary = mode === "srt" || mode === "e2b";
 	if (!takesSandbox && demandsEnforcedBoundary) {
-		throw new Error(
+		// UnrecoverableError: a config contradiction cannot succeed on retry — fail
+		// the job once instead of burning the BullMQ attempt budget (the name
+		// survives the sandboxed-processor error serialization).
+		throw new UnrecoverableError(
 			`Harness "${harness}" cannot run inside an enforced sandbox (${mode}) yet — it ` +
 				`is not spawned as a child process. Set PRISMALENS_SANDBOX=auto or process ` +
 				`(no enforced boundary), or use an ACP harness (deepagents).`,

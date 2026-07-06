@@ -73,8 +73,12 @@ export interface InvestigationRequest {
 	permissionMode?: PermissionMode;
 	/**
 	 * The chosen harness's native passthrough (ADR-0017): arbitrary harness-specific
-	 * config (Agent SDK query options / deepagents shellAllowList/sandbox/args) that
-	 * the runner spreads BENEATH prismalens's posture-derived floor.
+	 * config (Agent SDK query options / deepagents `args`) that the runner spreads
+	 * BENEATH prismalens's posture-derived floor. NOTE: deepagents `shellAllowList`
+	 * and `sandbox` are NOT accepted — the published deepagents-acp binary has no
+	 * such flags (B.1 spike, 2026-07-03); they are rejected at resolve time so a
+	 * requested boundary is never silently dropped. Real isolation is the Sandbox
+	 * port (`--sandbox`, ADR-0020), not a native knob.
 	 */
 	harnessNative?: Record<string, unknown>;
 	/** Bare model id (e.g. "gpt-oss:120b"); the harness applies its own prefixing. */
@@ -182,6 +186,28 @@ export function resolveInvestigation(
 				`spawned as a child process). Drop --sandbox or use an ACP harness ` +
 				`(deepagents). Sandboxing the Agent SDK harness is a later B.1 slice.`,
 		);
+	}
+	// Honest fidelity (ADR-0017): the deepagents native passthrough once mapped
+	// `shellAllowList`/`sandbox` to the `-S`/`--sandbox` read-only enforcer flags,
+	// but no published deepagents-acp distribution has them (B.1 spike, 2026-07-03)
+	// — they were dropped from the arg builder. Accepting them now would silently
+	// discard a boundary the user asked for, so reject them and point at the real
+	// enforcement axis: the Sandbox port (`--sandbox`, ADR-0020).
+	const native = req.harnessNative;
+	if (
+		native &&
+		HARNESS_REGISTRY[req.harness as HarnessId]?.transport === "acp"
+	) {
+		const inert = ["shellAllowList", "sandbox"].filter((k) => k in native);
+		if (inert.length > 0) {
+			throw new Error(
+				`deepagents native config ${inert.map((k) => `"${k}"`).join(", ")} no ` +
+					`longer maps to anything — the published deepagents-acp binary has no ` +
+					`shell-allowlist/sandbox flags (removed in the B.1 Sandbox-port spike). ` +
+					`Remove ${inert.length > 1 ? "them" : "it"} and use ` +
+					`--sandbox <process|srt|e2b> for real isolation (ADR-0020).`,
+			);
+		}
 	}
 	// When the caller wired a boundary the harness consumes, name it in the
 	// run-metadata mechanism alongside the harness's own permission mechanism — the

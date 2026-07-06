@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import type {
 	CanonicalEvent,
 	Hypothesis,
@@ -171,42 +172,27 @@ export default defineCommand({
 			(args.harness as HarnessId | undefined) ?? config.agent.default;
 		const sandboxMode =
 			(args.sandbox as SandboxMode | undefined) ?? config.agent.sandbox;
-		const guard = resolveSandboxGuard(harnessName, sandboxMode);
-		const harnessTakesSandbox = guard.takesSandbox;
 		let selection: SandboxSelection | null = null;
-		if (guard.blocked) {
-			consola.error(
-				`Harness "${harnessName}" cannot run inside an enforced sandbox ` +
-					`(${sandboxMode}) yet — it is not spawned as a child process. Use ` +
-					`--sandbox auto or process (no enforced boundary), or an ACP harness ` +
-					`(deepagents).`,
+		try {
+			const resolvedSandbox = await resolveRunSandbox(
+				harnessName,
+				sandboxMode,
+				config,
 			);
-			process.exitCode = 1;
-			return;
-		}
-		if (harnessTakesSandbox) {
-			try {
-				const probeUrl = firstProbeUrl(config);
-				selection = await resolveSandbox(sandboxMode, {
-					allowedDomains: collectAllowedDomains(config),
-					...(probeUrl ? { probeUrl } : {}),
-				});
-			} catch (err) {
-				consola.error(err instanceof Error ? err.message : String(err));
-				process.exitCode = 1;
-				return;
-			}
+			selection = resolvedSandbox.selection;
 			// Honest fidelity (ADR-0017): a silent degrade would mislead — name it, with
 			// the self-check's reason (srt absent, or its egress bridge dead — B.1.1).
-			if (sandboxMode === "auto" && selection.actual !== "srt") {
+			if (selection && resolvedSandbox.degradeReason) {
 				consola.warn(
-					`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${
-						selection.degradeReason ?? "srt unavailable"
-					}.`,
+					`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${resolvedSandbox.degradeReason}.`,
 				);
-			} else if (selection.actual === "srt") {
+			} else if (selection?.actual === "srt") {
 				info("Sandbox: srt (enforced OS boundary).");
 			}
+		} catch (err) {
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exitCode = 1;
+			return;
 		}
 
 		try {
@@ -319,17 +305,30 @@ export default defineCommand({
 });
 
 /**
- * The egress allowlist for an enforced sandbox (ADR-0020: allowlist, not closed): the
- * hostnames of the read-only telemetry + log surfaces the harness is configured to
- * query. Only explicitly-configured endpoints are allowed — an unset field grants no
- * egress; non-URL values are skipped (the harness then fails its own query honestly
- * rather than the sandbox opening a hole). The `process` floor ignores this.
+ * The egress allowlist for an enforced sandbox (ADR-0020: allowlist, not closed) — the
+ * hostnames of every surface the harness will ACTUALLY contact: its own LLM endpoint
+ * (BYO-key baseURL, env override included) PLUS the read-only telemetry + log surfaces.
+ * The LLM + telemetry hosts carry the SAME `INVESTIGATION_DEFAULTS` fallback the request
+ * assembly applies (`run-investigation`), because an unset config field still resolves to
+ * a default the harness queries — omitting it hard-denied the model call and default
+ * telemetry, so every branch failed with no report. Mirrors the worker's
+ * `deriveWorkerAllowedHosts`. Non-URL values are skipped (no egress hole from a malformed
+ * endpoint); the `process` floor ignores this.
  */
-function collectAllowedDomains(config: PlConfig): string[] {
+export function collectAllowedDomains(config: PlConfig): string[] {
+	// The LLM endpoint the harness itself calls (BYO-key, ADR-0006): env override wins,
+	// else the shared synth default — the SAME resolution as `run-investigation`.
+	const llmBaseUrl =
+		process.env.OLLAMA_BASE_URL ??
+		process.env.OPENAI_BASE_URL ??
+		INVESTIGATION_DEFAULTS.synth.baseURL;
 	const urls = [
-		config.telemetry.prometheusUrl,
-		config.telemetry.alertmanagerUrl,
-		config.telemetry.apiUrl,
+		llmBaseUrl,
+		config.telemetry.prometheusUrl ??
+			INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
+		config.telemetry.alertmanagerUrl ??
+			INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
+		config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
 		config.logs.url,
 	];
 	const hosts = new Set<string>();
@@ -342,6 +341,46 @@ function collectAllowedDomains(config: PlConfig): string[] {
 		}
 	}
 	return [...hosts];
+}
+
+/**
+ * Resolve the isolation boundary for a run (ADR-0020/0017) — the single sandbox-resolution
+ * path shared by the `investigate` command and the JSON-RPC `serve` handler, so both honour
+ * `agent.sandbox` (and `--sandbox`) with identical semantics. Guards first: a mode that
+ * DEMANDS enforcement (`srt`/`e2b`) on a non-ACP (in-process) harness THROWS — the caller
+ * maps it to its own channel (CLI stderr+exit, or a JSON-RPC error), never a silent floor.
+ * Then resolves a boundary ONLY for an ACP harness; an in-process harness returns a null
+ * selection (it runs on the cooperative floor, claiming nothing — nothing dishonest). The
+ * returned `selection` is CALLER-OWNED — destroy it after the run. `degradeReason` is the
+ * honest note when `auto` fell short of srt (present only on a degrade).
+ */
+export async function resolveRunSandbox(
+	harness: HarnessId,
+	mode: SandboxMode,
+	config: PlConfig,
+): Promise<{
+	selection: SandboxSelection | null;
+	degradeReason: string | null;
+}> {
+	const guard = resolveSandboxGuard(harness, mode);
+	if (guard.blocked) {
+		throw new Error(
+			`Harness "${harness}" cannot run inside an enforced sandbox (${mode}) yet ` +
+				`— it is not spawned as a child process. Use the auto or process sandbox ` +
+				`mode (no enforced boundary), or an ACP harness (deepagents).`,
+		);
+	}
+	if (!guard.takesSandbox) return { selection: null, degradeReason: null };
+	const probeUrl = firstProbeUrl(config);
+	const selection = await resolveSandbox(mode, {
+		allowedDomains: collectAllowedDomains(config),
+		...(probeUrl ? { probeUrl } : {}),
+	});
+	const degradeReason =
+		mode === "auto" && selection.actual !== "srt"
+			? (selection.degradeReason ?? "srt unavailable")
+			: null;
+	return { selection, degradeReason };
 }
 
 /**

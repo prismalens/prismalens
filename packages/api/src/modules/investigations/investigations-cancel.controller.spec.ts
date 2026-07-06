@@ -1,8 +1,10 @@
 /**
  * CANCEL slice (ADR-0018): POST /investigations/:id/cancel publishes to the Redis
- * cancel channel (202-semantics) and rejects a run already in a terminal state. The
- * WORKER — not this endpoint — owns the terminal "cancelled" status write, so the
- * handler must NOT flip the status here. Mocked service + queue; no DB, no Redis.
+ * cancel channel and rejects a run already in a terminal state. A worker that
+ * RECEIVED the publish owns the terminal "cancelled" write; when nobody received it
+ * (after the grace retries), the API owns the fallback terminal write — pub/sub has
+ * no retention, so zero receivers means nobody else ever will. Mocked service +
+ * queue; no DB, no Redis.
  */
 
 import { Test, type TestingModule } from "@nestjs/testing";
@@ -72,15 +74,51 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 	it("running run: publishes to the cancel channel and returns the run unchanged (no status flip)", async () => {
 		const run = investigation("inv-1", "running");
 		mockInvestigationsService.findById.mockResolvedValue(run);
-		mockQueueService.publishCancel.mockResolvedValue(true);
+		mockQueueService.publishCancel.mockResolvedValue(1);
 
 		const result = await cancelHandler()({ input: { id: "inv-1" } });
 
 		expect(mockQueueService.publishCancel).toHaveBeenCalledWith("inv-1");
-		// The endpoint does NOT persist a terminal status — the worker owns that write.
+		// A worker received the cancel — it owns the terminal write, not this endpoint.
 		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
 		// A running run is never removed from the queue (it is already active).
 		expect(mockQueueService.removeJob).not.toHaveBeenCalled();
+		expect(result.status).toBe("running");
+	});
+
+	it("running run nobody hears: retries the publish, then writes the terminal record itself", async () => {
+		const run = investigation("inv-5", "running");
+		mockInvestigationsService.findById.mockResolvedValue(run);
+		// Zero receivers on every attempt: worker crashed / stuck record / Redis down.
+		mockQueueService.publishCancel.mockResolvedValue(0);
+		mockInvestigationsService.cancelPending.mockResolvedValue(
+			investigation("inv-5", "cancelled"),
+		);
+
+		const result = await cancelHandler()({ input: { id: "inv-5" } });
+
+		expect(mockQueueService.publishCancel).toHaveBeenCalledTimes(3);
+		// Nobody will ever act on the dropped publish — the API owns the write.
+		expect(mockInvestigationsService.cancelPending).toHaveBeenCalledWith(
+			"inv-5",
+			"inc-1",
+			expect.stringContaining("no worker held the run"),
+		);
+		expect(result.status).toBe("cancelled");
+	});
+
+	it("running run heard on a retry: no fallback write", async () => {
+		const run = investigation("inv-6", "running");
+		mockInvestigationsService.findById.mockResolvedValue(run);
+		// First publish lands in the worker's lock→subscribe window; the retry is heard.
+		mockQueueService.publishCancel
+			.mockResolvedValueOnce(0)
+			.mockResolvedValueOnce(1);
+
+		const result = await cancelHandler()({ input: { id: "inv-6" } });
+
+		expect(mockQueueService.publishCancel).toHaveBeenCalledTimes(2);
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
 		expect(result.status).toBe("running");
 	});
 
@@ -115,7 +153,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		);
 		// removeJob returns false when a worker grabbed (locked) the job mid-race.
 		mockQueueService.removeJob.mockResolvedValue(false);
-		mockQueueService.publishCancel.mockResolvedValue(true);
+		mockQueueService.publishCancel.mockResolvedValue(1);
 
 		await cancelHandler()({ input: { id: "inv-4" } });
 

@@ -198,21 +198,23 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	/**
 	 * Publish a cancel request for an investigation (CANCEL slice, ADR-0018).
 	 *
-	 * Fire-and-forget 202-semantics: the running worker subscribes to
-	 * `investigation:cancel:{id}` and aborts its run on this message; the worker then
-	 * owns the terminal "cancelled" status write. Returns whether the message was
-	 * published (false if Redis is unavailable). Idempotent — a cancel for an already
-	 * finished run simply reaches no listener.
+	 * The running worker subscribes to `investigation:cancel:{id}` and aborts its run
+	 * on this message; the worker then owns the terminal "cancelled" status write.
+	 * Returns the number of subscribers that RECEIVED the message (Redis pub/sub has
+	 * no retention — 0 means no worker heard it and nobody will act on it), or 0 when
+	 * Redis is unavailable. The caller decides what a lost cancel means.
 	 */
-	async publishCancel(investigationId: string): Promise<boolean> {
+	async publishCancel(investigationId: string): Promise<number> {
 		if (!this.redisPublisher) {
 			this.logger.warn("Redis publisher not available - cancel not published");
-			return false;
+			return 0;
 		}
 		const channel = `investigation:cancel:${investigationId}`;
-		await this.redisPublisher.publish(channel, "cancel");
-		this.logger.log(`Published cancel for investigation ${investigationId}`);
-		return true;
+		const receivers = await this.redisPublisher.publish(channel, "cancel");
+		this.logger.log(
+			`Published cancel for investigation ${investigationId} (${receivers} subscriber(s))`,
+		);
+		return receivers;
 	}
 
 	/**
