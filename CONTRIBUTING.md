@@ -101,17 +101,24 @@ than letting it evaporate.
 
 Four packages publish to npm: `prismalens` (the CLI) plus its library closure
 `@prismalens/engine`, `@prismalens/contracts`, and `@prismalens/config`.
-Versioning and publishing run through
-[Changesets](https://github.com/changesets/changesets)
-(`.changeset/config.json` + `.github/workflows/release.yml`): a change to a
-publishable package should come with a changeset (`pnpm changeset`); on `main`,
-the release workflow opens a "Version Packages" PR (`pnpm changeset:version`),
-and merging that PR publishes the bumped packages to npm with provenance
-(`pnpm changeset:publish`). Everything else in `packages/` stays
-`private: true` — `@prismalens/logger` and `@prismalens/database` are internal,
-and the app-side packages (`@prismalens/api`, `@prismalens/frontend`,
-`@prismalens/worker`) are excluded from Changesets entirely — they deploy, they
-don't publish.
+Versioning runs through [Changesets](https://github.com/changesets/changesets)
+(`.changeset/config.json`): a change to a publishable package should come with
+a changeset (`pnpm changeset`). Publishing is **manual, by the maintainer, from
+a local checkout** (no CI publish job — deliberate while releases are young):
+
+```bash
+git checkout main && git pull
+pnpm install --frozen-lockfile
+pnpm changeset:version        # applies pending changesets; review + commit the bumps
+pnpm build && pnpm test && pnpm publint
+pnpm changeset:publish        # pnpm publish -r (rewrites workspace:*) + changeset tag
+git push --follow-tags
+```
+
+Everything else in `packages/` stays `private: true` — `@prismalens/logger` and
+`@prismalens/database` are internal, and the app-side packages
+(`@prismalens/api`, `@prismalens/frontend`, `@prismalens/worker`) are excluded
+from Changesets entirely — they deploy, they don't publish.
 
 ## Reporting bugs and requesting features
 
