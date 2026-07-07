@@ -10,6 +10,13 @@
 # Publishing authenticates with the NPM_TOKEN repo secret (granular automation
 # token). id-token:write enables npm provenance attestations; move to npm
 # trusted publishing (OIDC, no long-lived token) once the packages exist.
+#
+# The Version-Packages PR is created with the RELEASE_PAT repo secret (a
+# fine-grained PAT: this repo, Contents + Pull requests read/write), NOT the
+# default GITHUB_TOKEN, for two reasons: this repo forbids Actions from
+# creating PRs, and PRs pushed/opened with GITHUB_TOKEN never trigger CI
+# (GitHub anti-recursion) — the required checks would never report and the
+# version PR could not merge.
 name: Release
 
 on:
@@ -31,6 +38,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # PAT so the changeset-release branch push comes from a user, not
+          # github-actions — see the RELEASE_PAT note in the header.
+          token: ${{ secrets.RELEASE_PAT || github.token }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -59,6 +69,6 @@ jobs:
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
