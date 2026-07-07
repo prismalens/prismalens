@@ -120,9 +120,11 @@ function optsWith(harness: HarnessRunner): InvestigateOptions {
 }
 
 describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
-	it("no-evidence branch: create → append(per event) → fail, sink sees every event", async () => {
+	it("errored branch, zero evidence: create → append(per event) → fail, sink sees every event", async () => {
 		// Zero tool_results ending in `error` → the stream emits NO report and returns
-		// before reduce(): fully hermetic, no LLM.
+		// before reduce(): fully hermetic, no LLM. The terminal `error` event makes the
+		// outcome failureKind `error` (2026-07-07 honesty fix) — `no-evidence` is
+		// reserved for runs that ended cleanly with nothing gathered.
 		const harness: HarnessRunner = async function* (_prompt, ctx) {
 			yield agentStep(ctx.runId, ctx.branchId, 0);
 			yield errorEvent(ctx.runId, ctx.branchId, 1, "harness branch failed");
@@ -150,11 +152,14 @@ describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
 			runId: "run-1",
 			report: null,
 			error: "harness branch failed",
-			failureKind: "no-evidence",
+			failureKind: "error",
 		});
 	});
 
-	it("thrown harness error: create → fail(error), returns failureKind 'error'", async () => {
+	it("mid-run harness throw is CONTAINED: reshaped into a terminal `error` event, then fail", async () => {
+		// The N=1 fan-out containment (2026-07-07): a throw AFTER events have flowed
+		// becomes the branch's terminal `error` event so gathered evidence can still
+		// reach reduce() — here there are no tool_results, so no report either way.
 		const harness: HarnessRunner = async function* (_prompt, ctx) {
 			yield agentStep(ctx.runId, ctx.branchId, 0);
 			throw new Error("transport exploded");
@@ -170,13 +175,43 @@ describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
 			store,
 		});
 
-		expect(calls).toEqual(["create", "append:agent_step", "fail"]);
+		expect(calls).toEqual([
+			"create",
+			"append:agent_step",
+			"append:error",
+			"fail",
+		]);
 		expect(failedWith).toEqual(["transport exploded"]);
-		expect(seen.map((e) => e.kind)).toEqual(["agent_step"]);
+		expect(seen.map((e) => e.kind)).toEqual(["agent_step", "error"]);
 		expect(outcome).toEqual({
 			runId: "run-1",
 			report: null,
 			error: "transport exploded",
+			failureKind: "error",
+		});
+	});
+
+	it("pre-first-event throw still PROPAGATES: create → fail(error), no events appended", async () => {
+		// Setup failures (binary missing, init handshake) have no evidence to salvage —
+		// fan-out rethrows and the conductor's catch owns the terminal write.
+		// biome-ignore lint/correctness/useYield: throw-only harness stub.
+		const harness: HarnessRunner = async function* () {
+			throw new Error("spawn deepagents-acp ENOENT");
+		};
+
+		const { store, calls, failedWith } = recordingStore();
+
+		const outcome = await conductRun(optsWith(harness), {
+			sink: () => {},
+			store,
+		});
+
+		expect(calls).toEqual(["create", "fail"]);
+		expect(failedWith).toEqual(["spawn deepagents-acp ENOENT"]);
+		expect(outcome).toEqual({
+			runId: "run-1",
+			report: null,
+			error: "spawn deepagents-acp ENOENT",
 			failureKind: "error",
 		});
 	});
@@ -250,7 +285,7 @@ describe("conductRun — cooperative cancellation (CANCEL slice, ADR-0018)", () 
 		expect(failedWith).toEqual([]);
 	});
 
-	it("a signal that never aborts is inert — a normal no-evidence run is unaffected", async () => {
+	it("a signal that never aborts is inert — a normal errored run is unaffected", async () => {
 		const controller = new AbortController();
 		const harness: HarnessRunner = async function* (_prompt, ctx) {
 			yield agentStep(ctx.runId, ctx.branchId, 0);
@@ -263,7 +298,7 @@ describe("conductRun — cooperative cancellation (CANCEL slice, ADR-0018)", () 
 			{ sink: () => {}, store },
 		);
 
-		expect(outcome.failureKind).toBe("no-evidence");
+		expect(outcome.failureKind).toBe("error");
 		expect(calls).toEqual([
 			"create",
 			"append:agent_step",

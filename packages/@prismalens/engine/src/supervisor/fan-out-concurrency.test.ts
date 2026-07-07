@@ -135,3 +135,46 @@ describe("fanOut — N>1 concurrency + interleaving (ADR-0016 decision 2)", () =
 		);
 	});
 });
+
+describe("fan-out — N=1 failure containment (2026-07-07 hardening)", () => {
+	const ROOT: Branch[] = [{ branchId: "root", prompt: "focus-root" }];
+
+	it("mid-run abort after events flowed: contained as a terminal `error` event, evidence survives", async () => {
+		const harness: HarnessRunner = (_prompt, ctx) =>
+			(async function* () {
+				yield agentStep(ctx.runId, "root", 0, "probing");
+				yield toolResult(ctx.runId, "root", 1);
+				throw new Error("EACCES: permission denied, scandir '/lost+found'");
+			})();
+
+		const seen: CanonicalEvent[] = [];
+		// Must NOT throw — the gathered evidence must reach the reduce step.
+		for await (const ev of fanOut(ROOT, harness, "run-1")) seen.push(ev);
+
+		expect(seen.map((e) => e.kind)).toEqual([
+			"agent_step",
+			"tool_result",
+			"error",
+		]);
+		const err = seen[2];
+		expect(err.kind === "error" && err.message).toContain("EACCES");
+		expect("branchId" in err && err.branchId).toBe("root");
+		// seq continues the branch's own counter (after tool_result seq=1).
+		expect(err.seq).toBe(2);
+	});
+
+	it("failure BEFORE the first event still propagates (actionable setup error)", async () => {
+		const harness: HarnessRunner = () =>
+			// biome-ignore lint/correctness/useYield: throw-only harness stub.
+			(async function* () {
+				throw new Error("spawn deepagents-acp ENOENT");
+			})();
+
+		const events = fanOut(ROOT, harness, "run-1");
+		await expect(async () => {
+			for await (const _ of events) {
+				// drain
+			}
+		}).rejects.toThrow("spawn deepagents-acp ENOENT");
+	});
+});

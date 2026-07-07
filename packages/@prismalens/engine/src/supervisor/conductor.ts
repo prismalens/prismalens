@@ -131,7 +131,15 @@ export async function conductRun(
 		return { runId, report, error: null, failureKind: "none" };
 	}
 
+	// No report: distinguish a contained harness abort (a terminal `error` event
+	// flowed — fan-out's N=1/N>1 containment) from a run that simply gathered
+	// nothing. Both fail the store; the kind keeps the caller's message honest.
 	const err = lastError ?? "investigation produced no evidence";
 	await io.store.fail(err);
-	return { runId, report: null, error: err, failureKind: "no-evidence" };
+	return {
+		runId,
+		report: null,
+		error: err,
+		failureKind: lastError ? "error" : "no-evidence",
+	};
 }

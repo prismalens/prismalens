@@ -160,8 +160,9 @@ type StreamStep =
  * Advance `iter` one step, racing it against `signal`. Without a signal this is a plain
  * `iter.next()`; with one, an abort resolves `{ kind: "aborted" }` even while the step is
  * still parked awaiting a slow (or wedged) branch — the caller then `iter.return()`s to
- * cascade cleanup. A branch's THROWN transport error rejects through unchanged (the N=1
- * propagation the conductor's try/catch relies on).
+ * cascade cleanup. A THROWN transport error rejects through unchanged — since the
+ * fan-out containment (2026-07-07) that class is pre-first-event setup failures only
+ * (binary missing, init handshake); the conductor's try/catch relies on it.
  */
 function stepWithSignal(
 	iter: AsyncIterator<CanonicalEvent>,

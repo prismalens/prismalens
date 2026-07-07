@@ -121,14 +121,17 @@ const DEFAULT_MODEL = "openai:gpt-oss:120b";
 
 /**
  * Build the deepagents-acp arg vector from the model + native passthrough
- * (ADR-0017): the base `-m <model>`, then any extra args. The published binary
- * serves ACP on stdio by default and takes no shell-allowlist/sandbox flags
+ * (ADR-0017): the base `-m <model> -w <cwd>`, then any extra args. The published
+ * binary serves ACP on stdio by default and takes no shell-allowlist/sandbox flags
  * (verified against `deepagents-acp --help`, B.1 spike 2026-07-03) — isolation is
- * the Sandbox port's job (ADR-0020), not an argv knob. The full `args` override
+ * the Sandbox port's job (ADR-0020), not an argv knob. `-w` pins the harness
+ * workspaceRoot explicitly: deepagents-acp IGNORES the ACP `session/new` cwd
+ * (verified v0.1.15) and falls back to its process cwd — which we also set, but
+ * the flag survives placements where spawn cwd doesn't. The full `args` override
  * (when set) bypasses this entirely.
  */
 function buildAcpArgs(model: string, config: AcpClientConfig): string[] {
-	const args = ["-m", model];
+	const args = ["-m", model, "-w", config.cwd];
 	const native = config.native ?? {};
 	const strings = (v: unknown): string[] =>
 		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
