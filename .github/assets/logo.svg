@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PrismaLens">
+  <style>.i{stroke:#0F172A}@media(prefers-color-scheme:dark){.i{stroke:#E2E8F0}}</style>
+  <g fill="none" stroke-linecap="round">
+    <path class="i" d="M2 34H20" opacity=".55" stroke-width="3"/>
+    <path class="i" d="M20.6 34 41.5 29.5" opacity=".22" stroke-width="2.5"/>
+    <path d="M43.5 28.3 62 17" stroke="#38BDF8" stroke-width="3"/>
+    <path d="M44 29 62 26" stroke="#6366F1" stroke-width="3"/>
+    <path d="M44 30.2 62 35" stroke="#8B5CF6" stroke-width="3"/>
+    <path d="M43.5 31 62 44" stroke="#C026D3" stroke-width="3"/>
+    <path class="i" d="M32 12 51 47H13Z" stroke-width="3.5" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,7 +1,12 @@
 # Contributing to prismalens
 
 Thanks for your interest in improving prismalens — a local-first SRE
-incident-investigation app. Contributions of all sizes are welcome.
+incident-investigation tool.
+
+> **Current status:** external code PRs are **not being accepted yet** while
+> the v0.0.x foundations settle. Issues, bug reports, and discussions are very
+> welcome today. Everything below describes how contributions will work once
+> code contributions open up.
 
 ## Ground rules
 
