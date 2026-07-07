@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Logger } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { RecommendationFactory } from "../../../test/factories/index.js";

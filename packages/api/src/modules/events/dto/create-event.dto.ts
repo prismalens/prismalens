@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * DTO for creating a raw event
  * Events are immutable records of incoming signals from monitoring systems

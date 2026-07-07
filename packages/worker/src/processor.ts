@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Investigation job processor (ADR-0008/0010/0011 — Phase A).
  *

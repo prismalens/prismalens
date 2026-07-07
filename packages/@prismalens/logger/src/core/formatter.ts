@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { LogEntry } from "../types/log-entry.js";
 import type { LogLevel, WideEvent } from "../types/wide-event.js";
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 export * from "./database.js";
 export * from "./deployment.js";
 export * from "./langsmith.js";

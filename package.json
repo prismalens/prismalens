@@ -3,7 +3,7 @@
 	"version": "0.1.0",
 	"private": true,
 	"description": "Open-source AI-powered incident analysis and root cause detection",
-	"license": "ELv2",
+	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/prismalens/prismalens.git"
@@ -24,6 +24,8 @@
 		"db:reset": "turbo run db:reset --filter=@prismalens/database",
 		"format-and-lint": "biome check .",
 		"format-and-lint:fix": "biome check . --write",
+		"spdx:check": "node scripts/spdx-headers.mjs --check",
+		"spdx:fix": "node scripts/spdx-headers.mjs --fix",
 		"changeset:version": "changeset version"
 	},
 	"devDependencies": {

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { faker } from "@faker-js/faker";
 import type { Recommendation } from "@prismalens/database";
 

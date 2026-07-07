@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * GitHub App authentication flow.
  * Generates JWTs and exchanges them for installation access tokens.

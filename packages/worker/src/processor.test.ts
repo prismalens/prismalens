@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for `buildHarnessEnv` (ADR-0013 scope boundary): the `deepagents`
  * harness only speaks the OpenAI protocol via `OPENAI_*` env, so both

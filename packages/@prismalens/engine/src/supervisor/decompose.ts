@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Decompose — the Tier-1 supervisor's fan-out planner (ADR-0016). Turns the host-
  * assembled InvestigationContext (ADR-0015) into the set of independent BRANCHES to

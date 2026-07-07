@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The Tier-1 supervisor pipeline (ADR-0008/0016): the thin, deterministic
  * `decompose → fan-out → reduce` that composes the named stages into one streaming

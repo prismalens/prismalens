@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * JSON-RPC 2.0 server over stdio (newline-delimited JSON) — the LIVE channel for
  * the desktop app / API (ADR-0007/0010). This REPLACES file-read as the live

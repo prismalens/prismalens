@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Injectable, Logger } from "@nestjs/common";
 import type { Alert } from "@prismalens/database";
 import * as crypto from "crypto";

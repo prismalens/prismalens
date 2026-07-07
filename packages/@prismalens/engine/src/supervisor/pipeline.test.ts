@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the Tier-1 supervisor pipeline seams (ADR-0016): decompose's
  * N=1 policy + fan-out-ready Branch shape, the conditional prompt enrichment

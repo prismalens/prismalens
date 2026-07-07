@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Investigation input resolution (ADR-0008/0010/0011) — the SHARED resolver every
  * runtime uses to turn a config-derived request into the inputs

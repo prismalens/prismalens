@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * JSON-RPC 2.0 wire types — the newline-delimited JSON framing shared over stdio:
  * one JSON value per line in both directions. Requests and responses now come

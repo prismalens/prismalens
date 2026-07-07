@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Reduce — the Tier-1 supervisor's join (ADR-0016 decision 2): compact each branch's
  * canonical stream into a transcript ({@link buildTranscript}) and synthesize the

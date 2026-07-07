@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { ServiceSuggestion } from "@prismalens/contracts";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";

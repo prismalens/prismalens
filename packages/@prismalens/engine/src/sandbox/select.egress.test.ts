@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for `auto`'s EGRESS SELF-CHECK (ADR-0020 B.1.1): the gate that makes
  * flipping the default to `auto` honest. srt is NOT installed in CI, and we never want to

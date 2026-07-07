@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The `e2b` provider (ADR-0020) — the server/cloud `enforced` Sandbox: the harness
  * is spawned THROUGH an E2B microVM (firecracker) with an SDK-exposed egress

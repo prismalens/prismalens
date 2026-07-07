@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 export { AgentNode, type AgentNodeData } from "./AgentNode";
 export { ApprovalGate, type ApprovalGateProps } from "./ApprovalGate";
 export {

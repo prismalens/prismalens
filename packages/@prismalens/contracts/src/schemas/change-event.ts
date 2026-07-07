@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Change Event schema — matches DB model (ChangeEvent table)
  * Tracks deployments, config changes, commits, and rollbacks

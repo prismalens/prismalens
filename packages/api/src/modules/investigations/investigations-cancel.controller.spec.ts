@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * CANCEL slice (ADR-0018): POST /investigations/:id/cancel publishes to the Redis
  * cancel channel and rejects a run already in a terminal state. A worker that

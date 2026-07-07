@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the terminal-reduce() abort guards (CANCEL slice, ADR-0018): an
  * abort that lands AFTER the merged stream drains — where the drive-loop can no longer

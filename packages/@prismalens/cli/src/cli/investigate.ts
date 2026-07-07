@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * `prismalens investigate` — the core investigation command (ADR-0008/0010).
  *

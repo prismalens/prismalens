@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Proactive token refresh processor.
  * BullMQ repeatable job that refreshes tokens expiring within 10 minutes.

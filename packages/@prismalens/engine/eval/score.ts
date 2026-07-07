@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Scoring for the golden-incident scorecard: does the reduce step's top-1
  * hypothesis (ADR-0002 ordered-evidence — array position IS the rank) name the

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic test for the worker's RETRY fresh-record path (ADR-0018 B.4): on a BullMQ
  * retry (attemptsMade > 0) the processor must clear the prior attempt's durable event

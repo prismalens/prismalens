@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The `Sandbox` port (ADR-0020) — placement-scaled harness isolation. The engine is
  * trusted orchestration; the Tier-2 harness is the risky unit, so runners launch the

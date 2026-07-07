@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/logger",
 	"version": "0.1.0",
+	"license": "Apache-2.0",
 	"private": true,
 	"description": "Wide events logging with tail sampling for PrismaLens",
 	"main": "dist/index.js",

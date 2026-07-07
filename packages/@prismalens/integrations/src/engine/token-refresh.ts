@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Concurrent-safe token refresh with in-memory locking.
  * Uses a strategy pattern to support multiple auth modes (OAuth2, GitHub App, etc.).

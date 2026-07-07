@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * No-evidence guard (ADR-0002 ordered-evidence / Constitution "no evidence → no
  * report"): a run that gathered ZERO tool_results must emit no report, regardless of

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Reduce-overlay pure logic (ADR-0016 §5c — "the moat").
  *

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { FolderGit2, GitBranch, Plus, Unlink } from "lucide-react";
 import { useState } from "react";

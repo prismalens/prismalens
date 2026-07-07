@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Live Phase-1 diagnosis eval — drives the full minimal Tier-1 supervisor against
  * a RUNNING sreforge booklogr incident and prints the ordered-evidence report for

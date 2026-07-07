@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Link } from "@tanstack/react-router";
 import { Pencil, Plus, Server, Trash2 } from "lucide-react";
 

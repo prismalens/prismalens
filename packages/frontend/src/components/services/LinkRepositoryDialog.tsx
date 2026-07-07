@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { GitBranch, Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 

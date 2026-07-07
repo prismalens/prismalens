@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 // @ts-check
 import eslint from "@eslint/js";
 import eslintPluginPrettierRecommended from "eslint-plugin-prettier/recommended";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * File-backed `InvestigationStore` adapter (ADR-0018) — wraps the CLI's
  * {@link SessionManager} so `conductRun` can drive the durable lifecycle

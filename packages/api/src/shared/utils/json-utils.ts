@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Schemas and utilities for safely parsing JSON fields from the database.
  * Returns undefined on parse failure — callers should coalesce to null or a default.

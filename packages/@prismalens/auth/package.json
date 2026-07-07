@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/auth",
 	"version": "0.1.0",
+	"license": "Apache-2.0",
 	"private": true,
 	"description": "Authentication configuration and client for PrismaLens using Better Auth",
 	"main": "dist/index.js",

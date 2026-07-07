@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { LoggingConfig } from "@prismalens/config";
 import type { SamplerOptions, SamplingDecision } from "../types/sampling.js";
 import type { WideEvent } from "../types/wide-event.js";

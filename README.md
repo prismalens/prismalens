@@ -108,4 +108,5 @@ To work on the CLI specifically, see
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). The hosted cloud /
+enterprise edition is a separate, proprietary product.

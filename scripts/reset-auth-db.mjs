@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { prisma } from "../packages/@prismalens/database/dist/client.js";
 
 await prisma.$executeRawUnsafe("DELETE FROM session");

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type { Postmortem } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";

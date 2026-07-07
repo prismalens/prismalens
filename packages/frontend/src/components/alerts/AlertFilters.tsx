@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { AlertStatus, Severity } from "@prismalens/contracts";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";

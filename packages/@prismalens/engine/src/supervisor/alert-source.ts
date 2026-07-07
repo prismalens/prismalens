@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Alert source — the investigation SEED (ADR-0008 Tier-1, Phase-1).
  *

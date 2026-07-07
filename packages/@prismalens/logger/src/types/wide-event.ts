@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Wide Event structure following loggingsucks.com principles.
  * One comprehensive event per request per service with high dimensionality.

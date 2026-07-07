@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Utility functions for building database connection URLs from config.
  * Used to construct connection strings for different database providers.

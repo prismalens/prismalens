@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * `prismalens` / `pl` — the engine CLI (ADR-0010: the engine is a CLI; the desktop
  * app + API drive it). Command bodies live in ../src/cli/* and are loaded lazily so

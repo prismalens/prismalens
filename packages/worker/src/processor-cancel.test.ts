@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic test for the worker's CANCEL path (CANCEL slice, ADR-0018): a Redis message
  * on `investigation:cancel:<id>` must flip the run's AbortSignal, and the cancelled

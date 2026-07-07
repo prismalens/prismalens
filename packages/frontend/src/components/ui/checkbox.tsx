@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check } from "lucide-react";
 import * as React from "react";

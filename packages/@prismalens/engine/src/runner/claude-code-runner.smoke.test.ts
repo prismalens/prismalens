@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Live Claude Code Agent-SDK smoke — confirms the SDK authenticates (via the
  * logged-in CC session ~/.claude/.credentials.json or ANTHROPIC_API_KEY), spawns,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * DTO for creating an alert mapping rule.
  * Maps incoming alerts to services based on match criteria.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * ClaudeCodeAdapter unit tests — HERMETIC. No network, no real
  * `@anthropic-ai/claude-agent-sdk` query(): we feed hand-built SdkMessage objects

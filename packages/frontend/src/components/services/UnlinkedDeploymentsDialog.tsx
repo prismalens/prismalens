@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import type { Deployment, ServiceWithRelations } from "@prismalens/contracts";
 import { Link2, Loader2, Rocket, Trash2 } from "lucide-react";
 import { useState } from "react";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Live ACP smoke — drives the REAL `deepagents --acp` binary against Ollama Cloud
  * and asserts the canonical stream comes out the far end. Gated on OLLAMA_API_KEY

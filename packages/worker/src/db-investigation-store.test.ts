@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the DB investigation store's BATCHED durable-event append
  * (ADR-0018 B.4). No network: the batch poster is injected (`appendEvents`) and the

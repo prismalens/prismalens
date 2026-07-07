@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 "use client";
 
 import { SERVICE_TIER_METADATA } from "@prismalens/contracts/schemas";

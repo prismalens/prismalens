@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Hermetic tests for the CLI sandbox guard (ADR-0020/0017), the mirror of the worker's
  * `harnessTakesSandbox`. The guard is a pure decision — no command run, no network — so we

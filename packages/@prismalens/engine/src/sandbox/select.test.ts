@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Tests for the Sandbox selection layer (ADR-0020 defaults + ADR-0017 honest
  * fidelity): the returned `requested`/`actual` pair must make a degrade visible, and

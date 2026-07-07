@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { Link } from "@tanstack/react-router";
 import { CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";

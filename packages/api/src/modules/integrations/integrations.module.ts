@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
