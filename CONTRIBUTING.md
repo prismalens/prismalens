@@ -109,9 +109,10 @@ changesets, the release workflow opens/updates a **"chore: version packages"
 PR** (`pnpm changeset:version`); merging that PR publishes the bumped packages
 to npm with provenance (`pnpm changeset:publish` = `pnpm publish -r`, which
 rewrites `workspace:*` ranges at pack time, then `changeset tag`) and creates a
-GitHub Release per tag. Publishing authenticates with the `NPM_TOKEN` repo
-secret (granular automation token; switch to npm trusted publishing once the
-packages exist on the registry).
+GitHub Release per tag. Two repo secrets drive it: `RELEASE_PAT` (fine-grained
+PAT, Contents + Pull requests read/write — the version PR must come from a
+user so CI triggers on it) and `NPM_TOKEN` (granular automation token; switch
+to npm trusted publishing once the packages exist on the registry).
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
