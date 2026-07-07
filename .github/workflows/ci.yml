@@ -109,8 +109,8 @@ jobs:
       - name: Pack tarballs
         run: |
           mkdir -p /tmp/tarballs
-          for p in cli engine contracts config; do
-            (cd "packages/@prismalens/$p" && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
+          for p in cli @prismalens/engine @prismalens/contracts @prismalens/config; do
+            (cd "packages/$p" && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
           done
           ls -l /tmp/tarballs
 
