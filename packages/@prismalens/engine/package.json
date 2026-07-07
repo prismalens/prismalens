@@ -1,8 +1,8 @@
 {
 	"name": "@prismalens/engine",
 	"version": "0.0.0",
+	"description": "Two-tier AI investigation engine for PrismaLens — a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
 	"license": "Apache-2.0",
-	"private": true,
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -13,8 +13,27 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"NOTICE"
 	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/prismalens/prismalens.git",
+		"directory": "packages/@prismalens/engine"
+	},
+	"homepage": "https://prismalens.io",
+	"bugs": "https://github.com/prismalens/prismalens/issues",
+	"keywords": [
+		"sre",
+		"incident-response",
+		"root-cause-analysis",
+		"investigation",
+		"ai",
+		"agent"
+	],
+	"engines": {
+		"node": ">=22"
+	},
 	"publishConfig": {
 		"access": "public"
 	},

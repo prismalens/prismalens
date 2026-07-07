@@ -49,8 +49,44 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Manifest/exports sanity for the packages that publish to npm (R0.c).
+      - name: publint (publishable packages)
+        run: pnpm publint
+
   test:
-    name: Test
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # engines.node is >=22 (work-005 decision 5) — prove it, and prove the
+      # suite is not ubuntu-only, before the first npm release.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+  # Packed-artifact smoke (work-005 R0.d): pack the 4-package npm closure and
+  # prove it installs + runs in a clean container — no pnpm, no monorepo, no
+  # devDeps. Catches missing `files`, undeclared deps, bin/shebang wiring, ESM
+  # layout, and engines bugs that monorepo-resident tests structurally cannot.
+  pack:
+    name: Pack npm closure
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -67,8 +103,45 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test
-        run: pnpm test
+      - name: Build closure
+        run: pnpm --filter prismalens... build
+
+      - name: Pack tarballs
+        run: |
+          mkdir -p /tmp/tarballs
+          for p in cli engine contracts config; do
+            (cd "packages/@prismalens/$p" && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
+          done
+          ls -l /tmp/tarballs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: /tmp/tarballs/*.tgz
+          retention-days: 3
+
+  packed-smoke:
+    name: Packed smoke (${{ matrix.image }})
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["node:22-slim", "node:24-slim"]
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/packed-smoke.sh
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Smoke the packed closure
+        run: sh scripts/packed-smoke.sh tarballs
 
   lint:
     name: Lint (Biome)

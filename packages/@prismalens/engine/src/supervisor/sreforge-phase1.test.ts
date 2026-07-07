@@ -28,14 +28,16 @@ const rawModel = process.env.OLLAMA_MODEL ?? "gpt-oss:120b";
 const MODEL = rawModel.replace(/-cloud$/, "");
 const HARNESS_MODEL = `openai:${MODEL}`; // deepagents -M needs the provider prefix
 const BASE_URL = process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1";
-const SUBSTRATE =
-	process.env.SREFORGE_SUBSTRATE ??
-	"/home/sumit/sources/sreforge-workspace/sreforge/use-cases/booklogr/stacks/flask-compose/substrate/booklogr";
+// Points at a checkout of the sreforge live-eval harness (booklogr substrate);
+// no default — the test only arms on machines that opt in via env.
+const SUBSTRATE = process.env.SREFORGE_SUBSTRATE ?? "";
 
+// sreforge's fixed compose host ports; overridable for remapped stacks.
 const TELEMETRY = {
-	prometheusUrl: "http://localhost:9090",
-	alertmanagerUrl: "http://localhost:9093",
-	apiUrl: "http://localhost:5000",
+	prometheusUrl: process.env.SREFORGE_PROMETHEUS_URL ?? "http://localhost:9090",
+	alertmanagerUrl:
+		process.env.SREFORGE_ALERTMANAGER_URL ?? "http://localhost:9093",
+	apiUrl: process.env.SREFORGE_API_URL ?? "http://localhost:5000",
 };
 
 const enabled = Boolean(KEY) && existsSync(SUBSTRATE);

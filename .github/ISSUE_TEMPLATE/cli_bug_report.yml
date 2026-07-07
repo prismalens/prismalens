@@ -1,0 +1,57 @@
+name: CLI bug report
+description: The `prismalens` / `pl` CLI behaves incorrectly on your machine.
+labels: ["bug", "cli"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a CLI bug. Please do **not** paste
+        real secrets, tokens, API keys, or connection strings — issues are
+        public. `pl doctor` output is safe: it reports which credentials are
+        present, never their values.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: I ran `pl investigate --repo .` and ...
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command and output
+      description: The full command you ran and the output (redact anything sensitive).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`pl doctor` output"
+      description: Run `pl doctor` (or `npx prismalens doctor`) and paste the full output — it captures the harness, credential, and workspace state most CLI bugs hinge on.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CLI version
+      description: "`prismalens --version`"
+      placeholder: 0.0.1
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS + Node version (+ WSL networking mode if on WSL — `wsl.exe --version` / `.wslconfig networkingMode`).
+      placeholder: Ubuntu 24.04 on WSL2 (NAT), Node 22.12
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: prismalens.config.yaml (optional)
+      description: Your config with anything sensitive removed, if the bug involves configuration.
+      render: yaml

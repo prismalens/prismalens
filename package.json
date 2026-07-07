@@ -1,5 +1,5 @@
 {
-	"name": "prismalens",
+	"name": "prismalens-monorepo",
 	"version": "0.1.0",
 	"private": true,
 	"description": "Open-source AI-powered incident analysis and root cause detection",
@@ -26,19 +26,22 @@
 		"format-and-lint:fix": "biome check . --write",
 		"spdx:check": "node scripts/spdx-headers.mjs --check",
 		"spdx:fix": "node scripts/spdx-headers.mjs --fix",
-		"changeset:version": "changeset version"
+		"publint": "pnpm --filter prismalens --filter @prismalens/engine --filter @prismalens/contracts --filter @prismalens/config exec publint --strict",
+		"changeset:version": "changeset version",
+		"changeset:publish": "pnpm publish -r --no-git-checks && changeset tag"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.11",
 		"@changesets/cli": "^2.31.0",
 		"@types/node": "catalog:",
+		"publint": "^0.3.21",
 		"tsx": "catalog:",
 		"turbo": "^2.10.2",
 		"typescript": "catalog:"
 	},
 	"packageManager": "pnpm@10.27.0",
 	"engines": {
-		"node": ">=24.0.0",
+		"node": ">=22.0.0",
 		"pnpm": ">=9.0.0"
 	},
 	"pnpm": {

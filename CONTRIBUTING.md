@@ -99,20 +99,26 @@ than letting it evaporate.
 
 ## Releases and package publishing
 
-`@prismalens/engine`, `@prismalens/cli`, `@prismalens/contracts`,
-`@prismalens/config`, and `@prismalens/logger` carry a `publishConfig: { access:
-"public" }` block and use [Changesets](https://github.com/changesets/changesets)
-(`.changeset/config.json`) for versioning — this is pre-extraction insurance, not
-a live release process. Every one of those packages (and the rest of
-`packages/@prismalens/*`) is still `private: true`, and no CI job publishes them.
-Contributors touching a publishable package should add a changeset
-(`pnpm changeset`) describing the change; `pnpm changeset:version` applies
-pending changesets to bump versions and changelogs when the time comes. The
-`private` flag flips and actual npm publishing begins with the R0 CLI release
-(see the mage hub's `005-r0-cli-release` plan via [AGENTS.md](AGENTS.md)) —
-until then, changesets accumulate but nothing is published to the registry. App-side packages (`@prismalens/api`,
-`@prismalens/frontend`, `@prismalens/worker`) are excluded from Changesets
-entirely — they deploy, they don't publish.
+Four packages publish to npm: `prismalens` (the CLI) plus its library closure
+`@prismalens/engine`, `@prismalens/contracts`, and `@prismalens/config`.
+Versioning runs through [Changesets](https://github.com/changesets/changesets)
+(`.changeset/config.json`): a change to a publishable package should come with
+a changeset (`pnpm changeset`). Publishing is **manual, by the maintainer, from
+a local checkout** (no CI publish job — deliberate while releases are young):
+
+```bash
+git checkout main && git pull
+pnpm install --frozen-lockfile
+pnpm changeset:version        # applies pending changesets; review + commit the bumps
+pnpm build && pnpm test && pnpm publint
+pnpm changeset:publish        # pnpm publish -r (rewrites workspace:*) + changeset tag
+git push --follow-tags
+```
+
+Everything else in `packages/` stays `private: true` — `@prismalens/logger` and
+`@prismalens/database` are internal, and the app-side packages
+(`@prismalens/api`, `@prismalens/frontend`, `@prismalens/worker`) are excluded
+from Changesets entirely — they deploy, they don't publish.
 
 ## Reporting bugs and requesting features
 

@@ -1,8 +1,7 @@
 {
 	"name": "@prismalens/contracts",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"license": "Apache-2.0",
-	"private": true,
 	"description": "Shared API contracts and Zod schemas for PrismaLens",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -39,13 +38,27 @@
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/prismalens/prismalens.git",
+		"directory": "packages/@prismalens/contracts"
+	},
+	"homepage": "https://prismalens.io",
+	"bugs": "https://github.com/prismalens/prismalens/issues",
+	"keywords": [
+		"prismalens",
+		"contracts",
+		"zod",
+		"schemas"
+	],
 	"engines": {
-		"node": ">=24.0.0"
+		"node": ">=22"
 	},
 	"sideEffects": false,
 	"files": [
 		"dist",
-		"src"
+		"src",
+		"NOTICE"
 	],
 	"publishConfig": {
 		"access": "public"
