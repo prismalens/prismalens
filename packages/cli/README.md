@@ -64,7 +64,7 @@ pl         -> dist/bin/prismalens.js
 For local development you can skip the build and run the TypeScript entry directly:
 
 ```bash
-# from packages/@prismalens/cli
+# from packages/cli
 pnpm dev investigate --query "checkout latency spike"   # tsx bin/prismalens.ts ...
 ```
 

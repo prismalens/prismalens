@@ -67,7 +67,7 @@
 			"includes": [
 				"packages/@prismalens/engine/src/**",
 				"packages/@prismalens/engine/eval/**",
-				"packages/@prismalens/cli/src/**"
+				"packages/cli/src/**"
 			],
 			"linter": {
 				"rules": {

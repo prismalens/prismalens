@@ -15,7 +15,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/prismalens/prismalens.git",
-		"directory": "packages/@prismalens/cli"
+		"directory": "packages/cli"
 	},
 	"homepage": "https://prismalens.io",
 	"bugs": "https://github.com/prismalens/prismalens/issues",

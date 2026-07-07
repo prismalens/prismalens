@@ -71,7 +71,7 @@ setup (providers, harnesses, configuration, commands) lives at
 
 | Package | What it is |
 | --- | --- |
-| `packages/@prismalens/cli` | The `prismalens`/`pl` binary — the released engine CLI. |
+| `packages/cli` | The `prismalens`/`pl` binary — the released engine CLI. |
 | `packages/@prismalens/engine` | The two-tier investigation engine (supervisor, harness adapters, conductor) the CLI drives. |
 | `packages/@prismalens/contracts` | Shared Zod schemas and canonical event/report types. |
 | `packages/@prismalens/config` | Shared config and environment-variable resolution. |
@@ -96,7 +96,7 @@ pnpm format-and-lint # biome check
 ```
 
 To work on the CLI specifically, see
-[`packages/@prismalens/cli/README.md`](packages/@prismalens/cli/README.md).
+[`packages/cli/README.md`](packages/cli/README.md).
 
 ## Links
 
