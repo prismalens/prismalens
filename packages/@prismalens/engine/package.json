@@ -1,6 +1,6 @@
 {
 	"name": "@prismalens/engine",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"description": "Two-tier AI investigation engine for PrismaLens — a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
 	"license": "Apache-2.0",
 	"type": "module",
