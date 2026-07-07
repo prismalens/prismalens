@@ -101,19 +101,21 @@ than letting it evaporate.
 
 Four packages publish to npm: `prismalens` (the CLI) plus its library closure
 `@prismalens/engine`, `@prismalens/contracts`, and `@prismalens/config`.
-Versioning runs through [Changesets](https://github.com/changesets/changesets)
-(`.changeset/config.json`): a change to a publishable package should come with
-a changeset (`pnpm changeset`). Publishing is **manual, by the maintainer, from
-a local checkout** (no CI publish job — deliberate while releases are young):
+Versioning and publishing run through
+[Changesets](https://github.com/changesets/changesets) (`.changeset/config.json`
++ `.github/workflows/release.yml`): a change to a publishable package should
+come with a changeset (`pnpm changeset`). On every push to `main` with pending
+changesets, the release workflow opens/updates a **"chore: version packages"
+PR** (`pnpm changeset:version`); merging that PR publishes the bumped packages
+to npm with provenance (`pnpm changeset:publish` = `pnpm publish -r`, which
+rewrites `workspace:*` ranges at pack time, then `changeset tag`) and creates a
+GitHub Release per tag. Publishing authenticates with the `NPM_TOKEN` repo
+secret (granular automation token; switch to npm trusted publishing once the
+packages exist on the registry).
 
-```bash
-git checkout main && git pull
-pnpm install --frozen-lockfile
-pnpm changeset:version        # applies pending changesets; review + commit the bumps
-pnpm build && pnpm test && pnpm publint
-pnpm changeset:publish        # pnpm publish -r (rewrites workspace:*) + changeset tag
-git push --follow-tags
-```
+The same steps can be run manually from a local checkout as a fallback:
+`pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
+pnpm publint` → `pnpm changeset:publish` → `git push --follow-tags`.
 
 Everything else in `packages/` stays `private: true` — `@prismalens/logger` and
 `@prismalens/database` are internal, and the app-side packages
