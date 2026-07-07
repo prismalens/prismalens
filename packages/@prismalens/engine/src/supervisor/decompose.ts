@@ -128,11 +128,13 @@ READ-ONLY SURFACES (never modify, deploy, restart, or write anything)
 METHOD (work iteratively — think → run a command → observe → decide)
   0. Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array
      (a malformed tool call can abort the whole investigation).
-  1. Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.
-  2. After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.
-  3. Localize, then go to the code. Identify WHICH operation/endpoint/component the signal is about — e.g. for a latency
+  1. File reads, greps, and globs stay INSIDE your current working directory — use relative paths only. Never search
+     from the filesystem root or pass absolute paths outside the repo (a permission error aborts the whole investigation).
+  2. Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.
+  3. After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.
+  4. Localize, then go to the code. Identify WHICH operation/endpoint/component the signal is about — e.g. for a latency
      alert, find the SLOWEST endpoint or operation — then READ that code path's handler and the configuration it depends on.
-  4. Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the diagnosis.
+  5. Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the diagnosis.
 
 WHAT COUNTS AS A ROOT CAUSE (important)
   Restating the symptom is NOT a root cause. "The service is slow / unresponsive / latency is high" is the alert restated,

@@ -186,10 +186,18 @@ export default defineCommand({
 			selection = resolvedSandbox.selection;
 			// Honest fidelity (ADR-0017): a silent degrade would mislead — name it, with
 			// the self-check's reason (srt absent, or its egress bridge dead — B.1.1).
+			// An EXPECTED degrade (WSL: known-unreliable bridge, probe skipped) logs
+			// calmly instead of warning on every dev-machine run.
 			if (selection && resolvedSandbox.degradeReason) {
-				consola.warn(
-					`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${resolvedSandbox.degradeReason}.`,
-				);
+				if (resolvedSandbox.degradeExpected) {
+					info(
+						`Sandbox: ${selection.actual} (${resolvedSandbox.degradeReason}).`,
+					);
+				} else {
+					consola.warn(
+						`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${resolvedSandbox.degradeReason}.`,
+					);
+				}
 			} else if (selection?.actual === "srt") {
 				info("Sandbox: srt (enforced OS boundary).");
 			}
@@ -365,6 +373,8 @@ export async function resolveRunSandbox(
 ): Promise<{
 	selection: SandboxSelection | null;
 	degradeReason: string | null;
+	/** True when the degrade is the expected outcome for this host (log calmly). */
+	degradeExpected: boolean;
 }> {
 	const guard = resolveSandboxGuard(harness, mode);
 	if (guard.blocked) {
@@ -374,7 +384,8 @@ export async function resolveRunSandbox(
 				`mode (no enforced boundary), or an ACP harness (deepagents).`,
 		);
 	}
-	if (!guard.takesSandbox) return { selection: null, degradeReason: null };
+	if (!guard.takesSandbox)
+		return { selection: null, degradeReason: null, degradeExpected: false };
 	const probeUrl = firstProbeUrl(config);
 	const selection = await resolveSandbox(mode, {
 		allowedDomains: collectAllowedDomains(config),
@@ -384,7 +395,11 @@ export async function resolveRunSandbox(
 		mode === "auto" && selection.actual !== "srt"
 			? (selection.degradeReason ?? "srt unavailable")
 			: null;
-	return { selection, degradeReason };
+	return {
+		selection,
+		degradeReason,
+		degradeExpected: selection.degradeExpected ?? false,
+	};
 }
 
 /**

@@ -34,6 +34,9 @@ import { __clearSrtEgressCache, isSrtAvailable } from "./srt.js";
 
 const availabilityMock = vi.mocked(isSrtAvailable);
 
+// Hermetic WSL seam: these probe-path cases assert NON-WSL behaviour regardless of host.
+const notWsl = async () => false;
+
 describe("resolveSandbox — auto egress self-check (B.1.1)", () => {
 	beforeEach(() => {
 		// Fresh memo + default-available before each case (they mutate both).
@@ -83,6 +86,7 @@ describe("resolveSandbox — auto egress self-check (B.1.1)", () => {
 			probeUrl: "https://healthy.example/metrics",
 			allowedDomains: ["healthy.example", "second.example"],
 			egressRunner: runner,
+			wslDetector: notWsl,
 		});
 		expect(sel.actual).toBe("srt");
 		expect(sel.degradeReason).toBeUndefined();
@@ -97,6 +101,7 @@ describe("resolveSandbox — auto egress self-check (B.1.1)", () => {
 		const sel = await resolveSandbox("auto", {
 			probeUrl: "https://dead.example/api",
 			egressRunner: runner,
+			wslDetector: notWsl,
 		});
 		expect(sel.actual).toBe("process-floor");
 		expect(sel.sandbox.fidelity).toBe("cooperative");
@@ -110,6 +115,7 @@ describe("resolveSandbox — auto egress self-check (B.1.1)", () => {
 		const sel = await resolveSandbox("auto", {
 			probeUrl: "https://broken.example/api",
 			egressRunner: runner,
+			wslDetector: notWsl,
 		});
 		expect(sel.actual).toBe("process-floor");
 		expect(sel.degradeReason).toMatch(/egress bridge unhealthy/);
@@ -121,10 +127,12 @@ describe("resolveSandbox — auto egress self-check (B.1.1)", () => {
 		const first = await resolveSandbox("auto", {
 			probeUrl: "https://memo.example/api",
 			egressRunner: runner,
+			wslDetector: notWsl,
 		});
 		const second = await resolveSandbox("auto", {
 			probeUrl: "https://memo.example/api",
 			egressRunner: runner,
+			wslDetector: notWsl,
 		});
 		expect(first.actual).toBe("srt");
 		expect(second.actual).toBe("srt");
@@ -132,6 +140,21 @@ describe("resolveSandbox — auto egress self-check (B.1.1)", () => {
 		expect(runner).toHaveBeenCalledTimes(1);
 		await first.sandbox.destroy();
 		await second.sandbox.destroy();
+	});
+
+	it("WSL host → floors as an EXPECTED degrade without probing (2026-07-07)", async () => {
+		const runner = vi.fn(async () => "200");
+		const sel = await resolveSandbox("auto", {
+			probeUrl: "https://healthy.example/metrics",
+			egressRunner: runner,
+			wslDetector: async () => true,
+		});
+		expect(sel.actual).toBe("process-floor");
+		expect(sel.degradeExpected).toBe(true);
+		expect(sel.degradeReason).toMatch(/WSL detected/);
+		// The whole point: no spawn-y probe spent on a foregone conclusion.
+		expect(runner).not.toHaveBeenCalled();
+		await sel.sandbox.destroy();
 	});
 
 	it("explicit srt NEVER probes (validated opt-in — the user's call)", async () => {

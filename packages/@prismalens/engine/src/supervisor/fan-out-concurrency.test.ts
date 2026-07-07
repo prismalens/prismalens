@@ -104,9 +104,11 @@ describe("fanOut — N>1 concurrency + interleaving (ADR-0016 decision 2)", () =
 		expect(idx("b1-first")).toBeLessThan(idx("b0-second"));
 	});
 
-	it("one branch throwing terminates only itself; siblings complete", async () => {
+	it("one branch throwing terminates only itself (after its one respawn); siblings complete", async () => {
+		let b0Attempts = 0;
 		const harness: HarnessRunner = (_prompt, ctx) => {
 			if (ctx.branchId === "b0") {
+				b0Attempts++;
 				return (async function* () {
 					yield agentStep(ctx.runId, "b0", 0, "b0-start");
 					throw new Error("b0 transport exploded");
@@ -125,13 +127,104 @@ describe("fanOut — N>1 concurrency + interleaving (ADR-0016 decision 2)", () =
 		// b1 fully survives (its agent_step + tool_result both present).
 		const b1 = seen.filter((e) => "branchId" in e && e.branchId === "b1");
 		expect(b1.map((e) => e.kind)).toEqual(["agent_step", "tool_result"]);
-		// b0's throw is reshaped into a terminal `error` event stamped with its branchId.
-		const b0Error = seen.find(
-			(e) => e.kind === "error" && "branchId" in e && e.branchId === "b0",
-		);
-		expect(b0Error).toBeDefined();
-		expect(b0Error?.kind === "error" && b0Error.message).toContain(
+		// b0 gets exactly one respawn (bounded), then its throw is reshaped into a
+		// terminal `error` event stamped with its branchId.
+		expect(b0Attempts).toBe(2);
+		const b0 = seen.filter((e) => "branchId" in e && e.branchId === "b0");
+		expect(b0.map((e) => e.kind)).toEqual([
+			"agent_step",
+			"error", // respawn notice
+			"agent_step",
+			"error", // terminal
+		]);
+		const terminal = b0[3];
+		expect(terminal.kind === "error" && terminal.message).toBe(
 			"b0 transport exploded",
 		);
+		// (branchId, seq) stays monotonic across attempts.
+		expect(b0.map((e) => e.seq)).toEqual([0, 1, 2, 3]);
+	});
+});
+
+describe("fan-out — N=1 failure containment (2026-07-07 hardening)", () => {
+	const ROOT: Branch[] = [{ branchId: "root", prompt: "focus-root" }];
+
+	it("mid-run abort after events flowed: one respawn, then contained as a terminal `error` event — evidence survives", async () => {
+		let attempts = 0;
+		const harness: HarnessRunner = (_prompt, ctx) => {
+			attempts++;
+			return (async function* () {
+				yield agentStep(ctx.runId, "root", 0, "probing");
+				yield toolResult(ctx.runId, "root", 1);
+				throw new Error("EACCES: permission denied, scandir '/lost+found'");
+			})();
+		};
+
+		const seen: CanonicalEvent[] = [];
+		// Must NOT throw — the gathered evidence must reach the reduce step.
+		for await (const ev of fanOut(ROOT, harness, "run-1")) seen.push(ev);
+
+		expect(attempts).toBe(2);
+		expect(seen.map((e) => e.kind)).toEqual([
+			"agent_step",
+			"tool_result",
+			"error", // respawn notice
+			"agent_step",
+			"tool_result",
+			"error", // terminal
+		]);
+		const notice = seen[2];
+		expect(notice.kind === "error" && notice.message).toMatch(
+			/respawning branch once/,
+		);
+		const terminal = seen[5];
+		expect(terminal.kind === "error" && terminal.message).toContain("EACCES");
+		expect("branchId" in terminal && terminal.branchId).toBe("root");
+		// (branchId, seq) stays monotonic across the respawned attempt (re-stamped).
+		expect(seen.map((e) => e.seq)).toEqual([0, 1, 2, 3, 4, 5]);
+	});
+
+	it("respawn SUCCEEDS: the retry's evidence flows, no terminal error, no throw", async () => {
+		let attempts = 0;
+		const harness: HarnessRunner = (_prompt, ctx) => {
+			attempts++;
+			if (attempts === 1) {
+				return (async function* () {
+					yield agentStep(ctx.runId, "root", 0, "first-try");
+					throw new Error("harness turn aborted");
+				})();
+			}
+			return (async function* () {
+				yield agentStep(ctx.runId, "root", 0, "second-try");
+				yield toolResult(ctx.runId, "root", 1);
+			})();
+		};
+
+		const seen: CanonicalEvent[] = [];
+		for await (const ev of fanOut(ROOT, harness, "run-1")) seen.push(ev);
+
+		expect(attempts).toBe(2);
+		expect(seen.map((e) => e.kind)).toEqual([
+			"agent_step",
+			"error", // respawn notice — the ONLY error event
+			"agent_step",
+			"tool_result",
+		]);
+		expect(seen.map((e) => e.seq)).toEqual([0, 1, 2, 3]);
+	});
+
+	it("failure BEFORE the first event still propagates (actionable setup error)", async () => {
+		const harness: HarnessRunner = () =>
+			// biome-ignore lint/correctness/useYield: throw-only harness stub.
+			(async function* () {
+				throw new Error("spawn deepagents-acp ENOENT");
+			})();
+
+		const events = fanOut(ROOT, harness, "run-1");
+		await expect(async () => {
+			for await (const _ of events) {
+				// drain
+			}
+		}).rejects.toThrow("spawn deepagents-acp ENOENT");
 	});
 });
