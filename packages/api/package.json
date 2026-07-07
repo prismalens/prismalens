@@ -58,7 +58,7 @@
 		"@swc/core": "^1.15.43",
 		"@types/express": "^5.0.6",
 		"@types/node": "catalog:",
-		"@vitest/coverage-v8": "^4.1.9",
+		"@vitest/coverage-v8": "^4.1.10",
 		"eslint": "catalog:",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-prettier": "^5.5.6",
@@ -66,7 +66,7 @@
 		"prettier": "^3.9.4",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.62.1",
+		"typescript-eslint": "^8.63.0",
 		"unplugin-swc": "^1.5.9",
 		"vitest": "catalog:"
 	},
