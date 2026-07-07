@@ -7,9 +7,13 @@
 # pnpm rewrites workspace:* ranges to real versions at pack time) and creates
 # a GitHub Release per tag.
 #
-# Publishing authenticates with the NPM_TOKEN repo secret (granular automation
-# token). id-token:write enables npm provenance attestations; move to npm
-# trusted publishing (OIDC, no long-lived token) once the packages exist.
+# Publishing authenticates via npm TRUSTED PUBLISHING (OIDC): id-token:write
+# lets pnpm (>=10.13; this repo pins 10.27) exchange the runner's OIDC token
+# for a short-lived npm credential — no npm token secret exists or is needed.
+# Each of the 4 packages has this repo + workflow registered as a trusted
+# publisher on npmjs.com, and provenance attestations are generated
+# automatically. Requirement: the publishing package must already exist on
+# npm (bootstrap 0.0.1 was published manually by the maintainer).
 #
 # The Version-Packages PR is created with the RELEASE_PAT repo secret (a
 # fine-grained PAT: this repo, Contents + Pull requests read/write), NOT the
@@ -50,7 +54,6 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -70,5 +73,3 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
