@@ -1,13 +1,21 @@
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import type {
-	AgentExecution,
-	Investigation,
-	Recommendation,
-	ToolExecution,
+import type { CanonicalEvent } from "@prismalens/contracts";
+import {
+	CanonicalEventSchema,
+	INVESTIGATION_REPORT_BRANCH,
+} from "@prismalens/contracts";
+import {
+	type AgentExecution,
+	type Investigation,
+	Prisma,
+	type Recommendation,
+	type ToolExecution,
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import {
 	CreateAgentExecutionDto,
@@ -42,6 +50,7 @@ export class InvestigationsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
+		private readonly overlayService: OverlayService,
 	) {}
 
 	/**
@@ -149,6 +158,33 @@ export class InvestigationsService {
 	}
 
 	/**
+	 * Apply a status write with the cancelled-is-sticky rule (CANCEL slice,
+	 * ADR-0018): a user's terminal "cancelled" is never overwritten by a late or
+	 * retried worker write. The guard rides in the UPDATE's WHERE so check-and-write
+	 * is one statement; a blocked (or missing-row) write returns null.
+	 */
+	private async applyStatusUpdate(
+		id: string,
+		status: string,
+		updateData: Record<string, unknown>,
+	): Promise<Investigation | null> {
+		const { count } = await this.prisma.investigation.updateMany({
+			where: {
+				id,
+				...(status === "cancelled" ? {} : { NOT: { status: "cancelled" } }),
+			},
+			data: updateData,
+		});
+		if (count === 0) {
+			this.logger.warn(
+				`Status write "${status}" for investigation ${id} skipped (missing or already cancelled)`,
+			);
+			return null;
+		}
+		return this.prisma.investigation.findUnique({ where: { id } });
+	}
+
+	/**
 	 * Update investigation status
 	 */
 	async updateStatus(
@@ -169,10 +205,7 @@ export class InvestigationsService {
 				updateData.completedAt = new Date();
 			}
 
-			return await this.prisma.investigation.update({
-				where: { id },
-				data: updateData,
-			});
+			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
 			return null;
 		}
@@ -213,13 +246,34 @@ export class InvestigationsService {
 				updateData.harnessThreadId = harnessThreadId;
 			}
 
-			return await this.prisma.investigation.update({
-				where: { id },
-				data: updateData,
-			});
+			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Cancel a still-PENDING investigation (CANCEL slice, ADR-0018). When a run is
+	 * cancelled before any worker picks it up, the queued job is removed directly (no
+	 * worker is subscribed to its cancel channel) and the API owns the terminal write —
+	 * there is no worker to persist "cancelled". Flips the status and records a timeline
+	 * entry, mirroring the worker's cancelled record for a running run.
+	 */
+	async cancelPending(
+		id: string,
+		incidentId: string,
+		description = "The investigation was cancelled before it started.",
+	): Promise<Investigation | null> {
+		const updated = await this.updateStatus(id, "cancelled");
+		await this.timelineService.create({
+			incidentId,
+			type: TimelineEntryType.investigation_completed,
+			title: "Investigation cancelled",
+			description,
+			source: TimelineSource.system,
+			metadata: { investigationId: id },
+		});
+		return updated;
 	}
 
 	/**
@@ -234,10 +288,19 @@ export class InvestigationsService {
 		try {
 			const investigation = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { incidentId: true },
+				select: { incidentId: true, status: true },
 			});
 
 			if (!investigation) return null;
+
+			// Cancelled is sticky (CANCEL slice): a late or retried worker must not
+			// overwrite the user's cancellation with a completed/failed result.
+			if (investigation.status === "cancelled") {
+				this.logger.warn(
+					`Result write for investigation ${id} skipped — already cancelled`,
+				);
+				return null;
+			}
 
 			// Use transaction for atomic writes
 			await this.prisma.$transaction(async (tx) => {
@@ -364,6 +427,21 @@ export class InvestigationsService {
 			this.logger.log(
 				`Wrote full result for investigation ${id} with ${dto.agentExecutions?.length ?? 0} agents and ${dto.recommendations?.length ?? 0} recommendations`,
 			);
+
+			// Reduce overlay (ADR-0016 §5c) — enrich the report app-side AFTER it
+			// lands. AWAITED so the worker's __done__ sentinel (published once its
+			// writeResult call returns) cannot beat the overlay row to the UI's
+			// completion refetch; still guarded, because overlay failure must NEVER
+			// fail the investigation write.
+			if (dto.status === "completed") {
+				await this.overlayService.computeOverlay(id).catch((error) => {
+					this.logger.error(
+						`Overlay computation failed for investigation ${id}`,
+						error,
+					);
+				});
+			}
+
 			return this.findById(id);
 		} catch (error) {
 			this.logger.error(
@@ -372,6 +450,142 @@ export class InvestigationsService {
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Append a batch of canonical events to the durable record (ADR-0018
+	 * `store.append`). Idempotent: each row is keyed on
+	 * `(investigationId, branchId, seq)`, so a duplicate from a batch retry is a
+	 * no-op (P2002 swallowed), not an error. The terminal `report` event carries no
+	 * `branchId`, so it lands under the {@link INVESTIGATION_REPORT_BRANCH} sentinel.
+	 *
+	 * Insert strategy — SQLite's `createMany` has no `skipDuplicates` (the generated
+	 * client omits it), so a per-row insert that swallows the unique violation is the
+	 * dialect-agnostic idempotency path. PostgreSQL could use
+	 * `createMany({ skipDuplicates: true })`, but keeping ONE path avoids a
+	 * dialect branch and behaves identically on retry. Batches are small (≤25).
+	 *
+	 * @returns how many rows were newly inserted vs skipped as duplicates.
+	 */
+	async appendEvents(
+		investigationId: string,
+		events: CanonicalEvent[],
+	): Promise<{ inserted: number; duplicates: number }> {
+		let inserted = 0;
+		let duplicates = 0;
+		for (const event of events) {
+			const branchId =
+				"branchId" in event ? event.branchId : INVESTIGATION_REPORT_BRANCH;
+			try {
+				await this.prisma.investigationEvent.create({
+					data: {
+						investigationId,
+						seq: event.seq,
+						branchId,
+						// Stored as JSON text (sqlite String / pg JSONB) and re-parsed on
+						// read — mirrors the report/overlay dialect split.
+						event: JSON.stringify(event),
+					},
+				});
+				inserted++;
+			} catch (error) {
+				if (
+					error instanceof Prisma.PrismaClientKnownRequestError &&
+					error.code === "P2002"
+				) {
+					duplicates++;
+					continue;
+				}
+				throw error;
+			}
+		}
+		return { inserted, duplicates };
+	}
+
+	/**
+	 * Delete the durable canonical event record for an investigation (ADR-0018 B.4).
+	 *
+	 * Called by the worker at the START of a BullMQ RETRY (attempt 2+): each attempt's
+	 * events are keyed on `(investigationId, branchId, seq)`, so a retry's rows collide
+	 * with the failed attempt's and get swallowed as duplicates (P2002) — leaving the
+	 * durable record showing the FAILED attempt's events for a run that later completed.
+	 * Clearing first gives each attempt a fresh record. Idempotent (deleteMany of zero
+	 * rows is a no-op).
+	 *
+	 * @returns how many rows were deleted.
+	 */
+	async clearEvents(investigationId: string): Promise<number> {
+		const { count } = await this.prisma.investigationEvent.deleteMany({
+			where: { investigationId },
+		});
+		if (count > 0) {
+			this.logger.log(
+				`Cleared ${count} durable event(s) for investigation ${investigationId} (retry)`,
+			);
+		}
+		return count;
+	}
+
+	/**
+	 * Read a page of the durable canonical event record for replay/history
+	 * (ADR-0018). Paginated by an exclusive `seq` cursor; each stored blob is parsed
+	 * back through {@link CanonicalEventSchema} on the way out (a corrupt row is
+	 * dropped + logged, never surfaced). Ordered by `(seq, branchId)`.
+	 *
+	 * NOTE: `seq` is per-branch monotonic (fan-out, B.2), so across N branches the
+	 * same `seq` recurs and the numeric cursor cannot address inside a same-seq
+	 * group. A page therefore never splits a seq group: trailing rows sharing the
+	 * page's final seq are held back for the next page (whose `gt` cursor re-reads
+	 * the whole group). A group larger than `limit` is returned whole in one
+	 * oversized page — group size is bounded by the branch count, not the record.
+	 *
+	 * @returns the parsed events plus the `nextCursor` (`seq` to resume from, or null).
+	 */
+	async getEvents(
+		investigationId: string,
+		cursor: number | undefined,
+		limit: number,
+	): Promise<{ events: CanonicalEvent[]; nextCursor: number | null }> {
+		const rows = await this.prisma.investigationEvent.findMany({
+			where: {
+				investigationId,
+				...(cursor !== undefined ? { seq: { gt: cursor } } : {}),
+			},
+			orderBy: [{ seq: "asc" }, { branchId: "asc" }],
+			// One extra row detects whether the page's final seq group is complete.
+			take: limit + 1,
+		});
+
+		let page = rows;
+		let nextCursor: number | null = null;
+		if (rows.length > limit) {
+			const overflowSeq = rows[limit]?.seq;
+			page = rows.filter((row) => row.seq !== overflowSeq);
+			if (page.length === 0) {
+				// The whole fetch is one seq group wider than the limit: return the
+				// entire group rather than looping forever on the same cursor.
+				page = await this.prisma.investigationEvent.findMany({
+					where: { investigationId, seq: overflowSeq },
+					orderBy: [{ branchId: "asc" }],
+				});
+			}
+			nextCursor = page[page.length - 1]?.seq ?? null;
+		}
+
+		const events: CanonicalEvent[] = [];
+		for (const row of page) {
+			const obj = safeParseJsonObject(row.event);
+			const parsed = obj ? CanonicalEventSchema.safeParse(obj) : null;
+			if (parsed?.success) {
+				events.push(parsed.data);
+			} else {
+				this.logger.warn(
+					`Dropped corrupt durable event row ${row.id} for investigation ${investigationId}`,
+				);
+			}
+		}
+
+		return { events, nextCursor };
 	}
 
 	/**

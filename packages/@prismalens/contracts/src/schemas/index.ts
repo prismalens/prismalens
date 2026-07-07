@@ -16,6 +16,7 @@ export * from "./incident-similarity.js";
 export * from "./integration.js";
 export * from "./investigation.js";
 export * from "./license.js";
+export * from "./overlay.js";
 export * from "./postmortem.js";
 export * from "./recommendation.js";
 export * from "./repository.js";

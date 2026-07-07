@@ -1,0 +1,12 @@
+{
+	"extends": "../../../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": "..",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"allowSyntheticDefaultImports": true
+	},
+	"include": ["**/*.ts"],
+	"exclude": ["node_modules", "fixtures/**"]
+}

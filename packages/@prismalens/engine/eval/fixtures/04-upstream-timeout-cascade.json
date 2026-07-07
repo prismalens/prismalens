@@ -1,0 +1,245 @@
+{
+	"name": "upstream-timeout-cascade",
+	"context": {
+		"alerts": [
+			{
+				"alertname": "HighLatency",
+				"severity": "critical",
+				"labels": { "service": "payment-service", "severity": "critical" },
+				"annotations": {
+					"summary": "p99 latency above 3s for payment-service",
+					"description": "payment-service request latency degraded"
+				},
+				"startsAt": "2026-07-05T10:20:00Z"
+			}
+		],
+		"telemetry": {
+			"prometheusUrl": "http://prom:9090",
+			"alertmanagerUrl": "http://am:9093",
+			"apiUrl": "http://api:5000"
+		},
+		"incident": {
+			"title": "payment-service latency degradation",
+			"description": "Checkout completions slow to time out",
+			"severity": "critical",
+			"startedAt": "2026-07-05T10:20:00Z"
+		},
+		"service": {
+			"name": "payment-service",
+			"tier": "tier-1",
+			"repo": "prismalens-org/payment-service",
+			"dependsOn": ["fraud-detection-service"]
+		}
+	},
+	"transcriptEvents": [
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 0,
+			"ts": "2026-07-05T10:22:00Z",
+			"text": "Investigating HighLatency on payment-service. Checking its own latency profile.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-1",
+					"name": "promql",
+					"args": {
+						"query": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"payment-service\"}[5m])) by (le))"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 1,
+			"ts": "2026-07-05T10:22:02Z",
+			"result": {
+				"name": "promql",
+				"toolCallId": "tc-1",
+				"source": "PromQL: p99 latency for payment-service",
+				"ok": true,
+				"preview": "10:00 0.12s\n10:15 0.14s\n10:20 4.80s\n10:25 5.10s\n(p99 latency degrades sharply starting 10:20)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 2,
+			"ts": "2026-07-05T10:22:05Z",
+			"text": "Checking application logs for the slow requests.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-2",
+					"name": "loki",
+					"args": {
+						"query": "{service=\"payment-service\"} |= \"context deadline exceeded\""
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 3,
+			"ts": "2026-07-05T10:22:07Z",
+			"result": {
+				"name": "loki",
+				"toolCallId": "tc-2",
+				"source": "Loki query: {service=\"payment-service\"} |= \"context deadline exceeded\"",
+				"ok": true,
+				"preview": "2026-07-05T10:20:41Z ERROR payment-service: calling fraud-detection-service: context deadline exceeded (timeout=2s)\n2026-07-05T10:20:44Z ERROR payment-service: calling fraud-detection-service: context deadline exceeded (timeout=2s)\n[repeated on nearly every request from 10:20 onward]"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 4,
+			"ts": "2026-07-05T10:22:10Z",
+			"text": "Checking the upstream fraud-detection-service's own latency.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-3",
+					"name": "promql",
+					"args": {
+						"query": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"fraud-detection-service\"}[5m])) by (le))"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 5,
+			"ts": "2026-07-05T10:22:12Z",
+			"result": {
+				"name": "promql",
+				"toolCallId": "tc-3",
+				"source": "PromQL: p99 latency for fraud-detection-service",
+				"ok": true,
+				"preview": "10:00 0.30s\n10:15 0.35s\n10:20 9.90s\n10:25 11.2s\n(fraud-detection-service's own p99 latency degrades right before payment-service's does)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 6,
+			"ts": "2026-07-05T10:22:15Z",
+			"text": "Checking payment-service's circuit breaker state toward fraud-detection-service.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-4",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl logs deploy/payment-service -n prod | grep circuit"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 7,
+			"ts": "2026-07-05T10:22:17Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-4",
+				"source": "kubectl logs deploy/payment-service -n prod | grep circuit",
+				"ok": true,
+				"preview": "10:22:01 WARN circuit-breaker[fraud-detection-service]: OPEN (failure ratio 0.62 over last 20 requests)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 8,
+			"ts": "2026-07-05T10:22:20Z",
+			"text": "Checking whether fraud-detection-service itself is unhealthy or just slow.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-5",
+					"name": "kubectl",
+					"args": {
+						"cmd": "kubectl get pods -n prod -l app=fraud-detection-service"
+					}
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 9,
+			"ts": "2026-07-05T10:22:22Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-5",
+				"source": "kubectl get pods -n prod -l app=fraud-detection-service",
+				"ok": true,
+				"preview": "NAME                                READY   STATUS    RESTARTS\nfraud-detection-service-6c9d-abcde  1/1     Running   0\n(no restarts — the pods are up but slow, consistent with a downstream model-scoring/DB latency issue inside fraud-detection-service, not a crash)"
+			}
+		},
+		{
+			"kind": "agent_step",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 10,
+			"ts": "2026-07-05T10:22:25Z",
+			"text": "Ruling out resource starvation on payment-service's own pods.",
+			"toolCalls": [
+				{
+					"toolCallId": "tc-6",
+					"name": "kubectl",
+					"args": { "cmd": "kubectl top pods -n prod -l app=payment-service" }
+				}
+			]
+		},
+		{
+			"kind": "tool_result",
+			"runId": "11111111-1111-4111-8111-111111111104",
+			"branchId": "root",
+			"path": [],
+			"seq": 11,
+			"ts": "2026-07-05T10:22:27Z",
+			"result": {
+				"name": "kubectl",
+				"toolCallId": "tc-6",
+				"source": "kubectl top pods -n prod -l app=payment-service",
+				"ok": true,
+				"preview": "payment-service pods: CPU 220m/1000m, Memory 340Mi/1Gi — well within limits, no resource pressure."
+			}
+		}
+	],
+	"expected": {
+		"rootCauseKeywords": [
+			"fraud-detection-service",
+			"upstream",
+			"downstream dependency",
+			"cascad"
+		],
+		"mustNotContain": [
+			"cpu limit",
+			"memory limit",
+			"resource pressure on payment-service"
+		]
+	}
+}

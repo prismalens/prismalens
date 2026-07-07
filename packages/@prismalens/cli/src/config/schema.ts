@@ -16,6 +16,7 @@
  *    the role machinery is gone.
  */
 import { HARNESS_IDS, PERMISSION_MODES } from "@prismalens/config/harness";
+import { SANDBOX_MODES } from "@prismalens/engine";
 import { z } from "zod";
 
 /**
@@ -29,12 +30,28 @@ export const PermissionConfigSchema = z.object({
 
 /**
  * Arbitrary harness-native passthrough (ADR-0017) — e.g. Agent SDK query options
- * for `claude-code`, or `shellAllowList`/`sandbox`/`args` for `deepagents`. Kept
- * untyped here (per-harness runners narrow it); prismalens does not validate the
- * shape, it defers to the harness.
+ * for `claude-code`, or `args` (extra CLI args) for `deepagents`. Kept untyped
+ * here (per-harness runners narrow it); prismalens does not validate the shape,
+ * it defers to the harness.
  */
 export const HarnessNativeConfigSchema = z.object({
 	native: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * Best-effort resource caps for the sandboxed harness run (ADR-0020: "resource
+ * limits are part of the contract"). All optional with NO defaults — an unset knob
+ * means "no cap", never a value that would lie about being enforced. What actually
+ * takes effect is provider-dependent (the `process` floor enforces only
+ * `wall_clock_ms`; `srt` adds memory/cpu when `systemd-run` is present).
+ */
+export const AgentLimitsConfigSchema = z.object({
+	/** Wall-clock deadline (ms) — enforced by every sandbox provider. */
+	wall_clock_ms: z.number().int().positive().optional(),
+	/** Memory ceiling (MB) — best-effort (srt+systemd-run only). */
+	memory_mb: z.number().int().positive().optional(),
+	/** CPU quota (whole/fractional cores) — best-effort (srt+systemd-run only). */
+	cpu_cores: z.number().positive().optional(),
 });
 
 /** Tier-2 harness backend the supervisor rents (ADR-0008). */
@@ -49,6 +66,25 @@ export const AgentConfigSchema = z.object({
 	model: z.string().optional(),
 	/** The posture dial (ADR-0017). Defaults to `read-only`. */
 	permissions: optionalWithDefaults(PermissionConfigSchema),
+	/**
+	 * The isolation boundary the harness runs in (ADR-0020): `process` (the always-on
+	 * cooperative floor), `srt` (enforced OS boundary), or `auto` (srt WHEN its egress
+	 * bridge is healthy — the self-check, B.1.1 — else the floor; the degrade is honest,
+	 * never silent). Defaults to `auto`: honest precisely BECAUSE of the self-check, which
+	 * is what makes it safe to prefer the enforced boundary by default.
+	 */
+	sandbox: z.enum(SANDBOX_MODES).default("auto"),
+	/**
+	 * Best-effort resource caps for the sandboxed harness (ADR-0020). Optional; an
+	 * omitted section means "no caps" (the object defaults to `{}` after parse).
+	 */
+	limits: optionalWithDefaults(AgentLimitsConfigSchema),
+	/**
+	 * Per-alert fan-out cap (ADR-0016 decision 2): the max branches the supervisor
+	 * runs when a context carries multiple alerts. Optional — omitted ⇒ the engine
+	 * default (3). A single-alert run always uses one branch regardless.
+	 */
+	max_branches: z.number().int().positive().optional(),
 });
 
 export const WorkspaceConfigSchema = z.object({

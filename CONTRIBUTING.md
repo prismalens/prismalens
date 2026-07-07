@@ -1,7 +1,12 @@
 # Contributing to prismalens
 
 Thanks for your interest in improving prismalens — a local-first SRE
-incident-investigation app. Contributions of all sizes are welcome.
+incident-investigation tool.
+
+> **Current status:** external code PRs are **not being accepted yet** while
+> the v0.0.x foundations settle. Issues, bug reports, and discussions are very
+> welcome today. Everything below describes how contributions will work once
+> code contributions open up.
 
 ## Ground rules
 
@@ -69,6 +74,24 @@ repo — see [AGENTS.md](AGENTS.md). Before non-trivial work, read the hub's
 `INDEX.md` and the `prismalens-platform` wing. When you learn something durable
 (an interface detail, a gotcha, a decision), capture it as a note there rather
 than letting it evaporate.
+
+## Releases and package publishing
+
+`@prismalens/engine`, `@prismalens/cli`, `@prismalens/contracts`,
+`@prismalens/config`, and `@prismalens/logger` carry a `publishConfig: { access:
+"public" }` block and use [Changesets](https://github.com/changesets/changesets)
+(`.changeset/config.json`) for versioning — this is pre-extraction insurance, not
+a live release process. Every one of those packages (and the rest of
+`packages/@prismalens/*`) is still `private: true`, and no CI job publishes them.
+Contributors touching a publishable package should add a changeset
+(`pnpm changeset`) describing the change; `pnpm changeset:version` applies
+pending changesets to bump versions and changelogs when the time comes. The
+`private` flag flips and actual npm publishing begins only at the Phase G
+relicense (ELv2 → Apache-2.0 — see the mage hub's `003-relicense-apache-cla`
+plan via [AGENTS.md](AGENTS.md)) — until then, changesets accumulate but nothing
+is published to the registry. App-side packages (`@prismalens/api`,
+`@prismalens/frontend`, `@prismalens/worker`) are excluded from Changesets
+entirely — they deploy, they don't publish.
 
 ## Reporting bugs and requesting features
 

@@ -12,8 +12,9 @@
  * INVESTIGATION_DEFAULTS + env as a local-first stopgap; the full `pl.config.yaml`
  * sourcing (materialised by the web Settings UI) lands with the config-UI work.
  */
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
-import type { LLMProviderId } from "@prismalens/config/llm";
+import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import type {
 	FiringAlert,
 	IncidentContext,
@@ -26,10 +27,14 @@ import {
 	type InvestigationRequest,
 	type InvestigationSink,
 	resolveInvestigation,
+	resolveSandbox,
+	SANDBOX_MODES,
+	type Sandbox,
+	type SandboxMode,
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
-import type { SandboxedJob } from "bullmq";
+import { type SandboxedJob, UnrecoverableError } from "bullmq";
 import { Redis } from "ioredis";
 import { redisUrl, config as workerConfig } from "./config.js";
 import { createDbInvestigationStore } from "./db-investigation-store.js";
@@ -88,6 +93,40 @@ async function fetchLlmConfig(): Promise<{
 }
 
 /**
+ * Clear the durable canonical event record for an investigation (ADR-0018 B.4) before a
+ * BullMQ RETRY. Attempt 2+ would otherwise collide with attempt 1's rows on
+ * `(investigationId, branchId, seq)` and be dropped as duplicates (P2002), leaving the
+ * record showing the FAILED attempt's events. Same X-Internal-Secret pattern as the
+ * bulk-append/LLM-config fetch. Throws on a missing secret or non-2xx so the caller can
+ * log it (best-effort — a clear failure must not block the retry).
+ */
+async function clearDurableEvents(investigationId: string): Promise<void> {
+	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
+	if (!internalSecret) {
+		// No secret ⇒ the durable record was never written (poster throws on every
+		// flush), so there is nothing to clear.
+		return;
+	}
+	const url = new URL(
+		`/internal/investigations/${investigationId}/events/clear`,
+		workerConfig.PRISMALENS_WORKER_API_URL,
+	);
+	const response = await fetch(url.toString(), {
+		method: "POST",
+		headers: {
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		signal: AbortSignal.timeout(10_000),
+	});
+	if (!response.ok) {
+		throw new Error(
+			`clear-events failed: ${response.status} ${response.statusText}`,
+		);
+	}
+}
+
+/**
  * Process an investigation job from the queue.
  */
 export default async function processInvestigationJob(
@@ -122,12 +161,66 @@ async function processJobInternal(
 		},
 	});
 
+	// Cancelled is sticky (CANCEL slice): a stalled-job retry, or a job whose cancel
+	// the API already fallback-wrote, must not rerun the investigation. Best-effort —
+	// on an API hiccup the run proceeds, and the API's status writers still refuse
+	// any terminal overwrite of "cancelled".
 	try {
+		const current = await api.investigations.get({ id: data.investigationId });
+		if (current?.status === "cancelled") {
+			logger.info(
+				`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
+			);
+			return cancelledResult(data);
+		}
+	} catch (e) {
+		logger.warn("Could not check investigation status before run", e);
+	}
+
+	// The isolation boundary (ADR-0020) is CALLER-OWNED — the acp-client will not
+	// destroy a caller-supplied sandbox (it may span branches, B.2), so the worker owns
+	// its teardown in the finally below. Especially load-bearing for `e2b`: a leaked
+	// remote VM keeps costing until its timeout.
+	let sandbox: Sandbox | undefined;
+	// Cooperative cancellation (CANCEL slice, ADR-0018): a DEDICATED Redis subscriber
+	// listens on this job's cancel channel; a message aborts the run's AbortSignal, which
+	// conductRun threads into the engine (stop consuming the merged stream → cascade the
+	// child kill + run-owned sandbox teardown). The subscription is torn down in the
+	// finally. A subscriber connection cannot also publish, hence a connection of its own.
+	const abortController = new AbortController();
+	const cancelChannel = `investigation:cancel:${data.investigationId}`;
+	const cancelSubscriber = new Redis(redisUrl, { maxRetriesPerRequest: null });
+	try {
+		cancelSubscriber.on("message", (channel: string) => {
+			if (channel === cancelChannel) {
+				logger.info(
+					`Cancel requested for investigation ${data.investigationId}`,
+				);
+				abortController.abort();
+			}
+		});
+		await cancelSubscriber.subscribe(cancelChannel);
+
+		// BullMQ RETRY (attempt 2+): the prior attempt left a stale durable event record
+		// whose rows would collide with this attempt's on (investigationId, branchId, seq)
+		// and be swallowed as duplicates — so the record would show the FAILED attempt's
+		// events. Clear it so each attempt owns a fresh record. Best-effort: a clear
+		// failure logs and proceeds (never blocks the retry).
+		if (job.attemptsMade > 0) {
+			try {
+				await clearDurableEvents(data.investigationId);
+			} catch (e) {
+				logger.error("Failed to clear stale durable events on retry", e);
+			}
+		}
+
 		// 1. runId == the investigation id.
 		const runId = data.investigationId;
 
 		// 2. Resolve engine inputs (shell-first; BYO-key from LLM settings).
-		const resolved = resolveInvestigation(await buildRequest(data, runId));
+		const built = await buildRequest(data, runId);
+		sandbox = built.sandbox;
+		const resolved = resolveInvestigation(built.request);
 
 		await job.updateProgress({
 			percent: 5,
@@ -147,6 +240,8 @@ async function processJobInternal(
 			investigationId: data.investigationId,
 			incidentId: data.incidentId,
 			runId,
+			apiBaseUrl: workerConfig.PRISMALENS_WORKER_API_URL,
+			internalSecret: process.env.PRISMALENS_INTERNAL_SECRET,
 		});
 		const outcome = await conductRun(
 			{
@@ -155,11 +250,30 @@ async function processJobInternal(
 				synth: resolved.synth,
 				fidelity: resolved.fidelity,
 				runId,
+				signal: abortController.signal,
 			},
 			{ sink, store },
 		);
 		// Terminal sentinel for the API relay.
 		await redisPublisher.publish(channel, JSON.stringify(["__done__", {}]));
+
+		// 4a-cancel. Cancelled by request (a Redis cancel message flipped the signal):
+		// conductRun left the store untouched, so the worker owns the terminal write —
+		// persist status "cancelled" + a timeline entry, then RETURN a cancelled result.
+		// Never throw: a throw would let BullMQ retry a user-cancelled run.
+		if (outcome.failureKind === "cancelled") {
+			logger.info(`Job ${job.id} cancelled`);
+			try {
+				await persistCancelled(data);
+			} catch (e) {
+				// Swallow, never rethrow: the outer catch would overwrite the run as
+				// "failed" and BullMQ would retry a user-cancelled investigation. The
+				// record stays "running" until the user's next cancel click takes the
+				// API's zero-receiver fallback write.
+				logger.error("Failed to persist cancelled status", e);
+			}
+			return cancelledResult(data);
+		}
 
 		await job.updateProgress({ percent: 90, message: "Persisting results..." });
 
@@ -205,7 +319,59 @@ async function processJobInternal(
 			logger.error("Failed to update failure status", e);
 		}
 		throw error;
+	} finally {
+		// Tear down the per-job cancel subscription (CANCEL slice) — always, so a leaked
+		// subscriber connection cannot outlive the job.
+		try {
+			cancelSubscriber.removeAllListeners();
+			await cancelSubscriber.quit();
+		} catch (e) {
+			logger.error("Failed to close cancel subscriber", e);
+		}
+		if (sandbox) {
+			try {
+				await sandbox.destroy();
+			} catch (e) {
+				logger.error("Failed to destroy sandbox boundary", e);
+			}
+		}
 	}
+}
+
+/**
+ * Persist the terminal "cancelled" record (CANCEL slice, ADR-0018). conductRun leaves
+ * the store untouched on cancel (it has no cancel verb), so the worker writes the status
+ * + a timeline entry directly. Reuses the `investigation_completed` timeline type (no
+ * dedicated cancelled type in the contract) with a distinguishing title.
+ */
+async function persistCancelled(data: InvestigationJobData): Promise<void> {
+	await api.investigations.updateStatus({
+		id: data.investigationId,
+		status: "cancelled",
+		error: "Investigation cancelled",
+	});
+	await api.timeline.create({
+		incidentId: data.incidentId,
+		type: "investigation_completed",
+		title: "Investigation cancelled",
+		description: "The investigation was cancelled before it completed.",
+		source: "ai_worker",
+		metadata: { investigationId: data.investigationId },
+	});
+}
+
+/** A cancelled job result — returned (not thrown) so BullMQ marks the job done, no retry. */
+function cancelledResult(data: InvestigationJobData): InvestigationResult {
+	return {
+		success: false,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {},
+		recommendations: [],
+		agentExecutions: [],
+		error: "Investigation cancelled",
+		errorType: "cancelled",
+	};
 }
 
 /**
@@ -237,6 +403,112 @@ export function buildHarnessEnv(
 }
 
 /**
+ * Parse the `PRISMALENS_SANDBOX` knob (ADR-0020) into a {@link SandboxMode}. Defaults to
+ * `auto` — srt when its egress bridge is healthy (the self-check, B.1.1), else the
+ * cooperative process floor; the degrade is honest, never silent. Making `auto` the default
+ * is safe precisely because of that self-check. Making an enforced boundary MANDATORY
+ * (`e2b`, no floor fallback) is Phase D packaging, not this slice. An unknown value fails
+ * LOUDLY rather than silently degrading to the floor.
+ */
+export function parseSandboxMode(raw: string | undefined): SandboxMode {
+	const value = raw ?? "auto";
+	if ((SANDBOX_MODES as readonly string[]).includes(value)) {
+		return value as SandboxMode;
+	}
+	throw new Error(
+		`Invalid PRISMALENS_SANDBOX="${raw}" — expected one of ${SANDBOX_MODES.join("|")}.`,
+	);
+}
+
+/**
+ * Mirror the CLI's sandbox guard (cli/src/cli/investigate.ts): only ACP-transport
+ * harnesses are spawned as a child the engine can place inside a boundary — the Agent
+ * SDK / subprocess harnesses run their own way. FAIL THE JOB FAST only when the mode
+ * DEMANDS an enforced boundary (`srt`/`e2b`) a non-ACP harness cannot honour (ADR-0017
+ * honest fidelity — never record an enforcement that did not apply). `auto` and `process`
+ * on a non-ACP harness take NO sandbox and DO NOT throw: `auto` means best-effort, and the
+ * best available for an in-process harness is none — nothing is claimed, nothing is
+ * dishonest. Returns whether the harness takes a sandbox, so the caller resolves one only
+ * when it will be consumed.
+ */
+export function harnessTakesSandbox(
+	harness: HarnessId,
+	mode: SandboxMode,
+): boolean {
+	const takesSandbox = HARNESS_REGISTRY[harness]?.transport === "acp";
+	const demandsEnforcedBoundary = mode === "srt" || mode === "e2b";
+	if (!takesSandbox && demandsEnforcedBoundary) {
+		// UnrecoverableError: a config contradiction cannot succeed on retry — fail
+		// the job once instead of burning the BullMQ attempt budget (the name
+		// survives the sandboxed-processor error serialization).
+		throw new UnrecoverableError(
+			`Harness "${harness}" cannot run inside an enforced sandbox (${mode}) yet — it ` +
+				`is not spawned as a child process. Set PRISMALENS_SANDBOX=auto or process ` +
+				`(no enforced boundary), or use an ACP harness (deepagents).`,
+		);
+	}
+	return takesSandbox;
+}
+
+/**
+ * The egress allowlist for an enforced worker sandbox (ADR-0020 "allowlist, not closed,
+ * not open"): the hosts the harness legitimately reaches — the active LLM provider's
+ * `allowedHosts` (config/llm) PLUS the telemetry + app surfaces (INVESTIGATION_DEFAULTS)
+ * and any explicitly-configured extra endpoint (the resolved synth base URL for
+ * ollama/custom). A `null` provider allowlist (`custom`) or an unparseable URL adds no
+ * host — an unset source grants no egress rather than opening a hole. The `process`
+ * floor ignores this; only the enforced providers (srt/e2b) consume it.
+ */
+export function deriveWorkerAllowedHosts(
+	provider: LLMProviderId,
+	extraUrls: string[] = [],
+): string[] {
+	const hosts = new Set<string>();
+	const providerHosts = LLM_PROVIDERS[provider].allowedHosts;
+	if (providerHosts) for (const host of providerHosts) hosts.add(host);
+	const urls = [
+		INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
+		INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
+		INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+		...extraUrls,
+	];
+	for (const url of urls) {
+		if (!url) continue;
+		try {
+			hosts.add(new URL(url).hostname);
+		} catch {
+			// not a parseable URL — skip; no egress hole from a malformed endpoint
+		}
+	}
+	return [...hosts];
+}
+
+/**
+ * The egress SELF-CHECK target (ADR-0020 B.1.1) for the worker: the FIRST configured,
+ * parseable FULL URL among the worker's own API URL and the INVESTIGATION_DEFAULTS
+ * telemetry endpoints — handed to `auto` as `probeUrl` so its throwaway srt boundary curls
+ * a REAL endpoint (not a fabricated `https://<host>/`). `undefined` when none parse, in
+ * which case `auto` floors rather than standing up a zero-egress boundary (FIX 6).
+ */
+export function workerProbeUrl(): string | undefined {
+	const candidates = [
+		workerConfig.PRISMALENS_WORKER_API_URL,
+		INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
+		INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
+		INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+	];
+	for (const url of candidates) {
+		if (!url) continue;
+		try {
+			return new URL(url).href;
+		} catch {
+			// not a parseable URL — skip; a malformed endpoint is no probe target
+		}
+	}
+	return undefined;
+}
+
+/**
  * Build the engine investigation request from the job + LLM settings.
  * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
  * stopgap); connectors are Phase D. BYO-key (ADR-0006) from the LLM settings.
@@ -244,7 +516,7 @@ export function buildHarnessEnv(
 async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
-): Promise<InvestigationRequest> {
+): Promise<{ request: InvestigationRequest; sandbox?: Sandbox }> {
 	const llmConfig = await fetchLlmConfig();
 	if (!llmConfig?.provider || !llmConfig?.model) {
 		throw new Error(
@@ -290,24 +562,67 @@ async function buildRequest(
 				`supports it (e.g. claude-code for anthropic).`,
 		);
 	}
+
+	// Isolation boundary (ADR-0020 B.1.3): the PRISMALENS_SANDBOX knob selects it; the
+	// server default is now `auto` — srt when its egress bridge is healthy (self-check,
+	// B.1.1), else the process floor (the enforced-MANDATORY flip is still Phase D
+	// packaging). Guard first (mirror the CLI): a non-`process` request for a non-ACP
+	// harness fails the job fast; then resolve a boundary only for the ACP harness, with
+	// an allowlist derived from the LLM + telemetry hosts. The resolved sandbox is
+	// CALLER-OWNED — processJobInternal destroys it after the run.
+	const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
+	const takesSandbox = harnessTakesSandbox(harness as HarnessId, sandboxMode);
+	let sandbox: Sandbox | undefined;
+	if (takesSandbox) {
+		const allowedDomains = deriveWorkerAllowedHosts(
+			synthProvider,
+			synthIsOpenAiCompat ? [baseURL] : [],
+		);
+		// ASYNC: `auto` runs an egress self-check (B.1.1) before trusting srt for this
+		// egress-needing run. Log the honest reason on a degrade (ADR-0017) so an
+		// operator sees the worker fell back to the cooperative floor, never a silent
+		// downgrade.
+		const probeUrl = workerProbeUrl();
+		const selection = await resolveSandbox(sandboxMode, {
+			allowedDomains,
+			...(probeUrl ? { probeUrl } : {}),
+		});
+		if (selection.degradeReason) {
+			logger.warn(
+				`Sandbox '${sandboxMode}' degraded to ${selection.actual}: ${selection.degradeReason}`,
+			);
+		}
+		sandbox = selection.sandbox;
+	}
+
 	return {
-		context: assembleInvestigationContext(incident, data, {
-			...INVESTIGATION_DEFAULTS.telemetry,
-		}),
-		harness,
-		// The single posture dial (ADR-0017): the worker is always read-only in
-		// Phase A — no per-run override, no native passthrough.
-		permissionMode: "read-only",
-		model: llmConfig.model,
-		cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
-		synth: {
-			providerId: synthProvider,
+		request: {
+			context: assembleInvestigationContext(incident, data, {
+				...INVESTIGATION_DEFAULTS.telemetry,
+			}),
+			harness,
+			// The single posture dial (ADR-0017): the worker is always read-only in
+			// Phase A — no per-run override, no native passthrough.
+			permissionMode: "read-only",
 			model: llmConfig.model,
-			apiKey,
-			...(synthIsOpenAiCompat ? { baseURL } : {}),
+			cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
+			synth: {
+				providerId: synthProvider,
+				model: llmConfig.model,
+				apiKey,
+				...(synthIsOpenAiCompat ? { baseURL } : {}),
+			},
+			harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
+			initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
+			// Resource limits (ADR-0020): unattended server runs get a wall-clock cap so a
+			// wedged harness cannot pin a worker slot forever. Memory/cpu are left unset —
+			// the worker's default `process` floor cannot enforce them, and claiming a cap
+			// it does not apply would be dishonest (they arrive with the enforced cloud
+			// provider, B.1.3). Best-effort per provider.
+			limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
+			...(sandbox ? { sandbox, requestedSandbox: sandboxMode } : {}),
 		},
-		harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
-		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
+		sandbox,
 	};
 }
 

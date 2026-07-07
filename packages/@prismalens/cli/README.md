@@ -232,8 +232,9 @@ crashes on bad input.
 later overriding earlier:
 
 1. built-in schema defaults,
-2. global layer — `~/.prismalens/{prismalens,pl}.config.yaml` (a good home for
-   BYO-key creds via `${VAR}` interpolation),
+2. user layer — `config.yaml` in the OS config dir (Linux/WSL:
+   `~/.config/prismalens/config.yaml`; macOS/Windows use the platform config dir),
+   a good home for BYO-key creds via `${VAR}` interpolation,
 3. project layer — the explicit `--config` path, else the nearest config file found
    by walking **up** from the cwd,
 4. CLI flag overrides (e.g. `--model`).
@@ -246,6 +247,11 @@ var is an error).
 agent:
   default: deepagents            # deepagents | claude-code | codex
   # model: openai:gpt-oss:120b   # provider-prefixed; omit to let the harness default
+  sandbox: auto                  # auto | process | srt — isolation boundary (ADR-0020).
+                                 # auto (default): srt (enforced OS boundary) WHEN its
+                                 # egress bridge is healthy (a self-check catches WSL
+                                 # mirrored-networking blackouts), else the cooperative
+                                 # process floor — the degrade is logged, never silent.
 
 # Read-only telemetry + app endpoints the harness may query.
 telemetry:
@@ -258,12 +264,14 @@ workspace:
   base_dir: ~/.prismalens
 
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
-# rented harness. For `deepagents` (driven over ACP), `shellAllowList` becomes the
-# `-S csv` allow-listed shell commands.
+# rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over
+# ACP), `args` is appended verbatim to the CLI invocation. The binary has no
+# shell-allowlist or sandbox flags — read-only is cooperative until the Sandbox
+# port's enforced providers land (ADR-0020/B.1).
 harnesses:
   deepagents:
     native:
-      shellAllowList: [gh, amtool, sentry-cli, pd, curl, jq, grep, cat]
+      args: [--memory, ./AGENTS.md]
 ```
 
 Notes:

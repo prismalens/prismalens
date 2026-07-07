@@ -61,12 +61,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	deepagents: {
 		id: "deepagents",
 		label: "deepagents (ACP)",
-		binary: "deepagents",
+		binary: "deepagents-acp",
 		transport: "acp",
 		modelPrefix: "openai:",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
-			"ACP session/request_permission auto-approved (prompt-only); enforce with -S / --sandbox",
+			"ACP session/request_permission auto-approved (prompt-only); OS enforcement arrives with the Sandbox port (ADR-0020/B.1)",
 		implemented: true,
 	},
 	"claude-code": {

@@ -1,6 +1,7 @@
 {
 	"name": "@prismalens/contracts",
 	"version": "0.1.0",
+	"private": true,
 	"description": "Shared API contracts and Zod schemas for PrismaLens",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -23,7 +24,9 @@
 		"build": "tsc",
 		"dev": "tsc --watch",
 		"clean": "rm -rf dist && rm -rf node_modules",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"dependencies": {
 		"@orpc/contract": "catalog:",
@@ -32,7 +35,8 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"typescript": "catalog:"
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	},
 	"engines": {
 		"node": ">=24.0.0"
@@ -41,5 +45,8 @@
 	"files": [
 		"dist",
 		"src"
-	]
+	],
+	"publishConfig": {
+		"access": "public"
+	}
 }

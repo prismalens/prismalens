@@ -8,6 +8,7 @@ export class InvestigationFactory {
 	static create(overrides?: Partial<Investigation>): Investigation {
 		return {
 			id: faker.string.uuid(),
+			tenantId: null,
 			incidentId: faker.string.uuid(),
 			status: faker.helpers.arrayElement([
 				"pending",
@@ -25,6 +26,7 @@ export class InvestigationFactory {
 				"unknown",
 			]),
 			report: null,
+			overlay: null,
 			harnessThreadId: null,
 			startedAt: null,
 			completedAt: null,

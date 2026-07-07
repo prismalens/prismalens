@@ -1,3 +1,4 @@
+import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
@@ -11,7 +12,7 @@ import type {
 	ToolExecutionStatus,
 	WorkflowStatus,
 } from "@prismalens/contracts";
-import { investigationsContract } from "@prismalens/contracts";
+import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
 import type {
 	AgentExecution,
 	Investigation,
@@ -28,6 +29,20 @@ import {
 	InvestigationsService,
 	type InvestigationWithRelations,
 } from "./investigations.service.js";
+
+/** Statuses a run cannot be cancelled from — it has already stopped. */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+	"completed",
+	"failed",
+	"cancelled",
+]);
+
+/**
+ * Grace between cancel-publish retries: long enough for a worker that just locked
+ * the job to reach its cancel subscribe (milliseconds after lock), short enough
+ * that the cancel request stays interactive.
+ */
+const CANCEL_PUBLISH_RETRY_MS = 250;
 
 @Controller()
 @UseGuards(ThrottlerGuard)
@@ -105,6 +120,25 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/events - Durable canonical event record (replay)
+			getEvents: implement(investigationsContract.getEvents).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					return this.investigationsService.getEvents(
+						input.id,
+						input.cursor,
+						input.limit,
+					);
+				},
+			),
+
 			// GET /investigations/:id/agents - Get agent executions
 			getAgentExecutions: implement(
 				investigationsContract.getAgentExecutions,
@@ -124,10 +158,22 @@ export class InvestigationsController {
 				return executions.map((e) => this.serializeAgentExecution(e));
 			}),
 
-			// POST /investigations/:id/cancel - Cancel an investigation
+			// POST /investigations/:id/cancel - Request cancellation of a run.
+			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
+			//   - RUNNING: publish to the Redis cancel channel. A subscribed worker
+			//     aborts the run, tears down the harness/sandbox, and owns the terminal
+			//     "cancelled" write. Redis pub/sub has no retention, so the publish is
+			//     only a cancel if someone RECEIVED it — zero receivers after the grace
+			//     retries means no worker has the run (crashed worker, stuck record,
+			//     Redis down) and nobody else will ever write the terminal state, so the
+			//     API writes it here. A worker that somehow still finishes later is
+			//     blocked by the cancelled-is-sticky rule in the status writers.
+			//   - PENDING (queued): no worker is subscribed yet — remove the queued job
+			//     directly and write the terminal "cancelled" record HERE. If removal
+			//     fails (a worker grabbed it in the race), fall through to the publish
+			//     path; the grace retries cover the worker's lock→subscribe window.
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
-					// Mark investigation as cancelled by updating status
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
@@ -136,12 +182,43 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} not found`,
 						});
 					}
-					// Update status to cancelled
-					const updated = await this.investigationsService.updateStatus(
-						input.id,
-						"cancelled",
-					);
-					return this.serializeInvestigation(updated || investigation);
+					// Reject cancel for a run that already reached a terminal state — there
+					// is nothing to stop, and a stale cancel must not resurrect/relabel it.
+					if (TERMINAL_STATUSES.has(investigation.status)) {
+						throw new ORPCError("CONFLICT", {
+							message: `Investigation ${input.id} is already ${investigation.status}`,
+						});
+					}
+					if (investigation.status === "pending") {
+						const jobId = `investigation-${input.id}`;
+						const removed = await this.queueService.removeJob(jobId);
+						if (removed) {
+							const cancelled = await this.investigationsService.cancelPending(
+								input.id,
+								investigation.incidentId,
+							);
+							return this.serializeInvestigation(cancelled ?? investigation);
+						}
+						// Lost the race — a worker started the job. Fall through to publish
+						// so that worker owns the terminal write.
+					}
+					let receivers = await this.queueService.publishCancel(input.id);
+					for (let attempt = 0; receivers === 0 && attempt < 2; attempt++) {
+						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
+						receivers = await this.queueService.publishCancel(input.id);
+					}
+					if (receivers === 0) {
+						const cancelled = await this.investigationsService.cancelPending(
+							input.id,
+							investigation.incidentId,
+							"The investigation was cancelled; no worker held the run.",
+						);
+						return this.serializeInvestigation(cancelled ?? investigation);
+					}
+					// A worker heard the cancel; return the still-running investigation
+					// unchanged — the terminal "cancelled" state arrives via the worker +
+					// the SSE stream's terminal event (the UI refetches on completion).
+					return this.serializeInvestigation(investigation);
 				},
 			),
 
@@ -212,6 +289,13 @@ export class InvestigationsController {
 		};
 	}
 
+	private parseOverlay(raw: Investigation["overlay"]) {
+		const obj = safeParseJsonObject(raw);
+		if (!obj) return null;
+		const parsed = OverlaySchema.safeParse(obj);
+		return parsed.success ? parsed.data : null;
+	}
+
 	private serializeInvestigation(investigation: Investigation) {
 		return {
 			id: investigation.id,
@@ -227,6 +311,9 @@ export class InvestigationsController {
 				(safeParseJsonObject(
 					investigation.report,
 				) as InvestigationReport | null) ?? null,
+			// Reduce overlay (ADR-0016 §5c) — parsed through OverlaySchema so a
+			// malformed/absent blob degrades to null rather than corrupting the payload.
+			overlay: this.parseOverlay(investigation.overlay),
 			error: investigation.error ?? null,
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),

@@ -16,6 +16,7 @@
 /// Integration represents an admin-configured provider instance.
 model Integration {
   id              String   @id @default(uuid())
+  tenantId        String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   templateId      String   // References AuthTemplate.id from @prismalens/integrations
   templateVersion String?  // Template semver at creation time (e.g., "1.0.0")
   label           String   // User-friendly name
@@ -40,6 +41,7 @@ model Integration {
 /// Connection stores a user's encrypted credentials for an integration.
 model Connection {
   id                  String   @id @default(uuid())
+  tenantId            String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   integrationId       String
   label               String   @default("") // User-friendly name to distinguish multiple connections
   userId              String

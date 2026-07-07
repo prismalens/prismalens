@@ -16,6 +16,7 @@ import {
 	ToolExecutionStatusSchema,
 	WorkflowStatusSchema,
 } from "./common.js";
+import { OverlaySchema } from "./overlay.js";
 
 // =============================================================================
 // ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
@@ -75,6 +76,20 @@ export const NextStepSchema = z.object({
 });
 
 /**
+ * The isolation-boundary slice of run-metadata (ADR-0020 Sandbox port + ADR-0017
+ * honest fidelity): what the caller REQUESTED vs what boundary was ACTUALLY
+ * obtained, plus its honest fidelity — the structured sibling of the
+ * human-readable `mechanism` string on {@link RunFidelitySchema} (kept
+ * consistent with it, never contradicting it).
+ */
+export const RunFidelitySandboxSchema = z.object({
+	requested: z.string(),
+	actual: z.string(),
+	fidelity: z.enum(["enforced", "cooperative"]),
+});
+export type RunFidelitySandbox = z.infer<typeof RunFidelitySandboxSchema>;
+
+/**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
  * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
  */
@@ -83,6 +98,12 @@ export const RunFidelitySchema = z.object({
 	mode: z.string(),
 	fidelity: z.enum(["enforced", "cooperative", "advisory"]),
 	mechanism: z.string(),
+	/**
+	 * The Sandbox boundary (ADR-0020) the harness was spawned into, when one was
+	 * wired. Additive/optional — omitted when no sandbox applies (e.g. the
+	 * in-process Agent SDK harness, or no boundary requested at all).
+	 */
+	sandbox: RunFidelitySandboxSchema.optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 
@@ -160,6 +181,12 @@ export const InvestigationSchema = z.object({
 	rootCauseCategory: RootCauseCategorySchema.nullable(),
 	/** The full ordered-evidence report (ADR-0002); supersedes the old confidence/dataQuality/rawOutput columns. */
 	report: InvestigationReportSchema.nullable().optional(),
+	/**
+	 * App-side reduce overlay (ADR-0016 §5c) — post-report enrichment computed
+	 * BESIDE the canonical report (related changes, service-graph proximity, similar
+	 * incidents). Absent until computed; the engine never sees it (ADR-0011).
+	 */
+	overlay: OverlaySchema.nullable().optional(),
 	error: z.string().nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
@@ -398,6 +425,65 @@ export type NextStep = z.infer<typeof NextStepSchema>;
 export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
+
+// =============================================================================
+// DURABLE EVENT RECORD (ADR-0018 store.append) — bulk-append + replay/history
+// =============================================================================
+// The worker's durable STORE persists every CanonicalEvent to InvestigationEvent
+// rows (batched). These schemas cover the wire shapes: the internal bulk-append
+// payload (validated per-event, invalid ones dropped) and the public replay page.
+
+/**
+ * The sentinel `branchId` under which the terminal `report` event — the one
+ * CanonicalEvent kind that carries no `branchId` — is stored, so the durable
+ * record's idempotency key `(investigationId, branchId, seq)` stays well-defined
+ * for every event kind.
+ */
+export const INVESTIGATION_REPORT_BRANCH = "__report__";
+
+/** The internal bulk-append body — a batch of raw events, each validated per-item. */
+export const AppendInvestigationEventsSchema = z.object({
+	events: z.array(z.unknown()),
+});
+export type AppendInvestigationEventsInput = z.infer<
+	typeof AppendInvestigationEventsSchema
+>;
+
+/** The internal bulk-append result — how many rows were accepted vs dropped. */
+export const AppendInvestigationEventsResultSchema = z.object({
+	accepted: z.number().int(),
+	dropped: z.number().int(),
+});
+export type AppendInvestigationEventsResult = z.infer<
+	typeof AppendInvestigationEventsResultSchema
+>;
+
+/**
+ * Query for the public replay/history endpoint — paginate by a `seq` cursor
+ * (exclusive: rows with `seq > cursor`). Combined with the `:id` path param.
+ */
+export const GetInvestigationEventsSchema = z.object({
+	id: z.string().uuid(),
+	/** Exclusive `seq` cursor; omit for the first page. */
+	cursor: z.coerce.number().int().min(0).optional(),
+	limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+export type GetInvestigationEventsInput = z.infer<
+	typeof GetInvestigationEventsSchema
+>;
+
+/**
+ * A page of durable canonical events (parsed back through the schema on the way
+ * OUT). `nextCursor` is the `seq` to pass as the next query's `cursor`, or null at
+ * the end of the record.
+ */
+export const InvestigationEventsPageSchema = z.object({
+	events: z.array(CanonicalEventSchema),
+	nextCursor: z.number().int().nullable(),
+});
+export type InvestigationEventsPage = z.infer<
+	typeof InvestigationEventsPageSchema
+>;
 
 // ENGINE INVESTIGATION INPUTS (ADR-0008) — the seed alert + telemetry surfaces
 

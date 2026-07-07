@@ -6,6 +6,7 @@ export class AlertFactory {
 		const id = faker.string.uuid();
 		return {
 			id,
+			tenantId: null,
 			source: faker.helpers.arrayElement([
 				"prometheus",
 				"github",

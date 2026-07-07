@@ -75,3 +75,77 @@ export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 			return null;
 	}
 }
+
+export interface BranchGroup {
+	branchId: string;
+	/**
+	 * Best-effort human label for the branch, for the branch-aware stream header
+	 * (ADR-0007 differentiator / ADR-0016 fan-out seam). Derived from the first
+	 * `agent_step` that carries a `label` (its spawning subagent name); the
+	 * canonical `report` event carries no `branchId` (ADR-0016 §2 — reduce is one
+	 * whole-run join, not per-branch), so there is no report-side signal to fall
+	 * back to yet. Null degrades the header to the id alone.
+	 */
+	focus: string | null;
+	rows: EventRow[];
+}
+
+export interface GroupedEventRows {
+	/** Per-branch rows, in first-seen branch order. */
+	branches: BranchGroup[];
+	/** The reduce-step `report` row(s) — branch-less, rendered once for the whole run. */
+	reportRows: EventRow[];
+}
+
+/**
+ * Group canonical events by `branchId` for the branch-aware investigation stream
+ * (ADR-0007 / ADR-0016 — the fan-out seam is latent today: N=1, single "root"
+ * branch). PURE, same contract as {@link canonicalEventToRow}.
+ *
+ * Upserts by each row's `(branchId, seq)` key (see `EventRow.key`) so a replayed
+ * or duplicated event overwrites its prior row in place rather than appending a
+ * second copy — grouping stays idempotent under replay.
+ */
+export function groupEventsByBranch(
+	events: CanonicalEvent[],
+): GroupedEventRows {
+	const branchOrder: string[] = [];
+	const branchRows = new Map<string, Map<string, EventRow>>();
+	const branchFocus = new Map<string, string>();
+	const reportRows = new Map<string, EventRow>();
+
+	for (const event of events) {
+		const row = canonicalEventToRow(event);
+		if (!row) continue;
+
+		if (event.kind === "report") {
+			reportRows.set(row.key, row);
+			continue;
+		}
+
+		let rows = branchRows.get(event.branchId);
+		if (!rows) {
+			rows = new Map();
+			branchRows.set(event.branchId, rows);
+			branchOrder.push(event.branchId);
+		}
+		rows.set(row.key, row);
+
+		if (
+			!branchFocus.has(event.branchId) &&
+			event.kind === "agent_step" &&
+			event.label
+		) {
+			branchFocus.set(event.branchId, event.label);
+		}
+	}
+
+	return {
+		branches: branchOrder.map((branchId) => ({
+			branchId,
+			focus: branchFocus.get(branchId) ?? null,
+			rows: Array.from(branchRows.get(branchId)?.values() ?? []),
+		})),
+		reportRows: Array.from(reportRows.values()),
+	};
+}

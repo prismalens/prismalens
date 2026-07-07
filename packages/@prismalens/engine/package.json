@@ -11,12 +11,20 @@
 			"import": "./dist/index.js"
 		}
 	},
+	"files": [
+		"dist"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"eval": "tsx eval/run-evals.ts",
+		"eval:typecheck": "tsc --noEmit -p eval/tsconfig.json",
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
@@ -28,6 +36,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

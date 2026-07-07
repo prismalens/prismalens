@@ -30,7 +30,11 @@ import {
 } from "../runner/claude-code-runner.js";
 import { decompose } from "./decompose.js";
 import { fanOut } from "./fan-out.js";
-import { reduce, type SynthesisModelConfig } from "./synthesize.js";
+import {
+	type ReportModel,
+	reduce,
+	type SynthesisModelConfig,
+} from "./synthesize.js";
 
 /**
  * A Tier-2 harness as the supervisor sees it: given the investigation prompt and a
@@ -44,10 +48,10 @@ export type HarnessRunner = (
 
 /**
  * deepagents over ACP — the zero-setup, read-only-by-default local harness. The
- * permission policy always stays {@link autoAllowReadOnly} (COOPERATIVE — deepagents
- * cannot hard-enforce without a sandbox); the ADR-0017 `native` passthrough rides on
- * AcpClientConfig and is turned into the real enforcers (`-S` shellAllowList /
- * `--sandbox`) by the ACP arg builder — no intermediate mapping hop (ADR-0017 Amdt 2).
+ * permission policy always stays {@link autoAllowReadOnly} (COOPERATIVE — the
+ * published deepagents-acp binary has no hard enforcers); real enforcement is the
+ * Sandbox port's job (ADR-0020/B.1). The ADR-0017 `native` passthrough rides on
+ * AcpClientConfig as extra CLI args — no intermediate mapping hop (ADR-0017 Amdt 2).
  */
 export function deepAgentsHarness(
 	cfg: Omit<AcpClientConfig, "prompt">,
@@ -80,10 +84,120 @@ export interface InvestigateOptions {
 	/** Investigation run id (== Investigation.id). Generated if omitted. */
 	runId?: string;
 	/**
+	 * Per-alert fan-out cap (ADR-0016 decision 2) — the max branches decompose emits
+	 * for a multi-alert context, and the fan-out concurrency ceiling. Optional; omitted
+	 * ⇒ the engine default ({@link DEFAULT_MAX_BRANCHES}). A single-alert run ignores it.
+	 */
+	maxBranches?: number;
+	/**
 	 * The HONEST enforcement fidelity this run applied (ADR-0017 §4). Attached
 	 * deterministically onto the emitted report — never LLM-authored.
 	 */
 	fidelity?: RunFidelity;
+	/**
+	 * Cooperative cancellation (CANCEL slice, ADR-0018 Scheduler seam). When it
+	 * aborts, the stream stops consuming the merged fan-out AT THE NEXT STEP — even one
+	 * parked awaiting a slow branch — and `iter.return()` cascades cleanup (fan-out
+	 * returns each branch generator → acp-client kills the child + destroys the
+	 * run-owned sandbox). The run then emits ONE terminal `error` event carrying
+	 * {@link CANCELLED_MESSAGE} (no new CanonicalEvent kind) and stops — no reduce(), no
+	 * report. Callers that want a durable "cancelled" record read the conductor's
+	 * `failureKind: "cancelled"` outcome (the store has no cancel verb).
+	 */
+	signal?: AbortSignal;
+	/**
+	 * Test seam: override the reduce-step model (the one supervisor LLM call). Defaults
+	 * to the real LLM (see {@link reduce}); injected in hermetic tests to exercise the
+	 * synthesis boundary — e.g. the abort-during-reduce guard — with no live call.
+	 */
+	model?: ReportModel;
+}
+
+/**
+ * The distinguishable terminal message an aborted run emits as its final `error`
+ * event (CANCEL, ADR-0018). We reuse the existing `error` CanonicalEvent kind — NO new
+ * contract kind — and stamp it with this exact string so {@link conductRun} can resolve
+ * a `cancelled` outcome (persisted as status "cancelled") distinct from a transport
+ * failure. {@link isCancelledError} is the single reader.
+ */
+export const CANCELLED_MESSAGE = "investigation cancelled by request";
+
+/** The supervisor-level `branchId` on the terminal cancellation event (not a branch). */
+const CANCELLED_BRANCH_ID = "supervisor";
+
+/** True when an `error` event's message is the cancellation sentinel above. */
+export function isCancelledError(message: string): boolean {
+	return message === CANCELLED_MESSAGE;
+}
+
+/**
+ * The ONE distinguishable terminal `error` event an aborted run emits (no new contract
+ * kind). Emitted from every cancel exit — mid-stream abort AND an abort landing around
+ * the terminal reduce() — so the conductor reads a single `cancelled` outcome shape.
+ */
+function cancelledErrorEvent(runId: string, seq: number): CanonicalEvent {
+	return {
+		kind: "error",
+		runId,
+		branchId: CANCELLED_BRANCH_ID,
+		path: [],
+		seq,
+		ts: new Date().toISOString(),
+		message: CANCELLED_MESSAGE,
+	};
+}
+
+/** One merged-stream step, or the abort interrupting a step parked on a slow branch. */
+type StreamStep =
+	| { kind: "value"; value: CanonicalEvent }
+	| { kind: "done" }
+	| { kind: "aborted" };
+
+/**
+ * Advance `iter` one step, racing it against `signal`. Without a signal this is a plain
+ * `iter.next()`; with one, an abort resolves `{ kind: "aborted" }` even while the step is
+ * still parked awaiting a slow (or wedged) branch — the caller then `iter.return()`s to
+ * cascade cleanup. A branch's THROWN transport error rejects through unchanged (the N=1
+ * propagation the conductor's try/catch relies on).
+ */
+function stepWithSignal(
+	iter: AsyncIterator<CanonicalEvent>,
+	signal: AbortSignal | undefined,
+): Promise<StreamStep> {
+	// Check abort BEFORE pulling: an already-aborted run must NOT resume the branch
+	// (which would run it PAST its current yield into its next internal await, where
+	// `return()` can no longer promptly unwind it). Left parked at its yield, the branch
+	// cleans up synchronously when returned.
+	if (signal?.aborted) return Promise.resolve({ kind: "aborted" });
+	const step = iter
+		.next()
+		.then<StreamStep>((r) =>
+			r.done ? { kind: "done" } : { kind: "value", value: r.value },
+		);
+	if (!signal) return step;
+	return new Promise<StreamStep>((resolve, reject) => {
+		let settled = false;
+		const onAbort = () => {
+			if (settled) return;
+			settled = true;
+			resolve({ kind: "aborted" });
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		step.then(
+			(s) => {
+				if (settled) return;
+				settled = true;
+				signal.removeEventListener("abort", onAbort);
+				resolve(s);
+			},
+			(err) => {
+				if (settled) return;
+				settled = true;
+				signal.removeEventListener("abort", onAbort);
+				reject(err);
+			},
+		);
+	});
 }
 
 export interface InvestigationResult {
@@ -102,18 +216,82 @@ export async function* investigateIncidentStream(
 	opts: InvestigateOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const runId = opts.runId ?? randomUUID();
-	const branches = decompose(opts.context);
+	// Per-alert fan-out (ADR-0016 decision 2): decompose caps the branch count; all
+	// capped branches then run concurrently (fan-out's default concurrency == the
+	// branch count, so passing maxBranches again would be inert — FanOutOptions.
+	// concurrency exists for direct callers that want a lower ceiling). Defaults
+	// apply when maxBranches is omitted, so the single-alert path is unchanged.
+	const maxBranches = opts.maxBranches;
+	const branches = decompose(
+		opts.context,
+		maxBranches !== undefined ? { maxBranches } : {},
+	);
 	const collected: CanonicalEvent[] = [];
-	for await (const ev of fanOut(branches, opts.harness, runId)) {
-		collected.push(ev);
-		yield ev;
+	// Iterate the merged stream MANUALLY (not `for await`) so an AbortSignal can
+	// interrupt a step parked on a slow branch (CANCEL, ADR-0018): a `for await` would
+	// only observe the abort at the next event boundary, so a wedged harness would never
+	// release. On abort / early-return we `iter.return()` — fan-out then returns each
+	// branch generator → acp-client kills the child + destroys the run-owned sandbox.
+	const iter = fanOut(branches, opts.harness, runId)[Symbol.asyncIterator]();
+	let cancelled = false;
+	let drained = false;
+	try {
+		while (true) {
+			const step = await stepWithSignal(iter, opts.signal);
+			if (step.kind === "aborted") {
+				cancelled = true;
+				break;
+			}
+			if (step.kind === "done") {
+				drained = true;
+				break;
+			}
+			collected.push(step.value);
+			yield step.value;
+		}
+	} finally {
+		// Release the branches on cancel OR consumer-abandonment (our generator was
+		// itself returned). FIRE-AND-FORGET, never awaited: a branch parked at an internal
+		// await (a slow/wedged harness) can only finish its `return()` cleanup — child
+		// kill + run-owned sandbox destroy — at its next boundary, so awaiting here would
+		// stall the cancelled outcome. In the worker that would DEADLOCK: the caller-owned
+		// sandbox teardown that actually kills the child runs only AFTER conductRun
+		// resolves. So we trigger the cascade and let it settle out of band. A no-op once
+		// the stream drained on its own.
+		if (!drained)
+			void Promise.resolve(iter.return?.(undefined)).catch(() => {});
 	}
+
+	// Cancelled: emit ONE distinguishable terminal `error` event (no new contract kind)
+	// and stop — no reduce(), no fabricated report. The no-evidence honesty (ADR-0002)
+	// applies verbatim: an interrupted run has not earned a report.
+	if (cancelled) {
+		yield cancelledErrorEvent(runId, collected.length);
+		return;
+	}
+
 	// No-evidence guard: a run that gathered zero tool_results must NOT be laundered
 	// into a fabricated report, regardless of terminal (error OR branch_done) — ADR-0002
 	// ordered-evidence / the Constitution's "no evidence → no report" rule.
 	const toolResults = collected.filter((e) => e.kind === "tool_result").length;
 	if (toolResults === 0) return;
-	const report = await reduce(opts.context, collected, opts.synth);
+
+	// Abort landing AFTER the merged stream drained but BEFORE synthesis: the drive-loop
+	// can no longer observe it (there is nothing left to pull), so guard reduce() here.
+	// An interrupted run has not earned a report — emit the same terminal cancelled event
+	// and stop, do NOT spend the supervisor LLM call.
+	if (opts.signal?.aborted) {
+		yield cancelledErrorEvent(runId, collected.length);
+		return;
+	}
+	const report = await reduce(opts.context, collected, opts.synth, opts.model);
+	// Abort landing DURING reduce(): the LLM call is not itself abortable (out of scope),
+	// so it ran to completion — but its result is DISCARDED. A cancelled run persists no
+	// report, mirroring the mid-stream abort branch (ADR-0002).
+	if (opts.signal?.aborted) {
+		yield cancelledErrorEvent(runId, collected.length);
+		return;
+	}
 	yield {
 		kind: "report",
 		runId,

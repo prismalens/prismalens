@@ -80,6 +80,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	// Redis subscriber for stream relay
 	private redisSubscriber: Redis | null = null;
 
+	// Redis publisher for out-of-band control messages (the cancel channel). A
+	// subscriber connection cannot publish, so this is a separate client.
+	private redisPublisher: Redis | null = null;
+
 	constructor(private streamRelay: StreamRelayService) {}
 
 	async onModuleInit() {
@@ -132,6 +136,11 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 				this.handleRedisStreamMessage(channel, message);
 			});
 
+			// Publisher for the cancel control channel (CANCEL slice, ADR-0018).
+			this.redisPublisher = new Redis(redisUrl, {
+				maxRetriesPerRequest: null,
+			});
+
 			this.logger.log("Queue service initialized with Redis");
 		} catch (error) {
 			this.logger.error(
@@ -143,6 +152,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 	async onModuleDestroy() {
 		if (this.redisSubscriber) {
 			await this.redisSubscriber.quit();
+		}
+		if (this.redisPublisher) {
+			await this.redisPublisher.quit();
 		}
 		if (this.queueEvents) {
 			await this.queueEvents.close();
@@ -181,6 +193,61 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 		);
 
 		return job.id ?? null;
+	}
+
+	/**
+	 * Publish a cancel request for an investigation (CANCEL slice, ADR-0018).
+	 *
+	 * The running worker subscribes to `investigation:cancel:{id}` and aborts its run
+	 * on this message; the worker then owns the terminal "cancelled" status write.
+	 * Returns the number of subscribers that RECEIVED the message (Redis pub/sub has
+	 * no retention — 0 means no worker heard it and nobody will act on it), or 0 when
+	 * Redis is unavailable. The caller decides what a lost cancel means.
+	 */
+	async publishCancel(investigationId: string): Promise<number> {
+		if (!this.redisPublisher) {
+			this.logger.warn("Redis publisher not available - cancel not published");
+			return 0;
+		}
+		const channel = `investigation:cancel:${investigationId}`;
+		const receivers = await this.redisPublisher.publish(channel, "cancel");
+		this.logger.log(
+			`Published cancel for investigation ${investigationId} (${receivers} subscriber(s))`,
+		);
+		return receivers;
+	}
+
+	/**
+	 * Remove a still-queued investigation job directly (CANCEL slice, ADR-0018).
+	 *
+	 * A PENDING run has no worker subscribed to its cancel channel yet (the worker only
+	 * subscribes once it STARTS the job), and Redis pub/sub has no retention — so a
+	 * `publishCancel` would be dropped and the queued job would later run to completion.
+	 * Removing the job from the queue is the reliable stop for that state.
+	 *
+	 * Returns whether the job was removed. `false` when: the queue is unavailable, the
+	 * job is gone, OR a worker grabbed it in the race and BullMQ refuses to remove a
+	 * locked/active job — the caller then falls back to the publish path (the worker now
+	 * owns the run). Never throws; a removal failure is a signal, not an error.
+	 */
+	async removeJob(jobId: string): Promise<boolean> {
+		if (!this.investigationQueue) {
+			this.logger.warn("Queue not available - job not removed");
+			return false;
+		}
+		const job = await this.investigationQueue.getJob(jobId);
+		if (!job) return false;
+		try {
+			await job.remove();
+			this.logger.log(`Removed queued investigation job ${jobId}`);
+			return true;
+		} catch (error) {
+			// BullMQ throws when removing a locked (active) job — a worker took it mid-race.
+			this.logger.warn(
+				`Could not remove job ${jobId} (likely already active): ${(error as Error).message}`,
+			);
+			return false;
+		}
 	}
 
 	/**

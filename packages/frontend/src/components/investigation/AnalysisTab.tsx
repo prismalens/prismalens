@@ -1,6 +1,7 @@
 import type {
 	InvestigationWithRelations,
 	RunFidelity,
+	RunFidelitySandbox,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 
@@ -50,8 +51,144 @@ function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 	);
 }
 
+/**
+ * The Sandbox boundary (ADR-0020), when the structured `fidelity.sandbox` field
+ * is present. Requested-vs-actual on hover so a silent-looking degrade (e.g.
+ * `auto` -> `process-floor`) is never invisible.
+ */
+function SandboxBadge({ sandbox }: { sandbox: RunFidelitySandbox }) {
+	const tone =
+		sandbox.fidelity === "enforced"
+			? "border-green-600 text-green-700 dark:text-green-400"
+			: "border-amber-600 text-amber-700 dark:text-amber-400";
+
+	return (
+		<TooltipProvider>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Badge variant="outline" className={`gap-1 ${tone}`}>
+						<span className="opacity-60">sandbox</span>
+						<span className="font-mono">{sandbox.actual}</span>
+					</Badge>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs">
+					requested <span className="font-mono">{sandbox.requested}</span> →
+					actual <span className="font-mono">{sandbox.actual}</span> (
+					{sandbox.fidelity})
+				</TooltipContent>
+			</Tooltip>
+		</TooltipProvider>
+	);
+}
+
+/**
+ * Reduce overlay (ADR-0016 §5c) — app-side post-report enrichment computed BESIDE
+ * the canonical report: deploy/change rows a hypothesis references + past incidents
+ * scored similar. Renders only when the overlay is present and non-empty; degrades
+ * to nothing otherwise (older investigations have no overlay).
+ */
+function OverlaySection({
+	overlay,
+}: {
+	overlay: NonNullable<InvestigationWithRelations["overlay"]>;
+}) {
+	const { matchedChanges, similarIncidents } = overlay;
+	if (matchedChanges.length === 0 && similarIncidents.length === 0) return null;
+
+	return (
+		<Card className="md:col-span-2">
+			<CardHeader>
+				<CardTitle className="text-base">
+					Related changes &amp; similar incidents
+				</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-6">
+				{matchedChanges.length > 0 && (
+					<div>
+						<p className="text-sm text-muted-foreground mb-2">
+							Changes correlated with a hypothesis ({matchedChanges.length})
+						</p>
+						<div className="space-y-2">
+							{matchedChanges.map((change) => (
+								<div
+									key={`${change.kind}-${change.id}`}
+									className="p-3 bg-muted rounded-lg text-sm"
+								>
+									<div className="flex items-start justify-between gap-3">
+										<p className="font-medium">{change.title}</p>
+										<Badge variant="outline" className="shrink-0 capitalize">
+											{change.kind === "change_event" ? "change" : change.kind}
+										</Badge>
+									</div>
+									<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+										<span>{change.source}</span>
+										{change.serviceName && (
+											<>
+												<span className="opacity-60">·</span>
+												<span className="font-mono">{change.serviceName}</span>
+											</>
+										)}
+										<span className="opacity-60">·</span>
+										<span>{new Date(change.timestamp).toLocaleString()}</span>
+										<span className="opacity-60">·</span>
+										<span>
+											hypothesis #{change.hypothesisIndex + 1} (matched{" "}
+											<span className="font-mono">{change.matchedOn}</span>)
+										</span>
+									</div>
+								</div>
+							))}
+						</div>
+					</div>
+				)}
+
+				{similarIncidents.length > 0 && (
+					<div>
+						<p className="text-sm text-muted-foreground mb-2">
+							Similar past incidents ({similarIncidents.length})
+						</p>
+						<div className="space-y-2">
+							{similarIncidents.map((similar) => (
+								<div
+									key={similar.incidentId}
+									className="p-3 bg-muted rounded-lg flex items-start justify-between gap-3"
+								>
+									<div>
+										<p className="font-medium">
+											#{similar.incidentNumber} {similar.title}
+										</p>
+										<div className="mt-1 flex flex-wrap items-center gap-2">
+											<Badge variant="secondary">
+												{Math.round(similar.score * 100)}% match
+											</Badge>
+											{similar.factors.sameService && (
+												<Badge variant="outline">same service</Badge>
+											)}
+											{similar.factors.sharedCategory && (
+												<Badge variant="outline">same category</Badge>
+											)}
+										</div>
+									</div>
+									<Link
+										to="/incidents/$id"
+										params={{ id: similar.incidentId }}
+										className="text-sm text-primary hover:underline shrink-0"
+									>
+										View incident
+									</Link>
+								</div>
+							))}
+						</div>
+					</div>
+				)}
+			</CardContent>
+		</Card>
+	);
+}
+
 export function AnalysisTab({ investigation }: AnalysisTabProps) {
 	const report = investigation.report ?? null;
+	const overlay = investigation.overlay ?? null;
 
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
@@ -60,7 +197,12 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 				<CardHeader>
 					<div className="flex items-center justify-between gap-3">
 						<CardTitle className="text-base">Root Cause Analysis</CardTitle>
-						{report?.fidelity && <FidelityBadge fidelity={report.fidelity} />}
+						<div className="flex items-center gap-2">
+							{report?.fidelity && <FidelityBadge fidelity={report.fidelity} />}
+							{report?.fidelity?.sandbox && (
+								<SandboxBadge sandbox={report.fidelity.sandbox} />
+							)}
+						</div>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -201,6 +343,9 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 					</CardContent>
 				</Card>
 			)}
+
+			{/* Reduce overlay (ADR-0016 §5c) — related changes + similar incidents */}
+			{overlay && <OverlaySection overlay={overlay} />}
 
 			{/* Recommendations */}
 			<Card className="md:col-span-2">
