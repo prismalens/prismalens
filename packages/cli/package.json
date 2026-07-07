@@ -1,6 +1,6 @@
 {
 	"name": "prismalens",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"description": "AI root-cause investigation from your terminal — point it at a repo, pipe it an alert, get an evidence-linked report",
 	"license": "Apache-2.0",
 	"type": "module",
