@@ -40,6 +40,7 @@ import {
 	type SrtSandboxOptions,
 } from "./srt.js";
 import type { Sandbox } from "./types.js";
+import { detectWsl } from "./wsl.js";
 
 /** The sandbox modes selectable via config/CLI. Shared by the CLI schema + `--sandbox`. */
 export const SANDBOX_MODES = ["auto", "process", "srt", "e2b"] as const;
@@ -62,6 +63,11 @@ export interface ResolveSandboxOptions
 	 * srt+curl runner is used); hermetic tests inject a fake so no srt is spawned.
 	 */
 	egressRunner?: SrtEgressRunner;
+	/**
+	 * TEST SEAM: `auto`'s WSL check ({@link detectWsl}). Production omits it; hermetic
+	 * tests inject a stub so selection is host-independent.
+	 */
+	wslDetector?: () => Promise<boolean>;
 }
 
 /** A resolved sandbox plus the honest requested-vs-actual pair (ADR-0017). */
@@ -79,6 +85,13 @@ export interface SandboxSelection {
 	 * downgrade (ADR-0017).
 	 */
 	degradeReason?: string;
+	/**
+	 * True when the degrade is the EXPECTED outcome for this host (WSL: srt's bridge is
+	 * unreliable in both networking modes) rather than a surprise — callers log it calmly
+	 * (info, once) instead of warning on every run. Honesty stays: `actual` +
+	 * `degradeReason` are still populated.
+	 */
+	degradeExpected?: boolean;
 }
 
 /** Build a floor selection carrying the honest reason `auto` degraded. */
@@ -133,6 +146,21 @@ export async function resolveSandbox(
 						"would starve the harness (its own model endpoint included); set telemetry " +
 						"endpoints or force --sandbox srt",
 				);
+			}
+			// WSL ⇒ floor WITHOUT spending the (spawn-y) probe, as an EXPECTED degrade:
+			// srt's bridge is unreliable under WSL in both networking modes (see wsl.ts),
+			// so probing every run spends a spawn and a per-run warning on a foregone
+			// conclusion. Explicit `--sandbox srt` (above) remains the opt-in for WSL
+			// setups where the bridge works.
+			if (await (options.wslDetector ?? detectWsl)()) {
+				return {
+					...floorSelection(
+						mode,
+						"WSL detected — srt's egress bridge is unreliable under WSL, so auto uses " +
+							"the process floor without probing; force --sandbox srt to override",
+					),
+					degradeExpected: true,
+				};
 			}
 			// srt is only trustworthy if its bridge actually carries traffic on THIS host (WSL
 			// mirrored networking silently blackholes it, B.1.1): probe the REAL probeUrl.

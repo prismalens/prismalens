@@ -156,10 +156,11 @@ describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
 		});
 	});
 
-	it("mid-run harness throw is CONTAINED: reshaped into a terminal `error` event, then fail", async () => {
+	it("mid-run harness throw is CONTAINED: one respawn, then a terminal `error` event, then fail", async () => {
 		// The N=1 fan-out containment (2026-07-07): a throw AFTER events have flowed
-		// becomes the branch's terminal `error` event so gathered evidence can still
-		// reach reduce() — here there are no tool_results, so no report either way.
+		// gets one bounded respawn, then becomes the branch's terminal `error` event so
+		// gathered evidence can still reach reduce() — here there are no tool_results,
+		// so no report either way.
 		const harness: HarnessRunner = async function* (_prompt, ctx) {
 			yield agentStep(ctx.runId, ctx.branchId, 0);
 			throw new Error("transport exploded");
@@ -178,11 +179,18 @@ describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
 		expect(calls).toEqual([
 			"create",
 			"append:agent_step",
-			"append:error",
+			"append:error", // respawn notice
+			"append:agent_step",
+			"append:error", // terminal
 			"fail",
 		]);
 		expect(failedWith).toEqual(["transport exploded"]);
-		expect(seen.map((e) => e.kind)).toEqual(["agent_step", "error"]);
+		expect(seen.map((e) => e.kind)).toEqual([
+			"agent_step",
+			"error",
+			"agent_step",
+			"error",
+		]);
 		expect(outcome).toEqual({
 			runId: "run-1",
 			report: null,

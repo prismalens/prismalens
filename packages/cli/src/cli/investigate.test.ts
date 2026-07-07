@@ -134,7 +134,7 @@ describe("resolveRunSandbox (shared sandbox seam, ADR-0020/0017)", () => {
 		for (const harness of ["claude-code", "codex"] as const) {
 			for (const mode of ["auto", "process"] as const) {
 				await expect(resolveRunSandbox(harness, mode, config)).resolves.toEqual(
-					{ selection: null, degradeReason: null },
+					{ selection: null, degradeReason: null, degradeExpected: false },
 				);
 			}
 		}
