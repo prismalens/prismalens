@@ -232,8 +232,9 @@ crashes on bad input.
 later overriding earlier:
 
 1. built-in schema defaults,
-2. global layer — `~/.prismalens/{prismalens,pl}.config.yaml` (a good home for
-   BYO-key creds via `${VAR}` interpolation),
+2. user layer — `config.yaml` in the OS config dir (Linux/WSL:
+   `~/.config/prismalens/config.yaml`; macOS/Windows use the platform config dir),
+   a good home for BYO-key creds via `${VAR}` interpolation,
 3. project layer — the explicit `--config` path, else the nearest config file found
    by walking **up** from the cwd,
 4. CLI flag overrides (e.g. `--model`).
