@@ -68,8 +68,17 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm changeset:version
-          publish: pnpm changeset:publish
+          # CI publishes through a pinned one-off pnpm 11 (`changeset:publish:ci`):
+          # the repo pins pnpm 10 (packageManager), but pnpm 10's RECURSIVE publish
+          # never attempts the OIDC exchange — the first 0.0.2 run died ENEEDAUTH
+          # (run 28885480320). pnpm 11 attempts trusted publishing per package on
+          # `publish -r` (v11.0.7) and tolerates setup-node's npmrc placeholder
+          # (v11.1.3). Publish only packs manifests, so the pnpm-10 lockfile is
+          # untouched. NPM_CONFIG_PROVENANCE stays explicit: npm's "automatic with
+          # trusted publishing" claim is unreliable in practice (npm/cli#8730).
+          publish: pnpm changeset:publish:ci
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+          NPM_CONFIG_PROVENANCE: "true"

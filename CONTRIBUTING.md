@@ -116,6 +116,10 @@ publishing** (OIDC): each published package registers this repo's
 `release.yml` as a trusted publisher on npmjs.com, pnpm exchanges the
 workflow's OIDC token for a short-lived credential, and provenance is
 attested automatically — there is no npm token secret to rotate or leak.
+CI publishes via `changeset:publish:ci`, which runs the publish through a
+pinned one-off pnpm 11: the repo pins pnpm 10, whose recursive publish does
+not attempt the OIDC exchange (the first 0.0.2 release run failed
+`ENEEDAUTH` on exactly this).
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
