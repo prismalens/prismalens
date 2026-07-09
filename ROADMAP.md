@@ -34,18 +34,36 @@ May 3rd incident." Reports correlated with your deploys and change events (pulle
 demand — PrismaLens stays reactive, no standing feeds), suspects ranked by your service
 graph, similarity against your own incident history. Self-hosted app feature.
 
-### 4 · The Trust Release — from reporting to acting
-The agent proposes a fix; a human approves; it executes — fully logged. A second engine
-(Codex) joins, and two independent agents agreeing on a root cause is reported as exactly
-that: corroborating evidence.
+### 4 · The Trust Release — from reporting to acting *(first commercial features)*
+The agent proposes a fix; a human approves; it executes — fully logged. **Transparency
+up front:** the act/approval capabilities (letting the agent *touch* production) will be
+a paid add-on, developed in a separate proprietary plugin and unlocked with a license
+key. Everything this repo ships — investigation, reports, the record — stays free.
 
 ### 5 · The Team Release — run it yourself
 One-command deploy (compose / Helm) in your own VPC: Postgres, teams and roles, Slack and
 email notifications, full alert-source coverage (Datadog, Grafana, New Relic, Prometheus,
-and more). Your keys, your data, your cluster.
+and more), a second engine (Codex) with cross-agent corroboration. Your keys, your data,
+your cluster. An enterprise add-on (SAML/SCIM, compliance exports, governed connectors)
+will be paid; basic teams, roles, and local audit are free.
 
 ### Later
-Desktop app · managed cloud.
+Desktop app · managed cloud (hosted convenience — never features the self-hosted app lacks).
+
+## Free forever vs. paid — the honest line
+
+**One rule: investigation is free; production mutation is paid.**
+
+Free forever (Apache-2.0, this repo): unattended investigation (`pl listen`), alert
+intake and storm grouping, smart reports with deploy/history correlation, the visual
+review UI, basic teams + roles + local audit log, notification channels, basic MCP tools
+and standard connectors, record migration between CLI/app/cloud, self-hosted at any
+scale, bring-your-own key or AI endpoint.
+
+Paid (separate proprietary plugin, license key): the act phase (approve → execute),
+approval policies and the per-service trust ledger; enterprise SSO/compliance/governed
+connectors. We publish this now, before anyone depends on us, so there is never a
+rug-pull moment.
 
 ---
 

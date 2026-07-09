@@ -136,6 +136,13 @@ issue** — see [SECURITY.md](SECURITY.md).
 prismalens is distributed under the [Apache License 2.0](LICENSE) (see also
 [NOTICE](NOTICE)). The hosted cloud / enterprise edition
 (`prismalens-enterprise`) is a separate, **proprietary** product and carries
-none of this repository's licensing. If and when outside code contributions
-are accepted (see [Contribution status](#contribution-status)), they will be
-licensed under Apache-2.0, inbound=outbound, with DCO sign-off.
+none of this repository's licensing. This repository's license is not
+changing — paid features are developed in the separate proprietary repo and
+never move out of (or into) this one.
+
+If and when outside code contributions are accepted (see
+[Contribution status](#contribution-status)), contributors will sign a
+lightweight **Contributor License Agreement (CLA)** in addition to DCO
+sign-off. The CLA exists for IP hygiene — keeping the project's copyright in
+one clean place, as is standard for open-core projects (Grafana, Sentry) — and
+contributions remain licensed to everyone under Apache-2.0, inbound=outbound.
