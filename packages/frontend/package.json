@@ -69,7 +69,7 @@
 		"@vitejs/plugin-react": "^6.0.3",
 		"eslint": "catalog:",
 		"typescript": "catalog:",
-		"vite": "^8.1.3",
+		"vite": "^8.1.4",
 		"vite-tsconfig-paths": "^6.1.1"
 	}
 }
