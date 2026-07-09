@@ -81,3 +81,7 @@ internal-docs
 *.pem
 # LIVE eval run artifacts (work-005 R0.d) — full model reports per run, local only
 packages/@prismalens/engine/eval/results/
+
+# Auth & Logging
+*.pem
+application.log
