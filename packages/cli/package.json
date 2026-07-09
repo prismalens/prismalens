@@ -39,7 +39,7 @@
 		"build": "tsc",
 		"typecheck": "tsc --noEmit",
 		"dev": "tsx bin/prismalens.ts",
-		"test": "vitest run"
+		"test": "vitest run --coverage"
 	},
 	"dependencies": {
 		"@prismalens/config": "workspace:*",
@@ -54,6 +54,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "^4.1.9",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

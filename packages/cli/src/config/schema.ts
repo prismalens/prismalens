@@ -95,6 +95,19 @@ export const WorkspaceConfigSchema = z.object({
 });
 
 /**
+ * `pl listen` webhook intake (issue #58, Phase 1 R1). `token` is REQUIRED to
+ * start listening but optional here so every other command parses a config
+ * without it; set it via env interpolation (`token: "${PRISMALENS_LISTEN_TOKEN}"`)
+ * rather than a literal. Later slices add debounce window / caps / slack here.
+ */
+export const ListenConfigSchema = z.object({
+	/** Local intake port (4181: clear of 9090/9093/3000/8080 defaults). 0 = ephemeral. */
+	port: z.number().int().min(0).max(65535).default(4181),
+	/** Shared bearer token Alertmanager presents; unset ⇒ `pl listen` refuses to start. */
+	token: z.string().optional(),
+});
+
+/**
  * Read-only telemetry + app endpoints the harness may query. Mirrors the engine's
  * TelemetryEndpoints (camelCase) so a loaded config can be handed straight to
  * `InvestigateOptions.telemetry`. All optional here — resolved/overridden per run.
@@ -165,6 +178,7 @@ export const PlConfigSchema = z.object({
 	logs: optionalWithDefaults(LogSourceConfigSchema),
 	agent: optionalWithDefaults(AgentConfigSchema),
 	workspace: optionalWithDefaults(WorkspaceConfigSchema),
+	listen: optionalWithDefaults(ListenConfigSchema),
 	telemetry: optionalWithDefaults(TelemetryConfigSchema),
 	alert_sources: AlertSourceConfigSchema.optional().transform(
 		(val) => val ?? {},

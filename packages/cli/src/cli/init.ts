@@ -68,6 +68,12 @@ telemetry:
 # Where runs, events, and reports are stored.
 workspace:
   base_dir: ${d.workspace.base_dir}
+
+# \`pl listen\` — token-authed local webhook intake (Alertmanager). The token is
+# REQUIRED to start listening; keep it out of the file via env interpolation.
+# listen:
+#   port: ${d.listen.port}
+#   token: "\${PRISMALENS_LISTEN_TOKEN}"
 `;
 }
 

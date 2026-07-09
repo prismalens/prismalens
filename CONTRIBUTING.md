@@ -56,8 +56,13 @@ The dev login is `admin@prismalens.dev` / `admin123`.
 ## Making a change
 
 1. **Branch** off `main`: `git checkout -b fix/short-description main`.
-2. **Write or update tests** where it makes sense; fix the implementation, not
-   the test, unless the test is wrong.
+2. **Work test-first (repo policy since #58): new code ships with tests written
+   at its public seams and ≥80% per-metric coverage.** Vitest enforces this via
+   per-glob `coverage.thresholds` (see `packages/cli/vitest.config.ts`) — when
+   you add a module, add it (or its directory) to that map; reviewers treat a
+   new source file with no threshold entry as a missing test. Pre-existing
+   files are exempt until touched. Fix the implementation, not the test,
+   unless the test is wrong.
 3. Make sure `pnpm typecheck`, `pnpm build`, `pnpm test`, and
    `pnpm format-and-lint` all pass.
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):

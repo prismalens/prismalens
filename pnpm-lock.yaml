@@ -439,6 +439,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.2
+      '@vitest/coverage-v8':
+        specifier: ^4.1.9
+        version: 4.1.9(vitest@4.1.9)
       tsx:
         specifier: 'catalog:'
         version: 4.22.5

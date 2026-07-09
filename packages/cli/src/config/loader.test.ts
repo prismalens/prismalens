@@ -42,6 +42,19 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 		expect(config.agent.sandbox).toBe("auto");
 	});
 
+	it("defaults the listen section: port 4181, no token (listen refuses to start)", async () => {
+		const config = await loadConfig({ cwd: dir });
+		expect(config.listen.port).toBe(4181);
+		expect(config.listen.token).toBeUndefined();
+	});
+
+	it("reads a configured listen section (token typically via ${VAR})", async () => {
+		writeProject("listen:\n  port: 9999\n  token: hunter2\n");
+		const config = await loadConfig({ cwd: dir });
+		expect(config.listen.port).toBe(9999);
+		expect(config.listen.token).toBe("hunter2");
+	});
+
 	it("project-local overrides project; unrelated project values survive (deep-merge)", async () => {
 		writeProject(
 			"agent:\n  model: project-model\ntelemetry:\n  apiUrl: http://project\n",
