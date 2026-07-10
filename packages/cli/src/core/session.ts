@@ -6,21 +6,9 @@
  * retired pl orchestrator's session-manager.
  *
  * Layout under `<workspace.base_dir>` (default ~/.prismalens):
- *   sessions.json                      — the run index (runId -> SessionRecord)
- *   runs/<runId>/session.json          — per-run metadata mirror
- *   runs/<runId>/events.jsonl          — the canonical event stream (one JSON/line)
- *   runs/<runId>/report.json           — the synthesized InvestigationReport
- *
- * The index is the source of truth for create/get/update/list; each run dir also
- * mirrors its metadata so a run is self-describing on disk.
+ *   prismalens.db                      - sqlite store for all run metadata
+ *   runs/<runId>/                      - per-run workspace dir
  */
-import {
-	appendFile,
-	mkdir,
-	readFile,
-	rename,
-	writeFile,
-} from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config/investigation";
@@ -28,6 +16,8 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 } from "@prismalens/contracts";
+import { openDatabase } from "./db.js";
+import { SqliteSessionManager } from "./sqlite-session-store.js";
 
 export type SessionStatus = "running" | "done" | "errored";
 
@@ -41,6 +31,7 @@ export interface SessionRecord {
 	repo?: string;
 	/** Absolute path to this run's workspace dir. */
 	workspacePath: string;
+	error?: string;
 	createdAt: string;
 	updatedAt: string;
 	completedAt?: string;
@@ -82,6 +73,9 @@ export interface SessionManager {
 		runId: string,
 		alert: Record<string, unknown>,
 	): Promise<void>;
+	/** Release any underlying handle (e.g. the sqlite connection). Optional so
+	 * pure in-memory/file managers need not implement it. */
+	close?(): void;
 }
 
 const RUN_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -99,16 +93,11 @@ export function resolveBaseDir(baseDir?: string): string {
 	return resolve(expandHome(baseDir));
 }
 
-async function writeJsonAtomic(path: string, data: unknown): Promise<void> {
-	const tmp = `${path}.tmp`;
-	await writeFile(tmp, JSON.stringify(data, null, 2), "utf-8");
-	await rename(tmp, path);
-}
-
 export function createSessionManager(baseDir?: string): SessionManager {
 	const base = resolveBaseDir(baseDir);
+	const db = openDatabase(base);
+
 	const runsRoot = join(base, "runs");
-	const indexPath = join(base, "sessions.json");
 
 	function assertRunId(runId: string): void {
 		if (!RUN_ID_RE.test(runId)) throw new Error(`Invalid runId: "${runId}"`);
@@ -119,159 +108,5 @@ export function createSessionManager(baseDir?: string): SessionManager {
 		return join(runsRoot, runId);
 	}
 
-	function metaPath(runId: string): string {
-		return join(workspaceDir(runId), "session.json");
-	}
-
-	async function readIndex(): Promise<Record<string, SessionRecord>> {
-		try {
-			const raw = await readFile(indexPath, "utf-8");
-			return JSON.parse(raw) as Record<string, SessionRecord>;
-		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
-			throw err;
-		}
-	}
-
-	async function upsertIndex(record: SessionRecord): Promise<void> {
-		const index = await readIndex();
-		index[record.runId] = record;
-		await mkdir(base, { recursive: true });
-		await writeJsonAtomic(indexPath, index);
-	}
-
-	const manager: SessionManager = {
-		baseDir: base,
-		workspaceDir,
-
-		async create(input) {
-			assertRunId(input.runId);
-			const dir = workspaceDir(input.runId);
-			await mkdir(dir, { recursive: true });
-			const now = new Date().toISOString();
-			const record: SessionRecord = {
-				runId: input.runId,
-				status: "running",
-				...(input.alertname !== undefined
-					? { alertname: input.alertname }
-					: {}),
-				...(input.agent !== undefined ? { agent: input.agent } : {}),
-				...(input.repo !== undefined ? { repo: input.repo } : {}),
-				workspacePath: dir,
-				createdAt: now,
-				updatedAt: now,
-			};
-			await writeJsonAtomic(metaPath(input.runId), record);
-			await upsertIndex(record);
-			return record;
-		},
-
-		async get(runId) {
-			assertRunId(runId);
-			const index = await readIndex();
-			const fromIndex = index[runId];
-			if (fromIndex) return fromIndex;
-			try {
-				return JSON.parse(
-					await readFile(metaPath(runId), "utf-8"),
-				) as SessionRecord;
-			} catch {
-				return null;
-			}
-		},
-
-		async update(runId, updates) {
-			const existing = await manager.get(runId);
-			if (!existing) throw new Error(`Session "${runId}" not found`);
-			const merged: SessionRecord = {
-				...existing,
-				...updates,
-				runId,
-				updatedAt: new Date().toISOString(),
-			};
-			await writeJsonAtomic(metaPath(runId), merged);
-			await upsertIndex(merged);
-			return merged;
-		},
-
-		async list(filter) {
-			const index = await readIndex();
-			let records = Object.values(index);
-			if (filter?.status) {
-				const wanted = filter.status;
-				records = records.filter((r) => wanted.includes(r.status));
-			}
-			return records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-		},
-
-		async appendEvent(runId, event) {
-			const dir = workspaceDir(runId);
-			await mkdir(dir, { recursive: true });
-			await appendFile(
-				join(dir, "events.jsonl"),
-				`${JSON.stringify(event)}\n`,
-				"utf-8",
-			);
-		},
-
-		async readEvents(runId) {
-			try {
-				const raw = await readFile(
-					join(workspaceDir(runId), "events.jsonl"),
-					"utf-8",
-				);
-				return raw
-					.split("\n")
-					.filter((line) => line.trim().length > 0)
-					.map((line) => JSON.parse(line) as CanonicalEvent);
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-				throw err;
-			}
-		},
-
-		async writeReport(runId, report) {
-			const dir = workspaceDir(runId);
-			await mkdir(dir, { recursive: true });
-			await writeJsonAtomic(join(dir, "report.json"), report);
-		},
-
-		async readReport(runId) {
-			try {
-				const raw = await readFile(
-					join(workspaceDir(runId), "report.json"),
-					"utf-8",
-				);
-				return JSON.parse(raw) as InvestigationReport;
-			} catch {
-				return null;
-			}
-		},
-
-		async writeGroupRecord(runId, rec) {
-			const dir = workspaceDir(runId);
-			await mkdir(dir, { recursive: true });
-			await writeJsonAtomic(join(dir, "group.json"), rec);
-		},
-
-		async appendGroupAlert(runId, alert) {
-			const groupFile = join(workspaceDir(runId), "group.json");
-			try {
-				const raw = await readFile(groupFile, "utf-8");
-				const rec = JSON.parse(raw) as GroupRecord;
-				rec.lateAlerts.push(alert);
-				await writeJsonAtomic(groupFile, rec);
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-					// Should theoretically not happen, but if we don't have it, we can't append.
-					throw new Error(
-						`Cannot append alert to missing group.json for run ${runId}`,
-					);
-				}
-				throw err;
-			}
-		},
-	};
-
-	return manager;
+	return new SqliteSessionManager(base, db, workspaceDir, assertRunId);
 }
