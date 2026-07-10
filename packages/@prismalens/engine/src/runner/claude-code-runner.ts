@@ -23,6 +23,9 @@ import {
 	ClaudeCodeAdapter,
 	type SdkMessage,
 } from "../adapter/claude-code-adapter.js";
+import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
+import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
+import { sandboxSpawnClaudeCodeProcess } from "./claude-code-sandbox-spawn.js";
 
 export interface ClaudeCodeConfig {
 	/** Working directory the agent runs in (it reads the app source here). */
@@ -51,6 +54,10 @@ export interface ClaudeCodeConfig {
 	 * so prismalens's posture keys (settingSources/permissionMode/disallowedTools) win.
 	 */
 	native?: Record<string, unknown>;
+	/** The isolation boundary to spawn the SDK's CLI subprocess into (ADR-0020). Defaults to the process floor. */
+	sandbox?: Sandbox;
+	/** Best-effort resource caps for the sandboxed run (ADR-0020), threaded to the sandbox spawn. */
+	limits?: SandboxLimits;
 }
 
 // The read-only floor is the registry SSOT (ADR-0017 Amendment 2) — the SAME array
@@ -77,6 +84,10 @@ export async function* runClaudeCodeBranch(
 	const disallowedTools = readOnlyFloor
 		? (config.disallowedTools ?? READ_ONLY_DENY)
 		: config.disallowedTools;
+	// Spawn the SDK's CLI subprocess THROUGH the Sandbox port (ADR-0020, issue #64) — mirror the
+	// ACP path: a caller-supplied sandbox is caller-owned; the default floor is ours to destroy.
+	const sandbox = config.sandbox ?? createProcessFloorSandbox();
+	const ownsSandbox = config.sandbox === undefined;
 	try {
 		const response = query({
 			prompt: config.prompt,
@@ -95,6 +106,10 @@ export async function* runClaudeCodeBranch(
 				settingSources: ["user", "project", "local"],
 				permissionMode,
 				...(disallowedTools ? { disallowedTools } : {}),
+				spawnClaudeCodeProcess: sandboxSpawnClaudeCodeProcess(sandbox, {
+					cwd: config.cwd,
+					...(config.limits ? { limits: config.limits } : {}),
+				}),
 			},
 		});
 		for await (const message of response) {
@@ -108,5 +123,7 @@ export async function* runClaudeCodeBranch(
 		if (!sawTerminal) yield adapter.branchDone("submitted");
 	} catch (err) {
 		yield adapter.error(err instanceof Error ? err.message : String(err));
+	} finally {
+		if (ownsSandbox) await sandbox.destroy();
 	}
 }

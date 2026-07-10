@@ -32,15 +32,21 @@ describe("resolveInvestigation sandbox guard (ADR-0017 honest fidelity)", () => 
 		);
 	});
 
-	it("rejects a sandbox for the in-process Agent SDK harness instead of silently discarding it", () => {
+	it("threads a sandbox for the Claude Code harness and names it in the mechanism and fidelity", () => {
 		const sandbox = createProcessFloorSandbox();
-		expect(() =>
-			resolveInvestigation({
-				...BASE_REQUEST,
-				harness: "claude-code",
-				sandbox,
-			}),
-		).toThrow(/cannot run inside a sandbox/);
+		const resolved = resolveInvestigation({
+			...BASE_REQUEST,
+			harness: "claude-code",
+			sandbox,
+		});
+		expect(resolved.fidelity.mechanism).toContain(
+			"sandbox=process-floor (cooperative)",
+		);
+		expect(resolved.fidelity.sandbox).toEqual({
+			requested: "process-floor",
+			actual: "process-floor",
+			fidelity: "cooperative",
+		});
 	});
 
 	it("does not claim any sandbox in the mechanism when none is wired", () => {
