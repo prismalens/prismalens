@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { defineCommand } from "citty";
-import { createSessionManager } from "../core/session.js";
 import consola from "consola";
+import { createSessionManager } from "../core/session.js";
 
 export default defineCommand({
 	meta: {
@@ -29,14 +29,14 @@ export default defineCommand({
 	},
 	async run({ args }) {
 		const sessions = createSessionManager(args["base-dir"]);
-		
+
 		try {
 			const report = await sessions.readReport(args.id);
 			if (!report) {
 				consola.error(`No report for run ${args.id}`);
 				process.exit(1);
 			}
-			
+
 			consola.log(JSON.stringify(report, null, 2));
 
 			if (args.events) {
@@ -50,5 +50,5 @@ export default defineCommand({
 			consola.error("Failed to read report:", err);
 			process.exit(1);
 		}
-	}
+	},
 });

@@ -9,7 +9,7 @@
  * external boundaries are faked: `conductRun` (spawns a harness) and
  * `resolveRunSandbox` (probes/spawns a sandbox).
  */
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { InvestigationReport } from "@prismalens/contracts";
@@ -90,7 +90,9 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const runIds = await readdir(join(workspace, "runs"));
 		expect(runIds).toHaveLength(1);
 		const { createSessionManager } = await import("../core/session.js");
-		const report = await createSessionManager(workspace).readReport(runIds[0] as string);
+		const report = await createSessionManager(workspace).readReport(
+			runIds[0] as string,
+		);
 		expect(report).toEqual(REPORT);
 	});
 

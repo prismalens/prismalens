@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type {
+	CanonicalEvent,
+	InvestigationReport,
+} from "@prismalens/contracts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSessionManager } from "./session.js";
-import type { CanonicalEvent, InvestigationReport } from "@prismalens/contracts";
 
 describe("SqliteSessionManager", () => {
 	let baseDir: string;
@@ -54,7 +57,7 @@ describe("SqliteSessionManager", () => {
 			error: "Some error",
 			completedAt: "2026-01-01T00:00:00Z",
 		});
-		
+
 		expect(updated.status).toBe("done");
 		expect(updated.error).toBe("Some error");
 		expect(updated.completedAt).toBe("2026-01-01T00:00:00Z");
@@ -64,8 +67,9 @@ describe("SqliteSessionManager", () => {
 		// updated_at should be >= created_at, but we can't easily assert exactly.
 		expect(updated.updatedAt >= updated.createdAt).toBe(true);
 
-		await expect(sessions.update("missing-run", { status: "done" }))
-			.rejects.toThrow('Session "missing-run" not found');
+		await expect(
+			sessions.update("missing-run", { status: "done" }),
+		).rejects.toThrow('Session "missing-run" not found');
 	});
 
 	it("3. Event ordering: append N events -> readEvents returns in insertion order", async () => {
@@ -74,7 +78,7 @@ describe("SqliteSessionManager", () => {
 
 		const ev1 = { kind: "started", runId } as CanonicalEvent;
 		const ev2 = { kind: "completed", runId } as CanonicalEvent;
-		
+
 		await sessions.appendEvent(runId, ev1);
 		await sessions.appendEvent(runId, ev2);
 
@@ -92,19 +96,19 @@ describe("SqliteSessionManager", () => {
 	it("5. list: created_at desc; status filter narrows correctly", async () => {
 		const sessions2 = createSessionManager(baseDir); // same db
 
-		const r1 = await sessions2.create({ runId: "r1" });
-		const r2 = await sessions2.create({ runId: "r2" });
+		await sessions2.create({ runId: "r1" });
+		await sessions2.create({ runId: "r2" });
 		await sessions2.update("r1", { status: "done" });
 		await sessions2.update("r2", { status: "errored" });
-		const r3 = await sessions2.create({ runId: "r3" }); // status: running
+		await sessions2.create({ runId: "r3" }); // status: running
 
 		const all = await sessions2.list();
 		expect(all).toHaveLength(3);
-		expect(all.map(r => r.runId)).toEqual(["r3", "r2", "r1"]); // desc order
+		expect(all.map((r) => r.runId)).toEqual(["r3", "r2", "r1"]); // desc order
 
 		const doneAndError = await sessions2.list({ status: ["done", "errored"] });
 		expect(doneAndError).toHaveLength(2);
-		expect(doneAndError.map(r => r.runId).sort()).toEqual(["r1", "r2"]);
+		expect(doneAndError.map((r) => r.runId).sort()).toEqual(["r1", "r2"]);
 
 		const running = await sessions2.list({ status: ["running"] });
 		expect(running).toHaveLength(1);
@@ -114,23 +118,25 @@ describe("SqliteSessionManager", () => {
 	it("6. formed_by: create yields a groups row with formed_by='window'", async () => {
 		const runId = "test-run-6";
 		await sessions.create({ runId });
-		
-		// Reach into sqlite to verify `groups` table directly
-		const db = (sessions as any).db || (sessions as any).db;
-		// Since we don't expose db on the interface directly, we can just do a raw require/import node:sqlite here
-		// But vitest is running in ESM. We can rely on the fact that if it wasn't formed_by='window'
-		// it wouldn't have met the memo req.
-		// Let's actually import DatabaseSync to check.
+
+		// Verify the `groups` row directly — not on the SessionManager interface.
 		const { DatabaseSync } = await import("node:sqlite");
-		const db2 = new DatabaseSync(join(baseDir, "prismalens.db"));
-		const row = db2.prepare("SELECT * FROM groups WHERE id = ?").get(runId) as any;
-		expect(row.formed_by).toBe("window");
-		db2.close();
+		const db = new DatabaseSync(join(baseDir, "prismalens.db"));
+		try {
+			const row = db.prepare("SELECT * FROM groups WHERE id = ?").get(runId) as
+				| { formed_by: string }
+				| undefined;
+			expect(row?.formed_by).toBe("window");
+		} finally {
+			db.close();
+		}
 	});
 
 	it("7. RUN_ID_RE guard preserved: invalid runId throws", async () => {
 		const invalid = "invalid/run/id";
-		await expect(sessions.create({ runId: invalid })).rejects.toThrow("Invalid runId");
+		await expect(sessions.create({ runId: invalid })).rejects.toThrow(
+			"Invalid runId",
+		);
 		await expect(sessions.get(invalid)).rejects.toThrow("Invalid runId");
 		expect(() => sessions.workspaceDir(invalid)).toThrow("Invalid runId");
 	});
@@ -147,7 +153,7 @@ describe("SqliteSessionManager", () => {
 	it("9. Concurrency: two SqliteSessionManager instances on same file", async () => {
 		const runId1 = "r1";
 		const runId2 = "r2";
-		
+
 		const s1 = createSessionManager(baseDir);
 		const s2 = createSessionManager(baseDir);
 
@@ -156,13 +162,19 @@ describe("SqliteSessionManager", () => {
 
 		// Append concurrently
 		await Promise.all([
-			s1.appendEvent(runId1, { kind: "started", runId: runId1 } as CanonicalEvent),
-			s2.appendEvent(runId2, { kind: "started", runId: runId2 } as CanonicalEvent)
+			s1.appendEvent(runId1, {
+				kind: "started",
+				runId: runId1,
+			} as CanonicalEvent),
+			s2.appendEvent(runId2, {
+				kind: "started",
+				runId: runId2,
+			} as CanonicalEvent),
 		]);
 
 		const ev1 = await s1.readEvents(runId1);
 		expect(ev1).toHaveLength(1);
-		
+
 		const ev2 = await s2.readEvents(runId2);
 		expect(ev2).toHaveLength(1);
 	});
@@ -176,16 +188,16 @@ describe("SqliteSessionManager", () => {
 			summary: "S",
 			findings: [],
 			timeline: [],
-			related_alerts: []
+			related_alerts: [],
 		};
 		await sessions.writeReport(runId, report);
-		
+
 		let read = await sessions.readReport(runId);
 		expect(read?.title).toBe("R");
 
 		report.title = "Updated";
 		await sessions.writeReport(runId, report);
-		
+
 		read = await sessions.readReport(runId);
 		expect(read?.title).toBe("Updated");
 	});

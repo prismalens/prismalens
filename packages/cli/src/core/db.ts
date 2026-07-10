@@ -10,7 +10,7 @@ let DatabaseSync: typeof DatabaseSyncType;
 try {
 	const mod = await import("node:sqlite");
 	DatabaseSync = mod.DatabaseSync;
-} catch (err) {
+} catch {
 	console.error("PrismaLens requires Node >= 22.13.");
 	process.exit(1);
 }

@@ -2,7 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import type { DatabaseSync } from "node:sqlite";
-import type { CanonicalEvent, InvestigationReport } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	InvestigationReport,
+} from "@prismalens/contracts";
 import type {
 	CreateSessionInput,
 	SessionManager,
@@ -110,19 +113,30 @@ export class SqliteSessionManager implements SessionManager {
 		runId: string,
 		updates: Partial<Omit<SessionRecord, "runId">>,
 	): Promise<SessionRecord> {
+		this.assertRunId(runId);
 		const now = new Date().toISOString();
-		
+
 		return tx(this.db, () => {
-			const existingStmt = this.db.prepare("SELECT * FROM runs WHERE run_id = ?");
+			const existingStmt = this.db.prepare(
+				"SELECT * FROM runs WHERE run_id = ?",
+			);
 			const existing = existingStmt.get(runId) as unknown as RunRow | undefined;
 			if (!existing) throw new Error(`Session "${runId}" not found`);
 
 			const status = updates.status ?? existing.status;
-			const alertname = updates.alertname !== undefined ? updates.alertname : existing.alertname;
-			const agent = updates.agent !== undefined ? updates.agent : existing.agent;
+			const alertname =
+				updates.alertname !== undefined
+					? updates.alertname
+					: existing.alertname;
+			const agent =
+				updates.agent !== undefined ? updates.agent : existing.agent;
 			const repo = updates.repo !== undefined ? updates.repo : existing.repo;
-			const error = updates.error !== undefined ? updates.error : existing.error;
-			const completedAt = updates.completedAt !== undefined ? updates.completedAt : existing.completed_at;
+			const error =
+				updates.error !== undefined ? updates.error : existing.error;
+			const completedAt =
+				updates.completedAt !== undefined
+					? updates.completedAt
+					: existing.completed_at;
 
 			const updateStmt = this.db.prepare(`
 				UPDATE runs SET
@@ -135,7 +149,7 @@ export class SqliteSessionManager implements SessionManager {
 					updated_at = ?
 				WHERE run_id = ?
 			`);
-			
+
 			const res = updateStmt.run(
 				status,
 				alertname ?? null,
@@ -144,7 +158,7 @@ export class SqliteSessionManager implements SessionManager {
 				error ?? null,
 				completedAt ?? null,
 				now,
-				runId
+				runId,
 			);
 
 			if (res.changes === 0) {
