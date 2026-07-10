@@ -222,6 +222,75 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 		release();
 	});
 
+	it("202-accepts an oversized payload if the queue is currently empty, preventing permanent 503 loops", async () => {
+		server = await startListenServer({
+			port: 0,
+			token: TOKEN,
+			maxPending: 2,
+			runInvestigation: async () => {},
+		});
+		const srv = server;
+
+		const mkOversized = () => {
+			const alerts = Array.from({ length: 5 }).map((_, i) => ({
+				status: "firing",
+				labels: { alertname: `Oversized${i}` },
+				startsAt: "2026-07-09T03:00:00Z",
+			}));
+			return JSON.stringify({ status: "firing", alerts });
+		};
+		// Queue is empty (0 pending). Payload size is 5 > maxPending (2).
+		// Must be accepted to prevent permanent 503 loops.
+		const res = await post(srv, mkOversized(), auth());
+		expect(res.status).toBe(202);
+		expect(await res.json()).toEqual({ received: 5, accepted: 5 });
+	});
+
+	it("503s an oversized payload if the queue is NOT empty, preventing unbounded growth", async () => {
+		let release = (): void => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		server = await startListenServer({
+			port: 0,
+			token: TOKEN,
+			maxPending: 2,
+			runInvestigation: async () => gate,
+		});
+		const srv = server;
+
+		const mk = (alertname: string) =>
+			JSON.stringify({
+				status: "firing",
+				alerts: [
+					{
+						status: "firing",
+						labels: { alertname },
+						startsAt: "2026-07-09T03:00:00Z",
+					},
+				],
+			});
+		const mkOversized = () => {
+			const alerts = Array.from({ length: 5 }).map((_, i) => ({
+				status: "firing",
+				labels: { alertname: `Oversized${i}` },
+				startsAt: "2026-07-09T03:00:00Z",
+			}));
+			return JSON.stringify({ status: "firing", alerts });
+		};
+
+		// Make queue non-empty.
+		expect((await post(srv, mk("A"), auth())).status).toBe(202);
+
+		// Now queue has 1 pending. Max is 2. Payload size is 5.
+		// 1 + 5 > 2. Should be 503'd.
+		const overflow = await post(srv, mkOversized(), auth());
+		expect(overflow.status).toBe(503);
+		const body = (await overflow.json()) as { error: string };
+		expect(body.error).toMatch(/queue/i);
+		release();
+	});
+
 	it("keeps serving (and reports via onRunError) when an investigation rejects", async () => {
 		const failures: string[] = [];
 		const calls: string[] = [];

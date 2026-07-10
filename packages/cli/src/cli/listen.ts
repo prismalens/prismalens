@@ -191,6 +191,7 @@ export async function startListenFromConfig(
 	return startListenServer({
 		port: config.listen.port,
 		token: config.listen.token,
+		maxPending: config.listen.max_pending,
 		runInvestigation: createInvestigationRunner(options, deps),
 		onRunError: (err, alert) => {
 			const labels = (alert.labels ?? {}) as Record<string, string>;

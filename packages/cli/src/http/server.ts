@@ -27,8 +27,9 @@ export interface ListenServerOptions {
 	onRunError?: (err: unknown, alert: Record<string, unknown>) => void;
 	/**
 	 * Max alerts waiting or running at once. A payload that would overflow gets
-	 * 503 so Alertmanager's durable retry absorbs the backpressure — an accepted
-	 * 202 must never quietly become a dropped alert. Default 8.
+	 * 503 so Alertmanager's durable retry absorbs the backpressure. To prevent
+	 * permanent 503s for oversized groups, an empty queue always admits a payload
+	 * regardless of size. Default 8.
 	 */
 	maxPending?: number;
 }
@@ -155,9 +156,11 @@ export async function startListenServer(
 		// an investigation takes minutes. Firing alerts only; resolved ones are
 		// acknowledged but not investigated (grouping/lifecycle is the next slice).
 		const firing = parsed.data.alerts.filter((a) => a.status === "firing");
-		if (pending + firing.length > maxPending) {
+		if (pending > 0 && pending + firing.length > maxPending) {
 			// Whole-payload rejection (no partial acceptance): Alertmanager retries
 			// the notification later; nothing 202'd is ever silently dropped.
+			// To avoid a permanent 503 loop for groups larger than the cap, we ALWAYS
+			// admit payloads when the queue is entirely empty (pending === 0).
 			reply(res, 503, {
 				error: `investigation queue full (${pending} pending, max ${maxPending}) — retry later`,
 			});

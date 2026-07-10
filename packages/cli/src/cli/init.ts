@@ -74,6 +74,7 @@ workspace:
 # listen:
 #   port: ${d.listen.port}
 #   token: "\${PRISMALENS_LISTEN_TOKEN}"
+#   max_pending: ${d.listen.max_pending}
 `;
 }
 

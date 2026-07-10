@@ -134,7 +134,7 @@ async function checkWorkspace(config: PlConfig): Promise<Check> {
  * Soft check: `pl listen` refuses to start without a token, but investigate/
  * serve don't need one — so an unset token is a notice, not a failure.
  */
-function checkListenToken(config: PlConfig): Check {
+export function checkListenToken(config: PlConfig): Check {
 	if (config.listen.token) {
 		return {
 			name: "Listen intake",

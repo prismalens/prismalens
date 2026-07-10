@@ -105,6 +105,8 @@ export const ListenConfigSchema = z.object({
 	port: z.number().int().min(0).max(65535).default(4181),
 	/** Shared bearer token Alertmanager presents; unset ⇒ `pl listen` refuses to start. */
 	token: z.string().optional(),
+	/** Max alerts waiting or running at once; default 8. */
+	max_pending: z.number().int().positive().default(8),
 });
 
 /**
