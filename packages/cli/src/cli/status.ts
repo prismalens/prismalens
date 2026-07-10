@@ -26,24 +26,27 @@ export default defineCommand({
 	async run({ args }) {
 		const sessions = createSessionManager(args["base-dir"]);
 
-		const valid: SessionStatus[] = ["running", "done", "errored"];
-		let filter: { status?: SessionStatus[] } | undefined;
-		if (args.status) {
-			const parts = args.status
-				.split(",")
-				.map((s) => s.trim())
-				.filter((s) => s.length > 0);
-			const bad = parts.filter((s) => !valid.includes(s as SessionStatus));
-			if (bad.length > 0) {
-				consola.error(
-					`Invalid status: ${bad.join(", ")}. Valid: ${valid.join(", ")}`,
-				);
-				process.exit(1);
-			}
-			filter = { status: parts as SessionStatus[] };
-		}
-
 		try {
+			const valid: SessionStatus[] = ["running", "done", "errored"];
+			let filter: { status?: SessionStatus[] } | undefined;
+			if (args.status) {
+				const parts = args.status
+					.split(",")
+					.map((s) => s.trim())
+					.filter((s) => s.length > 0);
+				const bad = parts.filter((s) => !valid.includes(s as SessionStatus));
+				if (bad.length > 0) {
+					consola.error(
+						`Invalid status: ${bad.join(", ")}. Valid: ${valid.join(", ")}`,
+					);
+					// exitCode (not process.exit) so the finally block still closes the
+					// session manager before the process tears down.
+					process.exitCode = 1;
+					return;
+				}
+				filter = { status: parts as SessionStatus[] };
+			}
+
 			const runs = await sessions.list(filter);
 			if (runs.length === 0) {
 				consola.info("No runs found.");
@@ -64,7 +67,9 @@ export default defineCommand({
 			}
 		} catch (err) {
 			consola.error("Failed to read status:", err);
-			process.exit(1);
+			process.exitCode = 1;
+		} finally {
+			sessions.close?.();
 		}
 	},
 });

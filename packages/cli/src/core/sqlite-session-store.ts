@@ -180,7 +180,9 @@ export class SqliteSessionManager implements SessionManager {
 			query += ` WHERE status IN (${placeholders})`;
 			params = [...filter.status];
 		}
-		query += " ORDER BY created_at DESC";
+		// rowid DESC is the deterministic tiebreaker: same-millisecond created_at
+		// rows would otherwise sort arbitrarily (CI flake). Newest-insert-first.
+		query += " ORDER BY created_at DESC, rowid DESC";
 
 		const stmt = this.db.prepare(query);
 		const rows = stmt.all(...params) as unknown as RunRow[];

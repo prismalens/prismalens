@@ -34,7 +34,10 @@ export default defineCommand({
 			const report = await sessions.readReport(args.id);
 			if (!report) {
 				consola.error(`No report for run ${args.id}`);
-				process.exit(1);
+				// exitCode (not process.exit) so the finally block still closes the
+				// session manager before the process tears down.
+				process.exitCode = 1;
+				return;
 			}
 
 			consola.log(JSON.stringify(report, null, 2));
@@ -48,7 +51,9 @@ export default defineCommand({
 			}
 		} catch (err) {
 			consola.error("Failed to read report:", err);
-			process.exit(1);
+			process.exitCode = 1;
+		} finally {
+			sessions.close?.();
 		}
 	},
 });

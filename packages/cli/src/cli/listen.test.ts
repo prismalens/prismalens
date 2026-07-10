@@ -97,9 +97,9 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const runIds = await readdir(join(workspace, "runs"));
 		expect(runIds).toHaveLength(1);
 		const { createSessionManager } = await import("../core/session.js");
-		const report = await createSessionManager(workspace).readReport(
-			runIds[0] as string,
-		);
+		const sessions = createSessionManager(workspace);
+		const report = await sessions.readReport(runIds[0] as string);
+		sessions.close?.();
 		expect(report).toEqual(REPORT);
 	});
 
