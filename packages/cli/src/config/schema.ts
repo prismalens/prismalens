@@ -59,7 +59,7 @@ export const AgentLimitsConfigSchema = z.object({
 
 /** Tier-2 harness backend the supervisor rents (ADR-0008). */
 export const AgentConfigSchema = z.object({
-	default: z.enum(HARNESS_IDS).default("deepagents"),
+	default: z.enum(HARNESS_IDS).default("claude-code"),
 	/**
 	 * BARE model id (e.g. "gpt-oss:120b") — the chosen harness applies its own
 	 * provider prefix (ADR-0017: deepagents prepends "openai:"; Claude Code takes it
