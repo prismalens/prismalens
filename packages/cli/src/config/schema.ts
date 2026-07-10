@@ -98,7 +98,8 @@ export const WorkspaceConfigSchema = z.object({
  * `pl listen` webhook intake (issue #58, Phase 1 R1). `token` is REQUIRED to
  * start listening but optional here so every other command parses a config
  * without it; set it via env interpolation (`token: "${PRISMALENS_LISTEN_TOKEN}"`)
- * rather than a literal. Later slices add debounce window / caps / slack here.
+ * rather than a literal. The grouping_window_ms configures the debounce window;
+ * caps (#62) and Slack are still future slices.
  */
 export const ListenConfigSchema = z.object({
 	/** Local intake port (4181: clear of 9090/9093/3000/8080 defaults). 0 = ephemeral. */

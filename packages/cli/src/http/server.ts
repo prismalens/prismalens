@@ -105,6 +105,11 @@ export async function startListenServer(
 		}
 
 		const raw = await readBody(req);
+		if (options.grouping.isShuttingDown()) {
+			reply(res, 503, { error: "server is shutting down" });
+			req.destroy();
+			return;
+		}
 		if (raw === null) {
 			reply(res, 413, { error: "request body too large" });
 			req.destroy();
@@ -129,18 +134,20 @@ export async function startListenServer(
 		}
 
 		// Answer BEFORE investigating: Alertmanager's webhook timeout is seconds,
-		// an investigation takes minutes. Firing alerts only; resolved ones are
-		// acknowledged but not investigated (grouping/lifecycle is the next slice).
+		// an investigation takes minutes. Firing alerts only (which are grouped and
+		// investigated via the grouping layer); resolved ones are just acknowledged,
+		// not fed into lifecycle tracking (future work).
 		const firing = parsed.data.alerts.filter(
 			(a) => a.status === "firing",
 		) as Record<string, unknown>[];
 		const payload = payloadObj as Record<string, unknown>;
 
 		const pendingGroups = options.grouping.pendingGroups();
+		const newGroupCount = options.grouping.newGroupCount(firing, payload);
 		if (
+			newGroupCount > 0 &&
 			pendingGroups > 0 &&
-			pendingGroups + options.grouping.newGroupCount(firing, payload) >
-				maxPending
+			pendingGroups + newGroupCount > maxPending
 		) {
 			// Whole-payload rejection (no partial acceptance): Alertmanager retries
 			// the notification later; nothing 202'd is ever silently dropped.

@@ -16,6 +16,7 @@ export interface GroupingPort {
 		payload: Record<string, unknown>,
 	): void;
 	shutdown(): void;
+	isShuttingDown(): boolean;
 }
 
 export interface GroupingOptions {
@@ -81,6 +82,8 @@ export function deriveDedupeKey(alert: Record<string, unknown>): string {
 }
 
 export function createGroupingLayer(options: GroupingOptions): GroupingPort {
+	let shuttingDown = false;
+
 	// Active windows
 	interface WindowState {
 		timer: NodeJS.Timeout;
@@ -98,6 +101,10 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 	const running = new Map<string, RunningState>();
 
 	return {
+		isShuttingDown() {
+			return shuttingDown;
+		},
+
 		newGroupCount(firing, payload) {
 			const keys = new Set<string>();
 			for (const alert of firing) {
@@ -114,6 +121,10 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 		},
 
 		admit(firing, payload) {
+			if (shuttingDown) {
+				options.log("Dropped alert: grouping layer is shutting down");
+				return;
+			}
 			for (const alert of firing) {
 				const groupKey = deriveGroupKey(alert, payload);
 				const dedupeKey = deriveDedupeKey(alert);
@@ -163,9 +174,13 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 							lateAlerts: [],
 						};
 
-						const writePromise = Promise.resolve().then(() =>
-							options.sessions.writeGroupRecord(runId, rec),
-						);
+						const writePromise = Promise.resolve()
+							.then(() => options.sessions.writeGroupRecord(runId, rec))
+							.catch((err) => {
+								options.log(
+									`Failed to write group record for group ${groupKey} (run ${runId}): ${err} — investigation will proceed without it`,
+								);
+							});
 						running.set(groupKey, {
 							runId,
 							seenKeys,
@@ -197,6 +212,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 		},
 
 		shutdown() {
+			shuttingDown = true;
 			let dropped = 0;
 			for (const state of windows.values()) {
 				clearTimeout(state.timer);

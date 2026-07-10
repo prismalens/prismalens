@@ -7,7 +7,8 @@
  * Each firing alert runs the SAME seam chain as `investigate`/`serve`
  * (loadConfig → resolveRunSandbox → resolveInvestigation → conductRun with the
  * file session store), resolved PER PAYLOAD — config edits apply to the next
- * webhook without a restart. No grouping, no caps, no Slack yet (next slices).
+ * webhook without a restart. Alert grouping via a debounce window is implemented;
+ * global caps (#62) and Slack notification are still future slices.
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";

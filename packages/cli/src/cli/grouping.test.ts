@@ -64,6 +64,33 @@ describe("Grouping layer", () => {
 		};
 	}
 
+	it("proceeds with investigation if group record write fails", async () => {
+		const { grouping, runs, logs, sessions } = setup();
+
+		sessions.writeGroupRecord = async () => {
+			throw new Error("ENOSPC: no space left");
+		};
+
+		const alert1 = {
+			status: "firing",
+			labels: { alertname: "A", service: "web" },
+			startsAt: "t1",
+		};
+
+		grouping.admit([alert1], {});
+		await vi.advanceTimersByTimeAsync(60000);
+
+		expect(runs.length).toBe(1);
+		expect(runs[0].alerts).toEqual([alert1]);
+		expect(
+			logs.some(
+				(msg) =>
+					msg.includes("Failed to write group record") &&
+					msg.includes("ENOSPC"),
+			),
+		).toBe(true);
+	});
+
 	it("AC1: buffers alerts with same group key inside window into one investigation", async () => {
 		const { grouping, runs, records } = setup();
 		const alert1 = {

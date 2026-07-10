@@ -320,7 +320,98 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 		release();
 	});
 
-	it("keeps serving (and reports via onRunError) when an investigation rejects", async () => {
+	it("202-accepts an attach-only payload even when the queue is already above maxPending", async () => {
+		server = await startListenServer({
+			port: 0,
+			token: TOKEN,
+			maxPending: 2,
+			grouping: createGroupingLayer({
+				windowMs: 60000,
+				sessions: {} as unknown as SessionManager,
+				runInvestigation: async () => {},
+				log: () => {},
+			}),
+		});
+		const srv = server;
+
+		const mkOversized = () => {
+			const alerts = Array.from({ length: 5 }).map((_, i) => ({
+				status: "firing",
+				labels: { alertname: `Oversized${i}` },
+				startsAt: "2026-07-09T03:00:00Z",
+			}));
+			return JSON.stringify({ status: "firing", alerts });
+		};
+		// Empty queue gets oversized payload admitted (pending goes to 5, which > maxPending of 2)
+		expect((await post(srv, mkOversized(), auth())).status).toBe(202);
+
+		// Now we post an attach-only payload (maps to Oversized0, so newGroupCount is 0)
+		const mkAttach = () => {
+			return JSON.stringify({
+				status: "firing",
+				alerts: [
+					{
+						status: "firing",
+						labels: { alertname: "Oversized0" },
+						startsAt: "2026-07-09T03:00:00Z",
+					},
+				],
+			});
+		};
+		// This should be 202-accepted, not 503'd.
+		const attachRes = await post(srv, mkAttach(), auth());
+		expect(attachRes.status).toBe(202);
+	});
+
+	it("returns 503 if the server is shutting down", async () => {
+		const baseGrouping = createGroupingLayer({
+			windowMs: 60000,
+			sessions: {} as unknown as SessionManager,
+			runInvestigation: async () => {},
+			log: () => {},
+		});
+
+		server = await startListenServer({
+			port: 0,
+			token: TOKEN,
+			grouping: {
+				...baseGrouping,
+				isShuttingDown: () => true, // deterministic mock
+			},
+		});
+
+		const res = await post(
+			server,
+			JSON.stringify(alertmanagerPayload()),
+			auth(),
+		);
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toMatch(/shutting down/i);
+	});
+
+	it("admit() no-ops and logs if called after shutdown()", async () => {
+		vi.useFakeTimers();
+		let runCalled = false;
+		const logs: string[] = [];
+		const grouping = createGroupingLayer({
+			windowMs: 60000,
+			sessions: {} as unknown as SessionManager,
+			runInvestigation: async () => {
+				runCalled = true;
+			},
+			log: (msg) => logs.push(msg),
+		});
+
+		grouping.shutdown();
+		grouping.admit([{ status: "firing", labels: { alertname: "A" } }], {});
+
+		await vi.runAllTimersAsync();
+		expect(runCalled).toBe(false);
+		expect(logs.some((msg) => msg.includes("shutting down"))).toBe(true);
+	});
+
+	it("keeps serving other groups when one investigation's runInvestigation rejects", async () => {
 		const failures: string[] = [];
 		const calls: string[] = [];
 		vi.useFakeTimers();
@@ -364,7 +455,7 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 		expect(failures).toEqual(["harness exploded"]);
 	});
 
-	it("logs a rejected investigation to console.error when no onRunError is given (never silent)", async () => {
+	it("logs a rejected investigation via the grouping layer's log callback (never silent)", async () => {
 		vi.useFakeTimers();
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
