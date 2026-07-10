@@ -130,6 +130,28 @@ async function checkWorkspace(config: PlConfig): Promise<Check> {
 	}
 }
 
+/**
+ * Soft check: `pl listen` refuses to start without a token, but investigate/
+ * serve don't need one — so an unset token is a notice, not a failure.
+ */
+export function checkListenToken(config: PlConfig): Check {
+	if (config.listen.token) {
+		return {
+			name: "Listen intake",
+			pass: true,
+			detail: `token configured; \`pl listen\` will serve on port ${config.listen.port}`,
+			hard: false,
+		};
+	}
+	return {
+		name: "Listen intake",
+		pass: false,
+		detail:
+			'listen.token is unset — `pl listen` will refuse to start (set listen.token, e.g. "${PRISMALENS_LISTEN_TOKEN}")',
+		hard: false,
+	};
+}
+
 export default defineCommand({
 	meta: {
 		name: "doctor",
@@ -156,6 +178,7 @@ export default defineCommand({
 			checkHarness(harness),
 			checkCredential(harness),
 			await checkWorkspace(config),
+			checkListenToken(config),
 		];
 
 		consola.log("");

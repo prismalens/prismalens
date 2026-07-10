@@ -452,8 +452,9 @@ export function resolveSandboxGuard(
  * Render one live-timeline line for a streamed canonical event, or null when the
  * event carries nothing worth a line (an agent_step with neither text nor calls).
  * The terminal `report` event is captured by the caller, not lined here.
+ * Exported for the `listen` path, which prints the same timeline per webhook run.
  */
-function liveTimelineEntry(event: CanonicalEvent): string | null {
+export function liveTimelineEntry(event: CanonicalEvent): string | null {
 	switch (event.kind) {
 		case "agent_step": {
 			const firstLine = event.text.trim().split("\n", 1)[0]?.trim() ?? "";

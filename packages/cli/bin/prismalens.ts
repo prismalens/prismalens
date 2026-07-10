@@ -29,6 +29,7 @@ const main = defineCommand({
 	},
 	subCommands: {
 		investigate: lazy("investigate"),
+		listen: lazy("listen"),
 		serve: lazy("serve"),
 		doctor: lazy("doctor"),
 		init: lazy("init"),

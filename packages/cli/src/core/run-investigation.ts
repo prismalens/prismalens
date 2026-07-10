@@ -201,8 +201,11 @@ function selectService(
 	};
 }
 
-/** The alert's service identity label — `service`, else `namespace`, else `job`. */
-function pickServiceLabel(
+/**
+ * The alert's service identity label — `service`, else `namespace`, else `job`.
+ * Exported for the `listen` path's per-payload repo resolution (issue #58 AC5).
+ */
+export function pickServiceLabel(
 	alert: Record<string, unknown> | undefined,
 ): string | undefined {
 	const labels = (alert?.labels ?? {}) as Record<string, unknown>;
