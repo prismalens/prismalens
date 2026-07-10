@@ -53,6 +53,13 @@ export interface CreateSessionInput {
 	repo?: string;
 }
 
+export interface GroupRecord {
+	groupKey: string;
+	formedBy: "window" | "overlay";
+	alerts: Record<string, unknown>[];
+	lateAlerts: Record<string, unknown>[];
+}
+
 export interface SessionManager {
 	/** Resolved workspace base dir. */
 	readonly baseDir: string;
@@ -70,6 +77,11 @@ export interface SessionManager {
 	readEvents(runId: string): Promise<CanonicalEvent[]>;
 	writeReport(runId: string, report: InvestigationReport): Promise<void>;
 	readReport(runId: string): Promise<InvestigationReport | null>;
+	writeGroupRecord(runId: string, rec: GroupRecord): Promise<void>;
+	appendGroupAlert(
+		runId: string,
+		alert: Record<string, unknown>,
+	): Promise<void>;
 }
 
 const RUN_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -233,6 +245,30 @@ export function createSessionManager(baseDir?: string): SessionManager {
 				return JSON.parse(raw) as InvestigationReport;
 			} catch {
 				return null;
+			}
+		},
+
+		async writeGroupRecord(runId, rec) {
+			const dir = workspaceDir(runId);
+			await mkdir(dir, { recursive: true });
+			await writeJsonAtomic(join(dir, "group.json"), rec);
+		},
+
+		async appendGroupAlert(runId, alert) {
+			const groupFile = join(workspaceDir(runId), "group.json");
+			try {
+				const raw = await readFile(groupFile, "utf-8");
+				const rec = JSON.parse(raw) as GroupRecord;
+				rec.lateAlerts.push(alert);
+				await writeJsonAtomic(groupFile, rec);
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+					// Should theoretically not happen, but if we don't have it, we can't append.
+					throw new Error(
+						`Cannot append alert to missing group.json for run ${runId}`,
+					);
+				}
+				throw err;
 			}
 		},
 	};

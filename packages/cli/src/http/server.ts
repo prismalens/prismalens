@@ -15,16 +15,16 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { PrometheusWebhookSchema } from "@prismalens/contracts";
+import type { GroupingPort } from "../cli/grouping.js";
 
 export interface ListenServerOptions {
 	/** Port to bind (0 = ephemeral, for tests). */
 	port: number;
 	/** Shared bearer token; every request without it gets 401. */
 	token: string;
-	/** Investigation executor invoked per accepted alert (injected seam). */
-	runInvestigation: (alert: Record<string, unknown>) => Promise<void>;
-	/** Called when a queued investigation rejects; the server never crashes. */
-	onRunError?: (err: unknown, alert: Record<string, unknown>) => void;
+	/** Grouping layer. */
+	grouping: GroupingPort;
+
 	/**
 	 * Max alerts waiting or running at once. A payload that would overflow gets
 	 * 503 so Alertmanager's durable retry absorbs the backpressure. To prevent
@@ -75,32 +75,8 @@ async function readBody(req: IncomingMessage): Promise<string | null> {
 export async function startListenServer(
 	options: ListenServerOptions,
 ): Promise<ListenServer> {
-	// Sequential FIFO: one investigation at a time, in arrival order. A promise
-	// chain, not a worker pool — the walking skeleton's storm posture until the
-	// caps slice (#62). A failed run logs and never breaks the chain.
+	// grouping owns dispatch; `server.ts` only gates admission via `pendingGroups()`/`newGroupCount()` against `maxPending`.
 	const maxPending = options.maxPending ?? DEFAULT_MAX_PENDING;
-	// Backstop, not caller courtesy: this receiver exists for unattended (3AM)
-	// operation, so a failed run must leave a trace even if no handler is wired.
-	const onRunError =
-		options.onRunError ??
-		((err: unknown, alert: Record<string, unknown>): void => {
-			const labels = (alert.labels ?? {}) as Record<string, string>;
-			console.error(
-				`investigation for alert "${labels.alertname ?? "unknown"}" failed:`,
-				err,
-			);
-		});
-	let queue: Promise<void> = Promise.resolve();
-	let pending = 0;
-	const enqueue = (alert: Record<string, unknown>): void => {
-		pending += 1;
-		queue = queue
-			.then(() => options.runInvestigation(alert))
-			.catch((err) => onRunError(err, alert))
-			.finally(() => {
-				pending -= 1;
-			});
-	};
 
 	const reply = (res: ServerResponse, status: number, body: unknown): void => {
 		res.writeHead(status, { "content-type": "application/json" });
@@ -128,20 +104,28 @@ export async function startListenServer(
 			return;
 		}
 
+		// Reject before reading the body: a slow in-flight client must not be
+		// able to delay server.close() during shutdown.
+		if (options.grouping.isShuttingDown()) {
+			reply(res, 503, { error: "server is shutting down" });
+			req.destroy();
+			return;
+		}
+
 		const raw = await readBody(req);
 		if (raw === null) {
 			reply(res, 413, { error: "request body too large" });
 			req.destroy();
 			return;
 		}
-		let payload: unknown;
+		let payloadObj: unknown;
 		try {
-			payload = JSON.parse(raw);
+			payloadObj = JSON.parse(raw);
 		} catch {
 			reply(res, 400, { error: "request body is not valid JSON" });
 			return;
 		}
-		const parsed = PrometheusWebhookSchema.safeParse(payload);
+		const parsed = PrometheusWebhookSchema.safeParse(payloadObj);
 		if (!parsed.success) {
 			// Never silently swallow a bad payload (unlike parseStdin): surface the
 			// zod reason so a misconfigured Alertmanager is debuggable from its logs.
@@ -153,16 +137,27 @@ export async function startListenServer(
 		}
 
 		// Answer BEFORE investigating: Alertmanager's webhook timeout is seconds,
-		// an investigation takes minutes. Firing alerts only; resolved ones are
-		// acknowledged but not investigated (grouping/lifecycle is the next slice).
-		const firing = parsed.data.alerts.filter((a) => a.status === "firing");
-		if (pending > 0 && pending + firing.length > maxPending) {
+		// an investigation takes minutes. Firing alerts only (which are grouped and
+		// investigated via the grouping layer); resolved ones are just acknowledged,
+		// not fed into lifecycle tracking (future work).
+		const firing = parsed.data.alerts.filter(
+			(a) => a.status === "firing",
+		) as Record<string, unknown>[];
+		const payload = payloadObj as Record<string, unknown>;
+
+		const pendingGroups = options.grouping.pendingGroups();
+		const newGroupCount = options.grouping.newGroupCount(firing, payload);
+		if (
+			newGroupCount > 0 &&
+			pendingGroups > 0 &&
+			pendingGroups + newGroupCount > maxPending
+		) {
 			// Whole-payload rejection (no partial acceptance): Alertmanager retries
 			// the notification later; nothing 202'd is ever silently dropped.
 			// To avoid a permanent 503 loop for groups larger than the cap, we ALWAYS
 			// admit payloads when the queue is entirely empty (pending === 0).
 			reply(res, 503, {
-				error: `investigation queue full (${pending} pending, max ${maxPending}) — retry later`,
+				error: `investigation queue full (${pendingGroups} pending, max ${maxPending}) — retry later`,
 			});
 			return;
 		}
@@ -170,7 +165,7 @@ export async function startListenServer(
 			received: parsed.data.alerts.length,
 			accepted: firing.length,
 		});
-		for (const alert of firing) enqueue(alert);
+		options.grouping.admit(firing, payload);
 	};
 
 	const server = createServer((req, res) => {
@@ -194,9 +189,11 @@ export async function startListenServer(
 
 	return {
 		port: address.port,
-		close: () =>
-			new Promise<void>((resolve, reject) => {
+		close: () => {
+			options.grouping.shutdown();
+			return new Promise<void>((resolve, reject) => {
 				server.close((err) => (err ? reject(err) : resolve()));
-			}),
+			});
+		},
 	};
 }

@@ -7,9 +7,9 @@
  * Each firing alert runs the SAME seam chain as `investigate`/`serve`
  * (loadConfig → resolveRunSandbox → resolveInvestigation → conductRun with the
  * file session store), resolved PER PAYLOAD — config edits apply to the next
- * webhook without a restart. No grouping, no caps, no Slack yet (next slices).
+ * webhook without a restart. Alert grouping via a debounce window is implemented;
+ * global caps (#62) and Slack notification are still future slices.
  */
-import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { conductRun as engineConductRun } from "@prismalens/engine";
@@ -29,6 +29,7 @@ import {
 	startListenServer,
 	WEBHOOK_PATH,
 } from "../http/server.js";
+import { createGroupingLayer } from "./grouping.js";
 import {
 	liveTimelineEntry,
 	resolveRunSandbox as realResolveRunSandbox,
@@ -83,12 +84,12 @@ export function resolveRepoPath(
 export function createInvestigationRunner(
 	options: InvestigationRunnerOptions,
 	deps: InvestigationRunnerDeps = {},
-): (alert: Record<string, unknown>) => Promise<void> {
+): (runId: string, alerts: Record<string, unknown>[]) => Promise<void> {
 	const conductRun = deps.conductRun ?? engineConductRun;
 	const resolveRunSandbox = deps.resolveRunSandbox ?? realResolveRunSandbox;
 	const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
 
-	return async (alert) => {
+	return async (runId, alerts) => {
 		// Per payload, not once at startup: config (and thus repo/workspace/harness)
 		// is re-resolved for every alert, exactly like a fresh `pl investigate`.
 		const config = await loadConfig({
@@ -98,7 +99,7 @@ export function createInvestigationRunner(
 
 		// AC5: the checkout under investigation follows the ALERT (service label →
 		// catalog), not the directory the server happened to start in.
-		const repoPath = resolveRepoPath(alert, config, cwd);
+		const repoPath = resolveRepoPath(alerts[0], config, cwd);
 
 		const harnessName = config.agent.default;
 		const { selection } = await resolveRunSandbox(
@@ -109,7 +110,7 @@ export function createInvestigationRunner(
 		try {
 			const resolved = resolveInvestigation(
 				{
-					alert,
+					alerts,
 					repo: repoPath,
 					...(selection
 						? {
@@ -123,7 +124,6 @@ export function createInvestigationRunner(
 			const { context, harness, synth, fidelity, maxBranches } = resolved;
 			const primaryAlert = context.alerts[0];
 
-			const runId = randomUUID();
 			const repoSlug = await resolveRepoSlug(config.repo, repoPath);
 			const sessions = createSessionManager(config.workspace.base_dir);
 			const fileSession = createFileSessionStore(sessions, {
@@ -188,18 +188,19 @@ export async function startListenFromConfig(
 				'(e.g. token: "${PRISMALENS_LISTEN_TOKEN}") before starting pl listen.',
 		);
 	}
+	const sessions = createSessionManager(config.workspace.base_dir);
+	const grouping = createGroupingLayer({
+		windowMs: config.listen.grouping_window_ms,
+		sessions,
+		runInvestigation: createInvestigationRunner(options, deps),
+		log: options.log,
+	});
+
 	return startListenServer({
 		port: config.listen.port,
 		token: config.listen.token,
 		maxPending: config.listen.max_pending,
-		runInvestigation: createInvestigationRunner(options, deps),
-		onRunError: (err, alert) => {
-			const labels = (alert.labels ?? {}) as Record<string, string>;
-			const detail = err instanceof Error ? err.message : String(err);
-			options.log(
-				`Investigation for "${labels.alertname ?? "unknown alert"}" failed: ${detail}`,
-			);
-		},
+		grouping,
 	});
 }
 

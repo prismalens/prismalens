@@ -8,6 +8,8 @@
  * not the investigation pipeline (covered by the runner's own tests).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createGroupingLayer } from "../cli/grouping.js";
+import type { SessionManager } from "../core/session.js";
 import { type ListenServer, startListenServer } from "./server.js";
 
 const TOKEN = "s3cret-test-token";
@@ -16,14 +18,27 @@ let server: ListenServer | undefined;
 afterEach(async () => {
 	await server?.close();
 	server = undefined;
+	vi.useRealTimers();
 });
 
 async function start(
 	runInvestigation: (
-		alert: Record<string, unknown>,
+		alerts: Record<string, unknown>[],
 	) => Promise<void> = async () => {},
 ): Promise<ListenServer> {
-	server = await startListenServer({ port: 0, token: TOKEN, runInvestigation });
+	const mockSessions = {
+		writeGroupRecord: async () => {},
+		appendGroupAlert: async () => {},
+	} as unknown as SessionManager;
+
+	const grouping = createGroupingLayer({
+		windowMs: 60000,
+		sessions: mockSessions,
+		runInvestigation: async (_runId, alerts) => runInvestigation(alerts),
+		log: () => {},
+	});
+
+	server = await startListenServer({ port: 0, token: TOKEN, grouping });
 	return server;
 }
 
@@ -136,26 +151,29 @@ function alertmanagerPayload(): Record<string, unknown> {
 
 describe("listen HTTP intake — dispatch (valid alert → investigation)", () => {
 	it("202-accepts a valid payload and runs an investigation per FIRING alert", async () => {
-		const seen: Record<string, unknown>[] = [];
-		const srv = await start(async (alert) => {
-			seen.push(alert);
+		vi.useFakeTimers();
+		const seen: Record<string, unknown>[][] = [];
+		const srv = await start(async (alerts) => {
+			seen.push(alerts);
 		});
 		const res = await post(srv, JSON.stringify(alertmanagerPayload()), auth());
 		expect(res.status).toBe(202);
 		expect(await res.json()).toEqual({ received: 2, accepted: 1 });
-		// Dispatch is async (the 202 answers before the investigation finishes).
+
+		await vi.runAllTimersAsync();
 		await vi.waitFor(() => expect(seen).toHaveLength(1));
-		expect(seen[0]?.labels).toMatchObject({ alertname: "HighCPU" });
+		expect(seen[0][0]?.labels).toMatchObject({ alertname: "HighCPU" });
 	});
 
-	it("runs investigations strictly one at a time, in arrival order", async () => {
+	it("runs investigations concurrently up to maxPending", async () => {
+		vi.useFakeTimers();
 		let releaseFirst = (): void => {};
 		const gate = new Promise<void>((r) => {
 			releaseFirst = r;
 		});
 		const events: string[] = [];
-		const srv = await start(async (alert) => {
-			const name = (alert.labels as Record<string, string>).alertname;
+		const srv = await start(async (alerts) => {
+			const name = (alerts[0].labels as Record<string, string>).alertname;
 			events.push(`start:${name}`);
 			if (name === "First") await gate;
 			events.push(`end:${name}`);
@@ -175,17 +193,12 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 		expect((await post(srv, mk("First"), auth())).status).toBe(202);
 		expect((await post(srv, mk("Second"), auth())).status).toBe(202);
 
+		await vi.runAllTimersAsync();
 		await vi.waitFor(() => expect(events).toContain("start:First"));
-		// Second must NOT start while First is still running.
-		expect(events).not.toContain("start:Second");
+		// Second CAN start while First is still running because they are concurrent groups
+		await vi.waitFor(() => expect(events).toContain("start:Second"));
 		releaseFirst();
 		await vi.waitFor(() => expect(events).toContain("end:Second"));
-		expect(events).toEqual([
-			"start:First",
-			"end:First",
-			"start:Second",
-			"end:Second",
-		]);
 	});
 
 	it("503s a payload that would overflow the pending queue, so Alertmanager retries it", async () => {
@@ -197,7 +210,12 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 			port: 0,
 			token: TOKEN,
 			maxPending: 2,
-			runInvestigation: async () => gate,
+			grouping: createGroupingLayer({
+				windowMs: 60000,
+				sessions: {} as unknown as SessionManager,
+				runInvestigation: async () => gate,
+				log: () => {},
+			}),
 		});
 		const srv = server;
 
@@ -212,9 +230,10 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 					},
 				],
 			});
-		// First fills the (blocked) runner, second waits in queue = capacity 2.
+		// A and B enter windows.
 		expect((await post(srv, mk("A"), auth())).status).toBe(202);
 		expect((await post(srv, mk("B"), auth())).status).toBe(202);
+		// Their timers haven't fired yet, but they count towards pendingGroups (which includes windows)
 		const overflow = await post(srv, mk("C"), auth());
 		expect(overflow.status).toBe(503);
 		const body = (await overflow.json()) as { error: string };
@@ -227,7 +246,12 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 			port: 0,
 			token: TOKEN,
 			maxPending: 2,
-			runInvestigation: async () => {},
+			grouping: createGroupingLayer({
+				windowMs: 60000,
+				sessions: {} as unknown as SessionManager,
+				runInvestigation: async () => {},
+				log: () => {},
+			}),
 		});
 		const srv = server;
 
@@ -255,7 +279,12 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 			port: 0,
 			token: TOKEN,
 			maxPending: 2,
-			runInvestigation: async () => gate,
+			grouping: createGroupingLayer({
+				windowMs: 60000,
+				sessions: {} as unknown as SessionManager,
+				runInvestigation: async () => gate,
+				log: () => {},
+			}),
 		});
 		const srv = server;
 
@@ -279,10 +308,10 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 			return JSON.stringify({ status: "firing", alerts });
 		};
 
-		// Make queue non-empty.
+		// 1 pending group
 		expect((await post(srv, mk("A"), auth())).status).toBe(202);
 
-		// Now queue has 1 pending. Max is 2. Payload size is 5.
+		// Now queue has 1 pending. Max is 2. Oversized creates 5 new groups.
 		// 1 + 5 > 2. Should be 503'd.
 		const overflow = await post(srv, mkOversized(), auth());
 		expect(overflow.status).toBe(503);
@@ -291,20 +320,120 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 		release();
 	});
 
-	it("keeps serving (and reports via onRunError) when an investigation rejects", async () => {
-		const failures: string[] = [];
-		const calls: string[] = [];
+	it("202-accepts an attach-only payload even when the queue is already above maxPending", async () => {
 		server = await startListenServer({
 			port: 0,
 			token: TOKEN,
-			runInvestigation: async (alert) => {
-				const name = (alert.labels as Record<string, string>).alertname;
-				calls.push(name);
-				if (name === "Boom") throw new Error("harness exploded");
+			maxPending: 2,
+			grouping: createGroupingLayer({
+				windowMs: 60000,
+				sessions: {} as unknown as SessionManager,
+				runInvestigation: async () => {},
+				log: () => {},
+			}),
+		});
+		const srv = server;
+
+		const mkOversized = () => {
+			const alerts = Array.from({ length: 5 }).map((_, i) => ({
+				status: "firing",
+				labels: { alertname: `Oversized${i}` },
+				startsAt: "2026-07-09T03:00:00Z",
+			}));
+			return JSON.stringify({ status: "firing", alerts });
+		};
+		// Empty queue gets oversized payload admitted (pending goes to 5, which > maxPending of 2)
+		expect((await post(srv, mkOversized(), auth())).status).toBe(202);
+
+		// Now we post an attach-only payload (maps to Oversized0, so newGroupCount is 0)
+		const mkAttach = () => {
+			return JSON.stringify({
+				status: "firing",
+				alerts: [
+					{
+						status: "firing",
+						labels: { alertname: "Oversized0" },
+						startsAt: "2026-07-09T03:00:00Z",
+					},
+				],
+			});
+		};
+		// This should be 202-accepted, not 503'd.
+		const attachRes = await post(srv, mkAttach(), auth());
+		expect(attachRes.status).toBe(202);
+	});
+
+	it("returns 503 if the server is shutting down", async () => {
+		const baseGrouping = createGroupingLayer({
+			windowMs: 60000,
+			sessions: {} as unknown as SessionManager,
+			runInvestigation: async () => {},
+			log: () => {},
+		});
+
+		server = await startListenServer({
+			port: 0,
+			token: TOKEN,
+			grouping: {
+				...baseGrouping,
+				isShuttingDown: () => true, // deterministic mock
 			},
-			onRunError: (err) => {
-				failures.push(err instanceof Error ? err.message : String(err));
+		});
+
+		const res = await post(
+			server,
+			JSON.stringify(alertmanagerPayload()),
+			auth(),
+		);
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toMatch(/shutting down/i);
+	});
+
+	it("admit() no-ops and logs if called after shutdown()", async () => {
+		vi.useFakeTimers();
+		let runCalled = false;
+		const logs: string[] = [];
+		const grouping = createGroupingLayer({
+			windowMs: 60000,
+			sessions: {} as unknown as SessionManager,
+			runInvestigation: async () => {
+				runCalled = true;
 			},
+			log: (msg) => logs.push(msg),
+		});
+
+		grouping.shutdown();
+		grouping.admit([{ status: "firing", labels: { alertname: "A" } }], {});
+
+		await vi.runAllTimersAsync();
+		expect(runCalled).toBe(false);
+		expect(logs.some((msg) => msg.includes("shutting down"))).toBe(true);
+	});
+
+	it("keeps serving other groups when one investigation's runInvestigation rejects", async () => {
+		const failures: string[] = [];
+		const calls: string[] = [];
+		vi.useFakeTimers();
+		server = await startListenServer({
+			port: 0,
+			token: TOKEN,
+			grouping: createGroupingLayer({
+				windowMs: 60000,
+				sessions: {
+					writeGroupRecord: async () => {},
+				} as unknown as SessionManager,
+				runInvestigation: async (_runId, alerts) => {
+					const name = (alerts[0].labels as Record<string, string>).alertname;
+					calls.push(name);
+					if (name === "Boom") throw new Error("harness exploded");
+				},
+				log: (msg) => {
+					if (msg.includes("failed")) {
+						failures.push(msg.split("failed: Error: ")[1] ?? msg);
+					}
+				},
+			}),
 		});
 		const srv = server;
 
@@ -321,23 +450,36 @@ describe("listen HTTP intake — dispatch (valid alert → investigation)", () =
 			});
 		expect((await post(srv, mk("Boom"), auth())).status).toBe(202);
 		expect((await post(srv, mk("After"), auth())).status).toBe(202);
-
+		await vi.runAllTimersAsync();
 		await vi.waitFor(() => expect(calls).toEqual(["Boom", "After"]));
 		expect(failures).toEqual(["harness exploded"]);
 	});
 
-	it("logs a rejected investigation to console.error when no onRunError is given (never silent)", async () => {
+	it("logs a rejected investigation via the grouping layer's log callback (never silent)", async () => {
+		vi.useFakeTimers();
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
-			const srv = await start(async () => {
-				throw new Error("harness exploded");
+			const grouping = createGroupingLayer({
+				windowMs: 60000,
+				sessions: {
+					writeGroupRecord: async () => {},
+				} as unknown as SessionManager,
+				runInvestigation: async () => {
+					throw new Error("harness exploded");
+				},
+				log: (msg) => {
+					if (msg.includes("failed")) console.error(msg);
+				},
 			});
+			server = await startListenServer({ port: 0, token: TOKEN, grouping });
+			const srv = server;
 			const res = await post(
 				srv,
 				JSON.stringify(alertmanagerPayload()),
 				auth(),
 			);
 			expect(res.status).toBe(202);
+			await vi.runAllTimersAsync();
 			await vi.waitFor(() => expect(errorSpy).toHaveBeenCalled());
 			const logged = errorSpy.mock.calls.flat().map(String).join(" ");
 			expect(logged).toContain("harness exploded");
