@@ -34,6 +34,7 @@ interface RunRow {
 	repo: string | null;
 	workspace_path: string;
 	error: string | null;
+	suppression_reason: string | null;
 	created_at: string;
 	updated_at: string;
 	completed_at: string | null;
@@ -52,6 +53,7 @@ function mapRun(row: RunRow): SessionRecord {
 	if (row.agent) record.agent = row.agent;
 	if (row.repo) record.repo = row.repo;
 	if (row.error) record.error = row.error;
+	if (row.suppression_reason) record.suppressionReason = row.suppression_reason;
 	if (row.completed_at) record.completedAt = row.completed_at;
 	return record;
 }
@@ -281,6 +283,43 @@ export class SqliteSessionManager implements SessionManager {
 					"INSERT INTO group_alerts (group_id, late, payload) VALUES (?, 1, ?)",
 				)
 				.run(runId, JSON.stringify(alert));
+		});
+	}
+
+	async recordSuppressed(input: {
+		runId: string;
+		reason: string;
+		alertname?: string;
+	}): Promise<void> {
+		this.assertRunId(input.runId);
+		const now = new Date().toISOString();
+		tx(this.db, () => {
+			// The grouping layer already wrote this run's group row before dispatch;
+			// upsert-noop keeps the FK satisfied if it somehow did not.
+			this.db
+				.prepare(`
+					INSERT INTO groups (id, formed_by, created_at)
+					VALUES (?, 'window', ?)
+					ON CONFLICT DO NOTHING
+				`)
+				.run(input.runId, now);
+			this.db
+				.prepare(`
+					INSERT INTO runs (
+						run_id, group_id, status, alertname,
+						workspace_path, suppression_reason,
+						created_at, updated_at, completed_at
+					) VALUES (?, ?, 'suppressed', ?, '', ?, ?, ?, ?)
+				`)
+				.run(
+					input.runId,
+					input.runId,
+					input.alertname ?? null,
+					input.reason,
+					now,
+					now,
+					now,
+				);
 		});
 	}
 

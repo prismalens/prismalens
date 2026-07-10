@@ -19,7 +19,7 @@ import type {
 import { openDatabase } from "./db.js";
 import { SqliteSessionManager } from "./sqlite-session-store.js";
 
-export type SessionStatus = "running" | "done" | "errored";
+export type SessionStatus = "running" | "done" | "errored" | "suppressed";
 
 export interface SessionRecord {
 	runId: string;
@@ -32,6 +32,8 @@ export interface SessionRecord {
 	/** Absolute path to this run's workspace dir. */
 	workspacePath: string;
 	error?: string;
+	/** Which cap suppressed this dispatch (only set when status === "suppressed"). */
+	suppressionReason?: string;
 	createdAt: string;
 	updatedAt: string;
 	completedAt?: string;
@@ -73,6 +75,13 @@ export interface SessionManager {
 		runId: string,
 		alert: Record<string, unknown>,
 	): Promise<void>;
+	/** Persist an over-cap dispatch decision (issue #62): a terminal `suppressed`
+	 *  run row with the cap that tripped, no workspace. Visible in `pl status`. */
+	recordSuppressed(input: {
+		runId: string;
+		reason: string;
+		alertname?: string;
+	}): Promise<void>;
 	/** Release any underlying handle (e.g. the sqlite connection). Optional so
 	 * pure in-memory/file managers need not implement it. */
 	close?(): void;
