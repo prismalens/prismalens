@@ -33,6 +33,8 @@ const main = defineCommand({
 		serve: lazy("serve"),
 		doctor: lazy("doctor"),
 		init: lazy("init"),
+		status: lazy("status"),
+		report: lazy("report"),
 	},
 });
 

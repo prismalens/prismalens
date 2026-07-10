@@ -48,8 +48,8 @@ export function createFileSessionStore(
 				completedAt: new Date().toISOString(),
 			});
 		},
-		async fail() {
-			await sessions.update(meta.runId, { status: "errored" });
+		async fail(error: string) {
+			await sessions.update(meta.runId, { status: "errored", error });
 		},
 	};
 

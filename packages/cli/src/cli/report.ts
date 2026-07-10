@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { defineCommand } from "citty";
+import { createSessionManager } from "../core/session.js";
+import consola from "consola";
+
+export default defineCommand({
+	meta: {
+		name: "report",
+		description: "Print a stored report for a given run ID",
+	},
+	args: {
+		id: {
+			type: "positional",
+			description: "The run ID",
+			required: true,
+		},
+		events: {
+			type: "boolean",
+			description: "Include timeline events",
+			required: false,
+		},
+		"base-dir": {
+			type: "string",
+			description: "Workspace base directory (default: ~/.prismalens)",
+			required: false,
+		},
+	},
+	async run({ args }) {
+		const sessions = createSessionManager(args["base-dir"]);
+		
+		try {
+			const report = await sessions.readReport(args.id);
+			if (!report) {
+				consola.error(`No report for run ${args.id}`);
+				process.exit(1);
+			}
+			
+			consola.log(JSON.stringify(report, null, 2));
+
+			if (args.events) {
+				const events = await sessions.readEvents(args.id);
+				consola.log("\n--- Timeline Events ---");
+				for (const ev of events) {
+					consola.log(JSON.stringify(ev));
+				}
+			}
+		} catch (err) {
+			consola.error("Failed to read report:", err);
+			process.exit(1);
+		}
+	}
+});

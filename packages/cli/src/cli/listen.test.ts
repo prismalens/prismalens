@@ -89,12 +89,8 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 
 		const runIds = await readdir(join(workspace, "runs"));
 		expect(runIds).toHaveLength(1);
-		const report = JSON.parse(
-			await readFile(
-				join(workspace, "runs", runIds[0] as string, "report.json"),
-				"utf-8",
-			),
-		) as InvestigationReport;
+		const { createSessionManager } = await import("../core/session.js");
+		const report = await createSessionManager(workspace).readReport(runIds[0] as string);
 		expect(report).toEqual(REPORT);
 	});
 
