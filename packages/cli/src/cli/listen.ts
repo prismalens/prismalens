@@ -44,14 +44,22 @@ export interface InvestigationRunnerOptions {
 	log: (line: string) => void;
 }
 
+import type { ConductedOutcome } from "@prismalens/engine";
 /**
  * The two external boundaries of the chain, injectable for tests: `conductRun`
  * spawns a harness, `resolveRunSandbox` probes/arms a sandbox. Everything else
  * (config loader, resolver, file store) runs real.
  */
+import { notifyRun } from "../core/slack-notify.js";
+
 export interface InvestigationRunnerDeps {
 	conductRun?: typeof engineConductRun;
 	resolveRunSandbox?: typeof realResolveRunSandbox;
+	notify?: (
+		webhookUrl: string,
+		alertname: string,
+		outcome: ConductedOutcome,
+	) => Promise<void>;
 }
 
 /**
@@ -87,6 +95,7 @@ export function createInvestigationRunner(
 ): (runId: string, alerts: Record<string, unknown>[]) => Promise<void> {
 	const conductRun = deps.conductRun ?? engineConductRun;
 	const resolveRunSandbox = deps.resolveRunSandbox ?? realResolveRunSandbox;
+	const notify = deps.notify ?? notifyRun;
 	const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
 
 	return async (runId, alerts) => {
@@ -154,6 +163,20 @@ export function createInvestigationRunner(
 					store: fileSession.store,
 				},
 			);
+
+			if (config.listen.slack_webhook_url) {
+				try {
+					await notify(
+						config.listen.slack_webhook_url,
+						primaryAlert.alertname as string,
+						outcome,
+					);
+				} catch (err) {
+					// Fallback for an injected notify that violates the contract.
+					// The real notifyRun never rejects.
+					options.log(`Slack notification failed with error: ${err}`);
+				}
+			}
 
 			if (!outcome.report) {
 				throw new Error(outcome.error ?? "investigation produced no evidence");

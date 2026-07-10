@@ -230,6 +230,82 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		);
 		expect(destroy).toHaveBeenCalledTimes(1);
 	});
+
+	it("notifies Slack exactly once per group investigation when configured", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: fakeConductRun(),
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await run("run-slack-1", [
+			firingAlert("GroupAlert1"),
+			firingAlert("GroupAlert2"),
+		]);
+
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(notifySpy).toHaveBeenCalledWith(
+			"http://slack.test",
+			"GroupAlert1",
+			expect.objectContaining({ runId: "run-slack-1" }),
+		);
+	});
+
+	it("never notifies Slack if slack_webhook_url is omitted", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\n`,
+			"utf-8",
+		);
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: fakeConductRun(),
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await run("run-slack-2", [firingAlert("DisabledAlert")]);
+
+		expect(notifySpy).not.toHaveBeenCalled();
+	});
+
+	it("isolates the run from a broken Slack webhook (run-outcome isolation)", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const notifySpy = vi.fn().mockRejectedValue(new Error("slack is down"));
+		const lines: string[] = [];
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: (l) => lines.push(l) },
+			{
+				conductRun: fakeConductRun(),
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await run("run-slack-3", [firingAlert("BrokenSlack")]);
+
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(lines.join("\n")).toContain("Report saved for run run-slack-3");
+	});
 });
 
 describe("startListenFromConfig (the pl listen command body)", () => {

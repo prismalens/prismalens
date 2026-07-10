@@ -99,7 +99,7 @@ export const WorkspaceConfigSchema = z.object({
  * start listening but optional here so every other command parses a config
  * without it; set it via env interpolation (`token: "${PRISMALENS_LISTEN_TOKEN}"`)
  * rather than a literal. The grouping_window_ms configures the debounce window;
- * caps (#62) and Slack are still future slices.
+ * caps (#62) is still a future slice.
  */
 export const ListenConfigSchema = z.object({
 	/** Local intake port (4181: clear of 9090/9093/3000/8080 defaults). 0 = ephemeral. */
@@ -110,6 +110,12 @@ export const ListenConfigSchema = z.object({
 	max_pending: z.number().int().positive().default(8),
 	/** Grouping window in milliseconds to debounce alerts into one investigation. */
 	grouping_window_ms: z.number().int().min(1000).max(120000).default(60000),
+	/**
+	 * Slack incoming-webhook URL for report delivery (issue #61). Optional — unset ⇒
+	 * delivery disabled. Set via env interpolation (slack_webhook_url:
+	 * "${PRISMALENS_SLACK_WEBHOOK_URL}") so the secret stays in env (ADR-0006).
+	 */
+	slack_webhook_url: z.string().url().optional(),
 });
 
 /**
