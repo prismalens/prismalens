@@ -18,6 +18,7 @@ import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { getDefaultModel } from "@prismalens/config/llm";
 import type { ServiceContext } from "@prismalens/contracts";
 import {
+	coerceFiringAlert,
 	resolveInvestigation as engineResolveInvestigation,
 	type InvestigationRequest,
 	type ResolvedInvestigation,
@@ -31,6 +32,8 @@ export type { ResolvedInvestigation };
 export interface ResolveInvestigationArgs {
 	/** Raw alert payload (piped JSON / RPC param) coerced into a FiringAlert. */
 	alert?: Record<string, unknown>;
+	/** Multiple raw alerts (storm grouping). When present, supersedes `alert`. */
+	alerts?: Record<string, unknown>[];
 	/** Free-text fallback → a synthesized alert when no alert payload is supplied. */
 	query?: string;
 	/** Repository the harness investigates (its cwd). Defaults to `process.cwd()`. */
@@ -116,12 +119,18 @@ export function resolveInvestigation(
 	// (never a lying default). Only present when at least one knob is set.
 	const limits = toSandboxLimits(config.agent.limits);
 
+	const telemetry = {
+		prometheusUrl:
+			config.telemetry.prometheusUrl ??
+			INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
+		alertmanagerUrl:
+			config.telemetry.alertmanagerUrl ??
+			INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
+		apiUrl: config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+	};
+
 	const request: InvestigationRequest = {
-		alert: args.alert,
 		query: args.query,
-		...(service ? { service } : {}),
-		...(repos ? { repos } : {}),
-		...(logs ? { logs } : {}),
 		harness: harnessName,
 		permissionMode,
 		...(harnessNative ? { harnessNative } : {}),
@@ -137,16 +146,6 @@ export function resolveInvestigation(
 			: {}),
 		model: config.agent.model,
 		cwd,
-		telemetry: {
-			prometheusUrl:
-				config.telemetry.prometheusUrl ??
-				INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
-			alertmanagerUrl:
-				config.telemetry.alertmanagerUrl ??
-				INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
-			apiUrl:
-				config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
-		},
 		synth: {
 			providerId: "ollama",
 			model: synthModel,
@@ -159,6 +158,22 @@ export function resolveInvestigation(
 		},
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};
+
+	if (args.alerts && args.alerts.length > 0) {
+		request.context = {
+			alerts: args.alerts.map(coerceFiringAlert),
+			telemetry,
+			...(service ? { service } : {}),
+			...(repos ? { repos } : {}),
+			...(logs ? { logs } : {}),
+		};
+	} else {
+		request.alert = args.alert;
+		request.telemetry = telemetry;
+		if (service) request.service = service;
+		if (repos) request.repos = repos;
+		if (logs) request.logs = logs;
+	}
 
 	return engineResolveInvestigation(request);
 }
@@ -189,7 +204,7 @@ function selectService(
 	args: ResolveInvestigationArgs,
 	config: PlConfig,
 ): ServiceContext | undefined {
-	const name = args.service ?? pickServiceLabel(args.alert);
+	const name = args.service ?? pickServiceLabel(args.alerts?.[0] ?? args.alert);
 	if (!name) return undefined;
 	const cfg = config.services[name];
 	if (!cfg) return undefined;

@@ -24,10 +24,11 @@ export default defineConfig({
 			provider: "v8",
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.test.ts"],
-			reporter: ["text-summary", "lcov"],
+			reporter: ["text-summary", "lcov", "text"],
 			thresholds: {
 				"src/http/**/*.ts": NEW_CODE_THRESHOLD,
 				"src/cli/listen.ts": NEW_CODE_THRESHOLD,
+				"src/cli/grouping.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

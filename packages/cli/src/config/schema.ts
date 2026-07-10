@@ -107,6 +107,8 @@ export const ListenConfigSchema = z.object({
 	token: z.string().optional(),
 	/** Max alerts waiting or running at once; default 8. */
 	max_pending: z.number().int().positive().default(8),
+	/** Grouping window in milliseconds to debounce alerts into one investigation. */
+	grouping_window_ms: z.number().int().min(1000).max(120000).default(60000),
 });
 
 /**

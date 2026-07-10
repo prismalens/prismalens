@@ -36,11 +36,15 @@ afterEach(async () => {
 
 const REPORT = { summary: "fake report" } as unknown as InvestigationReport;
 
-function firingAlert(alertname = "HighCPU"): Record<string, unknown> {
+function firingAlert(
+	alertname = "HighCPU",
+	fingerprint?: string,
+): Record<string, unknown> {
 	return {
 		status: "firing",
 		labels: { alertname },
 		startsAt: "2026-07-09T03:00:00Z",
+		...(fingerprint ? { fingerprint } : {}),
 	};
 }
 
@@ -81,7 +85,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			{ conductRun: fakeConductRun(), resolveRunSandbox: noSandbox },
 		);
 
-		await run(firingAlert());
+		await run("run-123", [firingAlert()]);
 
 		const runIds = await readdir(join(workspace, "runs"));
 		expect(runIds).toHaveLength(1);
@@ -103,9 +107,9 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		);
 
 		await writeConfig(first);
-		await run(firingAlert("First"));
+		await run("run-1", [firingAlert("First")]);
 		await writeConfig(second);
-		await run(firingAlert("Second"));
+		await run("run-2", [firingAlert("Second")]);
 
 		expect(await readdir(join(first, "runs"))).toHaveLength(1);
 		expect(await readdir(join(second, "runs"))).toHaveLength(1);
@@ -135,11 +139,13 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			{ conductRun: fakeConductRun(), resolveRunSandbox: noSandbox },
 		);
 
-		await run({
-			status: "firing",
-			labels: { alertname: "HighCPU", service: "checkout" },
-			startsAt: "2026-07-09T03:00:00Z",
-		});
+		await run("run-3", [
+			{
+				status: "firing",
+				labels: { alertname: "HighCPU", service: "checkout" },
+				startsAt: "2026-07-09T03:00:00Z",
+			},
+		]);
 
 		expect(lines.join("\n")).toContain(`in ${checkout} `);
 	});
@@ -155,7 +161,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			{ cwd: dir, log: () => {} },
 			{ conductRun: noEvidence, resolveRunSandbox: noSandbox },
 		);
-		await expect(run(firingAlert())).rejects.toThrow(/no evidence/);
+		await expect(run("run-4", [firingAlert()])).rejects.toThrow(/no evidence/);
 	});
 
 	it("falls back to a generic reason when a no-report outcome carries no error", async () => {
@@ -168,7 +174,9 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			{ cwd: dir, log: () => {} },
 			{ conductRun: silent, resolveRunSandbox: noSandbox },
 		);
-		await expect(run(firingAlert())).rejects.toThrow(/produced no evidence/);
+		await expect(run("run-5", [firingAlert()])).rejects.toThrow(
+			/produced no evidence/,
+		);
 	});
 
 	it("constructs with the real engine boundaries when no deps are injected", () => {
@@ -185,7 +193,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 				{ log: () => {} },
 				{ conductRun: fakeConductRun(), resolveRunSandbox: noSandbox },
 			);
-			await run(firingAlert());
+			await run("run-6", [firingAlert()]);
 			expect(await readdir(join(dir, "workspace", "runs"))).toHaveLength(1);
 		} finally {
 			process.chdir(prev);
@@ -212,7 +220,9 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			{ conductRun: boom, resolveRunSandbox: withSandbox },
 		);
 
-		await expect(run(firingAlert())).rejects.toThrow("harness exploded");
+		await expect(run("run-7", [firingAlert()])).rejects.toThrow(
+			"harness exploded",
+		);
 		expect(destroy).toHaveBeenCalledTimes(1);
 	});
 });
@@ -245,7 +255,8 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 			{ conductRun: fakeConductRun(), resolveRunSandbox: noSandbox },
 		);
 		try {
-			const res = await fetch(
+			vi.useFakeTimers();
+			const fetchPromise = fetch(
 				`http://127.0.0.1:${server.port}/webhooks/alertmanager`,
 				{
 					method: "POST",
@@ -259,7 +270,11 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 					}),
 				},
 			);
+			await vi.advanceTimersByTimeAsync(100); // allow fetch to be handled
+			const res = await fetchPromise;
 			expect(res.status).toBe(202);
+			await vi.runAllTimersAsync();
+			vi.useRealTimers();
 			await vi.waitFor(async () => {
 				expect(await readdir(join(workspace, "runs"))).toHaveLength(1);
 			});
@@ -286,14 +301,22 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 			{ conductRun: boom, resolveRunSandbox: noSandbox },
 		);
 		try {
-			await fetch(`http://127.0.0.1:${server.port}/webhooks/alertmanager`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: "Bearer e2e-token",
+			vi.useFakeTimers();
+			const fetchPromise = fetch(
+				`http://127.0.0.1:${server.port}/webhooks/alertmanager`,
+				{
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						authorization: "Bearer e2e-token",
+					},
+					body: JSON.stringify({ status: "firing", alerts: [firingAlert()] }),
 				},
-				body: JSON.stringify({ status: "firing", alerts: [firingAlert()] }),
-			});
+			);
+			await vi.advanceTimersByTimeAsync(100);
+			await fetchPromise;
+			await vi.runAllTimersAsync();
+			vi.useRealTimers();
 			await vi.waitFor(() => {
 				expect(lines.join("\n")).toContain("harness exploded");
 			});
@@ -302,44 +325,156 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		}
 	});
 
-	it("labels a label-less alert 'unknown alert' and stringifies a non-Error failure", async () => {
-		const workspace = join(dir, "workspace");
-		await writeFile(
-			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
-			"utf-8",
-		);
-		const lines: string[] = [];
-		const boomString: ConductRun = (async () => {
-			// A rejection that is not an Error instance (e.g. a re-thrown string).
-			throw "plain string failure";
-		}) as unknown as ConductRun;
-		const server = await startListenFromConfig(
-			{ cwd: dir, log: (l) => lines.push(l) },
-			{ conductRun: boomString, resolveRunSandbox: noSandbox },
-		);
+	it("labels a label-less group 'default' and stringifies a non-Error failure", async () => {
+		vi.useFakeTimers();
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
-			await fetch(`http://127.0.0.1:${server.port}/webhooks/alertmanager`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: "Bearer e2e-token",
-				},
-				body: JSON.stringify({
-					status: "firing",
-					alerts: [
-						// labels present but empty: no alertname to report.
-						{ status: "firing", labels: {}, startsAt: "2026-07-09T03:00:00Z" },
-					],
-				}),
-			});
-			await vi.waitFor(() => {
-				const all = lines.join("\n");
-				expect(all).toContain("unknown alert");
-				expect(all).toContain("plain string failure");
-			});
+			const workspace = join(dir, "workspace");
+			await writeFile(
+				join(dir, "prismalens.config.yaml"),
+				`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+				"utf-8",
+			);
+			const lines: string[] = [];
+			const boomString: ConductRun = (async () => {
+				// A rejection that is not an Error instance (e.g. a re-thrown string).
+				throw "plain string failure";
+			}) as unknown as ConductRun;
+			const server = await startListenFromConfig(
+				{ cwd: dir, log: (l) => lines.push(l) },
+				{ conductRun: boomString, resolveRunSandbox: noSandbox },
+			);
+			try {
+				vi.useFakeTimers();
+				const fetchPromise = fetch(
+					`http://127.0.0.1:${server.port}/webhooks/alertmanager`,
+					{
+						method: "POST",
+						headers: {
+							"content-type": "application/json",
+							authorization: "Bearer e2e-token",
+						},
+						body: JSON.stringify({
+							status: "firing",
+							alerts: [
+								// labels present but empty
+								{
+									status: "firing",
+									labels: {},
+									startsAt: "2026-07-09T03:00:00Z",
+								},
+							],
+						}),
+					},
+				);
+				await vi.advanceTimersByTimeAsync(100);
+				await fetchPromise;
+				await vi.runAllTimersAsync();
+				vi.useRealTimers();
+				await vi.waitFor(() => {
+					const all = lines.join("\n");
+					expect(all).toContain("group default failed");
+					expect(all).toContain("plain string failure");
+				});
+			} finally {
+				await server.close();
+			}
 		} finally {
-			await server.close();
+			errorSpy.mockRestore();
+		}
+	});
+
+	it("handles late alerts safely while investigation runs (grouping disk race fix)", async () => {
+		vi.useFakeTimers();
+		try {
+			const workspace = join(dir, "workspace");
+			await writeFile(
+				join(dir, "prismalens.config.yaml"),
+				`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n  grouping_window_ms: 1000\n`,
+				"utf-8",
+			);
+			const lines: string[] = [];
+
+			let release = (): void => {};
+			const gate = new Promise<void>((r) => {
+				release = r;
+			});
+			const waitAndSucceed: ConductRun = (async (inputs) => {
+				await gate;
+				return { runId: inputs.runId, report: REPORT };
+			}) as unknown as ConductRun;
+
+			const server = await startListenFromConfig(
+				{ cwd: dir, log: (l) => lines.push(l) },
+				{ conductRun: waitAndSucceed, resolveRunSandbox: noSandbox },
+			);
+
+			try {
+				// 1) POST first alert, opens window
+				const fetch1 = fetch(
+					`http://127.0.0.1:${server.port}/webhooks/alertmanager`,
+					{
+						method: "POST",
+						headers: {
+							"content-type": "application/json",
+							authorization: "Bearer e2e-token",
+						},
+						body: JSON.stringify({
+							status: "firing",
+							alerts: [firingAlert("RaceFix", "first-fp")],
+						}),
+					},
+				);
+				await vi.advanceTimersByTimeAsync(100);
+				await fetch1;
+
+				// 2) Advance time past window to trigger write + investigation (which blocks on gate)
+				await vi.advanceTimersByTimeAsync(60000);
+
+				// 3) POST second alert for same group while investigation is in-flight
+				const fetch2 = fetch(
+					`http://127.0.0.1:${server.port}/webhooks/alertmanager`,
+					{
+						method: "POST",
+						headers: {
+							"content-type": "application/json",
+							authorization: "Bearer e2e-token",
+						},
+						body: JSON.stringify({
+							status: "firing",
+							alerts: [firingAlert("RaceFix", "second-fp")],
+						}),
+					},
+				);
+				await vi.advanceTimersByTimeAsync(100);
+				await fetch2;
+
+				// 4) Release gate, finish
+				release();
+				await vi.runAllTimersAsync();
+				vi.useRealTimers();
+
+				// 5) Verify group.json has both alerts
+				await vi.waitFor(async () => {
+					const runDirs = await readdir(join(workspace, "runs"));
+					expect(runDirs).toHaveLength(1);
+					const groupJson = JSON.parse(
+						await readFile(
+							join(workspace, "runs", runDirs[0] as string, "group.json"),
+							"utf-8",
+						),
+					);
+					expect(groupJson.formedBy).toBe("window");
+					expect(groupJson.alerts).toHaveLength(1);
+					expect(groupJson.alerts[0].fingerprint).toBe("first-fp");
+					expect(groupJson.lateAlerts).toHaveLength(1);
+					expect(groupJson.lateAlerts[0].fingerprint).toBe("second-fp");
+				});
+			} finally {
+				await server.close();
+			}
+		} finally {
+			vi.useRealTimers();
 		}
 	});
 });
