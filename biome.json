@@ -10,7 +10,7 @@
 		"includes": [
 			"**",
 			"!**/routeTree.gen.ts",
-			"!**/project.inlang",
+			"!**/project.inlang/**",
 			"!packages/frontend/src/app.css",
 			"!packages/@prismalens/design-tokens/css/tailwind-preset.css"
 		]
