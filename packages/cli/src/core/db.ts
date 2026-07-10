@@ -26,6 +26,7 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 
 		CREATE TABLE IF NOT EXISTS groups (
 			id         TEXT PRIMARY KEY,
+			group_key  TEXT,
 			formed_by  TEXT NOT NULL DEFAULT 'window',
 			created_at TEXT NOT NULL
 		);
@@ -57,6 +58,17 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 			run_id  TEXT PRIMARY KEY REFERENCES runs(run_id),
 			payload TEXT NOT NULL
 		);
+
+		-- One row per alert attached to a group, in insertion order (rowid).
+		-- late = 0 for the alerts that formed the window, 1 for alerts that
+		-- attached while the group's run was already in flight.
+		CREATE TABLE IF NOT EXISTS group_alerts (
+			id       INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id TEXT NOT NULL REFERENCES groups(id),
+			late     INTEGER NOT NULL,
+			payload  TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_group_alerts ON group_alerts(group_id, id);
 	`);
 
 	return db;

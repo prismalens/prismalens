@@ -23,7 +23,7 @@ import {
 	pickServiceLabel,
 	resolveInvestigation,
 } from "../core/run-investigation.js";
-import { createSessionManager } from "../core/session.js";
+import { createSessionManager, type SessionManager } from "../core/session.js";
 import {
 	type ListenServer,
 	startListenServer,
@@ -107,6 +107,7 @@ export function createInvestigationRunner(
 			config.agent.sandbox,
 			config,
 		);
+		let sessions: SessionManager | undefined;
 		try {
 			const resolved = resolveInvestigation(
 				{
@@ -125,7 +126,7 @@ export function createInvestigationRunner(
 			const primaryAlert = context.alerts[0];
 
 			const repoSlug = await resolveRepoSlug(config.repo, repoPath);
-			const sessions = createSessionManager(config.workspace.base_dir);
+			sessions = createSessionManager(config.workspace.base_dir);
 			const fileSession = createFileSessionStore(sessions, {
 				runId,
 				alertname: primaryAlert.alertname,
@@ -159,6 +160,9 @@ export function createInvestigationRunner(
 			}
 			options.log(`Report saved for run ${runId}`);
 		} finally {
+			// Close this run's sqlite connection — the runner opens one PER alert,
+			// so leaving it open would leak a handle on every webhook.
+			sessions?.close?.();
 			// The listen path owns the boundary's lifecycle (ADR-0020) — torn down
 			// whichever way the run exited (report, no-evidence, error, or throw).
 			if (selection) await selection.sandbox.destroy();
@@ -196,12 +200,22 @@ export async function startListenFromConfig(
 		log: options.log,
 	});
 
-	return startListenServer({
+	const server = await startListenServer({
 		port: config.listen.port,
 		token: config.listen.token,
 		maxPending: config.listen.max_pending,
 		grouping,
 	});
+
+	// grouping holds a connection for the server's lifetime; release it on close
+	// (server.close already drains grouping via shutdown()).
+	return {
+		...server,
+		async close() {
+			await server.close();
+			sessions.close?.();
+		},
+	};
 }
 
 export default defineCommand({

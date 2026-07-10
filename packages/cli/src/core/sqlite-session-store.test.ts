@@ -10,7 +10,32 @@ import type {
 	InvestigationReport,
 } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createSessionManager } from "./session.js";
+import { createSessionManager, type GroupRecord } from "./session.js";
+
+/** Read a group's row + its alerts back out of the raw db (not on the interface). */
+async function readGroup(baseDir: string, runId: string) {
+	const { DatabaseSync } = await import("node:sqlite");
+	const db = new DatabaseSync(join(baseDir, "prismalens.db"));
+	try {
+		const group = db.prepare("SELECT * FROM groups WHERE id = ?").get(runId) as
+			| { group_key: string | null; formed_by: string }
+			| undefined;
+		const rows = db
+			.prepare(
+				"SELECT payload, late FROM group_alerts WHERE group_id = ? ORDER BY id",
+			)
+			.all(runId) as { payload: string; late: number }[];
+		const alerts = rows
+			.filter((r) => r.late === 0)
+			.map((r) => JSON.parse(r.payload) as Record<string, unknown>);
+		const lateAlerts = rows
+			.filter((r) => r.late === 1)
+			.map((r) => JSON.parse(r.payload) as Record<string, unknown>);
+		return { group, alerts, lateAlerts };
+	} finally {
+		db.close();
+	}
+}
 
 describe("SqliteSessionManager", () => {
 	let baseDir: string;
@@ -200,5 +225,81 @@ describe("SqliteSessionManager", () => {
 
 		read = await sessions.readReport(runId);
 		expect(read?.title).toBe("Updated");
+	});
+
+	it("12. group round-trip: persists group_key, formed_by, and formative alert order", async () => {
+		const runId = "grp-run-12";
+		const rec: GroupRecord = {
+			groupKey: '{}:{alertname="A", service="web"}',
+			formedBy: "window",
+			alerts: [{ fingerprint: "a1" }, { fingerprint: "a2" }],
+			lateAlerts: [],
+		};
+		await sessions.writeGroupRecord(runId, rec);
+
+		const g = await readGroup(baseDir, runId);
+		expect(g.group?.group_key).toBe('{}:{alertname="A", service="web"}');
+		expect(g.group?.formed_by).toBe("window");
+		expect(g.alerts).toEqual([{ fingerprint: "a1" }, { fingerprint: "a2" }]);
+		expect(g.lateAlerts).toEqual([]);
+	});
+
+	it("13. formed_by comes from the record, not a hardcoded default", async () => {
+		const runId = "grp-run-13";
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k",
+			formedBy: "overlay",
+			alerts: [{ fingerprint: "a1" }],
+			lateAlerts: [],
+		});
+
+		const g = await readGroup(baseDir, runId);
+		expect(g.group?.formed_by).toBe("overlay");
+	});
+
+	it("14. appendGroupAlert: late alerts land after formative ones, in arrival order", async () => {
+		const runId = "grp-run-14";
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k",
+			formedBy: "window",
+			alerts: [{ fingerprint: "f1" }],
+			lateAlerts: [],
+		});
+		await sessions.appendGroupAlert(runId, { fingerprint: "late-1" });
+		await sessions.appendGroupAlert(runId, { fingerprint: "late-2" });
+
+		const g = await readGroup(baseDir, runId);
+		expect(g.alerts).toEqual([{ fingerprint: "f1" }]);
+		expect(g.lateAlerts).toEqual([
+			{ fingerprint: "late-1" },
+			{ fingerprint: "late-2" },
+		]);
+
+		await expect(
+			sessions.appendGroupAlert("no-such-group", { fingerprint: "x" }),
+		).rejects.toThrow(
+			"Cannot append alert to missing group for run no-such-group",
+		);
+	});
+
+	it("15. writeGroupRecord is idempotent: re-writing replaces alerts, no duplicates", async () => {
+		const runId = "grp-run-15";
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k1",
+			formedBy: "window",
+			alerts: [{ fingerprint: "a1" }],
+			lateAlerts: [{ fingerprint: "l1" }],
+		});
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k2",
+			formedBy: "window",
+			alerts: [{ fingerprint: "b1" }, { fingerprint: "b2" }],
+			lateAlerts: [],
+		});
+
+		const g = await readGroup(baseDir, runId);
+		expect(g.group?.group_key).toBe("k2");
+		expect(g.alerts).toEqual([{ fingerprint: "b1" }, { fingerprint: "b2" }]);
+		expect(g.lateAlerts).toEqual([]);
 	});
 });

@@ -73,6 +73,9 @@ export interface SessionManager {
 		runId: string,
 		alert: Record<string, unknown>,
 	): Promise<void>;
+	/** Release any underlying handle (e.g. the sqlite connection). Optional so
+	 * pure in-memory/file managers need not implement it. */
+	close?(): void;
 }
 
 const RUN_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -93,9 +96,9 @@ export function resolveBaseDir(baseDir?: string): string {
 export function createSessionManager(baseDir?: string): SessionManager {
 	const base = resolveBaseDir(baseDir);
 	const db = openDatabase(base);
-	
+
 	const runsRoot = join(base, "runs");
-	
+
 	function assertRunId(runId: string): void {
 		if (!RUN_ID_RE.test(runId)) throw new Error(`Invalid runId: "${runId}"`);
 	}

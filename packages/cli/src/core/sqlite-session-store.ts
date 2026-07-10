@@ -8,6 +8,7 @@ import type {
 } from "@prismalens/contracts";
 import type {
 	CreateSessionInput,
+	GroupRecord,
 	SessionManager,
 	SessionRecord,
 	SessionStatus,
@@ -221,5 +222,69 @@ export class SqliteSessionManager implements SessionManager {
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Persist a group's record (ADR-0012 grouping): upsert the `groups` row with
+	 * the key + how it formed (taken from the record, never hardcoded), then
+	 * replace its `group_alerts` with the formative alerts (late=0) followed by
+	 * any already-attached late alerts (late=1), each in order. The group row may
+	 * already exist (a plain `create()` seeds one) — we keep its created_at.
+	 */
+	async writeGroupRecord(runId: string, rec: GroupRecord): Promise<void> {
+		this.assertRunId(runId);
+		const now = new Date().toISOString();
+		tx(this.db, () => {
+			this.db
+				.prepare(`
+					INSERT INTO groups (id, group_key, formed_by, created_at)
+					VALUES (?, ?, ?, ?)
+					ON CONFLICT(id) DO UPDATE SET
+						group_key = excluded.group_key,
+						formed_by = excluded.formed_by
+				`)
+				.run(runId, rec.groupKey, rec.formedBy, now);
+
+			this.db.prepare("DELETE FROM group_alerts WHERE group_id = ?").run(runId);
+
+			const insertAlert = this.db.prepare(
+				"INSERT INTO group_alerts (group_id, late, payload) VALUES (?, ?, ?)",
+			);
+			for (const alert of rec.alerts) {
+				insertAlert.run(runId, 0, JSON.stringify(alert));
+			}
+			for (const alert of rec.lateAlerts) {
+				insertAlert.run(runId, 1, JSON.stringify(alert));
+			}
+		});
+	}
+
+	/** Attach a late alert to an existing group, appended in arrival order. */
+	async appendGroupAlert(
+		runId: string,
+		alert: Record<string, unknown>,
+	): Promise<void> {
+		this.assertRunId(runId);
+		tx(this.db, () => {
+			const group = this.db
+				.prepare("SELECT id FROM groups WHERE id = ?")
+				.get(runId) as { id: string } | undefined;
+			if (!group) {
+				throw new Error(
+					`Cannot append alert to missing group for run ${runId}`,
+				);
+			}
+			this.db
+				.prepare(
+					"INSERT INTO group_alerts (group_id, late, payload) VALUES (?, 1, ?)",
+				)
+				.run(runId, JSON.stringify(alert));
+		});
+	}
+
+	/** Release the underlying db handle. Callers that own a transient manager
+	 * (e.g. one per `pl listen` run) must close it or leak a connection. */
+	close(): void {
+		this.db.close();
 	}
 }

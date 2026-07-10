@@ -31,7 +31,14 @@ beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "pl-listen-runner-"));
 });
 afterEach(async () => {
-	await rm(dir, { recursive: true, force: true });
+	// maxRetries: the sqlite store leaves WAL sidecar files whose handles unmap
+	// asynchronously; on WSL2 that races a plain recursive rmdir (ENOTEMPTY).
+	await rm(dir, {
+		recursive: true,
+		force: true,
+		maxRetries: 5,
+		retryDelay: 50,
+	});
 });
 
 const REPORT = { summary: "fake report" } as unknown as InvestigationReport;
@@ -452,21 +459,35 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 				await vi.runAllTimersAsync();
 				vi.useRealTimers();
 
-				// 5) Verify group.json has both alerts
+				// 5) Verify the group record (sqlite) captured both alerts. The fake
+				// conductRun never calls store.create(), so there is no run dir — the
+				// group lives purely in the db, keyed by the grouping layer's runId.
 				await vi.waitFor(async () => {
-					const runDirs = await readdir(join(workspace, "runs"));
-					expect(runDirs).toHaveLength(1);
-					const groupJson = JSON.parse(
-						await readFile(
-							join(workspace, "runs", runDirs[0] as string, "group.json"),
-							"utf-8",
-						),
-					);
-					expect(groupJson.formedBy).toBe("window");
-					expect(groupJson.alerts).toHaveLength(1);
-					expect(groupJson.alerts[0].fingerprint).toBe("first-fp");
-					expect(groupJson.lateAlerts).toHaveLength(1);
-					expect(groupJson.lateAlerts[0].fingerprint).toBe("second-fp");
+					const { DatabaseSync } = await import("node:sqlite");
+					const db = new DatabaseSync(join(workspace, "prismalens.db"));
+					try {
+						const group = db
+							.prepare("SELECT id, formed_by FROM groups")
+							.get() as { id: string; formed_by: string } | undefined;
+						expect(group?.formed_by).toBe("window");
+						const rows = db
+							.prepare(
+								"SELECT payload, late FROM group_alerts WHERE group_id = ? ORDER BY id",
+							)
+							.all(group?.id) as { payload: string; late: number }[];
+						const alerts = rows
+							.filter((r) => r.late === 0)
+							.map((r) => JSON.parse(r.payload) as Record<string, unknown>);
+						const lateAlerts = rows
+							.filter((r) => r.late === 1)
+							.map((r) => JSON.parse(r.payload) as Record<string, unknown>);
+						expect(alerts).toHaveLength(1);
+						expect(alerts[0].fingerprint).toBe("first-fp");
+						expect(lateAlerts).toHaveLength(1);
+						expect(lateAlerts[0].fingerprint).toBe("second-fp");
+					} finally {
+						db.close();
+					}
 				});
 			} finally {
 				await server.close();
