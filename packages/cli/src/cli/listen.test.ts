@@ -429,7 +429,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 				await fetch1;
 
 				// 2) Advance time past window to trigger write + investigation (which blocks on gate)
-				await vi.advanceTimersByTimeAsync(60000);
+				await vi.advanceTimersByTimeAsync(1000);
 
 				// 3) POST second alert for same group while investigation is in-flight
 				const fetch2 = fetch(

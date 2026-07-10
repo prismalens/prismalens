@@ -189,6 +189,12 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 
 						writePromise
 							.then(async () => {
+								// Shutdown may land between the timer firing and the write
+								// resolving; don't start a new investigation while closing.
+								if (shuttingDown) {
+									running.delete(groupKey);
+									return;
+								}
 								try {
 									await options.runInvestigation(runId, alertsToRun);
 								} catch (err) {

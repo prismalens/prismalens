@@ -104,12 +104,15 @@ export async function startListenServer(
 			return;
 		}
 
-		const raw = await readBody(req);
+		// Reject before reading the body: a slow in-flight client must not be
+		// able to delay server.close() during shutdown.
 		if (options.grouping.isShuttingDown()) {
 			reply(res, 503, { error: "server is shutting down" });
 			req.destroy();
 			return;
 		}
+
+		const raw = await readBody(req);
 		if (raw === null) {
 			reply(res, 413, { error: "request body too large" });
 			req.destroy();
