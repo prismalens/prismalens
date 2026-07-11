@@ -28,7 +28,7 @@ export default defineCommand({
 		},
 	},
 	async run({ args, cmd }) {
-		let sessions: ReturnType<typeof createSessionManager>;
+		let sessions: ReturnType<typeof createSessionManager> | undefined;
 		try {
 			for (const key of Object.keys(args)) {
 				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
