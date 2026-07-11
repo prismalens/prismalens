@@ -13,12 +13,19 @@
  * JSON-RPC `serve` path stay in lockstep, unchanged.
  */
 import { resolve } from "node:path";
+import { ensureV1, resolveCredentials } from "@prismalens/config/credentials";
 import type { PermissionMode } from "@prismalens/config/harness";
+import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
-	INVESTIGATION_DEFAULTS,
-	SYNTH_DEFAULTS,
-} from "@prismalens/config/investigation";
-import { getDefaultModel } from "@prismalens/config/llm";
+	getDefaultModel,
+	LLM_PROVIDERS,
+	type LLMProviderId,
+} from "@prismalens/config/llm";
+
+const AUTO_SELECT_PROVIDERS = (
+	Object.keys(LLM_PROVIDERS) as LLMProviderId[]
+).filter((id) => id !== "custom");
+
 import type { ServiceContext } from "@prismalens/contracts";
 import {
 	coerceFiringAlert,
@@ -31,20 +38,6 @@ import {
 import type { PlConfig } from "../config/schema.js";
 
 export type { ResolvedInvestigation };
-
-export function resolveSynthCredsFromEnv(): {
-	apiKey: string;
-	baseURL: string;
-} {
-	return {
-		apiKey: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
-		baseURL:
-			process.env.OLLAMA_BASE_URL ??
-			process.env.OPENAI_BASE_URL ??
-			// Same literal `hasTier1Provider` compares against — must never drift.
-			SYNTH_DEFAULTS.baseURL,
-	};
-}
 
 export interface ResolveInvestigationArgs {
 	/** Raw alert payload (piped JSON / RPC param) coerced into a FiringAlert. */
@@ -88,6 +81,21 @@ export interface ResolveInvestigationArgs {
  * the BYO-key secrets from env, and delegates the actual build to the engine
  * resolver. Throws (via the engine) on a hard input error.
  */
+export function isSynthConfigured(config: PlConfig): boolean {
+	if (config.synth.provider) {
+		return (
+			resolveCredentials(config.synth.provider, config.synth.base_url)
+				.source !== "none"
+		);
+	}
+	for (const id of AUTO_SELECT_PROVIDERS) {
+		if (resolveCredentials(id).source !== "none") {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function resolveInvestigation(
 	args: ResolveInvestigationArgs,
 	config: PlConfig,
@@ -95,14 +103,44 @@ export function resolveInvestigation(
 	// cwd = --repo (a local repo path) else the current directory.
 	const cwd = args.repo ? resolve(args.repo) : process.cwd();
 
-	// BYO-key (ADR-0006): the engine never reads env — the CLI injects it here.
-	const { apiKey, baseURL: openaiBaseUrl } = resolveSynthCredsFromEnv();
+	let providerId = config.synth.provider;
+	let creds: ReturnType<typeof resolveCredentials> | undefined;
 
-	// Tier-1 reduce model: explicit agent.model wins; else the provider default
-	// (ADR-0013). The CLI synth endpoint is OpenAI-compatible (ollama/openai base URL).
-	const synthModel = config.agent.model ?? getDefaultModel("ollama");
-	if (!synthModel) {
-		throw new Error("No synthesis model configured (set agent.model).");
+	if (providerId) {
+		creds = resolveCredentials(providerId, config.synth.base_url);
+		if (providerId === "custom" && !creds.baseURL) {
+			throw new Error(
+				"Custom LLM provider requires synth.base_url to be configured.",
+			);
+		}
+	} else {
+		for (const id of AUTO_SELECT_PROVIDERS) {
+			const candidate = resolveCredentials(id);
+			if (candidate.source !== "none") {
+				providerId = id;
+				break;
+			}
+		}
+		if (providerId) {
+			creds = resolveCredentials(
+				providerId as LLMProviderId,
+				config.synth.base_url,
+			);
+		} else {
+			creds = { providerId: "ollama", source: "none" };
+			providerId = "ollama";
+		}
+	}
+
+	const synthModel =
+		config.synth.model ??
+		config.agent.model ??
+		getDefaultModel(providerId as LLMProviderId) ??
+		"";
+	if (!synthModel && creds.source !== "none") {
+		throw new Error(
+			"No synthesis model configured (set synth.model or agent.model).",
+		);
 	}
 
 	// Context enrichment (ADR-0015) — a single-alert CLI run is NOT context-free: it
@@ -163,14 +201,19 @@ export function resolveInvestigation(
 		model: config.agent.model,
 		cwd,
 		synth: {
-			providerId: "ollama",
+			providerId: providerId as LLMProviderId,
 			model: synthModel,
-			apiKey,
-			baseURL: openaiBaseUrl,
+			apiKey: creds.apiKey ?? "",
+			baseURL: creds.baseURL,
+			configured: creds.source !== "none",
 		},
 		harnessEnv: {
 			OPENAI_API_KEY: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY,
-			OPENAI_BASE_URL: openaiBaseUrl,
+			OPENAI_BASE_URL: ensureV1(
+				process.env.OLLAMA_BASE_URL ??
+					process.env.OPENAI_BASE_URL ??
+					INVESTIGATION_DEFAULTS.synth.baseURL,
+			),
 		},
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};

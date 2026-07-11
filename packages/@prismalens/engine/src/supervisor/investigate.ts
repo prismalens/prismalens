@@ -15,7 +15,7 @@
  * bespoke MCP tools yet. The supervisor stays thin: all iterative depth is rented.
  */
 import { randomUUID } from "node:crypto";
-import { hasTier1Provider } from "@prismalens/config/investigation";
+
 import type {
 	CanonicalEvent,
 	InvestigationContext,
@@ -294,7 +294,7 @@ export async function* investigateIncidentStream(
 		return;
 	}
 	let report: InvestigationReport;
-	if (!hasTier1Provider(opts.synth)) {
+	if (!opts.synth.configured) {
 		report = rawReport(opts.context, collected);
 	} else {
 		try {

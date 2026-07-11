@@ -12,7 +12,7 @@
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { hasTier1Provider } from "@prismalens/config/investigation";
+
 import { conductRun as engineConductRun } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import { consola } from "consola";
@@ -26,9 +26,9 @@ import {
 import { resolveRepoSlug } from "../core/detect-repo.js";
 import { createFileSessionStore } from "../core/file-session-store.js";
 import {
+	isSynthConfigured,
 	pickServiceLabel,
 	resolveInvestigation,
-	resolveSynthCredsFromEnv,
 } from "../core/run-investigation.js";
 import { createSessionManager, type SessionManager } from "../core/session.js";
 import {
@@ -262,17 +262,16 @@ export async function startListenFromConfig(
 		...(options.configPath ? { configPath: options.configPath } : {}),
 	});
 
-	if (!hasTier1Provider(resolveSynthCredsFromEnv())) {
+	if (!isSynthConfigured(config)) {
 		options.log(
-			"No Tier-1 provider configured (set OLLAMA_API_KEY / OPENAI_API_KEY, or *_BASE_URL for a local model) — reports will be RAW harness pass-through (un-synthesized) until one is configured. This is a supported subscription-only path, not an error.",
+			"No Tier-1 provider configured (checked env + _FILE for: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, OLLAMA_API_KEY) — reports will be RAW harness pass-through (un-synthesized). This is supported.",
 		);
 	}
 
 	if (!config.listen.token) {
 		// An open intake is not a mode — refuse to start rather than serve unauthenticated.
 		throw new Error(
-			"listen.token is not configured — set it in prismalens.config.yaml " +
-				'(e.g. token: "${PRISMALENS_LISTEN_TOKEN}") before starting pl listen.',
+			"config is missing listen.token (required — intake auth). Add listen.token to prismalens.config.yaml.",
 		);
 	}
 	const sessions = createSessionManager(config.workspace.base_dir);
@@ -317,14 +316,19 @@ export default defineCommand({
 	/* v8 ignore start — process-global glue (cwd + consola binding); the body it
 	   delegates to is fully covered via startListenFromConfig tests */
 	async run({ args }) {
-		const server = await startListenFromConfig({
-			cwd: process.cwd(),
-			...(args.config ? { configPath: args.config } : {}),
-			log: (line) => consola.log(line),
-		});
-		consola.success(
-			`Listening for Alertmanager webhooks on http://127.0.0.1:${server.port}${WEBHOOK_PATH}`,
-		);
+		try {
+			const server = await startListenFromConfig({
+				cwd: process.cwd(),
+				...(args.config ? { configPath: args.config } : {}),
+				log: (line) => consola.log(line),
+			});
+			consola.success(
+				`Listening for Alertmanager webhooks on http://127.0.0.1:${server.port}${WEBHOOK_PATH}`,
+			);
+		} catch (err) {
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exit(1);
+		}
 	},
 	/* v8 ignore stop */
 });

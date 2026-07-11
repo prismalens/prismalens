@@ -11,6 +11,7 @@
  * written exactly as the `investigate` command writes it.
  */
 import { defineCommand } from "citty";
+import { consola } from "consola";
 import { runJsonRpcServer } from "../jsonrpc/server.js";
 import { cliVersion } from "../version.js";
 
@@ -24,6 +25,11 @@ export default defineCommand({
 			"Run the JSON-RPC 2.0 server over stdio (the LIVE channel for the desktop app / API).",
 	},
 	async run() {
-		await runJsonRpcServer({ version: SERVER_VERSION });
+		try {
+			await runJsonRpcServer({ version: SERVER_VERSION });
+		} catch (err) {
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exit(1);
+		}
 	},
 });

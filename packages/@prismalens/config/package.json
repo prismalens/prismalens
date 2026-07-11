@@ -11,6 +11,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./credentials": {
+			"types": "./dist/credentials.d.ts",
+			"import": "./dist/credentials.js"
+		},
 		"./llm": {
 			"types": "./dist/llm.d.ts",
 			"import": "./dist/llm.js"
@@ -43,6 +47,7 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
+		"test": "vitest run",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"typecheck": "tsc --noEmit"
 	},
@@ -57,7 +62,8 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"typescript": "catalog:"
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	},
 	"repository": {
 		"type": "git",

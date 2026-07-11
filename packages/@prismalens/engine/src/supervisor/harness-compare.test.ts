@@ -113,6 +113,7 @@ describe.skipIf(!enabled)(
 				baseURL: BASE_URL,
 				apiKey: KEY ?? "",
 				model: MODEL,
+				configured: true,
 			};
 
 			const harnesses = [

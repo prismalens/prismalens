@@ -16,30 +16,28 @@
  * Prints pass/fail per check; exits non-zero iff a HARD check fails. No tinyexec /
  * check-tool helper here — availability is a dependency-free PATH scan.
  */
-import { accessSync, existsSync, constants as fsConstants } from "node:fs";
+import { accessSync, constants as fsConstants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { resolveCredentials } from "@prismalens/config/credentials";
 import { HARNESS_BINARY } from "@prismalens/config/harness";
-import { LLM_CREDENTIAL_ENV_VARS } from "@prismalens/config/llm";
+import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import { pingModel } from "@prismalens/config/model";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
-import { type PlConfig, PlConfigSchema } from "../config/schema.js";
+import type { PlConfig } from "../config/schema.js";
 import { resolveBaseDir } from "../core/session.js";
 
-/** The harness selected in config; keys the shared HARNESS_BINARY map. */
 type Harness = PlConfig["agent"]["default"];
 
 interface Check {
 	name: string;
 	pass: boolean;
 	detail: string;
-	/** A hard check failing makes `doctor` exit non-zero. */
 	hard: boolean;
 }
 
-/** Is `bin` an executable somewhere on PATH? Synchronous, dependency-free. */
 function isOnPath(bin: string): boolean {
 	const pathEnv = process.env.PATH ?? "";
 	const exts =
@@ -53,7 +51,7 @@ function isOnPath(bin: string): boolean {
 				accessSync(join(dir, bin + ext), fsConstants.X_OK);
 				return true;
 			} catch {
-				// not in this dir / not executable — keep looking
+				// keep looking
 			}
 		}
 	}
@@ -73,40 +71,80 @@ function checkHarness(harness: Harness): Check {
 	};
 }
 
-function checkCredential(harness: Harness): Check {
-	const envVar = LLM_CREDENTIAL_ENV_VARS.find(
-		(name) => (process.env[name]?.length ?? 0) > 0,
-	);
-	const credentialsFile = join(homedir(), ".claude", ".credentials.json");
-	const hasClaudeLogin =
-		harness === "claude-code" && existsSync(credentialsFile);
+async function checkCredential(
+	config: PlConfig,
+	noPing: boolean,
+): Promise<Check> {
+	let providerId = config.synth.provider;
+	let creds: ReturnType<typeof resolveCredentials> | undefined;
 
-	if (envVar) {
+	if (providerId) {
+		creds = resolveCredentials(providerId, config.synth.base_url);
+	} else {
+		for (const id of [
+			"anthropic",
+			"openai",
+			"google",
+			"groq",
+			"ollama",
+		] as const) {
+			const candidate = resolveCredentials(id, config.synth.base_url);
+			if (candidate.source !== "none") {
+				providerId = id;
+				creds = candidate;
+				break;
+			}
+		}
+		if (!creds) {
+			creds = { providerId: "ollama", source: "none" };
+			providerId = "ollama";
+		}
+	}
+
+	if (creds.source === "none") {
+		return {
+			name: "LLM credential",
+			pass: false,
+			detail: "none (reports will be RAW harness pass-through) — not verified",
+			hard: false,
+		};
+	}
+
+	const providerName = LLM_PROVIDERS[providerId as LLMProviderId].name;
+
+	if (noPing) {
 		return {
 			name: "LLM credential",
 			pass: true,
-			detail: `${envVar} is set`,
-			hard: true,
+			detail: `${providerName} (source: ${creds.source}) — ping skipped`,
+			hard: false,
 		};
 	}
-	if (hasClaudeLogin) {
+
+	const ping = await pingModel(
+		providerId as LLMProviderId,
+		config.synth.model,
+		{
+			apiKey: creds.apiKey,
+			baseURL: creds.baseURL,
+		},
+	);
+
+	if (ping.success) {
 		return {
 			name: "LLM credential",
 			pass: true,
-			detail: "~/.claude/.credentials.json present (Claude Code login)",
+			detail: `${providerName} (source: ${creds.source}) — ping OK`,
+			hard: false,
+		};
+	} else {
+		return {
+			name: "LLM credential",
+			pass: false,
+			detail: `${providerName} (source: ${creds.source}) — ping failed: ${ping.error}`,
 			hard: true,
 		};
 	}
-	const hint =
-		harness === "claude-code"
-			? "set ANTHROPIC_API_KEY or sign in with `claude` (creates ~/.claude/.credentials.json)"
-			: `set one of ${LLM_CREDENTIAL_ENV_VARS.join(", ")}`;
-	return {
-		name: "LLM credential",
-		pass: false,
-		detail: `no LLM credential found — ${hint}`,
-		hard: true,
-	};
 }
 
 async function checkWorkspace(config: PlConfig): Promise<Check> {
@@ -130,10 +168,6 @@ async function checkWorkspace(config: PlConfig): Promise<Check> {
 	}
 }
 
-/**
- * Soft check: `pl listen` refuses to start without a token, but investigate/
- * serve don't need one — so an unset token is a notice, not a failure.
- */
 export function checkListenToken(config: PlConfig): Check {
 	if (config.listen.token) {
 		return {
@@ -147,7 +181,7 @@ export function checkListenToken(config: PlConfig): Check {
 		name: "Listen intake",
 		pass: false,
 		detail:
-			'listen.token is unset — `pl listen` will refuse to start (set listen.token, e.g. "${PRISMALENS_LISTEN_TOKEN}")',
+			"listen.token is unset — `pl listen` will refuse to start (set listen.token in prismalens.config.yaml)",
 		hard: false,
 	};
 }
@@ -157,46 +191,48 @@ export default defineCommand({
 		name: "doctor",
 		description: "Preflight check the investigation environment",
 	},
-	async run() {
-		// loadConfig applies schema defaults, so this succeeds even with no config
-		// file. It only throws on an invalid file / unset ${VAR}; fall back to the
-		// built-in defaults so doctor can still report what it can.
-		let config: PlConfig;
+	args: {
+		// citty models `--no-ping` as negation of a `ping` boolean — a literal
+		// `noPing` arg would never receive it.
+		ping: {
+			type: "boolean",
+			description: "Live-ping the LLM credential (disable with --no-ping)",
+			default: true,
+		},
+	},
+	async run({ args }) {
 		try {
-			config = await loadConfig();
+			const config = await loadConfig();
+			const harness = config.agent.default;
+			const noPing = !args.ping;
+
+			const checks: Check[] = [
+				checkHarness(harness),
+				await checkCredential(config, noPing),
+				await checkWorkspace(config),
+				checkListenToken(config),
+			];
+
+			consola.log("");
+			for (const check of checks) {
+				const line = `${check.name}: ${check.detail}`;
+				if (check.pass) consola.success(line);
+				else if (check.hard) consola.error(line);
+				else consola.warn(line);
+			}
+			consola.log("");
+
+			const hardFailures = checks.filter((c) => c.hard && !c.pass);
+			if (hardFailures.length > 0) {
+				consola.error(
+					`${hardFailures.length} required check(s) failed — fix the above before investigating.`,
+				);
+				process.exit(1);
+			}
+			consola.success("All required checks passed.");
 		} catch (err) {
-			const detail = err instanceof Error ? err.message : String(err);
-			consola.warn(
-				`Could not load config (${detail}); using built-in defaults.`,
-			);
-			config = PlConfigSchema.parse({});
-		}
-
-		const harness = config.agent.default;
-
-		const checks: Check[] = [
-			checkHarness(harness),
-			checkCredential(harness),
-			await checkWorkspace(config),
-			checkListenToken(config),
-		];
-
-		consola.log("");
-		for (const check of checks) {
-			const line = `${check.name}: ${check.detail}`;
-			if (check.pass) consola.success(line);
-			else if (check.hard) consola.error(line);
-			else consola.warn(line);
-		}
-		consola.log("");
-
-		const hardFailures = checks.filter((c) => c.hard && !c.pass);
-		if (hardFailures.length > 0) {
-			consola.error(
-				`${hardFailures.length} required check(s) failed — fix the above before investigating.`,
-			);
+			consola.error(err instanceof Error ? err.message : String(err));
 			process.exit(1);
 		}
-		consola.success("All required checks passed.");
 	},
 });

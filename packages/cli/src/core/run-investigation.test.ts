@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { PlConfigSchema } from "../config/schema.js";
+import { resolveInvestigation } from "./run-investigation.js";
+
+describe("resolveInvestigation", () => {
+	let originalEnv: NodeJS.ProcessEnv;
+
+	beforeEach(() => {
+		originalEnv = process.env;
+		process.env = { ...originalEnv };
+		// Host credentials must not leak into provider-selection assertions.
+		for (const name of [
+			"ANTHROPIC_API_KEY",
+			"OPENAI_API_KEY",
+			"GOOGLE_API_KEY",
+			"GROQ_API_KEY",
+			"OLLAMA_API_KEY",
+			"CUSTOM_LLM_API_KEY",
+			"OLLAMA_BASE_URL",
+			"OPENAI_BASE_URL",
+			"CUSTOM_BASE_URL",
+		]) {
+			delete process.env[name];
+			delete process.env[`${name}_FILE`];
+		}
+	});
+
+	afterEach(() => {
+		process.env = originalEnv;
+	});
+
+	it("explicit synth.provider wins", () => {
+		process.env.ANTHROPIC_API_KEY = "k";
+		const config = PlConfigSchema.parse({
+			synth: { provider: "anthropic" },
+		});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("anthropic");
+		expect(req.synth.configured).toBe(true);
+	});
+
+	it("registry-order auto-selection (google only)", () => {
+		process.env.GOOGLE_API_KEY = "k";
+		const config = PlConfigSchema.parse({});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("google");
+		expect(req.synth.configured).toBe(true);
+	});
+
+	it("registry-order auto-selection (anthropic > google)", () => {
+		process.env.ANTHROPIC_API_KEY = "k";
+		process.env.GOOGLE_API_KEY = "k2";
+		const config = PlConfigSchema.parse({});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("anthropic");
+		expect(req.synth.configured).toBe(true);
+	});
+
+	it("registry-order auto-selection (ollama > groq)", () => {
+		process.env.GROQ_API_KEY = "k";
+		process.env.OLLAMA_API_KEY = "k2";
+		const config = PlConfigSchema.parse({});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("ollama");
+		expect(req.synth.configured).toBe(true);
+	});
+
+	it("custom without base_url errors", () => {
+		const config = PlConfigSchema.parse({
+			synth: { provider: "custom" },
+		});
+		expect(() => resolveInvestigation({ query: "test" }, config)).toThrow(
+			"Custom LLM provider requires synth.base_url to be configured.",
+		);
+	});
+
+	it("custom with CUSTOM_BASE_URL env resolves explicitly", () => {
+		process.env.CUSTOM_BASE_URL = "http://localhost:9000";
+		const config = PlConfigSchema.parse({
+			synth: { provider: "custom" },
+		});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("custom");
+		expect(req.synth.baseURL).toBe("http://localhost:9000/v1");
+	});
+
+	it("no keys anywhere -> configured false", () => {
+		for (const key of Object.keys(process.env)) {
+			if (key.includes("API_KEY") || key.includes("BASE_URL")) {
+				delete process.env[key];
+			}
+		}
+		const config = PlConfigSchema.parse({});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.configured).toBe(false);
+	});
+});

@@ -53,7 +53,7 @@ export const LLM_PROVIDERS = {
 		defaultModel: "gpt-oss:20b",
 		envVar: "OLLAMA_API_KEY", // Optional — for Ollama Cloud
 		baseUrlRequired: false,
-		defaultBaseUrl: "http://localhost:11434",
+		defaultBaseUrl: "http://localhost:11434/v1",
 		cloudBaseUrl: "https://ollama.com",
 		logoUrl: "https://models.dev/logos/ollama.svg",
 		allowedHosts: ["localhost", "127.0.0.1", "::1", "ollama.com"] as string[],
