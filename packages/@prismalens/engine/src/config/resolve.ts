@@ -175,21 +175,6 @@ export function resolveInvestigation(
 		req.harness as HarnessId,
 		mode,
 	);
-	// Honest fidelity (ADR-0017): a sandbox may only be CLAIMED when the harness
-	// actually consumes it. Only ACP-transport harnesses are spawned as a child the
-	// engine can place inside the boundary; the Agent SDK harness runs in-process,
-	// so accepting a sandbox for it would record an enforcement that never applied.
-	// Fail loudly instead of silently discarding the requested boundary.
-	if (
-		req.sandbox &&
-		HARNESS_REGISTRY[req.harness as HarnessId]?.transport !== "acp"
-	) {
-		throw new Error(
-			`Harness "${req.harness}" cannot run inside a sandbox yet (it is not ` +
-				`spawned as a child process). Drop --sandbox or use an ACP harness ` +
-				`(deepagents). Sandboxing the Agent SDK harness is a later B.1 slice.`,
-		);
-	}
 	// Honest fidelity (ADR-0017): the deepagents native passthrough once mapped
 	// `shellAllowList`/`sandbox` to the `-S`/`--sandbox` read-only enforcer flags,
 	// but no published deepagents-acp distribution has them (B.1 spike, 2026-07-03)
@@ -287,9 +272,9 @@ interface BuildHarnessOpts {
 	permissionMode?: PermissionMode;
 	/** The chosen harness's native passthrough (ADR-0017). */
 	native?: Record<string, unknown>;
-	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) path only. */
+	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) and claude-code paths. */
 	sandbox?: Sandbox;
-	/** Best-effort resource caps (ADR-0020); deepagents (ACP) path only. */
+	/** Best-effort resource caps (ADR-0020); deepagents (ACP) and claude-code paths. */
 	limits?: SandboxLimits;
 }
 
@@ -333,6 +318,8 @@ function buildHarness(
 				...(model ? { model } : {}),
 				...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
 				...(opts.native ? { native: opts.native } : {}),
+				...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+				...(opts.limits ? { limits: opts.limits } : {}),
 			});
 		default:
 			// Registry marks it implemented but no runner is wired — a programming error.
