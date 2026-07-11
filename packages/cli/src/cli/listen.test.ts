@@ -415,6 +415,122 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		expect(notifySpy).toHaveBeenCalledTimes(1);
 		expect(lines.join("\n")).toContain("Report saved for run run-slack-3");
 	});
+
+	it("notifies Slack for a no-evidence outcome", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const noEvidence: ConductRun = (async (inputs) => ({
+			runId: inputs.runId,
+			report: null,
+			failureKind: "no-evidence",
+			error: "no evidence gathered",
+		})) as unknown as ConductRun;
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: noEvidence,
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		// A no-report outcome still rejects (the server logs it), but notify
+		// fires first — gating is on webhook presence, not on the outcome.
+		await expect(
+			run("run-slack-4", [firingAlert("NoEvidenceAlert")]),
+		).rejects.toThrow(/no evidence/);
+
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(notifySpy).toHaveBeenCalledWith(
+			"http://slack.test",
+			"NoEvidenceAlert",
+			expect.objectContaining({
+				runId: "run-slack-4",
+				failureKind: "no-evidence",
+			}),
+		);
+	});
+
+	it("notifies Slack for an errored outcome", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const errored: ConductRun = (async (inputs) => ({
+			runId: inputs.runId,
+			report: null,
+			failureKind: "error",
+			error: "harness crashed",
+		})) as unknown as ConductRun;
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: errored,
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await expect(
+			run("run-slack-5", [firingAlert("ErroredAlert")]),
+		).rejects.toThrow(/harness crashed/);
+
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(notifySpy).toHaveBeenCalledWith(
+			"http://slack.test",
+			"ErroredAlert",
+			expect.objectContaining({ runId: "run-slack-5", failureKind: "error" }),
+		);
+	});
+
+	it("still invokes notify for a cancelled outcome (seam gates on webhook, not outcome; the empty-message suppression lives inside notifyRun)", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const cancelled: ConductRun = (async (inputs) => ({
+			runId: inputs.runId,
+			report: null,
+			failureKind: "cancelled",
+			error: "user abort",
+		})) as unknown as ConductRun;
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: cancelled,
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await expect(
+			run("run-slack-6", [firingAlert("CancelledAlert")]),
+		).rejects.toThrow(/user abort/);
+
+		// The listen seam does NOT skip cancelled — it hands the outcome to
+		// notify; the real notifyRun then builds an empty message and posts
+		// nothing (verified in slack-notify.test.ts).
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(notifySpy).toHaveBeenCalledWith(
+			"http://slack.test",
+			"CancelledAlert",
+			expect.objectContaining({
+				runId: "run-slack-6",
+				failureKind: "cancelled",
+			}),
+		);
+	});
 });
 
 describe("startListenFromConfig (the pl listen command body)", () => {
