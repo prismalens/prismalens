@@ -171,6 +171,9 @@ export function resolveInvestigation(
 			});
 
 	const mode = req.permissionMode ?? "read-only";
+	if (!HARNESS_REGISTRY[req.harness as HarnessId]) {
+		throw new Error(`Unknown harness: ${req.harness}`);
+	}
 	const outcome: PermissionOutcome = resolvePermissionOutcome(
 		req.harness as HarnessId,
 		mode,
@@ -278,6 +281,34 @@ interface BuildHarnessOpts {
 	limits?: SandboxLimits;
 }
 
+type HarnessRunnerBuilder = (
+	cwd: string,
+	opts: BuildHarnessOpts,
+	model: string | undefined,
+) => HarnessRunner;
+
+const HARNESS_RUNNERS: Partial<Record<HarnessId, HarnessRunnerBuilder>> = {
+	deepagents: (cwd, opts, model) =>
+		deepAgentsHarness({
+			cwd,
+			...(opts.initTimeoutMs ? { initTimeoutMs: opts.initTimeoutMs } : {}),
+			...(model ? { model } : {}),
+			...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
+			...(opts.native ? { native: opts.native } : {}),
+			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+			...(opts.limits ? { limits: opts.limits } : {}),
+		}),
+	"claude-code": (cwd, opts, model) =>
+		claudeCodeHarness({
+			cwd,
+			...(model ? { model } : {}),
+			...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
+			...(opts.native ? { native: opts.native } : {}),
+			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+			...(opts.limits ? { limits: opts.limits } : {}),
+		}),
+};
+
 /**
  * Build the Tier-2 harness runner for a backend name (throws on unknown/unbuilt).
  * The provider prefix comes from the registry (ADR-0017) — `agent.model` is a
@@ -301,30 +332,13 @@ function buildHarness(
 			? `${descriptor.modelPrefix}${opts.model}`
 			: opts.model;
 
-	switch (harnessName) {
-		case "deepagents":
-			return deepAgentsHarness({
-				cwd,
-				...(opts.initTimeoutMs ? { initTimeoutMs: opts.initTimeoutMs } : {}),
-				...(model ? { model } : {}),
-				...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
-				...(opts.native ? { native: opts.native } : {}),
-				...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
-				...(opts.limits ? { limits: opts.limits } : {}),
-			});
-		case "claude-code":
-			return claudeCodeHarness({
-				cwd,
-				...(model ? { model } : {}),
-				...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
-				...(opts.native ? { native: opts.native } : {}),
-				...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
-				...(opts.limits ? { limits: opts.limits } : {}),
-			});
-		default:
-			// Registry marks it implemented but no runner is wired — a programming error.
-			throw new Error(`No runner wired for harness: ${harnessName}`);
+	const builder = HARNESS_RUNNERS[harnessName as HarnessId];
+	if (!builder) {
+		// Registry marks it implemented but no runner is wired — a programming error.
+		throw new Error(`No runner wired for harness: ${harnessName}`);
 	}
+
+	return builder(cwd, opts, model);
 }
 
 // ---------------------------------------------------------------------------

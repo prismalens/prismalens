@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 /**
  * Hermetic tests for the honest-fidelity sandbox guard (ADR-0017/ADR-0020): a
  * sandbox may only be claimed when the harness actually consumes it. Only
@@ -129,5 +130,53 @@ describe("resolveInvestigation structured fidelity.sandbox (ADR-0020 B.1.1 follo
 			actual: "process-floor",
 			fidelity: "cooperative",
 		});
+	});
+});
+
+describe("resolveInvestigation registry-driven runner construction (SSOT)", () => {
+	it("default run path for claude-code is safe (read-only enforced)", () => {
+		const resolved = resolveInvestigation({
+			...BASE_REQUEST,
+			harness: "claude-code",
+		});
+		expect(resolved.fidelity.mode).toBe("read-only");
+		expect(resolved.fidelity.fidelity).toBe("enforced");
+		expect(resolved.harnessName).toBe("claude-code");
+		expect(typeof resolved.harness).toBe("function"); // Runner is a function returning an async generator
+	});
+
+	it("registry/map completeness: every implemented harness is constructible", () => {
+		const implementedIds = Object.keys(HARNESS_REGISTRY).filter(
+			(id) => HARNESS_REGISTRY[id as HarnessId]?.implemented,
+		);
+		for (const id of implementedIds) {
+			expect(() => {
+				resolveInvestigation({
+					...BASE_REQUEST,
+					harness: id,
+				});
+			}).not.toThrow();
+		}
+	});
+
+	it("unknown id throws Unknown harness", () => {
+		expect(() => {
+			resolveInvestigation({
+				...BASE_REQUEST,
+				harness: "bogus",
+			});
+		}).toThrow(/Unknown harness: bogus/);
+	});
+
+	it("not-implemented harness (e.g. codex) throws not implemented", () => {
+		// Verify codex is indeed marked not implemented, then test it.
+		// If codex becomes implemented, this test will need updating, but for now it's our target.
+		expect(HARNESS_REGISTRY.codex.implemented).toBe(false);
+		expect(() => {
+			resolveInvestigation({
+				...BASE_REQUEST,
+				harness: "codex",
+			});
+		}).toThrow(/The 'codex' harness is not implemented yet/);
 	});
 });
