@@ -52,7 +52,7 @@ describe("sandboxSpawnClaudeCodeProcess", () => {
 
 		const spawnFn = sandboxSpawnClaudeCodeProcess(sandbox, {
 			cwd: "/opt/fallback",
-			limits: { maxMemoryBytes: 1024 },
+			limits: { memoryMb: 1024 },
 		});
 
 		const abortController = new AbortController();
@@ -70,7 +70,7 @@ describe("sandboxSpawnClaudeCodeProcess", () => {
 		expect(sandbox.spawnMock).toHaveBeenCalledWith("claude", ["--version"], {
 			cwd: "/opt/explicit",
 			env: { FOO: "bar" },
-			limits: { maxMemoryBytes: 1024 },
+			limits: { memoryMb: 1024 },
 		});
 	});
 
