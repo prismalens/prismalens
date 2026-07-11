@@ -15,6 +15,14 @@ When code contributions open, they will be gated by the Developer Certificate
 of Origin (DCO, `Signed-off-by` on every commit) under Apache-2.0
 inbound=outbound. This section will be updated when that happens.
 
+Alongside the DCO, a one-time **Contributor License Agreement** ([CLA.md](CLA.md))
+will apply. It exists purely for IP hygiene — it keeps the Project's copyright in
+one clean place, as is standard for open-core projects (Grafana, Sentry) — and it
+does not change the license: your contributions remain licensed to everyone under
+Apache-2.0, inbound = outbound. It is **not in force yet**; when contributions
+open, a bot will ask each new contributor to sign once on their first pull
+request by posting a short comment. Nothing is required of you today.
+
 ## Ground rules
 
 - **The trunk branch is `main`, and it is protected.** Every change lands

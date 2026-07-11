@@ -1,0 +1,85 @@
+# Contributor License Agreement (CLA) gate.
+#
+# DORMANT: this repository is "not accepting outside code contributions yet"
+# (see CONTRIBUTING.md > Contribution status). The machinery lands now so it is
+# ready the moment contributions open; until then no external PRs arrive, so it
+# does nothing in practice. It also does nothing for the maintainer's own PRs —
+# the repo owner is on the `allowlist` below.
+#
+# ADVISORY, not blocking. The CLA action posts a commit status that goes
+# `failure` until every non-allowlisted PR author signs. That status is NOT
+# listed in .github/governance.json's `required_status_checks`, so it never
+# blocks merge — it is an informational signal only. This is deliberate: we do
+# not touch branch protection here.
+#
+#   To make it REQUIRED later: add `{ "context": "CLA Assistant" }` to the
+#   `required_status_checks` array in .github/governance.json, then run
+#   `bash scripts/sync-repo-governance.sh` (needs the GOVERNANCE_TOKEN PAT).
+#   The context string is this job's name ("CLA Assistant") — confirm the exact
+#   name on a real PR's checks list before wiring it as required.
+#
+# Action pin: contributor-assistant/github-action (Marketplace: "CLA Assistant
+# Lite"). The upstream repo was ARCHIVED (read-only) on 2026-03-23, so `v2.6.1`
+# is the final release and can never move — there is no floating `v2` major tag
+# to track, and none would gain anything on a frozen repo. We therefore pin the
+# exact final release, which is also what the action's own README recommends.
+# For a stricter supply-chain posture, swap the tag for that release's full
+# commit SHA (it will never change).
+
+name: "CLA Assistant"
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+# Explicit permissions so the job works even if the repo default GITHUB_TOKEN is
+# read-only. `contents: write` is needed because signatures are stored IN this
+# repository (on the branch below); it could drop to `read` only if signatures
+# lived in a remote repo, which we are not doing.
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  CLAAssistant:
+    name: "CLA Assistant"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "CLA Assistant"
+        # Run on PR events, and on the two magic comment bodies the action uses
+        # to sign ("I have read the CLA Document and I hereby sign the CLA") or
+        # to re-check ("recheck").
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          # Built-in token — no secret to create. This is the ONLY secret the
+          # workflow needs; signatures live in-repo so no PERSONAL_ACCESS_TOKEN.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Signature ledger, stored IN this repo (README-recommended default —
+          # no remote repo, no extra PAT). Do NOT create this file by hand: the
+          # action creates it on first signature; a pre-created file makes the
+          # run fail.
+          path-to-signatures: "signatures/version1/cla.json"
+
+          # The document contributors are agreeing to. Must be a full URL.
+          path-to-document: "https://github.com/prismalens/prismalens/blob/main/CLA.md"
+
+          # Branch the signature ledger is committed to. The action's README
+          # warns the signatures branch "should not be protected", and this
+          # repo's `main` IS protected (see .github/governance.json ruleset), so
+          # signatures cannot live on `main`. We use a dedicated, unprotected
+          # in-repo branch instead. ACTIVATION PREREQUISITE: create this branch
+          # (e.g. `git switch --orphan cla-signatures && git commit --allow-empty
+          # -m "init cla signatures" && git push -u origin cla-signatures`) and
+          # leave it unprotected before enabling outside contributions.
+          branch: "cla-signatures"
+
+          # Nobody in the allowlist is asked to sign. Covers the repo owner
+          # (their own PRs) and bots (which cannot sign). Extend as maintainers
+          # are added.
+          allowlist: "Sumit1993,dependabot[bot],renovate[bot]"
