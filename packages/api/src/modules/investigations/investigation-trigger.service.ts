@@ -122,24 +122,21 @@ export class InvestigationTriggerService {
 		if (!policy) {
 			return DEFAULT_TRIGGER_CONFIGS[tier] ?? DEFAULT_TRIGGER_CONFIGS.tier_3;
 		}
+		const fallback =
+			DEFAULT_TRIGGER_CONFIGS[tier] ?? DEFAULT_TRIGGER_CONFIGS.tier_3;
 		return {
 			tier: policy.tier,
 			autoInvestigate: policy.autoInvestigate,
 			triggerOnAlertCount:
-				policy.triggerOnAlertCount ??
-				DEFAULT_TRIGGER_CONFIGS.tier_3.triggerOnAlertCount,
+				policy.triggerOnAlertCount ?? fallback.triggerOnAlertCount,
 			triggerOnSeverities:
-				policy.triggerOnSeverities ??
-				DEFAULT_TRIGGER_CONFIGS.tier_3.triggerOnSeverities,
+				policy.triggerOnSeverities ?? fallback.triggerOnSeverities,
 			triggerDelayMinutes:
-				policy.triggerDelayMinutes ??
-				DEFAULT_TRIGGER_CONFIGS.tier_3.triggerDelayMinutes,
+				policy.triggerDelayMinutes ?? fallback.triggerDelayMinutes,
 			reInvestigateOnNewAlerts:
-				policy.reInvestigateOnNewAlerts ??
-				DEFAULT_TRIGGER_CONFIGS.tier_3.reInvestigateOnNewAlerts,
+				policy.reInvestigateOnNewAlerts ?? fallback.reInvestigateOnNewAlerts,
 			reInvestigateThreshold:
-				policy.reInvestigateThreshold ??
-				DEFAULT_TRIGGER_CONFIGS.tier_3.reInvestigateThreshold,
+				policy.reInvestigateThreshold ?? fallback.reInvestigateThreshold,
 		};
 	}
 
@@ -363,25 +360,59 @@ export class InvestigationTriggerService {
 			},
 		});
 
-		// Resolve connectionIds for the worker (only ids go to Redis; worker fetches creds on-demand).
-		const integrations =
-			await this.integrationsService.getIntegrationsForService(
-				incident.serviceId ?? undefined,
-			);
-		const connectionIds = integrations.map((i) => i.connectionId);
+		let jobId: string | null;
+		try {
+			// Resolve connectionIds for the worker (only ids go to Redis; worker fetches creds on-demand).
+			// Without a serviceId we can't scope integrations to this incident's service,
+			// so send no connectionIds rather than every active integration.
+			const connectionIds = incident.serviceId
+				? (
+						await this.integrationsService.getIntegrationsForService(
+							incident.serviceId,
+						)
+					).map((i) => i.connectionId)
+				: [];
 
-		const jobId = await this.queueService.addInvestigationJob({
-			incidentId: incident.id,
-			investigationId: investigation.id,
-			priority: this.mapSeverityToPriority(incident.severity),
-			context: {
-				title: incident.title,
-				severity: incident.severity,
-				alertCount: incident.alertCount,
-				serviceName: incident.service?.name,
-			},
-			connectionIds,
-		});
+			jobId = await this.queueService.addInvestigationJob({
+				incidentId: incident.id,
+				investigationId: investigation.id,
+				priority: this.mapSeverityToPriority(incident.severity),
+				context: {
+					title: incident.title,
+					severity: incident.severity,
+					alertCount: incident.alertCount,
+					serviceName: incident.service?.name,
+				},
+				connectionIds,
+			});
+		} catch (error) {
+			// AC: no dangling pending rows — @OnEvent swallows listener errors, so a throw
+			// in the resolve/enqueue path would otherwise leave the row 'pending' forever.
+			const message = error instanceof Error ? error.message : String(error);
+			await this.prisma.investigation.update({
+				where: { id: investigation.id },
+				data: {
+					status: "failed",
+					error: `Failed to trigger investigation: ${message}`,
+				},
+			});
+			await this.timelineService.create({
+				incidentId: incident.id,
+				type: TimelineEntryType.custom,
+				title: "Auto-investigation failed",
+				description:
+					"The investigation could not be triggered due to an unexpected error.",
+				source: TimelineSource.system,
+				metadata: {
+					investigationId: investigation.id,
+					triggerReason: decision.reason,
+				},
+			});
+			this.logger.warn(
+				`Trigger failed for investigation ${investigation.id}: ${message}`,
+			);
+			return;
+		}
 
 		if (jobId === null) {
 			// AC: no dangling pending rows — mark failed + timeline entry.

@@ -237,6 +237,24 @@ describe("InvestigationTriggerService", () => {
 			);
 			expect(mockTimelineService.create).toHaveBeenCalled();
 		});
+
+		it("should mark failed when integration/enqueue throws", async () => {
+			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
+			mockIntegrationsService.getIntegrationsForService.mockRejectedValue(
+				new Error("boom"),
+			);
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockQueueService.addInvestigationJob).not.toHaveBeenCalled();
+			expect(mockPrisma.investigation.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "inv-1" },
+					data: { status: "failed", error: expect.any(String) },
+				}),
+			);
+			expect(mockTimelineService.create).toHaveBeenCalled();
+		});
 	});
 
 	describe("handleAlertCorrelated", () => {

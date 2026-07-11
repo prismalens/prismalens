@@ -68,7 +68,7 @@ describe("CorrelationService", () => {
 				matched: true,
 				incidentId: "inc-1",
 				isNewIncident: false,
-			} as CorrelationResult);
+			});
 
 			const alert = { id: "alert-1" } as Alert;
 
@@ -92,7 +92,7 @@ describe("CorrelationService", () => {
 			vi.spyOn(spyTarget, "runCorrelation").mockResolvedValue({
 				matched: false,
 				isNewIncident: false,
-			} as CorrelationResult);
+			});
 
 			const alert = { id: "alert-1" } as Alert;
 
