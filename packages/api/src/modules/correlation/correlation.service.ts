@@ -2,9 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import type { Alert, CorrelationRule, Incident } from "@prismalens/database";
 import * as crypto from "crypto";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import {
+	ALERT_CORRELATED_EVENT,
+	type AlertCorrelatedEvent,
+} from "../../shared/events/investigation-events.js";
 import { IncidentsService } from "../incidents/incidents.service.js";
 import {
 	CreateCorrelationRuleDto,
@@ -40,6 +45,7 @@ export class CorrelationService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => IncidentsService))
 		private readonly incidentsService: IncidentsService,
+		private readonly eventEmitter: EventEmitter2,
 	) {}
 
 	/**
@@ -171,6 +177,19 @@ export class CorrelationService {
 	 * Returns the incident (existing or new) the alert should be linked to
 	 */
 	async correlateAlert(alert: Alert): Promise<CorrelationResult> {
+		const result = await this.runCorrelation(alert);
+		if (result.matched && result.incidentId) {
+			const payload: AlertCorrelatedEvent = {
+				alertId: alert.id,
+				incidentId: result.incidentId,
+				isNewIncident: result.isNewIncident,
+			};
+			this.eventEmitter.emit(ALERT_CORRELATED_EVENT, payload);
+		}
+		return result;
+	}
+
+	private async runCorrelation(alert: Alert): Promise<CorrelationResult> {
 		// 1. First try rule-based correlation
 		const ruleResult = await this.matchToIncidentByRules(alert);
 		if (ruleResult.matched) {
