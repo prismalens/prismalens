@@ -14,7 +14,10 @@
  */
 import { resolve } from "node:path";
 import type { PermissionMode } from "@prismalens/config/harness";
-import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
+import {
+	INVESTIGATION_DEFAULTS,
+	SYNTH_DEFAULTS,
+} from "@prismalens/config/investigation";
 import { getDefaultModel } from "@prismalens/config/llm";
 import type { ServiceContext } from "@prismalens/contracts";
 import {
@@ -38,7 +41,8 @@ export function resolveSynthCredsFromEnv(): {
 		baseURL:
 			process.env.OLLAMA_BASE_URL ??
 			process.env.OPENAI_BASE_URL ??
-			INVESTIGATION_DEFAULTS.synth.baseURL,
+			// Same literal `hasTier1Provider` compares against — must never drift.
+			SYNTH_DEFAULTS.baseURL,
 	};
 }
 
