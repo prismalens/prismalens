@@ -14,9 +14,19 @@
  * Based on BigPanda pattern: proactive investigation for critical incidents
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import { OnEvent } from "@nestjs/event-emitter";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { SettingsService } from "../../core/settings/settings.service.js";
+import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
+import {
+	ALERT_CORRELATED_EVENT,
+	type AlertCorrelatedEvent,
+} from "../../shared/events/investigation-events.js";
+import { IntegrationsService } from "../integrations/integrations.service.js";
+import { TimelineService } from "../timeline/timeline.service.js";
 
 /**
  * Trigger decision result
@@ -94,15 +104,40 @@ const DEFAULT_TRIGGER_CONFIGS: Record<string, TriggerConfig> = {
 export class InvestigationTriggerService {
 	private readonly logger = new Logger(InvestigationTriggerService.name);
 
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly settingsService: SettingsService,
+		private readonly queueService: QueueService,
+		private readonly integrationsService: IntegrationsService,
+		@Inject(forwardRef(() => TimelineService))
+		private readonly timelineService: TimelineService,
+	) {}
 
 	/**
 	 * Get trigger configuration for a service tier
 	 */
 	async getTriggerConfig(tier: string): Promise<TriggerConfig> {
-		// TODO: Load from settings table when investigation_triggers setting is implemented
-		// For now, use default configs
-		return DEFAULT_TRIGGER_CONFIGS[tier] || DEFAULT_TRIGGER_CONFIGS.tier_3;
+		const { policies } = await this.settingsService.getInvestigationPolicies();
+		const policy = policies.find((p) => p.tier === tier);
+		if (!policy) {
+			return DEFAULT_TRIGGER_CONFIGS[tier] ?? DEFAULT_TRIGGER_CONFIGS.tier_3;
+		}
+		const fallback =
+			DEFAULT_TRIGGER_CONFIGS[tier] ?? DEFAULT_TRIGGER_CONFIGS.tier_3;
+		return {
+			tier: policy.tier,
+			autoInvestigate: policy.autoInvestigate,
+			triggerOnAlertCount:
+				policy.triggerOnAlertCount ?? fallback.triggerOnAlertCount,
+			triggerOnSeverities:
+				policy.triggerOnSeverities ?? fallback.triggerOnSeverities,
+			triggerDelayMinutes:
+				policy.triggerDelayMinutes ?? fallback.triggerDelayMinutes,
+			reInvestigateOnNewAlerts:
+				policy.reInvestigateOnNewAlerts ?? fallback.reInvestigateOnNewAlerts,
+			reInvestigateThreshold:
+				policy.reInvestigateThreshold ?? fallback.reInvestigateThreshold,
+		};
 	}
 
 	/**
@@ -185,6 +220,24 @@ export class InvestigationTriggerService {
 		};
 	}
 
+	@OnEvent(ALERT_CORRELATED_EVENT)
+	async handleAlertCorrelated(event: AlertCorrelatedEvent): Promise<void> {
+		const [alert, incident] = await Promise.all([
+			this.prisma.alert.findUnique({ where: { id: event.alertId } }),
+			this.prisma.incident.findUnique({
+				where: { id: event.incidentId },
+				include: { service: true },
+			}),
+		]);
+		if (!alert || !incident) {
+			this.logger.warn(
+				`alert.correlated: alert ${event.alertId} or incident ${event.incidentId} not found`,
+			);
+			return;
+		}
+		await this.onAlertCorrelated(alert, incident);
+	}
+
 	/**
 	 * Called when an alert is correlated to an incident
 	 * Determines if this correlation should trigger an investigation
@@ -199,19 +252,18 @@ export class InvestigationTriggerService {
 
 		const decision = await this.shouldTriggerInvestigation(incident);
 
-		if (decision.shouldTrigger) {
-			this.logger.log(
-				`Auto-triggering investigation for incident ${incident.number}: ${decision.reason}`,
+		if (!decision.shouldTrigger) {
+			this.logger.debug(
+				`No auto-investigation for incident ${incident.number}: ${decision.reason}`,
 			);
-
-			// If there's a delay, schedule the trigger
-			if (decision.delay && decision.delay > 0) {
-				await this.scheduleDelayedTriggerCheck(incident, decision.delay);
-			} else {
-				// Trigger immediately
-				await this.triggerInvestigation(incident, decision);
-			}
+			return;
 		}
+
+		this.logger.log(
+			`Auto-triggering investigation for incident ${incident.number}: ${decision.reason}`,
+		);
+
+		await this.triggerInvestigation(incident, decision);
 	}
 
 	/**
@@ -295,7 +347,7 @@ export class InvestigationTriggerService {
 	 * Trigger an investigation for an incident
 	 */
 	async triggerInvestigation(
-		incident: Incident,
+		incident: Incident & { service?: Service | null },
 		decision: TriggerDecision,
 	): Promise<void> {
 		// Create investigation record with trigger info
@@ -308,15 +360,105 @@ export class InvestigationTriggerService {
 			},
 		});
 
-		this.logger.log(
-			`Created investigation ${investigation.id} for incident ${incident.number}`,
-			{ triggerType: decision.triggerType, reason: decision.reason },
-		);
+		let jobId: string | null;
+		try {
+			// Resolve connectionIds for the worker (only ids go to Redis; worker fetches creds on-demand).
+			// Without a serviceId we can't scope integrations to this incident's service,
+			// so send no connectionIds rather than every active integration.
+			const connectionIds = incident.serviceId
+				? (
+						await this.integrationsService.getIntegrationsForService(
+							incident.serviceId,
+						)
+					).map((i) => i.connectionId)
+				: [];
 
-		// TODO: Queue the investigation job
-		// await this.queueService.addInvestigationJob({
-		//   investigationId: investigation.id,
-		//   incidentId: incident.id,
-		// });
+			jobId = await this.queueService.addInvestigationJob({
+				incidentId: incident.id,
+				investigationId: investigation.id,
+				priority: this.mapSeverityToPriority(incident.severity),
+				context: {
+					title: incident.title,
+					severity: incident.severity,
+					alertCount: incident.alertCount,
+					serviceName: incident.service?.name,
+				},
+				connectionIds,
+			});
+		} catch (error) {
+			// AC: no dangling pending rows — @OnEvent swallows listener errors, so a throw
+			// in the resolve/enqueue path would otherwise leave the row 'pending' forever.
+			const message = error instanceof Error ? error.message : String(error);
+			await this.prisma.investigation.update({
+				where: { id: investigation.id },
+				data: {
+					status: "failed",
+					error: `Failed to trigger investigation: ${message}`,
+				},
+			});
+			await this.timelineService.create({
+				incidentId: incident.id,
+				type: TimelineEntryType.custom,
+				title: "Auto-investigation failed",
+				description:
+					"The investigation could not be triggered due to an unexpected error.",
+				source: TimelineSource.system,
+				metadata: {
+					investigationId: investigation.id,
+					triggerReason: decision.reason,
+				},
+			});
+			this.logger.warn(
+				`Trigger failed for investigation ${investigation.id}: ${message}`,
+			);
+			return;
+		}
+
+		if (jobId === null) {
+			// AC: no dangling pending rows — mark failed + timeline entry.
+			await this.prisma.investigation.update({
+				where: { id: investigation.id },
+				data: {
+					status: "failed",
+					error: "Failed to enqueue investigation job (queue unavailable)",
+				},
+			});
+			await this.timelineService.create({
+				incidentId: incident.id,
+				type: TimelineEntryType.custom,
+				title: "Auto-investigation enqueue failed",
+				description:
+					"The investigation could not be queued (queue unavailable).",
+				source: TimelineSource.system,
+				metadata: {
+					investigationId: investigation.id,
+					triggerReason: decision.reason,
+				},
+			});
+			this.logger.warn(
+				`Enqueue failed for investigation ${investigation.id}; marked failed`,
+			);
+			return;
+		}
+
+		this.logger.log(
+			`Enqueued auto-investigation ${investigation.id} (job ${jobId}) for incident ${incident.number}`,
+		);
+	}
+
+	private mapSeverityToPriority(
+		severity: string,
+	): "low" | "normal" | "high" | "critical" {
+		switch (severity) {
+			case "critical":
+				return "critical";
+			case "high":
+				return "high";
+			case "low":
+			case "info":
+				return "low";
+			default:
+				return "normal";
+		}
 	}
 }

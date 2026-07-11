@@ -9,12 +9,12 @@ export default defineCommand({
 	meta: {
 		name: "status",
 		description:
-			"List incident groups and runs with their state (running, done, errored)",
+			"List incident groups and runs with their state (running, done, errored, suppressed)",
 	},
 	args: {
 		status: {
 			type: "string",
-			description: "Filter by status (running, done, errored)",
+			description: "Filter by status (running, done, errored, suppressed)",
 			required: false,
 		},
 		"base-dir": {
@@ -27,7 +27,12 @@ export default defineCommand({
 		const sessions = createSessionManager(args["base-dir"]);
 
 		try {
-			const valid: SessionStatus[] = ["running", "done", "errored"];
+			const valid: SessionStatus[] = [
+				"running",
+				"done",
+				"errored",
+				"suppressed",
+			];
 			let filter: { status?: SessionStatus[] } | undefined;
 			if (args.status) {
 				const parts = args.status
@@ -62,6 +67,9 @@ export default defineCommand({
 				if (run.alertname) info.push(`alertname: ${run.alertname}`);
 				if (run.agent) info.push(`agent: ${run.agent}`);
 				if (run.repo) info.push(`repo: ${run.repo}`);
+				if (run.status === "suppressed" && run.suppressionReason) {
+					info.push(`suppressed_by: ${run.suppressionReason}`);
+				}
 
 				consola.log(info.join(" | "));
 			}

@@ -34,12 +34,13 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 		CREATE TABLE IF NOT EXISTS runs (
 			run_id         TEXT PRIMARY KEY,
 			group_id       TEXT REFERENCES groups(id),
-			status         TEXT NOT NULL CHECK (status IN ('running','done','errored')),
+			status         TEXT NOT NULL CHECK (status IN ('running','done','errored','suppressed')),
 			alertname      TEXT,
 			agent          TEXT,
 			repo           TEXT,
 			workspace_path TEXT NOT NULL,
 			error          TEXT,
+			suppression_reason TEXT,
 			created_at     TEXT NOT NULL,
 			updated_at     TEXT NOT NULL,
 			completed_at   TEXT

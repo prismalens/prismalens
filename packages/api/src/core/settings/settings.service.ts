@@ -21,6 +21,11 @@ export class SettingsService {
 			requiresApproval: true,
 			pageOnCall: true,
 			postToSlack: true,
+			triggerOnAlertCount: 3,
+			triggerOnSeverities: ["critical", "high"] as ("critical" | "high")[],
+			triggerDelayMinutes: 2,
+			reInvestigateOnNewAlerts: true,
+			reInvestigateThreshold: 3,
 		},
 		tier_2: {
 			tier: "tier_2" as const,
@@ -28,6 +33,11 @@ export class SettingsService {
 			requiresApproval: false,
 			pageOnCall: false,
 			postToSlack: true,
+			triggerOnAlertCount: 5,
+			triggerOnSeverities: ["critical"] as ("critical" | "high")[],
+			triggerDelayMinutes: 5,
+			reInvestigateOnNewAlerts: false,
+			reInvestigateThreshold: 5,
 		},
 		tier_3: {
 			tier: "tier_3" as const,
@@ -35,6 +45,11 @@ export class SettingsService {
 			requiresApproval: false,
 			pageOnCall: false,
 			postToSlack: true,
+			triggerOnAlertCount: 10,
+			triggerOnSeverities: ["critical"] as ("critical" | "high")[],
+			triggerDelayMinutes: 10,
+			reInvestigateOnNewAlerts: false,
+			reInvestigateThreshold: 10,
 		},
 		tier_4: {
 			tier: "tier_4" as const,
@@ -42,6 +57,11 @@ export class SettingsService {
 			requiresApproval: false,
 			pageOnCall: false,
 			postToSlack: false,
+			triggerOnAlertCount: 20,
+			triggerOnSeverities: [] as ("critical" | "high")[],
+			triggerDelayMinutes: 15,
+			reInvestigateOnNewAlerts: false,
+			reInvestigateThreshold: 20,
 		},
 	};
 
@@ -91,6 +111,11 @@ export class SettingsService {
 			requiresApproval?: boolean;
 			pageOnCall?: boolean;
 			postToSlack?: boolean;
+			triggerOnAlertCount?: number;
+			triggerOnSeverities?: ("critical" | "high")[];
+			triggerDelayMinutes?: number;
+			reInvestigateOnNewAlerts?: boolean;
+			reInvestigateThreshold?: number;
 		},
 	) {
 		if (!SettingsService.VALID_TIERS.has(tier)) {

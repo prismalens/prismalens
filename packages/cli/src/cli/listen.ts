@@ -17,6 +17,11 @@ import { defineCommand } from "citty";
 import { consola } from "consola";
 import { loadConfig } from "../config/loader.js";
 import type { PlConfig } from "../config/schema.js";
+import {
+	type CapsGate,
+	createCapsGate,
+	type DispatchCaps,
+} from "../core/caps.js";
 import { resolveRepoSlug } from "../core/detect-repo.js";
 import { createFileSessionStore } from "../core/file-session-store.js";
 import {
@@ -44,14 +49,23 @@ export interface InvestigationRunnerOptions {
 	log: (line: string) => void;
 }
 
+import type { ConductedOutcome } from "@prismalens/engine";
 /**
  * The two external boundaries of the chain, injectable for tests: `conductRun`
  * spawns a harness, `resolveRunSandbox` probes/arms a sandbox. Everything else
  * (config loader, resolver, file store) runs real.
  */
+import { notifyRun } from "../core/slack-notify.js";
+
 export interface InvestigationRunnerDeps {
 	conductRun?: typeof engineConductRun;
 	resolveRunSandbox?: typeof realResolveRunSandbox;
+	notify?: (
+		webhookUrl: string,
+		alertname: string,
+		outcome: ConductedOutcome,
+	) => Promise<void>;
+	capsGate?: CapsGate;
 }
 
 /**
@@ -87,7 +101,12 @@ export function createInvestigationRunner(
 ): (runId: string, alerts: Record<string, unknown>[]) => Promise<void> {
 	const conductRun = deps.conductRun ?? engineConductRun;
 	const resolveRunSandbox = deps.resolveRunSandbox ?? realResolveRunSandbox;
+	const notify = deps.notify ?? notifyRun;
 	const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
+
+	// One gate for the server's lifetime; state (active count + hourly window)
+	// persists across payloads even though config is re-resolved per payload.
+	const caps: CapsGate = deps.capsGate ?? createCapsGate();
 
 	return async (runId, alerts) => {
 		// Per payload, not once at startup: config (and thus repo/workspace/harness)
@@ -96,6 +115,43 @@ export function createInvestigationRunner(
 			cwd,
 			...(options.configPath ? { configPath: options.configPath } : {}),
 		});
+
+		const dispatchCaps: DispatchCaps = {
+			maxConcurrent: config.listen.caps.max_concurrent,
+			maxPerHour: config.listen.caps.max_per_hour,
+		};
+		const decision = caps.tryDispatch(dispatchCaps, Date.now());
+		if (!decision.allow) {
+			const alertname = ((
+				alerts[0]?.labels as Record<string, unknown> | undefined
+			)?.alertname ?? undefined) as string | undefined;
+			// Structured suppression log — match the repo convention
+			// (slack-notify.ts: console.error(JSON.stringify({ event, ... }))).
+			console.error(
+				JSON.stringify({
+					event: "dispatch_suppressed",
+					runId,
+					reason: decision.reason,
+					...(alertname ? { alertname } : {}),
+					maxConcurrent: dispatchCaps.maxConcurrent,
+					maxPerHour: dispatchCaps.maxPerHour,
+				}),
+			);
+			options.log(`Suppressed run ${runId} (${decision.reason} cap)`);
+			const suppressedSessions = createSessionManager(
+				config.workspace.base_dir,
+			);
+			try {
+				await suppressedSessions.recordSuppressed({
+					runId,
+					reason: decision.reason,
+					...(alertname ? { alertname } : {}),
+				});
+			} finally {
+				suppressedSessions.close?.();
+			}
+			return; // never arm a sandbox / call conductRun for a suppressed run
+		}
 
 		// AC5: the checkout under investigation follows the ALERT (service label →
 		// catalog), not the directory the server happened to start in.
@@ -118,6 +174,9 @@ export function createInvestigationRunner(
 								sandbox: selection.sandbox,
 								requestedSandbox: selection.requested,
 							}
+						: {}),
+					...(config.listen.caps.max_turns !== undefined
+						? { maxTurns: config.listen.caps.max_turns }
 						: {}),
 				},
 				config,
@@ -155,11 +214,26 @@ export function createInvestigationRunner(
 				},
 			);
 
+			if (config.listen.slack_webhook_url) {
+				try {
+					await notify(
+						config.listen.slack_webhook_url,
+						primaryAlert.alertname as string,
+						outcome,
+					);
+				} catch (err) {
+					// Fallback for an injected notify that violates the contract.
+					// The real notifyRun never rejects.
+					options.log(`Slack notification failed with error: ${err}`);
+				}
+			}
+
 			if (!outcome.report) {
 				throw new Error(outcome.error ?? "investigation produced no evidence");
 			}
 			options.log(`Report saved for run ${runId}`);
 		} finally {
+			caps.release();
 			// Close this run's sqlite connection — the runner opens one PER alert,
 			// so leaving it open would leak a handle on every webhook.
 			sessions?.close?.();
