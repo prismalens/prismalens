@@ -109,6 +109,31 @@ describe("slack-notify", () => {
 			});
 			expect(msg).toBe("");
 		});
+
+		it("raw pass-through report renders via the normal report path, surfacing the raw notice", () => {
+			const outcome: ConductedOutcome = {
+				runId: "run-raw",
+				failureKind: "none",
+				error: null,
+				report: {
+					summary:
+						"[RAW — un-synthesized harness output; no Tier-1 provider configured]\n\nbranch conclusion here",
+					rootCause: null,
+					hypotheses: [],
+				} as any,
+			};
+			const msg = buildSlackMessage({
+				alertname: "RawAlert",
+				runId: "run-raw",
+				outcome,
+			});
+			expect(msg).toContain(
+				"[RAW — un-synthesized harness output; no Tier-1 provider configured]",
+			);
+			expect(msg).toContain("RawAlert");
+			expect(msg).toContain("branch conclusion here");
+			expect(msg).toContain("Run run-raw — pl report run-raw");
+		});
 	});
 
 	describe("notifyRun", () => {

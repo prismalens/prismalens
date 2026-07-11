@@ -35,6 +35,21 @@ export const SYNTH_DEFAULTS = {
 	baseURL: "https://ollama.com/v1",
 } as const;
 
+/**
+ * Returns \`true\` when \`creds.apiKey\` is non-empty (trimmed) OR \`creds.baseURL\` is set
+ * and !== SYNTH_DEFAULTS.baseURL. Pure, no env reads — safe for engine import.
+ * ADR-0013/0006, cites #131.
+ */
+export function hasTier1Provider(creds: {
+	apiKey?: string;
+	baseURL?: string;
+}): boolean {
+	return (
+		(creds.apiKey !== undefined && creds.apiKey.trim() !== "") ||
+		(creds.baseURL !== undefined && creds.baseURL !== SYNTH_DEFAULTS.baseURL)
+	);
+}
+
 /** ACP cold-start headroom: the first handshake (spawn + model warm-up) is slow. */
 export const HARNESS_INIT_TIMEOUT_MS = 120_000;
 /** Per-prompt timeout for a harness turn. */

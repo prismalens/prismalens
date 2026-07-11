@@ -29,6 +29,19 @@ import type { PlConfig } from "../config/schema.js";
 
 export type { ResolvedInvestigation };
 
+export function resolveSynthCredsFromEnv(): {
+	apiKey: string;
+	baseURL: string;
+} {
+	return {
+		apiKey: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
+		baseURL:
+			process.env.OLLAMA_BASE_URL ??
+			process.env.OPENAI_BASE_URL ??
+			INVESTIGATION_DEFAULTS.synth.baseURL,
+	};
+}
+
 export interface ResolveInvestigationArgs {
 	/** Raw alert payload (piped JSON / RPC param) coerced into a FiringAlert. */
 	alert?: Record<string, unknown>;
@@ -79,11 +92,7 @@ export function resolveInvestigation(
 	const cwd = args.repo ? resolve(args.repo) : process.cwd();
 
 	// BYO-key (ADR-0006): the engine never reads env — the CLI injects it here.
-	const openaiBaseUrl =
-		process.env.OLLAMA_BASE_URL ??
-		process.env.OPENAI_BASE_URL ??
-		INVESTIGATION_DEFAULTS.synth.baseURL;
-	const apiKey = process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
+	const { apiKey, baseURL: openaiBaseUrl } = resolveSynthCredsFromEnv();
 
 	// Tier-1 reduce model: explicit agent.model wins; else the provider default
 	// (ADR-0013). The CLI synth endpoint is OpenAI-compatible (ollama/openai base URL).

@@ -61,6 +61,24 @@ function agentStep(
 	};
 }
 
+function toolResult(branchId: string, seq: number): CanonicalEvent {
+	return {
+		kind: "tool_result",
+		runId: "run-1",
+		branchId,
+		path: [],
+		seq,
+		ts: "2026-07-01T00:00:00.000Z",
+		result: {
+			name: "curl",
+			toolCallId: `${branchId}-${seq}`,
+			source: "curl prom",
+			ok: true,
+			preview: "value 42",
+		},
+	};
+}
+
 function errorEvent(
 	runId: string,
 	branchId: string,
@@ -222,6 +240,42 @@ describe("conductRun — durable lifecycle ordering (ADR-0018)", () => {
 			error: "spawn deepagents-acp ENOENT",
 			failureKind: "error",
 		});
+	});
+
+	it("no provider ⇒ finish(raw report): create → append(per event incl report) → finish, failureKind none", async () => {
+		const harness: HarnessRunner = async function* (_prompt, ctx) {
+			yield agentStep(ctx.runId, ctx.branchId, 0);
+			yield toolResult(ctx.branchId, 1);
+		};
+
+		const { store, calls, failedWith } = recordingStore();
+
+		const outcome = await conductRun(
+			{
+				...optsWith(harness),
+				synth: {
+					providerId: "ollama",
+					model: "gpt-oss:20b",
+					apiKey: "",
+					baseURL: "https://ollama.com/v1",
+				},
+			},
+			{ sink: () => {}, store },
+		);
+
+		expect(calls).toEqual([
+			"create",
+			"append:agent_step",
+			"append:tool_result",
+			"append:report",
+			"finish",
+		]);
+		expect(outcome.report).toBeDefined();
+		expect(outcome.report?.summary).toContain(
+			"[RAW — un-synthesized harness output; no Tier-1 provider configured]",
+		);
+		expect(outcome.failureKind).toBe("none");
+		expect(failedWith).toEqual([]);
 	});
 });
 
