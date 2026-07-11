@@ -8,6 +8,20 @@ describe("resolveInvestigation", () => {
 	beforeEach(() => {
 		originalEnv = process.env;
 		process.env = { ...originalEnv };
+		// Host credentials must not leak into provider-selection assertions.
+		for (const name of [
+			"ANTHROPIC_API_KEY",
+			"OPENAI_API_KEY",
+			"GOOGLE_API_KEY",
+			"GROQ_API_KEY",
+			"OLLAMA_API_KEY",
+			"CUSTOM_LLM_API_KEY",
+			"OLLAMA_BASE_URL",
+			"OPENAI_BASE_URL",
+		]) {
+			delete process.env[name];
+			delete process.env[`${name}_FILE`];
+		}
 	});
 
 	afterEach(() => {
