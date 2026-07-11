@@ -103,6 +103,115 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		expect(report).toEqual(REPORT);
 	});
 
+	it("respects max_concurrent cap and records suppression", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
+			"utf-8",
+		);
+
+		let release = (): void => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+
+		const conductSpy = vi.fn(async (inputs) => {
+			await gate;
+			return { runId: inputs.runId, report: REPORT };
+		});
+
+		const { createCapsGate } = await import("../core/caps.js");
+		const gateInst = createCapsGate();
+
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: conductSpy as unknown as ConductRun,
+				resolveRunSandbox: noSandbox,
+				capsGate: gateInst,
+			},
+		);
+
+		const p1 = run("run-cap-1", [firingAlert()]);
+		// Wait until the first run is fully in-flight — its caps slot acquired AND
+		// blocked inside conductRun on the gate — before dispatching the second.
+		// A fixed sleep raced on slow CI: p1 could still be between tryDispatch and
+		// conductRun, so the cap looked free / conductSpy showed 0 calls.
+		await vi.waitFor(() => expect(conductSpy).toHaveBeenCalledTimes(1));
+
+		await run("run-cap-2", [firingAlert()]);
+
+		expect(conductSpy).toHaveBeenCalledTimes(1);
+
+		const { createSessionManager } = await import("../core/session.js");
+		const sessions = createSessionManager(workspace);
+		const suppressed = await sessions.get("run-cap-2");
+		expect(suppressed?.status).toBe("suppressed");
+		expect(suppressed?.suppressionReason).toBe("concurrency");
+
+		sessions.close?.();
+
+		release();
+		await p1;
+	});
+
+	it("suppression that throws does not crash the running investigation", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
+			"utf-8",
+		);
+
+		let release = (): void => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+
+		const conductSpy = vi.fn(async (inputs) => {
+			await gate;
+			return { runId: inputs.runId, report: REPORT };
+		});
+
+		const { createCapsGate } = await import("../core/caps.js");
+		const gateInst = createCapsGate();
+
+		const { SqliteSessionManager } = await import(
+			"../core/sqlite-session-store.js"
+		);
+		const spy = vi
+			.spyOn(SqliteSessionManager.prototype, "recordSuppressed")
+			.mockRejectedValue(new Error("db down"));
+
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: conductSpy as unknown as ConductRun,
+				resolveRunSandbox: noSandbox,
+				capsGate: gateInst,
+			},
+		);
+
+		const p1 = run("run-cap-3", [firingAlert()]);
+		// Wait until the first run is fully in-flight — its caps slot acquired AND
+		// blocked inside conductRun on the gate — before dispatching the second.
+		// A fixed sleep raced on slow CI: p1 could still be between tryDispatch and
+		// conductRun, so the cap looked free / conductSpy showed 0 calls.
+		await vi.waitFor(() => expect(conductSpy).toHaveBeenCalledTimes(1));
+
+		await expect(run("run-cap-4", [firingAlert()])).rejects.toThrow("db down");
+
+		expect(conductSpy).toHaveBeenCalledTimes(1);
+		expect(gateInst.activeCount).toBe(1);
+
+		release();
+		await p1;
+
+		expect(gateInst.activeCount).toBe(0);
+		spy.mockRestore();
+	});
+
 	it("re-resolves config from disk per alert, not once at startup", async () => {
 		const first = join(dir, "workspace-a");
 		const second = join(dir, "workspace-b");
@@ -229,6 +338,82 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			"harness exploded",
 		);
 		expect(destroy).toHaveBeenCalledTimes(1);
+	});
+
+	it("notifies Slack exactly once per group investigation when configured", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: fakeConductRun(),
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await run("run-slack-1", [
+			firingAlert("GroupAlert1"),
+			firingAlert("GroupAlert2"),
+		]);
+
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(notifySpy).toHaveBeenCalledWith(
+			"http://slack.test",
+			"GroupAlert1",
+			expect.objectContaining({ runId: "run-slack-1" }),
+		);
+	});
+
+	it("never notifies Slack if slack_webhook_url is omitted", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\n`,
+			"utf-8",
+		);
+		const notifySpy = vi.fn().mockResolvedValue(undefined);
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: fakeConductRun(),
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await run("run-slack-2", [firingAlert("DisabledAlert")]);
+
+		expect(notifySpy).not.toHaveBeenCalled();
+	});
+
+	it("isolates the run from a broken Slack webhook (run-outcome isolation)", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			"utf-8",
+		);
+		const notifySpy = vi.fn().mockRejectedValue(new Error("slack is down"));
+		const lines: string[] = [];
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: (l) => lines.push(l) },
+			{
+				conductRun: fakeConductRun(),
+				resolveRunSandbox: noSandbox,
+				notify: notifySpy,
+			},
+		);
+
+		await run("run-slack-3", [firingAlert("BrokenSlack")]);
+
+		expect(notifySpy).toHaveBeenCalledTimes(1);
+		expect(lines.join("\n")).toContain("Report saved for run run-slack-3");
 	});
 });
 

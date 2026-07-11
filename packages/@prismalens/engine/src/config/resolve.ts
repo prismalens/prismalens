@@ -128,6 +128,8 @@ export interface InvestigationRequest {
 	 * CLI wires it from `agent.max_branches`; the worker leaves it defaulted.
 	 */
 	maxBranches?: number;
+	/** Per-run turn ceiling, applied to the default (Claude Code) harness (issue #62). */
+	maxTurns?: number;
 }
 
 export interface ResolvedInvestigation {
@@ -235,6 +237,7 @@ export function resolveInvestigation(
 		native: req.harnessNative,
 		...(req.sandbox ? { sandbox: req.sandbox } : {}),
 		...(req.limits ? { limits: req.limits } : {}),
+		...(req.maxTurns !== undefined ? { maxTurns: req.maxTurns } : {}),
 	});
 
 	return {
@@ -279,6 +282,8 @@ interface BuildHarnessOpts {
 	sandbox?: Sandbox;
 	/** Best-effort resource caps (ADR-0020); deepagents (ACP) and claude-code paths. */
 	limits?: SandboxLimits;
+	/** Per-run turn ceiling (issue #62); consumed by the claude-code builder. */
+	maxTurns?: number;
 }
 
 type HarnessRunnerBuilder = (
@@ -306,6 +311,7 @@ const HARNESS_RUNNERS: Partial<Record<HarnessId, HarnessRunnerBuilder>> = {
 			...(opts.native ? { native: opts.native } : {}),
 			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
 			...(opts.limits ? { limits: opts.limits } : {}),
+			...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}),
 		}),
 };
 
