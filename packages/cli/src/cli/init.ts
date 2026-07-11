@@ -83,24 +83,33 @@ export default defineCommand({
 		name: "init",
 		description: `Scaffold a ${CONFIG_FILENAME} in the current directory`,
 	},
-	async run() {
-		const configPath = resolve(process.cwd(), CONFIG_FILENAME);
+	async run({ args, cmd }) {
+		try {
+			for (const key of Object.keys(args)) {
+				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
+					consola.error(`Unknown option: --${key}`); process.exit(1);
+				}
+			}
+			const configPath = resolve(process.cwd(), CONFIG_FILENAME);
+			if (existsSync(configPath)) {
+				consola.info(
+					`${CONFIG_FILENAME} already exists at ${configPath} — leaving it untouched.`,
+				);
+				return;
+			}
 
-		if (existsSync(configPath)) {
+			// PlConfigSchema.parse({}) yields the fully-defaulted config; the scaffold
+			// renders those exact values so it never drifts from the schema.
+			const defaults = PlConfigSchema.parse({});
+			await writeFile(configPath, renderDefaultConfig(defaults), "utf-8");
+
+			consola.success(`Created ${configPath}`);
 			consola.info(
-				`${CONFIG_FILENAME} already exists at ${configPath} — leaving it untouched.`,
+				"Edit it for your stack, then run `prismalens doctor` to verify your environment.",
 			);
-			return;
+		} catch (err) {
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exit(1);
 		}
-
-		// PlConfigSchema.parse({}) yields the fully-defaulted config; the scaffold
-		// renders those exact values so it never drifts from the schema.
-		const defaults = PlConfigSchema.parse({});
-		await writeFile(configPath, renderDefaultConfig(defaults), "utf-8");
-
-		consola.success(`Created ${configPath}`);
-		consola.info(
-			"Edit it for your stack, then run `prismalens doctor` to verify your environment.",
-		);
 	},
 });

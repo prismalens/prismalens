@@ -304,7 +304,7 @@ export default defineCommand({
 	meta: {
 		name: "listen",
 		description:
-			"Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).",
+			"Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).\n\nExamples:\n  $ PRISMALENS_LISTEN_TOKEN=xyz pl listen --config my-stack.yaml",
 	},
 	args: {
 		config: {
@@ -315,8 +315,14 @@ export default defineCommand({
 	},
 	/* v8 ignore start — process-global glue (cwd + consola binding); the body it
 	   delegates to is fully covered via startListenFromConfig tests */
-	async run({ args }) {
+	async run({ args, cmd }) {
 		try {
+			for (const key of Object.keys(args)) {
+				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
+					consola.error(`Unknown option: --${key}`); process.exit(1);
+				}
+			}
+
 			const server = await startListenFromConfig({
 				cwd: process.cwd(),
 				...(args.config ? { configPath: args.config } : {}),

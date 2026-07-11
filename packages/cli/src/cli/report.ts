@@ -27,10 +27,16 @@ export default defineCommand({
 			required: false,
 		},
 	},
-	async run({ args }) {
-		const sessions = createSessionManager(args["base-dir"]);
-
+	async run({ args, cmd }) {
+		let sessions;
 		try {
+			for (const key of Object.keys(args)) {
+				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
+					consola.error(`Unknown option: --${key}`); process.exit(1);
+				}
+			}
+			sessions = createSessionManager(args["base-dir"]);
+
 			const report = await sessions.readReport(args.id);
 			if (!report) {
 				consola.error(`No report for run ${args.id}`);
@@ -53,7 +59,7 @@ export default defineCommand({
 			consola.error("Failed to read report:", err);
 			process.exitCode = 1;
 		} finally {
-			sessions.close?.();
+			sessions?.close?.();
 		}
 	},
 });

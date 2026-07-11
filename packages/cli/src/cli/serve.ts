@@ -24,8 +24,13 @@ export default defineCommand({
 		description:
 			"Run the JSON-RPC 2.0 server over stdio (the LIVE channel for the desktop app / API).",
 	},
-	async run() {
+	async run({ args, cmd }) {
 		try {
+			for (const key of Object.keys(args)) {
+				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
+					consola.error(`Unknown option: --${key}`); process.exit(1);
+				}
+			}
 			await runJsonRpcServer({ version: SERVER_VERSION });
 		} catch (err) {
 			consola.error(err instanceof Error ? err.message : String(err));

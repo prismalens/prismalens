@@ -189,7 +189,8 @@ export function checkListenToken(config: PlConfig): Check {
 export default defineCommand({
 	meta: {
 		name: "doctor",
-		description: "Preflight check the investigation environment",
+		description:
+			"Preflight check the investigation environment\n\nExamples:\n  $ pl doctor --no-ping",
 	},
 	args: {
 		// citty models `--no-ping` as negation of a `ping` boolean — a literal
@@ -200,8 +201,14 @@ export default defineCommand({
 			default: true,
 		},
 	},
-	async run({ args }) {
+	async run({ args, cmd }) {
 		try {
+			for (const key of Object.keys(args)) {
+				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
+					consola.error(`Unknown option: --${key}`); process.exit(1);
+				}
+			}
+
 			const config = await loadConfig();
 			const harness = config.agent.default;
 			const noPing = !args.ping;

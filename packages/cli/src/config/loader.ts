@@ -30,6 +30,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, parse as parsePath, resolve } from "node:path";
 import envPaths from "env-paths";
 import { parse as parseYaml } from "yaml";
+import { ZodError } from "zod";
 import { type PlConfig, PlConfigSchema } from "./schema.js";
 
 const PROJECT_CONFIG_FILENAME = "prismalens.config.yaml";
@@ -197,6 +198,16 @@ export async function loadConfig(
 	try {
 		config = PlConfigSchema.parse(interpolated);
 	} catch (err) {
+		const failedFile =
+			projectLocalFile && projectLocalFile !== projectFile
+				? projectLocalFile
+				: (projectFile ?? userFile ?? "config");
+		if (err instanceof ZodError) {
+			const issues = err.issues
+				.map((i) => `${i.path.join(".")}: ${i.message}`)
+				.join("\n");
+			throw new Error(`Invalid configuration in ${failedFile}:\n${issues}`);
+		}
 		const detail = err instanceof Error ? err.message : String(err);
 		throw new Error(`Invalid PrismaLens configuration: ${detail}`);
 	}
