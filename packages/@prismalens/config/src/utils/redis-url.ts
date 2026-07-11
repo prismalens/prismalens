@@ -6,7 +6,7 @@
  * Follows the same pattern as database-url.ts.
  */
 
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 import type { QueueConfig } from "../env/queue.js";
 
 /**

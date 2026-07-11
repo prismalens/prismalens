@@ -16,7 +16,6 @@ import { resolve } from "node:path";
 import { conductRun as engineConductRun } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import { consola } from "consola";
-import { assertKnownFlags } from "./flags.js";
 import { loadConfig } from "../config/loader.js";
 import type { PlConfig } from "../config/schema.js";
 import {
@@ -37,6 +36,7 @@ import {
 	startListenServer,
 	WEBHOOK_PATH,
 } from "../http/server.js";
+import { assertKnownFlags } from "./flags.js";
 import { createGroupingLayer } from "./grouping.js";
 import {
 	liveTimelineEntry,

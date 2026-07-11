@@ -12,9 +12,9 @@
  */
 import { defineCommand } from "citty";
 import { consola } from "consola";
-import { assertKnownFlags } from "./flags.js";
 import { runJsonRpcServer } from "../jsonrpc/server.js";
 import { cliVersion } from "../version.js";
+import { assertKnownFlags } from "./flags.js";
 
 /** Reported as serverInfo.version by `initialize` (matches the CLI's meta.version). */
 const SERVER_VERSION = cliVersion();

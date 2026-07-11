@@ -6,7 +6,7 @@
  * Used to construct connection strings for different database providers.
  */
 
-import { join } from "path";
+import { join } from "node:path";
 import type { DatabaseConfig } from "../env/database.js";
 import { getAppDataDir } from "./app-data.js";
 
@@ -40,7 +40,7 @@ function buildPostgresUrl(config: DatabaseConfig): string {
  * @param config - Database configuration object
  * @returns SQLite file path (prefixed with file:)
  */
-function buildSqliteUrl(config: DatabaseConfig): string {
+function buildSqliteUrl(_config: DatabaseConfig): string {
 	const appDataDir = getAppDataDir();
 	const dbPath = join(appDataDir, "prismalens.db");
 	return `file:${dbPath}`;

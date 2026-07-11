@@ -119,7 +119,7 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 		writeLocal("listen:\n  port: 'not-a-number'\n");
 
 		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
-			/Invalid configuration \(merged from: .*, .*\):/
+			/Invalid configuration \(merged from: .*, .*\):/,
 		);
 	});
 
@@ -127,15 +127,17 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 		const { ZodError } = await import("zod");
 		const { PlConfigSchema } = await import("./schema.js");
 		const spy = vi.spyOn(PlConfigSchema, "parse").mockImplementation(() => {
-			throw new ZodError([{
-				code: "custom",
-				message: "Expected object, received array",
-				path: [],
-			}]);
+			throw new ZodError([
+				{
+					code: "custom",
+					message: "Expected object, received array",
+					path: [],
+				},
+			]);
 		});
 
 		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
-			/<root>: Expected object, received array/
+			/<root>: Expected object, received array/,
 		);
 
 		spy.mockRestore();
