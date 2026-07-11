@@ -81,5 +81,9 @@ jobs:
 
           # Nobody in the allowlist is asked to sign. Covers the repo owner
           # (their own PRs) and bots (which cannot sign). Extend as maintainers
-          # are added.
-          allowlist: "Sumit1993,dependabot[bot],renovate[bot]"
+          # are added. github-actions[bot] authors the changesets release PRs
+          # (changeset-release/main); without it here the CLA check fails on
+          # every release PR. The action also counts Co-Authored-By trailers as
+          # committers, so `claude` (noreply@anthropic.com, on AI-assisted
+          # commits) must be listed or every such PR goes CLA-red.
+          allowlist: "Sumit1993,dependabot[bot],renovate[bot],github-actions[bot],claude"
