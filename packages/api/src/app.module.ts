@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, REQUEST } from "@nestjs/core";
+import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ThrottlerModule } from "@nestjs/throttler";
 // oRPC imports
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
@@ -75,6 +76,9 @@ const orpcLogger = new Logger({ context: "oRPC" });
 				environment: process.env.NODE_ENV ?? "development",
 			},
 		}),
+
+		// Event Emitter
+		EventEmitterModule.forRoot(),
 
 		// oRPC Module - provides end-to-end type safety
 		ORPCModule.forRootAsync({
