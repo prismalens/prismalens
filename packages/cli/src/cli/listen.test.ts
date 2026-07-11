@@ -134,7 +134,11 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		);
 
 		const p1 = run("run-cap-1", [firingAlert()]);
-		await new Promise((r) => setTimeout(r, 10));
+		// Wait until the first run is fully in-flight — its caps slot acquired AND
+		// blocked inside conductRun on the gate — before dispatching the second.
+		// A fixed sleep raced on slow CI: p1 could still be between tryDispatch and
+		// conductRun, so the cap looked free / conductSpy showed 0 calls.
+		await vi.waitFor(() => expect(conductSpy).toHaveBeenCalledTimes(1));
 
 		await run("run-cap-2", [firingAlert()]);
 
@@ -190,7 +194,11 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		);
 
 		const p1 = run("run-cap-3", [firingAlert()]);
-		await new Promise((r) => setTimeout(r, 10));
+		// Wait until the first run is fully in-flight — its caps slot acquired AND
+		// blocked inside conductRun on the gate — before dispatching the second.
+		// A fixed sleep raced on slow CI: p1 could still be between tryDispatch and
+		// conductRun, so the cap looked free / conductSpy showed 0 calls.
+		await vi.waitFor(() => expect(conductSpy).toHaveBeenCalledTimes(1));
 
 		await expect(run("run-cap-4", [firingAlert()])).rejects.toThrow("db down");
 
