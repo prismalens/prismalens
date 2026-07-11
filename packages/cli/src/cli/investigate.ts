@@ -122,7 +122,7 @@ export default defineCommand({
 			description:
 				"Suppress progress + the human renderer (errors still go to stderr).",
 		},
-		maxTurns: {
+		"max-turns": {
 			type: "string",
 			description: "Per-run turn ceiling for the default harness.",
 		},
@@ -159,8 +159,8 @@ export default defineCommand({
 				cliOverrides: { ...(args.model ? { model: args.model } : {}) },
 			});
 
-			const maxTurns = args.maxTurns
-				? Number(args.maxTurns)
+			const maxTurns = args["max-turns"]
+				? Number(args["max-turns"])
 				: config.agent.max_turns;
 
 			// Session label: config `repo` (owner/name) wins; else git auto-detect; else none.
