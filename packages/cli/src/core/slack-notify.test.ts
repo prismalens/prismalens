@@ -148,6 +148,15 @@ describe("slack-notify", () => {
 			await notifyRun("http://slack.test", "TestAlert", outcome);
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 			expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+			const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+			expect(url).toBe("http://slack.test");
+			expect(request.method).toBe("POST");
+			expect(request.headers).toEqual({ "Content-Type": "application/json" });
+			const parsedBody = JSON.parse(request.body as string);
+			expect(parsedBody.text).toBe(
+				"TestAlert\nInvestigation errored: boom\nRun run-128 — pl report run-128",
+			);
 		});
 
 		it("isolates failures (the core invariant)", async () => {
