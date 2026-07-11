@@ -21,7 +21,11 @@ import { access, mkdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { resolveCredentials } from "@prismalens/config/credentials";
 import { HARNESS_BINARY } from "@prismalens/config/harness";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	AUTO_SELECT_PROVIDER_IDS,
+	LLM_PROVIDERS,
+	type LLMProviderId,
+} from "@prismalens/config/llm";
 import { pingModel } from "@prismalens/config/model";
 import { defineCommand } from "citty";
 import consola from "consola";
@@ -81,13 +85,7 @@ async function checkCredential(
 	if (providerId) {
 		creds = resolveCredentials(providerId, config.synth.base_url);
 	} else {
-		for (const id of [
-			"anthropic",
-			"openai",
-			"google",
-			"groq",
-			"ollama",
-		] as const) {
+		for (const id of AUTO_SELECT_PROVIDER_IDS) {
 			const candidate = resolveCredentials(id, config.synth.base_url);
 			if (candidate.source !== "none") {
 				providerId = id;
@@ -205,7 +203,8 @@ export default defineCommand({
 		try {
 			for (const key of Object.keys(args)) {
 				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`); process.exit(1);
+					consola.error(`Unknown option: --${key}`);
+					process.exit(1);
 				}
 			}
 

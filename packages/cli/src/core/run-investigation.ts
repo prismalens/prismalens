@@ -17,14 +17,10 @@ import { ensureV1, resolveCredentials } from "@prismalens/config/credentials";
 import type { PermissionMode } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
+	AUTO_SELECT_PROVIDER_IDS,
 	getDefaultModel,
-	LLM_PROVIDERS,
 	type LLMProviderId,
 } from "@prismalens/config/llm";
-
-const AUTO_SELECT_PROVIDERS = (
-	Object.keys(LLM_PROVIDERS) as LLMProviderId[]
-).filter((id) => id !== "custom");
 
 import type { ServiceContext } from "@prismalens/contracts";
 import {
@@ -88,7 +84,7 @@ export function isSynthConfigured(config: PlConfig): boolean {
 				.source !== "none"
 		);
 	}
-	for (const id of AUTO_SELECT_PROVIDERS) {
+	for (const id of AUTO_SELECT_PROVIDER_IDS) {
 		if (resolveCredentials(id).source !== "none") {
 			return true;
 		}
@@ -114,7 +110,7 @@ export function resolveInvestigation(
 			);
 		}
 	} else {
-		for (const id of AUTO_SELECT_PROVIDERS) {
+		for (const id of AUTO_SELECT_PROVIDER_IDS) {
 			const candidate = resolveCredentials(id);
 			if (candidate.source !== "none") {
 				providerId = id;
