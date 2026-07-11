@@ -1,6 +1,6 @@
 {
 	"name": "@prismalens/config",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"license": "Apache-2.0",
 	"description": "Shared configuration and environment variable management for PrismaLens",
 	"main": "dist/index.js",
