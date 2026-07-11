@@ -12,6 +12,7 @@
  */
 import { defineCommand } from "citty";
 import { consola } from "consola";
+import { assertKnownFlags } from "./flags.js";
 import { runJsonRpcServer } from "../jsonrpc/server.js";
 import { cliVersion } from "../version.js";
 
@@ -26,12 +27,7 @@ export default defineCommand({
 	},
 	async run({ args, cmd }) {
 		try {
-			for (const key of Object.keys(args)) {
-				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`);
-					process.exit(1);
-				}
-			}
+			assertKnownFlags(args, cmd);
 			await runJsonRpcServer({ version: SERVER_VERSION });
 		} catch (err) {
 			consola.error(err instanceof Error ? err.message : String(err));

@@ -4,6 +4,7 @@
 import { defineCommand } from "citty";
 import consola from "consola";
 import { createSessionManager } from "../core/session.js";
+import { assertKnownFlags } from "./flags.js";
 
 export default defineCommand({
 	meta: {
@@ -30,12 +31,7 @@ export default defineCommand({
 	async run({ args, cmd }) {
 		let sessions: ReturnType<typeof createSessionManager> | undefined;
 		try {
-			for (const key of Object.keys(args)) {
-				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`);
-					process.exit(1);
-				}
-			}
+			assertKnownFlags(args, cmd);
 			sessions = createSessionManager(args["base-dir"]);
 
 			const report = await sessions.readReport(args.id);

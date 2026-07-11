@@ -20,6 +20,7 @@ import {
 	type PlConfig,
 	PlConfigSchema,
 } from "../config/schema.js";
+import { assertKnownFlags } from "./flags.js";
 
 const CONFIG_FILENAME = "prismalens.config.yaml";
 
@@ -85,12 +86,7 @@ export default defineCommand({
 	},
 	async run({ args, cmd }) {
 		try {
-			for (const key of Object.keys(args)) {
-				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`);
-					process.exit(1);
-				}
-			}
+			assertKnownFlags(args, cmd);
 			const configPath = resolve(process.cwd(), CONFIG_FILENAME);
 			if (existsSync(configPath)) {
 				consola.info(

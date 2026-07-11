@@ -32,6 +32,7 @@ import consola from "consola";
 import { loadConfig } from "../config/loader.js";
 import type { PlConfig } from "../config/schema.js";
 import { resolveBaseDir } from "../core/session.js";
+import { assertKnownFlags } from "./flags.js";
 
 type Harness = PlConfig["agent"]["default"];
 
@@ -201,12 +202,7 @@ export default defineCommand({
 	},
 	async run({ args, cmd }) {
 		try {
-			for (const key of Object.keys(args)) {
-				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`);
-					process.exit(1);
-				}
-			}
+			assertKnownFlags(args, cmd);
 
 			const config = await loadConfig();
 			const harness = config.agent.default;

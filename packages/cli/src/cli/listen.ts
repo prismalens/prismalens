@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { conductRun as engineConductRun } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import { consola } from "consola";
+import { assertKnownFlags } from "./flags.js";
 import { loadConfig } from "../config/loader.js";
 import type { PlConfig } from "../config/schema.js";
 import {
@@ -317,12 +318,7 @@ export default defineCommand({
 	   delegates to is fully covered via startListenFromConfig tests */
 	async run({ args, cmd }) {
 		try {
-			for (const key of Object.keys(args)) {
-				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`);
-					process.exit(1);
-				}
-			}
+			assertKnownFlags(args, cmd);
 
 			const server = await startListenFromConfig({
 				cwd: process.cwd(),

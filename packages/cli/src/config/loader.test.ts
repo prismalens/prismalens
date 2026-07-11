@@ -4,7 +4,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./loader.js";
 
 describe("loadConfig — layered precedence (ADR-0014)", () => {
@@ -112,5 +112,32 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
 			/unset environment variable/,
 		);
+	});
+
+	it("loader error message lists the merged file(s)", async () => {
+		writeProject("agent:\n  default: 'invalid'\n");
+		writeLocal("listen:\n  port: 'not-a-number'\n");
+
+		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
+			/Invalid configuration \(merged from: .*, .*\):/
+		);
+	});
+
+	it("root-level Zod issue renders <root>:", async () => {
+		const { ZodError } = await import("zod");
+		const { PlConfigSchema } = await import("./schema.js");
+		const spy = vi.spyOn(PlConfigSchema, "parse").mockImplementation(() => {
+			throw new ZodError([{
+				code: "custom",
+				message: "Expected object, received array",
+				path: [],
+			}]);
+		});
+
+		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
+			/<root>: Expected object, received array/
+		);
+
+		spy.mockRestore();
 	});
 });

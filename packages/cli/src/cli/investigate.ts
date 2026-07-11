@@ -50,6 +50,7 @@ import {
 	resolveInvestigation,
 } from "../core/run-investigation.js";
 import { createSessionManager } from "../core/session.js";
+import { assertKnownFlags } from "./flags.js";
 
 export default defineCommand({
 	meta: {
@@ -129,12 +130,7 @@ export default defineCommand({
 	},
 	async run({ args, cmd }) {
 		try {
-			for (const key of Object.keys(args)) {
-				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`);
-					process.exit(1);
-				}
-			}
+			assertKnownFlags(args, cmd);
 
 			const json = Boolean(args.json);
 			// In --json mode stdout must be machine-clean, so suppress all info-level
