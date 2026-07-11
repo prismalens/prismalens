@@ -24,11 +24,12 @@ export default defineCommand({
 		},
 	},
 	async run({ args, cmd }) {
-		let sessions;
+		let sessions: ReturnType<typeof createSessionManager>;
 		try {
 			for (const key of Object.keys(args)) {
 				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`); process.exit(1);
+					consola.error(`Unknown option: --${key}`);
+					process.exit(1);
 				}
 			}
 			sessions = createSessionManager(args["base-dir"]);

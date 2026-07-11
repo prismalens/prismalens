@@ -28,7 +28,8 @@ export default defineCommand({
 		try {
 			for (const key of Object.keys(args)) {
 				if (key !== "_" && !(cmd?.args as Record<string, unknown>)?.[key]) {
-					consola.error(`Unknown option: --${key}`); process.exit(1);
+					consola.error(`Unknown option: --${key}`);
+					process.exit(1);
 				}
 			}
 			await runJsonRpcServer({ version: SERVER_VERSION });
