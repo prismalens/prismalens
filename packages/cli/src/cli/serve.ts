@@ -24,6 +24,12 @@ export default defineCommand({
 			"Run the JSON-RPC 2.0 server over stdio (the LIVE channel for the desktop app / API).",
 	},
 	async run() {
-		await runJsonRpcServer({ version: SERVER_VERSION });
+		try {
+			await runJsonRpcServer({ version: SERVER_VERSION });
+		} catch (err) {
+			const consola = require("consola").default || require("consola");
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exit(1);
+		}
 	},
 });

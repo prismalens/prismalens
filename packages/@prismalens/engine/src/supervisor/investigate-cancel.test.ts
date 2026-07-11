@@ -35,6 +35,7 @@ const SYNTH = {
 	providerId: "ollama" as const,
 	model: "gpt-oss:20b",
 	baseURL: "http://ollama",
+	configured: true,
 };
 
 function alert(name: string): FiringAlert {

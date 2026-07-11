@@ -70,6 +70,7 @@ describe.skipIf(!enabled)("sreforge booklogr — Phase-1 diagnosis eval", () => 
 				baseURL: BASE_URL,
 				apiKey: KEY ?? "",
 				model: MODEL,
+				configured: true,
 			},
 		});
 

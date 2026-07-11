@@ -167,6 +167,13 @@ export async function loadConfig(
 ): Promise<PlConfig> {
 	const cwd = options.cwd ?? process.cwd();
 
+	if (options.configPath) {
+		const resolvedPath = resolve(options.configPath);
+		if (!existsSync(resolvedPath)) {
+			throw new Error(`Configuration file not found: ${resolvedPath}`);
+		}
+	}
+
 	const userFile = userConfigFile();
 	const projectFile = options.configPath
 		? resolve(options.configPath)

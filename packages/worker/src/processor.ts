@@ -614,6 +614,7 @@ async function buildRequest(
 				model: llmConfig.model,
 				apiKey,
 				...(synthIsOpenAiCompat ? { baseURL } : {}),
+				configured: true,
 			},
 			harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
 			initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,

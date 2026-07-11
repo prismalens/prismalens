@@ -17,25 +17,27 @@
  * const debug = readBoolEnv('DEBUG', false);
  */
 
-import { existsSync, readFileSync } from "fs";
+import { readFileSync } from "fs";
 
 /**
  * Read environment variable with file-based fallback.
  * Supports Docker/K8s secrets via {NAME}_FILE pattern.
  */
 export function readEnv(name: string): string | undefined {
-	// Check for file-based secret first (Docker/K8s pattern)
+	if (process.env[name] !== undefined) {
+		return process.env[name];
+	}
 	const filePath = process.env[`${name}_FILE`];
-	if (filePath && existsSync(filePath)) {
+	if (filePath) {
 		try {
-			return readFileSync(filePath, "utf-8").trim();
+			return readFileSync(filePath, "utf-8").replace(/\r?\n$/, "");
 		} catch (error) {
 			throw new Error(
-				`Failed to read ${name} from file ${filePath}: ${error instanceof Error ? error.message : error}`,
+				`Failed to read ${name} from file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	}
-	return process.env[name];
+	return undefined;
 }
 
 /**

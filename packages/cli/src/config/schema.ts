@@ -20,6 +20,7 @@
  */
 import { HARNESS_IDS, PERMISSION_MODES } from "@prismalens/config/harness";
 import { SANDBOX_MODES } from "@prismalens/engine";
+import { llmProviderIdSchema } from "@prismalens/config/llm";
 import { z } from "zod";
 
 /**
@@ -88,6 +89,7 @@ export const AgentConfigSchema = z.object({
 	 * default (3). A single-alert run always uses one branch regardless.
 	 */
 	max_branches: z.number().int().positive().optional(),
+	max_turns: z.number().int().positive().optional(),
 });
 
 export const WorkspaceConfigSchema = z.object({
@@ -187,6 +189,12 @@ function optionalWithDefaults<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 		.transform((val): z.output<T> => schema.parse(val ?? {}));
 }
 
+export const SynthConfigSchema = z.object({
+	provider: llmProviderIdSchema.optional(),
+	model: z.string().optional(),
+	base_url: z.string().optional(),
+});
+
 export const PlConfigSchema = z.object({
 	$schema: z.string().optional(),
 	/** Convenience single-repo default (owner/name); `repos` is the multi-repo map. */
@@ -203,6 +211,7 @@ export const PlConfigSchema = z.object({
 	/** Read-only log-query system the harness may query. */
 	logs: optionalWithDefaults(LogSourceConfigSchema),
 	agent: optionalWithDefaults(AgentConfigSchema),
+	synth: optionalWithDefaults(SynthConfigSchema),
 	workspace: optionalWithDefaults(WorkspaceConfigSchema),
 	listen: optionalWithDefaults(ListenConfigSchema),
 	telemetry: optionalWithDefaults(TelemetryConfigSchema),

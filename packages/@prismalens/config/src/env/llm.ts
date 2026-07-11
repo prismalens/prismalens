@@ -18,8 +18,6 @@ import { z } from "zod";
  * GOOGLE_API_KEY=AIza...
  * GROQ_API_KEY=gsk_...
  *
- * # Ollama configuration (optional)
- * PRISMALENS_OLLAMA_BASE_URL=http://localhost:11434
  * ```
  */
 export const llmEnvSchema = z.object({
@@ -32,12 +30,6 @@ export const llmEnvSchema = z.object({
 		.string()
 		.optional()
 		.describe("Ollama Cloud API key (optional - for cloud mode)"),
-
-	// Ollama base URL - internal config
-	PRISMALENS_OLLAMA_BASE_URL: z
-		.string()
-		.default("http://localhost:11434")
-		.describe("Ollama server URL"),
 });
 
 export type LLMEnvConfig = z.infer<typeof llmEnvSchema>;

@@ -22,7 +22,7 @@ const TELEMETRY = {
 	apiUrl: "http://api:5000",
 };
 
-const SYNTH = { providerId: "ollama" as const, model: "gpt-oss:20b" };
+const SYNTH = { providerId: "ollama" as const, model: "gpt-oss:20b", configured: true };
 
 function alert(name: string): FiringAlert {
 	return {

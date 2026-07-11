@@ -24,7 +24,6 @@ import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
-	hasTier1Provider,
 	INVESTIGATION_DEFAULTS,
 } from "@prismalens/config/investigation";
 import type {
@@ -125,8 +124,13 @@ export default defineCommand({
 			description:
 				"Suppress progress + the human renderer (errors still go to stderr).",
 		},
+		maxTurns: {
+			type: "string",
+			description: "Per-run turn ceiling for the default harness.",
+		},
 	},
 	async run({ args }) {
+		try {
 		const json = Boolean(args.json);
 		// In --json mode stdout must be machine-clean, so suppress all info-level
 		// chatter (consola routes info/log/success to stdout, warn/error to stderr).
@@ -156,6 +160,8 @@ export default defineCommand({
 			cwd,
 			cliOverrides: { ...(args.model ? { model: args.model } : {}) },
 		});
+		
+		const maxTurns = args.maxTurns ? Number(args.maxTurns) : config.agent.max_turns;
 
 		// Session label: config `repo` (owner/name) wins; else git auto-detect; else none.
 		const repoSlug = await resolveRepoSlug(config.repo, cwd);
@@ -204,16 +210,9 @@ export default defineCommand({
 			} else if (selection?.actual === "srt") {
 				info("Sandbox: srt (enforced OS boundary).");
 			}
-		} catch (err) {
-			consola.error(err instanceof Error ? err.message : String(err));
-			process.exitCode = 1;
-			return;
-		}
 
-		try {
 			let resolved: ResolvedInvestigation;
-			try {
-				resolved = resolveInvestigation(
+			resolved = resolveInvestigation(
 					{
 						...(piped ? { alert: piped } : {}),
 						...(args.query ? { query: args.query } : {}),
@@ -227,21 +226,17 @@ export default defineCommand({
 									requestedSandbox: selection.requested,
 								}
 							: {}),
+						...(maxTurns ? { maxTurns } : {}),
 					},
 					config,
 				);
-			} catch (err) {
-				consola.error(err instanceof Error ? err.message : String(err));
-				process.exitCode = 1;
-				return;
-			}
-			const { context, harness, synth, harnessName, fidelity, maxBranches } =
+			const { context, harness, synth, harnessName: resolvedHarnessName, fidelity, maxBranches } =
 				resolved;
 			const primaryAlert = context.alerts[0];
 
-			if (!hasTier1Provider(synth)) {
+			if (!synth.configured) {
 				info(
-					"No Tier-1 provider configured — report will be RAW harness pass-through (un-synthesized). This is supported.",
+					"No Tier-1 provider configured (checked env + _FILE for: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, OLLAMA_API_KEY) — reports will be RAW harness pass-through (un-synthesized). This is supported.",
 				);
 			}
 
@@ -315,6 +310,10 @@ export default defineCommand({
 			// The command owns the resolved boundary's lifecycle (ADR-0020) — tear it
 			// down whichever way the run exited (report, no-evidence, error, or throw).
 			if (selection) await selection.sandbox.destroy();
+		}
+		} catch (err) {
+			consola.error(err instanceof Error ? err.message : String(err));
+			process.exit(1);
 		}
 	},
 });

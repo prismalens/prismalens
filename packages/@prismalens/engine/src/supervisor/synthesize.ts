@@ -44,6 +44,8 @@ export interface SynthesisModelConfig {
 	apiKey?: string;
 	/** Required for the OpenAI-compatible providers (ollama/custom). */
 	baseURL?: string;
+	/** Set to true if a tier 1 provider is configured and available. */
+	configured: boolean;
 }
 
 const SYSTEM = `You are a senior Site Reliability Engineer writing the FINAL structured root-cause report for an incident investigation.
