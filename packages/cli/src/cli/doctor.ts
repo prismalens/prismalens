@@ -19,14 +19,14 @@
 import { accessSync, constants as fsConstants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
+import { resolveCredentials } from "@prismalens/config/credentials";
 import { HARNESS_BINARY } from "@prismalens/config/harness";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
-import { resolveCredentials } from "@prismalens/config/credentials";
 import { pingModel } from "@prismalens/config/model";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
-import { type PlConfig } from "../config/schema.js";
+import type { PlConfig } from "../config/schema.js";
 import { resolveBaseDir } from "../core/session.js";
 
 type Harness = PlConfig["agent"]["default"];
@@ -71,14 +71,23 @@ function checkHarness(harness: Harness): Check {
 	};
 }
 
-async function checkCredential(config: PlConfig, noPing: boolean): Promise<Check> {
+async function checkCredential(
+	config: PlConfig,
+	noPing: boolean,
+): Promise<Check> {
 	let providerId = config.synth.provider;
 	let creds: ReturnType<typeof resolveCredentials> | undefined;
 
 	if (providerId) {
 		creds = resolveCredentials(providerId, config.synth.base_url);
 	} else {
-		for (const id of ["anthropic", "openai", "google", "groq", "ollama"] as const) {
+		for (const id of [
+			"anthropic",
+			"openai",
+			"google",
+			"groq",
+			"ollama",
+		] as const) {
 			const candidate = resolveCredentials(id, config.synth.base_url);
 			if (candidate.source !== "none") {
 				providerId = id;
@@ -112,10 +121,14 @@ async function checkCredential(config: PlConfig, noPing: boolean): Promise<Check
 		};
 	}
 
-	const ping = await pingModel(providerId as LLMProviderId, config.synth.model, {
-		apiKey: creds.apiKey,
-		baseURL: creds.baseURL,
-	});
+	const ping = await pingModel(
+		providerId as LLMProviderId,
+		config.synth.model,
+		{
+			apiKey: creds.apiKey,
+			baseURL: creds.baseURL,
+		},
+	);
 
 	if (ping.success) {
 		return {
@@ -168,7 +181,7 @@ export function checkListenToken(config: PlConfig): Check {
 		name: "Listen intake",
 		pass: false,
 		detail:
-			'listen.token is unset — `pl listen` will refuse to start (set listen.token, e.g. "${PRISMALENS_LISTEN_TOKEN}")',
+			"listen.token is unset — `pl listen` will refuse to start (set listen.token in prismalens.config.yaml)",
 		hard: false,
 	};
 }

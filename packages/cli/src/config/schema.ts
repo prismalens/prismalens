@@ -19,8 +19,8 @@
  *    the role machinery is gone.
  */
 import { HARNESS_IDS, PERMISSION_MODES } from "@prismalens/config/harness";
-import { SANDBOX_MODES } from "@prismalens/engine";
 import { llmProviderIdSchema } from "@prismalens/config/llm";
+import { SANDBOX_MODES } from "@prismalens/engine";
 import { z } from "zod";
 
 /**

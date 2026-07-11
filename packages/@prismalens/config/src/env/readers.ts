@@ -17,7 +17,7 @@
  * const debug = readBoolEnv('DEBUG', false);
  */
 
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 
 /**
  * Read environment variable with file-based fallback.
@@ -54,7 +54,7 @@ export function readIntEnv(name: string, defaultValue: number): number {
 	const value = readEnv(name);
 	if (value === undefined || value === "") return defaultValue;
 	const parsed = parseInt(value, 10);
-	if (isNaN(parsed)) {
+	if (Number.isNaN(parsed)) {
 		throw new Error(`${name} must be a valid integer, got: ${value}`);
 	}
 	return parsed;

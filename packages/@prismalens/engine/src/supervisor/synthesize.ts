@@ -143,7 +143,7 @@ export async function reduce(
 }
 
 export function rawReport(
-	context: InvestigationContext,
+	_context: InvestigationContext,
 	events: CanonicalEvent[],
 	synthError?: string,
 ): InvestigationReport {

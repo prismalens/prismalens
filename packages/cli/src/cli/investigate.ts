@@ -23,9 +23,7 @@ import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import {
-	INVESTIGATION_DEFAULTS,
-} from "@prismalens/config/investigation";
+import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import type {
 	CanonicalEvent,
 	Hypothesis,
@@ -131,88 +129,89 @@ export default defineCommand({
 	},
 	async run({ args }) {
 		try {
-		const json = Boolean(args.json);
-		// In --json mode stdout must be machine-clean, so suppress all info-level
-		// chatter (consola routes info/log/success to stdout, warn/error to stderr).
-		// The AI SDK's stdout warning banner is disabled bin-wide (bin/prismalens.ts).
-		const quiet = Boolean(args.quiet) || json;
-		const info = (msg: string): void => {
-			if (!quiet) consola.info(msg);
-		};
-		const success = (msg: string): void => {
-			if (!quiet) consola.success(msg);
-		};
-		// One-line live timeline entries (no consola icon, so the stream reads cleanly).
-		const line = (msg: string): void => {
-			if (!quiet) consola.log(msg);
-		};
+			const json = Boolean(args.json);
+			// In --json mode stdout must be machine-clean, so suppress all info-level
+			// chatter (consola routes info/log/success to stdout, warn/error to stderr).
+			// The AI SDK's stdout warning banner is disabled bin-wide (bin/prismalens.ts).
+			const quiet = Boolean(args.quiet) || json;
+			const info = (msg: string): void => {
+				if (!quiet) consola.info(msg);
+			};
+			const success = (msg: string): void => {
+				if (!quiet) consola.success(msg);
+			};
+			// One-line live timeline entries (no consola icon, so the stream reads cleanly).
+			const line = (msg: string): void => {
+				if (!quiet) consola.log(msg);
+			};
 
-		// (1) Resolve the seed alert + config + harness + reduce model. The seed is a
-		// piped FiringAlert JSON (the stdin channel) or, failing that, --query.
-		const piped = await parseStdin();
+			// (1) Resolve the seed alert + config + harness + reduce model. The seed is a
+			// piped FiringAlert JSON (the stdin channel) or, failing that, --query.
+			const piped = await parseStdin();
 
-		// cwd = --repo (a local repo path) else the current directory.
-		const cwd = args.repo ? resolve(args.repo) : process.cwd();
+			// cwd = --repo (a local repo path) else the current directory.
+			const cwd = args.repo ? resolve(args.repo) : process.cwd();
 
-		// Load + merge config (global → project → CLI overrides); --model overrides agent.model.
-		const config = await loadConfig({
-			...(args.config ? { configPath: args.config } : {}),
-			cwd,
-			cliOverrides: { ...(args.model ? { model: args.model } : {}) },
-		});
-		
-		const maxTurns = args.maxTurns ? Number(args.maxTurns) : config.agent.max_turns;
+			// Load + merge config (global → project → CLI overrides); --model overrides agent.model.
+			const config = await loadConfig({
+				...(args.config ? { configPath: args.config } : {}),
+				cwd,
+				cliOverrides: { ...(args.model ? { model: args.model } : {}) },
+			});
 
-		// Session label: config `repo` (owner/name) wins; else git auto-detect; else none.
-		const repoSlug = await resolveRepoSlug(config.repo, cwd);
+			const maxTurns = args.maxTurns
+				? Number(args.maxTurns)
+				: config.agent.max_turns;
 
-		// The single posture dial (ADR-0017): --dangerously-skip-permissions wins over
-		// --mode, aliasing straight to "dangerous".
-		const permissionMode = args.dangerouslySkipPermissions
-			? "dangerous"
-			: args.mode;
+			// Session label: config `repo` (owner/name) wins; else git auto-detect; else none.
+			const repoSlug = await resolveRepoSlug(config.repo, cwd);
 
-		// Resolve the isolation boundary (ADR-0020): --sandbox wins over agent.sandbox.
-		// Only ACP-transport harnesses are spawned as a child the engine can place
-		// inside a boundary (the Agent SDK harness runs in-process). Fail fast ONLY when
-		// the mode DEMANDS an enforced boundary (`srt`/`e2b`) a non-ACP harness cannot
-		// honour (ADR-0017 — never claim an enforcement that would not apply). `auto` and
-		// `process` with a non-ACP harness run WITHOUT a sandbox silently: `auto` means
-		// best-effort, and the best available for an in-process harness is none — nothing
-		// is claimed, so nothing is dishonest. The sandbox is CALLER-OWNED — destroyed in
-		// the finally.
-		const harnessName =
-			(args.harness as HarnessId | undefined) ?? config.agent.default;
-		const sandboxMode =
-			(args.sandbox as SandboxMode | undefined) ?? config.agent.sandbox;
-		let selection: SandboxSelection | null = null;
-		try {
-			const resolvedSandbox = await resolveRunSandbox(
-				harnessName,
-				sandboxMode,
-				config,
-			);
-			selection = resolvedSandbox.selection;
-			// Honest fidelity (ADR-0017): a silent degrade would mislead — name it, with
-			// the self-check's reason (srt absent, or its egress bridge dead — B.1.1).
-			// An EXPECTED degrade (WSL: known-unreliable bridge, probe skipped) logs
-			// calmly instead of warning on every dev-machine run.
-			if (selection && resolvedSandbox.degradeReason) {
-				if (resolvedSandbox.degradeExpected) {
-					info(
-						`Sandbox: ${selection.actual} (${resolvedSandbox.degradeReason}).`,
-					);
-				} else {
-					consola.warn(
-						`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${resolvedSandbox.degradeReason}.`,
-					);
+			// The single posture dial (ADR-0017): --dangerously-skip-permissions wins over
+			// --mode, aliasing straight to "dangerous".
+			const permissionMode = args.dangerouslySkipPermissions
+				? "dangerous"
+				: args.mode;
+
+			// Resolve the isolation boundary (ADR-0020): --sandbox wins over agent.sandbox.
+			// Only ACP-transport harnesses are spawned as a child the engine can place
+			// inside a boundary (the Agent SDK harness runs in-process). Fail fast ONLY when
+			// the mode DEMANDS an enforced boundary (`srt`/`e2b`) a non-ACP harness cannot
+			// honour (ADR-0017 — never claim an enforcement that would not apply). `auto` and
+			// `process` with a non-ACP harness run WITHOUT a sandbox silently: `auto` means
+			// best-effort, and the best available for an in-process harness is none — nothing
+			// is claimed, so nothing is dishonest. The sandbox is CALLER-OWNED — destroyed in
+			// the finally.
+			const harnessName =
+				(args.harness as HarnessId | undefined) ?? config.agent.default;
+			const sandboxMode =
+				(args.sandbox as SandboxMode | undefined) ?? config.agent.sandbox;
+			let selection: SandboxSelection | null = null;
+			try {
+				const resolvedSandbox = await resolveRunSandbox(
+					harnessName,
+					sandboxMode,
+					config,
+				);
+				selection = resolvedSandbox.selection;
+				// Honest fidelity (ADR-0017): a silent degrade would mislead — name it, with
+				// the self-check's reason (srt absent, or its egress bridge dead — B.1.1).
+				// An EXPECTED degrade (WSL: known-unreliable bridge, probe skipped) logs
+				// calmly instead of warning on every dev-machine run.
+				if (selection && resolvedSandbox.degradeReason) {
+					if (resolvedSandbox.degradeExpected) {
+						info(
+							`Sandbox: ${selection.actual} (${resolvedSandbox.degradeReason}).`,
+						);
+					} else {
+						consola.warn(
+							`Sandbox 'auto' degraded to the ${selection.actual} (cooperative, not an OS boundary): ${resolvedSandbox.degradeReason}.`,
+						);
+					}
+				} else if (selection?.actual === "srt") {
+					info("Sandbox: srt (enforced OS boundary).");
 				}
-			} else if (selection?.actual === "srt") {
-				info("Sandbox: srt (enforced OS boundary).");
-			}
 
-			let resolved: ResolvedInvestigation;
-			resolved = resolveInvestigation(
+				const resolved: ResolvedInvestigation = resolveInvestigation(
 					{
 						...(piped ? { alert: piped } : {}),
 						...(args.query ? { query: args.query } : {}),
@@ -230,87 +229,86 @@ export default defineCommand({
 					},
 					config,
 				);
-			const { context, harness, synth, harnessName: resolvedHarnessName, fidelity, maxBranches } =
-				resolved;
-			const primaryAlert = context.alerts[0];
+				const { context, harness, synth, fidelity, maxBranches } = resolved;
+				const primaryAlert = context.alerts[0];
 
-			if (!synth.configured) {
-				info(
-					"No Tier-1 provider configured (checked env + _FILE for: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, OLLAMA_API_KEY) — reports will be RAW harness pass-through (un-synthesized). This is supported.",
-				);
-			}
+				if (!synth.configured) {
+					info(
+						"No Tier-1 provider configured (checked env + _FILE for: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, OLLAMA_API_KEY) — reports will be RAW harness pass-through (un-synthesized). This is supported.",
+					);
+				}
 
-			// (2) Create the run workspace + session under workspace.base_dir, wrapped as
-			// a conductRun store adapter (ADR-0018).
-			const runId = randomUUID();
-			const sessions = createSessionManager(config.workspace.base_dir);
-			const fileSession = createFileSessionStore(sessions, {
-				runId,
-				alertname: primaryAlert.alertname,
-				agent: harnessName,
-				...(repoSlug ? { repo: repoSlug } : {}),
-			});
-
-			info(
-				`Investigating "${primaryAlert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
-			);
-
-			// (3) Drive the supervisor LIVE via the shared conductor: print a one-line
-			// timeline entry per event; conductRun owns persistence + the terminal
-			// report/no-evidence/error outcome.
-			const outcome = await conductRun(
-				{
-					context,
-					harness,
-					synth,
-					fidelity,
+				// (2) Create the run workspace + session under workspace.base_dir, wrapped as
+				// a conductRun store adapter (ADR-0018).
+				const runId = randomUUID();
+				const sessions = createSessionManager(config.workspace.base_dir);
+				const fileSession = createFileSessionStore(sessions, {
 					runId,
-					...(maxBranches !== undefined ? { maxBranches } : {}),
-				},
-				{
-					sink: (event) => {
-						const entry = liveTimelineEntry(event);
-						if (entry) line(entry);
+					alertname: primaryAlert.alertname,
+					agent: harnessName,
+					...(repoSlug ? { repo: repoSlug } : {}),
+				});
+
+				info(
+					`Investigating "${primaryAlert.alertname}" with ${harnessName} in ${cwd} (run ${runId})`,
+				);
+
+				// (3) Drive the supervisor LIVE via the shared conductor: print a one-line
+				// timeline entry per event; conductRun owns persistence + the terminal
+				// report/no-evidence/error outcome.
+				const outcome = await conductRun(
+					{
+						context,
+						harness,
+						synth,
+						fidelity,
+						runId,
+						...(maxBranches !== undefined ? { maxBranches } : {}),
 					},
-					store: fileSession.store,
-				},
-			);
-
-			if (!outcome.report) {
-				consola.error(outcome.error);
-				process.exitCode = 1;
-				return;
-			}
-			const report = outcome.report;
-
-			// (4) Output. --output writes report JSON to a file; --json prints it to
-			// stdout; otherwise render the ordered-evidence report for humans.
-			if (args.output) {
-				const outPath = resolve(args.output);
-				await writeFile(
-					outPath,
-					`${JSON.stringify(report, null, 2)}\n`,
-					"utf-8",
+					{
+						sink: (event) => {
+							const entry = liveTimelineEntry(event);
+							if (entry) line(entry);
+						},
+						store: fileSession.store,
+					},
 				);
-				success(`Report written to ${outPath}`);
-			}
 
-			if (json) {
-				process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-				return;
-			}
+				if (!outcome.report) {
+					consola.error(outcome.error);
+					process.exitCode = 1;
+					return;
+				}
+				const report = outcome.report;
 
-			if (!quiet) {
-				renderReport(report);
-				success(
-					`Report saved to ${join(fileSession.workspacePath(), "report.json")}`,
-				);
+				// (4) Output. --output writes report JSON to a file; --json prints it to
+				// stdout; otherwise render the ordered-evidence report for humans.
+				if (args.output) {
+					const outPath = resolve(args.output);
+					await writeFile(
+						outPath,
+						`${JSON.stringify(report, null, 2)}\n`,
+						"utf-8",
+					);
+					success(`Report written to ${outPath}`);
+				}
+
+				if (json) {
+					process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+					return;
+				}
+
+				if (!quiet) {
+					renderReport(report);
+					success(
+						`Report saved to ${join(fileSession.workspacePath(), "report.json")}`,
+					);
+				}
+			} finally {
+				// The command owns the resolved boundary's lifecycle (ADR-0020) — tear it
+				// down whichever way the run exited (report, no-evidence, error, or throw).
+				if (selection) await selection.sandbox.destroy();
 			}
-		} finally {
-			// The command owns the resolved boundary's lifecycle (ADR-0020) — tear it
-			// down whichever way the run exited (report, no-evidence, error, or throw).
-			if (selection) await selection.sandbox.destroy();
-		}
 		} catch (err) {
 			consola.error(err instanceof Error ? err.message : String(err));
 			process.exit(1);

@@ -40,7 +40,7 @@ export function resolveCredentials(
 		baseURL = process.env[`${provider.id.toUpperCase()}_BASE_URL`];
 	}
 	if (!baseURL && "defaultBaseUrl" in provider) {
-		baseURL = (provider as any).defaultBaseUrl;
+		baseURL = provider.defaultBaseUrl;
 	}
 
 	if (

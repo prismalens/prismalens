@@ -271,7 +271,7 @@ export async function startListenFromConfig(
 	if (!config.listen.token) {
 		// An open intake is not a mode — refuse to start rather than serve unauthenticated.
 		throw new Error(
-			"config is missing listen.token (required — intake auth). Add listen.token to prismalens.config.yaml."
+			"config is missing listen.token (required — intake auth). Add listen.token to prismalens.config.yaml.",
 		);
 	}
 	const sessions = createSessionManager(config.workspace.base_dir);

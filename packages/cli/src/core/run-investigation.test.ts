@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { resolveInvestigation } from "./run-investigation.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlConfigSchema } from "../config/schema.js";
+import { resolveInvestigation } from "./run-investigation.js";
 
 describe("resolveInvestigation", () => {
 	let originalEnv: NodeJS.ProcessEnv;
@@ -46,7 +46,7 @@ describe("resolveInvestigation", () => {
 			synth: { provider: "custom" },
 		});
 		expect(() => resolveInvestigation({ query: "test" }, config)).toThrow(
-			"Custom LLM provider requires synth.base_url to be configured."
+			"Custom LLM provider requires synth.base_url to be configured.",
 		);
 	});
 

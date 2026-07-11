@@ -13,12 +13,10 @@
  * JSON-RPC `serve` path stay in lockstep, unchanged.
  */
 import { resolve } from "node:path";
-import type { PermissionMode } from "@prismalens/config/harness";
-import {
-	INVESTIGATION_DEFAULTS,
-} from "@prismalens/config/investigation";
-import { getDefaultModel, type LLMProviderId } from "@prismalens/config/llm";
 import { resolveCredentials } from "@prismalens/config/credentials";
+import type { PermissionMode } from "@prismalens/config/harness";
+import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
+import { getDefaultModel, type LLMProviderId } from "@prismalens/config/llm";
 import type { ServiceContext } from "@prismalens/contracts";
 import {
 	coerceFiringAlert,
@@ -76,9 +74,18 @@ export interface ResolveInvestigationArgs {
  */
 export function isSynthConfigured(config: PlConfig): boolean {
 	if (config.synth.provider) {
-		return resolveCredentials(config.synth.provider, config.synth.base_url).source !== "none";
+		return (
+			resolveCredentials(config.synth.provider, config.synth.base_url)
+				.source !== "none"
+		);
 	}
-	for (const id of ["anthropic", "openai", "google", "groq", "ollama"] as const) {
+	for (const id of [
+		"anthropic",
+		"openai",
+		"google",
+		"groq",
+		"ollama",
+	] as const) {
 		if (resolveCredentials(id, config.synth.base_url).source !== "none") {
 			return true;
 		}
@@ -99,10 +106,18 @@ export function resolveInvestigation(
 	if (providerId) {
 		creds = resolveCredentials(providerId, config.synth.base_url);
 		if (providerId === "custom" && !config.synth.base_url) {
-			throw new Error("Custom LLM provider requires synth.base_url to be configured.");
+			throw new Error(
+				"Custom LLM provider requires synth.base_url to be configured.",
+			);
 		}
 	} else {
-		for (const id of ["anthropic", "openai", "google", "groq", "ollama"] as const) {
+		for (const id of [
+			"anthropic",
+			"openai",
+			"google",
+			"groq",
+			"ollama",
+		] as const) {
 			const candidate = resolveCredentials(id, config.synth.base_url);
 			if (candidate.source !== "none") {
 				providerId = id;
@@ -116,9 +131,15 @@ export function resolveInvestigation(
 		}
 	}
 
-	const synthModel = config.synth.model ?? config.agent.model ?? getDefaultModel(providerId as LLMProviderId) ?? "";
+	const synthModel =
+		config.synth.model ??
+		config.agent.model ??
+		getDefaultModel(providerId as LLMProviderId) ??
+		"";
 	if (!synthModel && creds.source !== "none") {
-		throw new Error("No synthesis model configured (set synth.model or agent.model).");
+		throw new Error(
+			"No synthesis model configured (set synth.model or agent.model).",
+		);
 	}
 
 	// Context enrichment (ADR-0015) — a single-alert CLI run is NOT context-free: it
@@ -187,7 +208,10 @@ export function resolveInvestigation(
 		},
 		harnessEnv: {
 			OPENAI_API_KEY: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY,
-			OPENAI_BASE_URL: process.env.OLLAMA_BASE_URL ?? process.env.OPENAI_BASE_URL ?? INVESTIGATION_DEFAULTS.synth.baseURL,
+			OPENAI_BASE_URL:
+				process.env.OLLAMA_BASE_URL ??
+				process.env.OPENAI_BASE_URL ??
+				INVESTIGATION_DEFAULTS.synth.baseURL,
 		},
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};
