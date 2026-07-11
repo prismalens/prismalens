@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  path_instructions:
+    - path: "packages/cli/src/**"
+      instructions: >-
+        This is the published `prismalens` CLI package. If the diff adds or
+        changes a command, a flag, or the config schema, flag the PR when it is
+        missing either a matching docs update (README.md or docs/) or a
+        changeset under .changeset/. Both are required for user-facing changes
+        to a published package.
+    - path: "packages/@prismalens/engine/src/**"
+      instructions: >-
+        This is the published `@prismalens/engine` package. If the diff adds or
+        changes a command, a flag, or the config schema, flag the PR when it is
+        missing either a matching docs update (README.md or docs/) or a
+        changeset under .changeset/. Both are required for user-facing changes
+        to a published package.

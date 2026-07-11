@@ -105,6 +105,7 @@ To work on the CLI specifically, see
 - Site: [prismalens.io](https://prismalens.io)
 - Docs: [docs.prismalens.io](https://docs.prismalens.io)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [VERSIONING.md](VERSIONING.md)
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - [SECURITY.md](SECURITY.md)
 
