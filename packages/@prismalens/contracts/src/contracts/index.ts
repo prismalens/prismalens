@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * Contract exports
- * All oRPC route contracts combined into a single router
- */
-import { oc } from "@orpc/contract";
-
 export { alertMappingContract } from "./alert-mapping.js";
 // Import individual contracts
 export { alertsContract } from "./alerts.js";

@@ -4,6 +4,7 @@
 import { defineCommand } from "citty";
 import consola from "consola";
 import { createSessionManager } from "../core/session.js";
+import { assertKnownFlags } from "./flags.js";
 
 export default defineCommand({
 	meta: {
@@ -27,10 +28,12 @@ export default defineCommand({
 			required: false,
 		},
 	},
-	async run({ args }) {
-		const sessions = createSessionManager(args["base-dir"]);
-
+	async run({ args, cmd }) {
+		let sessions: ReturnType<typeof createSessionManager> | undefined;
 		try {
+			assertKnownFlags(args, cmd);
+			sessions = createSessionManager(args["base-dir"]);
+
 			const report = await sessions.readReport(args.id);
 			if (!report) {
 				consola.error(`No report for run ${args.id}`);
@@ -53,7 +56,7 @@ export default defineCommand({
 			consola.error("Failed to read report:", err);
 			process.exitCode = 1;
 		} finally {
-			sessions.close?.();
+			sessions?.close?.();
 		}
 	},
 });

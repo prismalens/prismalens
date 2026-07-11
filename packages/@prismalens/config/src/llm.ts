@@ -16,8 +16,9 @@
  */
 
 export {
-	getAllowedHosts,
 	// Helper functions
+	AUTO_SELECT_PROVIDER_IDS,
+	getAllowedHosts,
 	getApiKeyEnvVar,
 	getDefaultModel,
 	LLM_CREDENTIAL_ENV_VARS,

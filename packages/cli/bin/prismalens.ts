@@ -16,6 +16,19 @@ import { cliVersion } from "../src/version.js";
 // process.emitWarning.
 (globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
 
+const originalWarningListeners = process.listeners("warning");
+process.removeAllListeners("warning");
+process.on("warning", (warning: Error) => {
+	if (
+		warning.name === "ExperimentalWarning" &&
+		warning.message.includes("SQLite")
+	)
+		return;
+	for (const listener of originalWarningListeners) {
+		listener(warning);
+	}
+});
+
 /** Lazily import a command body's default export from src/cli. */
 const lazy = (name: string) => (): Promise<CommandDef> =>
 	import(`../src/cli/${name}.js`).then((m) => m.default as CommandDef);

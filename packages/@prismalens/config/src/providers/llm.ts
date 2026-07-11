@@ -93,6 +93,16 @@ export const LLM_PROVIDER_IDS = Object.keys(LLM_PROVIDERS) as [
 ];
 
 /**
+ * Auto-selection order for Tier-1 provider detection (ADR-0024): every
+ * provider with a guessable endpoint, in registry order. `custom` is excluded —
+ * it can never be auto-selected (its endpoint must be stated explicitly).
+ * SSOT shared by the CLI's resolveInvestigation and `pl doctor` so what doctor
+ * reports is BY CONSTRUCTION what a run would pick.
+ */
+export const AUTO_SELECT_PROVIDER_IDS: readonly LLMProviderId[] =
+	LLM_PROVIDER_IDS.filter((id) => id !== "custom");
+
+/**
  * All credential env-var names across providers, derived from LLM_PROVIDERS.
  * Single source of truth for "which env vars can hold an LLM credential" —
  * consumed by tooling (e.g. the CLI `doctor`) instead of re-listing them.

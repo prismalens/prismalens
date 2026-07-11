@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 import {
 	closeSync,
 	constants,
@@ -9,8 +9,8 @@ import {
 	openSync,
 	readFileSync,
 	writeSync,
-} from "fs";
-import { join, resolve, sep } from "path";
+} from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { ensureAppDataDir, getAppDataDir } from "./app-data.js";
 import {
 	FILE_SUFFIX,

@@ -14,6 +14,7 @@ import { defineCommand } from "citty";
 import { consola } from "consola";
 import { runJsonRpcServer } from "../jsonrpc/server.js";
 import { cliVersion } from "../version.js";
+import { assertKnownFlags } from "./flags.js";
 
 /** Reported as serverInfo.version by `initialize` (matches the CLI's meta.version). */
 const SERVER_VERSION = cliVersion();
@@ -24,8 +25,9 @@ export default defineCommand({
 		description:
 			"Run the JSON-RPC 2.0 server over stdio (the LIVE channel for the desktop app / API).",
 	},
-	async run() {
+	async run({ args, cmd }) {
 		try {
+			assertKnownFlags(args, cmd);
 			await runJsonRpcServer({ version: SERVER_VERSION });
 		} catch (err) {
 			consola.error(err instanceof Error ? err.message : String(err));

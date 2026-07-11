@@ -21,13 +21,18 @@ import { access, mkdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { resolveCredentials } from "@prismalens/config/credentials";
 import { HARNESS_BINARY } from "@prismalens/config/harness";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	AUTO_SELECT_PROVIDER_IDS,
+	LLM_PROVIDERS,
+	type LLMProviderId,
+} from "@prismalens/config/llm";
 import { pingModel } from "@prismalens/config/model";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { loadConfig } from "../config/loader.js";
 import type { PlConfig } from "../config/schema.js";
 import { resolveBaseDir } from "../core/session.js";
+import { assertKnownFlags } from "./flags.js";
 
 type Harness = PlConfig["agent"]["default"];
 
@@ -81,13 +86,7 @@ async function checkCredential(
 	if (providerId) {
 		creds = resolveCredentials(providerId, config.synth.base_url);
 	} else {
-		for (const id of [
-			"anthropic",
-			"openai",
-			"google",
-			"groq",
-			"ollama",
-		] as const) {
+		for (const id of AUTO_SELECT_PROVIDER_IDS) {
 			const candidate = resolveCredentials(id, config.synth.base_url);
 			if (candidate.source !== "none") {
 				providerId = id;
@@ -189,7 +188,8 @@ export function checkListenToken(config: PlConfig): Check {
 export default defineCommand({
 	meta: {
 		name: "doctor",
-		description: "Preflight check the investigation environment",
+		description:
+			"Preflight check the investigation environment\n\nExamples:\n  $ pl doctor --no-ping",
 	},
 	args: {
 		// citty models `--no-ping` as negation of a `ping` boolean — a literal
@@ -200,8 +200,10 @@ export default defineCommand({
 			default: true,
 		},
 	},
-	async run({ args }) {
+	async run({ args, cmd }) {
 		try {
+			assertKnownFlags(args, cmd);
+
 			const config = await loadConfig();
 			const harness = config.agent.default;
 			const noPing = !args.ping;

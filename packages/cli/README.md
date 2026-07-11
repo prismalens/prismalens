@@ -79,6 +79,7 @@ binary and an LLM credential are present.
 prismalens <command> [flags]      # alias: pl
 
   investigate   Run a read-only root-cause investigation of a firing alert.
+  listen        Start a token-authed local HTTP listener for Alertmanager webhooks.
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
   doctor        Preflight-check the investigation environment.
   init          Scaffold a prismalens.config.yaml in the current directory.
@@ -114,6 +115,14 @@ errored emits no report — the CLI surfaces the transport failure rather than a
 fabricated RCA).
 
 A `FiringAlert` is `{ alertname, severity, labels, annotations, startsAt }`.
+
+### `listen`
+
+Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).
+
+```bash
+PRISMALENS_LISTEN_TOKEN=xyz pl listen --config my-stack.yaml
+```
 
 ### `serve`
 

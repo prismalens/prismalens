@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execSync } from "child_process";
+import { execSync } from "node:child_process";
 /**
  * Smart database initialization script.
  * Detects database state and runs appropriate Prisma commands.
  * Supports separate migration folders for SQLite and PostgreSQL.
  */
-import { existsSync, readdirSync } from "fs";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import "dotenv/config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -105,7 +105,7 @@ async function main() {
 			} else {
 				console.log("✅ All migrations are up to date");
 			}
-		} catch (error) {
+		} catch (_error) {
 			// migrate status returns non-zero if there are pending migrations or issues
 			console.log("🔄 Applying pending migrations...");
 			execSync("pnpm exec prisma migrate dev", {

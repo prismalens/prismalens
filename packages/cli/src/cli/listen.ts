@@ -36,6 +36,7 @@ import {
 	startListenServer,
 	WEBHOOK_PATH,
 } from "../http/server.js";
+import { assertKnownFlags } from "./flags.js";
 import { createGroupingLayer } from "./grouping.js";
 import {
 	liveTimelineEntry,
@@ -304,7 +305,7 @@ export default defineCommand({
 	meta: {
 		name: "listen",
 		description:
-			"Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).",
+			"Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).\n\nExamples:\n  $ PRISMALENS_LISTEN_TOKEN=xyz pl listen --config my-stack.yaml",
 	},
 	args: {
 		config: {
@@ -315,8 +316,10 @@ export default defineCommand({
 	},
 	/* v8 ignore start — process-global glue (cwd + consola binding); the body it
 	   delegates to is fully covered via startListenFromConfig tests */
-	async run({ args }) {
+	async run({ args, cmd }) {
 		try {
+			assertKnownFlags(args, cmd);
+
 			const server = await startListenFromConfig({
 				cwd: process.cwd(),
 				...(args.config ? { configPath: args.config } : {}),

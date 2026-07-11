@@ -30,6 +30,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, parse as parsePath, resolve } from "node:path";
 import envPaths from "env-paths";
 import { parse as parseYaml } from "yaml";
+import { ZodError } from "zod";
 import { type PlConfig, PlConfigSchema } from "./schema.js";
 
 const PROJECT_CONFIG_FILENAME = "prismalens.config.yaml";
@@ -181,10 +182,18 @@ export async function loadConfig(
 	const projectLocalFile = projectLocalConfigFile(projectFile, cwd);
 
 	let merged: Record<string, unknown> = {};
-	if (userFile) merged = deepMerge(merged, await readYamlFile(userFile));
-	if (projectFile) merged = deepMerge(merged, await readYamlFile(projectFile));
+	const readFiles: string[] = [];
+	if (userFile) {
+		merged = deepMerge(merged, await readYamlFile(userFile));
+		readFiles.push(userFile);
+	}
+	if (projectFile) {
+		merged = deepMerge(merged, await readYamlFile(projectFile));
+		readFiles.push(projectFile);
+	}
 	if (projectLocalFile && projectLocalFile !== projectFile) {
 		merged = deepMerge(merged, await readYamlFile(projectLocalFile));
+		readFiles.push(projectLocalFile);
 	}
 
 	if (options.cliOverrides) {
@@ -197,6 +206,22 @@ export async function loadConfig(
 	try {
 		config = PlConfigSchema.parse(interpolated);
 	} catch (err) {
+		let attribution = "in config";
+		if (readFiles.length === 1) {
+			attribution = `in ${readFiles[0]}`;
+		} else if (readFiles.length > 1) {
+			attribution = `(merged from: ${readFiles.join(", ")})`;
+		}
+
+		if (err instanceof ZodError) {
+			const issues = err.issues
+				.map(
+					(i) =>
+						`${i.path.length > 0 ? i.path.join(".") : "<root>"}: ${i.message}`,
+				)
+				.join("\n");
+			throw new Error(`Invalid configuration ${attribution}:\n${issues}`);
+		}
 		const detail = err instanceof Error ? err.message : String(err);
 		throw new Error(`Invalid PrismaLens configuration: ${detail}`);
 	}

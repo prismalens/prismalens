@@ -50,12 +50,13 @@ import {
 	resolveInvestigation,
 } from "../core/run-investigation.js";
 import { createSessionManager } from "../core/session.js";
+import { assertKnownFlags } from "./flags.js";
 
 export default defineCommand({
 	meta: {
 		name: "investigate",
 		description:
-			"Run a read-only root-cause investigation of a firing alert (two-tier engine, ADR-0008).",
+			"Run a read-only root-cause investigation of a firing alert (two-tier engine, ADR-0008).\n\nExamples:\n  $ pl investigate -q 'Why did the database crash?' --max-turns 30",
 	},
 	args: {
 		repo: {
@@ -127,8 +128,10 @@ export default defineCommand({
 			description: "Per-run turn ceiling for the default harness.",
 		},
 	},
-	async run({ args }) {
+	async run({ args, cmd }) {
 		try {
+			assertKnownFlags(args, cmd);
+
 			const json = Boolean(args.json);
 			// In --json mode stdout must be machine-clean, so suppress all info-level
 			// chatter (consola routes info/log/success to stdout, warn/error to stderr).
