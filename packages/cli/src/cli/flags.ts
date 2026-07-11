@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import consola from "consola";
 
 function kebabToCamel(str: string): string {
