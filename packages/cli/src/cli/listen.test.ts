@@ -797,6 +797,65 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 			vi.useRealTimers();
 		}
 	});
+
+	it("prints one raw-passthrough startup line when no Tier-1 provider is configured", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			"utf-8",
+		);
+
+		const oldEnv = { ...process.env };
+		delete process.env.OLLAMA_API_KEY;
+		delete process.env.OPENAI_API_KEY;
+		delete process.env.OLLAMA_BASE_URL;
+		delete process.env.OPENAI_BASE_URL;
+
+		try {
+			const lines: string[] = [];
+			const server = await startListenFromConfig(
+				{ cwd: dir, log: (l) => lines.push(l) },
+				{ resolveRunSandbox: noSandbox },
+			);
+			await server.close();
+
+			const matching = lines.filter((l) =>
+				l.includes("RAW harness pass-through"),
+			);
+			expect(matching).toHaveLength(1);
+		} finally {
+			process.env = oldEnv;
+		}
+	});
+
+	it("omits the startup line when a provider key is set", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			"utf-8",
+		);
+
+		const oldEnv = { ...process.env };
+		process.env.OPENAI_API_KEY = "k";
+
+		try {
+			const lines: string[] = [];
+			const server = await startListenFromConfig(
+				{ cwd: dir, log: (l) => lines.push(l) },
+				{ resolveRunSandbox: noSandbox },
+			);
+			await server.close();
+
+			const matching = lines.filter((l) =>
+				l.includes("RAW harness pass-through"),
+			);
+			expect(matching).toHaveLength(0);
+		} finally {
+			process.env = oldEnv;
+		}
+	});
 });
 
 describe("resolveRepoPath (alert label → repo checkout, AC5)", () => {

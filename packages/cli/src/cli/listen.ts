@@ -12,6 +12,7 @@
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { hasTier1Provider } from "@prismalens/config/investigation";
 import { conductRun as engineConductRun } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import { consola } from "consola";
@@ -27,6 +28,7 @@ import { createFileSessionStore } from "../core/file-session-store.js";
 import {
 	pickServiceLabel,
 	resolveInvestigation,
+	resolveSynthCredsFromEnv,
 } from "../core/run-investigation.js";
 import { createSessionManager, type SessionManager } from "../core/session.js";
 import {
@@ -259,6 +261,13 @@ export async function startListenFromConfig(
 		cwd,
 		...(options.configPath ? { configPath: options.configPath } : {}),
 	});
+
+	if (!hasTier1Provider(resolveSynthCredsFromEnv())) {
+		options.log(
+			"No Tier-1 provider configured (set OLLAMA_API_KEY / OPENAI_API_KEY, or *_BASE_URL for a local model) — reports will be RAW harness pass-through (un-synthesized) until one is configured. This is a supported subscription-only path, not an error.",
+		);
+	}
+
 	if (!config.listen.token) {
 		// An open intake is not a mode — refuse to start rather than serve unauthenticated.
 		throw new Error(

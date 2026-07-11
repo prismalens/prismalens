@@ -62,6 +62,9 @@ Merge rules (strict):
 const PREVIEW_CAP = 1200;
 const TRANSCRIPT_CAP = 24_000;
 
+export const RAW_REPORT_NOTICE =
+	"[RAW — un-synthesized harness output; no Tier-1 provider configured]";
+
 /**
  * The one model call the reduce step makes, factored out so it is INJECTABLE — the
  * default hits the LLM (below); hermetic tests pass a stub that records the prompt +
@@ -135,6 +138,59 @@ export async function reduce(
 	// N>1 REDUCE: one further call merging the per-branch reports (dedupe + rank +
 	// ruled-out union).
 	return model(mergePrompt(context, perBranch), cfg);
+}
+
+export function rawReport(
+	context: InvestigationContext,
+	events: CanonicalEvent[],
+	synthError?: string,
+): InvestigationReport {
+	const groups = groupEventsByBranch(events);
+	const surviving = groups.filter((g) => hasToolEvidence(g.events));
+	let summary = RAW_REPORT_NOTICE;
+	if (synthError !== undefined) {
+		summary += ` Synthesis failed: ${synthError}`;
+	}
+	summary += "\n\n";
+
+	const conclusions = surviving
+		.map((g) => branchConclusion(g.events))
+		.filter((c) => c !== "");
+	if (conclusions.length > 0) {
+		summary += conclusions.join("\n\n");
+	} else {
+		summary += "No branch conclusions gathered.";
+	}
+
+	return {
+		summary,
+		rootCause: null,
+		rootCauseCategory: null,
+		hypotheses: [],
+		ruledOut: [],
+		coverage: { queried: uniqueSources(events), notQueried: [] },
+		nextSteps: [],
+	};
+}
+
+function branchConclusion(events: CanonicalEvent[]): string {
+	let last = "";
+	for (const e of events) {
+		if (e.kind === "agent_step" && e.text.trim() !== "") {
+			last = e.text.trim();
+		}
+	}
+	return last;
+}
+
+function uniqueSources(events: CanonicalEvent[]): string[] {
+	const sources = new Set<string>();
+	for (const e of events) {
+		if (e.kind === "tool_result") {
+			sources.add(e.result.source);
+		}
+	}
+	return Array.from(sources);
 }
 
 /**

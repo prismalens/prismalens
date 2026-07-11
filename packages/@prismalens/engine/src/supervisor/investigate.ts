@@ -15,6 +15,7 @@
  * bespoke MCP tools yet. The supervisor stays thin: all iterative depth is rented.
  */
 import { randomUUID } from "node:crypto";
+import { hasTier1Provider } from "@prismalens/config/investigation";
 import type {
 	CanonicalEvent,
 	InvestigationContext,
@@ -35,6 +36,7 @@ import { DEFAULT_MAX_BRANCHES, decompose } from "./decompose.js";
 import { fanOut } from "./fan-out.js";
 import {
 	type ReportModel,
+	rawReport,
 	reduce,
 	type SynthesisModelConfig,
 } from "./synthesize.js";
@@ -291,7 +293,20 @@ export async function* investigateIncidentStream(
 		yield cancelledErrorEvent(runId, collected.length);
 		return;
 	}
-	const report = await reduce(opts.context, collected, opts.synth, opts.model);
+	let report: InvestigationReport;
+	if (!hasTier1Provider(opts.synth)) {
+		report = rawReport(opts.context, collected);
+	} else {
+		try {
+			report = await reduce(opts.context, collected, opts.synth, opts.model);
+		} catch (err) {
+			report = rawReport(
+				opts.context,
+				collected,
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
 	// Abort landing DURING reduce(): the LLM call is not itself abortable (out of scope),
 	// so it ran to completion — but its result is DISCARDED. A cancelled run persists no
 	// report, mirroring the mid-stream abort branch (ADR-0002).

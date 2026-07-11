@@ -21,7 +21,12 @@ import { singleAlertContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import type { HarnessRunner } from "./investigate.js";
 import { investigateIncidentStream } from "./investigate.js";
-import { type ReportModel, reduce } from "./synthesize.js";
+import {
+	RAW_REPORT_NOTICE,
+	type ReportModel,
+	rawReport,
+	reduce,
+} from "./synthesize.js";
 
 const TELEMETRY = {
 	prometheusUrl: "http://prom:9090",
@@ -215,5 +220,114 @@ describe("reduce — map-reduce (ADR-0016 decision 2)", () => {
 
 		expect(emitted.some((e) => e.kind === "tool_result")).toBe(false);
 		expect(emitted.some((e) => e.kind === "report")).toBe(false);
+	});
+});
+
+describe("reduce pass-through (#131/#132)", () => {
+	it("no Tier-1 provider ⇒ raw pass-through report, model never called", async () => {
+		const harness: HarnessRunner = async function* (_prompt, ctx) {
+			yield { ...agentStep(ctx.branchId, 0), text: "root cause is X" };
+			yield toolResult(ctx.branchId, 1);
+		};
+		let called = false;
+		const stubModel = async () => {
+			called = true;
+			throw new Error("should not be called");
+		};
+		const emitted: CanonicalEvent[] = [];
+		for await (const ev of investigateIncidentStream({
+			context: singleAlertContext(alert("Test"), TELEMETRY),
+			harness,
+			synth: {
+				providerId: "ollama",
+				model: "m",
+				apiKey: "",
+				baseURL: "https://ollama.com/v1",
+			},
+			model: stubModel as unknown as ReportModel,
+		})) {
+			emitted.push(ev);
+		}
+		const reportEv = emitted.find((e) => e.kind === "report");
+		expect(reportEv).toBeDefined();
+		if (reportEv?.kind === "report") {
+			expect(reportEv.report.summary).toContain(RAW_REPORT_NOTICE);
+			expect(reportEv.report.summary).toContain("root cause is X");
+			expect(reportEv.report.coverage.queried).toContain("curl prom");
+		}
+		expect(called).toBe(false);
+	});
+
+	it("provider configured but reduce throws ⇒ salvaged raw report surfacing the error", async () => {
+		const harness: HarnessRunner = async function* (_prompt, ctx) {
+			yield { ...agentStep(ctx.branchId, 0), text: "harness conclusion" };
+			yield toolResult(ctx.branchId, 1);
+		};
+		let callCount = 0;
+		const stubModel = async () => {
+			callCount++;
+			throw new Error("boom");
+		};
+		const emitted: CanonicalEvent[] = [];
+		for await (const ev of investigateIncidentStream({
+			context: singleAlertContext(alert("Test"), TELEMETRY),
+			harness,
+			synth: { ...SYNTH, apiKey: "k" },
+			model: stubModel as unknown as ReportModel,
+		})) {
+			emitted.push(ev);
+		}
+		const reportEv = emitted.find((e) => e.kind === "report");
+		expect(reportEv).toBeDefined();
+		if (reportEv?.kind === "report") {
+			expect(reportEv.report.summary).toContain(RAW_REPORT_NOTICE);
+			expect(reportEv.report.summary).toContain("Synthesis failed: boom");
+			expect(reportEv.report.summary).toContain("harness conclusion");
+		}
+		expect(callCount).toBe(1);
+	});
+
+	it("provider configured, reduce succeeds ⇒ synthesized report, no raw marker", async () => {
+		const harness: HarnessRunner = async function* (_prompt, ctx) {
+			yield { ...agentStep(ctx.branchId, 0), text: "harness conclusion" };
+			yield toolResult(ctx.branchId, 1);
+		};
+		const canned = report("canned synthesized report");
+		const stubModel = async () => canned;
+		const emitted: CanonicalEvent[] = [];
+		for await (const ev of investigateIncidentStream({
+			context: singleAlertContext(alert("Test"), TELEMETRY),
+			harness,
+			synth: { ...SYNTH, apiKey: "k" },
+			model: stubModel as unknown as ReportModel,
+		})) {
+			emitted.push(ev);
+		}
+		const reportEv = emitted.find((e) => e.kind === "report");
+		expect(reportEv).toBeDefined();
+		if (reportEv?.kind === "report") {
+			expect(reportEv.report).toEqual(canned);
+			expect(reportEv.report.summary).not.toContain(RAW_REPORT_NOTICE);
+		}
+	});
+
+	it("rawReport (unit): multi-branch joins each surviving branch conclusion, excludes zero-evidence branch, dedupes sources", () => {
+		const b0 = [
+			{ ...agentStep("b0", 0), text: "cause A" },
+			{
+				...toolResult("b0", 1),
+				result: { ...toolResult("b0", 1).result, source: "src1" },
+			} as CanonicalEvent,
+		];
+		const b1 = [{ ...agentStep("b1", 0), text: "cause B" }];
+		const out = rawReport(
+			multiAlertContext(["A", "B"]),
+			[...b0, ...b1],
+			"boom",
+		);
+		expect(out.summary).toContain("cause A");
+		expect(out.summary).not.toContain("cause B");
+		expect(out.summary).toContain("Synthesis failed: boom");
+		expect(out.coverage.queried).toEqual(["src1"]);
 	});
 });

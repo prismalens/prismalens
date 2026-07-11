@@ -23,7 +23,10 @@ import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
+import {
+	hasTier1Provider,
+	INVESTIGATION_DEFAULTS,
+} from "@prismalens/config/investigation";
 import type {
 	CanonicalEvent,
 	Hypothesis,
@@ -236,9 +239,9 @@ export default defineCommand({
 				resolved;
 			const primaryAlert = context.alerts[0];
 
-			if (!synth.apiKey) {
-				consola.warn(
-					"No OLLAMA_API_KEY / OPENAI_API_KEY in the environment — the synthesis call will likely fail (BYO-key, ADR-0006).",
+			if (!hasTier1Provider(synth)) {
+				info(
+					"No Tier-1 provider configured — report will be RAW harness pass-through (un-synthesized). This is supported.",
 				);
 			}
 
