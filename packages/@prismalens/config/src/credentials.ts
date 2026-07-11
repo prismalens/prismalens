@@ -43,7 +43,10 @@ export function resolveCredentials(
 	if (!baseURL) {
 		baseURL = process.env[`${provider.id.toUpperCase()}_BASE_URL`];
 	}
-	if (!baseURL && "defaultBaseUrl" in provider) {
+	// `custom` has no guessable endpoint — its registry defaultBaseUrl is UI
+	// placeholder metadata, and silently resolving to it would re-open the
+	// fail-open hole this resolver exists to close. Explicit config/env only.
+	if (!baseURL && providerId !== "custom" && "defaultBaseUrl" in provider) {
 		baseURL = provider.defaultBaseUrl;
 	}
 

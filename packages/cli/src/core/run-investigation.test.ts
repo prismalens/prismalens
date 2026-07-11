@@ -21,6 +21,7 @@ describe("resolveInvestigation", () => {
 			"CUSTOM_LLM_API_KEY",
 			"OLLAMA_BASE_URL",
 			"OPENAI_BASE_URL",
+			"CUSTOM_BASE_URL",
 		]) {
 			delete process.env[name];
 			delete process.env[`${name}_FILE`];
@@ -67,13 +68,23 @@ describe("resolveInvestigation", () => {
 		expect(req.synth.configured).toBe(true);
 	});
 
-	it("custom without base_url resolves to default", () => {
+	it("custom without base_url errors", () => {
+		const config = PlConfigSchema.parse({
+			synth: { provider: "custom" },
+		});
+		expect(() => resolveInvestigation({ query: "test" }, config)).toThrow(
+			"Custom LLM provider requires synth.base_url to be configured.",
+		);
+	});
+
+	it("custom with CUSTOM_BASE_URL env resolves explicitly", () => {
+		process.env.CUSTOM_BASE_URL = "http://localhost:9000";
 		const config = PlConfigSchema.parse({
 			synth: { provider: "custom" },
 		});
 		const req = resolveInvestigation({ query: "test" }, config);
 		expect(req.synth.providerId).toBe("custom");
-		expect(req.synth.baseURL).toBe("http://localhost:8000/v1");
+		expect(req.synth.baseURL).toBe("http://localhost:9000/v1");
 	});
 
 	it("no keys anywhere -> configured false", () => {
