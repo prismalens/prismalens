@@ -192,17 +192,19 @@ export default defineCommand({
 		description: "Preflight check the investigation environment",
 	},
 	args: {
-		noPing: {
+		// citty models `--no-ping` as negation of a `ping` boolean — a literal
+		// `noPing` arg would never receive it.
+		ping: {
 			type: "boolean",
-			description: "Skip the live ping check for the LLM credential",
-			default: false,
+			description: "Live-ping the LLM credential (disable with --no-ping)",
+			default: true,
 		},
 	},
 	async run({ args }) {
 		try {
 			const config = await loadConfig();
 			const harness = config.agent.default;
-			const noPing = Boolean(args.noPing);
+			const noPing = !args.ping;
 
 			const checks: Check[] = [
 				checkHarness(harness),
