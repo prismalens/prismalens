@@ -9,12 +9,10 @@
 	"scripts": {
 		"dev": "nest start --watch --preserveWatchOutput",
 		"build": "nest build",
-		"format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
 		"start": "nest start",
 		"start:dev": "nest start --watch",
 		"start:debug": "nest start --debug --watch",
 		"start:prod": "node dist/main",
-		"lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:cov": "vitest run --coverage",
@@ -49,7 +47,6 @@
 		"rxjs": "catalog:"
 	},
 	"devDependencies": {
-		"@eslint/js": "^10.0.1",
 		"@faker-js/faker": "^10.5.0",
 		"@nestjs/cli": "^11.0.23",
 		"@nestjs/schematics": "^11.1.0",
@@ -59,14 +56,8 @@
 		"@types/express": "^5.0.6",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "^4.1.9",
-		"eslint": "catalog:",
-		"eslint-config-prettier": "^10.1.8",
-		"eslint-plugin-prettier": "^5.5.6",
-		"globals": "^17.7.0",
-		"prettier": "^3.9.4",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "^8.62.1",
 		"unplugin-swc": "^1.5.9",
 		"vitest": "catalog:"
 	},
