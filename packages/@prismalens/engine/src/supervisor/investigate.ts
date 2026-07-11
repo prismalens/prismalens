@@ -31,7 +31,7 @@ import {
 	type ClaudeCodeConfig,
 	runClaudeCodeBranch,
 } from "../runner/claude-code-runner.js";
-import { decompose } from "./decompose.js";
+import { DEFAULT_MAX_BRANCHES, decompose } from "./decompose.js";
 import { fanOut } from "./fan-out.js";
 import {
 	type ReportModel,
@@ -220,12 +220,13 @@ export async function* investigateIncidentStream(
 	opts: InvestigateOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const runId = opts.runId ?? randomUUID();
-	// Per-alert fan-out (ADR-0016 decision 2): decompose caps the branch count; all
-	// capped branches then run concurrently (fan-out's default concurrency == the
-	// branch count, so passing maxBranches again would be inert — FanOutOptions.
-	// concurrency exists for direct callers that want a lower ceiling). Defaults
-	// apply when maxBranches is omitted, so the single-alert path is unchanged.
+	// Per-alert fan-out (ADR-0016 decision 2): decompose caps the branch count; the
+	// fan-out lane ceiling is now explicitly the configured branch cap, rather than
+	// relying on fan-out's default (which would be branches.length), so a future
+	// decompose change or a large max_branches cannot exceed the explicit cap (issue #62).
+	// Defaults apply when maxBranches is omitted, so the single-alert path is unchanged.
 	const maxBranches = opts.maxBranches;
+	const branchConcurrency = maxBranches ?? DEFAULT_MAX_BRANCHES;
 	const branches = decompose(
 		opts.context,
 		maxBranches !== undefined ? { maxBranches } : {},
@@ -236,7 +237,9 @@ export async function* investigateIncidentStream(
 	// only observe the abort at the next event boundary, so a wedged harness would never
 	// release. On abort / early-return we `iter.return()` — fan-out then returns each
 	// branch generator → acp-client kills the child + destroys the run-owned sandbox.
-	const iter = fanOut(branches, opts.harness, runId)[Symbol.asyncIterator]();
+	const iter = fanOut(branches, opts.harness, runId, {
+		concurrency: branchConcurrency,
+	})[Symbol.asyncIterator]();
 	let cancelled = false;
 	let drained = false;
 	try {

@@ -128,6 +128,8 @@ export interface InvestigationRequest {
 	 * CLI wires it from `agent.max_branches`; the worker leaves it defaulted.
 	 */
 	maxBranches?: number;
+	/** Per-run turn ceiling, applied to the default (Claude Code) harness (issue #62). */
+	maxTurns?: number;
 }
 
 export interface ResolvedInvestigation {
@@ -171,25 +173,13 @@ export function resolveInvestigation(
 			});
 
 	const mode = req.permissionMode ?? "read-only";
+	if (!HARNESS_REGISTRY[req.harness as HarnessId]) {
+		throw new Error(`Unknown harness: ${req.harness}`);
+	}
 	const outcome: PermissionOutcome = resolvePermissionOutcome(
 		req.harness as HarnessId,
 		mode,
 	);
-	// Honest fidelity (ADR-0017): a sandbox may only be CLAIMED when the harness
-	// actually consumes it. Only ACP-transport harnesses are spawned as a child the
-	// engine can place inside the boundary; the Agent SDK harness runs in-process,
-	// so accepting a sandbox for it would record an enforcement that never applied.
-	// Fail loudly instead of silently discarding the requested boundary.
-	if (
-		req.sandbox &&
-		HARNESS_REGISTRY[req.harness as HarnessId]?.transport !== "acp"
-	) {
-		throw new Error(
-			`Harness "${req.harness}" cannot run inside a sandbox yet (it is not ` +
-				`spawned as a child process). Drop --sandbox or use an ACP harness ` +
-				`(deepagents). Sandboxing the Agent SDK harness is a later B.1 slice.`,
-		);
-	}
 	// Honest fidelity (ADR-0017): the deepagents native passthrough once mapped
 	// `shellAllowList`/`sandbox` to the `-S`/`--sandbox` read-only enforcer flags,
 	// but no published deepagents-acp distribution has them (B.1 spike, 2026-07-03)
@@ -247,6 +237,7 @@ export function resolveInvestigation(
 		native: req.harnessNative,
 		...(req.sandbox ? { sandbox: req.sandbox } : {}),
 		...(req.limits ? { limits: req.limits } : {}),
+		...(req.maxTurns !== undefined ? { maxTurns: req.maxTurns } : {}),
 	});
 
 	return {
@@ -287,11 +278,42 @@ interface BuildHarnessOpts {
 	permissionMode?: PermissionMode;
 	/** The chosen harness's native passthrough (ADR-0017). */
 	native?: Record<string, unknown>;
-	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) path only. */
+	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) and claude-code paths. */
 	sandbox?: Sandbox;
-	/** Best-effort resource caps (ADR-0020); deepagents (ACP) path only. */
+	/** Best-effort resource caps (ADR-0020); deepagents (ACP) and claude-code paths. */
 	limits?: SandboxLimits;
+	/** Per-run turn ceiling (issue #62); consumed by the claude-code builder. */
+	maxTurns?: number;
 }
+
+type HarnessRunnerBuilder = (
+	cwd: string,
+	opts: BuildHarnessOpts,
+	model: string | undefined,
+) => HarnessRunner;
+
+const HARNESS_RUNNERS: Partial<Record<HarnessId, HarnessRunnerBuilder>> = {
+	deepagents: (cwd, opts, model) =>
+		deepAgentsHarness({
+			cwd,
+			...(opts.initTimeoutMs ? { initTimeoutMs: opts.initTimeoutMs } : {}),
+			...(model ? { model } : {}),
+			...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
+			...(opts.native ? { native: opts.native } : {}),
+			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+			...(opts.limits ? { limits: opts.limits } : {}),
+		}),
+	"claude-code": (cwd, opts, model) =>
+		claudeCodeHarness({
+			cwd,
+			...(model ? { model } : {}),
+			...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
+			...(opts.native ? { native: opts.native } : {}),
+			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+			...(opts.limits ? { limits: opts.limits } : {}),
+			...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}),
+		}),
+};
 
 /**
  * Build the Tier-2 harness runner for a backend name (throws on unknown/unbuilt).
@@ -316,28 +338,13 @@ function buildHarness(
 			? `${descriptor.modelPrefix}${opts.model}`
 			: opts.model;
 
-	switch (harnessName) {
-		case "deepagents":
-			return deepAgentsHarness({
-				cwd,
-				...(opts.initTimeoutMs ? { initTimeoutMs: opts.initTimeoutMs } : {}),
-				...(model ? { model } : {}),
-				...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
-				...(opts.native ? { native: opts.native } : {}),
-				...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
-				...(opts.limits ? { limits: opts.limits } : {}),
-			});
-		case "claude-code":
-			return claudeCodeHarness({
-				cwd,
-				...(model ? { model } : {}),
-				...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
-				...(opts.native ? { native: opts.native } : {}),
-			});
-		default:
-			// Registry marks it implemented but no runner is wired — a programming error.
-			throw new Error(`No runner wired for harness: ${harnessName}`);
+	const builder = HARNESS_RUNNERS[harnessName as HarnessId];
+	if (!builder) {
+		// Registry marks it implemented but no runner is wired — a programming error.
+		throw new Error(`No runner wired for harness: ${harnessName}`);
 	}
+
+	return builder(cwd, opts, model);
 }
 
 // ---------------------------------------------------------------------------

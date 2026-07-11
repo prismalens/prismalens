@@ -52,8 +52,10 @@ setup (providers, harnesses, configuration, commands) lives at
   seeds an investigation from a firing alert and rents an agent harness
   (Tier-2) to do the read-only legwork, then reduces its event stream into the
   final report.
-- **Bring your own harness.** Today: `deepagents` (driven over ACP) or
-  `claude-code` (driven over the Claude Agent SDK). `codex` is stubbed.
+- **Bring your own harness.** By default, `claude-code` is used (driven over the
+  Claude Agent SDK). `deepagents` (driven over ACP) is available as a long-tail
+  harness — switch to it with `--harness deepagents` or `agent.default: deepagents`
+  in `prismalens.config.yaml`. `codex` is stubbed.
 - **Bring your own model key.** Tier-1 and the `deepagents` harness talk to
   any OpenAI-compatible provider (Ollama, OpenAI, Groq, ...); `claude-code`
   uses your signed-in Claude Code session or an Anthropic key. No credentials

@@ -59,7 +59,7 @@ export const AgentLimitsConfigSchema = z.object({
 
 /** Tier-2 harness backend the supervisor rents (ADR-0008). */
 export const AgentConfigSchema = z.object({
-	default: z.enum(HARNESS_IDS).default("deepagents"),
+	default: z.enum(HARNESS_IDS).default("claude-code"),
 	/**
 	 * BARE model id (e.g. "gpt-oss:120b") — the chosen harness applies its own
 	 * provider prefix (ADR-0017: deepagents prepends "openai:"; Claude Code takes it
@@ -95,11 +95,24 @@ export const WorkspaceConfigSchema = z.object({
 });
 
 /**
+ * Run-budget guardrails for `pl listen` (issue #62): non-dollar caps only.
+ * `max_concurrent`/`max_per_hour` gate dispatch; `max_turns` is threaded into the
+ * default harness as a per-run runaway guard (no default ⇒ the harness's own default).
+ */
+export const ListenCapsConfigSchema = z.object({
+	/** Max investigations running at once. Default 2. */
+	max_concurrent: z.number().int().positive().default(2),
+	/** Max investigations started per trailing hour. Default 10. */
+	max_per_hour: z.number().int().positive().default(10),
+	/** Per-run turn ceiling for the default harness. Unset ⇒ the harness default. */
+	max_turns: z.number().int().positive().optional(),
+});
+
+/**
  * `pl listen` webhook intake (issue #58, Phase 1 R1). `token` is REQUIRED to
  * start listening but optional here so every other command parses a config
  * without it; set it via env interpolation (`token: "${PRISMALENS_LISTEN_TOKEN}"`)
- * rather than a literal. The grouping_window_ms configures the debounce window;
- * caps (#62) is still a future slice.
+ * rather than a literal. The grouping_window_ms configures the debounce window.
  */
 export const ListenConfigSchema = z.object({
 	/** Local intake port (4181: clear of 9090/9093/3000/8080 defaults). 0 = ephemeral. */
@@ -116,6 +129,8 @@ export const ListenConfigSchema = z.object({
 	 * "${PRISMALENS_SLACK_WEBHOOK_URL}") so the secret stays in env (ADR-0006).
 	 */
 	slack_webhook_url: z.string().url().optional(),
+	/** Run-budget guardrails (issue #62). Always present with defaults after parse. */
+	caps: optionalWithDefaults(ListenCapsConfigSchema),
 });
 
 /**

@@ -61,6 +61,8 @@ export interface ResolveInvestigationArgs {
 	 * console warning.
 	 */
 	requestedSandbox?: string;
+	/** Per-run turn ceiling for the default harness (issue #62). Forwarded to the engine. */
+	maxTurns?: number;
 }
 
 /**
@@ -144,6 +146,7 @@ export function resolveInvestigation(
 		...(config.agent.max_branches
 			? { maxBranches: config.agent.max_branches }
 			: {}),
+		...(args.maxTurns ? { maxTurns: args.maxTurns } : {}),
 		model: config.agent.model,
 		cwd,
 		synth: {

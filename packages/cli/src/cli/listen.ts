@@ -17,6 +17,11 @@ import { defineCommand } from "citty";
 import { consola } from "consola";
 import { loadConfig } from "../config/loader.js";
 import type { PlConfig } from "../config/schema.js";
+import {
+	type CapsGate,
+	createCapsGate,
+	type DispatchCaps,
+} from "../core/caps.js";
 import { resolveRepoSlug } from "../core/detect-repo.js";
 import { createFileSessionStore } from "../core/file-session-store.js";
 import {
@@ -60,6 +65,7 @@ export interface InvestigationRunnerDeps {
 		alertname: string,
 		outcome: ConductedOutcome,
 	) => Promise<void>;
+	capsGate?: CapsGate;
 }
 
 /**
@@ -98,6 +104,10 @@ export function createInvestigationRunner(
 	const notify = deps.notify ?? notifyRun;
 	const cwd = options.cwd ? resolve(options.cwd) : process.cwd();
 
+	// One gate for the server's lifetime; state (active count + hourly window)
+	// persists across payloads even though config is re-resolved per payload.
+	const caps: CapsGate = deps.capsGate ?? createCapsGate();
+
 	return async (runId, alerts) => {
 		// Per payload, not once at startup: config (and thus repo/workspace/harness)
 		// is re-resolved for every alert, exactly like a fresh `pl investigate`.
@@ -105,6 +115,43 @@ export function createInvestigationRunner(
 			cwd,
 			...(options.configPath ? { configPath: options.configPath } : {}),
 		});
+
+		const dispatchCaps: DispatchCaps = {
+			maxConcurrent: config.listen.caps.max_concurrent,
+			maxPerHour: config.listen.caps.max_per_hour,
+		};
+		const decision = caps.tryDispatch(dispatchCaps, Date.now());
+		if (!decision.allow) {
+			const alertname = ((
+				alerts[0]?.labels as Record<string, unknown> | undefined
+			)?.alertname ?? undefined) as string | undefined;
+			// Structured suppression log — match the repo convention
+			// (slack-notify.ts: console.error(JSON.stringify({ event, ... }))).
+			console.error(
+				JSON.stringify({
+					event: "dispatch_suppressed",
+					runId,
+					reason: decision.reason,
+					...(alertname ? { alertname } : {}),
+					maxConcurrent: dispatchCaps.maxConcurrent,
+					maxPerHour: dispatchCaps.maxPerHour,
+				}),
+			);
+			options.log(`Suppressed run ${runId} (${decision.reason} cap)`);
+			const suppressedSessions = createSessionManager(
+				config.workspace.base_dir,
+			);
+			try {
+				await suppressedSessions.recordSuppressed({
+					runId,
+					reason: decision.reason,
+					...(alertname ? { alertname } : {}),
+				});
+			} finally {
+				suppressedSessions.close?.();
+			}
+			return; // never arm a sandbox / call conductRun for a suppressed run
+		}
 
 		// AC5: the checkout under investigation follows the ALERT (service label →
 		// catalog), not the directory the server happened to start in.
@@ -127,6 +174,9 @@ export function createInvestigationRunner(
 								sandbox: selection.sandbox,
 								requestedSandbox: selection.requested,
 							}
+						: {}),
+					...(config.listen.caps.max_turns !== undefined
+						? { maxTurns: config.listen.caps.max_turns }
 						: {}),
 				},
 				config,
@@ -183,6 +233,7 @@ export function createInvestigationRunner(
 			}
 			options.log(`Report saved for run ${runId}`);
 		} finally {
+			caps.release();
 			// Close this run's sqlite connection — the runner opens one PER alert,
 			// so leaving it open would leak a handle on every webhook.
 			sessions?.close?.();
