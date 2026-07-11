@@ -278,9 +278,9 @@ interface BuildHarnessOpts {
 	permissionMode?: PermissionMode;
 	/** The chosen harness's native passthrough (ADR-0017). */
 	native?: Record<string, unknown>;
-	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) path only. */
+	/** The caller-owned isolation boundary (ADR-0020); deepagents (ACP) and claude-code paths. */
 	sandbox?: Sandbox;
-	/** Best-effort resource caps (ADR-0020); deepagents (ACP) path only. */
+	/** Best-effort resource caps (ADR-0020); deepagents (ACP) and claude-code paths. */
 	limits?: SandboxLimits;
 	/** Per-run turn ceiling (issue #62); consumed by the claude-code builder. */
 	maxTurns?: number;
