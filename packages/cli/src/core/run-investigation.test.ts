@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlConfigSchema } from "../config/schema.js";
 import { resolveInvestigation } from "./run-investigation.js";
