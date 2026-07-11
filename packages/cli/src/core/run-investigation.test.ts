@@ -58,13 +58,22 @@ describe("resolveInvestigation", () => {
 		expect(req.synth.configured).toBe(true);
 	});
 
-	it("custom without base_url errors", () => {
+	it("registry-order auto-selection (ollama > groq)", () => {
+		process.env.GROQ_API_KEY = "k";
+		process.env.OLLAMA_API_KEY = "k2";
+		const config = PlConfigSchema.parse({});
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("ollama");
+		expect(req.synth.configured).toBe(true);
+	});
+
+	it("custom without base_url resolves to default", () => {
 		const config = PlConfigSchema.parse({
 			synth: { provider: "custom" },
 		});
-		expect(() => resolveInvestigation({ query: "test" }, config)).toThrow(
-			"Custom LLM provider requires synth.base_url to be configured.",
-		);
+		const req = resolveInvestigation({ query: "test" }, config);
+		expect(req.synth.providerId).toBe("custom");
+		expect(req.synth.baseURL).toBe("http://localhost:8000/v1");
 	});
 
 	it("no keys anywhere -> configured false", () => {

@@ -29,12 +29,13 @@ export function resolveCredentials(
 	let apiKey: string | undefined;
 	let source: "env" | "file" | "none" = "none";
 
-	if (process.env[envVar] !== undefined) {
+	if (process.env[envVar]?.trim()) {
 		apiKey = process.env[envVar];
 		source = "env";
-	} else if (process.env[`${envVar}_FILE`] !== undefined) {
+	} else if (process.env[`${envVar}_FILE`]?.trim()) {
 		apiKey = readEnv(envVar);
-		source = "file";
+		apiKey = apiKey?.trim() ? apiKey : undefined;
+		source = apiKey ? "file" : "none";
 	}
 
 	const provider = LLM_PROVIDERS[providerId];

@@ -52,6 +52,20 @@ describe("credentials", () => {
 			expect(result.source).toBe("none");
 		});
 
+		it("empty string env var → source none", () => {
+			process.env.OPENAI_API_KEY = "";
+			const result = resolveCredentials("openai");
+			expect(result.source).toBe("none");
+			expect(result.apiKey).toBeUndefined();
+		});
+
+		it("empty _FILE content → source none", () => {
+			process.env.OPENAI_API_KEY_FILE = keyFile("  \n");
+			const result = resolveCredentials("openai");
+			expect(result.source).toBe("none");
+			expect(result.apiKey).toBeUndefined();
+		});
+
 		it("strips exactly one trailing newline from _FILE", () => {
 			process.env.OPENAI_API_KEY_FILE = keyFile("key\n\n");
 			const result = resolveCredentials("openai");

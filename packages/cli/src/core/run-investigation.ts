@@ -13,10 +13,19 @@
  * JSON-RPC `serve` path stay in lockstep, unchanged.
  */
 import { resolve } from "node:path";
-import { resolveCredentials } from "@prismalens/config/credentials";
+import { ensureV1, resolveCredentials } from "@prismalens/config/credentials";
 import type { PermissionMode } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
-import { getDefaultModel, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	getDefaultModel,
+	LLM_PROVIDERS,
+	type LLMProviderId,
+} from "@prismalens/config/llm";
+
+const AUTO_SELECT_PROVIDERS = (
+	Object.keys(LLM_PROVIDERS) as LLMProviderId[]
+).filter((id) => id !== "custom");
+
 import type { ServiceContext } from "@prismalens/contracts";
 import {
 	coerceFiringAlert,
@@ -79,14 +88,8 @@ export function isSynthConfigured(config: PlConfig): boolean {
 				.source !== "none"
 		);
 	}
-	for (const id of [
-		"anthropic",
-		"openai",
-		"google",
-		"groq",
-		"ollama",
-	] as const) {
-		if (resolveCredentials(id, config.synth.base_url).source !== "none") {
+	for (const id of AUTO_SELECT_PROVIDERS) {
+		if (resolveCredentials(id).source !== "none") {
 			return true;
 		}
 	}
@@ -105,27 +108,25 @@ export function resolveInvestigation(
 
 	if (providerId) {
 		creds = resolveCredentials(providerId, config.synth.base_url);
-		if (providerId === "custom" && !config.synth.base_url) {
+		if (providerId === "custom" && !creds.baseURL) {
 			throw new Error(
 				"Custom LLM provider requires synth.base_url to be configured.",
 			);
 		}
 	} else {
-		for (const id of [
-			"anthropic",
-			"openai",
-			"google",
-			"groq",
-			"ollama",
-		] as const) {
-			const candidate = resolveCredentials(id, config.synth.base_url);
+		for (const id of AUTO_SELECT_PROVIDERS) {
+			const candidate = resolveCredentials(id);
 			if (candidate.source !== "none") {
 				providerId = id;
-				creds = candidate;
 				break;
 			}
 		}
-		if (!creds) {
+		if (providerId) {
+			creds = resolveCredentials(
+				providerId as LLMProviderId,
+				config.synth.base_url,
+			);
+		} else {
 			creds = { providerId: "ollama", source: "none" };
 			providerId = "ollama";
 		}
@@ -208,10 +209,11 @@ export function resolveInvestigation(
 		},
 		harnessEnv: {
 			OPENAI_API_KEY: process.env.OLLAMA_API_KEY ?? process.env.OPENAI_API_KEY,
-			OPENAI_BASE_URL:
+			OPENAI_BASE_URL: ensureV1(
 				process.env.OLLAMA_BASE_URL ??
-				process.env.OPENAI_BASE_URL ??
-				INVESTIGATION_DEFAULTS.synth.baseURL,
+					process.env.OPENAI_BASE_URL ??
+					INVESTIGATION_DEFAULTS.synth.baseURL,
+			),
 		},
 		initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 	};

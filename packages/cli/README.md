@@ -100,8 +100,9 @@ The seed alert comes from **one of**:
 | --- | --- |
 | `--repo <dir>` | Path to the repository the harness investigates (its cwd). Defaults to the current directory. |
 | `--query, -q <text>` | Synthesize an alert from this one-line description (alternative to piping a `FiringAlert` JSON on stdin). |
-| `--config <path>` | Path to a `prismalens.config.yaml` (skips the upward config search). |
+| `--config <path>` | Path to a `prismalens.config.yaml` (skips the upward config search; fails closed for missing, unreadable, or invalid paths). |
 | `--model <id>` | Override `agent.model` — a bare model id, e.g. `gpt-oss:120b`. |
+| `--max-turns <n>` | Per-run turn ceiling for the default harness. |
 | `--harness <name>` | Tier-2 backend: `deepagents` \| `claude-code` \| `codex`. Defaults to `agent.default`. |
 | `--json` | Print the `InvestigationReport` as JSON to stdout (suppresses the human renderer; implies quiet). |
 | `--output <file>` | Also write the `InvestigationReport` JSON to this file. |
@@ -128,7 +129,7 @@ Preflight checklist that gates a run. Prints pass/fail per check; exits non-zero
   `claude-code` → `claude`, `codex` → `codex` (for the harness from config).
 - **HARD — an LLM credential:** any of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
   `GOOGLE_API_KEY` / `OLLAMA_API_KEY` / `GROQ_API_KEY` / `CUSTOM_LLM_API_KEY`,
-  or, for `claude-code`, a signed-in `~/.claude/.credentials.json`.
+  or, for `claude-code`, a signed-in `~/.claude/.credentials.json`. (Performs a live provider model ping by default, while `--no-ping` skips it.)
 - **SOFT — workspace writable:** `workspace.base_dir` can be created/written.
 
 ### `init`

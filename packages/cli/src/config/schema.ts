@@ -192,7 +192,7 @@ function optionalWithDefaults<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 export const SynthConfigSchema = z.object({
 	provider: llmProviderIdSchema.optional(),
 	model: z.string().optional(),
-	base_url: z.string().optional(),
+	base_url: z.string().url().optional(),
 });
 
 export const PlConfigSchema = z.object({

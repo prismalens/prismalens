@@ -11,6 +11,7 @@
  * written exactly as the `investigate` command writes it.
  */
 import { defineCommand } from "citty";
+import { consola } from "consola";
 import { runJsonRpcServer } from "../jsonrpc/server.js";
 import { cliVersion } from "../version.js";
 
@@ -27,7 +28,6 @@ export default defineCommand({
 		try {
 			await runJsonRpcServer({ version: SERVER_VERSION });
 		} catch (err) {
-			const consola = require("consola").default || require("consola");
 			consola.error(err instanceof Error ? err.message : String(err));
 			process.exit(1);
 		}
