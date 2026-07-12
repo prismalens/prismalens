@@ -1,5 +1,11 @@
 # @prismalens/engine
 
+## 0.1.1
+
+### Patch Changes
+
+- ed8ac21: Fix caps-slot leak on refused dispatch and record refusals in session store.
+
 ## 0.1.0
 
 ### Minor Changes
