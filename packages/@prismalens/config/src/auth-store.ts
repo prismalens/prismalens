@@ -36,6 +36,18 @@ export function readAuthStore(): AuthStore {
 			err &&
 			typeof err === "object" &&
 			"code" in err &&
+			((err as { code: string }).code === "EACCES" ||
+				(err as { code: string }).code === "EPERM")
+		) {
+			consola.warn(
+				"Auth store file is inaccessible due to permissions. Treating as empty.",
+			);
+			return {};
+		}
+		if (
+			err &&
+			typeof err === "object" &&
+			"code" in err &&
 			(err as { code: string }).code === "ENOENT"
 		) {
 			return {};

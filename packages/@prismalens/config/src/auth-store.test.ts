@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,5 +46,21 @@ describe("auth-store", () => {
 		const store = readAuthStore();
 		expect(store).toEqual({});
 		expect(consolaWarnSpy).toHaveBeenCalledWith("Auth store file is corrupted. Treating as empty.");
+	});
+	it("inaccessible auth file degrades to {} and warns", () => {
+		const dataDir = getAppDataDir();
+		// Ensure dir exists
+		writeAuthStore({ openai: { type: "api", key: "secret" } });
+		// Remove permissions on the directory to cause EACCES when accessing the file
+		chmodSync(dataDir, 0o000);
+
+		const store = readAuthStore();
+		expect(store).toEqual({});
+		expect(consolaWarnSpy).toHaveBeenCalledWith(
+			"Auth store file is inaccessible due to permissions. Treating as empty.",
+		);
+
+		// Restore permissions so rmSync can clean up
+		chmodSync(dataDir, 0o700);
 	});
 });
