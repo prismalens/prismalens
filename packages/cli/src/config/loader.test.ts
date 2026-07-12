@@ -136,11 +136,14 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 			]);
 		});
 
-		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
-			/<root>: Expected object, received array/,
-		);
-
-		spy.mockRestore();
+		try {
+			await expect(loadConfig({ cwd: dir })).rejects.toThrow(
+				/<root>: Expected object, received array/,
+			);
+		} finally {
+			// Restore even on assertion failure, so PlConfigSchema.parse isn't left mocked
+			spy.mockRestore();
+		}
 	});
 	it("warnUnknownKeys uses own-property check so inherited members like 'toString' trigger a warning", async () => {
 		const { default: consola } = await import("consola");
