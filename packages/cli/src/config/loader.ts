@@ -28,6 +28,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, parse as parsePath, resolve } from "node:path";
+import consola from "consola";
 import envPaths from "env-paths";
 import { parse as parseYaml } from "yaml";
 import { ZodError } from "zod";
@@ -162,6 +163,24 @@ function applyCliOverrides(
 	return deepMerge(config, patch);
 }
 
+function warnUnknownKeys(
+	input: Record<string, unknown>,
+	output: Record<string, unknown>,
+	path: string[] = [],
+) {
+	for (const key in input) {
+		if (!Object.hasOwn(output, key)) {
+			consola.warn(`Unknown config key ignored: ${[...path, key].join(".")}`);
+		} else if (isObject(input[key]) && isObject(output[key])) {
+			warnUnknownKeys(
+				input[key] as Record<string, unknown>,
+				output[key] as Record<string, unknown>,
+				[...path, key],
+			);
+		}
+	}
+}
+
 /** Load, merge, interpolate, and validate the config. Result is frozen. */
 export async function loadConfig(
 	options: LoadConfigOptions = {},
@@ -203,16 +222,17 @@ export async function loadConfig(
 	const interpolated = interpolateDeep(merged) as Record<string, unknown>;
 
 	let config: PlConfig;
+	let attribution = "in config";
+	if (readFiles.length === 1) {
+		attribution = `in ${readFiles[0]}`;
+	} else if (readFiles.length > 1) {
+		attribution = `(merged from: ${readFiles.join(", ")})`;
+	}
+
 	try {
 		config = PlConfigSchema.parse(interpolated);
+		warnUnknownKeys(interpolated, config);
 	} catch (err) {
-		let attribution = "in config";
-		if (readFiles.length === 1) {
-			attribution = `in ${readFiles[0]}`;
-		} else if (readFiles.length > 1) {
-			attribution = `(merged from: ${readFiles.join(", ")})`;
-		}
-
 		if (err instanceof ZodError) {
 			const issues = err.issues
 				.map(

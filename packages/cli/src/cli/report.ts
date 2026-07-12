@@ -9,7 +9,8 @@ import { assertKnownFlags } from "./flags.js";
 export default defineCommand({
 	meta: {
 		name: "report",
-		description: "Print a stored report for a given run ID",
+		description:
+			"Print a stored report for a given run ID\n\nExamples:\n  $ pl report 1234abcd\n  $ pl report 1234abcd --json\n  $ pl report 1234abcd --events",
 	},
 	args: {
 		id: {
@@ -24,7 +25,13 @@ export default defineCommand({
 		},
 		"base-dir": {
 			type: "string",
-			description: "Workspace base directory (default: ~/.prismalens)",
+			description:
+				"Workspace directory (default: ~/.prismalens; overridden by PRISMALENS_USER_FOLDER)",
+			required: false,
+		},
+		json: {
+			type: "boolean",
+			description: "Print machine-readable JSON",
 			required: false,
 		},
 	},
@@ -34,12 +41,21 @@ export default defineCommand({
 			assertKnownFlags(args, cmd);
 			sessions = createSessionManager(args["base-dir"]);
 
+			const json = Boolean(args.json);
 			const report = await sessions.readReport(args.id);
 			if (!report) {
 				consola.error(`No report for run ${args.id}`);
 				// exitCode (not process.exit) so the finally block still closes the
 				// session manager before the process tears down.
 				process.exitCode = 1;
+				return;
+			}
+
+			if (json) {
+				const out = args.events
+					? { report, events: await sessions.readEvents(args.id) }
+					: report;
+				process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
 				return;
 			}
 
