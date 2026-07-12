@@ -48,6 +48,7 @@ const main = defineCommand({
 		init: lazy("init"),
 		status: lazy("status"),
 		report: lazy("report"),
+		auth: lazy("auth"),
 	},
 });
 
