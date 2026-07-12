@@ -58,6 +58,8 @@ export interface ClaudeCodeConfig {
 	sandbox?: Sandbox;
 	/** Best-effort resource caps for the sandboxed run (ADR-0020), threaded to the sandbox spawn. */
 	limits?: SandboxLimits;
+	/** If true, stops host settings/hooks/plugins/MCP servers from leaking into the rented harness. */
+	isolateSettings?: boolean;
 }
 
 // The read-only floor is the registry SSOT (ADR-0017 Amendment 2) — the SAME array
@@ -103,7 +105,9 @@ export async function* runClaudeCodeBranch(
 					? { abortController: config.abortController }
 					: {}),
 				// prismalens posture-derived keys LAST — the read-only floor wins.
-				settingSources: ["user", "project", "local"],
+				settingSources: config.isolateSettings
+					? []
+					: ["user", "project", "local"],
 				permissionMode,
 				...(disallowedTools ? { disallowedTools } : {}),
 				spawnClaudeCodeProcess: sandboxSpawnClaudeCodeProcess(sandbox, {

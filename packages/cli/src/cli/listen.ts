@@ -191,6 +191,7 @@ export function createInvestigationRunner(
 					...(config.listen.caps.max_turns !== undefined
 						? { maxTurns: config.listen.caps.max_turns }
 						: {}),
+					isolateSettings: true,
 				},
 				config,
 			);

@@ -130,6 +130,8 @@ export interface InvestigationRequest {
 	maxBranches?: number;
 	/** Per-run turn ceiling, applied to the default (Claude Code) harness (issue #62). */
 	maxTurns?: number;
+	/** If true, stops host settings/hooks/plugins/MCP servers from leaking into the rented harness. */
+	isolateSettings?: boolean;
 }
 
 export interface ResolvedInvestigation {
@@ -238,6 +240,7 @@ export function resolveInvestigation(
 		...(req.sandbox ? { sandbox: req.sandbox } : {}),
 		...(req.limits ? { limits: req.limits } : {}),
 		...(req.maxTurns !== undefined ? { maxTurns: req.maxTurns } : {}),
+		...(req.isolateSettings ? { isolateSettings: req.isolateSettings } : {}),
 	});
 
 	return {
@@ -284,6 +287,8 @@ interface BuildHarnessOpts {
 	limits?: SandboxLimits;
 	/** Per-run turn ceiling (issue #62); consumed by the claude-code builder. */
 	maxTurns?: number;
+	/** If true, stops host settings/hooks/plugins/MCP servers from leaking into the rented harness. */
+	isolateSettings?: boolean;
 }
 
 type HarnessRunnerBuilder = (
@@ -312,6 +317,9 @@ const HARNESS_RUNNERS: Partial<Record<HarnessId, HarnessRunnerBuilder>> = {
 			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
 			...(opts.limits ? { limits: opts.limits } : {}),
 			...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}),
+			...(opts.isolateSettings
+				? { isolateSettings: opts.isolateSettings }
+				: {}),
 		}),
 };
 
