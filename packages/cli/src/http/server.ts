@@ -17,9 +17,12 @@ import {
 import { PrometheusWebhookSchema } from "@prismalens/contracts";
 import type { GroupingPort } from "../cli/grouping.js";
 
+
 export interface ListenServerOptions {
 	/** Port to bind (0 = ephemeral, for tests). */
 	port: number;
+	/** Host to bind (default 127.0.0.1). */
+	host?: string;
 	/** Shared bearer token; every request without it gets 401. */
 	token: string;
 	/** Grouping layer. */
@@ -32,6 +35,8 @@ export interface ListenServerOptions {
 	 * regardless of size. Default 8.
 	 */
 	maxPending?: number;
+
+	log?: (line: string) => void;
 }
 
 const DEFAULT_MAX_PENDING = 8;
@@ -165,6 +170,7 @@ export async function startListenServer(
 			received: parsed.data.alerts.length,
 			accepted: firing.length,
 		});
+
 		options.grouping.admit(firing, payload);
 	};
 
@@ -179,7 +185,7 @@ export async function startListenServer(
 	});
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		server.listen(options.port, "127.0.0.1", () => resolve());
+		server.listen(options.port, options.host ?? "127.0.0.1", () => resolve());
 	});
 	const address = server.address();
 	/* v8 ignore next 3 — a TCP listen never yields a pipe/null address */

@@ -343,10 +343,12 @@ export async function startListenFromConfig(
 	});
 
 	const server = await startListenServer({
+		host: config.listen.host,
 		port: config.listen.port,
 		token: config.listen.token,
 		maxPending: config.listen.max_pending,
 		grouping,
+		log: options.log,
 	});
 
 	// grouping holds a connection for the server's lifetime; release it on close
@@ -372,6 +374,10 @@ export default defineCommand({
 			description:
 				"Path to prismalens.config.yaml (else global→project hierarchy).",
 		},
+		host: {
+			type: "string",
+			description: "Bind host (default 127.0.0.1).",
+		},
 	},
 	/* v8 ignore start — process-global glue (cwd + consola binding); the body it
 	   delegates to is fully covered via startListenFromConfig tests */
@@ -385,7 +391,7 @@ export default defineCommand({
 				log: (line) => consola.log(line),
 			});
 			consola.success(
-				`Listening for Alertmanager webhooks on http://127.0.0.1:${server.port}${WEBHOOK_PATH}`,
+				`Listening for Alertmanager webhooks on http://${server.host}:${server.port}${WEBHOOK_PATH}`,
 			);
 		} catch (err) {
 			consola.error(err instanceof Error ? err.message : String(err));
