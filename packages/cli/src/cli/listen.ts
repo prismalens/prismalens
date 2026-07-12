@@ -364,7 +364,7 @@ export default defineCommand({
 	meta: {
 		name: "listen",
 		description:
-			"Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).\n\nExamples:\n  $ PRISMALENS_LISTEN_TOKEN=xyz pl listen --config my-stack.yaml",
+			"Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).\n\nPort and token are configured in the `listen:` block of prismalens.config.yaml (or via PRISMALENS_LISTEN_TOKEN env var).\n\nExamples:\n  $ pl listen\n  $ pl listen --config my-stack.yaml",
 	},
 	args: {
 		config: {

@@ -7,6 +7,10 @@ function kebabToCamel(str: string): string {
 	return str.replace(/-([a-z])/g, (_, g) => g.toUpperCase());
 }
 
+function camelToKebab(str: string): string {
+	return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
 export function assertKnownFlags(args: Record<string, unknown>, cmd: unknown) {
 	const declaredArgs = (cmd as { args?: Record<string, unknown> })?.args || {};
 	const allowedKeys = new Set<string>(["_"]);
@@ -15,6 +19,7 @@ export function assertKnownFlags(args: Record<string, unknown>, cmd: unknown) {
 		if (Object.hasOwn(declaredArgs, key)) {
 			allowedKeys.add(key);
 			allowedKeys.add(kebabToCamel(key));
+			allowedKeys.add(camelToKebab(key));
 		}
 	}
 
