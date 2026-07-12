@@ -254,7 +254,7 @@ describe("Grouping layer", () => {
 		await vi.runAllTimersAsync();
 	});
 
-	it("Dedupe: identical alert is dropped in both window and running phases", async () => {
+	it("Dedupe: identical alert is dropped in window but attached as re-page in running phase", async () => {
 		const { grouping, runs, lateAlerts, setGate } = setup();
 		let resolveGate!: () => void;
 		setGate(
@@ -274,14 +274,14 @@ describe("Grouping layer", () => {
 			labels: { alertname: "A", service: "web" },
 		}; // Identical
 
-		// Buffer phase dedupe
+		// Buffer phase dedupe (still drops identical)
 		grouping.admit([alert1], {});
 		grouping.admit([alert2], {});
 		await vi.advanceTimersByTimeAsync(60000);
 
 		expect(runs[0].alerts.length).toBe(1);
 
-		// Running phase dedupe
+		// Running phase dedupe (issue #137: suppress dispatch but attach re-page)
 		const alert3 = {
 			fingerprint: "xyz",
 			status: "firing",
@@ -298,8 +298,9 @@ describe("Grouping layer", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		const lates = lateAlerts.get(runs[0].runId);
-		expect(lates?.length).toBe(1);
-		expect(lates?.[0].fingerprint).toBe("abc");
+		expect(lates?.length).toBe(2);
+		expect(lates?.[0].fingerprint).toBe("xyz"); // Attached re-page
+		expect(lates?.[1].fingerprint).toBe("abc"); // Attached new alert
 
 		resolveGate();
 		await vi.runAllTimersAsync();
@@ -317,6 +318,50 @@ describe("Grouping layer", () => {
 		vi.advanceTimersByTime(100000);
 
 		expect(logs.some((l) => l.includes("dropped 2 pending"))).toBe(true);
+	});
+
+	it("regression #137: late attached dedupe keys are released when run completes", async () => {
+		const { grouping, runs, lateAlerts, setGate } = setup();
+		let resolveGate!: () => void;
+		setGate(
+			new Promise((r) => {
+				resolveGate = r;
+			}),
+		);
+
+		const alertA = {
+			fingerprint: "alertA",
+			status: "firing",
+			labels: { alertname: "A", service: "web" },
+		};
+		const alertB = {
+			fingerprint: "alertB",
+			status: "firing",
+			labels: { alertname: "A", service: "web" },
+		};
+
+		// 1. Admit A, wait for window to fire so it enters RUNNING phase
+		grouping.admit([alertA], {});
+		await vi.advanceTimersByTimeAsync(60000); // Window fires -> run starts and waits at gate
+
+		// 2. Attach B to running group A
+		grouping.admit([alertB], {});
+		await vi.advanceTimersByTimeAsync(0);
+
+		// 3. Complete the run
+		resolveGate();
+		await vi.runAllTimersAsync();
+
+		expect(runs.length).toBe(1);
+		expect(lateAlerts.get(runs[0].runId)).toEqual([alertB]);
+
+		// 4. B re-fires later. Since the run is complete, the dedupe key should be released
+		// and this should start a NEW window/run, NOT be suppressed.
+		grouping.admit([alertB], {});
+		await vi.advanceTimersByTimeAsync(60000);
+
+		expect(runs.length).toBe(2);
+		expect(runs[1].alerts).toEqual([alertB]);
 	});
 });
 
