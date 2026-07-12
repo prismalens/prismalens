@@ -71,7 +71,7 @@ workspace:
   base_dir: ${d.workspace.base_dir}
 
 # \`pl listen\` — token-authed local webhook intake (Alertmanager). The token is
-# REQUIRED when binding non-loopback; keep it out of the file via env interpolation.
+# REQUIRED to start listening regardless of bind address; keep it out of the file via env interpolation.
 # listen:
 #   host: ${d.listen.host}
 #   port: ${d.listen.port}

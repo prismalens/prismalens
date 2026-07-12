@@ -47,6 +47,8 @@ export const WEBHOOK_PATH = "/webhooks/alertmanager";
 export interface ListenServer {
 	/** The actually-bound port (resolves port 0). */
 	port: number;
+	/** The actually-bound host. */
+	host: string;
 	close(): Promise<void>;
 }
 
@@ -211,6 +213,7 @@ export async function startListenServer(
 
 	return {
 		port: address.port,
+		host: address.address,
 		close: () => {
 			options.grouping.shutdown();
 			return new Promise<void>((resolve, reject) => {

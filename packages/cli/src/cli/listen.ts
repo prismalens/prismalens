@@ -48,6 +48,8 @@ export interface InvestigationRunnerOptions {
 	cwd?: string;
 	/** Explicit config file path (else the loader's global→project hierarchy). */
 	configPath?: string;
+	/** Bind host (overrides config). */
+	host?: string;
 	/** One line per streamed canonical event (the live timeline). */
 	log: (line: string) => void;
 }
@@ -343,7 +345,7 @@ export async function startListenFromConfig(
 	});
 
 	const server = await startListenServer({
-		host: config.listen.host,
+		host: options.host ?? config.listen.host,
 		port: config.listen.port,
 		token: config.listen.token,
 		maxPending: config.listen.max_pending,
@@ -388,6 +390,7 @@ export default defineCommand({
 			const server = await startListenFromConfig({
 				cwd: process.cwd(),
 				...(args.config ? { configPath: args.config } : {}),
+				...(args.host ? { host: args.host } : {}),
 				log: (line) => consola.log(line),
 			});
 			consola.success(
