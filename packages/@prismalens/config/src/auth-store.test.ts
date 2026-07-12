@@ -54,13 +54,15 @@ describe("auth-store", () => {
 		// Remove permissions on the directory to cause EACCES when accessing the file
 		chmodSync(dataDir, 0o000);
 
-		const store = readAuthStore();
-		expect(store).toEqual({});
-		expect(consolaWarnSpy).toHaveBeenCalledWith(
-			"Auth store file is inaccessible due to permissions. Treating as empty.",
-		);
-
-		// Restore permissions so rmSync can clean up
-		chmodSync(dataDir, 0o700);
+		try {
+			const store = readAuthStore();
+			expect(store).toEqual({});
+			expect(consolaWarnSpy).toHaveBeenCalledWith(
+				"Auth store file is inaccessible due to permissions. Treating as empty.",
+			);
+		} finally {
+			// Restore even when an assertion throws, so lingering 0o000 can't break cleanup or later tests
+			chmodSync(dataDir, 0o700);
+		}
 	});
 });

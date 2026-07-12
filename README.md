@@ -58,8 +58,9 @@ setup (providers, harnesses, configuration, commands) lives at
   in `prismalens.config.yaml`. `codex` is stubbed.
 - **Bring your own model key.** Tier-1 and the `deepagents` harness talk to
   any OpenAI-compatible provider (Ollama, OpenAI, Groq, ...); `claude-code`
-  uses your signed-in Claude Code session or an Anthropic key. No credentials
-  are stored by the CLI.
+  uses your signed-in Claude Code session or an Anthropic key. Keys come from
+  your environment, or opt in to local storage with `pl auth login`
+  (`auth.json` in the app data dir, mode `0600`).
 - **Read-only, sandboxed tool execution.** The harness investigates through
   its own shell, isolated behind a placement-scaled sandbox boundary.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility

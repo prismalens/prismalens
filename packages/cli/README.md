@@ -140,7 +140,10 @@ Preflight checklist that gates a run. Prints pass/fail per check; exits non-zero
   `claude-code` → `claude`, `codex` → `codex` (for the harness from config).
 - **HARD — an LLM credential:** any of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
   `GOOGLE_API_KEY` / `OLLAMA_API_KEY` / `GROQ_API_KEY` / `CUSTOM_LLM_API_KEY`,
-  or, for `claude-code`, a signed-in `~/.claude/.credentials.json`. (Performs a live provider model ping by default, while `--no-ping` skips it.)
+  a credential stored via `pl auth login` (`auth.json`), or, for `claude-code`,
+  a signed-in `~/.claude/.credentials.json`. Doctor reports which layer supplied
+  the credential (`source: env | file | stored | none`). (Performs a live
+  provider model ping by default, while `--no-ping` skips it.)
 - **SOFT — workspace writable:** `workspace.base_dir` can be created/written.
 
 ### `init`
