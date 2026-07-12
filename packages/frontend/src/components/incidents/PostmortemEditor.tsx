@@ -8,10 +8,7 @@
  * action items checklist, and auto-save on blur.
  */
 
-import type {
-	ActionItem,
-	PostmortemWithRelations,
-} from "@prismalens/contracts";
+import type { ActionItem } from "@prismalens/contracts";
 import {
 	AlertCircle,
 	CheckCircle2,

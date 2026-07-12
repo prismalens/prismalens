@@ -181,7 +181,7 @@ export class WideEventInterceptor implements NestInterceptor {
 		const contentLength = this.getHeader(headers, "content-length");
 		if (contentLength) {
 			const parsed = parseInt(contentLength, 10);
-			return isNaN(parsed) ? undefined : parsed;
+			return Number.isNaN(parsed) ? undefined : parsed;
 		}
 		return undefined;
 	}

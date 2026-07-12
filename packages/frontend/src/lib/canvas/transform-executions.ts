@@ -159,13 +159,13 @@ export function getAgentMiniMapColor(agentName: string): string {
 // POSITION CALCULATION
 // =============================================================================
 
-const NODE_WIDTH = 240;
+const _NODE_WIDTH = 240;
 const NODE_HEIGHT = 100;
 const VERTICAL_SPACING = 40;
 const START_X = 250;
 const START_Y = 0;
 
-function calculateNodePosition(index: number, totalNodes: number) {
+function calculateNodePosition(index: number, _totalNodes: number) {
 	// Simple vertical layout for now
 	// Future: could support branching for parallel executions
 	return {
@@ -328,7 +328,6 @@ export function getStatusColor(status: ExecutionStatus | "pending"): string {
 			return "text-blue-500";
 		case "failed":
 			return "text-red-500";
-		case "pending":
 		default:
 			return "text-zinc-400";
 	}

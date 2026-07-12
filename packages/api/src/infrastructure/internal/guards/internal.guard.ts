@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
 	CanActivate,
 	ExecutionContext,
@@ -9,7 +10,6 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
-import { createHash, timingSafeEqual } from "crypto";
 
 function sha256(value: string): Buffer {
 	return createHash("sha256").update(value, "utf8").digest();

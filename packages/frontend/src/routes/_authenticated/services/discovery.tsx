@@ -93,7 +93,7 @@ function DiscoveryPage() {
 	const triggerDiscovery = useTriggerDiscovery();
 	const rejectSuggestion = useRejectSuggestion();
 	const ignoreSuggestion = useIgnoreSuggestion();
-	const bulkAccept = useAcceptBulkSuggestions();
+	const _bulkAccept = useAcceptBulkSuggestions();
 
 	const handleRunDiscovery = async (connectionIds: string[]) => {
 		setShowRunDialog(false);

@@ -71,7 +71,7 @@ export function AddDependencyDialog({
 		return services.filter((s) => !excludedIds.has(s.id));
 	}, [servicesResponse, excludedIds]);
 
-	const selectedService = useMemo(
+	const _selectedService = useMemo(
 		() => filteredServices.find((s) => s.id === selectedId),
 		[filteredServices, selectedId],
 	);

@@ -17,29 +17,29 @@
 /* Force dark theme by default - override Starlight's theme system */
 :root,
 :root[data-theme="auto"] {
-	color-scheme: dark !important;
+	color-scheme: dark;
 
-	--sl-color-accent-low: oklch(0.585 0.233 277.117 / 0.3) !important;
-	--sl-color-accent: oklch(0.585 0.233 277.117) !important;
-	--sl-color-accent-high: oklch(0.673 0.182 276.935) !important;
+	--sl-color-accent-low: oklch(0.585 0.233 277.117 / 0.3);
+	--sl-color-accent: oklch(0.585 0.233 277.117);
+	--sl-color-accent-high: oklch(0.673 0.182 276.935);
 
-	--sl-color-bg: oklch(0.141 0.005 285.823) !important;
-	--sl-color-bg-nav: oklch(0.21 0.006 285.885) !important;
-	--sl-color-bg-sidebar: oklch(0.141 0.005 285.823) !important;
-	--sl-color-bg-inline-code: oklch(0.21 0.006 285.885) !important;
+	--sl-color-bg: oklch(0.141 0.005 285.823);
+	--sl-color-bg-nav: oklch(0.21 0.006 285.885);
+	--sl-color-bg-sidebar: oklch(0.141 0.005 285.823);
+	--sl-color-bg-inline-code: oklch(0.21 0.006 285.885);
 
-	--sl-color-text: oklch(0.985 0 0) !important;
-	--sl-color-white: oklch(0.985 0 0) !important;
-	--sl-color-gray-1: oklch(0.985 0 0) !important;
-	--sl-color-gray-2: oklch(0.967 0.001 286.375) !important;
-	--sl-color-gray-3: oklch(0.274 0.006 286.033) !important;
-	--sl-color-gray-4: oklch(0.705 0.015 286.067) !important;
-	--sl-color-gray-5: oklch(0.141 0.005 285.823) !important;
-	--sl-color-gray-6: oklch(0.21 0.006 285.885) !important;
+	--sl-color-text: oklch(0.985 0 0);
+	--sl-color-white: oklch(0.985 0 0);
+	--sl-color-gray-1: oklch(0.985 0 0);
+	--sl-color-gray-2: oklch(0.967 0.001 286.375);
+	--sl-color-gray-3: oklch(0.274 0.006 286.033);
+	--sl-color-gray-4: oklch(0.705 0.015 286.067);
+	--sl-color-gray-5: oklch(0.141 0.005 285.823);
+	--sl-color-gray-6: oklch(0.21 0.006 285.885);
 
-	--sl-color-text-accent: oklch(0.585 0.233 277.117) !important;
-	--sl-color-hairline: oklch(0.274 0.006 286.033) !important;
-	--sl-color-hairline-shade: oklch(0.21 0.006 285.885) !important;
+	--sl-color-text-accent: oklch(0.585 0.233 277.117);
+	--sl-color-hairline: oklch(0.274 0.006 286.033);
+	--sl-color-hairline-shade: oklch(0.21 0.006 285.885);
 }
 
 /* Dark theme (Starlight dark) */
@@ -69,27 +69,27 @@
 
 /* Light theme (Starlight light) - !important needed to override :root defaults */
 :root[data-theme="light"] {
-	color-scheme: light !important;
+	color-scheme: light;
 
-	--sl-color-accent-low: oklch(0.585 0.233 277.117 / 0.2) !important;
-	--sl-color-accent: oklch(0.585 0.233 277.117) !important;
-	--sl-color-accent-high: oklch(0.511 0.262 276.966) !important;
+	--sl-color-accent-low: oklch(0.585 0.233 277.117 / 0.2);
+	--sl-color-accent: oklch(0.585 0.233 277.117);
+	--sl-color-accent-high: oklch(0.511 0.262 276.966);
 
-	--sl-color-bg: oklch(0.985 0 0) !important;
-	--sl-color-bg-nav: oklch(0.967 0.001 286.375) !important;
-	--sl-color-bg-sidebar: oklch(0.985 0 0) !important;
-	--sl-color-bg-inline-code: oklch(0.967 0.001 286.375) !important;
+	--sl-color-bg: oklch(0.985 0 0);
+	--sl-color-bg-nav: oklch(0.967 0.001 286.375);
+	--sl-color-bg-sidebar: oklch(0.985 0 0);
+	--sl-color-bg-inline-code: oklch(0.967 0.001 286.375);
 
-	--sl-color-white: oklch(0.141 0.005 285.823) !important;
-	--sl-color-gray-1: oklch(0.141 0.005 285.823) !important;
-	--sl-color-gray-2: oklch(0.21 0.006 285.885) !important;
-	--sl-color-gray-3: oklch(0.705 0.015 286.067) !important;
-	--sl-color-gray-4: oklch(0.871 0.006 286.286) !important;
-	--sl-color-gray-5: oklch(0.967 0.001 286.375) !important;
-	--sl-color-gray-6: oklch(0.985 0 0) !important;
-	--sl-color-text: oklch(0.141 0.005 285.823) !important;
-	--sl-color-text-accent: oklch(0.585 0.233 277.117) !important;
+	--sl-color-white: oklch(0.141 0.005 285.823);
+	--sl-color-gray-1: oklch(0.141 0.005 285.823);
+	--sl-color-gray-2: oklch(0.21 0.006 285.885);
+	--sl-color-gray-3: oklch(0.705 0.015 286.067);
+	--sl-color-gray-4: oklch(0.871 0.006 286.286);
+	--sl-color-gray-5: oklch(0.967 0.001 286.375);
+	--sl-color-gray-6: oklch(0.985 0 0);
+	--sl-color-text: oklch(0.141 0.005 285.823);
+	--sl-color-text-accent: oklch(0.585 0.233 277.117);
 
-	--sl-color-hairline: oklch(0.92 0.004 286.32) !important;
-	--sl-color-hairline-shade: oklch(0.871 0.006 286.286) !important;
+	--sl-color-hairline: oklch(0.92 0.004 286.32);
+	--sl-color-hairline-shade: oklch(0.871 0.006 286.286);
 }

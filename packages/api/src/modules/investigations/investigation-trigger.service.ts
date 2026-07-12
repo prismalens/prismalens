@@ -271,7 +271,7 @@ export class InvestigationTriggerService {
 	 */
 	async shouldReInvestigate(
 		incident: Incident & { service?: Service | null },
-		newAlertCount: number,
+		_newAlertCount: number,
 	): Promise<TriggerDecision> {
 		const serviceTier = incident.service?.tier || "tier_3";
 		const config = await this.getTriggerConfig(serviceTier);
