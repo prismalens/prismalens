@@ -19,11 +19,13 @@ evidence; no numeric confidence scores).
   - `codex` — **stubbed** (not implemented; selecting it throws).
 
 The harness investigates **read-only** — with an honest caveat (ADR-0017):
-read-only removes the edit tools; it does **not** sandbox the shell, so writes
-remain possible via Bash. Treat read-only as a cooperative posture and use the
-**sandbox boundary** (`--sandbox`, ADR-0020) for enforcement. Provider
-credentials are **BYO-key** (ADR-0006) and are resolved from the environment or
-local auth store — never hard-bound in the CLI.
+read-only removes the edit tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`);
+it does **not** sandbox the shell, so writes remain possible via Bash. Treat
+read-only as a cooperative posture: enforcement requires selecting an
+**enforced sandbox mode** (`--sandbox srt` or `e2b`, ADR-0020) — `auto` may
+honestly degrade to an unenforced floor. Provider credentials are **BYO-key**
+(ADR-0006) and are resolved from the environment or local auth store — never
+hard-bound in the CLI.
 
 Every run is persisted to a durable workspace under `~/.prismalens/runs/<runId>/`
 (`events.jsonl` + `report.json` + `session.json`), regardless of how it was
