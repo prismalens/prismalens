@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 
@@ -86,8 +86,12 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 		db.exec(SCHEMA_CHECK);
 	} catch (_err) {
 		// Schema mismatch or corruption detected.
-		db.close();
 		const backupPath = join(baseDir, `prismalens.db.bak-${Date.now()}`);
+		if (existsSync(`${dbPath}-wal`))
+			renameSync(`${dbPath}-wal`, `${backupPath}-wal`);
+		if (existsSync(`${dbPath}-shm`))
+			renameSync(`${dbPath}-shm`, `${backupPath}-shm`);
+		db.close();
 		renameSync(dbPath, backupPath);
 		console.warn(
 			`[!] Workspace schema is incompatible. Backed up old database to ${backupPath} and recreated.`,
