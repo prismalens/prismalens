@@ -160,8 +160,6 @@ export class InvestigationUpdateService {
 			case UpdateStrategy.RESTART:
 				await this.restartInvestigation(activeInvestigation, event);
 				break;
-
-			case UpdateStrategy.IGNORE:
 			default:
 				this.logger.debug(
 					`Ignoring alert ${event.alertId} for investigation ${activeInvestigation.id}`,
@@ -191,7 +189,7 @@ export class InvestigationUpdateService {
 	 */
 	async queuePartialUpdate(
 		investigation: Investigation,
-		event: AlertAddedEvent,
+		_event: AlertAddedEvent,
 	): Promise<void> {
 		this.logger.log(
 			`Queuing partial update for investigation ${investigation.id}`,

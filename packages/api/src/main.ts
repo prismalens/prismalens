@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as fs from "node:fs";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config/dist/index.js";
 import { NestFactory } from "@nestjs/core";
 import { getConfig } from "@prismalens/config";
 import { Logger } from "@prismalens/logger";
-import * as fs from "fs";
 import { AppModule } from "./app.module.js";
 
 // Set service info for all loggers

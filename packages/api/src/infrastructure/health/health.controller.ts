@@ -22,9 +22,7 @@ interface HealthResponse {
 @ApiTags("health")
 @Controller("health")
 export class HealthController {
-	constructor(
-		private readonly configService: ConfigService<EnvironmentVariables>,
-	) {}
+	constructor(readonly _configService: ConfigService<EnvironmentVariables>) {}
 
 	@Get()
 	health(): HealthResponse {

@@ -14,7 +14,7 @@ import {
 } from "./context.js";
 import { TailSampler } from "./sampler.js";
 
-const LOG_LEVELS: Record<LogLevel, number> = {
+const _LOG_LEVELS: Record<LogLevel, number> = {
 	debug: 20,
 	info: 30,
 	warn: 40,
@@ -200,7 +200,7 @@ export class Logger {
 		args: unknown[],
 		error?: Error,
 	): void {
-		const entry: LogEntry = {
+		const _entry: LogEntry = {
 			level,
 			message,
 			context: this.context,

@@ -22,9 +22,9 @@ export class ConsoleTransport implements Transport {
 	write(data: string, level: LogLevel): void {
 		// Use stderr for errors, stdout for everything else
 		if (level === "error") {
-			process.stderr.write(data + "\n");
+			process.stderr.write(`${data}\n`);
 		} else {
-			process.stdout.write(data + "\n");
+			process.stdout.write(`${data}\n`);
 		}
 	}
 

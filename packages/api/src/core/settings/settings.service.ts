@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
 export class SettingsService {
-	private readonly logger = new Logger(SettingsService.name);
-
 	constructor(private prisma: PrismaService) {}
 
 	// =============================================================================
