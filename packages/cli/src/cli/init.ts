@@ -83,7 +83,7 @@ workspace:
 export default defineCommand({
 	meta: {
 		name: "init",
-		description: `Scaffold a ${CONFIG_FILENAME} in the current directory`,
+		description: `Scaffold a ${CONFIG_FILENAME} in the current directory\n\nExamples:\n  $ pl init\n  $ pl init --force`,
 	},
 	async run({ args, cmd }) {
 		try {

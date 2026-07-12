@@ -23,7 +23,7 @@ export default defineCommand({
 	meta: {
 		name: "serve",
 		description:
-			"Run the JSON-RPC 2.0 server over stdio (the LIVE channel for the desktop app / API).",
+			"Run the JSON-RPC 2.0 server over stdio (the LIVE channel for the desktop app / API).\n\nExamples:\n  $ pl serve",
 	},
 	async run({ args, cmd }) {
 		try {

@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * Read JSON from piped stdin (salvaged from the retired pl orchestrator). Used to
- * accept a webhook-shaped alert payload piped into `prismalens investigate`.
- *
- * Returns `undefined` if:
- *  - stdin is a TTY (interactive terminal, no pipe), or
- *  - the piped data is empty or not valid JSON.
- */
-import consola from "consola";
-
 export async function parseStdin(): Promise<
 	Record<string, unknown> | undefined
 > {
@@ -26,8 +16,8 @@ export async function parseStdin(): Promise<
 
 	try {
 		return JSON.parse(raw) as Record<string, unknown>;
-	} catch {
-		consola.warn("Invalid JSON on stdin, ignoring");
-		return undefined;
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		throw new Error(`invalid FiringAlert JSON on stdin: ${msg}`);
 	}
 }

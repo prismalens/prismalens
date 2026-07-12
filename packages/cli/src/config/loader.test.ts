@@ -136,10 +136,29 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 			]);
 		});
 
-		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
-			/<root>: Expected object, received array/,
-		);
+		try {
+			await expect(loadConfig({ cwd: dir })).rejects.toThrow(
+				/<root>: Expected object, received array/,
+			);
+		} finally {
+			// Restore even on assertion failure, so PlConfigSchema.parse isn't left mocked
+			spy.mockRestore();
+		}
+	});
+	it("warnUnknownKeys uses own-property check so inherited members like 'toString' trigger a warning", async () => {
+		const { default: consola } = await import("consola");
+		const warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => {});
+		writeProject("toString: 'this is not a valid key'\n");
 
-		spy.mockRestore();
+		try {
+			await loadConfig({ cwd: dir });
+
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Unknown config key ignored: toString"),
+			);
+		} finally {
+			// Restore even when loadConfig or an assertion throws, so later tests see a real consola.warn
+			warnSpy.mockRestore();
+		}
 	});
 });
