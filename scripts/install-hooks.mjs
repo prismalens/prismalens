@@ -34,21 +34,37 @@ function installHooks() {
 
 		if (!fs.existsSync(preCommitHookPath)) {
 			fs.writeFileSync(preCommitHookPath, `#!/bin/sh\n\n${hookLine}\n`);
-			fs.chmodSync(preCommitHookPath, 0o755);
 			console.log("Created new pre-commit hook.");
 		} else {
 			const currentContent = fs.readFileSync(preCommitHookPath, "utf8");
+			// Idempotency check: legacy placement anywhere in the file is tolerated.
 			if (!currentContent.includes(hookLine)) {
-				const eol =
-					currentContent.endsWith("\n") || currentContent === "" ? "" : "\n";
-				fs.appendFileSync(preCommitHookPath, `${eol}${hookLine}\n`);
-				console.log("Appended spdx hook to existing pre-commit hook.");
+				let newContent = "";
+				if (currentContent.startsWith("#!")) {
+					const firstNewline = currentContent.indexOf("\n");
+					if (firstNewline !== -1) {
+						newContent =
+							currentContent.slice(0, firstNewline + 1) +
+							hookLine +
+							"\n" +
+							currentContent.slice(firstNewline + 1);
+					} else {
+						newContent = `${currentContent}\n${hookLine}\n`;
+					}
+				} else {
+					newContent = `#!/bin/sh\n${hookLine}\n${currentContent}`;
+				}
+				fs.writeFileSync(preCommitHookPath, newContent);
+				console.log("Inserted spdx hook into existing pre-commit hook.");
 			} else {
 				console.log(
 					"spdx hook already present in pre-commit hook. Doing nothing.",
 				);
 			}
 		}
+
+		// Enforce executable bit on every path (create, insert, and no-op)
+		fs.chmodSync(preCommitHookPath, 0o755);
 	} catch (error) {
 		console.warn(
 			`WARN: Failed to write to hooks directory (${hooksDir}). It may be unwritable. Skipping hook installation.`,
