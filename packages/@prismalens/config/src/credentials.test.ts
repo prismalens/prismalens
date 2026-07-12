@@ -4,8 +4,15 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureV1, resolveCredentials } from "./credentials.js";
+import { setStoredCredential } from "./auth-store.js";
+
+vi.mock("env-paths", () => ({
+	default: () => ({
+		data: process.env.TEST_APP_DATA_DIR,
+	}),
+}));
 
 describe("credentials", () => {
 	let originalEnv: NodeJS.ProcessEnv;
@@ -18,6 +25,7 @@ describe("credentials", () => {
 		delete process.env.OPENAI_API_KEY_FILE;
 		delete process.env.OPENAI_BASE_URL;
 		dir = mkdtempSync(join(tmpdir(), "pl-creds-"));
+		process.env.TEST_APP_DATA_DIR = dir;
 	});
 
 	afterEach(() => {
@@ -42,6 +50,21 @@ describe("credentials", () => {
 
 		it("no env, _FILE set → source file", () => {
 			process.env.OPENAI_API_KEY_FILE = keyFile("file-key\n");
+			const result = resolveCredentials("openai");
+			expect(result.source).toBe("file");
+			expect(result.apiKey).toBe("file-key");
+		});
+
+		it("no env, no _FILE, stored set → source stored", () => {
+			setStoredCredential("openai", "stored-key");
+			const result = resolveCredentials("openai");
+			expect(result.source).toBe("stored");
+			expect(result.apiKey).toBe("stored-key");
+		});
+
+		it("_FILE wins over stored", () => {
+			process.env.OPENAI_API_KEY_FILE = keyFile("file-key\n");
+			setStoredCredential("openai", "stored-key");
 			const result = resolveCredentials("openai");
 			expect(result.source).toBe("file");
 			expect(result.apiKey).toBe("file-key");
