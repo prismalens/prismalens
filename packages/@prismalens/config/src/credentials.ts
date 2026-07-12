@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { getStoredCredential } from "./auth-store.js";
 import { readEnv } from "./env/readers.js";
 import {
 	getApiKeyEnvVar,
@@ -10,7 +11,7 @@ import {
 
 export type ResolvedCredentials = {
 	providerId: LLMProviderId;
-	source: "env" | "file" | "none";
+	source: "env" | "file" | "stored" | "none";
 	apiKey?: string;
 	baseURL?: string;
 };
@@ -27,7 +28,7 @@ export function resolveCredentials(
 ): ResolvedCredentials {
 	const envVar = getApiKeyEnvVar(providerId);
 	let apiKey: string | undefined;
-	let source: "env" | "file" | "none" = "none";
+	let source: "env" | "file" | "stored" | "none" = "none";
 
 	if (process.env[envVar]?.trim()) {
 		apiKey = process.env[envVar];
@@ -36,6 +37,12 @@ export function resolveCredentials(
 		apiKey = readEnv(envVar);
 		apiKey = apiKey?.trim() ? apiKey : undefined;
 		source = apiKey ? "file" : "none";
+	} else {
+		const storedKey = getStoredCredential(providerId);
+		if (storedKey?.trim()) {
+			apiKey = storedKey;
+			source = "stored";
+		}
 	}
 
 	const provider = LLM_PROVIDERS[providerId];

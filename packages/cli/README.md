@@ -19,7 +19,8 @@ evidence; no numeric confidence scores).
   - `codex` — **stubbed** (not implemented; selecting it throws).
 
 The harness investigates **read-only**. Provider credentials are **BYO-key**
-(ADR-0006) and come from the environment — never hard-bound in the CLI.
+(ADR-0006) and are resolved from the environment or local auth store — never
+hard-bound in the CLI.
 
 Every run is persisted to a durable workspace under `~/.prismalens/runs/<runId>/`
 (`events.jsonl` + `report.json` + `session.json`), regardless of how it was
@@ -83,6 +84,7 @@ prismalens <command> [flags]      # alias: pl
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
   doctor        Preflight-check the investigation environment.
   init          Scaffold a prismalens.config.yaml in the current directory.
+  auth          Manage stored BYO-key credentials for providers.
 ```
 
 ### `investigate`
@@ -138,7 +140,10 @@ Preflight checklist that gates a run. Prints pass/fail per check; exits non-zero
   `claude-code` → `claude`, `codex` → `codex` (for the harness from config).
 - **HARD — an LLM credential:** any of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
   `GOOGLE_API_KEY` / `OLLAMA_API_KEY` / `GROQ_API_KEY` / `CUSTOM_LLM_API_KEY`,
-  or, for `claude-code`, a signed-in `~/.claude/.credentials.json`. (Performs a live provider model ping by default, while `--no-ping` skips it.)
+  a credential stored via `pl auth login` (`auth.json`), or, for `claude-code`,
+  a signed-in `~/.claude/.credentials.json`. Doctor reports which layer supplied
+  the credential (`source: env | file | stored | none`). (Performs a live
+  provider model ping by default, while `--no-ping` skips it.)
 - **SOFT — workspace writable:** `workspace.base_dir` can be created/written.
 
 ### `init`
@@ -309,7 +314,16 @@ Notes:
 
 ### BYO-key environment (ADR-0006)
 
-Credentials are read from the environment, never stored by the CLI.
+Credentials are BYO-key and never hard-bound in the CLI. They can be read from the environment or stored locally via the `auth` command.
+
+The resolution precedence for any credential is: **env** (`PROVIDER_API_KEY`) → **_FILE** (`PROVIDER_API_KEY_FILE`) → **stored** (from `auth.json`) → **none**.
+
+**Auth commands:**
+- `pl auth login <provider> [--api-key <key>]` — save a credential (prompts securely if `--api-key` is omitted).
+- `pl auth list` — view saved providers.
+- `pl auth logout <provider>` — remove a saved credential.
+
+Stored credentials live in `auth.json` inside the app-data dir (`~/.prismalens` by default, honors `PRISMALENS_USER_FOLDER`), enforced to mode `0600`.
 
 - **Tier-1 reduce + the `deepagents` harness** use an OpenAI-compatible endpoint:
   - `OLLAMA_API_KEY` or `OPENAI_API_KEY` (the API key),
@@ -318,5 +332,5 @@ Credentials are read from the environment, never stored by the CLI.
 - **The `claude-code` harness** uses your signed-in `~/.claude` session, or
   `ANTHROPIC_API_KEY`.
 
-If no `OLLAMA_API_KEY` / `OPENAI_API_KEY` is set, the reduce (synthesis) call will
+If no matching credential is found across the resolution chain, the reduce (synthesis) call will
 likely fail — `investigate` warns up front, and `doctor` checks for a credential.

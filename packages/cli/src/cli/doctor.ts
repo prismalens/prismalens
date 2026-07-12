@@ -76,7 +76,7 @@ function checkHarness(harness: Harness): Check {
 	};
 }
 
-async function checkCredential(
+export async function checkCredential(
 	config: PlConfig,
 	noPing: boolean,
 ): Promise<Check> {
