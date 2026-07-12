@@ -4,8 +4,9 @@
 
 // SPDX header check/fix for first-party source files.
 //
-//   node scripts/spdx-headers.mjs --check   # exit 1 listing files missing the header (CI)
-//   node scripts/spdx-headers.mjs --fix     # insert the header where missing
+//   node scripts/spdx-headers.mjs --check        # exit 1 listing files missing the header (CI)
+//   node scripts/spdx-headers.mjs --fix          # insert the header where missing
+//   node scripts/spdx-headers.mjs --fix-staged   # insert the header in staged files and re-stage
 //
 // Scope: git-tracked *.ts / *.tsx / *.mts / *.cts / *.mjs / *.cjs files,
 // excluding generated code (see EXCLUDE). Policy lives in CONTRIBUTING.md.
@@ -28,17 +29,28 @@ const EXCLUDE = [
 ];
 
 const mode = process.argv[2];
-if (mode !== "--check" && mode !== "--fix") {
-	console.error("usage: node scripts/spdx-headers.mjs --check|--fix");
+if (mode !== "--check" && mode !== "--fix" && mode !== "--fix-staged") {
+	console.error(
+		"usage: node scripts/spdx-headers.mjs --check|--fix|--fix-staged",
+	);
 	process.exit(2);
 }
 
-const files = execFileSync(
-	"git",
-	["ls-files", "*.ts", "*.tsx", "*.mts", "*.cts", "*.mjs", "*.cjs"],
-	{ encoding: "utf8" },
+const files = (
+	mode === "--fix-staged"
+		? execFileSync(
+				"git",
+				["diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+				{ encoding: "utf8" },
+			)
+				.split("\n")
+				.filter((f) => /\.(ts|tsx|mts|cts|mjs|cjs)$/.test(f))
+		: execFileSync(
+				"git",
+				["ls-files", "*.ts", "*.tsx", "*.mts", "*.cts", "*.mjs", "*.cjs"],
+				{ encoding: "utf8" },
+			).split("\n")
 )
-	.split("\n")
 	.filter(Boolean)
 	// *.gen.* files are build-regenerated (e.g. TanStack Router's routeTree.gen.ts)
 	// — a header inserted there is lost on the next build.
@@ -52,7 +64,7 @@ for (const file of files) {
 	const head = content.split("\n", 5).join("\n");
 	if (head.includes(SPDX_MARKER)) continue;
 	missing.push(file);
-	if (mode === "--fix") {
+	if (mode === "--fix" || mode === "--fix-staged") {
 		let out;
 		if (content.startsWith("#!")) {
 			const nl = content.indexOf("\n");
@@ -61,6 +73,9 @@ for (const file of files) {
 			out = `${HEADER_LINES.join("\n")}\n\n${content}`;
 		}
 		writeFileSync(file, out);
+		if (mode === "--fix-staged") {
+			execFileSync("git", ["add", file]);
+		}
 	}
 }
 
