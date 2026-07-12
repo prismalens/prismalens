@@ -364,3 +364,11 @@ describe("Grouping layer", () => {
 		expect(runs[1].alerts).toEqual([alertB]);
 	});
 });
+
+describe("deriveGroupKey", () => {
+	it("returns 'default' when no grouping keys apply", async () => {
+		const { deriveGroupKey } = await import("./grouping.js");
+		const key = deriveGroupKey({}, {});
+		expect(key).toBe("default");
+	});
+});

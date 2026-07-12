@@ -1119,8 +1119,8 @@ export class IntegrationsService implements OnModuleInit {
 			for (const repo of conn.repositories) {
 				repos.push({ id: repo.id, fullName: repo.fullName });
 				for (const sr of repo.services) {
-					if (!affectedMap.has(sr.service.id + ":repo_link_lost")) {
-						affectedMap.set(sr.service.id + ":repo_link_lost", {
+					if (!affectedMap.has(`${sr.service.id}:repo_link_lost`)) {
+						affectedMap.set(`${sr.service.id}:repo_link_lost`, {
 							id: sr.service.id,
 							name: sr.service.name,
 							impact: "repo_link_lost",
@@ -1133,9 +1133,9 @@ export class IntegrationsService implements OnModuleInit {
 				deploys.push({ id: dep.id, name: dep.name });
 				if (
 					dep.service &&
-					!affectedMap.has(dep.service.id + ":deployment_link_lost")
+					!affectedMap.has(`${dep.service.id}:deployment_link_lost`)
 				) {
-					affectedMap.set(dep.service.id + ":deployment_link_lost", {
+					affectedMap.set(`${dep.service.id}:deployment_link_lost`, {
 						id: dep.service.id,
 						name: dep.service.name,
 						impact: "deployment_link_lost",
@@ -1144,8 +1144,8 @@ export class IntegrationsService implements OnModuleInit {
 			}
 
 			for (const sm of conn.serviceMappings) {
-				if (!affectedMap.has(sm.service.id + ":integration_override_lost")) {
-					affectedMap.set(sm.service.id + ":integration_override_lost", {
+				if (!affectedMap.has(`${sm.service.id}:integration_override_lost`)) {
+					affectedMap.set(`${sm.service.id}:integration_override_lost`, {
 						id: sm.service.id,
 						name: sm.service.name,
 						impact: "integration_override_lost",

@@ -66,6 +66,7 @@ export function ProviderModelSelector({
 	const [showAll, setShowAll] = useState(false);
 
 	// Reset "show all" when provider changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: We want this to run when provider changes
 	useEffect(() => {
 		setShowAll(false);
 	}, [selectedProvider]);

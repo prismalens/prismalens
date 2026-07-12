@@ -231,7 +231,7 @@ export function InvestigationSettings() {
 										onChange={(e) =>
 											setLocalLimits({
 												...localLimits,
-												maxConcurrent: parseInt(e.target.value) || 1,
+												maxConcurrent: parseInt(e.target.value, 10) || 1,
 											})
 										}
 									/>
@@ -250,7 +250,7 @@ export function InvestigationSettings() {
 										onChange={(e) =>
 											setLocalLimits({
 												...localLimits,
-												timeoutMinutes: parseInt(e.target.value) || 1,
+												timeoutMinutes: parseInt(e.target.value, 10) || 1,
 											})
 										}
 									/>
@@ -269,7 +269,7 @@ export function InvestigationSettings() {
 										onChange={(e) =>
 											setLocalLimits({
 												...localLimits,
-												maxToolCalls: parseInt(e.target.value) || 1,
+												maxToolCalls: parseInt(e.target.value, 10) || 1,
 											})
 										}
 									/>

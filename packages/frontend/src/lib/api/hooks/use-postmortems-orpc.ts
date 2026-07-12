@@ -3,15 +3,6 @@
 
 "use client";
 
-/**
- * Postmortem hooks using oRPC client
- *
- * Type-safe hooks for postmortem operations using oRPC with TanStack Query.
- */
-import type {
-	CreatePostmortemInput,
-	UpdatePostmortemInput,
-} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 

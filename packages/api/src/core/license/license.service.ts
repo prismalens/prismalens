@@ -276,7 +276,7 @@ export class LicenseService implements OnModuleInit {
 		try {
 			const license = await (this.prisma as any).licenseInfo.findFirst();
 			return license as LicenseInfoRecord | null;
-		} catch (error) {
+		} catch (_error) {
 			// Table might not exist yet (pre-migration)
 			this.logger.warn("Could not fetch license info from database");
 			return null;
@@ -401,7 +401,7 @@ export class LicenseService implements OnModuleInit {
 					`License validation failed: ${result.error || "Unknown error"}`,
 				);
 			}
-		} catch (error) {
+		} catch (_error) {
 			// Log but don't fail - use cached data
 			this.logger.warn("Could not reach license server for revalidation");
 		}

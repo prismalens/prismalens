@@ -9,6 +9,8 @@
 		"ignoreUnknown": false,
 		"includes": [
 			"**",
+			"!**/*.test.ts",
+			"!**/*.spec.ts",
 			"!**/routeTree.gen.ts",
 			"!**/project.inlang",
 			"!packages/frontend/src/app.css",

@@ -76,7 +76,7 @@ export class FileTransport implements Transport {
 			this.rotate();
 		}
 
-		this.stream!.write(line);
+		this.stream?.write(line);
 		this.currentFileSize += bytes;
 	}
 

@@ -119,7 +119,7 @@ export class TailSampler {
 		if (event.tags?.includes("vip")) return true;
 
 		// Check for VIP marker in context
-		if (event.context?.["vip"] === true) return true;
+		if (event.context?.vip === true) return true;
 
 		// Check for VIP user role
 		if (event.user?.role === "vip" || event.user?.role === "enterprise") {

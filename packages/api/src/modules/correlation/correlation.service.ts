@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as crypto from "node:crypto";
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import type { Alert, CorrelationRule, Incident } from "@prismalens/database";
-import * as crypto from "crypto";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	ALERT_CORRELATED_EVENT,

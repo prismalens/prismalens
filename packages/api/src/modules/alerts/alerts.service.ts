@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as crypto from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import type { Alert } from "@prismalens/database";
-import * as crypto from "crypto";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 

@@ -106,7 +106,6 @@ function getQuickRange(range: QuickRange): DateRangeValue {
 				from: undefined,
 				to: undefined,
 			};
-		case "custom":
 		default:
 			return {
 				from: undefined,
@@ -121,7 +120,7 @@ function getActiveQuickRange(value: DateRangeValue): QuickRange | null {
 		return "all";
 	}
 
-	const now = new Date();
+	const _now = new Date();
 	const today = getQuickRange("today");
 	const thisWeek = getQuickRange("this-week");
 	const thisMonth = getQuickRange("this-month");

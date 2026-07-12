@@ -43,7 +43,6 @@ export function StatusIndicator({
 			);
 		case "failed":
 			return <XCircle className={cn(sizeClass, "text-red-500", className)} />;
-		case "pending":
 		default:
 			return <Circle className={cn(sizeClass, "text-zinc-400", className)} />;
 	}
