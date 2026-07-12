@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Claude Code harness runner (Tier-2 deep path, ADR-0008). Drives the Claude Agent
  * SDK (`query()` — which spawns the user's Claude Code CLI + subscription) and
@@ -58,6 +61,8 @@ export interface ClaudeCodeConfig {
 	sandbox?: Sandbox;
 	/** Best-effort resource caps for the sandboxed run (ADR-0020), threaded to the sandbox spawn. */
 	limits?: SandboxLimits;
+	/** If true, stops host settings/hooks/plugins/MCP servers from leaking into the rented harness. */
+	isolateSettings?: boolean;
 }
 
 // The read-only floor is the registry SSOT (ADR-0017 Amendment 2) — the SAME array
@@ -88,7 +93,15 @@ export async function* runClaudeCodeBranch(
 	// ACP path: a caller-supplied sandbox is caller-owned; the default floor is ours to destroy.
 	const sandbox = config.sandbox ?? createProcessFloorSandbox();
 	const ownsSandbox = config.sandbox === undefined;
+
+	let configDir: string | undefined;
 	try {
+		if (config.isolateSettings) {
+			// Note: Endpoint-managed policy settings are org-enforced by design — we do NOT attempt to bypass them.
+			// This isolates only the global user/host configuration (~/.claude.json).
+			configDir = await mkdtemp(join(tmpdir(), "claude-config-"));
+		}
+
 		const response = query({
 			prompt: config.prompt,
 			options: {
@@ -103,12 +116,15 @@ export async function* runClaudeCodeBranch(
 					? { abortController: config.abortController }
 					: {}),
 				// prismalens posture-derived keys LAST — the read-only floor wins.
-				settingSources: ["user", "project", "local"],
+				settingSources: config.isolateSettings
+					? []
+					: ["user", "project", "local"],
 				permissionMode,
 				...(disallowedTools ? { disallowedTools } : {}),
 				spawnClaudeCodeProcess: sandboxSpawnClaudeCodeProcess(sandbox, {
 					cwd: config.cwd,
 					...(config.limits ? { limits: config.limits } : {}),
+					...(configDir ? { env: { CLAUDE_CONFIG_DIR: configDir } } : {}),
 				}),
 			},
 		});
@@ -125,5 +141,8 @@ export async function* runClaudeCodeBranch(
 		yield adapter.error(err instanceof Error ? err.message : String(err));
 	} finally {
 		if (ownsSandbox) await sandbox.destroy();
+		if (configDir) {
+			await rm(configDir, { recursive: true, force: true });
+		}
 	}
 }

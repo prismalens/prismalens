@@ -69,6 +69,8 @@ export interface ResolveInvestigationArgs {
 	requestedSandbox?: string;
 	/** Per-run turn ceiling for the default harness (issue #62). Forwarded to the engine. */
 	maxTurns?: number;
+	/** If true, stops host settings/hooks/plugins/MCP servers from leaking into the rented harness. */
+	isolateSettings?: boolean;
 }
 
 /**
@@ -194,6 +196,7 @@ export function resolveInvestigation(
 			? { maxBranches: config.agent.max_branches }
 			: {}),
 		...(args.maxTurns ? { maxTurns: args.maxTurns } : {}),
+		...(args.isolateSettings ? { isolateSettings: args.isolateSettings } : {}),
 		model: config.agent.model,
 		cwd,
 		synth: {

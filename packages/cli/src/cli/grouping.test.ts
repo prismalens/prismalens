@@ -319,3 +319,11 @@ describe("Grouping layer", () => {
 		expect(logs.some((l) => l.includes("dropped 2 pending"))).toBe(true);
 	});
 });
+
+describe("deriveGroupKey", () => {
+	it("returns 'default' when no grouping keys apply", async () => {
+		const { deriveGroupKey } = await import("./grouping.js");
+		const key = deriveGroupKey({}, {});
+		expect(key).toBe("default");
+	});
+});
