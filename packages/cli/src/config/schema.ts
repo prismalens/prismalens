@@ -186,7 +186,16 @@ export const RepoConfigSchema = z.object({
 function optionalWithDefaults<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 	return z
 		.optional(z.record(z.string(), z.unknown()))
-		.transform((val): z.output<T> => schema.parse(val ?? {}));
+		.transform((val, ctx): z.output<T> => {
+			const res = schema.safeParse(val ?? {});
+			if (!res.success) {
+				for (const issue of res.error.issues) {
+					ctx.addIssue(issue);
+				}
+				return z.NEVER as any;
+			}
+			return res.data;
+		});
 }
 
 export const SynthConfigSchema = z.object({

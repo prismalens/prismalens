@@ -10,7 +10,7 @@ export default defineCommand({
 	meta: {
 		name: "status",
 		description:
-			"List incident groups and runs with their state (running, done, errored, suppressed)",
+			"List incident groups and runs with their state (running, done, errored, suppressed)\n\nExamples:\n  $ pl status\n  $ pl status --status running,errored\n  $ pl status --json",
 	},
 	args: {
 		status: {
@@ -20,7 +20,13 @@ export default defineCommand({
 		},
 		"base-dir": {
 			type: "string",
-			description: "Workspace base directory (default: ~/.prismalens)",
+			description:
+				"Workspace directory (default: ~/.prismalens; overridden by PRISMALENS_USER_FOLDER)",
+			required: false,
+		},
+		json: {
+			type: "boolean",
+			description: "Print machine-readable JSON",
 			required: false,
 		},
 	},
@@ -55,7 +61,15 @@ export default defineCommand({
 				filter = { status: parts as SessionStatus[] };
 			}
 
+			const json = Boolean(args.json);
+
 			const runs = await sessions.list(filter);
+
+			if (json) {
+				process.stdout.write(`${JSON.stringify(runs, null, 2)}\n`);
+				return;
+			}
+
 			if (runs.length === 0) {
 				consola.info("No runs found.");
 				return;
