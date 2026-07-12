@@ -18,15 +18,17 @@ import { cliVersion } from "../src/version.js";
 (globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
 
 const originalEmit = process.emit;
-process.emit = ((name: string, ...args: any[]) => {
+process.emit = ((name: string, ...args: unknown[]) => {
 	if (
 		name === "warning" &&
-		args[0]?.name === "ExperimentalWarning" &&
-		args[0]?.message?.includes("SQLite")
+		(args[0] as Error)?.name === "ExperimentalWarning" &&
+		(args[0] as Error)?.message?.includes("SQLite")
 	) {
 		return false;
 	}
-	return originalEmit.apply(process, [name, ...args] as any);
+	return originalEmit.apply(process, [name, ...args] as Parameters<
+		typeof originalEmit
+	>);
 }) as typeof process.emit;
 
 /** Lazily import a command body's default export from src/cli. */
@@ -61,7 +63,7 @@ runMain(main, {
 		) {
 			await showUsage(cmd, parent);
 		} else {
-			const cmdName = "pl" + (rawArgs[0] && !rawArgs[0].startsWith("-") ? ` ${rawArgs[0]}` : "");
+			const cmdName = `pl${rawArgs[0] && !rawArgs[0].startsWith("-") ? ` ${rawArgs[0]}` : ""}`;
 			consola.info(`See \`${cmdName} --help\` for usage.`);
 		}
 	},

@@ -6,14 +6,16 @@ import { parseStdin } from "./parse-stdin.js";
 import { PassThrough } from "node:stream";
 
 describe("parseStdin", () => {
-	let originalStdin: NodeJS.ReadStream;
+	let originalStdinDescriptor: PropertyDescriptor | undefined;
 
 	beforeEach(() => {
-		originalStdin = process.stdin;
+		originalStdinDescriptor = Object.getOwnPropertyDescriptor(process, "stdin");
 	});
 
 	afterEach(() => {
-		Object.defineProperty(process, "stdin", { value: originalStdin, configurable: true });
+		if (originalStdinDescriptor) {
+			Object.defineProperty(process, "stdin", originalStdinDescriptor);
+		}
 	});
 
 	it("returns undefined if stdin is TTY", async () => {

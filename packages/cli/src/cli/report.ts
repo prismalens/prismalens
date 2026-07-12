@@ -44,7 +44,7 @@ export default defineCommand({
 			const json = Boolean(args.json);
 			const report = await sessions.readReport(args.id);
 			if (!report) {
-				if (!json) consola.error(`No report for run ${args.id}`);
+				consola.error(`No report for run ${args.id}`);
 				// exitCode (not process.exit) so the finally block still closes the
 				// session manager before the process tears down.
 				process.exitCode = 1;

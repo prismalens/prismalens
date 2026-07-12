@@ -142,4 +142,17 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 
 		spy.mockRestore();
 	});
+	it("warnUnknownKeys uses own-property check so inherited members like 'toString' trigger a warning", async () => {
+		const { default: consola } = await import("consola");
+		const warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => {});
+		writeProject("toString: 'this is not a valid key'\n");
+
+		await loadConfig({ cwd: dir });
+
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Unknown config key ignored: toString"),
+		);
+
+		warnSpy.mockRestore();
+	});
 });

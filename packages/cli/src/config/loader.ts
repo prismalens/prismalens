@@ -169,7 +169,7 @@ function warnUnknownKeys(
 	path: string[] = [],
 ) {
 	for (const key in input) {
-		if (!(key in output)) {
+		if (!Object.hasOwn(output, key)) {
 			consola.warn(`Unknown config key ignored: ${[...path, key].join(".")}`);
 		} else if (isObject(input[key]) && isObject(output[key])) {
 			warnUnknownKeys(

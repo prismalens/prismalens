@@ -192,7 +192,7 @@ function optionalWithDefaults<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 				for (const issue of res.error.issues) {
 					ctx.addIssue(issue);
 				}
-				return z.NEVER as any;
+				return z.NEVER as z.output<T>;
 			}
 			return res.data;
 		});
