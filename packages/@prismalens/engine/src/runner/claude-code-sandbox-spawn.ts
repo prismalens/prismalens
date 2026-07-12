@@ -18,12 +18,12 @@ import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 
 export function sandboxSpawnClaudeCodeProcess(
 	sandbox: Sandbox,
-	opts: { cwd?: string; limits?: SandboxLimits } = {},
+	opts: { cwd?: string; limits?: SandboxLimits; env?: NodeJS.ProcessEnv } = {},
 ): (options: SpawnOptions) => SpawnedProcess {
 	return (options: SpawnOptions): SpawnedProcess => {
 		const child = sandbox.spawn(options.command, options.args, {
 			cwd: options.cwd ?? opts.cwd ?? process.cwd(),
-			env: options.env,
+			env: opts.env ? { ...options.env, ...opts.env } : options.env,
 			...(opts.limits ? { limits: opts.limits } : {}),
 		});
 
