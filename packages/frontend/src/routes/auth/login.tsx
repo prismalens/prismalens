@@ -12,17 +12,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSession, signIn } from "@/lib/auth";
 
+function isValidRedirect(path: unknown): path is string {
+	if (typeof path !== "string") return false;
+	return (
+		path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\")
+	);
+}
+
 export const Route = createFileRoute("/auth/login")({
 	validateSearch: (search: Record<string, unknown>) => ({
-		redirect: (search.redirect as string) || undefined,
+		redirect: isValidRedirect(search.redirect) ? search.redirect : undefined,
 	}),
 	beforeLoad: async ({ search }) => {
 		const session = await getSession();
 		if (session.data) {
-			const safePath =
-				search.redirect && search.redirect.startsWith("/")
-					? search.redirect
-					: "/";
+			const safePath = isValidRedirect(search.redirect) ? search.redirect : "/";
 			throw redirect({ to: safePath });
 		}
 	},
@@ -60,7 +64,7 @@ function LoginPage() {
 
 			// Redirect to original page or dashboard on success
 			// Only allow same-origin relative paths to prevent open redirect
-			const safePath = redirectTo?.startsWith("/") ? redirectTo : "/";
+			const safePath = isValidRedirect(redirectTo) ? redirectTo : "/";
 			navigate({ to: safePath });
 		} catch {
 			setError("An unexpected error occurred. Please try again.");

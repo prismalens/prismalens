@@ -28,7 +28,7 @@ export function SetupWizard({
 	redirect,
 	initialStep = "account",
 }: SetupWizardProps) {
-	const navigate = useNavigate();
+	const _navigate = useNavigate();
 	const [currentStep, setCurrentStep] = useState<SetupStep>(initialStep);
 
 	const getRedirectDestination = () => {

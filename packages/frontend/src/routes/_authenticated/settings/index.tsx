@@ -50,7 +50,7 @@ function SettingsPage() {
 	useEffect(() => {
 		queryClient.invalidateQueries({ queryKey: orpc.integrations.key() });
 		queryClient.invalidateQueries({ queryKey: orpc.settings.key() });
-	}, [tab, queryClient]);
+	}, [queryClient]);
 
 	return (
 		<div className="px-4 py-6 sm:px-0">

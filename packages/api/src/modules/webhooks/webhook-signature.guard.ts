@@ -42,8 +42,7 @@ export class WebhookSignatureGuard implements CanActivate {
 		}
 
 		const body = JSON.stringify(request.body);
-		const expected =
-			"sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+		const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 
 		try {
 			const sigBuf = Buffer.from(signature);

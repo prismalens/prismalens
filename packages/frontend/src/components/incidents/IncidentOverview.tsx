@@ -43,7 +43,7 @@ export function IncidentOverview({
 }: IncidentOverviewProps) {
 	const isActive = !["resolved", "closed"].includes(incident.status);
 	const duration = isActive
-		? new Date().getTime() - new Date(incident.triggeredAt).getTime()
+		? Date.now() - new Date(incident.triggeredAt).getTime()
 		: incident.timeToResolve;
 
 	return (

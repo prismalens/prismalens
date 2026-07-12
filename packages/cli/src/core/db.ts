@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 
@@ -15,11 +15,7 @@ try {
 	process.exit(1);
 }
 
-export function openDatabase(baseDir: string): DatabaseSyncType {
-	mkdirSync(baseDir, { recursive: true });
-	const db = new DatabaseSync(join(baseDir, "prismalens.db"));
-
-	db.exec(`
+const SCHEMA = `
 		PRAGMA journal_mode = WAL;
 		PRAGMA busy_timeout = 5000;
 		PRAGMA foreign_keys = ON;
@@ -70,7 +66,49 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 			payload  TEXT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_group_alerts ON group_alerts(group_id, id);
-	`);
+`;
+
+const SCHEMA_CHECK = `
+		SELECT id, group_key, formed_by, created_at FROM groups LIMIT 1;
+		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, created_at, updated_at, completed_at FROM runs LIMIT 1;
+		SELECT id, run_id, payload FROM events LIMIT 1;
+		SELECT run_id, payload FROM reports LIMIT 1;
+		SELECT id, group_id, late, payload FROM group_alerts LIMIT 1;
+`;
+
+export function openDatabase(baseDir: string): DatabaseSyncType {
+	mkdirSync(baseDir, { recursive: true });
+	const dbPath = join(baseDir, "prismalens.db");
+	let db = new DatabaseSync(dbPath);
+
+	try {
+		db.exec(SCHEMA);
+		db.exec(SCHEMA_CHECK);
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (!/no such column|no such table|has no column named/i.test(msg)) {
+			try {
+				db.close();
+			} catch {}
+			throw err;
+		}
+
+		// Schema mismatch or corruption detected.
+		const backupPath = join(baseDir, `prismalens.db.bak-${Date.now()}`);
+		if (existsSync(`${dbPath}-wal`))
+			renameSync(`${dbPath}-wal`, `${backupPath}-wal`);
+		if (existsSync(`${dbPath}-shm`))
+			renameSync(`${dbPath}-shm`, `${backupPath}-shm`);
+		db.close();
+		renameSync(dbPath, backupPath);
+		console.warn(
+			`[!] Workspace schema is incompatible. Backed up old database to ${backupPath} and recreated.`,
+		);
+
+		// Recreate a fresh database.
+		db = new DatabaseSync(dbPath);
+		db.exec(SCHEMA);
+	}
 
 	return db;
 }

@@ -60,8 +60,7 @@ export class IncidentsController {
 			getStats: implement(incidentsContract.getStats).handler(async () => {
 				const stats = await this.incidentsService.getStats();
 				const activeCount =
-					(stats.byStatus?.["open"] ?? 0) +
-					(stats.byStatus?.["investigating"] ?? 0);
+					(stats.byStatus?.open ?? 0) + (stats.byStatus?.investigating ?? 0);
 				return {
 					total: stats.total,
 					active: activeCount,

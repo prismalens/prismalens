@@ -5,7 +5,7 @@
  * Template-driven OAuth2 authorization flow with PKCE support.
  * DB-backed state via injected interface — no NestJS dependency.
  */
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { AuthTemplate, OAuthStateData, TokenResult } from "../types.js";
 import { interpolate } from "./interpolate.js";
 import type { TokenVault } from "./token-vault.js";

@@ -8,10 +8,7 @@
  *
  * Type-safe hooks for timeline operations using oRPC with TanStack Query.
  */
-import type {
-	CreateTimelineEntryInput,
-	TimelineQuery,
-} from "@prismalens/contracts";
+import type { TimelineQuery } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 
@@ -80,7 +77,7 @@ export function useDeleteTimelineEntry() {
 
 	return useMutation({
 		...orpc.timeline.delete.mutationOptions(),
-		onSuccess: (_data, variables) => {
+		onSuccess: (_data, _variables) => {
 			// We need to invalidate lists but we don't have the incidentId
 			// So we invalidate all timeline lists
 			queryClient.invalidateQueries({
