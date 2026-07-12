@@ -16,7 +16,7 @@ import {
 } from "node:http";
 import { PrometheusWebhookSchema } from "@prismalens/contracts";
 import type { GroupingPort } from "../cli/grouping.js";
-
+import { deriveDedupeKey, deriveGroupKey } from "../cli/grouping.js";
 
 export interface ListenServerOptions {
 	/** Port to bind (0 = ephemeral, for tests). */
@@ -170,6 +170,22 @@ export async function startListenServer(
 			received: parsed.data.alerts.length,
 			accepted: firing.length,
 		});
+
+		const timestamp = new Date().toISOString();
+		const fingerprint = firing.length > 0 ? deriveDedupeKey(firing[0]) : "none";
+		const groupKey =
+			firing.length > 0 ? deriveGroupKey(firing[0], payload) : "none";
+
+		console.error(
+			JSON.stringify({
+				event: "intake_accepted",
+				timestamp,
+				fingerprint,
+				groupKey,
+				alertCount: parsed.data.alerts.length,
+				acceptedCount: firing.length,
+			}),
+		);
 
 		options.grouping.admit(firing, payload);
 	};
