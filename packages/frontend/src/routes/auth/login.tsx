@@ -19,10 +19,7 @@ export const Route = createFileRoute("/auth/login")({
 	beforeLoad: async ({ search }) => {
 		const session = await getSession();
 		if (session.data) {
-			const safePath =
-				search.redirect && search.redirect.startsWith("/")
-					? search.redirect
-					: "/";
+			const safePath = search.redirect?.startsWith("/") ? search.redirect : "/";
 			throw redirect({ to: safePath });
 		}
 	},

@@ -63,7 +63,7 @@ export function formatText(entry: LogEntry): string {
 	const timestamp = COLORS.gray + entry.timestamp + COLORS.reset;
 	const level = formatLevel(entry.level);
 	const context = entry.context
-		? COLORS.dim + `[${entry.context}]` + COLORS.reset + " "
+		? `${COLORS.dim}[${entry.context}]${COLORS.reset} `
 		: "";
 	const message = entry.message;
 

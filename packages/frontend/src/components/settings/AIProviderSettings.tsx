@@ -571,7 +571,7 @@ export function AIProviderSettings() {
 								value={maxTokens ?? ""}
 								onChange={(e) =>
 									setMaxTokens(
-										e.target.value ? parseInt(e.target.value) : undefined,
+										e.target.value ? parseInt(e.target.value, 10) : undefined,
 									)
 								}
 							/>

@@ -8,7 +8,6 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import type { Repository, ServiceRepository } from "@prismalens/database";
-import { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type {
 	BatchCreateRepositoriesDto,

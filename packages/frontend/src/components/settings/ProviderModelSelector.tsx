@@ -68,7 +68,7 @@ export function ProviderModelSelector({
 	// Reset "show all" when provider changes
 	useEffect(() => {
 		setShowAll(false);
-	}, [selectedProvider]);
+	}, []);
 
 	// Filter models for selected provider (server already sorts by release date)
 	const filteredModels = useMemo(() => {

@@ -10,7 +10,7 @@ export function interpolate(
 	template: string,
 	context: Record<string, string>,
 ): string {
-	return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+	return template.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
 		if (key in context) return context[key];
 		throw new Error(`Interpolation failed: {{${key}}} not found in context`);
 	});
