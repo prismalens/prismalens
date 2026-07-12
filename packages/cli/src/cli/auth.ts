@@ -28,7 +28,7 @@ const login = defineCommand({
 	},
 	async run({ args }) {
 		const provider = args.provider as LLMProviderId;
-		if (!LLM_PROVIDERS[provider]) {
+		if (!Object.hasOwn(LLM_PROVIDERS, provider)) {
 			consola.error(`Unknown provider: ${provider}`);
 			process.exit(1);
 		}
@@ -97,7 +97,7 @@ const logout = defineCommand({
 	},
 	async run({ args }) {
 		const provider = args.provider as LLMProviderId;
-		if (!LLM_PROVIDERS[provider]) {
+		if (!Object.hasOwn(LLM_PROVIDERS, provider)) {
 			consola.error(`Unknown provider: ${provider}`);
 			process.exit(1);
 		}

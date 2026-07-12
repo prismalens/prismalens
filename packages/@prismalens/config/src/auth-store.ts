@@ -3,19 +3,20 @@
 
 import {
 	chmodSync,
-	mkdirSync,
 	readFileSync,
+	renameSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import envPaths from "env-paths";
+import consola from "consola";
 import type { LLMProviderId } from "./providers/llm.js";
+import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 
 const AUTH_FILE_NAME = "auth.json";
 
 function getAuthFilePath(): string {
-	return join(envPaths("prismalens", { suffix: "" }).data, AUTH_FILE_NAME);
+	return join(getAppDataDir(), AUTH_FILE_NAME);
 }
 
 export type AuthStore = Record<string, { type: "api"; key: string }>;
@@ -39,14 +40,20 @@ export function readAuthStore(): AuthStore {
 		) {
 			return {};
 		}
+		if (err instanceof SyntaxError) {
+			consola.warn("Auth store file is corrupted. Treating as empty.");
+			return {};
+		}
 		throw err;
 	}
 }
 
 export function writeAuthStore(store: AuthStore): void {
 	const file = getAuthFilePath();
-	mkdirSync(envPaths("prismalens", { suffix: "" }).data, { recursive: true });
-	writeFileSync(file, JSON.stringify(store, null, 2), { mode: 0o600 });
+	ensureAppDataDir();
+	const tmpFile = `${file}.tmp`;
+	writeFileSync(tmpFile, JSON.stringify(store, null, 2), { mode: 0o600 });
+	renameSync(tmpFile, file);
 }
 
 export function setStoredCredential(
