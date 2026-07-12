@@ -276,6 +276,18 @@ export async function startListenFromConfig(
 		);
 	}
 	const sessions = createSessionManager(config.workspace.base_dir);
+
+	// Startup reaper (#136): mark any orphaned "running" runs from a previous
+	// dead listener as errored, so pl status reflects reality.
+	const staleRuns = await sessions.list({ status: ["running"] });
+	for (const run of staleRuns) {
+		await sessions.update(run.runId, {
+			status: "errored",
+			error: "listener process died mid-investigation (interrupted)",
+		});
+		options.log(`Reaped stale run ${run.runId} from a previous listener`);
+	}
+
 	const grouping = createGroupingLayer({
 		windowMs: config.listen.grouping_window_ms,
 		sessions,
