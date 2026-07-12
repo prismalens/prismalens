@@ -147,12 +147,15 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 		const warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => {});
 		writeProject("toString: 'this is not a valid key'\n");
 
-		await loadConfig({ cwd: dir });
+		try {
+			await loadConfig({ cwd: dir });
 
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining("Unknown config key ignored: toString"),
-		);
-
-		warnSpy.mockRestore();
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Unknown config key ignored: toString"),
+			);
+		} finally {
+			// Restore even when loadConfig or an assertion throws, so later tests see a real consola.warn
+			warnSpy.mockRestore();
+		}
 	});
 });
