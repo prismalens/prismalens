@@ -18,9 +18,12 @@ evidence; no numeric confidence scores).
   - `claude-code` — driven over the **Claude Agent SDK**,
   - `codex` — **stubbed** (not implemented; selecting it throws).
 
-The harness investigates **read-only**. Provider credentials are **BYO-key**
-(ADR-0006) and are resolved from the environment or local auth store — never
-hard-bound in the CLI.
+The harness investigates **read-only** — with an honest caveat (ADR-0017):
+read-only removes the edit tools; it does **not** sandbox the shell, so writes
+remain possible via Bash. Treat read-only as a cooperative posture and use the
+**sandbox boundary** (`--sandbox`, ADR-0020) for enforcement. Provider
+credentials are **BYO-key** (ADR-0006) and are resolved from the environment or
+local auth store — never hard-bound in the CLI.
 
 Every run is persisted to a durable workspace under `~/.prismalens/runs/<runId>/`
 (`events.jsonl` + `report.json` + `session.json`), regardless of how it was
