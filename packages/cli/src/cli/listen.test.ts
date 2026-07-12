@@ -11,7 +11,7 @@
  */
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { InvestigationReport } from "@prismalens/contracts";
 import type { conductRun, SandboxSelection } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +49,7 @@ function firingAlert(
 ): Record<string, unknown> {
 	return {
 		status: "firing",
-		labels: { alertname },
+		labels: { alertname, service: "checkout" },
 		startsAt: "2026-07-09T03:00:00Z",
 		...(fingerprint ? { fingerprint } : {}),
 	};
@@ -58,7 +58,7 @@ function firingAlert(
 async function writeConfig(baseDir: string): Promise<void> {
 	await writeFile(
 		join(dir, "prismalens.config.yaml"),
-		`workspace:\n  base_dir: ${baseDir}\n`,
+		`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${baseDir}\n`,
 		"utf-8",
 	);
 }
@@ -107,7 +107,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
 			"utf-8",
 		);
 
@@ -160,7 +160,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
 			"utf-8",
 		);
 
@@ -344,7 +344,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const notifySpy = vi.fn().mockResolvedValue(undefined);
@@ -374,7 +374,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\n`,
 			"utf-8",
 		);
 		const notifySpy = vi.fn().mockResolvedValue(undefined);
@@ -396,7 +396,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const notifySpy = vi.fn().mockRejectedValue(new Error("slack is down"));
@@ -420,7 +420,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const noEvidence: ConductRun = (async (inputs) => ({
@@ -460,7 +460,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const errored: ConductRun = (async (inputs) => ({
@@ -495,7 +495,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const cancelled: ConductRun = (async (inputs) => ({
@@ -546,6 +546,9 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
 			[
+				`services:`,
+				`  checkout:`,
+				`    repo: ${dir}`,
 				`workspace:`,
 				`  base_dir: ${workspace}`,
 				`listen:`,
@@ -594,7 +597,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const configPath = join(dir, "prismalens.config.yaml");
 		await writeFile(
 			configPath,
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 			"utf-8",
 		);
 		const lines: string[] = [];
@@ -631,14 +634,13 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		}
 	});
 
-	it("labels a label-less group 'default' and stringifies a non-Error failure", async () => {
+	it("stringifies a non-Error failure from the harness", async () => {
 		vi.useFakeTimers();
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
-			const workspace = join(dir, "workspace");
 			await writeFile(
 				join(dir, "prismalens.config.yaml"),
-				`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+				`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${join(dir, "ws")}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 				"utf-8",
 			);
 			const lines: string[] = [];
@@ -663,10 +665,10 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 						body: JSON.stringify({
 							status: "firing",
 							alerts: [
-								// labels present but empty
+								// labels present to pass AC5 check
 								{
 									status: "firing",
-									labels: {},
+									labels: { alertname: "TestAlert", service: "checkout" },
 									startsAt: "2026-07-09T03:00:00Z",
 								},
 							],
@@ -679,7 +681,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 				vi.useRealTimers();
 				await vi.waitFor(() => {
 					const all = lines.join("\n");
-					expect(all).toContain("group default failed");
+					expect(all).toContain("group TestAlert\0checkout failed");
 					expect(all).toContain("plain string failure");
 				});
 			} finally {
@@ -696,7 +698,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 			const workspace = join(dir, "workspace");
 			await writeFile(
 				join(dir, "prismalens.config.yaml"),
-				`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n  grouping_window_ms: 1000\n`,
+				`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n  grouping_window_ms: 1000\n`,
 				"utf-8",
 			);
 			const lines: string[] = [];
@@ -802,7 +804,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 			"utf-8",
 		);
 
@@ -833,7 +835,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 			"utf-8",
 		);
 
@@ -859,7 +861,6 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 });
 
 describe("resolveRepoPath (alert label → repo checkout, AC5)", () => {
-	const fallback = "/listen-cwd";
 	const alertFor = (
 		labels: Record<string, string>,
 	): Record<string, unknown> => ({
@@ -875,39 +876,41 @@ describe("resolveRepoPath (alert label → repo checkout, AC5)", () => {
 				"acme/checkout": { repo: "acme/checkout", local_path: "/src/checkout" },
 			},
 		});
-		expect(
-			resolveRepoPath(alertFor({ service: "checkout" }), config, fallback),
-		).toBe("/src/checkout");
+		expect(resolveRepoPath(alertFor({ service: "checkout" }), config)).toBe(
+			resolve("/src/checkout"),
+		);
 	});
 
 	it("uses services[].repo directly when it is an existing local path", () => {
 		const config = PlConfigSchema.parse({
 			services: { checkout: { repo: dir } },
 		});
-		expect(
-			resolveRepoPath(alertFor({ service: "checkout" }), config, fallback),
-		).toBe(dir);
+		expect(resolveRepoPath(alertFor({ service: "checkout" }), config)).toBe(
+			resolve(dir),
+		);
 	});
 
-	it("falls back to the listen cwd when the alert carries no known service", () => {
+	it("throws when the alert carries no known service", () => {
 		const config = PlConfigSchema.parse({});
-		expect(resolveRepoPath(alertFor({}), config, fallback)).toBe(fallback);
-		expect(
-			resolveRepoPath(
-				alertFor({ service: "not-in-catalog" }),
-				config,
-				fallback,
-			),
-		).toBe(fallback);
+		expect(() => resolveRepoPath(alertFor({}), config)).toThrow(
+			"Listen dispatch refused: alert is missing a service label",
+		);
+		expect(() =>
+			resolveRepoPath(alertFor({ service: "not-in-catalog" }), config),
+		).toThrow(
+			'Listen dispatch refused: service "not-in-catalog" has no mapped repo in config',
+		);
 	});
 
-	it("falls back when the mapped repo is a slug with no local_path or checkout", () => {
+	it("throws when the mapped repo is a slug with no local_path or checkout", () => {
 		const config = PlConfigSchema.parse({
 			services: { checkout: { repo: "acme/checkout" } },
 			repos: { "acme/checkout": { repo: "acme/checkout" } },
 		});
-		expect(
-			resolveRepoPath(alertFor({ service: "checkout" }), config, fallback),
-		).toBe(fallback);
+		expect(() =>
+			resolveRepoPath(alertFor({ service: "checkout" }), config),
+		).toThrow(
+			'Listen dispatch refused: repo "acme/checkout" (mapped from service "checkout") does not exist locally',
+		);
 	});
 });

@@ -87,15 +87,25 @@ export interface InvestigationRunnerDeps {
 export function resolveRepoPath(
 	alert: Record<string, unknown>,
 	config: PlConfig,
-	fallbackCwd: string,
 ): string {
 	const name = pickServiceLabel(alert);
-	const repoRef = name ? config.services[name]?.repo : undefined;
-	if (!repoRef) return fallbackCwd;
+	if (!name) {
+		throw new Error(
+			`Listen dispatch refused: alert is missing a service label (cannot resolve an investigation workspace).`,
+		);
+	}
+	const repoRef = config.services[name]?.repo;
+	if (!repoRef) {
+		throw new Error(
+			`Listen dispatch refused: service "${name}" has no mapped repo in config (cannot resolve an investigation workspace).`,
+		);
+	}
 	const localPath = config.repos[repoRef]?.local_path;
 	if (localPath) return resolve(localPath);
 	if (existsSync(repoRef)) return resolve(repoRef);
-	return fallbackCwd;
+	throw new Error(
+		`Listen dispatch refused: repo "${repoRef}" (mapped from service "${name}") does not exist locally (cannot resolve an investigation workspace).`,
+	);
 }
 
 export function createInvestigationRunner(
@@ -158,7 +168,7 @@ export function createInvestigationRunner(
 
 		// AC5: the checkout under investigation follows the ALERT (service label →
 		// catalog), not the directory the server happened to start in.
-		const repoPath = resolveRepoPath(alerts[0], config, cwd);
+		const repoPath = resolveRepoPath(alerts[0], config);
 
 		const harnessName = config.agent.default;
 		const { selection } = await resolveRunSandbox(
