@@ -45,7 +45,6 @@ describe("ServiceDiscoveryController (BDD)", () => {
 
 	// Unwrap oRPC ImplementedProcedure objects: each value is a DecoratedProcedure
 	// whose actual handler function lives at ['~orpc'].handler
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function getHandlers(): any {
 		const procedures = controller.serviceDiscovery() as Record<string, any>;
 		return Object.fromEntries(
