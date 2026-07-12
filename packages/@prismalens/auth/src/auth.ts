@@ -23,7 +23,6 @@ import { admin, organization } from "better-auth/plugins";
  * because we can't directly import it here (would cause circular dependency).
  * The API package will call this with its Prisma instance.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createAuth(prisma: any, options: AuthOptions) {
 	return betterAuth({
 		database: prismaAdapter(prisma, {
