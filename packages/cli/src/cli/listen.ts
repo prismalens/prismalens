@@ -129,15 +129,46 @@ export function createInvestigationRunner(
 			...(options.configPath ? { configPath: options.configPath } : {}),
 		});
 
+		const alertname = ((
+			alerts[0]?.labels as Record<string, unknown> | undefined
+		)?.alertname ?? undefined) as string | undefined;
+
+		// AC5: the checkout under investigation follows the ALERT (service label →
+		// catalog), not the directory the server happened to start in.
+		// MUST be resolved before consuming caps so unmapped alerts do not exhaust budget.
+		let repoPath: string;
+		try {
+			repoPath = resolveRepoPath(alerts[0], config);
+		} catch (err) {
+			const reason = err instanceof Error ? err.message : String(err);
+			console.error(
+				JSON.stringify({
+					event: "dispatch_refused",
+					runId,
+					reason,
+					...(alertname ? { alertname } : {}),
+				}),
+			);
+			options.log(`Refused run ${runId} (${reason})`);
+			const refusedSessions = createSessionManager(config.workspace.base_dir);
+			try {
+				await refusedSessions.recordSuppressed({
+					runId,
+					reason,
+					...(alertname ? { alertname } : {}),
+				});
+			} finally {
+				refusedSessions.close?.();
+			}
+			return; // refused, never consume caps
+		}
+
 		const dispatchCaps: DispatchCaps = {
 			maxConcurrent: config.listen.caps.max_concurrent,
 			maxPerHour: config.listen.caps.max_per_hour,
 		};
 		const decision = caps.tryDispatch(dispatchCaps, Date.now());
 		if (!decision.allow) {
-			const alertname = ((
-				alerts[0]?.labels as Record<string, unknown> | undefined
-			)?.alertname ?? undefined) as string | undefined;
 			// Structured suppression log — match the repo convention
 			// (slack-notify.ts: console.error(JSON.stringify({ event, ... }))).
 			console.error(
@@ -165,10 +196,6 @@ export function createInvestigationRunner(
 			}
 			return; // never arm a sandbox / call conductRun for a suppressed run
 		}
-
-		// AC5: the checkout under investigation follows the ALERT (service label →
-		// catalog), not the directory the server happened to start in.
-		const repoPath = resolveRepoPath(alerts[0], config);
 
 		const harnessName = config.agent.default;
 		const { selection } = await resolveRunSandbox(

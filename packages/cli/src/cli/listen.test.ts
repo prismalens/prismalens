@@ -156,6 +156,63 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		await p1;
 	});
 
+	it("refused dispatch does not consume hourly caps budget", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 10\n    max_per_hour: 2\n`,
+			"utf-8",
+		);
+
+		const conductSpy = vi.fn(async (inputs) => {
+			return { runId: inputs.runId, report: REPORT };
+		});
+
+		const { createCapsGate } = await import("../core/caps.js");
+		const gateInst = createCapsGate();
+
+		const run = createInvestigationRunner(
+			{ cwd: dir, log: () => {} },
+			{
+				conductRun: conductSpy as unknown as ConductRun,
+				resolveRunSandbox: noSandbox,
+				capsGate: gateInst,
+			},
+		);
+
+		// Two refused dispatches (missing service mapping) - would exhaust max_per_hour: 2 if not fixed
+		await run("run-refused-1", [
+			{
+				status: "firing",
+				labels: { alertname: "Unmapped1" },
+				startsAt: "2026-07-09T03:00:00Z",
+			},
+		]);
+		await run("run-refused-2", [
+			{
+				status: "firing",
+				labels: { alertname: "Unmapped2" },
+				startsAt: "2026-07-09T03:00:00Z",
+			},
+		]);
+
+		expect(conductSpy).not.toHaveBeenCalled();
+
+		// One valid dispatch
+		await run("run-valid", [firingAlert()]);
+
+		// Should succeed (hourly cap not exhausted)
+		expect(conductSpy).toHaveBeenCalledTimes(1);
+
+		const { createSessionManager } = await import("../core/session.js");
+		const sessions = createSessionManager(workspace);
+		const refused1 = await sessions.get("run-refused-1");
+		expect(refused1?.status).toBe("suppressed");
+		expect(refused1?.suppressionReason).toContain("missing a service label");
+
+		sessions.close?.();
+	});
+
 	it("suppression that throws does not crash the running investigation", async () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
