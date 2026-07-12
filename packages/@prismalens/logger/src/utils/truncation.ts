@@ -25,7 +25,7 @@ export function truncatePayload(
 	if (result.error?.stack && result.error.stack.length > 1000) {
 		result.error = {
 			...result.error,
-			stack: result.error.stack.substring(0, 1000) + `\n${TRUNCATION_MARKER}`,
+			stack: `${result.error.stack.substring(0, 1000)}\n${TRUNCATION_MARKER}`,
 		};
 	}
 
@@ -112,7 +112,7 @@ function truncateErrorCause(
 	return {
 		...cause,
 		stack: cause.stack
-			? cause.stack.substring(0, 500) + `\n${TRUNCATION_MARKER}`
+			? `${cause.stack.substring(0, 500)}\n${TRUNCATION_MARKER}`
 			: undefined,
 		cause: cause.cause
 			? truncateErrorCause(cause.cause, maxDepth - 1)

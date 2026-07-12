@@ -39,7 +39,7 @@ export function ProviderLogo({
 
 	useEffect(() => {
 		setFailed(false);
-	}, [provider]);
+	}, []);
 
 	if (failed) {
 		return (

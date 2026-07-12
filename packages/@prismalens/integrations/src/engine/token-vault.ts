@@ -5,7 +5,7 @@
  * AES-256-GCM credential encryption vault.
  * Outputs Buffer (for Prisma Bytes) instead of base64 strings.
  */
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;

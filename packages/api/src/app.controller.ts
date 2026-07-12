@@ -9,9 +9,7 @@ import { Public } from "./core/auth/public.decorator.js";
 @Public()
 @Controller()
 export class AppController {
-	constructor(
-		private readonly configService: ConfigService<EnvironmentVariables>,
-	) {}
+	constructor(readonly _configService: ConfigService<EnvironmentVariables>) {}
 
 	@Get()
 	root(): {
