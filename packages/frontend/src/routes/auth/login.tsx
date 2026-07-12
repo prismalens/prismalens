@@ -12,8 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSession, signIn } from "@/lib/auth";
 
-function isValidRedirect(path: string | undefined | null): path is string {
-	if (!path) return false;
+function isValidRedirect(path: unknown): path is string {
+	if (typeof path !== "string") return false;
 	return (
 		path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\")
 	);
@@ -21,7 +21,7 @@ function isValidRedirect(path: string | undefined | null): path is string {
 
 export const Route = createFileRoute("/auth/login")({
 	validateSearch: (search: Record<string, unknown>) => ({
-		redirect: (search.redirect as string) || undefined,
+		redirect: isValidRedirect(search.redirect) ? search.redirect : undefined,
 	}),
 	beforeLoad: async ({ search }) => {
 		const session = await getSession();
