@@ -69,7 +69,7 @@ const SCHEMA = `
 `;
 
 const SCHEMA_CHECK = `
-		SELECT group_key, formed_by FROM groups LIMIT 1;
+		SELECT id, group_key, formed_by, created_at FROM groups LIMIT 1;
 		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, created_at, updated_at, completed_at FROM runs LIMIT 1;
 		SELECT id, run_id, payload FROM events LIMIT 1;
 		SELECT run_id, payload FROM reports LIMIT 1;
@@ -84,7 +84,15 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 	try {
 		db.exec(SCHEMA);
 		db.exec(SCHEMA_CHECK);
-	} catch (_err) {
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (!/no such column|no such table|has no column named/i.test(msg)) {
+			try {
+				db.close();
+			} catch {}
+			throw err;
+		}
+
 		// Schema mismatch or corruption detected.
 		const backupPath = join(baseDir, `prismalens.db.bak-${Date.now()}`);
 		if (existsSync(`${dbPath}-wal`))

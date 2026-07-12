@@ -31,6 +31,9 @@ describe("openDatabase", () => {
 			CREATE TABLE runs (id TEXT PRIMARY KEY, status TEXT NOT NULL);
 			CREATE TABLE events (id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
 		`);
+		staleDb.exec(
+			`INSERT INTO runs (id, status) VALUES ('sentinel-run-123', 'done');`,
+		);
 		staleDb.close();
 
 		// Create fake sidecar files that would be left behind by an unclean shutdown
@@ -65,6 +68,17 @@ describe("openDatabase", () => {
 		);
 
 		db.close();
+
+		// Assert backup preserves data
+		if (!backupFile) {
+			throw new Error("Backup file missing");
+		}
+		const backupDb = new DatabaseSync(join(testDir, backupFile));
+		const backupRow = backupDb
+			.prepare("SELECT * FROM runs WHERE id = 'sentinel-run-123'")
+			.get();
+		expect(backupRow).toEqual({ id: "sentinel-run-123", status: "done" });
+		backupDb.close();
 	});
 
 	it("opens a fresh store on the first run without warning", () => {
@@ -75,5 +89,19 @@ describe("openDatabase", () => {
 
 		expect(warnSpy).not.toHaveBeenCalled();
 		db.close();
+	});
+
+	it("throws on non-schema errors without creating a backup", () => {
+		vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(() => {
+			throw new Error("SQLITE_BUSY: database is locked");
+		});
+
+		expect(() => openDatabase(testDir)).toThrow(
+			"SQLITE_BUSY: database is locked",
+		);
+
+		const files = readdirSync(testDir);
+		const backups = files.filter((f) => f.startsWith("prismalens.db.bak-"));
+		expect(backups.length).toBe(0);
 	});
 });
