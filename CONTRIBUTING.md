@@ -97,8 +97,9 @@ Every first-party source file (`*.ts`, `*.tsx`, `*.mts`, `*.cts`, `*.mjs`,
 // Copyright 2026 Sumit Patel
 ```
 
-(after the shebang, for executables). CI enforces this via `pnpm spdx:check`;
-`pnpm spdx:fix` inserts missing headers. Generated code is excluded — paraglide
+(after the shebang, for executables). CI enforces this via `pnpm spdx:check`.
+Headers are automatically inserted when you commit; `pnpm spdx:fix` remains
+available for manual runs. Generated code is excluded — paraglide
 output, generated clients, anything under `dist/` — see the `EXCLUDE` list in
 `scripts/spdx-headers.mjs`.
 
