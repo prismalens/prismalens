@@ -28,7 +28,7 @@ export class AuthManager {
 	private readonly refresher: TokenRefresher;
 
 	constructor(
-		readonly vault: TokenVault,
+		vault: TokenVault,
 		private readonly deps: AuthManagerDeps,
 		options?: { bufferSeconds?: number },
 	) {
