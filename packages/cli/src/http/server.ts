@@ -16,10 +16,13 @@ import {
 } from "node:http";
 import { PrometheusWebhookSchema } from "@prismalens/contracts";
 import type { GroupingPort } from "../cli/grouping.js";
+import { deriveDedupeKey, deriveGroupKey } from "../cli/grouping.js";
 
 export interface ListenServerOptions {
 	/** Port to bind (0 = ephemeral, for tests). */
 	port: number;
+	/** Host to bind (default 127.0.0.1). */
+	host?: string;
 	/** Shared bearer token; every request without it gets 401. */
 	token: string;
 	/** Grouping layer. */
@@ -32,6 +35,8 @@ export interface ListenServerOptions {
 	 * regardless of size. Default 8.
 	 */
 	maxPending?: number;
+
+	log?: (line: string) => void;
 }
 
 const DEFAULT_MAX_PENDING = 8;
@@ -42,6 +47,8 @@ export const WEBHOOK_PATH = "/webhooks/alertmanager";
 export interface ListenServer {
 	/** The actually-bound port (resolves port 0). */
 	port: number;
+	/** The actually-bound host. */
+	host: string;
 	close(): Promise<void>;
 }
 
@@ -165,6 +172,23 @@ export async function startListenServer(
 			received: parsed.data.alerts.length,
 			accepted: firing.length,
 		});
+
+		const timestamp = new Date().toISOString();
+		const fingerprint = firing.length > 0 ? deriveDedupeKey(firing[0]) : "none";
+		const groupKey =
+			firing.length > 0 ? deriveGroupKey(firing[0], payload) : "none";
+
+		console.error(
+			JSON.stringify({
+				event: "intake_accepted",
+				timestamp,
+				fingerprint,
+				groupKey,
+				alertCount: parsed.data.alerts.length,
+				acceptedCount: firing.length,
+			}),
+		);
+
 		options.grouping.admit(firing, payload);
 	};
 
@@ -179,7 +203,7 @@ export async function startListenServer(
 	});
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		server.listen(options.port, "127.0.0.1", () => resolve());
+		server.listen(options.port, options.host ?? "127.0.0.1", () => resolve());
 	});
 	const address = server.address();
 	/* v8 ignore next 3 — a TCP listen never yields a pipe/null address */
@@ -189,6 +213,7 @@ export async function startListenServer(
 
 	return {
 		port: address.port,
+		host: address.address,
 		close: () => {
 			options.grouping.shutdown();
 			return new Promise<void>((resolve, reject) => {

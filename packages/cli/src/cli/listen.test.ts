@@ -975,6 +975,25 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 
 		sessions.close?.();
 	});
+
+	it("options.host overrides config.listen.host", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  host: 127.0.0.2\n  token: e2e-token\n`,
+			"utf-8",
+		);
+
+		const server = await startListenFromConfig(
+			{ cwd: dir, host: "127.0.0.1", log: () => {} },
+			{ resolveRunSandbox: noSandbox },
+		);
+		try {
+			expect(server.host).toBe("127.0.0.1");
+		} finally {
+			await server.close();
+		}
+	});
 });
 
 describe("resolveRepoPath (alert label → repo checkout, AC5)", () => {

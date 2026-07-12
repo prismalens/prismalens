@@ -117,6 +117,8 @@ export const ListenCapsConfigSchema = z.object({
  * rather than a literal. The grouping_window_ms configures the debounce window.
  */
 export const ListenConfigSchema = z.object({
+	/** Local intake host. Default 127.0.0.1. */
+	host: z.string().default("127.0.0.1"),
 	/** Local intake port (4181: clear of 9090/9093/3000/8080 defaults). 0 = ephemeral. */
 	port: z.number().int().min(0).max(65535).default(4181),
 	/** Shared bearer token Alertmanager presents; unset ⇒ `pl listen` refuses to start. */
