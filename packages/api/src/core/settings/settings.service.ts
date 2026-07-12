@@ -124,7 +124,6 @@ export class SettingsService {
 			where: { key: "INVESTIGATION_POLICIES" },
 		});
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON.parse returns any; contract validates shape
 		let current: Record<string, any>;
 		if (setting) {
 			try {

@@ -619,7 +619,6 @@ export class ServiceDiscoveryService {
 	/**
 	 * Best-effort: link a repository to a service if a matching Repository record exists.
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma transaction client type
 	private async tryAutoLinkRepository(
 		tx: any,
 		serviceId: string,
@@ -666,7 +665,6 @@ export class ServiceDiscoveryService {
 	 * Best-effort: create ServiceDependency records for dependency names
 	 * that match existing services.
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma transaction client type
 	private async tryAutoCreateDependencies(
 		tx: any,
 		serviceId: string,
