@@ -856,6 +856,66 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 			process.env = oldEnv;
 		}
 	});
+
+	it("startup reaper: reaps stale running rows but leaves fresh ones untouched", async () => {
+		const workspace = join(dir, "workspace");
+		await writeFile(
+			join(dir, "prismalens.config.yaml"),
+			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\nagent:\n  limits:\n    wall_clock_ms: 3600000\n`, // 1 hour wall-clock cap
+			"utf-8",
+		);
+
+		const { createSessionManager } = await import("../core/session.js");
+		const sessions = createSessionManager(workspace);
+		const { createFileSessionStore } = await import(
+			"../core/file-session-store.js"
+		);
+		const store1 = createFileSessionStore(sessions, {
+			runId: "stale-run",
+			alertname: "Stale",
+			agent: "claude",
+		});
+		await store1.store.create();
+
+		const store2 = createFileSessionStore(sessions, {
+			runId: "fresh-run",
+			alertname: "Fresh",
+			agent: "claude",
+		});
+		await store2.store.create();
+
+		// Manually backdate the stale-run's updatedAt beyond 1h + 5m slack
+		// 1h 6m = 3960000ms
+		const staleTime = Date.now() - 3960000;
+		const { SqliteSessionManager } = await import(
+			"../core/sqlite-session-store.js"
+		);
+
+		// Force raw update bypassing normal rules to rewrite updatedAt
+		const { DatabaseSync } = await import("node:sqlite");
+		const db = new DatabaseSync(join(workspace, "prismalens.db"));
+		db.prepare("UPDATE runs SET updated_at = ? WHERE run_id = ?").run(
+			new Date(staleTime).toISOString(),
+			"stale-run",
+		);
+		db.close();
+
+		const lines: string[] = [];
+		const server = await startListenFromConfig(
+			{ cwd: dir, log: (l) => lines.push(l) },
+			{ resolveRunSandbox: noSandbox },
+		);
+		await server.close();
+
+		const staleRec = await sessions.get("stale-run");
+		expect(staleRec?.status).toBe("errored");
+		expect(staleRec?.error).toContain("listener process died");
+
+		const freshRec = await sessions.get("fresh-run");
+		expect(freshRec?.status).toBe("running");
+
+		sessions.close?.();
+	});
 });
 
 describe("resolveRepoPath (alert label → repo checkout, AC5)", () => {

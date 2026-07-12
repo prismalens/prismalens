@@ -1,6 +1,5 @@
 ---
-"@prismalens/cli": patch
+"prismalens": patch
 ---
 
-fix(cli): reap orphaned runs on listener startup (#136)
-fix(cli): suppress duplicate investigations on alert re-page (#137)
+Improves listener resilience by automatically reaping orphaned runs on startup and accurately suppressing duplicate investigations for re-paged alerts.

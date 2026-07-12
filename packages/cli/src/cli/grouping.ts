@@ -95,6 +95,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 	interface RunningState {
 		runId: string;
 		writeQueue: Promise<unknown>;
+		dedupeKeys: Set<string>;
 	}
 	const running = new Map<string, RunningState>();
 
@@ -148,7 +149,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 							// Note the re-page on the existing run
 							state.writeQueue = state.writeQueue
 								.then(() =>
-									options.sessions.appendGroupAlert(state.runId, alert),
+									options.sessions.appendGroupAlert(state.runId!, alert),
 								)
 								/* v8 ignore start */
 								.catch((err) => {
@@ -157,6 +158,10 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 									);
 								});
 							/* v8 ignore stop */
+						} else {
+							options.log(
+								`Suppression lookup hit but run vanished for dedupeKey ${dedupeKey}`,
+							);
 						}
 					}
 					// If phase === "window", it's buffered; no action needed.
@@ -175,6 +180,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 							groupKey,
 							runId: state.runId,
 						});
+						state.dedupeKeys.add(dedupeKey);
 						state.writeQueue = state.writeQueue
 							.then(() => options.sessions.appendGroupAlert(state.runId, alert))
 							/* v8 ignore start */
@@ -207,14 +213,17 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 						windows.delete(groupKey);
 
 						const runId = randomUUID();
+						const dedupeKeys = new Set<string>();
 
 						// Move all these dedupe keys to the running phase
 						for (const a of alertsToRun) {
-							activeAlerts.set(deriveDedupeKey(a), {
+							const dkey = deriveDedupeKey(a);
+							activeAlerts.set(dkey, {
 								phase: "running",
 								groupKey,
 								runId,
 							});
+							dedupeKeys.add(dkey);
 						}
 
 						// synchronously set up the record
@@ -235,6 +244,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 						running.set(groupKey, {
 							runId,
 							writeQueue: writePromise,
+							dedupeKeys,
 						});
 
 						writePromise
@@ -243,6 +253,9 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 								// resolving; don't start a new investigation while closing.
 								if (shuttingDown) {
 									running.delete(groupKey);
+									for (const key of dedupeKeys) {
+										activeAlerts.delete(key);
+									}
 									return;
 								}
 								try {
@@ -254,8 +267,8 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 								} finally {
 									running.delete(groupKey);
 									// Clean up global fingerprint registry for this run
-									for (const a of alertsToRun) {
-										activeAlerts.delete(deriveDedupeKey(a));
+									for (const key of dedupeKeys) {
+										activeAlerts.delete(key);
 									}
 								}
 							})
@@ -264,6 +277,9 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 									`Investigation for group ${groupKey} failed: ${err}`,
 								);
 								running.delete(groupKey);
+								for (const key of dedupeKeys) {
+									activeAlerts.delete(key);
+								}
 							});
 					}, options.windowMs),
 				};
@@ -280,6 +296,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 				dropped++;
 			}
 			windows.clear();
+			activeAlerts.clear();
 			if (dropped > 0) {
 				options.log(`Shutdown: dropped ${dropped} pending grouping windows`);
 			}

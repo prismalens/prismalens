@@ -319,4 +319,48 @@ describe("Grouping layer", () => {
 
 		expect(logs.some((l) => l.includes("dropped 2 pending"))).toBe(true);
 	});
+
+	it("regression #137: late attached dedupe keys are released when run completes", async () => {
+		const { grouping, runs, lateAlerts, setGate } = setup();
+		let resolveGate!: () => void;
+		setGate(
+			new Promise((r) => {
+				resolveGate = r;
+			}),
+		);
+
+		const alertA = {
+			fingerprint: "alertA",
+			status: "firing",
+			labels: { alertname: "A", service: "web" },
+		};
+		const alertB = {
+			fingerprint: "alertB",
+			status: "firing",
+			labels: { alertname: "A", service: "web" },
+		};
+
+		// 1. Admit A, wait for window to fire so it enters RUNNING phase
+		grouping.admit([alertA], {});
+		await vi.advanceTimersByTimeAsync(60000); // Window fires -> run starts and waits at gate
+
+		// 2. Attach B to running group A
+		grouping.admit([alertB], {});
+		await vi.advanceTimersByTimeAsync(0);
+
+		// 3. Complete the run
+		resolveGate();
+		await vi.runAllTimersAsync();
+
+		expect(runs.length).toBe(1);
+		expect(lateAlerts.get(runs[0].runId)).toEqual([alertB]);
+
+		// 4. B re-fires later. Since the run is complete, the dedupe key should be released
+		// and this should start a NEW window/run, NOT be suppressed.
+		grouping.admit([alertB], {});
+		await vi.advanceTimersByTimeAsync(60000);
+
+		expect(runs.length).toBe(2);
+		expect(runs[1].alerts).toEqual([alertB]);
+	});
 });

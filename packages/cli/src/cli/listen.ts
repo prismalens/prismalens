@@ -280,12 +280,21 @@ export async function startListenFromConfig(
 	// Startup reaper (#136): mark any orphaned "running" runs from a previous
 	// dead listener as errored, so pl status reflects reality.
 	const staleRuns = await sessions.list({ status: ["running"] });
+	// Liveness guard: only reap runs whose updatedAt is older than the max possible
+	// run duration (wall-clock cap if configured, else 1 hour) plus 5 minutes slack.
+	const runWallClockMs = config.agent.limits.wall_clock_ms || 60 * 60 * 1000;
+	const staleThresholdMs = runWallClockMs + 5 * 60 * 1000;
+	const now = Date.now();
+
 	for (const run of staleRuns) {
-		await sessions.update(run.runId, {
-			status: "errored",
-			error: "listener process died mid-investigation (interrupted)",
-		});
-		options.log(`Reaped stale run ${run.runId} from a previous listener`);
+		const updatedTime = new Date(run.updatedAt).getTime();
+		if (now - updatedTime > staleThresholdMs) {
+			await sessions.update(run.runId, {
+				status: "errored",
+				error: "listener process died mid-investigation (interrupted)",
+			});
+			options.log(`Reaped stale run ${run.runId} from a previous listener`);
+		}
 	}
 
 	const grouping = createGroupingLayer({
