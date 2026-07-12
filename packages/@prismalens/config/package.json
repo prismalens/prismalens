@@ -15,6 +15,10 @@
 			"types": "./dist/credentials.d.ts",
 			"import": "./dist/credentials.js"
 		},
+		"./auth": {
+			"types": "./dist/auth-store.d.ts",
+			"import": "./dist/auth-store.js"
+		},
 		"./llm": {
 			"types": "./dist/llm.d.ts",
 			"import": "./dist/llm.js"
@@ -58,6 +62,7 @@
 		"@ai-sdk/openai": "^4.0.7",
 		"@ai-sdk/openai-compatible": "^3.0.5",
 		"ai": "catalog:",
+		"consola": "^3.4.2",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
