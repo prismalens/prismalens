@@ -254,7 +254,7 @@ describe("Grouping layer", () => {
 		await vi.runAllTimersAsync();
 	});
 
-	it("Dedupe: identical alert is dropped in both window and running phases", async () => {
+	it("Dedupe: identical alert is dropped in window but attached as re-page in running phase", async () => {
 		const { grouping, runs, lateAlerts, setGate } = setup();
 		let resolveGate!: () => void;
 		setGate(
@@ -274,14 +274,14 @@ describe("Grouping layer", () => {
 			labels: { alertname: "A", service: "web" },
 		}; // Identical
 
-		// Buffer phase dedupe
+		// Buffer phase dedupe (still drops identical)
 		grouping.admit([alert1], {});
 		grouping.admit([alert2], {});
 		await vi.advanceTimersByTimeAsync(60000);
 
 		expect(runs[0].alerts.length).toBe(1);
 
-		// Running phase dedupe
+		// Running phase dedupe (issue #137: suppress dispatch but attach re-page)
 		const alert3 = {
 			fingerprint: "xyz",
 			status: "firing",
@@ -298,8 +298,9 @@ describe("Grouping layer", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		const lates = lateAlerts.get(runs[0].runId);
-		expect(lates?.length).toBe(1);
-		expect(lates?.[0].fingerprint).toBe("abc");
+		expect(lates?.length).toBe(2);
+		expect(lates?.[0].fingerprint).toBe("xyz"); // Attached re-page
+		expect(lates?.[1].fingerprint).toBe("abc"); // Attached new alert
 
 		resolveGate();
 		await vi.runAllTimersAsync();

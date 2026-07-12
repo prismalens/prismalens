@@ -88,17 +88,24 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 	interface WindowState {
 		timer: NodeJS.Timeout;
 		alerts: Record<string, unknown>[];
-		seenKeys: Set<string>;
 	}
 	const windows = new Map<string, WindowState>();
 
 	// Running investigations
 	interface RunningState {
 		runId: string;
-		seenKeys: Set<string>;
 		writeQueue: Promise<unknown>;
 	}
 	const running = new Map<string, RunningState>();
+
+	// Global registry of all dedupe keys currently in flight (in a window or running).
+	// Used for fingerprint-level suppression across groups/re-pages (#137).
+	interface ActiveAlert {
+		phase: "window" | "running";
+		groupKey: string;
+		runId?: string;
+	}
+	const activeAlerts = new Map<string, ActiveAlert>();
 
 	return {
 		isShuttingDown() {
@@ -129,26 +136,63 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 				const groupKey = deriveGroupKey(alert, payload);
 				const dedupeKey = deriveDedupeKey(alert);
 
+				// 1. Fingerprint-level suppression (Issue #137)
+				// If this exact fingerprint is already in-flight anywhere, attach the re-page
+				// to its existing investigation and suppress dispatch.
+				if (activeAlerts.has(dedupeKey)) {
+					const active = activeAlerts.get(dedupeKey);
+					if (active && active.phase === "running" && active.runId) {
+						const state = running.get(active.groupKey);
+						/* v8 ignore next */
+						if (state) {
+							// Note the re-page on the existing run
+							state.writeQueue = state.writeQueue
+								.then(() =>
+									options.sessions.appendGroupAlert(state.runId, alert),
+								)
+								/* v8 ignore start */
+								.catch((err) => {
+									options.log(
+										`Failed to attach re-page to group ${active.groupKey} (run ${state.runId}): ${err}`,
+									);
+								});
+							/* v8 ignore stop */
+						}
+					}
+					// If phase === "window", it's buffered; no action needed.
+					continue;
+				}
+
+				// 2. Group-level attachment (AC2)
+				// If the group is already running, attach this NEW alert (different dedupeKey) to it.
 				if (running.has(groupKey)) {
 					const state = running.get(groupKey);
-					if (state && !state.seenKeys.has(dedupeKey)) {
-						state.seenKeys.add(dedupeKey);
-						// ATTACH
+					/* v8 ignore next */
+					if (state) {
+						// Note: we don't need seenKeys here because activeAlerts handles exact dupes above.
+						activeAlerts.set(dedupeKey, {
+							phase: "running",
+							groupKey,
+							runId: state.runId,
+						});
 						state.writeQueue = state.writeQueue
 							.then(() => options.sessions.appendGroupAlert(state.runId, alert))
+							/* v8 ignore start */
 							.catch((err) => {
 								options.log(
 									`Failed to attach late alert to group ${groupKey} (run ${state.runId}): ${err}`,
 								);
 							});
+						/* v8 ignore stop */
 					}
 					continue;
 				}
 
 				if (windows.has(groupKey)) {
 					const state = windows.get(groupKey);
-					if (state && !state.seenKeys.has(dedupeKey)) {
-						state.seenKeys.add(dedupeKey);
+					/* v8 ignore next */
+					if (state) {
+						activeAlerts.set(dedupeKey, { phase: "window", groupKey });
 						state.alerts.push(alert);
 					}
 					continue;
@@ -157,14 +201,21 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 				// IDLE -> WINDOW_OPEN
 				const state: WindowState = {
 					alerts: [alert],
-					seenKeys: new Set([dedupeKey]),
 					timer: setTimeout(() => {
 						// timer fires -> RUNNING
 						const alertsToRun = state.alerts;
-						const seenKeys = state.seenKeys;
 						windows.delete(groupKey);
 
 						const runId = randomUUID();
+
+						// Move all these dedupe keys to the running phase
+						for (const a of alertsToRun) {
+							activeAlerts.set(deriveDedupeKey(a), {
+								phase: "running",
+								groupKey,
+								runId,
+							});
+						}
 
 						// synchronously set up the record
 						const rec: GroupRecord = {
@@ -183,7 +234,6 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 							});
 						running.set(groupKey, {
 							runId,
-							seenKeys,
 							writeQueue: writePromise,
 						});
 
@@ -203,6 +253,10 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 									);
 								} finally {
 									running.delete(groupKey);
+									// Clean up global fingerprint registry for this run
+									for (const a of alertsToRun) {
+										activeAlerts.delete(deriveDedupeKey(a));
+									}
 								}
 							})
 							.catch((err) => {
@@ -213,6 +267,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 							});
 					}, options.windowMs),
 				};
+				activeAlerts.set(dedupeKey, { phase: "window", groupKey });
 				windows.set(groupKey, state);
 			}
 		},
