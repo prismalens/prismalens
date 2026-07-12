@@ -1,5 +1,16 @@
 # prismalens
 
+## 0.1.1
+
+### Patch Changes
+
+- 6a137ec: Improves listener resilience by automatically reaping orphaned runs on startup and accurately suppressing duplicate investigations for re-paged alerts.
+- e19a42b: Refine DB schema-recovery to only trigger on schema errors (ignoring operational errors), and extend validation to all schema columns.
+- e19a42b: Fix issue where starting `pl listen` against a stale workspace DB hard-crashes at startup by automatically backing up the incompatible DB file and creating a fresh store.
+- ed8ac21: Fix caps-slot leak on refused dispatch and record refusals in session store.
+- Updated dependencies [ed8ac21]
+  - @prismalens/engine@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
