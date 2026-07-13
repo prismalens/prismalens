@@ -11,7 +11,7 @@ see [prismalens.io](https://prismalens.io) for the CLI and product docs.
 ## What it does
 
 The engine is a thin **Tier-1 supervisor**: it rents a **Tier-2 coding-agent
-harness** to do the read-only investigation legwork (running shell commands
+harness** to do the investigative legwork (running shell commands
 against your telemetry/logs/source), then reduces the harness's event stream
 into an **ordered-evidence report** — hypotheses ranked most-to-least plausible,
 each with supporting/contradicting evidence. There are deliberately **no
@@ -23,9 +23,17 @@ numeric confidence scores**.
 - **Tier-2 (rented harness):** `deepagents` (driven over ACP) or `claude-code`
   (driven over the Claude Agent SDK) — see the support matrix below.
 
-The harness investigates **read-only**. Provider credentials are **BYO-key** —
-read from the environment by the caller and injected explicitly; the engine
-never reads `process.env` itself and never hard-binds a provider.
+By default the engine removes the harness's edit tools (`Edit`, `Write`,
+`MultiEdit`, `NotebookEdit`). That is a **guardrail, not a security boundary**
+(ADR-0017) — the shell is untouched, so writes remain possible via `Bash`.
+Unsandboxed, the harness runs with whatever access the host process has. The only
+real boundary is an enforced sandbox (ADR-0020), and even that is *confined
+writes* — host and credentials read-only, workspace read-write, egress
+allowlisted — not "read-only".
+
+Provider credentials are **BYO-key** — read from the environment by the caller
+and injected explicitly; the engine never reads `process.env` itself and never
+hard-binds a provider.
 
 ## Install
 
@@ -59,7 +67,7 @@ const context: InvestigationContext = {
 };
 
 const harness = deepAgentsHarness({
-  cwd: "./my-service", // the harness's read-only investigation target
+  cwd: "./my-service", // the harness's investigation target
   env: { OPENAI_API_KEY: process.env.OLLAMA_API_KEY ?? "" },
 });
 

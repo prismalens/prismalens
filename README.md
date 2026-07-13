@@ -50,7 +50,7 @@ setup (providers, harnesses, configuration, commands) lives at
 
 - **Two-tier engine.** A thin, deterministic PrismaLens supervisor (Tier-1)
   seeds an investigation from a firing alert and rents an agent harness
-  (Tier-2) to do the read-only legwork, then reduces its event stream into the
+  (Tier-2) to do the investigative legwork, then reduces its event stream into the
   final report.
 - **Bring your own harness.** By default, `claude-code` is used (driven over the
   Claude Agent SDK). `deepagents` (driven over ACP) is available as a long-tail

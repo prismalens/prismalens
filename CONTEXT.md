@@ -15,7 +15,7 @@ loop. Drives harnesses and synthesizes the report. (ADR-0008)
 _Avoid_: orchestrator-agent, controller, manager.
 
 **Harness**:
-The rented Tier-2 agent that actually performs an investigation, read-only, through its own
+The rented Tier-2 agent that actually performs an investigation through its own
 shell. (ADR-0008)
 _Avoid_: agent (too generic), executor, worker.
 

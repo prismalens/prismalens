@@ -5,7 +5,7 @@ published on npm as the unscoped [`prismalens`](https://www.npmjs.com/package/pr
 
 Per **ADR-0010**, the engine *is* a CLI: the desktop app and web API drive it
 rather than embedding it. The CLI is a thin **Tier-1 supervisor** that rents a
-**Tier-2 agent harness** (ADR-0008) to do the read-only legwork, then reduces the
+**Tier-2 agent harness** (ADR-0008) to do the investigative legwork, then reduces the
 harness's canonical event stream into an **ordered-evidence report** (ADR-0002 —
 hypotheses ranked most-to-least plausible, with supporting/contradicting
 evidence; no numeric confidence scores).
@@ -18,14 +18,27 @@ evidence; no numeric confidence scores).
   - `claude-code` — driven over the **Claude Agent SDK**,
   - `codex` — **stubbed** (not implemented; selecting it throws).
 
-The harness investigates **read-only** — with an honest caveat (ADR-0017):
-read-only removes the edit tools (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`);
-it does **not** sandbox the shell, so writes remain possible via Bash. Treat
-read-only as a cooperative posture: enforcement requires selecting an
-**enforced sandbox mode** (`--sandbox srt` or `e2b`, ADR-0020) — `auto` may
-honestly degrade to an unenforced floor. Provider credentials are **BYO-key**
-(ADR-0006) and are resolved from the environment or local auth store — never
-hard-bound in the CLI.
+### How the harness is contained
+
+By default prismalens removes the harness's edit tools (`Edit`, `Write`,
+`MultiEdit`, `NotebookEdit`). That is a **guardrail, not a security boundary**
+(ADR-0017): the shell is untouched, so writes remain possible via `Bash`. It is
+there to stop a *helpful* agent from editing the repo it was asked to investigate
+— it will not stop a determined one.
+
+**Without a sandbox, the harness runs as you** — your machine, your credentials,
+your shell — exactly as if you had invoked the agent CLI yourself. prismalens
+makes no safety claim in this mode, and none of the above should be read as one.
+
+The **only** real boundary is an enforced sandbox (`--sandbox srt` or `e2b`,
+ADR-0020): an OS-level box in which your host and credentials are read-only, the
+harness gets a read-write **workspace**, and network egress is **allowlisted**.
+Note that this is *confined writes*, not "read-only" — an investigation has to be
+able to clone a repo and download artifacts. `--sandbox auto` is not yet an
+enforced default; it can degrade to an unenforced floor.
+
+Provider credentials are **BYO-key** (ADR-0006), resolved from the environment or
+the local auth store — never hard-bound in the CLI.
 
 Every run is persisted to a durable workspace under `~/.prismalens/runs/<runId>/`
 (`events.jsonl` + `report.json` + `session.json`), regardless of how it was
@@ -299,8 +312,8 @@ workspace:
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
 # rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over
 # ACP), `args` is appended verbatim to the CLI invocation. The binary has no
-# shell-allowlist or sandbox flags — read-only is cooperative until the Sandbox
-# port's enforced providers land (ADR-0020/B.1).
+# shell-allowlist or sandbox flags — so the harness is unsandboxed (runs as you)
+# until the Sandbox port's enforced providers land (ADR-0020/B.1).
 harnesses:
   deepagents:
     native:
