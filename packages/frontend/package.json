@@ -61,7 +61,7 @@
 	"devDependencies": {
 		"@fontsource-variable/inter": "^5.2.8",
 		"@fontsource-variable/jetbrains-mono": "^5.2.8",
-		"@inlang/paraglide-js": "^2.20.2",
+		"@inlang/paraglide-js": "^2.22.0",
 		"@tailwindcss/vite": "^4.3.2",
 		"@types/node": "catalog:",
 		"@types/react": "^19.2.17",
@@ -69,7 +69,7 @@
 		"@vitejs/plugin-react": "^6.0.3",
 		"eslint": "catalog:",
 		"typescript": "catalog:",
-		"vite": "^8.1.3",
+		"vite": "^8.1.5",
 		"vite-tsconfig-paths": "^6.1.1"
 	}
 }
