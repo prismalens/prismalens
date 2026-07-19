@@ -8,5 +8,12 @@
 	"baseBranch": "main",
 	"updateInternalDependencies": "patch",
 	"privatePackages": { "version": false, "tag": false },
-	"ignore": ["@prismalens/api", "@prismalens/frontend", "@prismalens/worker"]
+	"ignore": [
+		"@prismalens/api",
+		"@prismalens/frontend",
+		"@prismalens/worker",
+		"@prismalens/engine",
+		"@prismalens/config",
+		"@prismalens/contracts"
+	]
 }

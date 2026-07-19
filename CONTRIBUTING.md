@@ -113,23 +113,27 @@ than letting it evaporate.
 
 ## Releases and package publishing
 
-Four packages publish to npm: `prismalens` (the CLI) plus its library closure
-`@prismalens/engine`, `@prismalens/contracts`, and `@prismalens/config`.
+One package publishes to npm: `prismalens` (the CLI). Its first-party library
+closure — `@prismalens/engine`, `@prismalens/contracts`, `@prismalens/config` —
+is `private: true` and **bundled into the CLI tarball at build time** (tsup), so
+it never publishes separately (see
+[#193](https://github.com/prismalens/prismalens/issues/193)).
 Versioning and publishing run through
 [Changesets](https://github.com/changesets/changesets) (`.changeset/config.json`
-+ `.github/workflows/release.yml`): a change to a publishable package should
-come with a changeset (`pnpm changeset`). On every push to `main` with pending
-changesets, the release workflow opens/updates a **"chore: version packages"
-PR** (`pnpm changeset:version`); merging that PR publishes the bumped packages
-to npm with provenance (`pnpm changeset:publish` = `pnpm publish -r`, which
-rewrites `workspace:*` ranges at pack time, then `changeset tag`) and creates a
-GitHub Release per tag. The version PR is opened with the `RELEASE_PAT` repo
-secret (fine-grained PAT, Contents + Pull requests read/write — the PR must
-come from a user so CI triggers on it). npm publishing uses **trusted
-publishing** (OIDC): each published package registers this repo's
-`release.yml` as a trusted publisher on npmjs.com, pnpm exchanges the
-workflow's OIDC token for a short-lived credential, and provenance is
-attested automatically — there is no npm token secret to rotate or leak.
++ `.github/workflows/release.yml`): a change anywhere in that closure should come
+with a changeset naming **`prismalens`** — never a `@prismalens/*` package (see
+[`.changeset/README.md`](.changeset/README.md)). On every push to `main` with
+pending changesets, the release workflow opens/updates a **"chore: version
+packages" PR** (`pnpm changeset:version`); merging that PR publishes the bumped
+`prismalens` package to npm with provenance (`pnpm changeset:publish` =
+`pnpm publish -r`, which skips private packages, then `changeset tag`) and
+creates a GitHub Release for its tag. The version PR is opened with the
+`RELEASE_PAT` repo secret (fine-grained PAT, Contents + Pull requests read/write
+— the PR must come from a user so CI triggers on it). npm publishing uses
+**trusted publishing** (OIDC): `prismalens` registers this repo's `release.yml`
+as a trusted publisher on npmjs.com, pnpm exchanges the workflow's OIDC token
+for a short-lived credential, and provenance is attested automatically — there
+is no npm token secret to rotate or leak.
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&

@@ -2,21 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Sumit Patel
 #
-# Packed-artifact smoke (work-005 R0.d): prove the npm tarballs install and run
+# Packed-artifact smoke (work-005 R0.d): prove the npm tarball installs and runs
 # in a CLEAN environment — no pnpm, no monorepo, no devDependencies, no repo
 # checkout. Catches what unit tests structurally cannot: missing `files`,
 # undeclared dependencies, broken bin/shebang wiring, ESM resolution against
 # the published layout, engines mismatches.
 #
-# Usage: packed-smoke.sh <dir-with-tarballs>
-#   The dir must hold exactly the 4 closure tarballs from `pnpm pack`:
-#   prismalens-*.tgz, prismalens-engine-*.tgz, prismalens-contracts-*.tgz,
-#   prismalens-config-*.tgz.
+# Usage: packed-smoke.sh <dir-with-tarball>
+#   The dir must hold the single published tarball from `pnpm pack`:
+#   prismalens-<version>.tgz. The first-party @prismalens/* closure is bundled
+#   INTO it (issue #193) — there is nothing else to install.
 #
 # Runs on POSIX sh + node + npm only (works inside node:22-slim / node:24-slim).
 set -eu
 
-TARBALLS=$(cd "${1:?usage: packed-smoke.sh <dir-with-tarballs>}" && pwd)
+TARBALLS=$(cd "${1:?usage: packed-smoke.sh <dir-with-tarball>}" && pwd)
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
 cd "$SCRATCH"
@@ -27,8 +27,8 @@ fail() {
 }
 
 find_tarball() {
-	# $1: filename prefix. pnpm pack names scoped packages with a single dash
-	# (prismalens-engine-0.0.1.tgz) and the unscoped CLI prismalens-<version>.tgz.
+	# $1: filename prefix. The [0-9] in the glob anchors the version digit so
+	# the prefix cannot accidentally match a differently-named tarball.
 	for f in "$TARBALLS"/$1[0-9]*.tgz; do
 		[ -e "$f" ] || fail "no tarball matching $1*.tgz in $TARBALLS"
 		echo "$f"
@@ -36,37 +36,38 @@ find_tarball() {
 	done
 }
 
-# The [0-9] in the glob keeps the CLI prefix from matching the scoped tarballs.
 CLI_TGZ=$(find_tarball "prismalens-")
-ENGINE_TGZ=$(find_tarball "prismalens-engine-")
-CONTRACTS_TGZ=$(find_tarball "prismalens-contracts-")
-CONFIG_TGZ=$(find_tarball "prismalens-config-")
 
-echo "==> tarballs:"
-for t in "$CLI_TGZ" "$ENGINE_TGZ" "$CONTRACTS_TGZ" "$CONFIG_TGZ"; do echo "    $t"; done
+echo "==> tarball:"
+echo "    $CLI_TGZ"
 
-# The @prismalens/* deps in the CLI tarball point at versions that do not exist
-# on the registry until first publish — overrides pin them to the local tarballs
-# so npm resolves the whole closure offline-from-registry's-perspective.
+echo "==> tarball is self-contained: no @prismalens/* in its dependencies"
+# The closure is bundled, not published (issue #193) — a leftover @prismalens/*
+# dependency would make a fresh install unresolvable against the registry.
+if tar -xzOf "$CLI_TGZ" package/package.json | node -e "
+	const pkg = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+	process.exit(Object.keys(pkg.dependencies ?? {}).some((d) => d.startsWith('@prismalens/')) ? 0 : 1);
+"; then
+	fail "the CLI tarball's dependencies still reference @prismalens/* — the closure is not bundled"
+fi
+
 cat > package.json <<EOF
 {
 	"name": "packed-smoke-scratch",
 	"private": true,
-	"dependencies": { "prismalens": "file:$CLI_TGZ" },
-	"overrides": {
-		"@prismalens/engine": "file:$ENGINE_TGZ",
-		"@prismalens/contracts": "file:$CONTRACTS_TGZ",
-		"@prismalens/config": "file:$CONFIG_TGZ"
-	}
+	"dependencies": { "prismalens": "file:$CLI_TGZ" }
 }
 EOF
 
 echo "==> npm install (clean scratch dir, engines enforced)"
-npm install --engine-strict --no-audit --no-fund --loglevel=error || fail "npm install of the packed closure failed"
+npm install --engine-strict --no-audit --no-fund --loglevel=error || fail "npm install of the packed tarball failed"
 
 BIN="$SCRATCH/node_modules/.bin"
 [ -x "$BIN/prismalens" ] || fail "prismalens bin not linked"
 [ -x "$BIN/pl" ] || fail "pl bin alias not linked"
+
+echo "==> no @prismalens/* packages materialised in node_modules (bundled, not installed)"
+[ ! -d "$SCRATCH/node_modules/@prismalens" ] || fail "@prismalens/* appeared in node_modules — the closure leaked out of the bundle"
 
 echo "==> --version matches the packed package.json"
 EXPECTED=$(node -p "require('$SCRATCH/node_modules/prismalens/package.json').version")

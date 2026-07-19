@@ -81,12 +81,13 @@ jobs:
       - name: Test
         run: pnpm test
 
-  # Packed-artifact smoke (work-005 R0.d): pack the 4-package npm closure and
+  # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
+  # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and
   # prove it installs + runs in a clean container — no pnpm, no monorepo, no
   # devDeps. Catches missing `files`, undeclared deps, bin/shebang wiring, ESM
   # layout, and engines bugs that monorepo-resident tests structurally cannot.
   pack:
-    name: Pack npm closure
+    name: Pack npm tarball
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -106,12 +107,10 @@ jobs:
       - name: Build closure
         run: pnpm --filter prismalens... build
 
-      - name: Pack tarballs
+      - name: Pack tarball
         run: |
           mkdir -p /tmp/tarballs
-          for p in cli @prismalens/engine @prismalens/contracts @prismalens/config; do
-            (cd "packages/$p" && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
-          done
+          (cd packages/cli && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
           ls -l /tmp/tarballs
 
       - uses: actions/upload-artifact@v4
@@ -140,7 +139,7 @@ jobs:
           name: npm-tarballs
           path: tarballs
 
-      - name: Smoke the packed closure
+      - name: Smoke the packed tarball
         run: sh scripts/packed-smoke.sh tarballs
 
   lint:

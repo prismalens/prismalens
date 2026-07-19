@@ -36,15 +36,20 @@
 		"access": "public"
 	},
 	"scripts": {
-		"build": "tsc",
+		"build": "tsup",
 		"typecheck": "tsc --noEmit",
 		"dev": "tsx bin/prismalens.ts",
 		"test": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@prismalens/config": "workspace:*",
-		"@prismalens/contracts": "workspace:*",
-		"@prismalens/engine": "workspace:*",
+		"@ai-sdk/anthropic": "^4.0.7",
+		"@ai-sdk/google": "^4.0.8",
+		"@ai-sdk/groq": "^4.0.5",
+		"@ai-sdk/openai": "^4.0.7",
+		"@ai-sdk/openai-compatible": "^3.0.5",
+		"@anthropic-ai/claude-agent-sdk": "^0.3.199",
+		"@orpc/contract": "catalog:",
+		"ai": "catalog:",
 		"citty": "^0.2.2",
 		"consola": "^3.4.2",
 		"env-paths": "^4.0.0",
@@ -53,8 +58,12 @@
 		"zod": "catalog:"
 	},
 	"devDependencies": {
+		"@prismalens/config": "workspace:*",
+		"@prismalens/contracts": "workspace:*",
+		"@prismalens/engine": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "^4.1.9",
+		"tsup": "^8.5.1",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

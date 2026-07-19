@@ -6,3 +6,16 @@ find the full documentation for it [in our repository](https://github.com/change
 
 We have a quick list of common questions to get you started engaging with this project in
 [our documentation](https://github.com/changesets/changesets/blob/main/docs/common-questions.md).
+
+## This repo: target `prismalens` only
+
+`prismalens` (the CLI) is the ONLY published package — the first-party
+`@prismalens/*` closure (engine, config, contracts) is bundled into its tarball
+at build time (issue #193) and those packages are `private: true` + ignored in
+`config.json`.
+
+**Every changeset must name `prismalens`, never a `@prismalens/*` package** —
+even when the actual change lives in engine/config/contracts. A changeset that
+names an ignored package alongside `prismalens` makes `changeset version` fail
+("Mixed changesets … are not allowed") and stalls the release train; one that
+names only an ignored package is never consumed and lingers forever.
