@@ -47,7 +47,7 @@
 		"clsx": "^2.1.1",
 		"date-fns": "^4.4.0",
 		"html-to-image": "^1.11.13",
-		"lucide-react": "^0.460.0",
+		"lucide-react": "^1.25.0",
 		"radix-ui": "^1.6.1",
 		"react": "^19.2.7",
 		"react-day-picker": "^9.14.0",
