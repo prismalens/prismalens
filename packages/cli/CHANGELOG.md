@@ -1,5 +1,33 @@
 # prismalens
 
+## 0.3.0
+
+### Minor Changes
+
+- 0049fa8: cli/config: normalize key casing, close the `serve` sandbox parity gap, and split the
+  harness/reduce model knobs (#180, #148 items 8-11).
+
+  - **Config key casing (item 8):** `telemetry` keys are now snake_case
+    (`prometheus_url`, `alertmanager_url`, `api_url`) to match every other config key.
+    No back-compat aliases (dev phase) — update your `prismalens.config.yaml`.
+  - **`serve` `--sandbox` parity (item 9):** the JSON-RPC `investigate` method now accepts
+    `sandbox` (validated against the sandbox modes; invalid ⇒ a JSON-RPC error, never a
+    silent floor) and `maxTurns`, matching the `investigate` command's `--sandbox` /
+    `--max-turns` (ADR-0020).
+  - **`agent.model` split (item 11):** `agent.model` now sets the Tier-2 HARNESS model
+    only; the Tier-1 reduce model is `synth.model` (ADR-0013/0016). `agent.model` no
+    longer falls back into the reduce call, so a harness on one provider can't misroute
+    the reduce call to another.
+
+- 4bbb2b1: CLI UX fixes (issue #179): the storage directory is now consistently the "workspace directory" — env var `PRISMALENS_USER_FOLDER` → `PRISMALENS_WORKSPACE_DIR`, config key `workspace.base_dir` → `workspace.dir`, flag `--base-dir` → `--workspace-dir` (renames, no aliases); explicit env-var paths are used verbatim (no `.prismalens` suffix appended); invalid flags print the error + a one-line help hint instead of the full help dump; registry default models refreshed (incl. replacing Groq's `llama-3.3-70b-versatile`, EOL 2026-08-16, with `openai/gpt-oss-120b`).
+
+### Patch Changes
+
+- Updated dependencies [4bbb2b1]
+  - @prismalens/config@0.3.0
+  - @prismalens/contracts@0.1.1
+  - @prismalens/engine@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
