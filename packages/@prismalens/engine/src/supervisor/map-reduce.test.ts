@@ -336,7 +336,7 @@ describe("reduce pass-through (#131/#132)", () => {
 		expect(out.coverage.queried).toEqual(["src1"]);
 	});
 
-	it("llm_call is bookkeeping: excluded from groupEventsByBranch and no-evidence guard (ADR-0002)", () => {
+	it("llm_call is bookkeeping: not evidence in report synthesis — a branch with only llm_call yields no conclusion (ADR-0002)", () => {
 		const llmCallEvent: CanonicalEvent = {
 			kind: "llm_call",
 			runId: "run-1",

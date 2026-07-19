@@ -334,7 +334,7 @@ async function runReportModel(
 			failureCause: null,
 		});
 		return object;
-	} catch (err1) {
+	} catch {
 		try {
 			const start2 = Date.now();
 			const { text, usage } = await generateText({
