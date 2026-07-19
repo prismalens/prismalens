@@ -7,7 +7,7 @@ catalog:
   '@nestjs/core': ^11.1.27
   '@orpc/client': ^1.14.6
   '@orpc/contract': ^1.14.6
-  '@types/node': ^24.13.2
+  '@types/node': ^26.1.1
   ai: ^7.0.14
   better-auth: ~1.6.23
   bullmq: ^5.79.2
