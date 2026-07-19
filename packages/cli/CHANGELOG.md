@@ -1,5 +1,26 @@
 # prismalens
 
+## 0.2.0
+
+### Minor Changes
+
+- 4636c9c: feat: add stored credentials support to CLI (`pl auth login`, `list`, `logout`) (#151)
+
+### Patch Changes
+
+- c824957: CLI UX quick wins: `--json` on `pl status`/`pl report`, unknown flags and config keys now warn/error instead of passing silently, readable config errors, explicit stdin parse errors, SQLite ExperimentalWarning suppressed, usage examples in `--help`.
+- 5af6d68: Retire the "read-only" investigation claim from `pl investigate --help`: it now describes edit-tool removal as a guardrail, not a boundary, with the enforced `--sandbox` as the real one.
+- 4636c9c: Degrade gracefully on permission errors in auth store; document pl auth.
+- bd40a4b: fix(cli): wire --host through startup, expose bound host, token docs (#138)
+- bd40a4b: Add `host` config option to `pl listen` and emit a structured log line on accepted webhook intake.
+- c824957: Fix json error parity, own-property config check, and remove invalid any casts.
+- Updated dependencies [4636c9c]
+- Updated dependencies [6bbc048]
+- Updated dependencies [4636c9c]
+  - @prismalens/config@0.2.0
+  - @prismalens/contracts@0.1.0
+  - @prismalens/engine@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
