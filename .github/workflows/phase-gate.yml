@@ -1,0 +1,79 @@
+name: Phase Gate
+
+on:
+  milestone:
+    types: [created, closed]
+
+permissions:
+  issues: write
+
+jobs:
+  phase-gate:
+    name: Enforce milestone phase-gate
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Create phase-gate issue
+        if: github.event.action == 'created'
+        run: |
+          MILESTONE_TITLE="${{ github.event.milestone.title }}"
+          ISSUE_TITLE="Phase gate: anti-drift ritual + released-artifact verification"
+          
+          # Check if an open issue with the title already exists
+          EXISTING=$(gh issue list --milestone "$MILESTONE_TITLE" --search "in:title Phase gate:" --json number -q 'length')
+          
+          if [ "$EXISTING" -eq "0" ]; then
+            read -r -d '' BODY << 'EOF' || true
+          **Close this issue LAST — the milestone is not done while it is open.**
+
+          Mechanical gate (born 2026-07-19, after 0.1.x/0.2 closed without it):
+
+          - [ ] Run the 11-step phase-completion checklist (hub: `notes/roadmap/phase-checklist.md`) — ledger, roadmap, architecture specs, ADR outcomes, build-history, render re-sync, `mage index`, review dates, hub PR.
+          - [ ] Smoke-test the RELEASED artifact from the npm registry (not a local build) against the CLI behavior inventory (`~/ai-context/cli-audit-2026-07-11/`, update it as surfaces change).
+          - [ ] Docs sweep for every identifier this phase renamed/retired (env vars, config keys, flags, model ids, package names).
+          - [ ] Link the ritual PR + audit report here before closing.
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+          EOF
+
+            gh issue create --milestone "$MILESTONE_TITLE" --title "$ISSUE_TITLE" --body "$BODY"
+          fi
+
+      - name: Verify all issues closed
+        if: github.event.action == 'closed'
+        run: |
+          MILESTONE_TITLE="${{ github.event.milestone.title }}"
+          MILESTONE_NUMBER="${{ github.event.milestone.number }}"
+          
+          # List open issues in this milestone
+          OPEN_ISSUES_JSON=$(gh issue list --milestone "$MILESTONE_TITLE" --state open --json number,title)
+          OPEN_COUNT=$(echo "$OPEN_ISSUES_JSON" | jq 'length')
+          
+          if [ "$OPEN_COUNT" -gt 0 ]; then
+            echo "Milestone closed prematurely. Reopening."
+            # Reopen milestone
+            gh api -X PATCH "/repos/$GH_REPO/milestones/$MILESTONE_NUMBER" -f state=open
+            
+            # Find phase-gate issue
+            GATE_ISSUE_NUMBER=$(gh issue list --milestone "$MILESTONE_TITLE" --search "in:title Phase gate:" --json number -q '.[0].number')
+            
+            ISSUES_LIST=$(echo "$OPEN_ISSUES_JSON" | jq -r 'map("- #" + (.number|tostring) + " " + .title) | join("\n")')
+            
+            read -r -d '' COMMENT_BODY << EOF || true
+          The milestone was reopened because $OPEN_COUNT issues are still open:
+
+          $ISSUES_LIST
+          EOF
+            
+            if [ "$GATE_ISSUE_NUMBER" != "null" ] && [ -n "$GATE_ISSUE_NUMBER" ]; then
+              gh issue comment "$GATE_ISSUE_NUMBER" --body "$COMMENT_BODY"
+            else
+              # If phase-gate issue doesn't exist, create it with the comment
+              ISSUE_TITLE="Phase gate: anti-drift ritual + released-artifact verification"
+              gh issue create --milestone "$MILESTONE_TITLE" --title "$ISSUE_TITLE" --body "$COMMENT_BODY"
+            fi
+            
+            exit 1
+          fi
