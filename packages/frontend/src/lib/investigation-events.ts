@@ -126,6 +126,12 @@ export function groupEventsByBranch(
 			continue;
 		}
 
+		// llm_call is run-level bookkeeping with no branchId (ADR-0002 — not
+		// evidence, never a branch row). canonicalEventToRow already returns null
+		// for it, so this is unreachable at runtime; it exists to narrow the kind
+		// out of the union before the branchId accesses below.
+		if (event.kind === "llm_call") continue;
+
 		let rows = branchRows.get(event.branchId);
 		if (!rows) {
 			rows = new Map();
