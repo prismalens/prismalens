@@ -35,7 +35,7 @@ function buildPostgresUrl(config: DatabaseConfig): string {
 /**
  * Build a SQLite connection URL from configuration.
  * Database path is stored in the app data directory (~/.prismalens by default).
- * Can be customized via PRISMALENS_USER_FOLDER environment variable.
+ * Can be customized via PRISMALENS_WORKSPACE_DIR environment variable.
  *
  * @param config - Database configuration object
  * @returns SQLite file path (prefixed with file:)

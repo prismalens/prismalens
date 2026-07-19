@@ -18,7 +18,7 @@ describe("auth-store", () => {
 		originalEnv = process.env;
 		process.env = { ...originalEnv };
 		dir = mkdtempSync(join(tmpdir(), "pl-auth-"));
-		process.env.PRISMALENS_USER_FOLDER = dir;
+		process.env.PRISMALENS_WORKSPACE_DIR = dir;
 		consolaWarnSpy = vi.spyOn(consola, "warn").mockImplementation(() => {});
 	});
 
@@ -28,7 +28,7 @@ describe("auth-store", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("respects PRISMALENS_USER_FOLDER for auth file relocation", () => {
+	it("respects PRISMALENS_WORKSPACE_DIR for auth file relocation", () => {
 		setStoredCredential("openai", "test-key");
 		const store = readAuthStore();
 		expect(store.openai?.key).toBe("test-key");

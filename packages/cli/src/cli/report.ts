@@ -23,10 +23,10 @@ export default defineCommand({
 			description: "Include timeline events",
 			required: false,
 		},
-		"base-dir": {
+		"workspace-dir": {
 			type: "string",
 			description:
-				"Workspace directory (default: ~/.prismalens; overridden by PRISMALENS_USER_FOLDER)",
+				"Workspace directory (default: ~/.prismalens; overridden by PRISMALENS_WORKSPACE_DIR)",
 			required: false,
 		},
 		json: {
@@ -39,7 +39,7 @@ export default defineCommand({
 		let sessions: ReturnType<typeof createSessionManager> | undefined;
 		try {
 			assertKnownFlags(args, cmd);
-			sessions = createSessionManager(args["base-dir"]);
+			sessions = createSessionManager(args["workspace-dir"]);
 
 			const json = Boolean(args.json);
 			const report = await sessions.readReport(args.id);

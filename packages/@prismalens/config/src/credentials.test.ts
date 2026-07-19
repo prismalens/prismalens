@@ -21,7 +21,7 @@ describe("credentials", () => {
 		delete process.env.OPENAI_API_KEY_FILE;
 		delete process.env.OPENAI_BASE_URL;
 		dir = mkdtempSync(join(tmpdir(), "pl-creds-"));
-		process.env.PRISMALENS_USER_FOLDER = dir;
+		process.env.PRISMALENS_WORKSPACE_DIR = dir;
 	});
 
 	afterEach(() => {

@@ -14,7 +14,7 @@
  * Consolidates three drifted copies that had produced live bugs:
  *  - one `apiUrl` (`:5000`, not the `:3000` the `init` scaffold mistakenly used),
  *  - one OpenAI-compatible base URL (WITH `/v1`, which the Vercel AI SDK needs),
- *  - one `~/.prismalens` via {@link getAppDataDir} (which honors PRISMALENS_USER_FOLDER).
+ *  - one `~/.prismalens` via {@link getAppDataDir} (which honors PRISMALENS_WORKSPACE_DIR).
  */
 export { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 

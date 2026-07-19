@@ -242,10 +242,10 @@ export default defineCommand({
 					);
 				}
 
-				// (2) Create the run workspace + session under workspace.base_dir, wrapped as
+				// (2) Create the run workspace + session under workspace.dir, wrapped as
 				// a conductRun store adapter (ADR-0018).
 				const runId = randomUUID();
-				const sessions = createSessionManager(config.workspace.base_dir);
+				const sessions = createSessionManager(config.workspace.dir);
 				const fileSession = createFileSessionStore(sessions, {
 					runId,
 					alertname: primaryAlert.alertname,

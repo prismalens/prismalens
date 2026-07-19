@@ -65,7 +65,7 @@ runMain(main, {
 			await showUsage(cmd, parent);
 		} else {
 			const cmdName = `pl${rawArgs[0] && !rawArgs[0].startsWith("-") ? ` ${rawArgs[0]}` : ""}`;
-			consola.info(`See \`${cmdName} --help\` for usage.`);
+			consola.info(`Run \`${cmdName} --help\` for usage.`);
 		}
 	},
 });
