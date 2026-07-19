@@ -29,6 +29,7 @@
 		"spdx:fix-staged": "node scripts/spdx-headers.mjs --fix-staged",
 		"prepare": "node scripts/install-hooks.mjs",
 		"publint": "pnpm --filter prismalens exec publint --strict",
+		"changeset:check": "node scripts/validate-changesets.mjs",
 		"changeset:version": "changeset version",
 		"changeset:publish": "pnpm publish -r --no-git-checks && changeset tag"
 	},
