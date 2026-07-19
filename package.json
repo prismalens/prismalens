@@ -34,12 +34,12 @@
 		"changeset:publish": "pnpm publish -r --no-git-checks && changeset tag"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.3.11",
-		"@changesets/cli": "^2.31.0",
+		"@biomejs/biome": "2.5.4",
+		"@changesets/cli": "^2.31.1",
 		"@types/node": "catalog:",
 		"publint": "^0.3.21",
 		"tsx": "catalog:",
-		"turbo": "^2.10.2",
+		"turbo": "^2.10.5",
 		"typescript": "catalog:"
 	},
 	"packageManager": "pnpm@10.27.0",
