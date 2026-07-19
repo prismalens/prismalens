@@ -48,9 +48,9 @@ agent:
 # Read-only telemetry + app endpoints the harness may query. Point these at your
 # stack; defaults assume a local dev setup.
 telemetry:
-  prometheusUrl: ${INVESTIGATION_DEFAULTS.telemetry.prometheusUrl}
-  alertmanagerUrl: ${INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl}
-  apiUrl: ${INVESTIGATION_DEFAULTS.telemetry.apiUrl}
+  prometheus_url: ${INVESTIGATION_DEFAULTS.telemetry.prometheusUrl}
+  alertmanager_url: ${INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl}
+  api_url: ${INVESTIGATION_DEFAULTS.telemetry.apiUrl}
 
 # Read-only log-query system the harness may curl (Loki, Elasticsearch, …).
 # logs:

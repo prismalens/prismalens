@@ -89,7 +89,7 @@ describe("collectAllowedDomains (egress allowlist, ADR-0020)", () => {
 	it("prefers a configured telemetry host over the default, LLM host still present", () => {
 		const hosts = collectAllowedDomains(
 			PlConfigSchema.parse({
-				telemetry: { prometheusUrl: "http://prom.internal:9090" },
+				telemetry: { prometheus_url: "http://prom.internal:9090" },
 			}),
 		);
 		expect(hosts).toContain("prom.internal");
@@ -100,7 +100,7 @@ describe("collectAllowedDomains (egress allowlist, ADR-0020)", () => {
 		const hosts = collectAllowedDomains(
 			PlConfigSchema.parse({
 				logs: { url: "https://loki.example.com" },
-				telemetry: { apiUrl: "not a url" },
+				telemetry: { api_url: "not a url" },
 			}),
 		);
 		expect(hosts).toContain("loki.example.com");

@@ -130,15 +130,14 @@ export function resolveInvestigation(
 		}
 	}
 
+	// Tier-1 reduce model (ADR-0013/0016): `synth.model` ONLY, never `agent.model`.
+	// `agent.model` is the Tier-2 harness model and can target a different provider
+	// (e.g. claude-code's "claude-sonnet-4-5"), so feeding it to the reduce provider
+	// (ollama/openai) would 404. Fall back to the provider's registry default.
 	const synthModel =
-		config.synth.model ??
-		config.agent.model ??
-		getDefaultModel(providerId as LLMProviderId) ??
-		"";
+		config.synth.model ?? getDefaultModel(providerId as LLMProviderId) ?? "";
 	if (!synthModel && creds.source !== "none") {
-		throw new Error(
-			"No synthesis model configured (set synth.model or agent.model).",
-		);
+		throw new Error("No synthesis model configured (set synth.model).");
 	}
 
 	// Context enrichment (ADR-0015) — a single-alert CLI run is NOT context-free: it
@@ -170,14 +169,15 @@ export function resolveInvestigation(
 	// (never a lying default). Only present when at least one knob is set.
 	const limits = toSandboxLimits(config.agent.limits);
 
+	// Map the snake_case config keys onto the engine's camelCase TelemetryEndpoints.
 	const telemetry = {
 		prometheusUrl:
-			config.telemetry.prometheusUrl ??
+			config.telemetry.prometheus_url ??
 			INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
 		alertmanagerUrl:
-			config.telemetry.alertmanagerUrl ??
+			config.telemetry.alertmanager_url ??
 			INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
-		apiUrl: config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+		apiUrl: config.telemetry.api_url ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
 	};
 
 	const request: InvestigationRequest = {

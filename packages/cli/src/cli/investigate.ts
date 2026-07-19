@@ -340,11 +340,11 @@ export function collectAllowedDomains(config: PlConfig): string[] {
 		INVESTIGATION_DEFAULTS.synth.baseURL;
 	const urls = [
 		llmBaseUrl,
-		config.telemetry.prometheusUrl ??
+		config.telemetry.prometheus_url ??
 			INVESTIGATION_DEFAULTS.telemetry.prometheusUrl,
-		config.telemetry.alertmanagerUrl ??
+		config.telemetry.alertmanager_url ??
 			INVESTIGATION_DEFAULTS.telemetry.alertmanagerUrl,
-		config.telemetry.apiUrl ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
+		config.telemetry.api_url ?? INVESTIGATION_DEFAULTS.telemetry.apiUrl,
 		config.logs.url,
 	];
 	const hosts = new Set<string>();
@@ -415,9 +415,9 @@ export async function resolveRunSandbox(
  */
 function firstProbeUrl(config: PlConfig): string | undefined {
 	const urls = [
-		config.telemetry.prometheusUrl,
-		config.telemetry.alertmanagerUrl,
-		config.telemetry.apiUrl,
+		config.telemetry.prometheus_url,
+		config.telemetry.alertmanager_url,
+		config.telemetry.api_url,
 		config.logs.url,
 	];
 	for (const url of urls) {

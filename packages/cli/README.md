@@ -233,7 +233,19 @@ stdout).
 ```
 
 **`investigate`** — `params`: `{ alert?: FiringAlert, query?: string, repo?: string,
-harness?: string, model?: string, config?: string }`.
+harness?: string, model?: string, config?: string, service?: string, mode?: string,
+dangerouslySkipPermissions?: boolean, sandbox?: string, maxTurns?: number }`.
+
+CLI-parity params (each falls back to config when absent):
+
+- `sandbox` — the isolation boundary (ADR-0020), the CLI's `--sandbox`: one of
+  `auto` | `process` | `srt` | `e2b`. Absent ⇒ `agent.sandbox` from config. A
+  supplied value that is not a known mode (or a mode the resolved harness cannot
+  honour, e.g. `srt` on a non-ACP harness) is a `-32602` error — never a silent
+  fall-back to the cooperative floor.
+- `maxTurns` — per-run turn ceiling, the CLI's `--max-turns`: a positive integer.
+  A supplied zero, negative, fractional, or non-numeric value is a `-32602` error —
+  never a silently-removed cap.
 
 Streams a **notification per canonical event** (including the terminal `report`
 event), then **resolves the request** with `{ runId, report }`:
@@ -263,7 +275,7 @@ concurrently and interleave their notifications — each notification carries it
 | `-32700` | Parse error (invalid JSON on a line). |
 | `-32600` | Invalid request (not a well-formed JSON-RPC 2.0 request). |
 | `-32601` | Method not found. |
-| `-32602` | Invalid params (includes `resolveInvestigation` input errors — e.g. no alert/query, unknown or unbuilt harness). |
+| `-32602` | Invalid params (includes an invalid `sandbox` mode or `maxTurns` value, and `resolveInvestigation` input errors — e.g. no alert/query, unknown or unbuilt harness). |
 | `-32603` | Internal error (mid-stream failure; `data` carries `{ runId }`). |
 | `-32000` | No evidence — the harness branch failed and produced no report (`data` carries `{ runId }`). |
 
@@ -292,7 +304,8 @@ var is an error).
 # Tier-2 harness backend the supervisor rents (ADR-0008).
 agent:
   default: deepagents            # deepagents | claude-code | codex
-  # model: openai:gpt-oss:120b   # provider-prefixed; omit to let the harness default
+  # model: gpt-oss:120b          # bare id — the harness applies its own provider
+                                 # prefix; omit to let the harness default
   sandbox: auto                  # auto | process | srt — isolation boundary (ADR-0020).
                                  # auto (default): srt (enforced OS boundary) WHEN its
                                  # egress bridge is healthy (a self-check catches WSL
@@ -301,9 +314,9 @@ agent:
 
 # Read-only telemetry + app endpoints the harness may query.
 telemetry:
-  prometheusUrl: http://localhost:9090
-  alertmanagerUrl: http://localhost:9093
-  apiUrl: http://localhost:3000
+  prometheus_url: http://localhost:9090
+  alertmanager_url: http://localhost:9093
+  api_url: http://localhost:3000
 
 # Where runs, events, and reports are stored.
 workspace:
@@ -321,10 +334,13 @@ harnesses:
 ```
 
 Notes:
-- `agent.model` in config is a **provider-prefixed** id (e.g. `openai:gpt-oss:120b`).
-  The `--model` flag passes a **bare** id (e.g. `gpt-oss:120b`); for `deepagents` the
-  CLI prefixes it with `openai:`.
-- `telemetry.*` defaults to host-local URLs when unset.
+- `agent.model` sets the **Tier-2 harness** model only (a bare id, e.g. `gpt-oss:120b`;
+  each harness applies its own provider prefix). `--model` overrides it.
+- `synth.model` sets the **Tier-1 reduce** (report-synthesis) model — a separate call
+  to a separate provider (ADR-0013/0016). `agent.model` never feeds it, so a harness on
+  one provider (e.g. `claude-code`) can't misroute the reduce call to another (ollama).
+- `telemetry.*` keys are snake_case (`prometheus_url`, `alertmanager_url`, `api_url`)
+  and default to host-local URLs when unset.
 - There is currently no `agent.timeout_ms`, `budget.*`, or `logging.*` config —
   an overall per-run wall-clock budget and a Tier-1 reduce token/retry budget are
   planned alongside the Phase B.1 Sandbox port's resource limits (ADR-0020), not

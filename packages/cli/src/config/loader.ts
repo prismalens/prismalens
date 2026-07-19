@@ -153,11 +153,13 @@ function applyCliOverrides(
 	if (o.model !== undefined) agent.model = o.model;
 	if (Object.keys(agent).length > 0) patch.agent = agent;
 
+	// CLI-override field names are camelCase (TS idiom); the config keys they patch
+	// are snake_case (the YAML convention).
 	const telemetry: Record<string, unknown> = {};
-	if (o.prometheusUrl !== undefined) telemetry.prometheusUrl = o.prometheusUrl;
+	if (o.prometheusUrl !== undefined) telemetry.prometheus_url = o.prometheusUrl;
 	if (o.alertmanagerUrl !== undefined)
-		telemetry.alertmanagerUrl = o.alertmanagerUrl;
-	if (o.apiUrl !== undefined) telemetry.apiUrl = o.apiUrl;
+		telemetry.alertmanager_url = o.alertmanagerUrl;
+	if (o.apiUrl !== undefined) telemetry.api_url = o.apiUrl;
 	if (Object.keys(telemetry).length > 0) patch.telemetry = telemetry;
 
 	return deepMerge(config, patch);

@@ -23,7 +23,12 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { HarnessId } from "@prismalens/config/harness";
-import { conductRun, type SandboxSelection } from "@prismalens/engine";
+import {
+	conductRun,
+	SANDBOX_MODES,
+	type SandboxMode,
+	type SandboxSelection,
+} from "@prismalens/engine";
 import {
 	JSONRPCErrorException,
 	type JSONRPCRequest,
@@ -71,7 +76,7 @@ function str(x: unknown): string | undefined {
 	return typeof x === "string" ? x : undefined;
 }
 
-interface InvestigateParams {
+export interface InvestigateParams {
 	alert?: Record<string, unknown>;
 	query?: string;
 	repo?: string;
@@ -83,10 +88,23 @@ interface InvestigateParams {
 	mode?: string;
 	/** Alias for `mode: "dangerous"` — wins over `mode` when true. */
 	dangerouslySkipPermissions?: boolean;
+	/**
+	 * The isolation boundary (ADR-0020): the CLI's `--sandbox` parity. A supplied
+	 * value that is not one of SANDBOX_MODES is a `-32602` error, never a silent
+	 * floor. Unset ⇒ `agent.sandbox` from config.
+	 */
+	sandbox?: SandboxMode;
+	/** Per-run turn ceiling for the default harness — the CLI's `--max-turns` parity. */
+	maxTurns?: number;
 }
 
-/** Coerce raw RPC params into the typed investigate shape (drops anything else). */
-function parseInvestigateParams(raw: unknown): InvestigateParams {
+/**
+ * Coerce raw RPC params into the typed investigate shape. Unknown fields are
+ * dropped; a SUPPLIED `sandbox`/`maxTurns` that is malformed (wrong type, not a
+ * sandbox mode, non-positive-integer) THROWS `-32602` — absent is fine, invalid
+ * is never silently swallowed (the silent-accept antipattern the #148 audit flags).
+ */
+export function parseInvestigateParams(raw: unknown): InvestigateParams {
 	const p = isRecord(raw) ? raw : {};
 	const out: InvestigateParams = {};
 	if (isRecord(p.alert)) out.alert = p.alert;
@@ -106,6 +124,29 @@ function parseInvestigateParams(raw: unknown): InvestigateParams {
 	if (mode) out.mode = mode;
 	if (typeof p.dangerouslySkipPermissions === "boolean") {
 		out.dangerouslySkipPermissions = p.dangerouslySkipPermissions;
+	}
+	if (p.sandbox !== undefined) {
+		const sandbox = str(p.sandbox);
+		if (!sandbox || !SANDBOX_MODES.includes(sandbox as SandboxMode)) {
+			throw new JSONRPCErrorException(
+				`Invalid sandbox mode ${JSON.stringify(p.sandbox)}. Expected one of: ${SANDBOX_MODES.join(", ")}.`,
+				INVALID_PARAMS,
+			);
+		}
+		out.sandbox = sandbox as SandboxMode;
+	}
+	if (p.maxTurns !== undefined) {
+		if (
+			typeof p.maxTurns !== "number" ||
+			!Number.isInteger(p.maxTurns) ||
+			p.maxTurns <= 0
+		) {
+			throw new JSONRPCErrorException(
+				`Invalid maxTurns ${JSON.stringify(p.maxTurns)}. Expected a positive integer.`,
+				INVALID_PARAMS,
+			);
+		}
+		out.maxTurns = p.maxTurns;
 	}
 	return out;
 }
@@ -157,19 +198,19 @@ export async function runJsonRpcServer(
 			? "dangerous"
 			: params.mode;
 
-		// Resolve the isolation boundary (ADR-0020) from `agent.sandbox`, exactly as the
-		// `investigate` command does — the serve path must NOT silently drop to the
-		// cooperative floor when config asks for enforcement (ADR-0017). An explicit
-		// srt/e2b that cannot arm (or is asked of a non-ACP harness) becomes a JSON-RPC
-		// error; `auto` degrades honestly, its requested-vs-actual pair threaded into the
-		// run fidelity below. The boundary is CALLER-OWNED — torn down in the finally.
+		// Resolve the isolation boundary (ADR-0020): the RPC `sandbox` param wins over
+		// `agent.sandbox` — the CLI's `--sandbox` parity. The serve path must NOT silently
+		// drop to the cooperative floor when config/params ask for enforcement (ADR-0017).
+		// An explicit srt/e2b that cannot arm (or is asked of a non-ACP harness) becomes a
+		// JSON-RPC error; `auto` degrades honestly, its requested-vs-actual pair threaded
+		// into the run fidelity below. The boundary is CALLER-OWNED — torn down in the finally.
 		const harnessName =
 			(params.harness as HarnessId | undefined) ?? config.agent.default;
+		const sandboxMode = params.sandbox ?? config.agent.sandbox;
 		let selection: SandboxSelection | null;
 		try {
-			selection = (
-				await resolveRunSandbox(harnessName, config.agent.sandbox, config)
-			).selection;
+			selection = (await resolveRunSandbox(harnessName, sandboxMode, config))
+				.selection;
 		} catch (err) {
 			throw new JSONRPCErrorException(
 				err instanceof Error ? err.message : String(err),
@@ -194,6 +235,7 @@ export async function runJsonRpcServer(
 									requestedSandbox: selection.requested,
 								}
 							: {}),
+						...(params.maxTurns ? { maxTurns: params.maxTurns } : {}),
 					},
 					config,
 				);
