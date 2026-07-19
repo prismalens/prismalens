@@ -325,8 +325,19 @@ export async function runPairedAB(
 				...partial,
 				alertSnapshot,
 			};
-			const score = await oracle(withSnapshot, context);
-			return { ok: true, ...withSnapshot, score };
+			// A scorer outage must NOT discard a successful (expensive) arm capture —
+			// degrade only the score. Half A's `unscored` never throws; Half B's live
+			// #39 judge can fail on a transient API error.
+			try {
+				const score = await oracle(withSnapshot, context);
+				return { ok: true, ...withSnapshot, score };
+			} catch (err) {
+				return {
+					ok: true,
+					...withSnapshot,
+					score: { score: null, note: `oracle failed: ${toMessage(err)}` },
+				};
+			}
 		} catch (err) {
 			return { ok: false, arm, error: toMessage(err), alertSnapshot };
 		}
