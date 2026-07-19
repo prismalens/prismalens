@@ -1,5 +1,13 @@
 # @prismalens/engine
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [4bbb2b1]
+  - @prismalens/config@0.3.0
+  - @prismalens/contracts@0.1.1
+
 ## 0.2.0
 
 ### Minor Changes
