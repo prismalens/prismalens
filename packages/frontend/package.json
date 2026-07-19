@@ -50,7 +50,7 @@
 		"lucide-react": "^0.460.0",
 		"radix-ui": "^1.6.1",
 		"react": "^19.2.7",
-		"react-day-picker": "^9.14.0",
+		"react-day-picker": "^10.0.1",
 		"react-dom": "^19.2.7",
 		"reactflow": "^11.11.4",
 		"recharts": "^3.9.1",
