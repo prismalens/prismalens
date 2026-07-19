@@ -89,16 +89,21 @@ export interface InvestigateParams {
 	/** Alias for `mode: "dangerous"` — wins over `mode` when true. */
 	dangerouslySkipPermissions?: boolean;
 	/**
-	 * The isolation boundary (ADR-0020): the CLI's `--sandbox` parity. Validated
-	 * against SANDBOX_MODES in the handler; an invalid value is a JSON-RPC error, not
-	 * a silent floor. Unset ⇒ `agent.sandbox` from config.
+	 * The isolation boundary (ADR-0020): the CLI's `--sandbox` parity. A supplied
+	 * value that is not one of SANDBOX_MODES is a `-32602` error, never a silent
+	 * floor. Unset ⇒ `agent.sandbox` from config.
 	 */
-	sandbox?: string;
+	sandbox?: SandboxMode;
 	/** Per-run turn ceiling for the default harness — the CLI's `--max-turns` parity. */
 	maxTurns?: number;
 }
 
-/** Coerce raw RPC params into the typed investigate shape (drops anything else). */
+/**
+ * Coerce raw RPC params into the typed investigate shape. Unknown fields are
+ * dropped; a SUPPLIED `sandbox`/`maxTurns` that is malformed (wrong type, not a
+ * sandbox mode, non-positive-integer) THROWS `-32602` — absent is fine, invalid
+ * is never silently swallowed (the silent-accept antipattern the #148 audit flags).
+ */
 export function parseInvestigateParams(raw: unknown): InvestigateParams {
 	const p = isRecord(raw) ? raw : {};
 	const out: InvestigateParams = {};
@@ -120,13 +125,27 @@ export function parseInvestigateParams(raw: unknown): InvestigateParams {
 	if (typeof p.dangerouslySkipPermissions === "boolean") {
 		out.dangerouslySkipPermissions = p.dangerouslySkipPermissions;
 	}
-	const sandbox = str(p.sandbox);
-	if (sandbox) out.sandbox = sandbox;
-	if (
-		typeof p.maxTurns === "number" &&
-		Number.isInteger(p.maxTurns) &&
-		p.maxTurns > 0
-	) {
+	if (p.sandbox !== undefined) {
+		const sandbox = str(p.sandbox);
+		if (!sandbox || !SANDBOX_MODES.includes(sandbox as SandboxMode)) {
+			throw new JSONRPCErrorException(
+				`Invalid sandbox mode ${JSON.stringify(p.sandbox)}. Expected one of: ${SANDBOX_MODES.join(", ")}.`,
+				INVALID_PARAMS,
+			);
+		}
+		out.sandbox = sandbox as SandboxMode;
+	}
+	if (p.maxTurns !== undefined) {
+		if (
+			typeof p.maxTurns !== "number" ||
+			!Number.isInteger(p.maxTurns) ||
+			p.maxTurns <= 0
+		) {
+			throw new JSONRPCErrorException(
+				`Invalid maxTurns ${JSON.stringify(p.maxTurns)}. Expected a positive integer.`,
+				INVALID_PARAMS,
+			);
+		}
 		out.maxTurns = p.maxTurns;
 	}
 	return out;
@@ -187,17 +206,7 @@ export async function runJsonRpcServer(
 		// into the run fidelity below. The boundary is CALLER-OWNED — torn down in the finally.
 		const harnessName =
 			(params.harness as HarnessId | undefined) ?? config.agent.default;
-		if (
-			params.sandbox &&
-			!SANDBOX_MODES.includes(params.sandbox as SandboxMode)
-		) {
-			throw new JSONRPCErrorException(
-				`Invalid sandbox mode "${params.sandbox}". Expected one of: ${SANDBOX_MODES.join(", ")}.`,
-				INVALID_PARAMS,
-			);
-		}
-		const sandboxMode =
-			(params.sandbox as SandboxMode | undefined) ?? config.agent.sandbox;
+		const sandboxMode = params.sandbox ?? config.agent.sandbox;
 		let selection: SandboxSelection | null;
 		try {
 			selection = (await resolveRunSandbox(harnessName, sandboxMode, config))
