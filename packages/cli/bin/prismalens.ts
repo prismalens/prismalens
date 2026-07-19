@@ -31,9 +31,16 @@ process.emit = ((name: string, ...args: unknown[]) => {
 	>);
 }) as typeof process.emit;
 
-/** Lazily import a command body's default export from src/cli. */
-const lazy = (name: string) => (): Promise<CommandDef> =>
-	import(`../src/cli/${name}.js`).then((m) => m.default as CommandDef);
+/**
+ * Lazily import a command body's default export from src/cli. The specifier is
+ * held in a variable so the bundler leaves this as a genuine runtime `import()`
+ * (resolved against the sibling command modules emitted next to this bin)
+ * instead of trying to inline the whole command set into the fast-path bin.
+ */
+const lazy = (name: string) => (): Promise<CommandDef> => {
+	const modulePath = `../src/cli/${name}.js`;
+	return import(modulePath).then((m) => m.default as CommandDef);
+};
 
 const main = defineCommand({
 	meta: {

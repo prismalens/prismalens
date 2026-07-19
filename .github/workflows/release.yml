@@ -2,15 +2,16 @@
 #
 # On every push to main: if unreleased .changeset/*.md files exist, the action
 # opens/updates a "Version Packages" PR (runs `pnpm changeset:version`). When
-# that PR merges, the action publishes every package whose version is not yet
-# on npm (runs `pnpm changeset:publish` = `pnpm publish -r` + `changeset tag`;
-# pnpm rewrites workspace:* ranges to real versions at pack time) and creates
-# a GitHub Release per tag.
+# that PR merges, the action publishes the single published package —
+# `prismalens`, the CLI, which bundles the first-party @prismalens/* closure
+# into its tarball (issue #193; the scoped packages are private:true and never
+# published) — via `pnpm changeset:publish` = `pnpm publish -r` (skips private
+# packages) + `changeset tag`, and creates one GitHub Release for its tag.
 #
 # Publishing authenticates via npm TRUSTED PUBLISHING (OIDC): id-token:write
 # lets pnpm (>=10.13; this repo pins 10.27) exchange the runner's OIDC token
 # for a short-lived npm credential — no npm token secret exists or is needed.
-# Each of the 4 packages has this repo + workflow registered as a trusted
+# The prismalens package has this repo + workflow registered as a trusted
 # publisher on npmjs.com, and provenance attestations are generated
 # automatically. Requirement: the publishing package must already exist on
 # npm (bootstrap 0.0.1 was published manually by the maintainer).
