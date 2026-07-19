@@ -4,15 +4,16 @@
 /**
  * `prismalens investigate` — the core investigation command (ADR-0008/0010).
  *
- * Seeds a read-only root-cause investigation from a firing alert (piped on stdin
+ * Seeds a root-cause investigation from a firing alert (piped on stdin
  * as a FiringAlert JSON, or synthesized from `--query`), rents a Tier-2 harness
  * (deepagents over ACP, or Claude Code over the Agent SDK), drives the Tier-1
  * supervisor LIVE via the shared conductor (`conductRun`, ADR-0018), and renders
  * the ordered-evidence report (ADR-0002).
  *
  * BYO-key (ADR-0006): provider creds come from the environment
- * (OLLAMA_ / OPENAI_ vars), never hard-bound here. The harness investigates
- * READ-ONLY.
+ * (OLLAMA_ / OPENAI_ vars), never hard-bound here. The `read-only` posture is a
+ * GUARDRAIL (edit tools removed), not a boundary — Bash writes remain possible.
+ * The only real boundary is an enforced sandbox (ADR-0017 Amdt 3 / ADR-0020).
  *
  * LIVE (ADR-0007/0010): `conductRun` fans each CanonicalEvent to a file-session
  * STORE (append) and a terminal-line SINK, then this command renders the
@@ -56,7 +57,7 @@ export default defineCommand({
 	meta: {
 		name: "investigate",
 		description:
-			"Run a read-only root-cause investigation of a firing alert (two-tier engine, ADR-0008).\n\nExamples:\n  $ pl investigate -q 'Why did the database crash?' --max-turns 30",
+			"Run a root-cause investigation of a firing alert (two-tier engine, ADR-0008).\n\nExamples:\n  $ pl investigate -q 'Why did the database crash?' --max-turns 30",
 	},
 	args: {
 		repo: {
