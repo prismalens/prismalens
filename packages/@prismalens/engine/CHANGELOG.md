@@ -1,5 +1,19 @@
 # @prismalens/engine
 
+## 0.2.0
+
+### Minor Changes
+
+- 6bbc048: New `llm_call` canonical event records each tier-1 model call (phase, model, token usage, latency, outcome + failure cause), and the Claude Code harness result's cost/usage accounting (`total_cost_usd`, `usage`, `modelUsage`, `num_turns`, `duration_ms`) is now captured on `branch_done` instead of discarded (#162).
+
+### Patch Changes
+
+- Updated dependencies [4636c9c]
+- Updated dependencies [6bbc048]
+- Updated dependencies [4636c9c]
+  - @prismalens/config@0.2.0
+  - @prismalens/contracts@0.1.0
+
 ## 0.1.1
 
 ### Patch Changes

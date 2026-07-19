@@ -1,5 +1,15 @@
 # @prismalens/config
 
+## 0.2.0
+
+### Minor Changes
+
+- 4636c9c: feat: add stored credentials support to CLI (`pl auth login`, `list`, `logout`) (#151)
+
+### Patch Changes
+
+- 4636c9c: Degrade gracefully on permission errors in auth store; document pl auth.
+
 ## 0.1.0
 
 ### Minor Changes
