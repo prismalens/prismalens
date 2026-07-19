@@ -17,8 +17,9 @@ jobs:
     steps:
       - name: Create phase-gate issue
         if: github.event.action == 'created'
+        env:
+          MILESTONE_TITLE: ${{ github.event.milestone.title }}
         run: |
-          MILESTONE_TITLE="${{ github.event.milestone.title }}"
           ISSUE_TITLE="Phase gate: anti-drift ritual + released-artifact verification"
           
           # Check if an open issue with the title already exists
@@ -43,10 +44,10 @@ jobs:
 
       - name: Verify all issues closed
         if: github.event.action == 'closed'
+        env:
+          MILESTONE_TITLE: ${{ github.event.milestone.title }}
+          MILESTONE_NUMBER: ${{ github.event.milestone.number }}
         run: |
-          MILESTONE_TITLE="${{ github.event.milestone.title }}"
-          MILESTONE_NUMBER="${{ github.event.milestone.number }}"
-          
           # List open issues in this milestone
           OPEN_ISSUES_JSON=$(gh issue list --milestone "$MILESTONE_TITLE" --state open --json number,title)
           OPEN_COUNT=$(echo "$OPEN_ISSUES_JSON" | jq 'length')
