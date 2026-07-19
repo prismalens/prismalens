@@ -32,7 +32,7 @@ jobs:
           Mechanical gate (born 2026-07-19, after 0.1.x/0.2 closed without it):
 
           - [ ] Run the 11-step phase-completion checklist (hub: `notes/roadmap/phase-checklist.md`) — ledger, roadmap, architecture specs, ADR outcomes, build-history, render re-sync, `mage index`, review dates, hub PR.
-          - [ ] Smoke-test the RELEASED artifact from the npm registry (not a local build) against the CLI behavior inventory (`~/ai-context/cli-audit-2026-07-11/`, update it as surfaces change).
+          - [ ] Run the `cross-os-smoke` workflow (`.github/workflows/cross-os-smoke.yml`) in registry mode for the release version — proves the RELEASED artifact (not a local build) installs and runs on Linux, macOS, and Windows — and link the green 3-OS run here.
           - [ ] Docs sweep for every identifier this phase renamed/retired (env vars, config keys, flags, model ids, package names).
           - [ ] Link the ritual PR + audit report here before closing.
 
@@ -61,9 +61,14 @@ jobs:
             GATE_ISSUE_NUMBER=$(gh issue list --milestone "$MILESTONE_TITLE" --search "in:title Phase gate:" --json number -q '.[0].number')
             
             ISSUES_LIST=$(echo "$OPEN_ISSUES_JSON" | jq -r 'map("- #" + (.number|tostring) + " " + .title) | join("\n")')
-            
+
+            ISSUE_NOUN="issues are"
+            if [ "$OPEN_COUNT" -eq "1" ]; then
+              ISSUE_NOUN="issue is"
+            fi
+
             read -r -d '' COMMENT_BODY << EOF || true
-          The milestone was reopened because $OPEN_COUNT issues are still open:
+          The milestone was reopened because $OPEN_COUNT $ISSUE_NOUN still open:
 
           $ISSUES_LIST
           EOF
