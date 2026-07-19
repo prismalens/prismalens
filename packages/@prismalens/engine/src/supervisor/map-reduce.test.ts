@@ -335,4 +335,32 @@ describe("reduce pass-through (#131/#132)", () => {
 		expect(out.summary).toContain("Synthesis failed: boom");
 		expect(out.coverage.queried).toEqual(["src1"]);
 	});
+
+	it("llm_call is bookkeeping: excluded from groupEventsByBranch and no-evidence guard (ADR-0002)", () => {
+		const llmCallEvent: CanonicalEvent = {
+			kind: "llm_call",
+			runId: "run-1",
+			seq: 0,
+			ts: "2026-07-01T00:00:00.000Z",
+			phase: "reduce",
+			provider: "ollama",
+			model: "m",
+			usage: null,
+			latencyMs: 100,
+			outcome: "ok",
+			failureCause: null,
+		};
+		// No tool_result, only llm_call and agent_step.
+		// Since llm_call does not count as evidence, this branch should be excluded.
+		const b0 = [
+			{ ...agentStep("b0", 0), text: "cause A" },
+			llmCallEvent,
+		];
+		const out = rawReport(
+			multiAlertContext(["A"]),
+			b0,
+		);
+		// Without tool_result, branch is empty, so no conclusion is gathered.
+		expect(out.summary).toContain("No branch conclusions gathered.");
+	});
 });

@@ -121,7 +121,7 @@ export function groupEventsByBranch(
 		const row = canonicalEventToRow(event);
 		if (!row) continue;
 
-		if (event.kind === "report") {
+		if (event.kind === "report" || event.kind === "llm_call") {
 			reportRows.set(row.key, row);
 			continue;
 		}

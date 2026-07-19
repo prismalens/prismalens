@@ -45,6 +45,11 @@ export interface SdkMessage {
 	subtype?: string;
 	result?: string;
 	is_error?: boolean;
+	total_cost_usd?: number;
+	usage?: { input_tokens?: number; output_tokens?: number } | null;
+	modelUsage?: Record<string, unknown> | null;
+	num_turns?: number;
+	duration_ms?: number;
 }
 
 const DEFAULT_PREVIEW_LIMIT = 4000;
@@ -89,15 +94,29 @@ export class ClaudeCodeAdapter {
 
 	/** Map a terminal `result` SDK message to the branch's terminal event. */
 	terminalFromResult(m: SdkMessage): CanonicalEvent {
-		if (m.subtype === "success") return this.branchDone("submitted");
-		if (m.subtype === "error_max_turns") return this.branchDone("budget");
+		if (m.subtype === "success") return this.branchDone("submitted", m);
+		if (m.subtype === "error_max_turns") return this.branchDone("budget", m);
 		return this.error(
 			m.result ?? `claude code ended: ${m.subtype ?? "unknown"}`,
 		);
 	}
 
-	branchDone(reason: "submitted" | "budget" | "no_progress"): CanonicalEvent {
-		return { kind: "branch_done", ...this.base(null), reason };
+	branchDone(
+		reason: "submitted" | "budget" | "no_progress",
+		m?: SdkMessage,
+	): CanonicalEvent {
+		return {
+			kind: "branch_done",
+			...this.base(null),
+			reason,
+			...(m?.total_cost_usd !== undefined
+				? { total_cost_usd: m.total_cost_usd }
+				: {}),
+			...(m?.usage !== undefined ? { usage: m.usage } : {}),
+			...(m?.modelUsage !== undefined ? { modelUsage: m.modelUsage } : {}),
+			...(m?.num_turns !== undefined ? { num_turns: m.num_turns } : {}),
+			...(m?.duration_ms !== undefined ? { duration_ms: m.duration_ms } : {}),
+		};
 	}
 
 	error(message: string): CanonicalEvent {
