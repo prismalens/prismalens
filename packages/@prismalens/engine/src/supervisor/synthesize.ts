@@ -46,6 +46,21 @@ export interface SynthesisModelConfig {
 	baseURL?: string;
 	/** Set to true if a tier 1 provider is configured and available. */
 	configured: boolean;
+	/**
+	 * Observability hook for Tier-1 model calls (#162). Invoked exactly once per
+	 * provider invocation — a failed structured call followed by the plain-text
+	 * fallback produces two calls (error then ok/error), each timed
+	 * independently. Called synchronously; must not throw.
+	 */
+	onLlmCall?: (call: {
+		phase: "decompose" | "map" | "reduce";
+		provider: string;
+		model: string;
+		usage: { inputTokens: number | null; outputTokens: number | null } | null;
+		latencyMs: number;
+		outcome: "ok" | "error";
+		failureCause: string | null;
+	}) => void;
 }
 
 const SYSTEM = `You are a senior Site Reliability Engineer writing the FINAL structured root-cause report for an incident investigation.
@@ -76,10 +91,11 @@ export const RAW_REPORT_NOTICE =
 export type ReportModel = (
 	prompt: string,
 	cfg: SynthesisModelConfig,
+	phase?: "map" | "reduce",
 ) => Promise<InvestigationReport>;
 
-const defaultReportModel: ReportModel = (prompt, cfg) =>
-	runReportModel(cfg, prompt);
+const defaultReportModel: ReportModel = (prompt, cfg, phase = "reduce") =>
+	runReportModel(cfg, prompt, phase);
 
 /**
  * The reduce step (ADR-0016 decision 2): map-reduce over the collected branch stream.
@@ -98,7 +114,11 @@ export async function reduce(
 	// N=1: exactly today's single synthesis call over the whole transcript. No fan-out
 	// bookkeeping, no extra LLM cost.
 	if (groups.length <= 1) {
-		return model(synthesisPrompt(buildTranscript(context, events)), cfg);
+		return model(
+			synthesisPrompt(buildTranscript(context, events)),
+			cfg,
+			"reduce",
+		);
 	}
 
 	// N>1 MAP: synthesize each NON-EMPTY branch (a branch with zero tool_result is
@@ -123,6 +143,7 @@ export async function reduce(
 				),
 			),
 			cfg,
+			"reduce",
 		);
 	}
 
@@ -133,13 +154,14 @@ export async function reduce(
 					buildTranscript(context, g.events, branchFocus(context, g.branchId)),
 				),
 				cfg,
+				"map",
 			),
 		),
 	);
 
 	// N>1 REDUCE: one further call merging the per-branch reports (dedupe + rank +
 	// ruled-out union).
-	return model(mergePrompt(context, perBranch), cfg);
+	return model(mergePrompt(context, perBranch), cfg, "reduce");
 }
 
 export function rawReport(
@@ -274,7 +296,7 @@ export async function synthesizeReport(
 	transcript: string,
 	cfg: SynthesisModelConfig,
 ): Promise<InvestigationReport> {
-	return runReportModel(cfg, synthesisPrompt(transcript));
+	return runReportModel(cfg, synthesisPrompt(transcript), "reduce");
 }
 
 /**
@@ -286,29 +308,96 @@ export async function synthesizeReport(
 async function runReportModel(
 	cfg: SynthesisModelConfig,
 	prompt: string,
+	phase: "map" | "reduce" = "reduce",
 ): Promise<InvestigationReport> {
 	const model = resolveModel(cfg.providerId, cfg.model, {
 		apiKey: cfg.apiKey,
 		baseURL: cfg.baseURL,
 	});
 
+	const start = Date.now();
 	try {
-		const { object } = await generateObject({
+		const { object, usage } = await generateObject({
 			model,
 			// fidelity is run-metadata, attached deterministically AFTER synthesis
 			// (ADR-0017) — the LLM must NOT generate it, so omit it from the schema.
 			schema: InvestigationReportSchema.omit({ fidelity: true }),
 			prompt,
 		});
-		return object;
-	} catch {
-		// Fallback: some OpenAI-compat endpoints reject json-schema response_format.
-		const { text } = await generateText({
-			model,
-			prompt: `${prompt}\n\nRespond with ONLY a single JSON object (no prose, no code fences) matching exactly this shape:\n${SHAPE_HINT}`,
+		cfg.onLlmCall?.({
+			phase,
+			provider: cfg.providerId,
+			model: cfg.model,
+			usage: toCallUsage(usage),
+			latencyMs: Date.now() - start,
+			outcome: "ok",
+			failureCause: null,
 		});
-		return InvestigationReportSchema.parse(extractJsonObject(text));
+		return object;
+	} catch (err1) {
+		// Exactly ONE llm_call per provider invocation: record the failed
+		// structured call before attempting the fallback (its tokens were spent
+		// regardless), with its own latency window.
+		cfg.onLlmCall?.({
+			phase,
+			provider: cfg.providerId,
+			model: cfg.model,
+			usage: null,
+			latencyMs: Date.now() - start,
+			outcome: "error",
+			failureCause: err1 instanceof Error ? err1.message : String(err1),
+		});
+		// Fallback: some OpenAI-compat endpoints reject json-schema response_format.
+		const start2 = Date.now();
+		let fallbackUsage: Parameters<typeof toCallUsage>[0];
+		try {
+			const { text, usage } = await generateText({
+				model,
+				prompt: `${prompt}\n\nRespond with ONLY a single JSON object (no prose, no code fences) matching exactly this shape:\n${SHAPE_HINT}`,
+			});
+			fallbackUsage = usage;
+			// Parse BEFORE emitting success — a completion that fails schema
+			// validation is an "error" outcome for this invocation, not an "ok"
+			// followed by a contradictory error event.
+			const report = InvestigationReportSchema.parse(extractJsonObject(text));
+			cfg.onLlmCall?.({
+				phase,
+				provider: cfg.providerId,
+				model: cfg.model,
+				usage: toCallUsage(usage),
+				latencyMs: Date.now() - start2,
+				outcome: "ok",
+				failureCause: null,
+			});
+			return report;
+		} catch (err2) {
+			cfg.onLlmCall?.({
+				phase,
+				provider: cfg.providerId,
+				model: cfg.model,
+				// Real usage when generateText succeeded but parsing failed.
+				usage: toCallUsage(fallbackUsage),
+				latencyMs: Date.now() - start2,
+				outcome: "error",
+				failureCause: err2 instanceof Error ? err2.message : String(err2),
+			});
+			throw err2;
+		}
 	}
+}
+
+/** Map AI SDK usage to the llm_call usage shape (null when none reported). */
+function toCallUsage(
+	usage:
+		| { inputTokens?: number | undefined; outputTokens?: number | undefined }
+		| undefined,
+): { inputTokens: number | null; outputTokens: number | null } | null {
+	return usage
+		? {
+				inputTokens: usage.inputTokens ?? null,
+				outputTokens: usage.outputTokens ?? null,
+			}
+		: null;
 }
 
 /** Pull the first balanced top-level JSON object out of a model completion. */

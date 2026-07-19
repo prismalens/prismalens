@@ -90,5 +90,8 @@ describe("no-evidence guard — any terminal, zero tool_result ⇒ no report", (
 
 		expect(events.map((e) => e.kind)).toEqual(["agent_step", "branch_done"]);
 		expect(events.some((e) => e.kind === "report")).toBe(false);
+		// llm_call is emitted only inside reduce(); the no-evidence guard returns
+		// BEFORE reduce, so a zero-tool_result run must leak no llm_call either (#162).
+		expect(events.some((e) => e.kind === "llm_call")).toBe(false);
 	});
 });

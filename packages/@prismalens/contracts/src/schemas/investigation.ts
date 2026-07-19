@@ -404,6 +404,17 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		 * GraphRecursionError to "budget"; genuine failures emit an `error` event.
 		 */
 		reason: z.enum(["submitted", "budget", "no_progress"]),
+		usage: z
+			.object({
+				input_tokens: z.number().int().min(0).optional(),
+				output_tokens: z.number().int().min(0).optional(),
+			})
+			.nullable()
+			.optional(),
+		total_cost_usd: z.number().min(0).optional(),
+		modelUsage: z.record(z.unknown()).nullable().optional(),
+		num_turns: z.number().int().min(0).optional(),
+		duration_ms: z.number().int().min(0).optional(),
 	}),
 	z.object({
 		kind: z.literal("error"),
@@ -416,6 +427,24 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		seq: z.number().int(),
 		ts: z.string().datetime(),
 		report: InvestigationReportSchema,
+	}),
+	z.object({
+		kind: z.literal("llm_call"),
+		runId: z.string().uuid(),
+		seq: z.number().int(),
+		ts: z.string().datetime(),
+		phase: z.enum(["decompose", "map", "reduce"]),
+		provider: z.string(),
+		model: z.string(),
+		usage: z
+			.object({
+				inputTokens: z.number().int().min(0).nullable(),
+				outputTokens: z.number().int().min(0).nullable(),
+			})
+			.nullable(),
+		latencyMs: z.number().int().min(0),
+		outcome: z.enum(["ok", "error"]),
+		failureCause: z.string().nullable(),
 	}),
 ]);
 
