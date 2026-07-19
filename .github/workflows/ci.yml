@@ -53,6 +53,24 @@ jobs:
       - name: publint (publishable packages)
         run: pnpm publint
 
+  # Fail a PR that adds a changeset naming a non-publishable package (the #178
+  # silent-release-stall class: `@prismalens/cli` is not a workspace package, so
+  # `changeset version` throws only on push-to-main and no Version PR ever opens).
+  # Zero-dep script — Node only, no pnpm install.
+  changesets:
+    name: Validate changesets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Validate changeset package names
+        run: node scripts/validate-changesets.mjs
+
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}

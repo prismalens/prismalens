@@ -19,10 +19,16 @@ one version PR; merging it publishes the bump.
 
 ## Pre-releases
 
-A phase that needs live validation before it's final goes out as a release
-candidate first. We use Changesets' [pre mode](https://github.com/changesets/changesets/blob/main/docs/prereleases.md)
-(`-rc.N`) and test against the packed tarball (`pnpm pack`) — the artifact users
-actually install — before cutting the final version.
+**Not yet wired — planned.** There is no release-candidate track today; every
+release publishes to npm's `latest` dist-tag. Pre-1.0 with no external RC
+consumers, we validate against the packed tarball (`pnpm pack`) — the artifact
+users actually install — and cut the final version directly.
+
+When a phase first genuinely needs live validation before it's final, we'll add
+it then: Changesets' [pre mode](https://github.com/changesets/changesets/blob/main/docs/prereleases.md)
+(`-rc.N`) **plus** publishing under the `next` dist-tag (`pnpm publish --tag next`)
+so a candidate never lands on `latest`. Until that's wired, do **not** run
+`changeset pre enter` — an RC would publish straight to `latest`.
 
 ## 1.0.0
 
