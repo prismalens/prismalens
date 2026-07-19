@@ -62,8 +62,9 @@ setup (providers, harnesses, configuration, commands) lives at
   env (`PROVIDER_API_KEY`) → `_FILE` (`PROVIDER_API_KEY_FILE`) → stored, where
   stored is opt-in local storage via `pl auth login` (`auth.json` in the app
   data dir, mode `0600`).
-- **Read-only, sandboxed tool execution.** The harness investigates through
-  its own shell, isolated behind a placement-scaled sandbox boundary.
+- **Tool guardrails, not read-only.** Edit tools are removed by default as a
+  guardrail — `Bash` can still write. The real boundary is an enforced
+  `--sandbox`, which confines writes and allowlists egress.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
   with supporting/contradicting evidence per hypothesis — never a numeric
   confidence number.

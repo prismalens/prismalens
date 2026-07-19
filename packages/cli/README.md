@@ -18,7 +18,7 @@ evidence; no numeric confidence scores).
   - `claude-code` — driven over the **Claude Agent SDK**,
   - `codex` — **stubbed** (not implemented; selecting it throws).
 
-### How the harness is contained
+## How the harness is contained
 
 By default prismalens removes the harness's edit tools (`Edit`, `Write`,
 `MultiEdit`, `NotebookEdit`). That is a **guardrail, not a security boundary**
