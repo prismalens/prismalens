@@ -1,5 +1,11 @@
 # prismalens
 
+## 0.4.0
+
+### Minor Changes
+
+- d2ba9f4: prismalens is now the single published package; @prismalens/engine, config and contracts are bundled into the CLI and no longer published separately.
+
 ## 0.3.0
 
 ### Minor Changes
