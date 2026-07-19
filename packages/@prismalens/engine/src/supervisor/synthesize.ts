@@ -46,7 +46,12 @@ export interface SynthesisModelConfig {
 	baseURL?: string;
 	/** Set to true if a tier 1 provider is configured and available. */
 	configured: boolean;
-	/** Callback for capturing the AI SDK model call metrics. */
+	/**
+	 * Observability hook for Tier-1 model calls (#162). Invoked exactly once per
+	 * provider invocation — a failed structured call followed by the plain-text
+	 * fallback produces two calls (error then ok/error), each timed
+	 * independently. Called synchronously; must not throw.
+	 */
 	onLlmCall?: (call: {
 		phase: "decompose" | "map" | "reduce";
 		provider: string;
@@ -323,52 +328,76 @@ async function runReportModel(
 			phase,
 			provider: cfg.providerId,
 			model: cfg.model,
-			usage: usage
-				? {
-						inputTokens: usage.inputTokens ?? null,
-						outputTokens: usage.outputTokens ?? null,
-					}
-				: null,
+			usage: toCallUsage(usage),
 			latencyMs: Date.now() - start,
 			outcome: "ok",
 			failureCause: null,
 		});
 		return object;
-	} catch {
+	} catch (err1) {
+		// Exactly ONE llm_call per provider invocation: record the failed
+		// structured call before attempting the fallback (its tokens were spent
+		// regardless), with its own latency window.
+		cfg.onLlmCall?.({
+			phase,
+			provider: cfg.providerId,
+			model: cfg.model,
+			usage: null,
+			latencyMs: Date.now() - start,
+			outcome: "error",
+			failureCause: err1 instanceof Error ? err1.message : String(err1),
+		});
+		// Fallback: some OpenAI-compat endpoints reject json-schema response_format.
+		const start2 = Date.now();
+		let fallbackUsage: Parameters<typeof toCallUsage>[0];
 		try {
-			const start2 = Date.now();
 			const { text, usage } = await generateText({
 				model,
 				prompt: `${prompt}\n\nRespond with ONLY a single JSON object (no prose, no code fences) matching exactly this shape:\n${SHAPE_HINT}`,
 			});
+			fallbackUsage = usage;
+			// Parse BEFORE emitting success — a completion that fails schema
+			// validation is an "error" outcome for this invocation, not an "ok"
+			// followed by a contradictory error event.
+			const report = InvestigationReportSchema.parse(extractJsonObject(text));
 			cfg.onLlmCall?.({
 				phase,
 				provider: cfg.providerId,
 				model: cfg.model,
-				usage: usage
-					? {
-							inputTokens: usage.inputTokens ?? null,
-							outputTokens: usage.outputTokens ?? null,
-						}
-					: null,
+				usage: toCallUsage(usage),
 				latencyMs: Date.now() - start2,
 				outcome: "ok",
 				failureCause: null,
 			});
-			return InvestigationReportSchema.parse(extractJsonObject(text));
+			return report;
 		} catch (err2) {
 			cfg.onLlmCall?.({
 				phase,
 				provider: cfg.providerId,
 				model: cfg.model,
-				usage: null,
-				latencyMs: Date.now() - start,
+				// Real usage when generateText succeeded but parsing failed.
+				usage: toCallUsage(fallbackUsage),
+				latencyMs: Date.now() - start2,
 				outcome: "error",
 				failureCause: err2 instanceof Error ? err2.message : String(err2),
 			});
 			throw err2;
 		}
 	}
+}
+
+/** Map AI SDK usage to the llm_call usage shape (null when none reported). */
+function toCallUsage(
+	usage:
+		| { inputTokens?: number | undefined; outputTokens?: number | undefined }
+		| undefined,
+): { inputTokens: number | null; outputTokens: number | null } | null {
+	return usage
+		? {
+				inputTokens: usage.inputTokens ?? null,
+				outputTokens: usage.outputTokens ?? null,
+			}
+		: null;
 }
 
 /** Pull the first balanced top-level JSON object out of a model completion. */

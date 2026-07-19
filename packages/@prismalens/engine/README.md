@@ -114,6 +114,13 @@ The Tier-1 reduce step (report synthesis) is a separate model call configured
 via `synth` — any provider `resolveModel` supports (`anthropic`, `openai`,
 `google`, `groq`, `ollama`, `custom`), independent of which harness you rent.
 
+Pass `synth.onLlmCall` to observe each Tier-1 model call: the engine invokes it
+exactly once per provider invocation (including failed calls and the plain-text
+fallback) with `{ phase, provider, model, usage, latencyMs, outcome,
+failureCause }`. The supervisor uses this same hook to put `llm_call`
+bookkeeping events on the canonical stream — they carry no `branchId` and never
+count as evidence (ADR-0002).
+
 ## BYO-key
 
 All credentials are read from the environment by your calling code and passed

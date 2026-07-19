@@ -298,9 +298,12 @@ export async function* investigateIncidentStream(
 		report = rawReport(opts.context, collected);
 	} else {
 		const llmEvents: CanonicalEvent[] = [];
+		// Compose, don't clobber: a caller-provided telemetry hook still fires.
+		const callerOnLlmCall = opts.synth.onLlmCall;
 		const synthCfg: SynthesisModelConfig = {
 			...opts.synth,
 			onLlmCall: (call) => {
+				callerOnLlmCall?.(call);
 				llmEvents.push({
 					kind: "llm_call",
 					runId,
