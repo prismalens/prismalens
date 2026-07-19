@@ -9,6 +9,18 @@
 					}
 				]
 			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "$CLAUDE_PROJECT_DIR/.claude/hooks/phase-gate.sh",
+						"timeout": 10
+					}
+				]
+			}
 		]
 	}
 }
