@@ -31,8 +31,8 @@ catalogs:
       specifier: ^5.79.2
       version: 5.79.2
     dotenv:
-      specifier: ^16.6.1
-      version: 16.6.1
+      specifier: ^17.4.2
+      version: 17.4.2
     eslint:
       specifier: ^10.6.0
       version: 10.6.0
@@ -177,7 +177,7 @@ importers:
         version: link:../config
       dotenv:
         specifier: 'catalog:'
-        version: 16.6.1
+        version: 17.4.2
       pg:
         specifier: ^8.22.0
         version: 8.22.0
@@ -658,7 +658,7 @@ importers:
         version: 5.79.2
       dotenv:
         specifier: 'catalog:'
-        version: 16.6.1
+        version: 17.4.2
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
