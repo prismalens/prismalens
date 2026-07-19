@@ -5,7 +5,7 @@
  * Workspace + session manager for engine runs (ADR-0010), simplified from the
  * retired pl orchestrator's session-manager.
  *
- * Layout under `<workspace.base_dir>` (default ~/.prismalens):
+ * Layout under `<workspace.dir>` (default ~/.prismalens):
  *   prismalens.db                      - sqlite store for all run metadata
  *   runs/<runId>/                      - per-run workspace dir
  */
@@ -96,8 +96,8 @@ function expandHome(p: string): string {
 }
 
 export function resolveBaseDir(baseDir?: string): string {
-	// Honor PRISMALENS_USER_FOLDER for the default workspace (via getAppDataDir);
-	// an explicit `workspace.base_dir` override still wins.
+	// Honor PRISMALENS_WORKSPACE_DIR for the default workspace (via getAppDataDir);
+	// an explicit `workspace.dir` override still wins.
 	if (!baseDir || baseDir === "~/.prismalens") return getAppDataDir();
 	return resolve(expandHome(baseDir));
 }

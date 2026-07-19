@@ -27,6 +27,9 @@ export function assertKnownFlags(args: Record<string, unknown>, cmd: unknown) {
 		if (Object.hasOwn(args, key)) {
 			if (!allowedKeys.has(key)) {
 				consola.error(`Unknown option: --${key}`);
+				const rawArgs = process.argv.slice(2);
+				const cmdName = `pl${rawArgs[0] && !rawArgs[0].startsWith("-") ? ` ${rawArgs[0]}` : ""}`;
+				consola.info(`Run \`${cmdName} --help\` for usage.`);
 				process.exit(1);
 			}
 		}

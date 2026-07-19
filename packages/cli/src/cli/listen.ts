@@ -152,7 +152,7 @@ export function createInvestigationRunner(
 				}),
 			);
 			options.log(`Refused run ${runId} (${reason})`);
-			const refusedSessions = createSessionManager(config.workspace.base_dir);
+			const refusedSessions = createSessionManager(config.workspace.dir);
 			try {
 				await refusedSessions.recordSuppressed({
 					runId,
@@ -184,9 +184,7 @@ export function createInvestigationRunner(
 				}),
 			);
 			options.log(`Suppressed run ${runId} (${decision.reason} cap)`);
-			const suppressedSessions = createSessionManager(
-				config.workspace.base_dir,
-			);
+			const suppressedSessions = createSessionManager(config.workspace.dir);
 			try {
 				await suppressedSessions.recordSuppressed({
 					runId,
@@ -228,7 +226,7 @@ export function createInvestigationRunner(
 			const primaryAlert = context.alerts[0];
 
 			const repoSlug = await resolveRepoSlug(config.repo, repoPath);
-			sessions = createSessionManager(config.workspace.base_dir);
+			sessions = createSessionManager(config.workspace.dir);
 			const fileSession = createFileSessionStore(sessions, {
 				runId,
 				alertname: primaryAlert.alertname,
@@ -315,7 +313,7 @@ export async function startListenFromConfig(
 			"config is missing listen.token (required — intake auth). Add listen.token to prismalens.config.yaml.",
 		);
 	}
-	const sessions = createSessionManager(config.workspace.base_dir);
+	const sessions = createSessionManager(config.workspace.dir);
 
 	// Startup reaper (#136): mark any orphaned "running" runs from a previous
 	// dead listener as errored, so pl status reflects reality.

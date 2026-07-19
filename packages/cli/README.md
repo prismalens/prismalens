@@ -162,7 +162,7 @@ Preflight checklist that gates a run. Prints pass/fail per check; exits non-zero
   a signed-in `~/.claude/.credentials.json`. Doctor reports which layer supplied
   the credential (`source: env | file | stored | none`). (Performs a live
   provider model ping by default, while `--no-ping` skips it.)
-- **SOFT — workspace writable:** `workspace.base_dir` can be created/written.
+- **SOFT — workspace writable:** `workspace.dir` can be created/written.
 
 ### `init`
 
@@ -320,7 +320,7 @@ telemetry:
 
 # Where runs, events, and reports are stored.
 workspace:
-  base_dir: ~/.prismalens
+  dir: ~/.prismalens
 
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
 # rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over
@@ -357,7 +357,7 @@ The resolution precedence for any credential is: **env** (`PROVIDER_API_KEY`) �
 - `pl auth list` — view saved providers.
 - `pl auth logout <provider>` — remove a saved credential.
 
-Stored credentials live in `auth.json` inside the app-data dir (`~/.prismalens` by default, honors `PRISMALENS_USER_FOLDER`), enforced to mode `0600`.
+Stored credentials live in `auth.json` inside the app-data dir (`~/.prismalens` by default, honors `PRISMALENS_WORKSPACE_DIR`), enforced to mode `0600`.
 
 - **Tier-1 reduce + the `deepagents` harness** use an OpenAI-compatible endpoint:
   - `OLLAMA_API_KEY` or `OPENAI_API_KEY` (the API key),

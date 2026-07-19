@@ -94,7 +94,7 @@ export const AgentConfigSchema = z.object({
 });
 
 export const WorkspaceConfigSchema = z.object({
-	base_dir: z.string().default("~/.prismalens"),
+	dir: z.string().default("~/.prismalens"),
 });
 
 /**

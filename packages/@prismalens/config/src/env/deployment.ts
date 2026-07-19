@@ -9,7 +9,7 @@ import { SecretEnvVars } from "../utils/secrets.js";
  * Stores SQLite database, encryption keys, logs, and config.
  */
 export const deploymentSchema = z.object({
-	PRISMALENS_USER_FOLDER: z
+	PRISMALENS_WORKSPACE_DIR: z
 		.string()
 		.optional()
 		.describe(

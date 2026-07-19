@@ -11,7 +11,7 @@
  *  - HARD: an LLM credential is present
  *      (any provider credential env var from LLM_PROVIDERS, or, for claude-code,
  *       a signed-in ~/.claude/.credentials.json)
- *  - SOFT: workspace.base_dir is writable
+ *  - SOFT: workspace.dir is writable
  *
  * Prints pass/fail per check; exits non-zero iff a HARD check fails. No tinyexec /
  * check-tool helper here — availability is a dependency-free PATH scan.
@@ -147,7 +147,7 @@ export async function checkCredential(
 }
 
 async function checkWorkspace(config: PlConfig): Promise<Check> {
-	const baseDir = resolveBaseDir(config.workspace.base_dir);
+	const baseDir = resolveBaseDir(config.workspace.dir);
 	try {
 		await mkdir(baseDir, { recursive: true });
 		await access(baseDir, fsConstants.W_OK);

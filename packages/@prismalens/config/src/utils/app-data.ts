@@ -8,7 +8,7 @@ import { join } from "node:path";
 /**
  * Get the application data directory for Prismalens.
  *
- * Respects the PRISMALENS_USER_FOLDER environment variable if set.
+ * Respects the PRISMALENS_WORKSPACE_DIR environment variable if set.
  * Defaults to ~/.prismalens if not specified.
  *
  * The directory structure includes:
@@ -22,13 +22,15 @@ import { join } from "node:path";
  * // Returns: /home/username/.prismalens
  * const appDataDir = getAppDataDir();
  *
- * // Or with custom PRISMALENS_USER_FOLDER env var:
- * // PRISMALENS_USER_FOLDER=/var/prismalens -> /var/prismalens/.prismalens
+ * // Or with custom PRISMALENS_WORKSPACE_DIR env var:
+ * // PRISMALENS_WORKSPACE_DIR=/var/prismalens -> /var/prismalens
  * const appDataDir = getAppDataDir();
  */
 export function getAppDataDir(): string {
-	const userFolder = process.env.PRISMALENS_USER_FOLDER ?? homedir();
-	return join(userFolder, ".prismalens");
+	if (process.env.PRISMALENS_WORKSPACE_DIR) {
+		return process.env.PRISMALENS_WORKSPACE_DIR;
+	}
+	return join(homedir(), ".prismalens");
 }
 
 /**

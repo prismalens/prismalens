@@ -14,7 +14,7 @@ import { z } from "zod";
  * @example
  * ```typescript
  * const provider = LLM_PROVIDERS.anthropic;
- * console.log(provider.defaultModel); // "claude-sonnet-4-5"
+ * console.log(provider.defaultModel); // "claude-sonnet-5"
  * console.log(provider.logoUrl);      // models.dev logo URL
  * ```
  */
@@ -23,7 +23,7 @@ export const LLM_PROVIDERS = {
 		id: "anthropic",
 		name: "Anthropic",
 		helpUrl: "https://console.anthropic.com/settings/keys",
-		defaultModel: "claude-sonnet-4-5",
+		defaultModel: "claude-sonnet-5",
 		envVar: "ANTHROPIC_API_KEY",
 		logoUrl: "https://models.dev/logos/anthropic.svg",
 		allowedHosts: ["api.anthropic.com"] as string[],
@@ -32,7 +32,7 @@ export const LLM_PROVIDERS = {
 		id: "openai",
 		name: "OpenAI",
 		helpUrl: "https://platform.openai.com/api-keys",
-		defaultModel: "gpt-5-mini",
+		defaultModel: "gpt-5.4-mini",
 		envVar: "OPENAI_API_KEY",
 		logoUrl: "https://models.dev/logos/openai.svg",
 		allowedHosts: ["api.openai.com"] as string[],
@@ -41,7 +41,7 @@ export const LLM_PROVIDERS = {
 		id: "google",
 		name: "Google Gemini",
 		helpUrl: "https://aistudio.google.com",
-		defaultModel: "gemini-2.5-flash",
+		defaultModel: "gemini-3.5-flash",
 		envVar: "GOOGLE_API_KEY",
 		logoUrl: "https://models.dev/logos/google.svg",
 		allowedHosts: ["generativelanguage.googleapis.com"] as string[],
@@ -50,7 +50,7 @@ export const LLM_PROVIDERS = {
 		id: "ollama",
 		name: "Ollama",
 		helpUrl: "https://ollama.ai",
-		defaultModel: "gpt-oss:20b",
+		defaultModel: "gpt-oss:20b-cloud",
 		envVar: "OLLAMA_API_KEY", // Optional — for Ollama Cloud
 		baseUrlRequired: false,
 		defaultBaseUrl: "http://localhost:11434/v1",
@@ -62,7 +62,7 @@ export const LLM_PROVIDERS = {
 		id: "groq",
 		name: "Groq",
 		helpUrl: "https://console.groq.com/keys",
-		defaultModel: "llama-3.3-70b-versatile",
+		defaultModel: "openai/gpt-oss-120b",
 		envVar: "GROQ_API_KEY",
 		free: true,
 		logoUrl: "https://models.dev/logos/groq.svg",

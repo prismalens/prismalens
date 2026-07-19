@@ -58,7 +58,7 @@ function firingAlert(
 async function writeConfig(baseDir: string): Promise<void> {
 	await writeFile(
 		join(dir, "prismalens.config.yaml"),
-		`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${baseDir}\n`,
+		`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${baseDir}\n`,
 		"utf-8",
 	);
 }
@@ -107,7 +107,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
 			"utf-8",
 		);
 
@@ -160,7 +160,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 10\n    max_per_hour: 2\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 10\n    max_per_hour: 2\n`,
 			"utf-8",
 		);
 
@@ -217,7 +217,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  caps:\n    max_concurrent: 1\n`,
 			"utf-8",
 		);
 
@@ -292,7 +292,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 			join(dir, "prismalens.config.yaml"),
 			[
 				`workspace:`,
-				`  base_dir: ${join(dir, "workspace")}`,
+				`  dir: ${join(dir, "workspace")}`,
 				`services:`,
 				`  checkout:`,
 				`    repo: acme/checkout`,
@@ -401,7 +401,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const notifySpy = vi.fn().mockResolvedValue(undefined);
@@ -431,7 +431,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\n`,
 			"utf-8",
 		);
 		const notifySpy = vi.fn().mockResolvedValue(undefined);
@@ -453,7 +453,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const notifySpy = vi.fn().mockRejectedValue(new Error("slack is down"));
@@ -477,7 +477,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const noEvidence: ConductRun = (async (inputs) => ({
@@ -517,7 +517,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const errored: ConductRun = (async (inputs) => ({
@@ -552,7 +552,7 @@ describe("createInvestigationRunner (per-alert seam chain)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  slack_webhook_url: http://slack.test\n`,
 			"utf-8",
 		);
 		const cancelled: ConductRun = (async (inputs) => ({
@@ -607,7 +607,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 				`  checkout:`,
 				`    repo: ${dir}`,
 				`workspace:`,
-				`  base_dir: ${workspace}`,
+				`  dir: ${workspace}`,
 				`listen:`,
 				`  port: 0`, // ephemeral — the OS picks a free port
 				`  token: e2e-token`,
@@ -654,7 +654,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const configPath = join(dir, "prismalens.config.yaml");
 		await writeFile(
 			configPath,
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 			"utf-8",
 		);
 		const lines: string[] = [];
@@ -697,7 +697,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		try {
 			await writeFile(
 				join(dir, "prismalens.config.yaml"),
-				`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${join(dir, "ws")}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+				`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${join(dir, "ws")}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 				"utf-8",
 			);
 			const lines: string[] = [];
@@ -755,7 +755,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 			const workspace = join(dir, "workspace");
 			await writeFile(
 				join(dir, "prismalens.config.yaml"),
-				`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n  grouping_window_ms: 1000\n`,
+				`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n  grouping_window_ms: 1000\n`,
 				"utf-8",
 			);
 			const lines: string[] = [];
@@ -861,7 +861,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 			"utf-8",
 		);
 
@@ -892,7 +892,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
+			`services:\n  checkout:\n    repo: ${dir}\nworkspace:\n  dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\n`,
 			"utf-8",
 		);
 
@@ -920,7 +920,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\nagent:\n  limits:\n    wall_clock_ms: 3600000\n`, // 1 hour wall-clock cap
+			`workspace:\n  dir: ${workspace}\nlisten:\n  port: 0\n  token: e2e-token\nagent:\n  limits:\n    wall_clock_ms: 3600000\n`, // 1 hour wall-clock cap
 			"utf-8",
 		);
 
@@ -980,7 +980,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 		const workspace = join(dir, "workspace");
 		await writeFile(
 			join(dir, "prismalens.config.yaml"),
-			`workspace:\n  base_dir: ${workspace}\nlisten:\n  port: 0\n  host: 127.0.0.2\n  token: e2e-token\n`,
+			`workspace:\n  dir: ${workspace}\nlisten:\n  port: 0\n  host: 127.0.0.2\n  token: e2e-token\n`,
 			"utf-8",
 		);
 

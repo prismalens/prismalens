@@ -68,7 +68,7 @@ telemetry:
 
 # Where runs, events, and reports are stored.
 workspace:
-  base_dir: ${d.workspace.base_dir}
+  dir: ${d.workspace.dir}
 
 # \`pl listen\` — token-authed local webhook intake (Alertmanager). The token is
 # REQUIRED to start listening regardless of bind address; keep it out of the file via env interpolation.

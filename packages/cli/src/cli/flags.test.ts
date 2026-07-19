@@ -23,13 +23,13 @@ describe("assertKnownFlags", () => {
 	it("accepts declared flags including hyphenated and their camelCase aliases", () => {
 		const cmd = {
 			args: {
-				"base-dir": { type: "string" },
+				"workspace-dir": { type: "string" },
 				"max-turns": { type: "number" },
 			},
 		};
 
-		assertKnownFlags({ _: [], "base-dir": "foo" }, cmd);
-		assertKnownFlags({ baseDir: "foo" }, cmd);
+		assertKnownFlags({ _: [], "workspace-dir": "foo" }, cmd);
+		assertKnownFlags({ workspaceDir: "foo" }, cmd);
 		assertKnownFlags({ "max-turns": 5, maxTurns: 5 }, cmd);
 
 		expect(exitSpy).not.toHaveBeenCalled();

@@ -36,7 +36,7 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 	it("applies built-in defaults when no config file is present", async () => {
 		const config = await loadConfig({ cwd: dir });
 		expect(config.agent.default).toBe("claude-code");
-		expect(config.workspace.base_dir).toBe("~/.prismalens");
+		expect(config.workspace.dir).toBe("~/.prismalens");
 		// The sandbox default is `auto` (B.1.1 egress-gate flip) — safe because `auto`
 		// runs an egress self-check before trusting srt, degrading honestly to the floor.
 		expect(config.agent.sandbox).toBe("auto");

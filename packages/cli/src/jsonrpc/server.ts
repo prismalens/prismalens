@@ -253,7 +253,7 @@ export async function runJsonRpcServer(
 			// wrapped as a conductRun store adapter (ADR-0018).
 			const runId = randomUUID();
 			const repoSlug = await resolveRepoSlug(config.repo, cwd);
-			const sessions = createSessionManager(config.workspace.base_dir);
+			const sessions = createSessionManager(config.workspace.dir);
 			const fileSession = createFileSessionStore(sessions, {
 				runId,
 				alertname: primaryAlert.alertname,
