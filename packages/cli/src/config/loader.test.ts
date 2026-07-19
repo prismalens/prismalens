@@ -61,13 +61,13 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 
 	it("project-local overrides project; unrelated project values survive (deep-merge)", async () => {
 		writeProject(
-			"agent:\n  model: project-model\ntelemetry:\n  apiUrl: http://project\n",
+			"agent:\n  model: project-model\ntelemetry:\n  api_url: http://project\n",
 		);
 		writeLocal("agent:\n  model: local-model\n");
 
 		const config = await loadConfig({ cwd: dir });
 		expect(config.agent.model).toBe("local-model"); // local wins
-		expect(config.telemetry.apiUrl).toBe("http://project"); // project survives
+		expect(config.telemetry.api_url).toBe("http://project"); // project survives
 	});
 
 	it("CLI overrides beat every file layer", async () => {
@@ -84,10 +84,10 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 	it("interpolates env-var placeholders from the environment", async () => {
 		process.env.PL_TEST_API = "http://interp";
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder is the interpolation syntax under test
-		writeProject("telemetry:\n  apiUrl: ${PL_TEST_API}\n");
+		writeProject("telemetry:\n  api_url: ${PL_TEST_API}\n");
 
 		const config = await loadConfig({ cwd: dir });
-		expect(config.telemetry.apiUrl).toBe("http://interp");
+		expect(config.telemetry.api_url).toBe("http://interp");
 		delete process.env.PL_TEST_API;
 	});
 
@@ -108,7 +108,7 @@ describe("loadConfig — layered precedence (ADR-0014)", () => {
 
 	it("throws on an unset env-var placeholder", async () => {
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder is the interpolation syntax under test
-		writeProject("telemetry:\n  apiUrl: ${PL_DEFINITELY_UNSET_XYZ}\n");
+		writeProject("telemetry:\n  api_url: ${PL_DEFINITELY_UNSET_XYZ}\n");
 		await expect(loadConfig({ cwd: dir })).rejects.toThrow(
 			/unset environment variable/,
 		);

@@ -62,10 +62,11 @@ export const AgentLimitsConfigSchema = z.object({
 export const AgentConfigSchema = z.object({
 	default: z.enum(HARNESS_IDS).default("claude-code"),
 	/**
-	 * BARE model id (e.g. "gpt-oss:120b") — the chosen harness applies its own
-	 * provider prefix (ADR-0017: deepagents prepends "openai:"; Claude Code takes it
-	 * bare). Also reused as the Tier-1 reduce model id. Omit to let the harness pick
-	 * its own default.
+	 * BARE model id (e.g. "gpt-oss:120b") for the Tier-2 HARNESS ONLY — the chosen
+	 * harness applies its own provider prefix (ADR-0017: deepagents prepends
+	 * "openai:"; Claude Code takes it bare). Omit to let the harness pick its own
+	 * default. The Tier-1 reduce model is a SEPARATE knob — `synth.model` (ADR-0013/
+	 * 0016): the two calls go to different providers, so one key must never feed both.
 	 */
 	model: z.string().optional(),
 	/** The posture dial (ADR-0017). Defaults to `read-only`. */
@@ -138,14 +139,15 @@ export const ListenConfigSchema = z.object({
 });
 
 /**
- * Read-only telemetry + app endpoints the harness may query. Mirrors the engine's
- * TelemetryEndpoints (camelCase) so a loaded config can be handed straight to
- * `InvestigateOptions.telemetry`. All optional here — resolved/overridden per run.
+ * Read-only telemetry + app endpoints the harness may query. Keys are snake_case
+ * (the config-file convention — every other key in this schema is snake_case); the
+ * CLI maps them to the engine's camelCase `TelemetryEndpoints` at the boundary
+ * (`run-investigation`). All optional here — resolved/overridden per run.
  */
 export const TelemetryConfigSchema = z.object({
-	prometheusUrl: z.string().optional(),
-	alertmanagerUrl: z.string().optional(),
-	apiUrl: z.string().optional(),
+	prometheus_url: z.string().optional(),
+	alertmanager_url: z.string().optional(),
+	api_url: z.string().optional(),
 });
 
 /**

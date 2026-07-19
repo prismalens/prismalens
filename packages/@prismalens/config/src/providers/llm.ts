@@ -148,6 +148,13 @@ export function getDefaultModel(providerId: LLMProviderId): string | null {
  * Returns `null` for providers with no host restriction (e.g. "custom"),
  * meaning any hostname is accepted. Otherwise returns the allowlist array.
  *
+ * SCOPE (audit #148 item 10): this is the SERVER/UI base-URL VALIDATION allowlist —
+ * an SSRF guard on user-entered `baseUrl` (API `LlmSettingsService.validateBaseUrl`)
+ * and the worker's egress-host derivation. It is deliberately NOT the CLI sandbox
+ * egress source: the CLI derives egress from the hostnames of the URLs it will
+ * ACTUALLY contact (`collectAllowedDomains`, ADR-0020) — a strictly tighter set than
+ * this static per-provider superset, so wiring this in would only widen the boundary.
+ *
  * @param providerId - The provider ID
  * @returns Array of allowed hostnames, or null if unrestricted
  */

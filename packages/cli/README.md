@@ -301,9 +301,9 @@ agent:
 
 # Read-only telemetry + app endpoints the harness may query.
 telemetry:
-  prometheusUrl: http://localhost:9090
-  alertmanagerUrl: http://localhost:9093
-  apiUrl: http://localhost:3000
+  prometheus_url: http://localhost:9090
+  alertmanager_url: http://localhost:9093
+  api_url: http://localhost:3000
 
 # Where runs, events, and reports are stored.
 workspace:
@@ -321,10 +321,13 @@ harnesses:
 ```
 
 Notes:
-- `agent.model` in config is a **provider-prefixed** id (e.g. `openai:gpt-oss:120b`).
-  The `--model` flag passes a **bare** id (e.g. `gpt-oss:120b`); for `deepagents` the
-  CLI prefixes it with `openai:`.
-- `telemetry.*` defaults to host-local URLs when unset.
+- `agent.model` sets the **Tier-2 harness** model only (a bare id, e.g. `gpt-oss:120b`;
+  each harness applies its own provider prefix). `--model` overrides it.
+- `synth.model` sets the **Tier-1 reduce** (report-synthesis) model — a separate call
+  to a separate provider (ADR-0013/0016). `agent.model` never feeds it, so a harness on
+  one provider (e.g. `claude-code`) can't misroute the reduce call to another (ollama).
+- `telemetry.*` keys are snake_case (`prometheus_url`, `alertmanager_url`, `api_url`)
+  and default to host-local URLs when unset.
 - There is currently no `agent.timeout_ms`, `budget.*`, or `logging.*` config —
   an overall per-run wall-clock budget and a Tier-1 reduce token/retry budget are
   planned alongside the Phase B.1 Sandbox port's resource limits (ADR-0020), not
