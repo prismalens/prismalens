@@ -1,0 +1,5 @@
+{
+	"name": "incident-response-plugin",
+	"description": "Vendored Anthropic incident-response skill, loaded identically into both A/B arms of the PrismaLens Phase-2 paired eval (#68 Half A). Source: anthropics/knowledge-work-plugins (Apache-2.0).",
+	"version": "1.0.0"
+}
