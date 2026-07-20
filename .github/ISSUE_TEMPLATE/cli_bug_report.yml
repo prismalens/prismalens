@@ -55,3 +55,10 @@ body:
       label: prismalens.config.yaml (optional)
       description: Your config with anything sensitive removed, if the bug involves configuration.
       render: yaml
+  - type: textarea
+    id: docs-impact
+    attributes:
+      label: Docs impact (optional)
+      description: If fixing this also requires a docs correction, note which surface.
+    validations:
+      required: false

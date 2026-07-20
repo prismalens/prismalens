@@ -50,3 +50,10 @@ body:
       render: shell
     validations:
       required: false
+  - type: textarea
+    id: docs-impact
+    attributes:
+      label: Docs impact (optional)
+      description: If fixing this also requires a docs correction, note which surface.
+    validations:
+      required: false

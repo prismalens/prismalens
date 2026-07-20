@@ -5,15 +5,19 @@ reviews:
   path_instructions:
     - path: "packages/cli/src/**"
       instructions: >-
-        This is the published `prismalens` CLI package. If the diff adds or
-        changes a command, a flag, or the config schema, flag the PR when it is
-        missing either a matching docs update (README.md or docs/) or a
-        changeset under .changeset/. Both are required for user-facing changes
-        to a published package.
+        This is the published `prismalens` CLI package. If this PR changes a CLI verb, flag, env var, config key, task name, file layout, prompt surface, canonical event, or operator workflow, it must also update the RELEVANT documentation surface that describes that behavior — an unrelated docs/ or README change does not satisfy this. If the relevant surface is not updated, flag it as a documentation gap and name the specific stale surface. Reference surfaces: `packages/cli/README.md`, `packages/api/README.md`, `packages/@prismalens/contracts/README.md`, `docs/`.
     - path: "packages/@prismalens/engine/src/**"
       instructions: >-
-        This is the published `@prismalens/engine` package. If the diff adds or
-        changes a command, a flag, or the config schema, flag the PR when it is
-        missing either a matching docs update (README.md or docs/) or a
-        changeset under .changeset/. Both are required for user-facing changes
-        to a published package.
+        This is the published `@prismalens/engine` package. If this PR changes a CLI verb, flag, env var, config key, task name, file layout, prompt surface, canonical event, or operator workflow, it must also update the RELEVANT documentation surface that describes that behavior — an unrelated docs/ or README change does not satisfy this. If the relevant surface is not updated, flag it as a documentation gap and name the specific stale surface. Reference surfaces: `packages/cli/README.md`, `packages/api/README.md`, `packages/@prismalens/contracts/README.md`, `docs/`. Repo invariants: the engine is agent/harness-agnostic (no harness-specific logic outside the harness registry); the engine takes a host-assembled InvestigationContext (it never fetches its own inputs); ordered-evidence epistemics — no numeric confidence scores anywhere in contracts or UI copy; the engine is a library — no protocol/transport/concurrency assumptions in engine core.
+    - path: "packages/@prismalens/contracts/src/**"
+      instructions: >-
+        This is the published `@prismalens/contracts` package. If this PR changes a CLI verb, flag, env var, config key, task name, file layout, prompt surface, canonical event, or operator workflow, it must also update the RELEVANT documentation surface that describes that behavior — an unrelated docs/ or README change does not satisfy this. If the relevant surface is not updated, flag it as a documentation gap and name the specific stale surface. Reference surfaces: `packages/cli/README.md`, `packages/api/README.md`, `packages/@prismalens/contracts/README.md`, `docs/`. Repo invariant: ordered-evidence epistemics — no numeric confidence scores anywhere in contracts.
+    - path: "packages/api/src/**"
+      instructions: >-
+        This is the published `prismalens` API package. If this PR changes a CLI verb, flag, env var, config key, task name, file layout, prompt surface, canonical event, or operator workflow, it must also update the RELEVANT documentation surface that describes that behavior — an unrelated docs/ or README change does not satisfy this. If the relevant surface is not updated, flag it as a documentation gap and name the specific stale surface. Reference surfaces: `packages/cli/README.md`, `packages/api/README.md`, `packages/@prismalens/contracts/README.md`, `docs/`.
+    - path: "packages/frontend/src/**"
+      instructions: >-
+        This is the `prismalens` frontend package. If this PR changes a CLI verb, flag, env var, config key, task name, file layout, prompt surface, canonical event, or operator workflow, it must also update the RELEVANT documentation surface that describes that behavior — an unrelated docs/ or README change does not satisfy this. If the relevant surface is not updated, flag it as a documentation gap and name the specific stale surface. Reference surfaces: `packages/cli/README.md`, `packages/api/README.md`, `packages/@prismalens/contracts/README.md`, `docs/`. Repo invariant: ordered-evidence epistemics — no numeric confidence scores anywhere in UI copy.
+    - path: "packages/worker/src/**"
+      instructions: >-
+        This is the `prismalens` worker package. If this PR changes a CLI verb, flag, env var, config key, task name, file layout, prompt surface, canonical event, or operator workflow, it must also update the RELEVANT documentation surface that describes that behavior — an unrelated docs/ or README change does not satisfy this. If the relevant surface is not updated, flag it as a documentation gap and name the specific stale surface. Reference surfaces: `packages/cli/README.md`, `packages/api/README.md`, `packages/@prismalens/contracts/README.md`, `docs/`.
