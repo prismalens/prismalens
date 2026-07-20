@@ -79,6 +79,8 @@ capture's `score` field stays `{ score: null, note: ... }` via the default
 (report, cost, tokens, events) is still preserved — only the score degrades to a
 `"oracle failed: ..."` note.
 
+**Interim Keyword Oracle**: As a temporary bridge until the sreforge #56 LLM judge is wired, `interim-oracle.ts` provides a path-A keyword scorer that gives an early directional number. It reuses the exact substring-match logic from the scorecard to grade the `prismalens` arm's structured report, and applies the same raw string matching to the `raw` arm's terminal text (to avoid injecting any product structure into the baseline). Every score it produces clearly notes its interim status. **This oracle is quarantined and strictly throwaway**; it will be deleted once #56 lands.
+
 There's no CI entry point — this is a live, opt-in harness driven by
 `sreforge-phase2-ab.test.ts`, gated on `OLLAMA_API_KEY`, a `SREFORGE_SUBSTRATE`
 checkout, and Claude Code auth, so it skips (never fails) without that env:
