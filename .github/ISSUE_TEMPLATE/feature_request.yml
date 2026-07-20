@@ -32,3 +32,10 @@ body:
       options:
         - label: This fits prismalens's scope (local-first, evidence-linked incident investigation).
           required: false
+  - type: textarea
+    id: docs-impact
+    attributes:
+      label: Docs impact
+      description: Which doc surfaces will this touch (specific files/sections)? 'none' must be justified.
+    validations:
+      required: true
