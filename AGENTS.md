@@ -35,3 +35,7 @@ specific ADR section(s) it bears on** (and those ADRs' `## Relations`),
 **Commit hygiene:** mage never commits for you. It suggests `git` commands; you
 run them.
 <!-- END mage -->
+
+## Implementation specs must declare docs impact
+
+Every implementation spec handed to a coding agent must name a **Docs surfaces** deliverable: the specific files (README.md section, docs/ page, CLI --help text, mage note) the change is expected to update — or state explicitly "none affected because …". A spec without either is incomplete; do not start implementation until it's added.
