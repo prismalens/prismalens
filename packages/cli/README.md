@@ -97,11 +97,13 @@ binary and an LLM credential are present.
 ```
 prismalens <command> [flags]      # alias: pl
 
-  investigate   Run a read-only root-cause investigation of a firing alert.
+  investigate   Run a root-cause investigation of a firing alert.
   listen        Start a token-authed local HTTP listener for Alertmanager webhooks.
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
   doctor        Preflight-check the investigation environment.
   init          Scaffold a prismalens.config.yaml in the current directory.
+  status        List past runs, filter running/done/errored/suppressed.
+  report        Render a stored run by ID.
   auth          Manage stored BYO-key credentials for providers.
 ```
 
@@ -125,6 +127,10 @@ The seed alert comes from **one of**:
 | `--model <id>` | Override `agent.model` — a bare model id, e.g. `gpt-oss:120b`. |
 | `--max-turns <n>` | Per-run turn ceiling for the default harness. |
 | `--harness <name>` | Tier-2 backend: `deepagents` \| `claude-code` \| `codex`. Defaults to `agent.default`. |
+| `--mode <name>` | Permission posture the harness runs under (read-only\|supervised\|auto\|dangerous). |
+| `--sandbox <name>` | Isolation boundary the harness runs in: process, srt, or auto. |
+| `--service <name>` | Select the service context by name from `services` in config. |
+| `--dangerously-skip-permissions` | Alias for --mode dangerous. |
 | `--json` | Print the `InvestigationReport` as JSON to stdout (suppresses the human renderer; implies quiet). |
 | `--output <file>` | Also write the `InvestigationReport` JSON to this file. |
 | `--quiet` | Suppress progress + the human renderer (errors still go to stderr). |
@@ -141,8 +147,10 @@ A `FiringAlert` is `{ alertname, severity, labels, annotations, startsAt }`.
 Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).
 
 ```bash
-PRISMALENS_LISTEN_TOKEN=xyz pl listen --config my-stack.yaml
+PRISMALENS_LISTEN_TOKEN=xyz pl listen --host 127.0.0.1 --config my-stack.yaml
 ```
+
+Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
 
 ### `serve`
 
@@ -228,7 +236,7 @@ stdout).
 --> {"jsonrpc":"2.0","id":1,"method":"initialize"}
 <-- {"jsonrpc":"2.0","id":1,"result":{
       "protocolVersion": 1,
-      "serverInfo": { "name": "prismalens", "version": "0.0.1" }
+      "serverInfo": { "name": "prismalens", "version": "0.4.0" }
     }}
 ```
 
@@ -257,14 +265,14 @@ event), then **resolves the request** with `{ runId, report }`:
 // zero or more notifications, in order, as the supervisor streams:
 <-- {"jsonrpc":"2.0","method":"investigate/event",
      "params":{"runId":"<uuid>","event":{ /* CanonicalEvent */ }}}
-// ... agent_step, tool_result, branch_done, (error), then the terminal report event ...
+// ... agent_step, tool_result, branch_done, (error), llm_call, then the terminal report event ...
 
 // finally, the request resolves:
 <-- {"jsonrpc":"2.0","id":2,"result":{"runId":"<uuid>","report":{ /* InvestigationReport */ }}}
 ```
 
 `CanonicalEvent.kind` is one of `agent_step` | `tool_result` | `branch_done` |
-`error` | `report`. Requests are fire-and-forget on the wire: multiple may run
+`error` | `report` | `llm_call` (carries provider usage capture and latency data). Requests are fire-and-forget on the wire: multiple may run
 concurrently and interleave their notifications — each notification carries its
 `runId` so a driver can demultiplex.
 
@@ -303,7 +311,7 @@ var is an error).
 ```yaml
 # Tier-2 harness backend the supervisor rents (ADR-0008).
 agent:
-  default: deepagents            # deepagents | claude-code | codex
+  default: claude-code           # deepagents | claude-code | codex
   # model: gpt-oss:120b          # bare id — the harness applies its own provider
                                  # prefix; omit to let the harness default
   sandbox: auto                  # auto | process | srt — isolation boundary (ADR-0020).
@@ -321,6 +329,10 @@ telemetry:
 # Where runs, events, and reports are stored.
 workspace:
   dir: ~/.prismalens
+
+# Token-authed HTTP listener for Alertmanager webhooks.
+listen:
+  host: 127.0.0.1                # opt into 0.0.0.0 for container network exposure
 
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
 # rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over

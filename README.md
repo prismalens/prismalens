@@ -12,7 +12,7 @@ backed by evidence it actually gathered, with no fake numeric confidence
 scores. It's open source (Apache-2.0), local-first, and BYO-key — no
 PrismaLens account, no subscription.
 
-> **Status: v0.0.x, CLI-first launch.** The `prismalens` CLI is the released
+> **Status: v0.4.0, CLI-first launch.** The `prismalens` CLI is the released
 > surface today. The self-hosted server in this monorepo (web UI, webhook
 > alert intake, team features) is still in development and not part of the
 > current release — these packages exist here but aren't shipped yet.
