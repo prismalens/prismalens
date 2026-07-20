@@ -14,6 +14,7 @@ Single Source of Truth (SSOT) for all business domain types: Zod enum schemas, e
 
 - **Domain enums**: `Severity`, `AlertStatus`, `IncidentStatus`, `AgentType`, etc.
 - **Entity schemas**: `AlertSchema`, `IncidentSchema`, `ServiceSchema`, etc.
+- **Canonical events**: The `CanonicalEvent.kind` enumeration (`agent_step`, `tool_result`, `branch_done`, `error`, `report`, `llm_call`) and their payload shapes (including usage capture). See the [CLI README](../cli/README.md#mode-2--driven-by-an-app-prismalens-serve) for wire format details.
 - **API route contracts**: oRPC contract definitions for each endpoint group
 - **Utility schemas**: pagination, date strings, JSON fields
 
