@@ -212,7 +212,7 @@ function resolveLiveSynthConfig(): SynthesisModelConfig | null {
 		process.env.PRISMALENS_EVAL_MODEL ?? getDefaultModel(providerId);
 	if (!model) return null;
 
-	return { providerId, model, apiKey, baseURL };
+	return { providerId, model, apiKey, baseURL, configured: Boolean(apiKey) };
 }
 
 function printScorecard(rows: Array<{ fixture: string } & ScoreResult>): void {
