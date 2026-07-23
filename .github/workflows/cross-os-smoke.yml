@@ -106,7 +106,7 @@ jobs:
         uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -123,7 +123,7 @@ jobs:
           (cd packages/cli && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
           ls -l /tmp/tarballs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-tarballs-cross-os-smoke
           path: /tmp/tarballs/*.tgz
@@ -161,13 +161,13 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
 
       - name: Download tarballs
         if: env.MODE == 'tarball'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: npm-tarballs-cross-os-smoke
           path: tarballs
