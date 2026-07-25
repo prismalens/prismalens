@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import { singleAlertContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { type ArmOutcome, runPairedAB } from "./ab-runner.js";
+import { makeKeywordOracle } from "./interim-oracle.js";
 import { fetchFiringAlerts } from "../src/supervisor/alert-source.js";
 
 const KEY = process.env.OLLAMA_API_KEY;
@@ -115,7 +116,7 @@ describe.skipIf(!enabled)(
 					model: MODEL,
 					configured: true,
 				},
-				// oracle omitted → unscored (Half B / sreforge #39 wires the real one).
+				oracle: makeKeywordOracle(["pool_size", "connection pool", "sqlalchemy_engine_options"]),
 			});
 
 			console.log("\n================ PAIRED A/B CAPTURE ================");
