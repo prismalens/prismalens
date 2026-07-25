@@ -185,3 +185,35 @@ jobs:
       # SPDX headers on first-party source; policy in CONTRIBUTING.md.
       - name: SPDX header check
         run: pnpm spdx:check
+
+  # The single aggregating required status check. The branch ruleset requires
+  # THIS context instead of enumerating every job above, so adding, renaming, or
+  # re-sharding a job (or a matrix leg) never rots the ruleset again.
+  #
+  # `if: always()` is load-bearing. Without it, a failed/skipped dependency would
+  # merely SKIP this job — and a skipped required check never reports a
+  # conclusion, so the gate would pass VACUOUSLY and let a broken PR merge. So it
+  # always runs, and treats anything other than `success` on any needed job as
+  # red. Matrix jobs (`test`, `packed-smoke`) contribute ONE aggregated result
+  # each — `failure` if any cell failed — so every leg is still covered.
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    needs: [build, changesets, test, pack, packed-smoke, lint]
+    if: always()
+    steps:
+      - name: Assert every required job succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          echo "Needed job results:"
+          echo "$NEEDS_JSON"
+          bad=$(echo "$NEEDS_JSON" | jq -r '
+            to_entries
+            | map(select(.value.result != "success") | "\(.key)=\(.value.result)")
+            | join(", ")')
+          if [ -n "$bad" ]; then
+            echo "::error::CI gate is red — these jobs did not succeed: $bad"
+            exit 1
+          fi
+          echo "All required jobs succeeded."
