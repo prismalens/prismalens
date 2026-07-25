@@ -96,6 +96,26 @@ It writes the side-by-side capture (both arms + shared incident metadata) to
 "PrismaLens vs raw agent" table draws from — and logs a console summary with the
 per-arm cost/tokens/time and the prismalens-minus-raw delta.
 
+## Half B — rca-judge oracle
+
+`rca-judge-oracle.ts` (sreforge #39 Half B) wires sreforge's `rca-judge` into the paired A/B eval runner through the `ScoringOracle` seam. It invokes sreforge's judge tool (`tools/rca-judge/judge.mjs --judge`) in a temporary directory, passing the arm's terminal diagnosis (`rawText`) as `rca.md`.
+
+It is armed by three environment variables:
+
+- `SREFORGE_REPO`: absolute path to the local `sreforge` repository checkout. The judge runs with this as its working directory.
+- `SREFORGE_SCENARIO_DIR`: the incident scenario directory — either absolute, or relative to `SREFORGE_REPO` (e.g. `use-cases/booklogr/scenarios/…`). The judge resolves `<scenario>/verify/oracle.md` against its own cwd, and exits 2 for the whole run if that file is not found.
+- `RCA_JUDGE_MODEL`: model name passed to the judge (required by `--judge` mode).
+
+The judge tool also reads optional environment variables:
+
+- `OLLAMA_HOST` (default `https://ollama.com`)
+- `OLLAMA_API_KEY`
+- `RCA_JUDGE_TIMEOUT_MS` (internal judge model timeout, default `120000`)
+
+Because `--judge` mode operates on a best-effort basis, if the judge model is unreachable or fails to parse after retries, the judge exits 0 without writing a `diagnosis.json` file. An absent score is treated as a normal state (`score: null`), recording the judge's stderr in the score's note. When `diagnosis.json` (`diagnosis.v1`) is produced, the score, rationale, and full structured axes (including `false_leads`) are captured into `ArmScore`.
+
+Success is keyed on the **file**, never on the exit code: a valid `diagnosis.json` is honoured even if the judge exits non-zero (never discard a paid-for LLM verdict), and exit 0 on its own is not success. A `score` outside `[0,1]` is rejected as an invalid diagnosis rather than silently skewing the capture. The oracle never throws — every path returns an `ArmScore` — and the temp dir is always removed.
+
 ## Adding a fixture
 
 Drop a new `NN-name.json` in `fixtures/` shaped like the others:

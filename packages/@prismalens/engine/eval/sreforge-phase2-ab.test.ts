@@ -30,6 +30,7 @@ import { singleAlertContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { type ArmOutcome, runPairedAB } from "./ab-runner.js";
 import { makeKeywordOracle } from "./interim-oracle.js";
+import { rcaJudgeOracle } from "./rca-judge-oracle.js";
 import { fetchFiringAlerts } from "../src/supervisor/alert-source.js";
 
 const KEY = process.env.OLLAMA_API_KEY;
@@ -42,6 +43,9 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5";
 // no default — the test only arms on machines that opt in via env.
 const SUBSTRATE = process.env.SREFORGE_SUBSTRATE ?? "";
 const CLAUDE_CREDS = join(homedir(), ".claude", ".credentials.json");
+
+const SREFORGE_REPO = process.env.SREFORGE_REPO;
+const SREFORGE_SCENARIO_DIR = process.env.SREFORGE_SCENARIO_DIR;
 
 // sreforge's fixed compose host ports; overridable for remapped stacks.
 const TELEMETRY = {
@@ -116,7 +120,17 @@ describe.skipIf(!enabled)(
 					model: MODEL,
 					configured: true,
 				},
-				oracle: makeKeywordOracle(["pool_size", "connection pool", "sqlalchemy_engine_options"]),
+				oracle:
+					SREFORGE_REPO && SREFORGE_SCENARIO_DIR && process.env.RCA_JUDGE_MODEL
+						? rcaJudgeOracle({
+								sreforgeRepo: SREFORGE_REPO,
+								scenarioDir: SREFORGE_SCENARIO_DIR,
+							})
+						: makeKeywordOracle([
+								"pool_size",
+								"connection pool",
+								"sqlalchemy_engine_options",
+							]),
 			});
 
 			console.log("\n================ PAIRED A/B CAPTURE ================");
