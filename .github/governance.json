@@ -84,17 +84,9 @@
 					"strict_required_status_checks_policy": true,
 					"do_not_enforce_on_create": false,
 					"required_status_checks": [
+						{ "context": "CI gate" },
 						{ "context": "Validate PR title (conventional commits)" },
-						{ "context": "Build & typecheck" },
-						{ "context": "Validate changesets" },
-						{ "context": "Lint (Biome)" },
-						{ "context": "Test (ubuntu-latest, Node 22)" },
-						{ "context": "Test (ubuntu-latest, Node 24)" },
-						{ "context": "Test (macos-latest, Node 22)" },
-						{ "context": "Test (macos-latest, Node 24)" },
-						{ "context": "Pack npm tarball" },
-						{ "context": "Packed smoke (node:22-slim)" },
-						{ "context": "Packed smoke (node:24-slim)" }
+						{ "context": "CodeRabbit", "integration_id": 347564 }
 					]
 				}
 			}
