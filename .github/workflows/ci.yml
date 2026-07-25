@@ -9,7 +9,9 @@
 # and `pnpm test` each self-order from a clean checkout — no manual prerequisite
 # steps needed here. Lint (Biome) only reads source, so it needs neither.
 #
-# All three jobs are wired as REQUIRED status checks in .github/governance.json.
+# Only the aggregating `CI gate` job below is wired as a REQUIRED status check in
+# .github/governance.json. It fails unless every job it `needs` succeeded, so the
+# individual jobs are enforced through it rather than being required one by one.
 name: CI
 
 on:
@@ -190,12 +192,14 @@ jobs:
   # THIS context instead of enumerating every job above, so adding, renaming, or
   # re-sharding a job (or a matrix leg) never rots the ruleset again.
   #
-  # `if: always()` is load-bearing. Without it, a failed/skipped dependency would
-  # merely SKIP this job — and a skipped required check never reports a
-  # conclusion, so the gate would pass VACUOUSLY and let a broken PR merge. So it
-  # always runs, and treats anything other than `success` on any needed job as
-  # red. Matrix jobs (`test`, `packed-smoke`) contribute ONE aggregated result
-  # each — `failure` if any cell failed — so every leg is still covered.
+  # `if: always()` is load-bearing. Without it, a failed or skipped dependency
+  # would merely SKIP this job — and GitHub counts a SKIPPED required check as
+  # SUCCESS, so the gate would pass VACUOUSLY and let a broken PR merge. `always()`
+  # alone is not enough either: it only guarantees the job RUNS, not that it
+  # notices a red dependency. Hence the explicit assertion below, which treats
+  # anything other than `success` on any needed job as red. Matrix jobs (`test`,
+  # `packed-smoke`) contribute ONE aggregated result each — `failure` if any cell
+  # failed — so every leg is still covered.
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest

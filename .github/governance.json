@@ -55,7 +55,7 @@
 		}
 	],
 	"ruleset": {
-		"name": "trunk protection",
+		"name": "main protection",
 		"target": "branch",
 		"enforcement": "active",
 		"conditions": {
@@ -74,7 +74,7 @@
 					"dismiss_stale_reviews_on_push": false,
 					"require_code_owner_review": false,
 					"require_last_push_approval": false,
-					"required_review_thread_resolution": false,
+					"required_review_thread_resolution": true,
 					"allowed_merge_methods": ["squash", "merge", "rebase"]
 				}
 			},
