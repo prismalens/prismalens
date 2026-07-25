@@ -1,0 +1,45 @@
+# Auto-merge Dependabot PRs once all required status checks pass.
+#
+# Uses only the built-in GITHUB_TOKEN — no secret, no API key, nothing that
+# depends on a laptop being on. Runs entirely on GitHub's hosted runners.
+#
+# Policy:
+#   * npm patch + minor    -> auto-merge. These arrive as the grouped
+#     dev-minor-patch / prod-minor-patch PRs; majors are excluded from those
+#     groups in dependabot.yml and open individually, so they are NOT matched
+#     here and wait for a human.
+#   * github-actions bumps -> auto-merge (low risk, usually a pinned-tag move).
+#
+# `gh pr merge --auto` only QUEUES the merge; GitHub completes it after every
+# required check on the base branch is green. Prerequisites (one-time, per repo):
+#   - "Allow auto-merge" enabled in Settings -> General -> Pull Requests
+#   - required approvals = 0 on main (the CI gate is the guard, not a human)
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        # Pinned to a full commit SHA: this workflow holds contents:write and can
+        # merge, so a moved tag must not be able to change what runs here.
+        # Dependabot bumps the pin via the github-actions ecosystem.
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Queue auto-merge for safe updates
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          steps.meta.outputs.package-ecosystem == 'github_actions'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
