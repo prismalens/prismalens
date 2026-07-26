@@ -80,6 +80,22 @@ function slug(s: string): string {
 	);
 }
 
+/**
+ * Where this run's capture lands. `CAMPAIGN_RUN_ID` separates the repeated cold
+ * runs of one scenario — without it every run of a scenario writes the same
+ * path. The numeric suffix is the backstop for a forgotten or reused id: a paid
+ * run is never silently clobbered.
+ */
+function capturePath(scenario: string): string {
+	const runId = process.env.CAMPAIGN_RUN_ID?.trim();
+	const base = `sreforge-phase2-ab-${scenario}${runId ? `-${slug(runId)}` : ""}`;
+	let candidate = join(CAPTURES_DIR, `${base}.json`);
+	for (let n = 2; existsSync(candidate); n++) {
+		candidate = join(CAPTURES_DIR, `${base}-${n}.json`);
+	}
+	return candidate;
+}
+
 function armLine(label: string, outcome: ArmOutcome): string {
 	if (!outcome.ok) return `${label.padEnd(12)} FAILED: ${outcome.error}`;
 	const t = outcome.tokens;
@@ -147,10 +163,7 @@ describe.skipIf(!enabled)(
 			console.log("===================================================\n");
 
 			mkdirSync(CAPTURES_DIR, { recursive: true });
-			const outPath = join(
-				CAPTURES_DIR,
-				`sreforge-phase2-ab-${scenario}.json`,
-			);
+			const outPath = capturePath(scenario);
 			writeFileSync(outPath, JSON.stringify(capture, null, 2));
 			console.log(`capture written to ${outPath}\n`);
 
