@@ -11,7 +11,7 @@ catalog:
   ai: ^7.0.37
   better-auth: ~1.6.25
   bullmq: ^5.81.2
-  dotenv: ^16.6.1
+  dotenv: ^17.4.2
   eslint: ^10.8.0
   ioredis: ^5.11.1
   rxjs: ^7.8.2
