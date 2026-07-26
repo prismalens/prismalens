@@ -194,7 +194,10 @@ function optionalWithDefaults<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 			const res = schema.safeParse(val ?? {});
 			if (!res.success) {
 				for (const issue of res.error.issues) {
-					ctx.addIssue(issue);
+					// Spread into a fresh object literal: zod 4's issue types are interfaces,
+					// which get no implicit index signature, but `addIssue` accepts a type
+					// carrying `[x: string]: unknown`. An anonymous object literal does.
+					ctx.addIssue({ ...issue });
 				}
 				return z.NEVER as z.output<T>;
 			}

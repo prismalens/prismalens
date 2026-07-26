@@ -27,7 +27,7 @@ export const CreateEventSchema = z.object({
 	source: z.string(),
 	sourceEventId: z.string().optional(),
 	eventType: z.string(),
-	payload: z.record(z.unknown()),
+	payload: z.record(z.string(), z.unknown()),
 	eventTime: z.string().datetime().optional(),
 });
 

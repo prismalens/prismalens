@@ -30,7 +30,7 @@ export const AlertSchema = z.object({
 	serviceId: z.string().uuid().nullable(),
 	incidentId: z.string().uuid().nullable(),
 	tags: z.array(z.string()).nullable(),
-	labels: z.record(z.string()).nullable(),
+	labels: z.record(z.string(), z.string()).nullable(),
 	triggeredAt: DateStringSchema,
 	acknowledgedAt: DateStringSchema.nullable(),
 	resolvedAt: DateStringSchema.nullable(),
@@ -50,8 +50,8 @@ export const CreateAlertSchema = z.object({
 	sourceUrl: z.string().optional(),
 	serviceId: z.string().uuid().optional(),
 	tags: z.array(z.string()).optional(),
-	labels: z.record(z.string()).optional(),
-	rawPayload: z.record(z.unknown()).optional(),
+	labels: z.record(z.string(), z.string()).optional(),
+	rawPayload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const UpdateAlertSchema = z.object({
@@ -121,8 +121,8 @@ export const CorrelateAlertResponseSchema = z.object({
 
 export const AlertStatsSchema = z.object({
 	total: z.number().int(),
-	byStatus: z.record(z.number().int()),
-	bySeverity: z.record(z.number().int()),
+	byStatus: z.record(z.string(), z.number().int()),
+	bySeverity: z.record(z.string(), z.number().int()),
 });
 
 // =============================================================================

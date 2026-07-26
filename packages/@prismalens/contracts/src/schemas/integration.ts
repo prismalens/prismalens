@@ -181,7 +181,7 @@ export const ServiceIntegrationSchema = z.object({
 	serviceId: z.string().uuid(),
 	connectionId: z.string().uuid(),
 	priority: z.number().int().default(0),
-	config: z.record(z.unknown()).nullable(),
+	config: z.record(z.string(), z.unknown()).nullable(),
 	isEnabled: z.boolean().default(true),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
@@ -191,13 +191,13 @@ export const CreateServiceIntegrationSchema = z.object({
 	serviceId: z.string().uuid(),
 	connectionId: z.string().uuid(),
 	priority: z.number().int().optional(),
-	config: z.record(z.unknown()).optional(),
+	config: z.record(z.string(), z.unknown()).optional(),
 	isEnabled: z.boolean().optional(),
 });
 
 export const UpdateServiceIntegrationSchema = z.object({
 	priority: z.number().int().optional(),
-	config: z.record(z.unknown()).optional(),
+	config: z.record(z.string(), z.unknown()).optional(),
 	isEnabled: z.boolean().optional(),
 });
 
@@ -211,9 +211,9 @@ export const ServiceIntegrationWithStatusSchema = z.object({
 	isGlobal: z.boolean(),
 	hasOverride: z.boolean(),
 	overrideId: z.string().uuid().optional(),
-	globalConfig: z.record(z.unknown()).nullable(),
-	serviceConfig: z.record(z.unknown()).nullable(),
-	effectiveConfig: z.record(z.unknown()).nullable(),
+	globalConfig: z.record(z.string(), z.unknown()).nullable(),
+	serviceConfig: z.record(z.string(), z.unknown()).nullable(),
+	effectiveConfig: z.record(z.string(), z.unknown()).nullable(),
 });
 
 // =============================================================================
@@ -230,7 +230,7 @@ export const GitHubInstallationSchema = z.object({
 	}),
 	appId: z.number(),
 	targetType: z.string(),
-	permissions: z.record(z.string()),
+	permissions: z.record(z.string(), z.string()),
 	events: z.array(z.string()),
 	repositorySelection: z.string(),
 });
@@ -238,7 +238,7 @@ export const GitHubInstallationSchema = z.object({
 export const ConnectInstallationSchema = z.object({
 	installationId: z.string(),
 	organization: z.string().optional(),
-	permissionOverrides: z.record(z.string()).optional(),
+	permissionOverrides: z.record(z.string(), z.string()).optional(),
 });
 
 // =============================================================================

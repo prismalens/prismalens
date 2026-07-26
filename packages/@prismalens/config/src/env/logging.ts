@@ -70,7 +70,7 @@ export const loggingSchema = z.object({
 	PRISMALENS_DB_LOGGING_ENABLED: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable database query logging for debugging. Default: false"),
 	PRISMALENS_DB_LOGGING_MAX_EXECUTION_TIME: z.coerce
 		.number()
@@ -84,7 +84,7 @@ export const loggingSchema = z.object({
 	PRISMALENS_LOG_SAMPLING_ENABLED: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("true")
+		.prefault("true")
 		.describe(
 			"Enable tail sampling for wide events. When enabled, only errors, slow requests, and sampled normal traffic are retained. Default: true",
 		),
@@ -108,7 +108,7 @@ export const loggingSchema = z.object({
 	PRISMALENS_LOG_INCLUDE_STACK_TRACE: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("true")
+		.prefault("true")
 		.describe(
 			"Include stack traces in error logs. Disable for reduced log size in production. Default: true",
 		),

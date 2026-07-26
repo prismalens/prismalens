@@ -67,7 +67,7 @@ export type LlmCredentialStatus = z.infer<typeof LlmCredentialStatusSchema>;
  * Full credential status response (all providers)
  */
 export const LlmCredentialStatusResponseSchema = z.object({
-	providers: z.record(llmProviderIdSchema, LlmCredentialStatusSchema),
+	providers: z.partialRecord(llmProviderIdSchema, LlmCredentialStatusSchema),
 });
 export type LlmCredentialStatusResponse = z.infer<
 	typeof LlmCredentialStatusResponseSchema
@@ -260,7 +260,7 @@ export const LlmProviderConfigSchema = z.object({
 	maxTokens: z.number().int().min(1).optional(),
 	baseUrl: z.string().optional(), // Ollama only
 	// Advanced options as JSON - provider-specific fields not covered by common options
-	advancedOptions: z.record(z.unknown()).optional(),
+	advancedOptions: z.record(z.string(), z.unknown()).optional(),
 });
 export type LlmProviderConfig = z.infer<typeof LlmProviderConfigSchema>;
 
@@ -270,7 +270,7 @@ export type LlmProviderConfig = z.infer<typeof LlmProviderConfigSchema>;
 export const AgentOverrideConfigSchema = z.object({
 	model: z.string().optional(),
 	temperature: z.number().min(0).max(2).optional(),
-	advancedOptions: z.record(z.unknown()).optional(),
+	advancedOptions: z.record(z.string(), z.unknown()).optional(),
 });
 export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
 
@@ -279,8 +279,8 @@ export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
  */
 export const LlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.nullable(),
-	providers: z.record(LlmProviderIdSchema, LlmProviderConfigSchema),
-	agentOverrides: z.record(AgentIdSchema, AgentOverrideConfigSchema).optional(),
+	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema),
+	agentOverrides: z.partialRecord(AgentIdSchema, AgentOverrideConfigSchema).optional(),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
 
@@ -298,7 +298,7 @@ export type LlmProviderEnvStatus = z.infer<typeof LlmProviderEnvStatusSchema>;
  * Full environment status response
  */
 export const LlmEnvStatusResponseSchema = z.object({
-	providers: z.record(LlmProviderIdSchema, LlmProviderEnvStatusSchema),
+	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderEnvStatusSchema),
 	activeEnvProvider: z.string().nullable(), // From LLM_PROVIDER env var
 });
 export type LlmEnvStatusResponse = z.infer<typeof LlmEnvStatusResponseSchema>;
@@ -311,7 +311,7 @@ export const UpdateLlmSettingsSchema = z.object({
 	providers: z
 		.record(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
 		.optional(),
-	agentOverrides: z.record(AgentIdSchema, AgentOverrideConfigSchema).optional(),
+	agentOverrides: z.partialRecord(AgentIdSchema, AgentOverrideConfigSchema).optional(),
 });
 export type UpdateLlmSettings = z.infer<typeof UpdateLlmSettingsSchema>;
 
@@ -390,7 +390,7 @@ export type McpServerSettings = z.infer<typeof McpServerSettingsSchema>;
  * Full MCP settings structure stored in DB
  */
 export const McpSettingsSchema = z.object({
-	servers: z.record(McpServerIdSchema, McpServerSettingsSchema),
+	servers: z.partialRecord(McpServerIdSchema, McpServerSettingsSchema),
 });
 export type McpSettings = z.infer<typeof McpSettingsSchema>;
 
