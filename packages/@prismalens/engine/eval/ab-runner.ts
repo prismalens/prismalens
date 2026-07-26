@@ -52,12 +52,16 @@ import type { SynthesisModelConfig } from "../src/supervisor/synthesize.js";
  * One arm's automated score. `score` is null until Half B (sreforge #39) wires the
  * diagnose/RCA oracle; `note` records why. Kept structurally minimal so the oracle can
  * later fill it (a numeric grade + a human note) without a capture-shape migration.
+ * `detail` holds the raw oracle output (e.g. diagnosis.v1 object) so verdict axes
+ * (especially false_leads) are preserved and not lost by flattening into a prose note.
  */
 export interface ArmScore {
 	/** The automated grade — null while unscored (Half A). */
 	score: number | null;
 	/** Human-readable provenance / TODO for the score. */
 	note: string;
+	/** Raw oracle detail (e.g. diagnosis.v1 object) to preserve verdict axes like false_leads. */
+	detail?: unknown;
 }
 
 /**
