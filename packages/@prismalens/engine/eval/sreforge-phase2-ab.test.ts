@@ -80,6 +80,30 @@ function slug(s: string): string {
 	);
 }
 
+type FiringAlert = { alertname: string };
+
+/**
+ * The alert both arms are briefed on.
+ *
+ * `INCIDENT_ALERTNAME` names it for a campaign, where investigating the wrong
+ * alert corrupts the batch silently. Unset, this falls back to the first firing
+ * alert, which is fine for an ad-hoc run and is what the suite did before.
+ */
+function pickIncidentAlert<T extends FiringAlert>(alerts: T[]): T {
+	const wanted = process.env.INCIDENT_ALERTNAME?.trim();
+	if (!wanted) return alerts[0];
+
+	const match = alerts.find((a) => a.alertname === wanted);
+	if (!match) {
+		throw new Error(
+			`INCIDENT_ALERTNAME=${wanted} is not firing — got [${alerts
+				.map((a) => a.alertname)
+				.join(", ")}]. Refusing to investigate a different alert.`,
+		);
+	}
+	return match;
+}
+
 /**
  * Writes the capture to a path nothing else holds, and returns it.
  * `CAMPAIGN_RUN_ID` separates the repeated cold runs of one scenario — without
@@ -129,8 +153,16 @@ describe.skipIf(!enabled)(
 				"no firing alert — run `pnpm forge arm booklogr` first",
 			).toBeGreaterThan(0);
 
-			const context = singleAlertContext(alerts[0], TELEMETRY);
-			const scenario = slug(alerts[0].alertname);
+			// Alertmanager order is not incident order. An armed stack also fires
+			// load-plane furniture (`EdgeClientRequestJitter`), and taking alerts[0]
+			// briefed both arms on the jitter alert while the judge went on scoring
+			// against the scenario's pool-exhaustion oracle — a guaranteed low score
+			// for the wrong reason, on both arms, that reads as "the agents failed".
+			// Name the incident alert explicitly for a campaign; fail loudly if the
+			// named one is not firing rather than silently investigating furniture.
+			const incident = pickIncidentAlert(alerts);
+			const context = singleAlertContext(incident, TELEMETRY);
+			const scenario = slug(incident.alertname);
 
 			const capture = await runPairedAB(context, {
 				cwd: SUBSTRATE,
