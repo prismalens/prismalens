@@ -325,6 +325,17 @@ export async function runPairedAB(
 		const alertSnapshot = await snapshot();
 		try {
 			const partial = await run();
+
+			// A harness that never reached a model produced no RCA — but it DID produce
+			// text (the error string), and an oracle will happily grade that text and
+			// bank a plausible low score. In a campaign record that is indistinguishable
+			// from "the agent tried and scored badly", which is the one failure mode that
+			// silently corrupts a whole batch. Fail the arm rather than score it.
+			const harnessError = harnessFailure(partial);
+			if (harnessError !== null) {
+				return { ok: false, arm, error: harnessError, alertSnapshot };
+			}
+
 			const withSnapshot: Omit<ArmCapture, "score"> = {
 				...partial,
 				alertSnapshot,
@@ -413,6 +424,26 @@ function lastAgentText(events: CanonicalEvent[]): string {
 		if (e.kind === "agent_step" && e.text.trim()) text = e.text.trim();
 	}
 	return text;
+}
+
+/**
+ * Names a harness failure — a run that emitted an `error` event without ever
+ * billing a token — or null when the arm genuinely ran.
+ *
+ * Zero tokens is the discriminator, not the error event alone: an agent that
+ * errors *after* working has still produced a scorable investigation, and
+ * discarding it would throw away a paid arm. An agent that errors having spent
+ * nothing never spoke to a model at all, and its "output" is the error string.
+ *
+ * Observed live 2026-07-26: an auth failure under `isolateSettings` returned
+ * `ok: true` with `rawText: "Not logged in · Please run /login"`, which the judge
+ * scored 0.2 and banked with a full axes breakdown.
+ */
+export function harnessFailure(run: ArmRun): string | null {
+	const failure = run.events.find((e) => e.kind === "error");
+	if (!failure) return null;
+	if (run.tokens.input + run.tokens.output > 0) return null;
+	return `harness never reached a model (0 tokens): ${failure.message}`;
 }
 
 /** Bridge an external AbortSignal to the runner's AbortController seam (arm a). */

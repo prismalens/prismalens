@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod, copyFile, mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 /**
  * Claude Code harness runner (Tier-2 deep path, ADR-0008). Drives the Claude Agent
@@ -29,6 +29,28 @@ import {
 import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
 import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 import { sandboxSpawnClaudeCodeProcess } from "./claude-code-sandbox-spawn.js";
+
+/**
+ * Carries the operator's Claude credentials into an isolated config dir.
+ *
+ * `isolateSettings` exists to keep host *configuration* — settings, hooks, plugins
+ * — out of a run. It does that by pointing `CLAUDE_CONFIG_DIR` at an empty temp
+ * dir, which also relocates where the CLI looks for `.credentials.json`. Identity
+ * is not configuration: without this, every isolated run on a subscription dies
+ * with `Not logged in · Please run /login` and never reaches a model.
+ *
+ * Absence is normal (API-key auth, or a keychain-backed platform), so a missing
+ * or unreadable file is not an error — the SDK resolves auth on its own.
+ */
+async function carryCredentialsInto(configDir: string): Promise<void> {
+	const target = join(configDir, ".credentials.json");
+	try {
+		await copyFile(join(homedir(), ".claude", ".credentials.json"), target);
+		await chmod(target, 0o600);
+	} catch {
+		// nothing to carry
+	}
+}
 
 export interface ClaudeCodeConfig {
 	/** Working directory the agent runs in (it reads the app source here). */
@@ -100,6 +122,7 @@ export async function* runClaudeCodeBranch(
 			// Note: Endpoint-managed policy settings are org-enforced by design — we do NOT attempt to bypass them.
 			// This isolates only the global user/host configuration (~/.claude.json).
 			configDir = await mkdtemp(join(tmpdir(), "claude-config-"));
+			await carryCredentialsInto(configDir);
 		}
 
 		const response = query({
