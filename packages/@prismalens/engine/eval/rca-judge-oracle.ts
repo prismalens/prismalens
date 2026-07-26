@@ -165,19 +165,47 @@ async function fileExists(path: string): Promise<boolean> {
 	}
 }
 
-function isDiagnosisV1(obj: unknown): obj is DiagnosisV1 {
-	if (typeof obj !== "object" || obj === null) return false;
+/**
+ * Names the FIRST field that fails `diagnosis.v1`, or null when the object is
+ * valid. A campaign debugging a null score has this note and nothing else, so a
+ * reason that points at the wrong field costs more than no reason at all.
+ */
+function diagnosisV1Reason(obj: unknown): string | null {
+	if (typeof obj !== "object" || obj === null) return "is not a JSON object";
 	const candidate = obj as Record<string, unknown>;
-	return (
-		candidate.schema_version === "diagnosis.v1" &&
-		typeof candidate.score === "number" &&
-		typeof candidate.rationale === "string" &&
-		(typeof candidate.rubric_version === "string" ||
-			typeof candidate.rubric_version === "number") &&
-		typeof candidate.judge_model === "string" &&
-		typeof candidate.axes === "object" &&
-		candidate.axes !== null
-	);
+
+	if (candidate.schema_version !== "diagnosis.v1") {
+		return typeof candidate.schema_version === "string"
+			? `schema_version mismatch: expected "diagnosis.v1", got "${candidate.schema_version}"`
+			: "schema_version is missing or not a string";
+	}
+	if (typeof candidate.score !== "number")
+		return "score is missing or not a number";
+	if (typeof candidate.rationale !== "string")
+		return "rationale is missing or not a string";
+	if (
+		typeof candidate.rubric_version !== "string" &&
+		typeof candidate.rubric_version !== "number"
+	)
+		return "rubric_version is missing or not a string or number";
+	if (typeof candidate.judge_model !== "string")
+		return "judge_model is missing or not a string";
+	if (typeof candidate.axes !== "object" || candidate.axes === null)
+		return "axes is missing or not an object";
+
+	// The verdict axes are the whole reason `detail` is preserved. A malformed
+	// `axes` wearing a valid schema_version must not reach a capture artifact.
+	const axes = candidate.axes as Record<string, unknown>;
+	for (const key of [
+		"root_cause_correct",
+		"evidence_grounded",
+		"false_leads",
+	] as const) {
+		if (typeof axes[key] !== "boolean")
+			return `axes.${key} is missing or not a boolean`;
+	}
+
+	return null;
 }
 
 /** Appends a stderr tail only when there is one — never emit a note ending in ": ". */
@@ -217,34 +245,26 @@ async function loadDiagnosis(diagPath: string): Promise<DiagnosisLoad> {
 		};
 	}
 
-	if (!isDiagnosisV1(obj)) {
-		if (
-			typeof obj === "object" &&
-			obj !== null &&
-			"schema_version" in obj &&
-			typeof (obj as { schema_version: unknown }).schema_version === "string"
-		) {
-			return {
-				kind: "invalid",
-				note: `rca-judge diagnosis.json schema_version mismatch: expected "diagnosis.v1", got "${(obj as { schema_version: string }).schema_version}"`,
-			};
-		}
-		return {
-			kind: "invalid",
-			note: "rca-judge diagnosis.json does not match diagnosis.v1 schema",
-		};
+	const reason = diagnosisV1Reason(obj);
+	if (reason !== null) {
+		return { kind: "invalid", note: `rca-judge diagnosis.json ${reason}` };
 	}
+	const diagnosis = obj as DiagnosisV1;
 
 	// diagnosis.v1 `score` is a weighted sum in [0,1]. A judge bug emitting e.g. 85 for
 	// 0.85 must NOT land silently in a capture artifact and skew a campaign's delta.
-	if (!Number.isFinite(obj.score) || obj.score < 0 || obj.score > 1) {
+	if (
+		!Number.isFinite(diagnosis.score) ||
+		diagnosis.score < 0 ||
+		diagnosis.score > 1
+	) {
 		return {
 			kind: "invalid",
-			note: `rca-judge diagnosis.json score out of range [0,1]: ${obj.score}`,
+			note: `rca-judge diagnosis.json score out of range [0,1]: ${diagnosis.score}`,
 		};
 	}
 
-	return { kind: "ok", diagnosis: obj };
+	return { kind: "ok", diagnosis };
 }
 
 export function rcaJudgeOracle(opts: RcaJudgeOracleOptions): ScoringOracle {

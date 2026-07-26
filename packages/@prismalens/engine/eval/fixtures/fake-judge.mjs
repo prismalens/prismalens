@@ -73,11 +73,16 @@ const diag = {
 	run_id: "test-run-123",
 	scenario: "test-scenario",
 	score: mode === "out_of_range" ? 85 : 0.8,
-	axes: {
-		root_cause_correct: true,
-		evidence_grounded: true,
-		false_leads: false,
-	},
+	// `bad_axes` wears a valid schema_version but a non-boolean verdict axis — the
+	// shape that would otherwise reach ArmScore.detail and a capture artifact.
+	axes:
+		mode === "bad_axes"
+			? { root_cause_correct: "yes", evidence_grounded: true }
+			: {
+					root_cause_correct: true,
+					evidence_grounded: true,
+					false_leads: false,
+				},
 	rationale: `Root cause correctly identified as pool size | rca: ${rcaText}`,
 	rubric_version: "1",
 	judge_model: "test-judge-model",

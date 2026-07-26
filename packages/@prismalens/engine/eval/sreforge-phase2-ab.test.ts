@@ -81,19 +81,28 @@ function slug(s: string): string {
 }
 
 /**
- * Where this run's capture lands. `CAMPAIGN_RUN_ID` separates the repeated cold
- * runs of one scenario — without it every run of a scenario writes the same
- * path. The numeric suffix is the backstop for a forgotten or reused id: a paid
- * run is never silently clobbered.
+ * Writes the capture to a path nothing else holds, and returns it.
+ * `CAMPAIGN_RUN_ID` separates the repeated cold runs of one scenario — without
+ * it every run of a scenario targets the same path. The `wx` flag makes the
+ * reservation atomic (`existsSync` then `writeFileSync` is not), so neither a
+ * forgotten id nor a second live runner can truncate a paid run's artifact.
  */
-function capturePath(scenario: string): string {
+function writeCapture(scenario: string, body: string): string {
 	const runId = process.env.CAMPAIGN_RUN_ID?.trim();
 	const base = `sreforge-phase2-ab-${scenario}${runId ? `-${slug(runId)}` : ""}`;
-	let candidate = join(CAPTURES_DIR, `${base}.json`);
-	for (let n = 2; existsSync(candidate); n++) {
-		candidate = join(CAPTURES_DIR, `${base}-${n}.json`);
+	for (let n = 1; n <= 1000; n++) {
+		const candidate = join(
+			CAPTURES_DIR,
+			n === 1 ? `${base}.json` : `${base}-${n}.json`,
+		);
+		try {
+			writeFileSync(candidate, body, { flag: "wx" });
+			return candidate;
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+		}
 	}
-	return candidate;
+	throw new Error(`no free capture path for ${base} after 1000 attempts`);
 }
 
 function armLine(label: string, outcome: ArmOutcome): string {
@@ -163,8 +172,10 @@ describe.skipIf(!enabled)(
 			console.log("===================================================\n");
 
 			mkdirSync(CAPTURES_DIR, { recursive: true });
-			const outPath = capturePath(scenario);
-			writeFileSync(outPath, JSON.stringify(capture, null, 2));
+			const outPath = writeCapture(
+				scenario,
+				JSON.stringify(capture, null, 2),
+			);
 			console.log(`capture written to ${outPath}\n`);
 
 			// Loose assertions — Half A is eyeball-graded; just prove BOTH arms produced an

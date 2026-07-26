@@ -130,6 +130,19 @@ describe("rcaJudgeOracle", () => {
 		expect(result.note).toMatch(/schema_version/i);
 	});
 
+	it("returns score: null and names the offending axis when axes is malformed", async () => {
+		const oracle = rcaJudgeOracle({
+			sreforgeRepo: tempRepo,
+			scenarioDir: "scenarios/booklogr",
+			judgeEnv: { FAKE_JUDGE_MODE: "bad_axes" },
+		});
+		const result = await oracle(mockArm, mockContext);
+		expect(result.score).toBeNull();
+		// Naming the field matters: mid-campaign this note is the only evidence.
+		expect(result.note).toContain("axes.root_cause_correct");
+		expect(result.detail).toBeUndefined();
+	});
+
 	it("kills child process and returns score: null on timeout", async () => {
 		const oracle = rcaJudgeOracle({
 			sreforgeRepo: tempRepo,
