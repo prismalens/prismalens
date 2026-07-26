@@ -9,7 +9,9 @@
 # and `pnpm test` each self-order from a clean checkout — no manual prerequisite
 # steps needed here. Lint (Biome) only reads source, so it needs neither.
 #
-# All three jobs are wired as REQUIRED status checks in .github/governance.json.
+# Only the aggregating `CI gate` job below is wired as a REQUIRED status check in
+# .github/governance.json. It fails unless every job it `needs` succeeded, so the
+# individual jobs are enforced through it rather than being required one by one.
 name: CI
 
 on:
@@ -185,3 +187,37 @@ jobs:
       # SPDX headers on first-party source; policy in CONTRIBUTING.md.
       - name: SPDX header check
         run: pnpm spdx:check
+
+  # The single aggregating required status check. The branch ruleset requires
+  # THIS context instead of enumerating every job above, so adding, renaming, or
+  # re-sharding a job (or a matrix leg) never rots the ruleset again.
+  #
+  # `if: always()` is load-bearing. Without it, a failed or skipped dependency
+  # would merely SKIP this job — and GitHub counts a SKIPPED required check as
+  # SUCCESS, so the gate would pass VACUOUSLY and let a broken PR merge. `always()`
+  # alone is not enough either: it only guarantees the job RUNS, not that it
+  # notices a red dependency. Hence the explicit assertion below, which treats
+  # anything other than `success` on any needed job as red. Matrix jobs (`test`,
+  # `packed-smoke`) contribute ONE aggregated result each — `failure` if any cell
+  # failed — so every leg is still covered.
+  ci-gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    needs: [build, changesets, test, pack, packed-smoke, lint]
+    if: always()
+    steps:
+      - name: Assert every required job succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          echo "Needed job results:"
+          echo "$NEEDS_JSON"
+          bad=$(echo "$NEEDS_JSON" | jq -r '
+            to_entries
+            | map(select(.value.result != "success") | "\(.key)=\(.value.result)")
+            | join(", ")')
+          if [ -n "$bad" ]; then
+            echo "::error::CI gate is red — these jobs did not succeed: $bad"
+            exit 1
+          fi
+          echo "All required jobs succeeded."

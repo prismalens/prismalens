@@ -30,6 +30,7 @@ import { singleAlertContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { type ArmOutcome, runPairedAB } from "./ab-runner.js";
 import { makeKeywordOracle } from "./interim-oracle.js";
+import { rcaJudgeOracle } from "./rca-judge-oracle.js";
 import { fetchFiringAlerts } from "../src/supervisor/alert-source.js";
 
 const KEY = process.env.OLLAMA_API_KEY;
@@ -42,6 +43,9 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5";
 // no default — the test only arms on machines that opt in via env.
 const SUBSTRATE = process.env.SREFORGE_SUBSTRATE ?? "";
 const CLAUDE_CREDS = join(homedir(), ".claude", ".credentials.json");
+
+const SREFORGE_REPO = process.env.SREFORGE_REPO;
+const SREFORGE_SCENARIO_DIR = process.env.SREFORGE_SCENARIO_DIR;
 
 // sreforge's fixed compose host ports; overridable for remapped stacks.
 const TELEMETRY = {
@@ -74,6 +78,31 @@ function slug(s: string): string {
 			.replace(/[^a-z0-9]+/g, "-")
 			.replace(/^-+|-+$/g, "") || "incident"
 	);
+}
+
+/**
+ * Writes the capture to a path nothing else holds, and returns it.
+ * `CAMPAIGN_RUN_ID` separates the repeated cold runs of one scenario — without
+ * it every run of a scenario targets the same path. The `wx` flag makes the
+ * reservation atomic (`existsSync` then `writeFileSync` is not), so neither a
+ * forgotten id nor a second live runner can truncate a paid run's artifact.
+ */
+function writeCapture(scenario: string, body: string): string {
+	const runId = process.env.CAMPAIGN_RUN_ID?.trim();
+	const base = `sreforge-phase2-ab-${scenario}${runId ? `-${slug(runId)}` : ""}`;
+	for (let n = 1; n <= 1000; n++) {
+		const candidate = join(
+			CAPTURES_DIR,
+			n === 1 ? `${base}.json` : `${base}-${n}.json`,
+		);
+		try {
+			writeFileSync(candidate, body, { flag: "wx" });
+			return candidate;
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+		}
+	}
+	throw new Error(`no free capture path for ${base} after 1000 attempts`);
 }
 
 function armLine(label: string, outcome: ArmOutcome): string {
@@ -116,7 +145,17 @@ describe.skipIf(!enabled)(
 					model: MODEL,
 					configured: true,
 				},
-				oracle: makeKeywordOracle(["pool_size", "connection pool", "sqlalchemy_engine_options"]),
+				oracle:
+					SREFORGE_REPO && SREFORGE_SCENARIO_DIR && process.env.RCA_JUDGE_MODEL
+						? rcaJudgeOracle({
+								sreforgeRepo: SREFORGE_REPO,
+								scenarioDir: SREFORGE_SCENARIO_DIR,
+							})
+						: makeKeywordOracle([
+								"pool_size",
+								"connection pool",
+								"sqlalchemy_engine_options",
+							]),
 			});
 
 			console.log("\n================ PAIRED A/B CAPTURE ================");
@@ -133,11 +172,10 @@ describe.skipIf(!enabled)(
 			console.log("===================================================\n");
 
 			mkdirSync(CAPTURES_DIR, { recursive: true });
-			const outPath = join(
-				CAPTURES_DIR,
-				`sreforge-phase2-ab-${scenario}.json`,
+			const outPath = writeCapture(
+				scenario,
+				JSON.stringify(capture, null, 2),
 			);
-			writeFileSync(outPath, JSON.stringify(capture, null, 2));
 			console.log(`capture written to ${outPath}\n`);
 
 			// Loose assertions — Half A is eyeball-graded; just prove BOTH arms produced an

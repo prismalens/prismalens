@@ -73,13 +73,22 @@ delta isolates pure supervisor/reduce value. `runPairedAB` drives both arms
 sequentially (raw then prismalens), re-fetching firing alerts immediately before
 each arm for a per-arm incident-drift snapshot.
 
-Automated scoring is deliberately out of scope here (Half B / sreforge #39): the
-capture's `score` field stays `{ score: null, note: ... }` via the default
-`unscored` oracle. If a scoring oracle is passed and it throws, the arm's capture
-(report, cost, tokens, events) is still preserved — only the score degrades to a
-`"oracle failed: ..."` note.
+Which oracle scores a run is selected from the environment, all-or-nothing:
 
-**Interim Keyword Oracle**: As a temporary bridge until the sreforge #56 LLM judge is wired, `interim-oracle.ts` provides a path-A keyword scorer that gives an early directional number. It reuses the exact substring-match logic from the scorecard to grade the `prismalens` arm's structured report, and applies the same raw string matching to the `raw` arm's terminal text (to avoid injecting any product structure into the baseline). Every score it produces clearly notes its interim status. **This oracle is quarantined and strictly throwaway**; it will be deleted once #56 lands.
+- **rca-judge** (`rca-judge-oracle.ts`, Half B / sreforge #39) — the campaign
+  scorer. Used only when `SREFORGE_REPO`, `SREFORGE_SCENARIO_DIR`, and
+  `RCA_JUDGE_MODEL` are **all** set; see the Half B section below.
+- **interim keyword oracle** (`interim-oracle.ts`) — the fallback when any of the
+  three is missing. It still emits a plausible number, so **read the capture's
+  `note` before trusting a batch**: a run that silently fell back is
+  indistinguishable from a judged one at a glance.
+- **`unscored`** — `runPairedAB`'s own default when no oracle is passed at all.
+  The capture's `score` stays `{ score: null, note: ... }`.
+
+If a scoring oracle throws, the arm's capture (report, cost, tokens, events) is
+still preserved — only the score degrades to an `"oracle failed: ..."` note.
+
+**Interim Keyword Oracle**: `interim-oracle.ts` is a path-A keyword scorer that predates the judge and now serves only as the fallback above. It reuses the exact substring-match logic from the scorecard to grade the `prismalens` arm's structured report, and applies the same raw string matching to the `raw` arm's terminal text (to avoid injecting any product structure into the baseline). Every score it produces clearly notes its interim status. **This oracle is quarantined and strictly throwaway**; it will be deleted once the judge is the sole scorer.
 
 There's no CI entry point — this is a live, opt-in harness driven by
 `sreforge-phase2-ab.test.ts`, gated on `OLLAMA_API_KEY`, a `SREFORGE_SUBSTRATE`
@@ -91,10 +100,37 @@ set -a && . packages/@prismalens/engine/.env && set +a \
 ```
 
 It writes the side-by-side capture (both arms + shared incident metadata) to
-`eval/captures/sreforge-phase2-ab-<scenario>.json` — a tracked directory (unlike
-`eval/results/`, which is gitignored), since this is the capture the future public
-"PrismaLens vs raw agent" table draws from — and logs a console summary with the
-per-arm cost/tokens/time and the prismalens-minus-raw delta.
+`eval/captures/sreforge-phase2-ab-<scenario>[-<CAMPAIGN_RUN_ID>][-<n>].json` — a
+tracked directory (unlike `eval/results/`, which is gitignored), since this is the
+capture the future public "PrismaLens vs raw agent" table draws from — and logs a
+console summary with the per-arm cost/tokens/time and the prismalens-minus-raw
+delta.
+
+**Set `CAMPAIGN_RUN_ID` for campaign batches.** The scenario slug is identical for
+every cold run of a scenario, so without a run id each run competes for one
+filename. The file is reserved atomically (`wx`), so a collision appends `-2`,
+`-3`, … rather than truncating the earlier run — but the run id is what makes the
+artifacts identifiable after the fact.
+
+## Half B — rca-judge oracle
+
+`rca-judge-oracle.ts` (sreforge #39 Half B) wires sreforge's `rca-judge` into the paired A/B eval runner through the `ScoringOracle` seam. It invokes sreforge's judge tool (`tools/rca-judge/judge.mjs --judge`) in a temporary directory, passing the arm's terminal diagnosis (`rawText`) as `rca.md`.
+
+It is armed by three environment variables:
+
+- `SREFORGE_REPO`: absolute path to the local `sreforge` repository checkout. The judge runs with this as its working directory.
+- `SREFORGE_SCENARIO_DIR`: the incident scenario directory — either absolute, or relative to `SREFORGE_REPO` (e.g. `use-cases/booklogr/scenarios/…`). The judge resolves `<scenario>/verify/oracle.md` against its own cwd, and exits 2 for the whole run if that file is not found.
+- `RCA_JUDGE_MODEL`: model name passed to the judge (required by `--judge` mode).
+
+The judge tool also reads optional environment variables:
+
+- `OLLAMA_HOST` (default `https://ollama.com`)
+- `OLLAMA_API_KEY`
+- `RCA_JUDGE_TIMEOUT_MS` (internal judge model timeout, default `120000`)
+
+Because `--judge` mode operates on a best-effort basis, if the judge model is unreachable or fails to parse after retries, the judge exits 0 without writing a `diagnosis.json` file. An absent score is treated as a normal state (`score: null`), recording the judge's stderr in the score's note. When `diagnosis.json` (`diagnosis.v1`) is produced, the score, rationale, and full structured axes (including `false_leads`) are captured into `ArmScore`.
+
+Success is keyed on the **file**, never on the exit code: a valid `diagnosis.json` is honoured even if the judge exits non-zero (never discard a paid-for LLM verdict), and exit 0 on its own is not success. A `score` outside `[0,1]` is rejected as an invalid diagnosis rather than silently skewing the capture. The oracle never throws — every path returns an `ArmScore` — and the temp dir is always removed.
 
 ## Adding a fixture
 
