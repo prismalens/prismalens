@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { chmod, copyFile, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 /**
@@ -43,12 +43,27 @@ import { sandboxSpawnClaudeCodeProcess } from "./claude-code-sandbox-spawn.js";
  * or unreadable file is not an error — the SDK resolves auth on its own.
  */
 async function carryCredentialsInto(configDir: string): Promise<void> {
+	let secret: string;
+	try {
+		secret = await readFile(
+			join(homedir(), ".claude", ".credentials.json"),
+			"utf8",
+		);
+	} catch {
+		return; // nothing to carry — see above
+	}
+
+	// Written 0600 at CREATE time rather than copied and then chmod'ed: that order
+	// has a window where the file exists with default permissions, and a chmod
+	// failure would strand readable credentials on disk.
 	const target = join(configDir, ".credentials.json");
 	try {
-		await copyFile(join(homedir(), ".claude", ".credentials.json"), target);
-		await chmod(target, 0o600);
-	} catch {
-		// nothing to carry
+		await writeFile(target, secret, { mode: 0o600, flag: "wx" });
+	} catch (err) {
+		// Never leave a partial or unhardened copy behind. Failing loudly beats a
+		// run that silently proceeds unauthenticated.
+		await rm(target, { force: true });
+		throw err;
 	}
 }
 
