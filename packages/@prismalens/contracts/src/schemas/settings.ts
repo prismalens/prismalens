@@ -309,7 +309,7 @@ export type LlmEnvStatusResponse = z.infer<typeof LlmEnvStatusResponseSchema>;
 export const UpdateLlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.optional(),
 	providers: z
-		.record(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
+		.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
 		.optional(),
 	agentOverrides: z.partialRecord(AgentIdSchema, AgentOverrideConfigSchema).optional(),
 });
@@ -399,7 +399,7 @@ export type McpSettings = z.infer<typeof McpSettingsSchema>;
  */
 export const UpdateMcpSettingsSchema = z.object({
 	servers: z
-		.record(McpServerIdSchema, McpServerSettingsSchema.partial())
+		.partialRecord(McpServerIdSchema, McpServerSettingsSchema.partial())
 		.optional(),
 });
 export type UpdateMcpSettings = z.infer<typeof UpdateMcpSettingsSchema>;
