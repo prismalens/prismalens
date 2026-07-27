@@ -26,9 +26,14 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { singleAlertContext } from "@prismalens/contracts";
+import { correlatedAlertsContext } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { type ArmOutcome, runPairedAB } from "./ab-runner.js";
+import {
+	pickIncidentAlerts,
+	scenarioLabel,
+	slug,
+} from "./incident-selection.js";
 import { makeKeywordOracle } from "./interim-oracle.js";
 import { rcaJudgeOracle } from "./rca-judge-oracle.js";
 import { fetchFiringAlerts } from "../src/supervisor/alert-source.js";
@@ -70,39 +75,6 @@ const SKILL_PLUGIN_PATH = join(
 	"incident-response-plugin",
 );
 const CAPTURES_DIR = join(PKG_ROOT, "eval", "captures");
-
-function slug(s: string): string {
-	return (
-		s
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-+|-+$/g, "") || "incident"
-	);
-}
-
-type FiringAlert = { alertname: string };
-
-/**
- * The alert both arms are briefed on.
- *
- * `INCIDENT_ALERTNAME` names it for a campaign, where investigating the wrong
- * alert corrupts the batch silently. Unset, this falls back to the first firing
- * alert, which is fine for an ad-hoc run and is what the suite did before.
- */
-function pickIncidentAlert<T extends FiringAlert>(alerts: T[]): T {
-	const wanted = process.env.INCIDENT_ALERTNAME?.trim();
-	if (!wanted) return alerts[0];
-
-	const match = alerts.find((a) => a.alertname === wanted);
-	if (!match) {
-		throw new Error(
-			`INCIDENT_ALERTNAME=${wanted} is not firing — got [${alerts
-				.map((a) => a.alertname)
-				.join(", ")}]. Refusing to investigate a different alert.`,
-		);
-	}
-	return match;
-}
 
 /**
  * Writes the capture to a path nothing else holds, and returns it.
@@ -160,9 +132,15 @@ describe.skipIf(!enabled)(
 			// for the wrong reason, on both arms, that reads as "the agents failed".
 			// Name the incident alert explicitly for a campaign; fail loudly if the
 			// named one is not firing rather than silently investigating furniture.
-			const incident = pickIncidentAlert(alerts);
-			const context = singleAlertContext(incident, TELEMETRY);
-			const scenario = slug(incident.alertname);
+			// A storm scenario names several via INCIDENT_ALERTNAMES; both arms then
+			// receive the whole correlated set, because grouping it into one incident
+			// is the thing being measured.
+			const incidentAlerts = pickIncidentAlerts(alerts);
+			console.log(
+				`incident: ${incidentAlerts.map((a) => a.alertname).join(" + ")}`,
+			);
+			const context = correlatedAlertsContext(incidentAlerts, TELEMETRY);
+			const scenario = scenarioLabel(incidentAlerts);
 
 			const capture = await runPairedAB(context, {
 				cwd: SUBSTRATE,

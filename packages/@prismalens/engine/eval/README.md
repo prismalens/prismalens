@@ -112,6 +112,30 @@ filename. The file is reserved atomically (`wx`), so a collision appends `-2`,
 `-3`, … rather than truncating the earlier run — but the run id is what makes the
 artifacts identifiable after the fact.
 
+## Incident alert selection and capture naming
+
+`pickIncidentAlerts` and `scenarioLabel` (`incident-selection.ts`) govern which firing alerts a paired A/B evaluation investigates and how the capture artifact is labeled.
+
+### Environment variables and precedence
+
+- **`INCIDENT_ALERTNAMES`** (comma-separated): Drives a **storm scenario** where grouping $N$ correlated alerts into one incident is the discrimination axis (sreforge#65). Returns all named alerts.
+- **`INCIDENT_ALERTNAME`** (singular): Names a single alert for single-alert scenarios.
+- **Precedence**: Setting **both** `INCIDENT_ALERTNAMES` and `INCIDENT_ALERTNAME` is invalid and throws an error (`"INCIDENT_ALERTNAMES and INCIDENT_ALERTNAME are both set — pick one."`).
+- **Fallback (neither set)**: Defaults to the first firing alert (`alerts[0]`). While fine ad hoc, this fallback is dangerous in a campaign: armed stacks also fire load-plane noise (such as `EdgeClientRequestJitter`), and Alertmanager order is not incident order.
+- **`INCIDENT_SCENARIO`**: Explicitly sets the capture label (slugified).
+
+### Every-named-alert-must-be-firing rule
+
+In both storm and single-alert modes, **every named alert must be actively firing**. If any specified alert is missing, `pickIncidentAlerts` throws an error naming the missing alert(s) alongside what was actually firing. A storm missing members is a different incident; quietly investigating an incomplete subset would evaluate the wrong problem while appearing to be a clean run.
+
+### Capture-naming consequences
+
+Without `INCIDENT_SCENARIO`, capture labeling falls back to slugifying the first incident alert (`slug(incidentAlerts[0].alertname)`). This causes issues:
+1. Every booklogr scenario fires the same primary alertname (`BooklogrApiLatencyP99High`), so relying on the alert-slug fallback causes distinct scenarios to produce identical capture labels.
+2. A multi-alert storm scenario has no single alert to be named after.
+
+Therefore, setting **`INCIDENT_SCENARIO`** is what distinguishes captures across different scenarios in campaign runs.
+
 ## Half B — rca-judge oracle
 
 `rca-judge-oracle.ts` (sreforge #39 Half B) wires sreforge's `rca-judge` into the paired A/B eval runner through the `ScoringOracle` seam. It invokes sreforge's judge tool (`tools/rca-judge/judge.mjs --judge`) in a temporary directory, passing the arm's terminal diagnosis (`rawText`) as `rca.md`.
