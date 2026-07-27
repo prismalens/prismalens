@@ -84,5 +84,7 @@ describe("DENY_ALL_TOOLS", () => {
 		expect(DENY_ALL_TOOLS).toContain("TodoWrite");
 		expect(DENY_ALL_TOOLS).toContain("SlashCommand");
 		expect(DENY_ALL_TOOLS).toContain("ExitPlanMode");
+		// Found live in the L0 smoke: the deferred-tool loader leaks unless named.
+		expect(DENY_ALL_TOOLS).toContain("ToolSearch");
 	});
 });

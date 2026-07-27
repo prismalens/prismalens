@@ -207,16 +207,53 @@ async function main(): Promise<void> {
 		process.exit(20);
 	}
 
-	// Guard 2: L0 tool leak check
+	// Guard 2: L0 tool leak check.
+	// A leak is a tool that RAN (result.ok true) — not a denied attempt. The model
+	// can still name tools from the claude_code preset and try them; the SDK
+	// rejects with "not enabled in this context" and no substrate information
+	// flows. Denied attempts stay in the capture's events for analysis.
 	if (rung === "L0") {
+		const attempted = run.events.filter(
+			(e) => e.kind === "agent_step" && e.toolCalls && e.toolCalls.length > 0,
+		).length;
+		if (attempted > 0) {
+			console.error(
+				`[L0_NOTE] model attempted ${attempted} denied tool call(s) — recorded, not a leak`,
+			);
+		}
 		const leakedEvents = run.events.filter(
 			(e) =>
-				(e.kind === "agent_step" && e.toolCalls && e.toolCalls.length > 0) ||
-				e.kind === "tool_result",
+				e.kind === "tool_result" &&
+				(e.result as { ok?: boolean } | undefined)?.ok === true,
 		);
 		if (leakedEvents.length > 0) {
+			// Name the leaked tools — the deny list is name-based, so the fix is
+			// knowing exactly which name slipped through, and the events are the
+			// only place that fact exists.
+			const leakedNames = leakedEvents.map(
+				(e) =>
+					(e as { result?: { name?: string } }).result?.name ?? "<unnamed>",
+			);
 			console.error(
-				`[L0_TOOLS_LEAKED] L0 run contained ${leakedEvents.length} tool-use events`,
+				`[L0_TOOLS_LEAKED] L0 run contained ${leakedEvents.length} tool-use events: [${leakedNames.join(", ")}]`,
+			);
+			const leakCapture = {
+				ladder: true,
+				rung,
+				scenario,
+				model: armOpts.model,
+				incident: {
+					alerts: context.alerts,
+					telemetry: context.telemetry,
+					...(context.service ? { service: context.service } : {}),
+				},
+				run: { ok: false, arm: run.arm, error: "L0_TOOLS_LEAKED", leakedNames },
+				events: run.events,
+				capturedAt: new Date().toISOString(),
+			};
+			writeFileSync(
+				capturePath.replace(/\.json$/, ".LEAKED.json"),
+				JSON.stringify(leakCapture, null, 2),
 			);
 			process.exit(21);
 		}

@@ -30,6 +30,9 @@ export const DENY_ALL_TOOLS: string[] = Array.from(
 		"TodoWrite",
 		"SlashCommand",
 		"ExitPlanMode",
+		// The deferred-tool loader lives outside the regular tool list and leaks
+		// unless denied by name — found live: an L0 smoke run called it (2 events).
+		"ToolSearch",
 	]),
 );
 
