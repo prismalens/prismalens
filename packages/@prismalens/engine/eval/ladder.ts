@@ -17,17 +17,19 @@ export type Rung = "L0" | "L1" | "L2" | "L3";
 export const DENY_ALL_TOOLS: string[] = Array.from(
 	new Set([
 		...(HARNESS_REGISTRY["claude-code"].readOnlyDeny ?? []),
+		"Read",
 		"Bash",
-		"FileRead",
-		"FileWrite",
-		"FileEdit",
+		"BashOutput",
+		"KillShell",
 		"NotebookEdit",
 		"Glob",
 		"Grep",
 		"WebFetch",
 		"WebSearch",
-		"Agent",
 		"Task",
+		"TodoWrite",
+		"SlashCommand",
+		"ExitPlanMode",
 	]),
 );
 

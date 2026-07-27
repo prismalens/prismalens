@@ -64,12 +64,14 @@ describe("DENY_ALL_TOOLS", () => {
 			expect(DENY_ALL_TOOLS).toContain(tool);
 		}
 
-		// Shell
+		// Shell — including the background-shell companions
 		expect(DENY_ALL_TOOLS).toContain("Bash");
-		// File read/write
-		expect(DENY_ALL_TOOLS).toContain("FileRead");
-		expect(DENY_ALL_TOOLS).toContain("FileWrite");
-		expect(DENY_ALL_TOOLS).toContain("FileEdit");
+		expect(DENY_ALL_TOOLS).toContain("BashOutput");
+		expect(DENY_ALL_TOOLS).toContain("KillShell");
+		// File read/write — the SDK's tool names, not aliases
+		expect(DENY_ALL_TOOLS).toContain("Read");
+		expect(DENY_ALL_TOOLS).toContain("Write");
+		expect(DENY_ALL_TOOLS).toContain("Edit");
 		expect(DENY_ALL_TOOLS).toContain("NotebookEdit");
 		// Search
 		expect(DENY_ALL_TOOLS).toContain("Glob");
@@ -77,8 +79,10 @@ describe("DENY_ALL_TOOLS", () => {
 		// Web
 		expect(DENY_ALL_TOOLS).toContain("WebFetch");
 		expect(DENY_ALL_TOOLS).toContain("WebSearch");
-		// Subagent
-		expect(DENY_ALL_TOOLS).toContain("Agent");
+		// Subagent + planning/bookkeeping
 		expect(DENY_ALL_TOOLS).toContain("Task");
+		expect(DENY_ALL_TOOLS).toContain("TodoWrite");
+		expect(DENY_ALL_TOOLS).toContain("SlashCommand");
+		expect(DENY_ALL_TOOLS).toContain("ExitPlanMode");
 	});
 });

@@ -122,7 +122,15 @@ async function main(): Promise<void> {
 	});
 
 	// 3. Build options & execute arm
-	const claudeModel = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5";
+	// The pinned arm model is part of the qualification tuple (scenario, model,
+	// harness, oracle) — a silent default here would bank runs against the wrong pin.
+	const claudeModel = process.env.CLAUDE_MODEL?.trim();
+	if (!claudeModel) {
+		console.error(
+			"[MISSING_CLAUDE_MODEL] CLAUDE_MODEL environment variable is required — the arm model must be pinned explicitly",
+		);
+		process.exit(19);
+	}
 	const rawSynthModel = process.env.OLLAMA_MODEL ?? "gpt-oss:120b";
 	const synthModel = rawSynthModel.replace(/-cloud$/, "");
 	const synthBaseUrl = process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1";
