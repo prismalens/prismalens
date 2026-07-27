@@ -74,9 +74,9 @@ export const RecommendationQuerySchema = z.object({
 
 export const RecommendationStatsSchema = z.object({
 	total: z.number().int(),
-	byStatus: z.record(z.number().int()),
-	byPriority: z.record(z.number().int()),
-	byCategory: z.record(z.number().int()),
+	byStatus: z.record(z.string(), z.number().int()),
+	byPriority: z.record(z.string(), z.number().int()),
+	byCategory: z.record(z.string(), z.number().int()),
 });
 
 // =============================================================================

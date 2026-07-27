@@ -24,7 +24,7 @@ export const DeploymentSchema = z.object({
 	region: z.string().nullable(),
 	branch: z.string().nullable(),
 	repositoryUrl: z.string().nullable(),
-	metadata: z.record(z.unknown()).nullable(),
+	metadata: z.record(z.string(), z.unknown()).nullable(),
 	lastDeployedAt: DateStringSchema.nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
@@ -41,7 +41,7 @@ export const CreateDeploymentSchema = z.object({
 	region: z.string().optional(),
 	branch: z.string().optional(),
 	repositoryUrl: z.string().optional(),
-	metadata: z.record(z.unknown()).optional(),
+	metadata: z.record(z.string(), z.unknown()).optional(),
 	lastDeployedAt: z.string().datetime().optional(),
 });
 

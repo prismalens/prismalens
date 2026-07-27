@@ -13,7 +13,7 @@ export const IncidentSimilaritySchema = z.object({
 	incidentId: z.string().uuid(),
 	similarIncidentId: z.string().uuid(),
 	similarityScore: z.number().int().min(0).max(100),
-	matchFactors: z.record(z.unknown()).nullable(),
+	matchFactors: z.record(z.string(), z.unknown()).nullable(),
 	calculatedAt: DateStringSchema,
 });
 

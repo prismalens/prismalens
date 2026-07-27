@@ -20,7 +20,7 @@ export const RepositorySchema = z.object({
 	language: z.string().nullable(),
 	defaultBranch: z.string(),
 	isPrivate: z.boolean(),
-	metadata: z.record(z.unknown()).nullable(),
+	metadata: z.record(z.string(), z.unknown()).nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -33,7 +33,7 @@ export const CreateRepositorySchema = z.object({
 	language: z.string().optional(),
 	defaultBranch: z.string().optional(),
 	isPrivate: z.boolean().optional(),
-	metadata: z.record(z.unknown()).optional(),
+	metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const BatchCreateRepositoriesSchema = z.object({
