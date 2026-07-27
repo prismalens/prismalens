@@ -62,25 +62,23 @@ import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
-
-// Re-export app data utilities
-export { getAppDataDir, ensureAppDataDir };
-
-// Re-export encryption key and secret utilities
-export {
-	generateEncryptionKey,
-	getOrCreateEncryptionKey,
-	getOrCreateInternalSecret,
-	getOrCreateAuthSecret,
-};
-
+export type { RedisConnectionOptions } from "./utils/redis-url.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
-
+// Re-export app data utilities
+// Re-export encryption key and secret utilities
 // Re-export Redis utilities
-export { buildRedisUrl, buildRedisOptions };
-export type { RedisConnectionOptions } from "./utils/redis-url.js";
+export {
+	buildRedisOptions,
+	buildRedisUrl,
+	ensureAppDataDir,
+	generateEncryptionKey,
+	getAppDataDir,
+	getOrCreateAuthSecret,
+	getOrCreateEncryptionKey,
+	getOrCreateInternalSecret,
+};
 
 /**
  * Composed global configuration schema.
