@@ -3,7 +3,7 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { type ArmRun, harnessFailure } from "./ab-runner.js";
+import { type ArmRun, harnessFailure, skillNative } from "./ab-runner.js";
 
 function evt(partial: Partial<CanonicalEvent> & { kind: string }): CanonicalEvent {
 	return {
@@ -81,5 +81,20 @@ describe("harnessFailure", () => {
 	it("does NOT flag a zero-token run that never errored", () => {
 		// No error event means nothing went wrong to report, whatever the token count.
 		expect(harnessFailure(armRun({ events: [evt({ kind: "branch_done" })] }))).toBeNull();
+	});
+});
+
+describe("skillNative", () => {
+	it("yields plugins and skills keys when skillPluginPath is provided", () => {
+		const res = skillNative("/path/to/plugin");
+		expect(res).toEqual({
+			plugins: [{ type: "local", path: "/path/to/plugin" }],
+			skills: ["incident-response"],
+		});
+	});
+
+	it("yields empty object {} when skillPluginPath is absent or undefined", () => {
+		expect(skillNative()).toEqual({});
+		expect(skillNative(undefined)).toEqual({});
 	});
 });

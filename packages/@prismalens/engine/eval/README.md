@@ -153,3 +153,32 @@ Drop a new `NN-name.json` in `fixtures/` shaped like the others:
 synthesis time. Re-run `pnpm --filter @prismalens/engine test` to cover it under the
 offline plumbing suite (`scorecard.test.ts`), and, ideally, a live run before relying
 on it as a regression gate.
+
+## Ablation ladder
+
+The 4-rung ablation ladder (#220) decomposes agentic performance through the same Claude Code harness:
+
+| rung | config | isolates |
+|---|---|---|
+| L0 | `maxTurns: 1`, ALL tools denied, no skill | the model alone |
+| L1 | tools on, NO skill plugin | the agentic tool loop |
+| L2 | tools on, incident-response skill on | domain knowledge (= today's raw arm) |
+| L3 | L2 + prismalens supervisor | decompose/fan-out/reduce (= today's prismalens arm) |
+
+### Environment contract & execution
+
+`run-ladder.ts` drives a single scored rung out of the campaign path. It requires the following environment variables:
+
+- `RUNG`: `L0`, `L1`, `L2`, or `L3` (required)
+- `INCIDENT_ALERTNAME`: exact name of the firing alert to investigate (required — aborts if missing or not firing; never falls back to `alerts[0]`)
+- `LADDER_RUN`: run index N (required)
+- `INCIDENT_SCENARIO`: scenario slug name (required)
+- `RCA_JUDGE_MODEL`: judge model name (required — aborts if judge config is missing; never silently substitutes a keyword oracle)
+- `SREFORGE_REPO`: path to the local `sreforge` repository checkout (required for judge scoring)
+- `SREFORGE_SCENARIO_DIR`: scenario directory relative to `SREFORGE_REPO` (required for judge scoring)
+- `SREFORGE_SUBSTRATE`: substrate working directory (required)
+
+### Output directory isolation
+
+All ablation captures are written to `eval/captures-ablation/` (e.g. `ablation-<rung>-<scenario>-run<N>.json`) and NEVER to `eval/captures/`. This guarantees ablation runs can never be mistaken for or mixed with scored A/B campaign captures.
+
