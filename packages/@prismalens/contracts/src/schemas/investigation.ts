@@ -602,8 +602,8 @@ export const InvestigationContextSchema = z.object({
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 
-/** Optional enrichments for the single-alert (CLI/degenerate) path. */
-export interface SingleAlertContextExtras {
+/** Optional enrichments applied when assembling an InvestigationContext. */
+export interface InvestigationContextExtras {
 	incident?: IncidentContext;
 	service?: ServiceContext;
 	repos?: string[];
@@ -612,17 +612,33 @@ export interface SingleAlertContextExtras {
 }
 
 /**
- * Build an InvestigationContext from ONE firing alert — the degenerate/CLI path.
- * The single place the "one alert → context" collapse lives (ADR-0015 §2); the
- * multi-alert app path assembles the context from its DB rows directly.
+ * Build an InvestigationContext from N correlated firing alerts belonging to ONE
+ * incident.
+ *
+ * `alerts` has always been `.min(1)` rather than exactly-one, but until now the
+ * only builder was {@link singleAlertContext}, which hardcodes a single-element
+ * array — a storm was expressible in the contract and not constructible in code.
+ * Scenarios whose entire discrimination axis is grouping a storm into one
+ * incident (sreforge#65) could not be driven at all.
+ *
+ * The app still assembles its context from DB rows. This is the collapse for
+ * hosts holding alerts in memory (the CLI, the eval harness), and it is where the
+ * "alerts → context" shape now lives once (ADR-0015 §2).
  */
-export function singleAlertContext(
-	alert: FiringAlert,
+export function correlatedAlertsContext(
+	alerts: readonly FiringAlert[],
 	telemetry: TelemetryEndpoints,
-	extras: SingleAlertContextExtras = {},
+	extras: InvestigationContextExtras = {},
 ): InvestigationContext {
+	// The schema's `.min(1)` would reject this downstream; throwing here names the
+	// actual mistake instead of surfacing it as a validation error far from source.
+	if (alerts.length === 0) {
+		throw new Error(
+			"correlatedAlertsContext: at least one firing alert is required",
+		);
+	}
 	return {
-		alerts: [alert],
+		alerts: [...alerts],
 		telemetry,
 		...(extras.incident ? { incident: extras.incident } : {}),
 		...(extras.service ? { service: extras.service } : {}),
@@ -632,4 +648,16 @@ export function singleAlertContext(
 			? { priorInvestigations: extras.priorInvestigations }
 			: {}),
 	};
+}
+
+/**
+ * Build an InvestigationContext from ONE firing alert — the degenerate/CLI path
+ * (ADR-0012: the CLI is single-alert; incidents are an app/cloud feature).
+ */
+export function singleAlertContext(
+	alert: FiringAlert,
+	telemetry: TelemetryEndpoints,
+	extras: InvestigationContextExtras = {},
+): InvestigationContext {
+	return correlatedAlertsContext([alert], telemetry, extras);
 }
