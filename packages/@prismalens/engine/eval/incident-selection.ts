@@ -68,6 +68,11 @@ export function pickIncidentAlerts<T extends NamedAlert>(
 			? [single]
 			: [];
 
+	if (storm && wanted.length === 0) {
+		throw new Error(
+			"INCIDENT_ALERTNAMES is set but names no alerts — refusing the first-alert fallback.",
+		);
+	}
 	if (wanted.length === 0) return [alerts[0]];
 
 	const picked: T[] = [];

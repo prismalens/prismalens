@@ -150,6 +150,16 @@ describe("incident-selection", () => {
 				});
 				expect(picked).toEqual([{ alertname: "EdgeClientRequestJitter" }]);
 			});
+
+			it("throws when INCIDENT_ALERTNAMES is set but names no alerts (delimiter-only)", () => {
+				for (const value of [",", " , ", ",,"]) {
+					expect(() =>
+						pickIncidentAlerts(sampleAlerts, { INCIDENT_ALERTNAMES: value }),
+					).toThrow(
+						"INCIDENT_ALERTNAMES is set but names no alerts — refusing the first-alert fallback.",
+					);
+				}
+			});
 		});
 	});
 
