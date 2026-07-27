@@ -18,12 +18,12 @@ export const sqliteConfigSchema = z.object({
 	PRISMALENS_DB_SQLITE_READONLY: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Open SQLite database connection in readonly mode"),
 	PRISMALENS_DB_SQLITE_FILE_MUST_EXIST: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Throw error if SQLite database file does not exist"),
 	PRISMALENS_DB_SQLITE_TIMEOUT: z.coerce
 		.number()
@@ -69,7 +69,7 @@ export const postgresConfigSchema = z.object({
 	PRISMALENS_DB_POSTGRES_SSL_ENABLED: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable SSL for PostgreSQL connection"),
 	PRISMALENS_DB_POSTGRES_SSL_CA: z
 		.string()
@@ -86,7 +86,7 @@ export const postgresConfigSchema = z.object({
 	PRISMALENS_DB_POSTGRES_SSL_REJECT_UNAUTHORIZED: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
-		.default("true")
+		.prefault("true")
 		.describe("Reject unauthorized SSL connections"),
 });
 

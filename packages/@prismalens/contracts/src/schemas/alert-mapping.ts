@@ -17,7 +17,7 @@ export const AlertMappingRuleSchema = z.object({
 	description: z.string().nullable(),
 	priority: z.number().int(), // Lower = higher priority
 	enabled: z.boolean(),
-	matchCriteria: z.record(z.unknown()), // JSON match criteria
+	matchCriteria: z.record(z.string(), z.unknown()), // JSON match criteria
 	serviceId: z.string().uuid(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
@@ -28,7 +28,7 @@ export const CreateMappingRuleSchema = z.object({
 	description: z.string().optional(),
 	priority: z.number().int().optional(),
 	enabled: z.boolean().optional(),
-	matchCriteria: z.record(z.unknown()),
+	matchCriteria: z.record(z.string(), z.unknown()),
 	serviceId: z.string().uuid(),
 });
 
@@ -53,7 +53,7 @@ export const AlertMappingRuleWithServiceSchema = AlertMappingRuleSchema.extend({
 // =============================================================================
 
 export const TestMappingSchema = z.object({
-	alertData: z.record(z.unknown()),
+	alertData: z.record(z.string(), z.unknown()),
 });
 
 export const TestMappingResponseSchema = z.object({

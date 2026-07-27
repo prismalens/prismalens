@@ -181,7 +181,7 @@ export const integrationsContract = {
 		})
 		.input(
 			IdParamSchema.extend({
-				config: z.record(z.unknown()),
+				config: z.record(z.string(), z.unknown()),
 			}),
 		)
 		.output(ConnectionSchema),

@@ -16,7 +16,7 @@ export const ChangeEventSchema = z.object({
 	timestamp: DateStringSchema,
 	serviceId: z.string().uuid().nullable(),
 	description: z.string().nullable(),
-	metadata: z.record(z.unknown()).nullable(),
+	metadata: z.record(z.string(), z.unknown()).nullable(),
 	riskScore: z.number().int().min(0).max(100).nullable(),
 	createdAt: DateStringSchema,
 });
