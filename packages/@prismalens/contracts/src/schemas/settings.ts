@@ -280,7 +280,9 @@ export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
 export const LlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.nullable(),
 	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema),
-	agentOverrides: z.partialRecord(AgentIdSchema, AgentOverrideConfigSchema).optional(),
+	agentOverrides: z
+		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
+		.optional(),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
 
@@ -311,7 +313,9 @@ export const UpdateLlmSettingsSchema = z.object({
 	providers: z
 		.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
 		.optional(),
-	agentOverrides: z.partialRecord(AgentIdSchema, AgentOverrideConfigSchema).optional(),
+	agentOverrides: z
+		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
+		.optional(),
 });
 export type UpdateLlmSettings = z.infer<typeof UpdateLlmSettingsSchema>;
 
