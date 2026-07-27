@@ -34,43 +34,113 @@ import {
 	WorkflowStatusSchema,
 } from "@prismalens/contracts/schemas";
 
+type ExtractEnumValues<S> = S extends { enum: readonly (infer V)[] }
+	? V & string
+	: S extends { enum: Record<string, infer V> }
+		? V & string
+		: S extends { options: readonly (infer V)[] }
+			? V & string
+			: string;
+
+type EnumObject<S> = {
+	[K in ExtractEnumValues<S>]: K;
+};
+
 // =============================================================================
 // RUNTIME ENUM OBJECTS — compatible with @IsEnum() decorator
 // =============================================================================
 
 // Service Catalog
-export const ServiceType = ServiceTypeSchema.enum;
-export const ServiceTier = ServiceTierSchema.enum;
-export const DependencyType = DependencyTypeSchema.enum;
-export const DependencyCriticality = DependencyCriticalitySchema.enum;
+export const ServiceType = ServiceTypeSchema.enum as unknown as EnumObject<
+	typeof ServiceTypeSchema
+>;
+export const ServiceTier = ServiceTierSchema.enum as unknown as EnumObject<
+	typeof ServiceTierSchema
+>;
+export const DependencyType =
+	DependencyTypeSchema.enum as unknown as EnumObject<
+		typeof DependencyTypeSchema
+	>;
+export const DependencyCriticality =
+	DependencyCriticalitySchema.enum as unknown as EnumObject<
+		typeof DependencyCriticalitySchema
+	>;
 
 // Alerts & Incidents
-export const Severity = SeveritySchema.enum;
-export const AlertStatus = AlertStatusSchema.enum;
-export const IncidentStatus = IncidentStatusSchema.enum;
-export const Priority = PrioritySchema.enum;
+export const Severity = SeveritySchema.enum as unknown as EnumObject<
+	typeof SeveritySchema
+>;
+export const AlertStatus = AlertStatusSchema.enum as unknown as EnumObject<
+	typeof AlertStatusSchema
+>;
+export const IncidentStatus =
+	IncidentStatusSchema.enum as unknown as EnumObject<
+		typeof IncidentStatusSchema
+	>;
+export const Priority = PrioritySchema.enum as unknown as EnumObject<
+	typeof PrioritySchema
+>;
 
 // Investigation & Workflow
-export const WorkflowStatus = WorkflowStatusSchema.enum;
-export const RootCauseCategory = RootCauseCategorySchema.enum;
-export const AgentType = AgentTypeSchema.enum;
-export const ExecutionStatus = ExecutionStatusSchema.enum;
-export const ToolExecutionStatus = ToolExecutionStatusSchema.enum;
-export const ToolCategory = ToolCategorySchema.enum;
+export const WorkflowStatus =
+	WorkflowStatusSchema.enum as unknown as EnumObject<
+		typeof WorkflowStatusSchema
+	>;
+export const RootCauseCategory =
+	RootCauseCategorySchema.enum as unknown as EnumObject<
+		typeof RootCauseCategorySchema
+	>;
+export const AgentType = AgentTypeSchema.enum as unknown as EnumObject<
+	typeof AgentTypeSchema
+>;
+export const ExecutionStatus =
+	ExecutionStatusSchema.enum as unknown as EnumObject<
+		typeof ExecutionStatusSchema
+	>;
+export const ToolExecutionStatus =
+	ToolExecutionStatusSchema.enum as unknown as EnumObject<
+		typeof ToolExecutionStatusSchema
+	>;
+export const ToolCategory = ToolCategorySchema.enum as unknown as EnumObject<
+	typeof ToolCategorySchema
+>;
 
 // Recommendations
-export const RecommendationPriority = RecommendationPrioritySchema.enum;
-export const RecommendationCategory = RecommendationCategorySchema.enum;
-export const Urgency = UrgencySchema.enum;
-export const EffortEstimate = EffortEstimateSchema.enum;
-export const RecommendationStatus = RecommendationStatusSchema.enum;
+export const RecommendationPriority =
+	RecommendationPrioritySchema.enum as unknown as EnumObject<
+		typeof RecommendationPrioritySchema
+	>;
+export const RecommendationCategory =
+	RecommendationCategorySchema.enum as unknown as EnumObject<
+		typeof RecommendationCategorySchema
+	>;
+export const Urgency = UrgencySchema.enum as unknown as EnumObject<
+	typeof UrgencySchema
+>;
+export const EffortEstimate =
+	EffortEstimateSchema.enum as unknown as EnumObject<
+		typeof EffortEstimateSchema
+	>;
+export const RecommendationStatus =
+	RecommendationStatusSchema.enum as unknown as EnumObject<
+		typeof RecommendationStatusSchema
+	>;
 
 // Timeline
-export const TimelineEntryType = TimelineEntryTypeSchema.enum;
-export const TimelineSource = TimelineSourceSchema.enum;
+export const TimelineEntryType =
+	TimelineEntryTypeSchema.enum as unknown as EnumObject<
+		typeof TimelineEntryTypeSchema
+	>;
+export const TimelineSource =
+	TimelineSourceSchema.enum as unknown as EnumObject<
+		typeof TimelineSourceSchema
+	>;
 
 // Correlation
-export const CorrelationAction = CorrelationActionSchema.enum;
+export const CorrelationAction =
+	CorrelationActionSchema.enum as unknown as EnumObject<
+		typeof CorrelationActionSchema
+	>;
 
 // =============================================================================
 // TYPE EXPORTS — derived from the const objects above

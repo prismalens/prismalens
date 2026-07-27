@@ -18,9 +18,9 @@ import { Logger } from "@prismalens/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDbInvestigationStore } from "./db-investigation-store.js";
 
-const INVESTIGATION_ID = "11111111-1111-1111-1111-111111111111";
-const INCIDENT_ID = "22222222-2222-2222-2222-222222222222";
-const RUN_ID = "33333333-3333-3333-3333-333333333333";
+const INVESTIGATION_ID = "11111111-1111-4111-8111-111111111111";
+const INCIDENT_ID = "22222222-2222-4222-8222-222222222222";
+const RUN_ID = "33333333-3333-4333-8333-333333333333";
 
 /** Flush window (kept in sync with the store's FLUSH_INTERVAL_MS). */
 const FLUSH_INTERVAL_MS = 1_000;

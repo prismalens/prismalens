@@ -30,7 +30,7 @@ export const ServiceSchema = z.object({
 	team: z.string().nullable(),
 	slackChannel: z.string().nullable(),
 	tags: z.array(z.string()).nullable(),
-	metadata: z.record(z.unknown()).nullable(),
+	metadata: z.record(z.string(), z.unknown()).nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -44,7 +44,7 @@ export const CreateServiceSchema = z.object({
 	team: z.string().optional(),
 	slackChannel: z.string().optional(),
 	tags: z.array(z.string()).optional(),
-	metadata: z.record(z.unknown()).optional(),
+	metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const UpdateServiceSchema = CreateServiceSchema.partial();

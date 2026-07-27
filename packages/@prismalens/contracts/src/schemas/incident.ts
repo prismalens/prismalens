@@ -130,9 +130,9 @@ export const InvestigateIncidentResponseSchema = z.object({
 export const IncidentStatsSchema = z.object({
 	total: z.number().int(),
 	active: z.number().int(),
-	byStatus: z.record(z.number().int()),
-	bySeverity: z.record(z.number().int()),
-	byPriority: z.record(z.number().int()),
+	byStatus: z.record(z.string(), z.number().int()),
+	bySeverity: z.record(z.string(), z.number().int()),
+	byPriority: z.record(z.string(), z.number().int()),
 	avgTimeToAcknowledge: z.number().nullable(),
 	avgTimeToResolve: z.number().nullable(),
 });
