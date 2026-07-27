@@ -28,7 +28,7 @@ export const ServiceSuggestionSchema = z.object({
 	subPath: z.string().nullable(),
 	sourceType: SourceTypeSchema,
 	status: SuggestionStatusSchema,
-	metadata: z.record(z.unknown()).nullable(),
+	metadata: z.record(z.string(), z.unknown()).nullable(),
 	statusChangedAt: DateStringSchema.nullable(),
 	acceptedServiceId: z.string().uuid().nullable(),
 	acceptedDeploymentId: z.string().uuid().nullable(),

@@ -17,7 +17,7 @@ export const CorrelationRuleSchema = z.object({
 	description: z.string().nullable(),
 	enabled: z.boolean(),
 	priority: z.number().int(),
-	matchCriteria: z.record(z.unknown()), // JSON criteria object
+	matchCriteria: z.record(z.string(), z.unknown()), // JSON criteria object
 	timeWindowMinutes: z.number().int().min(1),
 	action: CorrelationActionSchema,
 	createdAt: DateStringSchema,
@@ -29,7 +29,7 @@ export const CreateCorrelationRuleSchema = z.object({
 	description: z.string().optional(),
 	enabled: z.boolean().optional(),
 	priority: z.number().int().optional(),
-	matchCriteria: z.record(z.unknown()),
+	matchCriteria: z.record(z.string(), z.unknown()),
 	timeWindowMinutes: z.number().int().min(1).optional(),
 	action: CorrelationActionSchema.optional(),
 });
@@ -42,7 +42,7 @@ export const UpdateCorrelationRuleSchema =
 // =============================================================================
 
 export const TestCorrelationSchema = z.object({
-	alertData: z.record(z.unknown()),
+	alertData: z.record(z.string(), z.unknown()),
 });
 
 export const TestCorrelationResponseSchema = z.object({

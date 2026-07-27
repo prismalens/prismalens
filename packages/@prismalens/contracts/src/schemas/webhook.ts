@@ -13,8 +13,8 @@ import { SeveritySchema } from "./common.js";
 
 export const PrometheusAlertSchema = z.object({
 	status: z.enum(["firing", "resolved"]),
-	labels: z.record(z.string()),
-	annotations: z.record(z.string()).optional(),
+	labels: z.record(z.string(), z.string()),
+	annotations: z.record(z.string(), z.string()).optional(),
 	startsAt: z.string(),
 	endsAt: z.string().optional(),
 	generatorURL: z.string().optional(),
@@ -27,9 +27,9 @@ export const PrometheusWebhookSchema = z.object({
 	truncatedAlerts: z.number().optional(),
 	status: z.enum(["firing", "resolved"]),
 	receiver: z.string().optional(),
-	groupLabels: z.record(z.string()).optional(),
-	commonLabels: z.record(z.string()).optional(),
-	commonAnnotations: z.record(z.string()).optional(),
+	groupLabels: z.record(z.string(), z.string()).optional(),
+	commonLabels: z.record(z.string(), z.string()).optional(),
+	commonAnnotations: z.record(z.string(), z.string()).optional(),
 	externalURL: z.string().optional(),
 	alerts: z.array(PrometheusAlertSchema),
 });
@@ -54,8 +54,8 @@ export const GenericWebhookSchema = z.object({
 	serviceId: z.string().uuid().optional(),
 	serviceName: z.string().optional(), // Will be matched to service by name
 	tags: z.array(z.string()).optional(),
-	labels: z.record(z.string()).optional(),
-	rawPayload: z.record(z.unknown()).optional(),
+	labels: z.record(z.string(), z.string()).optional(),
+	rawPayload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const GenericWebhookResponseSchema = z.object({

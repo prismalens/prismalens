@@ -43,7 +43,7 @@ export const skillsSchema = z.object({
 	PRISMALENS_MCP_CODE_PATHFINDER_ENABLED: z
 		.string()
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable Code Pathfinder MCP for call graph analysis"),
 
 	PRISMALENS_MCP_CODE_PATHFINDER_PROJECT_PATH: z
@@ -55,7 +55,7 @@ export const skillsSchema = z.object({
 	PRISMALENS_MCP_CODE_INDEX_ENABLED: z
 		.string()
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable Code Index MCP for multi-language AST analysis"),
 
 	PRISMALENS_MCP_CODE_INDEX_PROJECT_PATH: z
@@ -67,7 +67,7 @@ export const skillsSchema = z.object({
 	PRISMALENS_MCP_RIPGREP_ENABLED: z
 		.string()
 		.transform((val) => val === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable mcp-ripgrep for fast pattern search"),
 
 	PRISMALENS_MCP_RIPGREP_BASE_DIR: z
