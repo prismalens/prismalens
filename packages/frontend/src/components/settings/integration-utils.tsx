@@ -6,11 +6,11 @@
 import {
 	AlertCircle,
 	CheckCircle,
-	Github,
 	Link2,
 	MessageSquare,
 	Zap,
 } from "lucide-react";
+import { GithubIcon } from "@/components/icons/github-icon";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -19,7 +19,8 @@ import { Badge } from "@/components/ui/badge";
 
 // Template icon helper — uses template.id
 export function getTemplateIcon(templateId: string) {
-	if (templateId.startsWith("github")) return <Github className="h-5 w-5" />;
+	if (templateId.startsWith("github"))
+		return <GithubIcon className="h-5 w-5" />;
 	if (templateId.startsWith("slack"))
 		return <MessageSquare className="h-5 w-5" />;
 	if (templateId.startsWith("prometheus")) return <Zap className="h-5 w-5" />;
