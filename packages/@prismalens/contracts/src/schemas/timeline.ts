@@ -21,7 +21,7 @@ export const TimelineEntrySchema = z.object({
 	type: TimelineEntryTypeSchema,
 	title: z.string().min(1),
 	description: z.string().nullable(),
-	metadata: z.record(z.unknown()).nullable(),
+	metadata: z.record(z.string(), z.unknown()).nullable(),
 	source: TimelineSourceSchema,
 	userId: z.string().uuid().nullable(),
 	occurredAt: DateStringSchema,
@@ -32,7 +32,7 @@ export const CreateTimelineEntrySchema = z.object({
 	type: TimelineEntryTypeSchema,
 	title: z.string().min(1),
 	description: z.string().optional(),
-	metadata: z.record(z.unknown()).optional(),
+	metadata: z.record(z.string(), z.unknown()).optional(),
 	source: TimelineSourceSchema.optional(),
 });
 

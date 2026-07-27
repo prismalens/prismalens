@@ -157,7 +157,7 @@ export const mcpServerIdSchema = z.enum(MCP_SERVER_IDS);
 export const httpTransportSchema = z.object({
 	type: z.literal("http"),
 	url: z.string().url(),
-	headers: z.record(z.string()).optional(),
+	headers: z.record(z.string(), z.string()).optional(),
 });
 
 export type HTTPTransport = z.infer<typeof httpTransportSchema>;
@@ -170,7 +170,7 @@ export const stdioTransportSchema = z.object({
 	type: z.literal("stdio"),
 	command: z.string(),
 	args: z.array(z.string()),
-	env: z.record(z.string()).optional(),
+	env: z.record(z.string(), z.string()).optional(),
 	cwd: z.string().optional(),
 });
 
