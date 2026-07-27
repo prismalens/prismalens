@@ -134,6 +134,6 @@ export function runWithWideEventSync<T>(
 	) as T;
 }
 
+export { runInRequestContext } from "../../core/context.js";
 // Re-export context utilities for manual enrichment
 export { enrichContext, getRequestId, getTraceId };
-export { runInRequestContext } from "../../core/context.js";
