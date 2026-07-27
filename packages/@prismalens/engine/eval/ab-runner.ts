@@ -160,8 +160,10 @@ export interface ArmOptions {
 	cwd: string;
 	/** The pinned Claude model id — IDENTICAL for both arms (clean ablation). */
 	model: string;
-	/** Absolute path to the vendored incident-response local plugin dir. */
-	skillPluginPath: string;
+	/** Absolute path to the vendored incident-response local plugin dir. Absent = ablation rung without the skill. */
+	skillPluginPath?: string;
+	/** Tools the agent may NOT use for this arm (e.g. L0 deny-all). */
+	disallowedTools?: string[];
 	/** Runaway guard for the rented harness (default 40). */
 	maxTurns?: number;
 	/** Tier-1 reduce model config — only the prismalens arm's reduce() uses it. */
@@ -187,7 +189,8 @@ const DEFAULT_MAX_TURNS = 40;
 // =============================================================================
 
 /** The skill-loading native passthrough both arms share (identical → clean ablation). */
-function skillNative(skillPluginPath: string): Record<string, unknown> {
+export function skillNative(skillPluginPath?: string): Record<string, unknown> {
+	if (!skillPluginPath) return {};
 	return {
 		plugins: [{ type: "local", path: skillPluginPath }],
 		skills: ["incident-response"],
@@ -215,6 +218,7 @@ export async function runRawArm(
 		// independently of settingSources, so the skill is present even under isolation.
 		isolateSettings: true,
 		native: skillNative(opts.skillPluginPath),
+		...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
 		...(opts.signal
 			? { abortController: signalToController(opts.signal) }
 			: {}),

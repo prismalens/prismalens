@@ -33,7 +33,7 @@ describe.skipIf(!enabled)("claude code Agent SDK live smoke", () => {
 					"Reply with exactly the single word READY. Do not use any tools.",
 				maxTurns: 3,
 			},
-			{ runId: "11111111-1111-1111-1111-111111111111", branchId: "root" },
+			{ runId: "11111111-1111-4111-8111-111111111111", branchId: "root" },
 		)) {
 			events.push(ev);
 		}

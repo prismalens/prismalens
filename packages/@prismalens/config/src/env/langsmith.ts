@@ -15,14 +15,14 @@ export const langsmithSchema = z.object({
 	LANGSMITH_TRACING: z
 		.string()
 		.transform((v) => v === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable LangSmith tracing"),
 
 	/** LangChain tracing v2 flag (mirrors LANGSMITH_TRACING) */
 	LANGCHAIN_TRACING_V2: z
 		.string()
 		.transform((v) => v === "true")
-		.default("false")
+		.prefault("false")
 		.describe("Enable LangChain tracing v2"),
 
 	/** LangSmith project name for traces */

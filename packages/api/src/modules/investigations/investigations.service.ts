@@ -27,7 +27,7 @@ import {
 	UpdateAgentExecutionDto,
 } from "./dto/index.js";
 
-export type { Investigation, AgentExecution, ToolExecution };
+export type { AgentExecution, Investigation, ToolExecution };
 
 export type InvestigationWithRelations = Investigation & {
 	incident: {

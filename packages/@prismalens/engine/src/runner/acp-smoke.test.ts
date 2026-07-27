@@ -44,7 +44,7 @@ describe.skipIf(!KEY)("deepagents ACP live smoke", () => {
 				model,
 				env: { OPENAI_API_KEY: KEY, OPENAI_BASE_URL: baseUrl },
 			},
-			{ runId: "11111111-1111-1111-1111-111111111111", branchId: "root" },
+			{ runId: "11111111-1111-4111-8111-111111111111", branchId: "root" },
 		)) {
 			events.push(ev);
 		}

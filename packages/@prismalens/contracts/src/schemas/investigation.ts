@@ -136,8 +136,8 @@ export const ToolExecutionSchema = z.object({
 	agentExecutionId: z.string().uuid(),
 	toolName: z.string(),
 	toolCategory: ToolCategorySchema.nullable(),
-	arguments: z.record(z.unknown()).nullable(),
-	result: z.record(z.unknown()).nullable(),
+	arguments: z.record(z.string(), z.unknown()).nullable(),
+	result: z.record(z.string(), z.unknown()).nullable(),
 	status: ToolExecutionStatusSchema,
 	executionTimeMs: z.number().int().nullable(),
 	dataQuality: z.string().nullable(),
@@ -158,7 +158,7 @@ export const AgentExecutionSchema = z.object({
 	startedAt: DateStringSchema.nullable(),
 	completedAt: DateStringSchema.nullable(),
 	executionTimeMs: z.number().int().nullable(),
-	output: z.record(z.unknown()).nullable(),
+	output: z.record(z.string(), z.unknown()).nullable(),
 	inputTokens: z.number().int().nullable(),
 	outputTokens: z.number().int().nullable(),
 	error: z.string().nullable(),
@@ -277,8 +277,8 @@ export const UpdateInvestigationStatusSchema = z.object({
 export const CreateToolExecutionInputSchema = z.object({
 	toolName: z.string(),
 	toolCategory: z.string().optional(), // Using string directly to be permissive for inputs
-	arguments: z.record(z.unknown()).nullable().optional(),
-	result: z.record(z.unknown()).nullable().optional(),
+	arguments: z.record(z.string(), z.unknown()).nullable().optional(),
+	result: z.record(z.string(), z.unknown()).nullable().optional(),
 	status: ToolExecutionStatusSchema.optional(),
 	executionTimeMs: z.number().int().optional(),
 	dataQuality: z.string().optional(),
@@ -292,7 +292,7 @@ export const CreateAgentExecutionInputSchema = z.object({
 	startedAt: z.string().datetime().optional(),
 	completedAt: z.string().datetime().optional(),
 	executionTimeMs: z.number().int().optional(),
-	output: z.record(z.unknown()).optional(),
+	output: z.record(z.string(), z.unknown()).optional(),
 	inputTokens: z.number().int().optional(),
 	outputTokens: z.number().int().optional(),
 	error: z.string().optional(),
@@ -387,7 +387,7 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 				toolCallId: z.string(),
 				name: z.string().min(1),
 				/** Post-unwrap args (the deepagents {input:"<json>"} wrapper removed). */
-				args: z.record(z.unknown()),
+				args: z.record(z.string(), z.unknown()),
 			}),
 		),
 	}),
@@ -412,7 +412,7 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 			.nullable()
 			.optional(),
 		total_cost_usd: z.number().min(0).optional(),
-		modelUsage: z.record(z.unknown()).nullable().optional(),
+		modelUsage: z.record(z.string(), z.unknown()).nullable().optional(),
 		num_turns: z.number().int().min(0).optional(),
 		duration_ms: z.number().int().min(0).optional(),
 	}),
@@ -523,8 +523,8 @@ export type InvestigationEventsPage = z.infer<
 export const FiringAlertSchema = z.object({
 	alertname: z.string(),
 	severity: z.string().nullable(),
-	labels: z.record(z.string()),
-	annotations: z.record(z.string()),
+	labels: z.record(z.string(), z.string()),
+	annotations: z.record(z.string(), z.string()),
 	startsAt: z.string().nullable(),
 });
 export type FiringAlert = z.infer<typeof FiringAlertSchema>;
