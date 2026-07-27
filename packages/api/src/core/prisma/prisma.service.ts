@@ -27,132 +27,132 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	// Forward all Prisma model access
-	get user() {
+	get user(): (typeof prisma)["user"] {
 		return prisma.user;
 	}
 
-	get alert() {
+	get alert(): (typeof prisma)["alert"] {
 		return prisma.alert;
 	}
 
-	get recommendation() {
+	get recommendation(): (typeof prisma)["recommendation"] {
 		return prisma.recommendation;
 	}
 
-	get investigation() {
+	get investigation(): (typeof prisma)["investigation"] {
 		return prisma.investigation;
 	}
 
-	get investigationEvent() {
+	get investigationEvent(): (typeof prisma)["investigationEvent"] {
 		return prisma.investigationEvent;
 	}
 
-	get incident() {
+	get incident(): (typeof prisma)["incident"] {
 		return prisma.incident;
 	}
 
-	get service() {
+	get service(): (typeof prisma)["service"] {
 		return prisma.service;
 	}
 
-	get integration() {
+	get integration(): (typeof prisma)["integration"] {
 		return prisma.integration;
 	}
 
-	get connection() {
+	get connection(): (typeof prisma)["connection"] {
 		return prisma.connection;
 	}
 
-	get oAuthState() {
+	get oAuthState(): (typeof prisma)["oAuthState"] {
 		return prisma.oAuthState;
 	}
 
-	get serviceIntegration() {
+	get serviceIntegration(): (typeof prisma)["serviceIntegration"] {
 		return prisma.serviceIntegration;
 	}
 
-	get agentExecution() {
+	get agentExecution(): (typeof prisma)["agentExecution"] {
 		return prisma.agentExecution;
 	}
 
-	get toolExecution() {
+	get toolExecution(): (typeof prisma)["toolExecution"] {
 		return prisma.toolExecution;
 	}
 
-	get event() {
+	get event(): (typeof prisma)["event"] {
 		return prisma.event;
 	}
 
-	get timelineEntry() {
+	get timelineEntry(): (typeof prisma)["timelineEntry"] {
 		return prisma.timelineEntry;
 	}
 
-	get correlationRule() {
+	get correlationRule(): (typeof prisma)["correlationRule"] {
 		return prisma.correlationRule;
 	}
 
-	get alertMappingRule() {
+	get alertMappingRule(): (typeof prisma)["alertMappingRule"] {
 		return prisma.alertMappingRule;
 	}
 
-	get serviceDependency() {
+	get serviceDependency(): (typeof prisma)["serviceDependency"] {
 		return prisma.serviceDependency;
 	}
 
-	get serviceSuggestion() {
+	get serviceSuggestion(): (typeof prisma)["serviceSuggestion"] {
 		return prisma.serviceSuggestion;
 	}
 
-	get setting() {
+	get setting(): (typeof prisma)["setting"] {
 		return prisma.setting;
 	}
 
-	get postmortem() {
+	get postmortem(): (typeof prisma)["postmortem"] {
 		return prisma.postmortem;
 	}
 
-	get changeEvent() {
+	get changeEvent(): (typeof prisma)["changeEvent"] {
 		return prisma.changeEvent;
 	}
 
-	get repository() {
+	get repository(): (typeof prisma)["repository"] {
 		return prisma.repository;
 	}
 
-	get serviceRepository() {
+	get serviceRepository(): (typeof prisma)["serviceRepository"] {
 		return prisma.serviceRepository;
 	}
 
-	get deployment() {
+	get deployment(): (typeof prisma)["deployment"] {
 		return prisma.deployment;
 	}
 
-	get incidentSimilarity() {
+	get incidentSimilarity(): (typeof prisma)["incidentSimilarity"] {
 		return prisma.incidentSimilarity;
 	}
 
 	// Better Auth models
-	get session() {
+	get session(): (typeof prisma)["session"] {
 		return prisma.session;
 	}
 
-	get account() {
+	get account(): (typeof prisma)["account"] {
 		return prisma.account;
 	}
 
-	get verification() {
+	get verification(): (typeof prisma)["verification"] {
 		return prisma.verification;
 	}
 
-	get organization() {
+	get organization(): (typeof prisma)["organization"] {
 		return prisma.organization;
 	}
 
-	get member() {
+	get member(): (typeof prisma)["member"] {
 		return prisma.member;
 	}
 
-	get invitation() {
+	get invitation(): (typeof prisma)["invitation"] {
 		return prisma.invitation;
 	}
 

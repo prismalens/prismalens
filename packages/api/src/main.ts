@@ -26,7 +26,7 @@ async function bootstrap() {
 		getConfig();
 	} catch (error) {
 		console.error("❌ Environment validation failed before bootstrap:");
-		console.error(error.message);
+		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);
 	}
 

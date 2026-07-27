@@ -9,6 +9,6 @@ export class TestMappingDto {
 	source?: string;
 	labels?: Record<string, string>;
 	tags?: string[];
-	title: string;
+	title!: string;
 	description?: string;
 }
