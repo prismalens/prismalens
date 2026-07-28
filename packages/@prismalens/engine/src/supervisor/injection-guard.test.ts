@@ -337,6 +337,48 @@ describe("pack evidence provenance — coerced on `source`, never on `origin`", 
 		expect(ruled.toolCallId).toBeNull();
 	});
 
+	it.each([
+		["Context-pack: changes", "capitalised, space after colon"],
+		[" context-pack:changes", "leading whitespace"],
+		["CONTEXT-PACK:priorIncidents", "shouted"],
+		["\tcontext-pack:neighbors", "leading tab"],
+	])(
+		"coerces a near-miss pack citation (%j — %s)",
+		/**
+		 * The discriminant must not hinge on the MODEL'S capitalisation. A raw
+		 * `startsWith` let every one of these keep `status: "verified"` and a
+		 * fabricated `toolCallId` — a fabricated tool citation on a host-supplied
+		 * fact, which is exactly what this rule exists to make impossible. The whole
+		 * point is that the model cannot opt out, so a stray capital cannot be an
+		 * opt-out either.
+		 */
+		async (source) => {
+			const out = await reportFrom(async () =>
+				report({
+					hypotheses: [
+						{
+							statement: "the deploy did it",
+							status: "supported",
+							evidence: [
+								{
+									observation: "a deploy landed in window",
+									source,
+									direction: "supports",
+									status: "verified",
+									toolCallId: "tc-fabricated",
+								},
+							],
+						},
+					],
+				}),
+			);
+			const cited = out.hypotheses[0].evidence[0];
+			expect(cited.origin).toBe("context-pack");
+			expect(cited.status).toBe("inferred");
+			expect(cited.toolCallId).toBeNull();
+		},
+	);
+
 	it("leaves genuine tool evidence untouched — no origin stamped, status kept", async () => {
 		const out = await reportFrom(async () =>
 			report({

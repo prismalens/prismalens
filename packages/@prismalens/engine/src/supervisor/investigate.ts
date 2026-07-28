@@ -364,8 +364,15 @@ export async function* investigateIncidentStream(
  */
 const PACK_SOURCE_PREFIX = "context-pack:";
 
+/**
+ * NORMALISE before matching. A raw `startsWith` is case- and whitespace-sensitive, so
+ * `"Context-pack: changes"` or `" context-pack:changes"` — plainly pack citations — slipped
+ * past the discriminant and kept `status: "verified"` plus a fabricated `toolCallId`. The
+ * point of this rule is that the model cannot opt out of it, so the match must not hinge on
+ * the model's capitalisation.
+ */
 const isPackEvidence = (e: Evidence): boolean =>
-	e.source.startsWith(PACK_SOURCE_PREFIX);
+	e.source.trimStart().toLowerCase().startsWith(PACK_SOURCE_PREFIX);
 
 /**
  * Force honest provenance on every context-pack citation (#71/#207, ADR-0002 §5).
