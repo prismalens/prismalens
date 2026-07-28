@@ -74,3 +74,26 @@ import { SeveritySchema } from "@prismalens/contracts/schemas";
 ## Tree-shaking
 
 The package has `"sideEffects": false` in `package.json`. Consumers importing only `@prismalens/contracts/schemas` will not pull in `@orpc/contract` runtime code.
+
+## `InvestigationContext.contextPack` (host-assembled evidence)
+
+An **optional** field on `InvestigationContext`, added for Phase 3 slice 0. Host-assembled facts
+the harness cannot reach by iterating; the engine renders it and never fetches it (ADR-0011).
+Extend-only per ADR-0015 — the field is optional and absent on the CLI/degenerate path.
+
+Three families, all hard-capped by schema (`schemas/context-pack.ts`):
+
+| family | cap | carries |
+|---|---|---|
+| `changes` | 20 | `kind` · `service` · `at` · `source` · `ref` · `summary` |
+| `neighbors` | 20 | `name` · `relation` · `criticality` |
+| `priorIncidents` | 5 | `reference` · `title` · `rootCause` · `matchedOn[]` |
+| `unavailable` | 3 | `family` · `reason` — an honest "we could not fetch this" |
+
+**No numeric score anywhere** (ADR-0002): ordering *is* the rank, and `matchedOn` carries the
+honest "why". Every string field is sanitised at the render seam and emitted inside one fenced
+DATA-ONLY block, so no value can close the fence and speak as the operator (#207).
+
+Related report fields: `Evidence.origin` distinguishes a host-assembled fact from a tool
+observation, and `InvestigationReport.flaggedContent` carries any injection attempt the run
+observed — quoted as a specimen, never obeyed.
