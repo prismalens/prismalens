@@ -181,6 +181,36 @@ describe("reduce — map-reduce (ADR-0016 decision 2)", () => {
 		expect(out).toEqual(merged);
 	});
 
+	it("carries EVERY branch's flaggedContent into the merge, with the union rule (#207)", async () => {
+		// The union itself is the merge model's job, so the deterministic assertion is
+		// that (a) both branches' flagged entries reach the merge and (b) the rule
+		// telling it to unite rather than drop them is in the prompt. Dropping an
+		// injection attempt silently is the behaviour #207 forbids.
+		const events = [
+			agentStep("b0", 0),
+			toolResult("b0", 1),
+			agentStep("b1", 0),
+			toolResult("b1", 1),
+		];
+		const flagged = (quote: string): InvestigationReport => ({
+			...report(`saw ${quote}`),
+			flaggedContent: [
+				{ where: "context-pack", quote, why: "tried to instruct the model" },
+			],
+		});
+		const { model, prompts } = stubModel(
+			[flagged("branch-A payload"), flagged("branch-B payload")],
+			report("merged"),
+		);
+
+		await reduce(multiAlertContext(["A", "B"]), events, SYNTH, model);
+
+		const merge = prompts[2];
+		expect(merge).toContain("branch-A payload");
+		expect(merge).toContain("branch-B payload");
+		expect(merge).toContain("flaggedContent is the UNION across branches");
+	});
+
 	it("excludes a zero-evidence branch from the map (single survivor ⇒ no merge)", async () => {
 		// b0 has a tool_result; b1 gathered nothing. Only b0 maps, and one survivor
 		// needs no merge — so exactly one model call, and it is a synthesis.
