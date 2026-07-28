@@ -515,8 +515,11 @@ export function workerProbeUrl(): string | undefined {
  * Build the engine investigation request from the job + LLM settings.
  * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
  * stopgap); connectors are Phase D. BYO-key (ADR-0006) from the LLM settings.
+ *
+ * Exported so the resolved REQUEST — not a restated constant — is what the posture
+ * tests assert (the same reason `parseSandboxMode`/`harnessTakesSandbox` are exported).
  */
-async function buildRequest(
+export async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
 ): Promise<{ request: InvestigationRequest; sandbox?: Sandbox }> {
@@ -625,6 +628,14 @@ async function buildRequest(
 			// provider, B.1.3). Best-effort per provider.
 			limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 			...(sandbox ? { sandbox, requestedSandbox: sandboxMode } : {}),
+			// Settings isolation is MANDATORY here, not a knob (ADR-0020): server
+			// placements sandbox non-negotiably, and inheriting the user's environment is
+			// appropriate only on the LOCAL placements. Without this the rented harness
+			// loads the host account's `~/.claude` — settings, hooks, plugins, MCP servers
+			// — and a hook there executes ON THE HOST, outside the boundary resolved
+			// immediately above. Mirrors `cli/src/cli/listen.ts` (the other unattended
+			// entrypoint) and `engine/eval/ab-runner.ts` (what every eval measured).
+			isolateSettings: true,
 		},
 		sandbox,
 	};

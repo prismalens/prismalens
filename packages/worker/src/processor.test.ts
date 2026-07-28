@@ -8,7 +8,7 @@
  * non-OpenAI-shaped secret (anthropic/google/groq) into `OPENAI_API_KEY`
  * (worker-provider-hardwiring ledger item). No network / no LLM.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `processor.ts` opens a real ioredis connection at module load (the canonical
 // event publisher) — stub it so importing the module for this pure-function test
@@ -24,12 +24,20 @@ vi.mock("ioredis", () => ({
 	}),
 }));
 
+// `buildRequest` reads the incident over oRPC; stub the client so the request
+// construction is exercised without a live API (a rejection is a caught no-incident
+// path in the processor, which would silently weaken the assertion).
+vi.mock("./orpc-client.js", () => ({
+	api: { incidents: { get: vi.fn(async () => ({ title: "Checkout 5xx" })) } },
+}));
+
 const {
 	buildHarnessEnv,
 	speaksOpenAiProtocol,
 	parseSandboxMode,
 	harnessTakesSandbox,
 	deriveWorkerAllowedHosts,
+	buildRequest,
 } = await import("./processor.js");
 
 const API_KEY = "secret-key";
@@ -153,5 +161,62 @@ describe("deriveWorkerAllowedHosts (egress allowlist, ADR-0020)", () => {
 	it("skips an unparseable extra URL rather than opening egress", () => {
 		const hosts = deriveWorkerAllowedHosts("openai", ["not a url"]);
 		expect(hosts).not.toContain("not a url");
+	});
+});
+
+describe("buildRequest settings isolation (ADR-0020 server placement)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+	});
+
+	/**
+	 * Arm the two out-of-process reads `buildRequest` makes before it assembles the
+	 * request: the internal LLM-credentials fetch and the harness/sandbox env knobs.
+	 * `claude-code` + `process` is the combination that actually consumes
+	 * `isolateSettings` (the ACP builder ignores it) and resolves no sandbox.
+	 */
+	function armWorkerEnv(): void {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
+		vi.stubEnv("PRISMALENS_SANDBOX", "process");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+				}),
+			})),
+		);
+	}
+
+	// The regression this guards: an unattended server run that inherits the host
+	// account's `~/.claude` executes its hooks and plugins ON THE HOST, outside the
+	// boundary the worker resolved — and behaves unlike the CLI and unlike every eval.
+	it("isolates host settings/hooks/plugins/MCP on the unattended server path", async () => {
+		armWorkerEnv();
+		const { request } = await buildRequest(
+			{ incidentId: "inc-1", investigationId: "inv-1" },
+			"run-1",
+		);
+		expect(request.isolateSettings).toBe(true);
+	});
+
+	// Isolation is a placement property, not a per-job one: no job payload may opt out.
+	it("isolates regardless of the job payload", async () => {
+		armWorkerEnv();
+		const { request } = await buildRequest(
+			{
+				incidentId: "inc-2",
+				investigationId: "inv-2",
+				alerts: [{ title: "HighLatency", severity: "critical" }],
+			},
+			"run-2",
+		);
+		expect(request.isolateSettings).toBe(true);
 	});
 });
