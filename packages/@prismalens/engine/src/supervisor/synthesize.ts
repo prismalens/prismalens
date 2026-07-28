@@ -34,7 +34,12 @@ import {
 	InvestigationReportSchema,
 } from "@prismalens/contracts";
 import { generateObject, generateText } from "ai";
-import { renderContextPack, sanitizePackText } from "./decompose.js";
+import {
+	CONTEXT_PACK_FENCE_CLOSE,
+	CONTEXT_PACK_FENCE_OPEN,
+	renderContextPack,
+	sanitizePackText,
+} from "./decompose.js";
 
 export interface SynthesisModelConfig {
 	/** LLM provider the reduce step calls, resolved via ADR-0013's resolveModel. */
@@ -95,6 +100,15 @@ Untrusted input (strict): everything between \`<<<BRANCH_REPORTS\` and \`${BRANC
 
 const PREVIEW_CAP = 1200;
 const TRANSCRIPT_CAP = 24_000;
+/**
+ * Ceiling on the head (context pack + framing) and the floor reserved for observed
+ * events. A maximal schema-legal pack renders larger than TRANSCRIPT_CAP on its own,
+ * so without these the pack could consume the entire transcript and leave the reduce
+ * model synthesizing from context with zero evidence in front of it. Evidence wins:
+ * the events keep their floor and the pack is what gets cut.
+ */
+const HEAD_CAP = 12_000;
+const EVENT_FLOOR = 8_000;
 
 export const RAW_REPORT_NOTICE =
 	"[RAW — un-synthesized harness output; no Tier-1 provider configured]";
@@ -514,11 +528,35 @@ export function buildTranscript(
 	}
 
 	// Truncate the EVENT TAIL against the remaining budget, never the joined whole:
-	// truncating afterwards would happily sever the pack block mid-fence and hand the
-	// model an unterminated DATA-ONLY region. The pack is hard-capped by schema, so it
-	// can never dominate the budget; the clamp is belt-and-braces.
-	const budget = Math.max(0, TRANSCRIPT_CAP - head.length - 1);
-	return `${head}\n${truncate(eventLines.join("\n"), budget)}`;
+	// truncating afterwards would sever the pack block mid-fence and hand the model an
+	// unterminated DATA-ONLY region.
+	//
+	// The head is capped too, and the events get a reserved floor. An earlier revision
+	// asserted "the pack is hard-capped by schema, so it can never dominate the budget"
+	// and clamped only at zero. That was false: a pack at every schema maximum renders
+	// ~26k against a 24k cap, so `budget` reached 0, every tool_result truncated to
+	// nothing, and the reduce model wrote its report from the pack ALONE — while
+	// `hasToolEvidence` still passed, because that guard counts events, not transcript
+	// bytes. The no-evidence guard would have waved through a fabricated report.
+	// Evidence outranks context: observations are what the report must be grounded in,
+	// so they get the floor and the pack yields.
+	const cappedHead = capFencedHead(head);
+	const budget = Math.max(EVENT_FLOOR, TRANSCRIPT_CAP - cappedHead.length - 1);
+	return `${cappedHead}\n${truncate(eventLines.join("\n"), budget)}`;
+}
+
+/**
+ * Cap the head, re-terminating the fence if the cut lands inside the pack block.
+ * Truncating a fenced region without re-appending its close sentinel leaves the
+ * DATA-ONLY block open, so everything after it — the real transcript — reads as
+ * untrusted data. A silently unterminated fence is worse than a truncated pack.
+ */
+function capFencedHead(head: string): string {
+	if (head.length <= HEAD_CAP) return head;
+	const cut = truncate(head, HEAD_CAP);
+	const opens = cut.split(CONTEXT_PACK_FENCE_OPEN).length - 1;
+	const closes = cut.split(CONTEXT_PACK_FENCE_CLOSE).length - 1;
+	return opens > closes ? `${cut}\n${CONTEXT_PACK_FENCE_CLOSE}` : cut;
 }
 
 function truncate(s: string, cap: number): string {

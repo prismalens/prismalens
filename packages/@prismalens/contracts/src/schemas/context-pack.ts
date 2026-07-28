@@ -31,7 +31,7 @@ export const ChangeFactSchema = z.object({
 	/** Affected service name, when the host could resolve one. */
 	service: z.string().max(120).nullable(),
 	/** When it landed (ISO 8601). */
-	at: z.string(),
+	at: z.iso.datetime({ offset: true }).max(40),
 	/** Origin system — "render", "vercel", "manual", … */
 	source: z.string().max(40),
 	/** Stable external identifier (deploy id, version, sha) — no prose. */
@@ -45,7 +45,7 @@ export type ChangeFact = z.infer<typeof ChangeFactSchema>;
 export const NeighborServiceSchema = z.object({
 	name: z.string().min(1).max(120),
 	/** "dependency" = the affected service calls it. "dependent" = it calls the affected service. */
-	relation: z.enum(["dependency", "dependent"]),
+	relation: z.literal("dependent"),
 	/** Edge criticality as recorded in the service graph, when set. */
 	criticality: z.string().max(40).nullable(),
 });
@@ -78,7 +78,10 @@ export type UnavailableFamily = z.infer<typeof UnavailableFamilySchema>;
 
 export const ContextPackSchema = z.object({
 	/** The correlation window these facts were scoped to (ISO). */
-	window: z.object({ start: z.string(), end: z.string() }),
+	window: z.object({
+		start: z.iso.datetime({ offset: true }).max(40),
+		end: z.iso.datetime({ offset: true }).max(40),
+	}),
 	/** Changes in window, most recent first. */
 	changes: z.array(ChangeFactSchema).max(20),
 	/** One-hop dependency neighbourhood, dependents first. */
@@ -88,6 +91,6 @@ export const ContextPackSchema = z.object({
 	/** Families the host could not fill. Empty array = everything succeeded. */
 	unavailable: z.array(UnavailableFamilySchema).max(3),
 	/** When the host assembled this (ISO). */
-	assembledAt: z.string(),
+	assembledAt: z.iso.datetime({ offset: true }).max(40),
 });
 export type ContextPack = z.infer<typeof ContextPackSchema>;
