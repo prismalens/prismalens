@@ -18,7 +18,7 @@
  *     reduce().
  *
  * The prompt is byte-identical across arms MODULO the context pack, which is arm (b)'s
- * treatment (and rung L4's): both use {@link buildInvestigationPrompt} (for a
+ * treatment (and, if it is ever built, an L4 rung's): both use {@link buildInvestigationPrompt} (for a
  * single-alert context, decompose's root branch already uses it byte-identically, so
  * arm (b)'s internal prompt matches arm (a)'s verbatim), but {@link runRawArm} strips
  * `context.contextPack` unless the arm explicitly opts in via
@@ -175,11 +175,12 @@ export interface ArmOptions {
 	signal?: AbortSignal;
 	/**
 	 * Render `context.contextPack` into the raw arm's prompt. DEFAULT FALSE: the raw
-	 * arm is the ablation baseline and must not receive arm (b)'s treatment. Only the
-	 * no rung sets this true today. `Rung` is L0|L1|L2|L3 (eval/ladder.ts) and
-	 * an L4 "bare tool loop + pack" rung is NOT built. The parameter exists so the
-	 * strip is a decision at the call site rather than an invisible default; if L4 is
-	 * never built, delete it and strip unconditionally.
+	 * arm is the ablation baseline and must not receive arm (b)'s treatment.
+	 *
+	 * **No rung sets this true today.** `Rung` is `L0|L1|L2|L3` (`eval/ladder.ts`) and an
+	 * L4 "bare tool loop + pack" rung is NOT built — `run-ladder.ts` errors on anything
+	 * else. The parameter exists so the strip is a decision at the call site rather than
+	 * an invisible default; if L4 is never built, delete it and strip unconditionally.
 	 */
 	carryContextPack?: boolean;
 }

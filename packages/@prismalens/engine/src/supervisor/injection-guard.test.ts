@@ -434,8 +434,10 @@ describe("A/B ablation — the raw arm does not receive arm (b)'s treatment", ()
 		const ctx = packedContext();
 		expect(rawArmPromptContext(ctx, undefined).contextPack).toBeUndefined();
 		expect(rawArmPromptContext(ctx, false).contextPack).toBeUndefined();
-		// L4 IS "bare tool loop + pack" — an unconditional strip would make it
-		// unbuildable, since rungArmOptions has no other channel for the pack.
+		// `true` is the RESERVED opt-in for a future L4 "bare tool loop + pack" rung.
+		// L4 is NOT built — `Rung` is L0|L1|L2|L3 — so nothing sets this today. The
+		// flag exists so an unconditional strip does not foreclose that rung, since
+		// rungArmOptions has no other channel for the pack.
 		expect(rawArmPromptContext(ctx, true).contextPack).toEqual(PACK);
 		// Everything else about the context is untouched by the strip.
 		const { contextPack: _drop, ...rest } = ctx;
