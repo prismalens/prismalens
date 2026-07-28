@@ -673,12 +673,12 @@ export const InvestigationContextSchema = z.object({
 	/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
 	repos: z.array(z.string()).optional(),
 	logs: LogSystemContextSchema.optional(),
+	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
 	/**
 	 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
 	 * Absent on the CLI/degenerate path and on any host that could not assemble
 	 * one — the engine renders nothing and behaves exactly as before.
 	 */
-	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
 	contextPack: ContextPackSchema.optional(),
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
