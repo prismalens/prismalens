@@ -628,6 +628,13 @@ export async function buildRequest(
 			// provider, B.1.3). Best-effort per provider.
 			limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 			...(sandbox ? { sandbox, requestedSandbox: sandboxMode } : {}),
+			// Owning decision: ADR-0020 (the Sandbox port — placement-scaled harness
+			// isolation) — the server placement's posture is what makes this mandatory.
+			// ADR-0017 is a SEPARATE decision (harness registry + honest fidelity); it
+			// governs how the resulting posture is REPORTED per harness, not whether
+			// isolation applies. Docs surfaces: no README or CLI --help change — this is
+			// a worker-internal placement default with no user-facing flag; the hub's
+			// security-and-sandbox spec carries the placement table.
 			// Settings isolation is MANDATORY here, not a knob (ADR-0020): server
 			// placements sandbox non-negotiably, and inheriting the user's environment is
 			// appropriate only on the LOCAL placements. Without this the rented harness
