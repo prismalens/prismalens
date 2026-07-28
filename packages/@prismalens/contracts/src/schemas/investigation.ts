@@ -19,6 +19,7 @@ import {
 	ToolExecutionStatusSchema,
 	WorkflowStatusSchema,
 } from "./common.js";
+import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
 
 // =============================================================================
@@ -42,6 +43,21 @@ export const EvidenceSchema = z.object({
 	 * originating call.
 	 */
 	toolCallId: z.string().nullable().optional(),
+	/**
+	 * Where this evidence came from. "tool" = a command/query the harness ran
+	 * (the default and the only kind before the context pack). "context-pack" = a
+	 * fact the HOST supplied (ADR-0016 §5) which the harness did not itself
+	 * observe. Context-pack evidence is coerced to status "inferred" with a null
+	 * toolCallId after synthesis — the model cannot promote a host fact to
+	 * "verified" without re-observing it with a tool and citing that tool.
+	 *
+	 * NOTE: this field is a LABEL, not the trigger. The deterministic coercion
+	 * keys off `source` matching the `context-pack:` prefix, because a model that
+	 * simply OMITS `origin` must not thereby escape the coercion. Optional, not
+	 * defaulted, so every persisted report already in the DB still parses;
+	 * absent ⇒ treat as "tool".
+	 */
+	origin: z.enum(["tool", "context-pack"]).optional(),
 });
 
 export const HypothesisSchema = z.object({
@@ -140,6 +156,35 @@ export const InvestigationReportSchema = z.object({
 	 * LLM-generated.
 	 */
 	fidelity: RunFidelitySchema.nullable().optional(),
+	/**
+	 * Content in the input that attempted to instruct the model rather than
+	 * inform it (#207). The correct response to an injection attempt is to
+	 * IGNORE the instruction, CONTINUE the investigation, and RECORD it here —
+	 * never to silently drop it. Absent/empty = nothing flagged.
+	 *
+	 * Unlike `fidelity` (deterministic, stamped post-synthesis), this one IS
+	 * LLM-authored — only the model can notice an instruction attempt.
+	 */
+	flaggedContent: z
+		.array(
+			z.object({
+				where: z.enum(["context-pack", "tool-output"]),
+				/**
+				 * The offending text, quoted and HARD-capped at 120 chars.
+				 * DANGER: this is a schema-blessed channel for copying an
+				 * attacker's payload verbatim into the NEXT model call (the
+				 * reduce merge serializes whole branch reports). The cap is the
+				 * first half of the mitigation; the sanitize-and-fence at the
+				 * merge boundary (synthesize.ts `mergePrompt`) is the second.
+				 * Never widen this cap.
+				 */
+				quote: z.string().max(120),
+				/** Why it was flagged — the model's own words, not the attacker's. */
+				why: z.string().max(300),
+			}),
+		)
+		.max(10)
+		.optional(),
 });
 
 // =============================================================================
@@ -596,18 +641,10 @@ export const LogSystemContextSchema = z.object({
 });
 export type LogSystemContext = z.infer<typeof LogSystemContextSchema>;
 
-/** A prior investigation summary — an episodic-memory seed (top-N similar past). */
-export const PriorInvestigationSchema = z.object({
-	incidentTitle: z.string().optional(),
-	summary: z.string().optional(),
-	rootCause: z.string().optional(),
-});
-export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
-
 /**
  * The host-assembled investigation context (ADR-0015). `alerts` (≥1) + `telemetry`
  * are the always-present core; the rest are optional enrichments a richer host (the
- * app/cloud) supplies and the future context-pack (ADR-0016 §5) rides on. A later
+ * app/cloud) supplies, and the context-pack (ADR-0016 §5) rides on. A later
  * per-alert fan-out needs no change here — the context is already 1..N.
  */
 export const InvestigationContextSchema = z.object({
@@ -620,7 +657,12 @@ export const InvestigationContextSchema = z.object({
 	/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
 	repos: z.array(z.string()).optional(),
 	logs: LogSystemContextSchema.optional(),
-	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
+	/**
+	 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
+	 * Absent on the CLI/degenerate path and on any host that could not assemble
+	 * one — the engine renders nothing and behaves exactly as before.
+	 */
+	contextPack: ContextPackSchema.optional(),
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 
@@ -630,7 +672,7 @@ export interface InvestigationContextExtras {
 	service?: ServiceContext;
 	repos?: string[];
 	logs?: LogSystemContext;
-	priorInvestigations?: PriorInvestigation[];
+	contextPack?: ContextPack;
 }
 
 /**
@@ -666,9 +708,7 @@ export function correlatedAlertsContext(
 		...(extras.service ? { service: extras.service } : {}),
 		...(extras.repos ? { repos: extras.repos } : {}),
 		...(extras.logs ? { logs: extras.logs } : {}),
-		...(extras.priorInvestigations
-			? { priorInvestigations: extras.priorInvestigations }
-			: {}),
+		...(extras.contextPack ? { contextPack: extras.contextPack } : {}),
 	};
 }
 
