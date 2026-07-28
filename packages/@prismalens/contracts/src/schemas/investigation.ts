@@ -642,6 +642,22 @@ export const LogSystemContextSchema = z.object({
 export type LogSystemContext = z.infer<typeof LogSystemContextSchema>;
 
 /**
+ * A prior investigation summary — an episodic-memory seed (top-N similar past).
+ *
+ * Superseded in practice by `contextPack.priorIncidents`, which carries the same
+ * intent with a fence, a rank, and an honest `matchedOn`. Retained because ADR-0015
+ * names this field in the host->engine contract and that contract is EXTEND-ONLY:
+ * removing it is a breaking narrowing, not a cleanup, even while no host populates
+ * it and no stage reads it. Retire it via an ADR-0015 amendment, not a diff.
+ */
+export const PriorInvestigationSchema = z.object({
+	incidentTitle: z.string().optional(),
+	summary: z.string().optional(),
+	rootCause: z.string().optional(),
+});
+export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
+
+/**
  * The host-assembled investigation context (ADR-0015). `alerts` (≥1) + `telemetry`
  * are the always-present core; the rest are optional enrichments a richer host (the
  * app/cloud) supplies, and the context-pack (ADR-0016 §5) rides on. A later
@@ -662,6 +678,7 @@ export const InvestigationContextSchema = z.object({
 	 * Absent on the CLI/degenerate path and on any host that could not assemble
 	 * one — the engine renders nothing and behaves exactly as before.
 	 */
+	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
 	contextPack: ContextPackSchema.optional(),
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
@@ -672,6 +689,7 @@ export interface InvestigationContextExtras {
 	service?: ServiceContext;
 	repos?: string[];
 	logs?: LogSystemContext;
+	priorInvestigations?: PriorInvestigation[];
 	contextPack?: ContextPack;
 }
 
@@ -708,6 +726,9 @@ export function correlatedAlertsContext(
 		...(extras.service ? { service: extras.service } : {}),
 		...(extras.repos ? { repos: extras.repos } : {}),
 		...(extras.logs ? { logs: extras.logs } : {}),
+		...(extras.priorInvestigations
+			? { priorInvestigations: extras.priorInvestigations }
+			: {}),
 		...(extras.contextPack ? { contextPack: extras.contextPack } : {}),
 	};
 }

@@ -176,7 +176,10 @@ export interface ArmOptions {
 	/**
 	 * Render `context.contextPack` into the raw arm's prompt. DEFAULT FALSE: the raw
 	 * arm is the ablation baseline and must not receive arm (b)'s treatment. Only the
-	 * L4 rung sets this true — L4 IS "bare tool loop + pack".
+	 * no rung sets this true today. `Rung` is L0|L1|L2|L3 (eval/ladder.ts) and
+	 * an L4 "bare tool loop + pack" rung is NOT built. The parameter exists so the
+	 * strip is a decision at the call site rather than an invisible default; if L4 is
+	 * never built, delete it and strip unconditionally.
 	 */
 	carryContextPack?: boolean;
 }
@@ -214,7 +217,9 @@ export function skillNative(skillPluginPath?: string): Record<string, unknown> {
  * Exported so the ablation can be ASSERTED rather than trusted to a comment. It lives
  * here, on the context, and not as a parameter on `buildInvestigationPrompt`: the
  * engine's prompt builder must stay a pure function of the context, and an
- * unconditional strip would make the L4 rung (bare loop + pack) unbuildable, since
+ * unconditional strip would foreclose an L4 (bare loop + pack) rung, which is NOT
+ * built today — `Rung` is L0|L1|L2|L3 and run-ladder.ts errors on anything else. Named
+ * here as a deliberately-kept seam, not as a description of existing work, since
  * `rungArmOptions` has no other channel to put the pack back.
  */
 export function rawArmPromptContext(
