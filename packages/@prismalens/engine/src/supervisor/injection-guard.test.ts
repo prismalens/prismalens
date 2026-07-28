@@ -72,7 +72,7 @@ const PACK: ContextPack = {
 			summary: "Deploy of main@7f21c",
 		},
 	],
-	neighbors: [{ name: "payments", relation: "dependent", criticality: "high" }],
+	neighbors: [{ name: "payments", relation: "dependent", criticality: "required" }],
 	priorIncidents: [
 		{
 			reference: "INC-142",

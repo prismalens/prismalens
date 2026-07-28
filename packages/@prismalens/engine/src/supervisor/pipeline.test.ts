@@ -216,7 +216,7 @@ describe("buildInvestigationPrompt — context-pack block (#71/#207)", () => {
 					{
 						name: "payments",
 						relation: "dependent" as const,
-						criticality: "high",
+						criticality: "required",
 					},
 					{
 						name: "search-indexer",
@@ -252,7 +252,7 @@ describe("buildInvestigationPrompt — context-pack block (#71/#207)", () => {
 		expect(prompt).toContain("SERVICE NEIGHBOURHOOD");
 		expect(prompt).toContain("PRIOR SIMILAR INCIDENTS");
 		expect(prompt).toContain("NOT AVAILABLE");
-		expect(prompt).toContain("payments (dependent, criticality: high)");
+		expect(prompt).toContain("payments (dependent, criticality: required)");
 		expect(prompt).toContain("search-indexer (dependent)");
 	});
 

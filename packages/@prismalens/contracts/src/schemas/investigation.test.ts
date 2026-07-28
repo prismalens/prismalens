@@ -115,7 +115,7 @@ function pack(overrides: Record<string, unknown> = {}) {
 		window: { start: "2026-07-27T01:00:00Z", end: "2026-07-27T02:15:00Z" },
 		changes: [changeFact("Deploy of main@7f21c")],
 		neighbors: [
-			{ name: "payments", relation: "dependent", criticality: "high" },
+			{ name: "payments", relation: "dependent", criticality: "required" },
 		],
 		priorIncidents: [
 			{

@@ -17,6 +17,7 @@
  * enrichment keyed on report hypotheses. This one is PRE-dispatch input.
  */
 import { z } from "zod";
+import { DependencyCriticalitySchema } from "./common.js";
 
 /** A deploy/release/config change that landed in the alert window. */
 export const ChangeFactSchema = z.object({
@@ -46,8 +47,16 @@ export const NeighborServiceSchema = z.object({
 	name: z.string().min(1).max(120),
 	/** "dependency" = the affected service calls it. "dependent" = it calls the affected service. */
 	relation: z.literal("dependent"),
-	/** Edge criticality as recorded in the service graph, when set. */
-	criticality: z.string().max(40).nullable(),
+	/**
+	 * Edge criticality as recorded in the service graph, when set.
+	 *
+	 * Reuses `DependencyCriticalitySchema` — the vocabulary this package already
+	 * exports and that `ServiceDependency.criticality` already stores. An earlier
+	 * revision declared a free `z.string().max(40)` here, duplicating a controlled
+	 * vocabulary from its own package: the host would have had to invent a mapping,
+	 * and the two shapes would have drifted the moment either changed.
+	 */
+	criticality: DependencyCriticalitySchema.nullable(),
 });
 export type NeighborService = z.infer<typeof NeighborServiceSchema>;
 
