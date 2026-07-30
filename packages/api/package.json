@@ -52,7 +52,7 @@
 		"@nestjs/schematics": "^11.1.0",
 		"@nestjs/testing": "^11.1.28",
 		"@nestjs/throttler": "^6.5.0",
-		"@swc/core": "^1.15.46",
+		"@swc/core": "^1.15.47",
 		"@types/express": "^5.0.6",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "^4.1.10",

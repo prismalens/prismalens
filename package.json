@@ -34,7 +34,7 @@
 		"changeset:publish": "pnpm publish -r --no-git-checks && changeset tag"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.5",
+		"@biomejs/biome": "2.5.6",
 		"@changesets/cli": "^2.31.1",
 		"@types/node": "catalog:",
 		"publint": "^0.3.22",
