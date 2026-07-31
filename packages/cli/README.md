@@ -4,13 +4,14 @@ The PrismaLens **investigation engine CLI** — the `prismalens` (alias `pl`) bi
 published on npm as the unscoped [`prismalens`](https://www.npmjs.com/package/prismalens) package.
 
 Per **ADR-0010**, the engine *is* a CLI: the desktop app and web API drive it
-rather than embedding it. The CLI is a thin **Tier-1 supervisor** that rents a
-**Tier-2 agent harness** (ADR-0008) to do the investigative legwork, then reduces the
-harness's canonical event stream into an **ordered-evidence report** (ADR-0002 —
-hypotheses ranked most-to-least plausible, with supporting/contradicting
+rather than embedding it. Under ADR-0022's reactive-pull posture (no standing ingestion),
+PrismaLens reacts to pushed webhook events via `listen` as its primary, always-on entry point.
+The CLI is a thin **Tier-1 supervisor** that rents a **Tier-2 agent harness** (ADR-0008) to do the
+investigative legwork, then reduces the harness's canonical event stream into an **ordered-evidence report**
+(ADR-0002 — hypotheses ranked most-to-least plausible, with supporting/contradicting
 evidence; no numeric confidence scores).
 
-- **Tier-1 (supervisor):** seeds the investigation from a firing alert, drives the
+- **Tier-1 (supervisor):** seeds the investigation from a firing alert (reactively via `listen` webhooks or ad-hoc via `investigate`), drives the
   rented harness live, and synthesizes the final report (the "reduce" step) using
   an OpenAI-compatible model.
 - **Tier-2 (rented harness):** one of
@@ -97,8 +98,8 @@ binary and an LLM credential are present.
 ```
 prismalens <command> [flags]      # alias: pl
 
-  investigate   Run a root-cause investigation of a firing alert.
-  listen        Start a token-authed local HTTP listener for Alertmanager webhooks.
+  listen        Start the token-authed HTTP listener for reactive Alertmanager webhooks (always-on entry point).
+  investigate   Run a manual or one-off root-cause investigation of a firing alert.
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
   doctor        Preflight-check the investigation environment.
   init          Scaffold a prismalens.config.yaml in the current directory.
@@ -107,9 +108,19 @@ prismalens <command> [flags]      # alias: pl
   auth          Manage stored BYO-key credentials for providers.
 ```
 
+### `listen`
+
+Start the primary, token-authed local HTTP listener for incoming Alertmanager webhooks. Under ADR-0022's reactive-pull posture, PrismaLens does not poll or ingest on a standing basis; `listen` is the primary reactive surface, triggering an investigation whenever a webhook delivers a firing alert (Phase 1 R1).
+
+```bash
+PRISMALENS_LISTEN_TOKEN=xyz pl listen --host 127.0.0.1 --config my-stack.yaml
+```
+
+Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
+
 ### `investigate`
 
-Seeds an investigation from a firing alert, rents a Tier-2 harness, streams the
+Run a manual, ad-hoc, or one-off root-cause investigation directly from the CLI. Seeds an investigation from a firing alert, rents a Tier-2 harness, streams the
 supervisor live (each canonical event is appended to the run workspace and printed
 as a one-line timeline entry), and renders the ordered-evidence report.
 
@@ -141,16 +152,6 @@ errored emits no report — the CLI surfaces the transport failure rather than a
 fabricated RCA).
 
 A `FiringAlert` is `{ alertname, severity, labels, annotations, startsAt }`.
-
-### `listen`
-
-Start a token-authed local HTTP listener for Alertmanager webhooks; each firing alert triggers an investigation (Phase 1 R1).
-
-```bash
-PRISMALENS_LISTEN_TOKEN=xyz pl listen --host 127.0.0.1 --config my-stack.yaml
-```
-
-Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
 
 ### `serve`
 
