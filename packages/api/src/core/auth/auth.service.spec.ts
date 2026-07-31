@@ -89,4 +89,27 @@ describe("AuthService", () => {
 		const service = moduleRef.get(AuthService);
 		await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
 	});
+
+	it("continues startup with a warning when the organization count is unreadable (fresh install, outage)", async () => {
+		const mockPrismaService = {
+			organization: {
+				count: vi
+					.fn()
+					.mockRejectedValue(new Error("no such table: Organization")),
+			},
+		};
+
+		const moduleRef = await Test.createTestingModule({
+			providers: [
+				AuthService,
+				{ provide: ConfigService, useValue: mockConfigService },
+				{ provide: PrismaService, useValue: mockPrismaService },
+			],
+		}).compile();
+
+		const service = moduleRef.get(AuthService);
+		// Boot aborts only on positive evidence of violation — never on an
+		// unreadable count; creation stays fail-closed in the auth hook.
+		await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+	});
 });
