@@ -66,7 +66,8 @@ async function main() {
 	console.log("🔍 Checking database state...");
 
 	const dbType = getDbType();
-	const migrationsFolder = dbType === "postgresql" ? "pg/schema" : "sqlite/schema";
+	const migrationsFolder =
+		dbType === "postgresql" ? "pg/schema" : "sqlite/schema";
 	const hasMigrations = migrationsExist(dbType);
 	const dbExists = dbType === "sqlite" ? sqliteDbExists() : true; // PostgreSQL connectivity deferred to Prisma
 
@@ -80,11 +81,14 @@ async function main() {
 	if (!hasMigrations) {
 		// Fresh install - create initial migration
 		console.log("📦 Creating initial migration...");
-		execSync("pnpm exec prisma migrate dev --name init --config prisma.config.ts", {
-			cwd: DATABASE_PATH,
-			stdio: "inherit",
-			env: { ...process.env },
-		});
+		execSync(
+			"pnpm exec prisma migrate dev --name init --config prisma.config.ts",
+			{
+				cwd: DATABASE_PATH,
+				stdio: "inherit",
+				env: { ...process.env },
+			},
+		);
 	} else if (!dbExists) {
 		// Migrations exist but DB is missing - apply them
 		console.log("🔄 Applying migrations to new database...");
