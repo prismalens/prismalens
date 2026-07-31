@@ -57,11 +57,16 @@ function multiAlertContext(names: string[]): InvestigationContext {
 	};
 }
 
-function report(summary: string, hypothesis?: string): InvestigationReport {
+function report(
+	summary: string,
+	hypothesis?: string,
+	culprit?: Culprit | null,
+): InvestigationReport {
 	return {
 		summary,
 		rootCause: null,
 		rootCauseCategory: null,
+		culprit: culprit ?? null,
 		hypotheses: hypothesis
 			? [{ statement: hypothesis, status: "supported", evidence: [] }]
 			: [],
@@ -362,5 +367,46 @@ describe("reduce pass-through (#131/#132)", () => {
 		);
 		// Without tool_result, branch is empty, so no conclusion is gathered.
 		expect(out.summary).toContain("No branch conclusions gathered.");
+	});
+});
+
+describe("synthesize — culprit sub-object mapping (ADR-0026 / D3)", () => {
+	it("maps culprit through when present in reduce output", async () => {
+		const events = [agentStep("root", 0), toolResult("root", 1)];
+		const cannedCulprit = {
+			service: "billing-api",
+			changeRef: "commit-a1b2c3",
+			mechanism: "connection-pool exhaustion",
+		};
+		const expectedReport = report(
+			"synthesized report with culprit",
+			"OOM issue",
+			cannedCulprit,
+		);
+		const { model } = stubModel([expectedReport], expectedReport);
+
+		const out = await reduce(
+			singleAlertContext(alert("HighLatency"), TELEMETRY),
+			events,
+			SYNTH,
+			model,
+		);
+
+		expect(out.culprit).toEqual(cannedCulprit);
+	});
+
+	it("preserves a null culprit through reduce", async () => {
+		const events = [agentStep("root", 0), toolResult("root", 1)];
+		const expectedReport = report("synthesized report without culprit");
+		const { model } = stubModel([expectedReport], expectedReport);
+
+		const out = await reduce(
+			singleAlertContext(alert("HighLatency"), TELEMETRY),
+			events,
+			SYNTH,
+			model,
+		);
+
+		expect(out.culprit).toBeNull();
 	});
 });

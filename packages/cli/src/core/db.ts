@@ -37,6 +37,8 @@ const SCHEMA = `
 			workspace_path TEXT NOT NULL,
 			error          TEXT,
 			suppression_reason TEXT,
+			origin         TEXT NOT NULL DEFAULT 'local',
+			schema_version INTEGER NOT NULL DEFAULT 1,
 			created_at     TEXT NOT NULL,
 			updated_at     TEXT NOT NULL,
 			completed_at   TEXT
@@ -70,11 +72,19 @@ const SCHEMA = `
 
 const SCHEMA_CHECK = `
 		SELECT id, group_key, formed_by, created_at FROM groups LIMIT 1;
-		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, created_at, updated_at, completed_at FROM runs LIMIT 1;
+		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, origin, schema_version, created_at, updated_at, completed_at FROM runs LIMIT 1;
 		SELECT id, run_id, payload FROM events LIMIT 1;
 		SELECT run_id, payload FROM reports LIMIT 1;
 		SELECT id, group_id, late, payload FROM group_alerts LIMIT 1;
 `;
+
+// Columns added after a release ship as in-place ALTERs: replacing the
+// database would orphan the user's run history, which schema_version exists
+// to protect (ADR-0026). SQLite backfills existing rows from the DEFAULT.
+const ADDITIVE_MIGRATIONS = [
+	`ALTER TABLE runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'local'`,
+	`ALTER TABLE runs ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1`,
+];
 
 export function openDatabase(baseDir: string): DatabaseSyncType {
 	mkdirSync(baseDir, { recursive: true });
@@ -91,6 +101,24 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 				db.close();
 			} catch {}
 			throw err;
+		}
+
+		// Additive migration first — only if it cannot make the schema whole
+		// does the backup-and-recreate path below run.
+		try {
+			for (const stmt of ADDITIVE_MIGRATIONS) {
+				try {
+					db.exec(stmt);
+				} catch (migErr: unknown) {
+					const m = migErr instanceof Error ? migErr.message : String(migErr);
+					if (!/duplicate column name/i.test(m)) throw migErr;
+				}
+			}
+			db.exec(SCHEMA);
+			db.exec(SCHEMA_CHECK);
+			return db;
+		} catch {
+			// Fall through to backup-and-recreate.
 		}
 
 		// Schema mismatch or corruption detected.
