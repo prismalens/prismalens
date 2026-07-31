@@ -81,7 +81,7 @@ An **optional** field on `InvestigationContext`, added for Phase 3 slice 0. Host
 the harness cannot reach by iterating; the engine renders it and never fetches it (ADR-0011).
 Extend-only per ADR-0015 — the field is optional and absent on the CLI/degenerate path.
 
-Three families, all hard-capped by schema (`schemas/context-pack.ts`):
+Four families, all hard-capped by schema (`schemas/context-pack.ts`):
 
 | family | cap | carries |
 |---|---|---|

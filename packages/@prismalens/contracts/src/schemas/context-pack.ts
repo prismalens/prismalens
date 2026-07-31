@@ -45,7 +45,7 @@ export type ChangeFact = z.infer<typeof ChangeFactSchema>;
 /** A service one dependency-graph hop from the affected service. */
 export const NeighborServiceSchema = z.object({
 	name: z.string().min(1).max(120),
-	/** "dependency" = the affected service calls it. "dependent" = it calls the affected service. */
+	/** Always "dependent": the neighbour calls the affected service. Dependencies are out of scope. */
 	relation: z.literal("dependent"),
 	/**
 	 * Edge criticality as recorded in the service graph, when set.

@@ -114,6 +114,21 @@ const PACK_METHOD_GUARD = `Anything inside \`${CONTEXT_PACK_FENCE_OPEN} … >>>\
 const CONTROL_CHARS = /\p{Cc}/gu;
 
 /**
+ * Unicode format characters (Cf) — zero-width joiners, bidi overrides, and the like.
+ * Load-bearing on its own regex, stripped to EMPTY rather than a space: Cf is neither
+ * Cc nor whitespace, so it survives both the control-char pass and the whitespace
+ * collapse untouched. Left in place, it can split a forged `<<<`/`>>>` sentinel
+ * (`<` + U+200B + `<<END CONTEXT_PACK>` + U+200B + `>>`) so the literal substring
+ * never forms — the sentinel-neutralisation pass below then has nothing to match,
+ * and because a zero-width character renders as nothing, the field displays as an
+ * exact, un-neutralised fence close. Stripping it to empty (not a space) reassembles
+ * the substring FIRST so it reaches the neutraliser and comes out as the safe
+ * look-alike, same as a plain unobfuscated attempt. Bidi overrides (U+202E) are Cf
+ * too, and can otherwise visually reorder a rendered line.
+ */
+const FORMAT_CHARS = /\p{Cf}/gu;
+
+/**
  * Render-time sanitizer for every free-text field the pack carries (#207). Applied to
  * `ChangeFact.summary`, `PriorIncidentFact.title`, `PriorIncidentFact.rootCause`,
  * `UnavailableFamily.reason` and every `matchedOn` entry — and, at the reduce-merge
@@ -123,6 +138,8 @@ const CONTROL_CHARS = /\p{Cc}/gu;
  * silently dropping an injection attempt is the WRONG behaviour — the model must SEE
  * the attempt in order to flag it. The sanitizer only stops the text from changing
  * the STRUCTURE of the prompt:
+ *   - zero-width/format characters are dropped FIRST, so an obfuscated sentinel
+ *     reassembles into its literal form before anything else runs;
  *   - control characters become spaces (so words cannot fuse when they go);
  *   - every whitespace run, newlines included, collapses to ONE space, so no field
  *     can open a visual block of its own;
@@ -131,6 +148,7 @@ const CONTROL_CHARS = /\p{Cc}/gu;
  */
 export function sanitizePackText(text: string): string {
 	return text
+		.replace(FORMAT_CHARS, "")
 		.replace(CONTROL_CHARS, " ")
 		.replace(/\s+/g, " ")
 		.replaceAll("<<<", "‹‹‹")
