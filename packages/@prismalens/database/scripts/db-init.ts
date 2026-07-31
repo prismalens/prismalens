@@ -88,7 +88,7 @@ async function main() {
 	} else if (!dbExists) {
 		// Migrations exist but DB is missing - apply them
 		console.log("🔄 Applying migrations to new database...");
-		execSync("pnpm exec prisma migrate dev --config prisma.config.ts", {
+		execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
 			cwd: DATABASE_PATH,
 			stdio: "inherit",
 			env: { ...process.env },
@@ -113,7 +113,7 @@ async function main() {
 				output.includes("have not yet been applied")
 			) {
 				console.log("🔄 Applying pending migrations...");
-				execSync("pnpm exec prisma migrate dev --config prisma.config.ts", {
+				execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
 					cwd: DATABASE_PATH,
 					stdio: "inherit",
 					env: { ...process.env },
@@ -124,7 +124,7 @@ async function main() {
 		} catch (_error) {
 			// migrate status returns non-zero if there are pending migrations or issues
 			console.log("🔄 Applying pending migrations...");
-			execSync("pnpm exec prisma migrate dev --config prisma.config.ts", {
+			execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
 				cwd: DATABASE_PATH,
 				stdio: "inherit",
 				env: { ...process.env },
