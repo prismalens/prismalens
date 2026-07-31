@@ -12,7 +12,7 @@
  * - Role-based access control
  */
 
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, organization } from "better-auth/plugins";
 
@@ -23,9 +23,9 @@ import { admin, organization } from "better-auth/plugins";
  * because we can't directly import it here (would cause circular dependency).
  * The API package will call this with its Prisma instance.
  */
-export function createAuth(prisma: any, options: AuthOptions) {
+export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
-		database: prismaAdapter(prisma, {
+		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
 			provider: options.databaseProvider,
 		}),
 
@@ -75,6 +75,21 @@ export function createAuth(prisma: any, options: AuthOptions) {
 				// For Community Edition, we use a single organization
 				allowUserToCreateOrganization: false,
 				organizationLimit: 1,
+
+				organizationHooks: {
+					async beforeCreateOrganization() {
+						const prismaClient = prisma as {
+							organization?: { count?: () => Promise<number> };
+						};
+						const count = await prismaClient?.organization?.count?.();
+						if (typeof count === "number" && count >= 1) {
+							throw new APIError("BAD_REQUEST", {
+								message:
+									"Organization creation is disabled in single-tenant mode (ADR-0011 §6)",
+							});
+						}
+					},
+				},
 
 				// Custom invitation email handler
 				// If SMTP is configured, this sends the email

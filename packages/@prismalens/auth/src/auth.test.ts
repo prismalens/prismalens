@@ -51,4 +51,25 @@ describe("createAuth single-tenant organization enforcement", () => {
 		// Organization creation is rejected
 		expect(res.status).not.toBe(200);
 	});
+
+	it("rejects organization creation when an organization already exists via beforeCreateOrganization hook", async () => {
+		const mockPrismaWithOrg = {
+			organization: {
+				count: async () => 1,
+			},
+		} as unknown;
+
+		const auth = createAuth(mockPrismaWithOrg, options);
+
+		const res = await auth.api.createOrganization({
+			body: {
+				name: "Second Org",
+				slug: "second-org",
+			},
+			asResponse: true,
+		});
+
+		// Organization creation is rejected by hook
+		expect(res.status).not.toBe(200);
+	});
 });

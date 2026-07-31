@@ -9,17 +9,35 @@
  * provides access to auth APIs throughout the application.
  */
 
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import {
+	Injectable,
+	Logger,
+	OnApplicationBootstrap,
+	OnModuleInit,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { type Auth, createAuth } from "@prismalens/auth";
 import { prisma } from "@prismalens/database";
+import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
-export class AuthService implements OnModuleInit {
+export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 	private readonly logger = new Logger(AuthService.name);
 	private _auth: Auth | null = null;
 
-	constructor(private readonly configService: ConfigService) {}
+	constructor(
+		private readonly configService: ConfigService,
+		private readonly prismaService: PrismaService,
+	) {}
+
+	async onApplicationBootstrap(): Promise<void> {
+		const count = await this.prismaService.organization.count();
+		if (count > 1) {
+			const message = `ADR-0011 §6 single-tenant core invariant violation: expected at most 1 organization, found ${count}. Startup aborted.`;
+			this.logger.error(message);
+			throw new Error(message);
+		}
+	}
 
 	onModuleInit() {
 		const databaseUrl = this.configService.get<string>("DATABASE_URL", "");
