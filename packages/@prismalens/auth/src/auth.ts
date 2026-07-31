@@ -23,6 +23,27 @@ import { admin, organization } from "better-auth/plugins";
  * because we can't directly import it here (would cause circular dependency).
  * The API package will call this with its Prisma instance.
  */
+export async function assertOrganizationCreatable(
+	prisma: unknown,
+): Promise<void> {
+	const prismaClient = prisma as {
+		organization?: { count?: () => Promise<number> };
+	};
+	let count: number | undefined;
+	try {
+		count = await prismaClient?.organization?.count?.();
+	} catch {
+		count = undefined;
+	}
+	// Fail closed (ADR-0011 §6): an unreadable or failing count blocks creation too.
+	if (typeof count !== "number" || count >= 1) {
+		throw new APIError("BAD_REQUEST", {
+			message:
+				"Organization creation is disabled in single-tenant mode (ADR-0011 §6)",
+		});
+	}
+}
+
 export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
 		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
@@ -78,17 +99,7 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 
 				organizationHooks: {
 					async beforeCreateOrganization() {
-						const prismaClient = prisma as {
-							organization?: { count?: () => Promise<number> };
-						};
-						const count = await prismaClient?.organization?.count?.();
-						// Fail closed (ADR-0011 §6): an unreadable count blocks creation too.
-						if (typeof count !== "number" || count >= 1) {
-							throw new APIError("BAD_REQUEST", {
-								message:
-									"Organization creation is disabled in single-tenant mode (ADR-0011 §6)",
-							});
-						}
+						await assertOrganizationCreatable(prisma);
 					},
 				},
 
