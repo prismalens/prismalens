@@ -16,8 +16,8 @@
 	"dependencies": {
 		"@orpc/client": "catalog:",
 		"@orpc/contract": "catalog:",
-		"@orpc/openapi-client": "^1.14.10",
-		"@orpc/tanstack-query": "^1.14.10",
+		"@orpc/openapi-client": "^1.14.12",
+		"@orpc/tanstack-query": "^1.14.12",
 		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
