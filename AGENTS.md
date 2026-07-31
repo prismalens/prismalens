@@ -39,3 +39,12 @@ run them.
 ## Implementation specs must declare docs impact
 
 Every implementation spec handed to a coding agent must name a **Docs surfaces** deliverable: the specific files (README.md section, docs/ page, CLI --help text, mage note) the change is expected to update — or state explicitly "none affected because …". A spec without either is incomplete; do not start implementation until it's added.
+
+## Implementation specs must declare a capability tier
+
+Every implementation spec also states its **capability tier**: `free` (the default — everything
+in this repo), or a non-free tier per ADR-0023's boundary. Non-free capabilities never land in
+this repository — not even disabled behind a boolean. They integrate only through the
+capability-flag + dynamically-loaded-module seam (#264); the flags and UI shells here stay inert
+without a verified module. A spec that adds gated-but-present behavior to this repo is
+misdesigned — send it back.
