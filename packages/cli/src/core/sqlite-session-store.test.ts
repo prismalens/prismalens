@@ -335,74 +335,9 @@ describe("SqliteSessionManager", () => {
 		const oldDbPath = join(oldBaseDir, "prismalens.db");
 		const rawDb = new DatabaseSync(oldDbPath);
 
-		rawDb.exec(`
-			CREATE TABLE groups (
-				id         TEXT PRIMARY KEY,
-				group_key  TEXT,
-				formed_by  TEXT NOT NULL DEFAULT 'window',
-				created_at TEXT NOT NULL
-			);
-
-			CREATE TABLE runs (
-				run_id         TEXT PRIMARY KEY,
-				group_id       TEXT REFERENCES groups(id),
-				status         TEXT NOT NULL CHECK (status IN ('running','done','errored','suppressed')),
-				alertname      TEXT,
-				agent          TEXT,
-				repo           TEXT,
-				workspace_path TEXT NOT NULL,
-				error          TEXT,
-				suppression_reason TEXT,
-				created_at     TEXT NOT NULL,
-				updated_at     TEXT NOT NULL,
-				completed_at   TEXT
-			);
-
-			CREATE TABLE events (
-				id      INTEGER PRIMARY KEY AUTOINCREMENT,
-				run_id  TEXT NOT NULL REFERENCES runs(run_id),
-				payload TEXT NOT NULL
-			);
-
-			CREATE TABLE reports (
-				run_id  TEXT PRIMARY KEY REFERENCES runs(run_id),
-				payload TEXT NOT NULL
-			);
-
-			CREATE TABLE group_alerts (
-				id       INTEGER PRIMARY KEY AUTOINCREMENT,
-				group_id TEXT NOT NULL REFERENCES groups(id),
-				late     INTEGER NOT NULL,
-				payload  TEXT NOT NULL
-			);
-		`);
-
 		const oldRunId = "old-run-2025-08";
 		const createdAt = "2025-08-15T08:00:00.000Z";
 		const completedAt = "2025-08-15T08:05:00.000Z";
-
-		rawDb
-			.prepare(`
-			INSERT INTO groups (id, group_key, formed_by, created_at)
-			VALUES (?, '{}:{alertname="HighMemoryUsage"}', 'window', ?)
-		`)
-			.run(oldRunId, createdAt);
-
-		rawDb
-			.prepare(`
-			INSERT INTO runs (
-				run_id, group_id, status, alertname, agent, repo,
-				workspace_path, created_at, updated_at, completed_at
-			) VALUES (?, ?, 'done', 'HighMemoryUsage', 'deepagents', 'acme/payment-service', ?, ?, ?, ?)
-		`)
-			.run(
-				oldRunId,
-				oldRunId,
-				`/home/sumit/.prismalens/runs/${oldRunId}`,
-				createdAt,
-				completedAt,
-				completedAt,
-			);
 
 		const oldReportPayload = {
 			summary:
@@ -452,13 +387,6 @@ describe("SqliteSessionManager", () => {
 			],
 		};
 
-		rawDb
-			.prepare(`
-			INSERT INTO reports (run_id, payload)
-			VALUES (?, ?)
-		`)
-			.run(oldRunId, JSON.stringify(oldReportPayload));
-
 		const event1 = { kind: "started", runId: oldRunId };
 		const event2 = {
 			kind: "agent_step",
@@ -468,17 +396,91 @@ describe("SqliteSessionManager", () => {
 		};
 		const event3 = { kind: "completed", runId: oldRunId };
 
-		rawDb
-			.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
-			.run(oldRunId, JSON.stringify(event1));
-		rawDb
-			.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
-			.run(oldRunId, JSON.stringify(event2));
-		rawDb
-			.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
-			.run(oldRunId, JSON.stringify(event3));
+		try {
+			rawDb.exec(`
+				CREATE TABLE groups (
+					id         TEXT PRIMARY KEY,
+					group_key  TEXT,
+					formed_by  TEXT NOT NULL DEFAULT 'window',
+					created_at TEXT NOT NULL
+				);
 
-		rawDb.close();
+				CREATE TABLE runs (
+					run_id         TEXT PRIMARY KEY,
+					group_id       TEXT REFERENCES groups(id),
+					status         TEXT NOT NULL CHECK (status IN ('running','done','errored','suppressed')),
+					alertname      TEXT,
+					agent          TEXT,
+					repo           TEXT,
+					workspace_path TEXT NOT NULL,
+					error          TEXT,
+					suppression_reason TEXT,
+					created_at     TEXT NOT NULL,
+					updated_at     TEXT NOT NULL,
+					completed_at   TEXT
+				);
+
+				CREATE TABLE events (
+					id      INTEGER PRIMARY KEY AUTOINCREMENT,
+					run_id  TEXT NOT NULL REFERENCES runs(run_id),
+					payload TEXT NOT NULL
+				);
+
+				CREATE TABLE reports (
+					run_id  TEXT PRIMARY KEY REFERENCES runs(run_id),
+					payload TEXT NOT NULL
+				);
+
+				CREATE TABLE group_alerts (
+					id       INTEGER PRIMARY KEY AUTOINCREMENT,
+					group_id TEXT NOT NULL REFERENCES groups(id),
+					late     INTEGER NOT NULL,
+					payload  TEXT NOT NULL
+				);
+			`);
+
+			rawDb
+				.prepare(`
+				INSERT INTO groups (id, group_key, formed_by, created_at)
+				VALUES (?, '{}:{alertname="HighMemoryUsage"}', 'window', ?)
+			`)
+				.run(oldRunId, createdAt);
+
+			rawDb
+				.prepare(`
+				INSERT INTO runs (
+					run_id, group_id, status, alertname, agent, repo,
+					workspace_path, created_at, updated_at, completed_at
+				) VALUES (?, ?, 'done', 'HighMemoryUsage', 'deepagents', 'acme/payment-service', ?, ?, ?, ?)
+			`)
+				.run(
+					oldRunId,
+					oldRunId,
+					`/home/sumit/.prismalens/runs/${oldRunId}`,
+					createdAt,
+					completedAt,
+					completedAt,
+				);
+
+			rawDb
+				.prepare(`
+				INSERT INTO reports (run_id, payload)
+				VALUES (?, ?)
+			`)
+				.run(oldRunId, JSON.stringify(oldReportPayload));
+
+			rawDb
+				.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
+				.run(oldRunId, JSON.stringify(event1));
+			rawDb
+				.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
+				.run(oldRunId, JSON.stringify(event2));
+			rawDb
+				.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
+				.run(oldRunId, JSON.stringify(event3));
+		} finally {
+			rawDb.close();
+		}
 
 		// 2. Load the old database via current SessionManager code
 		const currentSessions = createSessionManager(oldBaseDir);
