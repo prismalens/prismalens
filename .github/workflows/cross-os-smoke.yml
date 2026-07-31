@@ -167,7 +167,7 @@ jobs:
 
       - name: Download tarballs
         if: env.MODE == 'tarball'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: npm-tarballs-cross-os-smoke
           path: tarballs
