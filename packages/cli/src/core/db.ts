@@ -37,6 +37,8 @@ const SCHEMA = `
 			workspace_path TEXT NOT NULL,
 			error          TEXT,
 			suppression_reason TEXT,
+			origin         TEXT NOT NULL DEFAULT 'local',
+			schema_version INTEGER NOT NULL DEFAULT 1,
 			created_at     TEXT NOT NULL,
 			updated_at     TEXT NOT NULL,
 			completed_at   TEXT
@@ -70,7 +72,7 @@ const SCHEMA = `
 
 const SCHEMA_CHECK = `
 		SELECT id, group_key, formed_by, created_at FROM groups LIMIT 1;
-		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, created_at, updated_at, completed_at FROM runs LIMIT 1;
+		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, origin, schema_version, created_at, updated_at, completed_at FROM runs LIMIT 1;
 		SELECT id, run_id, payload FROM events LIMIT 1;
 		SELECT run_id, payload FROM reports LIMIT 1;
 		SELECT id, group_id, late, payload FROM group_alerts LIMIT 1;

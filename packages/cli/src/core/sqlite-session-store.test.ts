@@ -58,6 +58,8 @@ describe("SqliteSessionManager", () => {
 		expect(record.runId).toBe(runId);
 		expect(record.status).toBe("running");
 		expect(record.alertname).toBe("TestAlert");
+		expect(record.origin).toBe("local");
+		expect(record.schemaVersion).toBe(1);
 
 		const fetched = await sessions.get(runId);
 		expect(fetched).toEqual(record);
@@ -71,6 +73,24 @@ describe("SqliteSessionManager", () => {
 
 		const report = await sessions.readReport(runId);
 		expect(report).toBeNull();
+	});
+
+	it("1b. Explicit origin and schemaVersion in create and update", async () => {
+		const runId = "test-run-1b";
+		const record = await sessions.create({
+			runId,
+			origin: "site-west",
+			schemaVersion: 2,
+		});
+		expect(record.origin).toBe("site-west");
+		expect(record.schemaVersion).toBe(2);
+
+		const updated = await sessions.update(runId, {
+			origin: "site-east",
+			schemaVersion: 3,
+		});
+		expect(updated.origin).toBe("site-east");
+		expect(updated.schemaVersion).toBe(3);
 	});
 
 	it("2. update: merges + stamps updated_at; throws if not found; status transitions", async () => {
