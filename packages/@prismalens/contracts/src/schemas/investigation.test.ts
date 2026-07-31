@@ -371,4 +371,3 @@ describe("InvestigationReportSchema — origin + flaggedContent (#207)", () => {
 		).toThrow();
 	});
 });
-});
