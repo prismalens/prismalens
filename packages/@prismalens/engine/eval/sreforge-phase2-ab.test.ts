@@ -36,6 +36,7 @@ import {
 } from "./incident-selection.js";
 import { makeKeywordOracle } from "./interim-oracle.js";
 import { rcaJudgeOracle } from "./rca-judge-oracle.js";
+import { sanitizeCapture } from "./sanitize.js";
 import { fetchFiringAlerts } from "../src/supervisor/alert-source.js";
 
 const KEY = process.env.OLLAMA_API_KEY;
@@ -92,7 +93,7 @@ function writeCapture(scenario: string, body: string): string {
 			n === 1 ? `${base}.json` : `${base}-${n}.json`,
 		);
 		try {
-			writeFileSync(candidate, body, { flag: "wx" });
+			writeFileSync(candidate, sanitizeCapture(body), { flag: "wx" });
 			return candidate;
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;

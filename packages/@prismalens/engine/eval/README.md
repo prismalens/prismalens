@@ -104,7 +104,7 @@ It writes the side-by-side capture (both arms + shared incident metadata) to
 tracked directory (unlike `eval/results/`, which is gitignored), since this is the
 capture the future public "PrismaLens vs raw agent" table draws from — and logs a
 console summary with the per-arm cost/tokens/time and the prismalens-minus-raw
-delta.
+delta. All eval captures are sanitized at write time (`sanitize.ts`) to redact credentials and normalize home paths before persistence.
 
 **Set `CAMPAIGN_RUN_ID` for campaign batches.** The scenario slug is identical for
 every cold run of a scenario, so without a run id each run competes for one
