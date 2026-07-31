@@ -22,6 +22,7 @@ describe("CorrelationService", () => {
 		},
 		incident: {
 			findFirst: vi.fn(),
+			findUnique: vi.fn(),
 			update: vi.fn(),
 		},
 		alert: {
@@ -99,6 +100,29 @@ describe("CorrelationService", () => {
 			await service.correlateAlert(alert);
 
 			expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+		});
+
+		it("should short-circuit runCorrelation if alert is already linked to an incident", async () => {
+			const alert = { id: "alert-1", incidentId: "inc-1" } as Alert;
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				number: 42,
+			});
+
+			const result = await service.correlateAlert(alert);
+
+			expect(result).toEqual({
+				matched: true,
+				incidentId: "inc-1",
+				incidentNumber: 42,
+				reason: "Already correlated to incident",
+				isNewIncident: false,
+			});
+			expect(mockPrisma.incident.findUnique).toHaveBeenCalledWith({
+				where: { id: "inc-1" },
+			});
+			expect(mockIncidentsService.create).not.toHaveBeenCalled();
+			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
 		});
 	});
 });

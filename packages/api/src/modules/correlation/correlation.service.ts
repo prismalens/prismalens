@@ -190,6 +190,27 @@ export class CorrelationService {
 	}
 
 	private async runCorrelation(alert: Alert): Promise<CorrelationResult> {
+		const currentAlert = alert.incidentId
+			? alert
+			: ((await this.prisma.alert.findUnique({
+					where: { id: alert.id },
+				})) ?? alert);
+
+		if (currentAlert.incidentId) {
+			const existingIncident = await this.prisma.incident.findUnique({
+				where: { id: currentAlert.incidentId },
+			});
+			if (existingIncident) {
+				return {
+					matched: true,
+					incidentId: existingIncident.id,
+					incidentNumber: existingIncident.number,
+					reason: "Already correlated to incident",
+					isNewIncident: false,
+				};
+			}
+		}
+
 		// 1. First try rule-based correlation
 		const ruleResult = await this.matchToIncidentByRules(alert);
 		if (ruleResult.matched) {

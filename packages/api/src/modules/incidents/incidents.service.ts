@@ -304,6 +304,20 @@ export class IncidentsService {
 	 */
 	async addAlert(incidentId: string, alertId: string): Promise<boolean> {
 		try {
+			const existingAlert = await this.prisma.alert.findUnique({
+				where: { id: alertId },
+				select: { incidentId: true, title: true },
+			});
+
+			if (!existingAlert) {
+				return false;
+			}
+
+			// If alert is already linked to this incident, short-circuit
+			if (existingAlert.incidentId === incidentId) {
+				return true;
+			}
+
 			await this.prisma.$transaction([
 				// Update alert to point to incident
 				this.prisma.alert.update({
@@ -322,17 +336,11 @@ export class IncidentsService {
 				}),
 			]);
 
-			// Create timeline entry
-			const alert = await this.prisma.alert.findUnique({
-				where: { id: alertId },
-				select: { title: true },
-			});
-
 			await this.timelineService.create({
 				incidentId,
 				type: TimelineEntryType.alert_added,
 				title: "Alert added",
-				description: `Alert "${alert?.title}" was correlated to this incident`,
+				description: `Alert "${existingAlert.title}" was correlated to this incident`,
 				source: TimelineSource.system,
 				metadata: { alertId },
 			});
