@@ -38,6 +38,7 @@ const {
 	harnessTakesSandbox,
 	deriveWorkerAllowedHosts,
 	buildRequest,
+	default: processInvestigationJob,
 } = await import("./processor.js");
 
 const API_KEY = "secret-key";
@@ -395,4 +396,35 @@ describe("buildRequest harness cwd (app mode has no per-alert repo mapping)", ()
 		expect(request.cwd).toBe("/srv/checkouts/checkout");
 	});
 });
+
+describe("processInvestigationJob schema validation", () => {
+	it("malformed job payload -> processor throws, not silent degradation", async () => {
+		const malformedJob = {
+			id: "job-malformed",
+			name: "investigation",
+			data: {
+				// Missing required incidentId and investigationId
+				priority: "invalid-priority",
+			},
+		};
+
+		await expect(
+			processInvestigationJob(malformedJob as any),
+		).rejects.toThrow();
+	});
+
+	it("missing or absent alerts remains valid per schema", async () => {
+		const validJobWithoutAlerts = {
+			incidentId: "inc-123",
+			investigationId: "inv-123",
+		};
+		const { InvestigationJobDataSchema } = await import(
+			"@prismalens/contracts"
+		);
+		expect(() =>
+			InvestigationJobDataSchema.parse(validJobWithoutAlerts),
+		).not.toThrow();
+	});
+});
+
 

@@ -77,13 +77,6 @@ export interface InvestigationRunnerDeps {
  * on a failed run (the server logs it and keeps serving); the sandbox is
  * CALLER-OWNED and destroyed in `finally` (ADR-0020), matching investigate/serve.
  */
-/**
- * Per-payload repo/cwd resolution (issue #58 AC5): the alert's service label
- * (`service`/`namespace`/`job`) → `services[name].repo` → a `repos` entry's
- * `local_path`, else the value itself when it is an existing local checkout.
- * No label / no catalog match / no checkout ⇒ the listen cwd, exactly like a
- * manual `pl investigate` run from that directory (single-player default).
- */
 import { resolveRepoPath } from "@prismalens/config";
 
 export { resolveRepoPath };

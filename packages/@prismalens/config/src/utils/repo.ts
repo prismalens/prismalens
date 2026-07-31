@@ -12,8 +12,7 @@ export function pickServiceLabel(
 ): string | undefined {
 	if (!alert) return undefined;
 	const labels = (alert.labels ?? {}) as Record<string, unknown>;
-	const pick =
-		labels.service ?? labels.namespace ?? labels.job ?? alert.service;
+	const pick = labels.service ?? labels.namespace ?? labels.job;
 	return typeof pick === "string" && pick ? pick : undefined;
 }
 

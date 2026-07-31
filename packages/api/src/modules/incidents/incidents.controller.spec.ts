@@ -109,10 +109,12 @@ describe("IncidentsController - storm path alert serialization", () => {
 					expect.objectContaining({
 						alertname: "Alert One",
 						severity: "critical",
+						labels: { service: "checkout", environment: "prod" },
 					}),
 					expect.objectContaining({
 						alertname: "Alert Two",
 						severity: "high",
+						labels: { service: "checkout", component: "db" },
 					}),
 				],
 			}),

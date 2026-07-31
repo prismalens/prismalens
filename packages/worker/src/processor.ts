@@ -23,6 +23,7 @@ import {
 	type FiringAlert,
 	type IncidentContext,
 	type InvestigationContext,
+	InvestigationJobDataSchema,
 	type InvestigationReport,
 	type TelemetryEndpoints,
 	toFiringAlert,
@@ -137,7 +138,7 @@ async function clearDurableEvents(investigationId: string): Promise<void> {
 export default async function processInvestigationJob(
 	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
 ): Promise<InvestigationResult> {
-	const { data } = job;
+	const data = InvestigationJobDataSchema.parse(job.data);
 	return runWithWideEvent(
 		`job-${job.id}`,
 		async () => processJobInternal(job, data),
@@ -154,8 +155,9 @@ export default async function processInvestigationJob(
 
 async function processJobInternal(
 	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
-	data: InvestigationJobData,
+	rawPayload: InvestigationJobData,
 ): Promise<InvestigationResult> {
+	const data = InvestigationJobDataSchema.parse(rawPayload);
 	logger.info(
 		`Processing job ${job.id} for investigation ${data.investigationId}`,
 	);
