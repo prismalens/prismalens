@@ -9,8 +9,13 @@
 import { InjectQueue, Processor, WorkerHost } from "@nestjs/bullmq";
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { Job, Queue } from "bullmq";
-import type { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { IntegrationsService } from "./integrations.service.js";
+// Constructor-injected — Nest's reflection-based DI needs the runtime class
+// reference from a value import to populate emitDecoratorMetadata. `import
+// type` here breaks boot with UnknownDependenciesException.
+// biome-ignore lint/style/useImportType: see comment above
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+// biome-ignore lint/style/useImportType: same as PrismaService above
+import { IntegrationsService } from "./integrations.service.js";
 
 export const TOKEN_REFRESH_QUEUE = "token-refresh";
 const JOB_NAME = "refresh-expiring-tokens";

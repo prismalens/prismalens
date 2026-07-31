@@ -40,7 +40,8 @@
 			"cache": false
 		},
 		"db:init": {
-			"cache": false
+			"cache": false,
+			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR"]
 		},
 		"db:studio": {
 			"cache": false,
