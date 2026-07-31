@@ -110,11 +110,15 @@ prismalens <command> [flags]      # alias: pl
 
 ### `listen`
 
-Start the primary, token-authed local HTTP listener for incoming Alertmanager webhooks. Under ADR-0022's reactive-pull posture, PrismaLens does not poll or ingest on a standing basis; `listen` is the primary reactive surface, triggering an investigation whenever a webhook delivers a firing alert (Phase 1 R1).
+Start the primary, token-authed local HTTP listener for incoming Alertmanager webhooks. Under ADR-0022's reactive-pull posture, PrismaLens does not poll or ingest on a standing basis; `listen` is the primary reactive surface — firing alerts delivered by webhooks are debounced within the configured `grouping_window_ms` window (default 60s) into a single investigation (Phase 1 R1).
 
 ```bash
 PRISMALENS_LISTEN_TOKEN=xyz pl listen --host 127.0.0.1 --config my-stack.yaml
 ```
+
+Alertmanager must POST to `http://<host>:<port>/webhooks/alertmanager` with an
+`Authorization: Bearer <token>` header matching `PRISMALENS_LISTEN_TOKEN` (or the
+configured `listen.token`).
 
 Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
 
