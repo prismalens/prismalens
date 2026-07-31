@@ -7,7 +7,7 @@
  * Runs one rung (L0, L1, L2, or L3) over a single firing incident and writes the
  * capture artifact to eval/captures-ablation/ (separate from campaign captures).
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LLMProviderId } from "@prismalens/config/llm";
@@ -23,6 +23,7 @@ import {
 } from "./ab-runner.js";
 import { type Rung, rungArmOptions } from "./ladder.js";
 import { rcaJudgeOracle } from "./rca-judge-oracle.js";
+import { writeSanitizedCapture } from "./sanitize.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(HERE, "..");
@@ -203,7 +204,7 @@ async function main(): Promise<void> {
 			score: { score: null, note: harnessError },
 			capturedAt: new Date().toISOString(),
 		};
-		writeFileSync(capturePath, JSON.stringify(failureCapture, null, 2));
+		writeSanitizedCapture(capturePath, failureCapture);
 		process.exit(20);
 	}
 
@@ -251,9 +252,9 @@ async function main(): Promise<void> {
 				events: run.events,
 				capturedAt: new Date().toISOString(),
 			};
-			writeFileSync(
+			writeSanitizedCapture(
 				capturePath.replace(/\.json$/, ".LEAKED.json"),
-				JSON.stringify(leakCapture, null, 2),
+				leakCapture,
 			);
 			process.exit(21);
 		}
@@ -286,7 +287,7 @@ async function main(): Promise<void> {
 			run,
 			capturedAt: new Date().toISOString(),
 		};
-		writeFileSync(capturePath, JSON.stringify(unratedCapture, null, 2));
+		writeSanitizedCapture(capturePath, unratedCapture);
 		process.exit(22);
 	}
 
@@ -307,7 +308,7 @@ async function main(): Promise<void> {
 			run,
 			capturedAt: new Date().toISOString(),
 		};
-		writeFileSync(capturePath, JSON.stringify(unratedCapture, null, 2));
+		writeSanitizedCapture(capturePath, unratedCapture);
 		process.exit(22);
 	}
 
@@ -326,7 +327,7 @@ async function main(): Promise<void> {
 		score: scoreResult,
 		capturedAt: new Date().toISOString(),
 	};
-	writeFileSync(capturePath, JSON.stringify(scoredCapture, null, 2));
+	writeSanitizedCapture(capturePath, scoredCapture);
 
 	// Print capture path as the last stdout line
 	console.log(capturePath);
