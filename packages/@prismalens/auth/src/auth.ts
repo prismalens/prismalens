@@ -73,7 +73,8 @@ export function createAuth(prisma: any, options: AuthOptions) {
 			// Organization plugin for team management and invitations
 			organization({
 				// For Community Edition, we use a single organization
-				allowUserToCreateOrganization: true,
+				allowUserToCreateOrganization: false,
+				organizationLimit: 1,
 
 				// Custom invitation email handler
 				// If SMTP is configured, this sends the email
