@@ -22,6 +22,54 @@ describe("openDatabase", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("migrates a pre-ADR-0026 runs table in place — no replacement, defaults backfilled", () => {
+		const { mkdirSync } = require("node:fs");
+		mkdirSync(testDir, { recursive: true });
+		const dbPath = join(testDir, "prismalens.db");
+		const oldDb = new DatabaseSync(dbPath);
+		// The 0.3.x runs schema: everything current EXCEPT origin/schema_version.
+		oldDb.exec(`
+			CREATE TABLE groups (
+				id TEXT PRIMARY KEY, group_key TEXT,
+				formed_by TEXT NOT NULL DEFAULT 'window', created_at TEXT NOT NULL
+			);
+			CREATE TABLE runs (
+				run_id TEXT PRIMARY KEY,
+				group_id TEXT REFERENCES groups(id),
+				status TEXT NOT NULL CHECK (status IN ('running','done','errored','suppressed')),
+				alertname TEXT, agent TEXT, repo TEXT,
+				workspace_path TEXT NOT NULL,
+				error TEXT, suppression_reason TEXT,
+				created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT
+			);
+			CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES runs(run_id), payload TEXT NOT NULL);
+			CREATE TABLE reports (run_id TEXT PRIMARY KEY REFERENCES runs(run_id), payload TEXT NOT NULL);
+			CREATE TABLE group_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id TEXT NOT NULL REFERENCES groups(id), late INTEGER NOT NULL, payload TEXT NOT NULL);
+			INSERT INTO runs (run_id, status, workspace_path, created_at, updated_at)
+			VALUES ('old-run-1', 'done', '/tmp/w', '2026-07-01', '2026-07-01');
+		`);
+		oldDb.close();
+
+		const db = openDatabase(testDir);
+
+		// The pre-existing row survives with backfilled stamp defaults.
+		const row = db
+			.prepare(
+				"SELECT run_id, origin, schema_version FROM runs WHERE run_id = 'old-run-1'",
+			)
+			.get() as { run_id: string; origin: string; schema_version: number };
+		expect(row).toEqual({
+			run_id: "old-run-1",
+			origin: "local",
+			schema_version: 1,
+		});
+
+		// No backup was created — the database was migrated, not replaced.
+		const files = readdirSync(testDir);
+		expect(files.filter((f) => f.startsWith("prismalens.db.bak-"))).toEqual([]);
+		db.close();
+	});
+
 	it("recovers from a stale schema, backs up the database, and emits a warning", () => {
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -80,7 +128,10 @@ describe("openDatabase", () => {
 		const backupRow = backupDb
 			.prepare("SELECT * FROM runs WHERE id = 'sentinel-run-123'")
 			.get();
-		expect(backupRow).toEqual({ id: "sentinel-run-123", status: "done" });
+		// The additive-migration attempt may have widened the stale table with
+		// backfilled stamp columns before the fallback ran; the backup's job is
+		// preserving the user's data, not its exact column set.
+		expect(backupRow).toMatchObject({ id: "sentinel-run-123", status: "done" });
 		backupDb.close();
 	});
 

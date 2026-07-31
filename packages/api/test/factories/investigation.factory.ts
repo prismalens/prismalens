@@ -36,6 +36,8 @@ export class InvestigationFactory {
 			error: null,
 			triggerType: null,
 			triggerReason: null,
+			origin: "local",
+			schemaVersion: 1,
 			createdAt: faker.date.recent(),
 			updatedAt: faker.date.recent(),
 			...overrides,

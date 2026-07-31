@@ -265,6 +265,8 @@ CREATE TABLE "investigations" (
     "overlay" JSONB,
     "error" TEXT,
     "harnessThreadId" TEXT,
+    "origin" TEXT NOT NULL DEFAULT 'local',
+    "schemaVersion" INTEGER NOT NULL DEFAULT 1,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "triggerType" "InvestigationTriggerType",

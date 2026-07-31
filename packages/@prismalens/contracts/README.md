@@ -18,6 +18,15 @@ Single Source of Truth (SSOT) for all business domain types: Zod enum schemas, e
 - **API route contracts**: oRPC contract definitions for each endpoint group
 - **Utility schemas**: pagination, date strings, JSON fields
 
+## Investigation report: the `culprit` field (ADR-0026)
+
+`InvestigationReportSchema.culprit` is a structured culprit identification synthesized by the
+Tier-1 reduce: `{ service, changeRef, mechanism }`, each `string | null`. The whole object is
+optional and may be `null`; when the model omits it or it cannot be parsed, it is `null` — never
+a synthesized guess. It is **identification, not confidence** (ADR-0002): no numeric scores, and
+it never orders hypotheses. Persisted records additionally carry `origin` (default `"local"`)
+and `schemaVersion` (default `1`) identity stamps.
+
 ## What does NOT belong here
 
 - Environment variables, runtime configuration (`@prismalens/config`)

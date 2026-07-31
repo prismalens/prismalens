@@ -34,6 +34,10 @@ export interface SessionRecord {
 	error?: string;
 	/** Which cap suppressed this dispatch (only set when status === "suppressed"). */
 	suppressionReason?: string;
+	/** Execution origin stamp (ADR-0026). Default "local". */
+	origin?: string;
+	/** Persisted schema version stamp (ADR-0026). Default 1. */
+	schemaVersion?: number;
 	createdAt: string;
 	updatedAt: string;
 	completedAt?: string;
@@ -44,6 +48,8 @@ export interface CreateSessionInput {
 	alertname?: string;
 	agent?: string;
 	repo?: string;
+	origin?: string;
+	schemaVersion?: number;
 }
 
 export interface GroupRecord {

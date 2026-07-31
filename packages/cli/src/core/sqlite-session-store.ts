@@ -35,6 +35,8 @@ interface RunRow {
 	workspace_path: string;
 	error: string | null;
 	suppression_reason: string | null;
+	origin: string | null;
+	schema_version: number | null;
 	created_at: string;
 	updated_at: string;
 	completed_at: string | null;
@@ -46,6 +48,8 @@ function mapRun(row: RunRow): SessionRecord {
 		runId: row.run_id,
 		status: row.status as SessionStatus,
 		workspacePath: row.workspace_path,
+		origin: row.origin ?? "local",
+		schemaVersion: row.schema_version ?? 1,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -84,8 +88,8 @@ export class SqliteSessionManager implements SessionManager {
 			const insertRun = this.db.prepare(`
 				INSERT INTO runs (
 					run_id, group_id, status, alertname, agent, repo,
-					workspace_path, created_at, updated_at
-				) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?)
+					workspace_path, origin, schema_version, created_at, updated_at
+				) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)
 			`);
 			insertRun.run(
 				input.runId,
@@ -94,6 +98,8 @@ export class SqliteSessionManager implements SessionManager {
 				input.agent ?? null,
 				input.repo ?? null,
 				dir,
+				input.origin ?? "local",
+				input.schemaVersion ?? 1,
 				now,
 				now,
 			);
@@ -140,6 +146,12 @@ export class SqliteSessionManager implements SessionManager {
 				updates.completedAt !== undefined
 					? updates.completedAt
 					: existing.completed_at;
+			const origin =
+				updates.origin !== undefined ? updates.origin : existing.origin;
+			const schemaVersion =
+				updates.schemaVersion !== undefined
+					? updates.schemaVersion
+					: existing.schema_version;
 
 			const updateStmt = this.db.prepare(`
 				UPDATE runs SET
@@ -148,6 +160,8 @@ export class SqliteSessionManager implements SessionManager {
 					agent = ?,
 					repo = ?,
 					error = ?,
+					origin = ?,
+					schema_version = ?,
 					completed_at = ?,
 					updated_at = ?
 				WHERE run_id = ?
@@ -159,6 +173,8 @@ export class SqliteSessionManager implements SessionManager {
 				agent ?? null,
 				repo ?? null,
 				error ?? null,
+				origin ?? "local",
+				schemaVersion ?? 1,
 				completedAt ?? null,
 				now,
 				runId,
@@ -307,9 +323,9 @@ export class SqliteSessionManager implements SessionManager {
 				.prepare(`
 					INSERT INTO runs (
 						run_id, group_id, status, alertname,
-						workspace_path, suppression_reason,
+						workspace_path, origin, schema_version, suppression_reason,
 						created_at, updated_at, completed_at
-					) VALUES (?, ?, 'suppressed', ?, '', ?, ?, ?, ?)
+					) VALUES (?, ?, 'suppressed', ?, '', 'local', 1, ?, ?, ?, ?)
 				`)
 				.run(
 					input.runId,
