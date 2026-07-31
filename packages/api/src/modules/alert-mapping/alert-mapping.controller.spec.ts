@@ -328,6 +328,46 @@ describe("AlertMappingController (BDD)", () => {
 			);
 		});
 
+		it("should not leak the raw service relation through matchedRule", async () => {
+			const matchedService = {
+				id: "00000000-0000-0000-0000-000000000001",
+				name: "API Service",
+				internalNotes: "on-call rotation secrets live here",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			};
+
+			// findAll/findById hydrate rules with the full Service row; the
+			// serializer must drop it rather than spread it into the response.
+			const matchedRule = {
+				id: "00000000-0000-0000-0000-000000000002",
+				name: "Prometheus Prod Rule",
+				priority: 10,
+				enabled: true,
+				matchCriteria: JSON.stringify({ source: "prometheus" }),
+				serviceId: matchedService.id,
+				createdAt: new Date("2026-01-01T00:00:00Z"),
+				updatedAt: new Date("2026-01-01T00:00:00Z"),
+				service: matchedService,
+			};
+
+			mockAlertMappingService.resolveMappingForAlert.mockResolvedValue({
+				rule: matchedRule,
+				service: matchedService,
+			});
+
+			const handlers = getHandlers();
+			const result = await handlers.test({
+				input: { alertData: { source: "prometheus", title: "Test Alert" } },
+			} as any);
+
+			expect(result.matchedRule).not.toBeNull();
+			expect(result.matchedRule).not.toHaveProperty("service");
+			expect(JSON.stringify(result)).not.toContain("internalNotes");
+			expect(result.serviceId).toBe(matchedService.id);
+			expect(result.serviceName).toBe(matchedService.name);
+		});
+
 		it("should return unmatched result when no service found", async () => {
 			const alertData = {
 				source: "prometheus",

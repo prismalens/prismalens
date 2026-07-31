@@ -155,5 +155,62 @@ describe("CorrelationService", () => {
 			expect(mockIncidentsService.create).not.toHaveBeenCalled();
 			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
 		});
+
+		it("should fall through to fingerprint correlation when a rule matches but no incident is in its window", async () => {
+			// matchToIncidentByRules keeps going in this situation, so the test
+			// endpoint must not stop at "would create new incident".
+			const rule = {
+				id: "rule-11",
+				name: "Database High Severity Rule",
+				action: "correlate",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({ match: { severity: ["high"] } }),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			// No incident inside the rule's window.
+			mockPrisma.incident.findFirst.mockResolvedValueOnce(null);
+			// …but an alert with the same fingerprint is already on an incident.
+			mockPrisma.alert.findFirst.mockResolvedValueOnce({
+				id: "alert-77",
+				incident: { id: "inc-77", number: 77 },
+			});
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.action).toBe("correlate");
+			expect(result.reason).toContain("fingerprint");
+			expect(result.matchedRule).toBeNull();
+			expect(mockIncidentsService.create).not.toHaveBeenCalled();
+			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
+		});
+
+		it("should report create_incident only when rule, fingerprint and time window all miss", async () => {
+			const rule = {
+				id: "rule-12",
+				name: "Database High Severity Rule",
+				action: "correlate",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({ match: { severity: ["high"] } }),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			// Once for the rule's window, once for the time-window fallback.
+			mockPrisma.incident.findFirst
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(null);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce(null);
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.action).toBe("create_incident");
+			expect(result.matchedRule).toBeNull();
+		});
 	});
 });

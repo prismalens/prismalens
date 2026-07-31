@@ -481,11 +481,11 @@ export class CorrelationService {
 					};
 				}
 
-				return {
-					matchedRule: rule,
-					action: rule.action as "correlate" | "create_incident" | "suppress",
-					reason: `Matched by rule: ${rule.name} - would create new incident`,
-				};
+				// No incident in this rule's window. matchToIncidentByRules does not
+				// stop here either — it keeps scanning rules and then falls through to
+				// fingerprint, then time-window, then new-incident. Returning early
+				// would make this endpoint predict "create_incident" for an alert that
+				// correlation would actually attach to an existing incident.
 			}
 		}
 

@@ -304,48 +304,73 @@ export class IncidentsService {
 	 */
 	async addAlert(incidentId: string, alertId: string): Promise<boolean> {
 		try {
-			const existingAlert = await this.prisma.alert.findUnique({
-				where: { id: alertId },
-				select: { incidentId: true, title: true },
-			});
+			const outcome = await this.prisma.$transaction(
+				async (tx): Promise<"missing" | "already-linked" | "linked"> => {
+					const existingAlert = await tx.alert.findUnique({
+						where: { id: alertId },
+						select: { title: true },
+					});
 
-			if (!existingAlert) {
+					if (!existingAlert) {
+						return "missing";
+					}
+
+					// Atomically claim the alert. The WHERE clause is the idempotency
+					// guard: it matches only while the alert is not already linked to
+					// this incident, so concurrent correlation calls cannot both pass a
+					// read-then-write check and double-increment `alertCount`. The guard
+					// is keyed on incidentId (never on status) per the #244 suppress
+					// spec. The OR spells out the NULL case explicitly rather than
+					// relying on how `not` treats NULL on a nullable column.
+					const claim = await tx.alert.updateMany({
+						where: {
+							id: alertId,
+							OR: [{ incidentId: null }, { incidentId: { not: incidentId } }],
+						},
+						data: {
+							incidentId,
+							status: "correlated",
+						},
+					});
+
+					if (claim.count === 0) {
+						return "already-linked";
+					}
+
+					await tx.incident.update({
+						where: { id: incidentId },
+						data: {
+							alertCount: { increment: 1 },
+						},
+					});
+
+					// The timeline entry is the audit record for the increment above, so
+					// it is written inside the same transaction — otherwise a failure
+					// between the two leaves a counted alert with no timeline evidence.
+					await tx.timelineEntry.create({
+						data: {
+							incidentId,
+							type: TimelineEntryType.alert_added,
+							title: "Alert added",
+							description: `Alert "${existingAlert.title}" was correlated to this incident`,
+							source: TimelineSource.system,
+							metadata: JSON.stringify({ alertId }),
+							occurredAt: new Date(),
+						},
+					});
+
+					return "linked";
+				},
+			);
+
+			if (outcome === "missing") {
 				return false;
 			}
 
-			// If alert is already linked to this incident, short-circuit
-			if (existingAlert.incidentId === incidentId) {
-				return true;
+			if (outcome === "linked") {
+				this.logger.log(`Added alert ${alertId} to incident ${incidentId}`);
 			}
 
-			await this.prisma.$transaction([
-				// Update alert to point to incident
-				this.prisma.alert.update({
-					where: { id: alertId },
-					data: {
-						incidentId,
-						status: "correlated",
-					},
-				}),
-				// Update incident alert count
-				this.prisma.incident.update({
-					where: { id: incidentId },
-					data: {
-						alertCount: { increment: 1 },
-					},
-				}),
-			]);
-
-			await this.timelineService.create({
-				incidentId,
-				type: TimelineEntryType.alert_added,
-				title: "Alert added",
-				description: `Alert "${existingAlert.title}" was correlated to this incident`,
-				source: TimelineSource.system,
-				metadata: { alertId },
-			});
-
-			this.logger.log(`Added alert ${alertId} to incident ${incidentId}`);
 			return true;
 		} catch {
 			return false;

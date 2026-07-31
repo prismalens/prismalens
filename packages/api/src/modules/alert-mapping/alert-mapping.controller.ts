@@ -102,8 +102,14 @@ export class AlertMappingController {
 	}
 
 	private serializeRule(rule: Record<string, any>): AlertMappingRule {
+		// Drop the raw `service` relation. Rules loaded via findAll/findById carry
+		// the full Service row, and spreading it here would emit every column —
+		// bypassing serializeRuleWithService's four-field whitelist, which is the
+		// only place a service is allowed to be exposed.
+		const { service: _service, ...rest } = rule;
+
 		return {
-			...rule,
+			...rest,
 			matchCriteria:
 				typeof rule.matchCriteria === "string"
 					? JSON.parse(rule.matchCriteria)
