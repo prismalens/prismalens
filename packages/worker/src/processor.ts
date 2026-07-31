@@ -18,12 +18,14 @@
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
-import type {
-	FiringAlert,
-	IncidentContext,
-	InvestigationContext,
-	InvestigationReport,
-	TelemetryEndpoints,
+import {
+	correlatedAlertsContext,
+	type FiringAlert,
+	type IncidentContext,
+	type InvestigationContext,
+	type InvestigationReport,
+	type TelemetryEndpoints,
+	toFiringAlert,
 } from "@prismalens/contracts";
 import {
 	conductRun,
@@ -601,17 +603,33 @@ export async function buildRequest(
 		sandbox = selection.sandbox;
 	}
 
+	const context = assembleInvestigationContext(incident, data, {
+		...INVESTIGATION_DEFAULTS.telemetry,
+	});
+
+	// Harness working directory. App mode has NO per-alert repo mapping to resolve
+	// one from, so this is deliberately a single fixed cwd rather than the CLI's
+	// per-alert `resolveRepoPath`:
+	//   - the DB's Service↔Repository link records a REMOTE repo (`fullName`,
+	//     `url`, `defaultBranch`) — there is no local-checkout path column;
+	//   - the worker reads no `prismalens.config.yaml`, which is where the CLI's
+	//     `services[name].repo` → `repos[ref].local_path` chain lives. That layer
+	//     becomes app-materialised under ADR-0014's D11 amendment, built at Phase 5.
+	// So: one explicit env override, else the worker's own cwd. Issue #243 item 6
+	// (per-alert cwd parity with `pl listen`) stays deferred until the app has a
+	// config surface that carries local checkout paths. An empty/whitespace
+	// override reads as unset rather than as "run in nowhere".
+	const cwd = process.env.PRISMALENS_INVESTIGATION_CWD?.trim() || process.cwd();
+
 	return {
 		request: {
-			context: assembleInvestigationContext(incident, data, {
-				...INVESTIGATION_DEFAULTS.telemetry,
-			}),
+			context,
 			harness,
 			// The single posture dial (ADR-0017): the worker is always read-only in
 			// Phase A — no per-run override, no native passthrough.
 			permissionMode: "read-only",
 			model: llmConfig.model,
-			cwd: process.env.PRISMALENS_INVESTIGATION_CWD ?? process.cwd(),
+			cwd,
 			synth: {
 				providerId: synthProvider,
 				model: llmConfig.model,
@@ -650,39 +668,29 @@ export async function buildRequest(
 
 /**
  * Assemble the host investigation context (ADR-0015) from the incident + ALL seed
- * alerts — replacing the old lossy single-alert collapse (which discarded every
- * alert but `[0]` and folded the incident title INTO the alert name). Each alert
- * keeps its own identity; the incident meta rides in `context.incident`. Richer
- * enrichment (service graph, prior investigations from the DB) is a later slice
- * (ADR-0016 §5), which the app/API — not the worker — will own.
+ * alerts, adopting `correlatedAlertsContext` from `@prismalens/contracts`.
+ * Each alert keeps its own identity; the incident meta rides in `context.incident`.
  */
 function assembleInvestigationContext(
 	incident: Record<string, unknown> | null,
 	data: InvestigationJobData,
 	telemetry: TelemetryEndpoints,
 ): InvestigationContext {
-	const rows = (data.alerts ?? []) as Record<string, unknown>[];
-	const alerts: FiringAlert[] =
-		rows.length > 0 ? rows.map(toFiringAlert) : [incidentAsAlert(incident)];
-	return {
-		alerts,
-		telemetry,
-		...(incident ? { incident: incidentMeta(incident) } : {}),
-	};
-}
+	const rawAlerts = (
+		data.alerts && data.alerts.length > 0
+			? data.alerts
+			: Array.isArray(incident?.alerts) && incident.alerts.length > 0
+				? incident.alerts
+				: null
+	) as Record<string, unknown>[] | null;
 
-/** Map a DB alert row into a FiringAlert projection. */
-function toFiringAlert(row: Record<string, unknown>): FiringAlert {
-	const labels = (row.labels as Record<string, string>) ?? {};
-	const annotations: Record<string, string> = {};
-	if (row.description) annotations.summary = String(row.description);
-	return {
-		alertname: (row.title as string) ?? (row.alertname as string) ?? "Alert",
-		severity: (row.severity as string) ?? labels.severity ?? null,
-		labels,
-		annotations,
-		startsAt: (row.triggeredAt as string) ?? (row.startsAt as string) ?? null,
-	};
+	const firingAlerts: FiringAlert[] = rawAlerts
+		? rawAlerts.map((a) => toFiringAlert(a as Record<string, unknown>))
+		: [incidentAsAlert(incident)];
+
+	return correlatedAlertsContext(firingAlerts, telemetry, {
+		incident: incident ? incidentMeta(incident) : undefined,
+	});
 }
 
 /** Degenerate no-alerts case: project the incident itself into a single alert. */

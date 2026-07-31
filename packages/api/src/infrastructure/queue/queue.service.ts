@@ -8,27 +8,16 @@ import {
 	OnModuleInit,
 } from "@nestjs/common";
 import { buildRedisUrl, getConfig } from "@prismalens/config";
-import { CanonicalEventSchema } from "@prismalens/contracts";
+import {
+	CanonicalEventSchema,
+	type InvestigationJobData,
+} from "@prismalens/contracts";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents } from "bullmq";
 import { Redis } from "ioredis";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 
-/**
- * Job data for investigation queue (incident-centric).
- *
- * SECURITY: This payload is serialized to Redis.
- * Never include decrypted credentials. Use connectionIds instead,
- * and the worker fetches credentials on-demand via internal API.
- */
-export interface InvestigationJobData {
-	incidentId: string;
-	investigationId: string;
-	priority?: "low" | "normal" | "high" | "critical";
-	context?: Record<string, unknown>;
-	/** Connection IDs — worker fetches credentials on-demand */
-	connectionIds?: string[];
-}
+export type { InvestigationJobData };
 
 /**
  * Result returned by investigation worker.

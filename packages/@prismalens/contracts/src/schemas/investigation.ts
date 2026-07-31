@@ -683,3 +683,36 @@ export function singleAlertContext(
 ): InvestigationContext {
 	return correlatedAlertsContext([alert], telemetry, extras);
 }
+
+// =============================================================================
+// INVESTIGATION QUEUE JOB DATA SCHEMAS
+// =============================================================================
+
+export const InvestigationJobDataSchema = z.object({
+	incidentId: z.string(),
+	investigationId: z.string(),
+	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+	context: z.record(z.string(), z.unknown()).optional(),
+	connectionIds: z.array(z.string()).optional(),
+	alerts: z.array(FiringAlertSchema).optional(),
+});
+
+export type InvestigationJobData = z.infer<typeof InvestigationJobDataSchema>;
+
+/** Map an alert object or DB alert row into a FiringAlert projection. */
+export function toFiringAlert(row: Record<string, unknown>): FiringAlert {
+	const labels = (row.labels as Record<string, string>) ?? {};
+	const annotations: Record<string, string> = {
+		...((row.annotations as Record<string, string>) ?? {}),
+	};
+	if (row.description && !annotations.summary && !annotations.description) {
+		annotations.summary = String(row.description);
+	}
+	return {
+		alertname: (row.title as string) ?? (row.alertname as string) ?? "Alert",
+		severity: (row.severity as string) ?? labels.severity ?? null,
+		labels,
+		annotations,
+		startsAt: (row.triggeredAt as string) ?? (row.startsAt as string) ?? null,
+	};
+}
