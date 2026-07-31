@@ -24,7 +24,7 @@
  * Run: `pnpm --filter @prismalens/engine eval` (offline) or
  *      `PRISMALENS_EVAL_LIVE=1 OLLAMA_API_KEY=... pnpm --filter @prismalens/engine eval`.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { SYNTH_DEFAULTS } from "@prismalens/config/investigation";
 import {
@@ -38,6 +38,7 @@ import {
 	type SynthesisModelConfig,
 } from "../src/supervisor/synthesize.js";
 import { type GoldenIncidentFixture, loadFixtures } from "./fixtures.js";
+import { writeSanitizedCapture } from "./sanitize.js";
 import { meetsThreshold, type ScoreResult, scoreReport } from "./score.js";
 
 const LIVE = process.env.PRISMALENS_EVAL_LIVE === "1";
@@ -99,20 +100,13 @@ async function main(): Promise<void> {
 		outDir,
 		`live-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
 	);
-	writeFileSync(
-		outFile,
-		JSON.stringify(
-			{
-				model: `${synth.providerId}/${synth.model}`,
-				passed,
-				total: fixtures.length,
-				threshold: THRESHOLD,
-				results: artifacts,
-			},
-			null,
-			1,
-		),
-	);
+	writeSanitizedCapture(outFile, {
+		model: `${synth.providerId}/${synth.model}`,
+		passed,
+		total: fixtures.length,
+		threshold: THRESHOLD,
+		results: artifacts,
+	});
 	console.log(`Full reports written to ${outFile}`);
 
 	process.exitCode = ok ? 0 : 1;
