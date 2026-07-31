@@ -82,7 +82,8 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 							organization?: { count?: () => Promise<number> };
 						};
 						const count = await prismaClient?.organization?.count?.();
-						if (typeof count === "number" && count >= 1) {
+						// Fail closed (ADR-0011 §6): an unreadable count blocks creation too.
+						if (typeof count !== "number" || count >= 1) {
 							throw new APIError("BAD_REQUEST", {
 								message:
 									"Organization creation is disabled in single-tenant mode (ADR-0011 §6)",
