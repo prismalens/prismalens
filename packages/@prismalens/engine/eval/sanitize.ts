@@ -7,7 +7,8 @@
  * persisted field (tool output, args, previews, agent text) is sanitized
  * uniformly without per-field call sites.
  *
- * Four redaction classes:
+ * Four redaction classes (plus a PEM-block pre-pass feeding class 1):
+ * 0. PEM/private-key blocks: `-----BEGIN … KEY-----…-----END … KEY-----` → body masked
  * 1. Env-style credentials: `KEY=value` → `KEY=[REDACTED]`
  * 2. Credential-bearing URIs: `scheme://user:pass@host` → `scheme://user:[REDACTED]@host`
  * 3. Emails in VCS output: `Author: Name <email>` → `Author: Name <redacted@redacted.invalid>`
@@ -21,21 +22,50 @@ import { writeFileSync } from "node:fs";
  * Docker base images expose `GPG_KEY` with a package-signing fingerprint — a
  * public value that appears in every `docker inspect` / `docker exec env` dump.
  */
-const ALLOWLISTED_KEYS = new Set(["GPG_KEY", "PYTHON_SHA256"]);
+const ALLOWLISTED_KEYS = new Set(["GPG_KEY"]);
+
+// ---------------------------------------------------------------------------
+// Rule 0: PEM / private-key blocks
+// ---------------------------------------------------------------------------
+// Rule 1 terminates a value at the first newline, so a dumped keyfile would
+// persist everything past line 1 (`PRIVATE_KEY=[REDACTED]\nMIIEow...`). This
+// rule collapses the whole armoured block first, so the body cannot survive.
+// Only `...KEY-----` blocks match — `BEGIN CERTIFICATE` is public and is
+// deliberately left alone. The body class excludes `"` so a block can never be
+// swallowed across a JSON string boundary; the backreference keeps the
+// BEGIN/END labels paired. Runs BEFORE rule 1, which would otherwise eat the
+// BEGIN marker and leave the body unmatchable.
+const PEM_BLOCK_RE =
+	/-----BEGIN ([A-Z0-9 ]*?)KEY-----[^"]*?-----END \1KEY-----/g;
+
+function redactPemBlocks(input: string): string {
+	return input.replace(
+		PEM_BLOCK_RE,
+		(_match, label: string) =>
+			`-----BEGIN ${label}KEY-----[REDACTED]-----END ${label}KEY-----`,
+	);
+}
 
 // ---------------------------------------------------------------------------
 // Rule 1: Env-style credentials
 // ---------------------------------------------------------------------------
 // Matches `KEY=value` in env-dump and docker-inspect style output, where KEY is
-// ALL-UPPERCASE and ends with PASSWORD, SECRET, TOKEN, or _KEY. The value runs
-// until a JSON-escaped `\n` (literal `\\n` in the JSON text), a JSON-escaped
-// `"` (literal `\\"` in the JSON text), or an actual `"` (end of JSON string).
+// ALL-UPPERCASE and CONTAINS PASSWORD, SECRET, TOKEN, or KEY anywhere in the
+// name. Matching is deliberately not anchored to the end of the key: names like
+// `SECRET_KEY_BASE` and `OPENAI_APIKEY` carry the secret word in the middle, and
+// a suffix-only rule let them through. Over-matching (e.g. `KEYCLOAK_URL`) is
+// the safe direction for a redactor — a masked non-secret costs nothing, a
+// persisted secret is unrecoverable.
+//
+// The value runs until a JSON-escaped `\n` (literal `\\n` in the JSON text), a
+// JSON-escaped `"` (literal `\\"` in the JSON text), or an actual `"` (end of
+// JSON string).
 //
 // The key MUST be all-uppercase+underscore to avoid false positives on
 // Python/Ruby code patterns like `primary_key=True` or `secret_key_base=Rails`.
 // No case-insensitive flag — env variable names are conventionally SCREAMING_CASE.
 const ENV_CREDENTIAL_RE =
-	/(?<=\\n|\\"|^"|"|\s)([A-Z][A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|_KEY))=([^\s"\\][^"\\]*?)(?=\\n|\\"|"|$)/gm;
+	/(?<=\\n|\\"|^"|"|\s)((?=[A-Z])[A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY)[A-Z0-9_]*)=([^\s"\\][^"\\]*?)(?=\\n|\\"|"|$)/gm;
 
 /**
  * Redact env-style credential values, skipping allowlisted keys.
@@ -113,6 +143,9 @@ function normalizeHomePaths(input: string): string {
  */
 export function sanitizeCapture(json: string): string {
 	let result = json;
+	// PEM blocks first — rule 1 stops at the first newline and would otherwise
+	// consume the BEGIN marker, stranding the key body in the capture.
+	result = redactPemBlocks(result);
 	result = redactEnvCredentials(result);
 	result = redactCredentialUris(result);
 	result = redactVcsEmails(result);
@@ -121,8 +154,13 @@ export function sanitizeCapture(json: string): string {
 }
 
 /**
- * Serialize and sanitize a capture object, then write it atomically.
+ * Serialize and sanitize a capture object, then write it.
  * This is the single choke-point that all capture persistence paths should use.
+ *
+ * Not atomic — this is a plain `writeFileSync`, so a crash mid-write leaves a
+ * truncated file. Callers that need a collision-free reservation pass
+ * `{ flag: "wx" }`; callers that need crash-atomicity must write-then-rename
+ * themselves.
  *
  * @param path     — absolute path to write the capture JSON to
  * @param data     — the capture object (will be stringified with 2-space indent)

@@ -3,7 +3,8 @@
 
 /**
  * Tests for the capture sanitizer (#262). Covers all four redaction classes,
- * the GPG_KEY allowlist, round-trip JSON structure preservation, and the
+ * the PEM-block pre-pass, the GPG_KEY allowlist, contains-matching on env key
+ * names, round-trip JSON structure preservation, and the
  * no-op-on-clean-captures invariant (existing committed captures in
  * `eval/captures/` must pass through the sanitizer unchanged).
  */
@@ -95,13 +96,99 @@ describe("sanitizeCapture — env-style credentials", () => {
 		);
 	});
 
-	it("does NOT redact PYTHON_SHA256 — allowlisted", () => {
+	it("redacts a key whose secret word is NOT at the end (SECRET_KEY_BASE)", () => {
+		const input = captureJson({
+			rawText: "SECRET_KEY_BASE=rails-master-key-abc123\nRAILS_ENV=production",
+		});
+		const result = sanitizeCapture(input);
+		expect(result).toContain("SECRET_KEY_BASE=[REDACTED]");
+		expect(result).not.toContain("rails-master-key-abc123");
+	});
+
+	it("redacts a key with no underscore before KEY (OPENAI_APIKEY)", () => {
+		const input = captureJson({
+			rawText: "OPENAI_APIKEY=sk-proj-leakmenow123\nOPENAI_ORG=acme",
+		});
+		const result = sanitizeCapture(input);
+		expect(result).toContain("OPENAI_APIKEY=[REDACTED]");
+		expect(result).not.toContain("sk-proj-leakmenow123");
+	});
+
+	it("does NOT redact lowercase code patterns like primary_key=True", () => {
+		const input = captureJson({
+			rawText:
+				"id = Column(Integer, primary_key=True)\nsecret_key_base=Rails.application",
+		});
+		const result = sanitizeCapture(input);
+		expect(result).toBe(input);
+		expect(result).toContain("primary_key=True");
+		expect(result).toContain("secret_key_base=Rails.application");
+	});
+
+	it("does NOT redact PYTHON_SHA256 — no secret word, never reaches the matcher", () => {
 		const input = captureJson({
 			rawText:
 				"PYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684\nHOME=/root",
 		});
 		const result = sanitizeCapture(input);
-		expect(result).toContain("PYTHON_SHA256=c08bc65a81971c1dd5783182826503");
+		// Asserts the whole capture is untouched, not merely that a substring
+		// survives — the previous form passed regardless of sanitizer behaviour.
+		expect(result).toBe(input);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Rule 0: PEM / private-key blocks
+// ---------------------------------------------------------------------------
+
+describe("sanitizeCapture — PEM private-key blocks", () => {
+	it("redacts the body of a multi-line PEM key, not just the first line", () => {
+		const pem = [
+			"-----BEGIN RSA PRIVATE KEY-----",
+			"MIIEowIBAAKCAQEAy8Dbv8prpJ/0kKhlGeJYozo2t60EG8L0561g13R29LvMR5hy",
+			"vGZlGJpmn65+A4xHXInJYiPuKzrKUnApeLZ+vw1HocOAZtWK0z3r26uA8kQYOKX9",
+			"Qt/DbCdvsF9wF8gRK0ptx9M6R13NvBxvVQApfc9jB9nTzphOgM4JiEYvlV8FLhg9",
+			"-----END RSA PRIVATE KEY-----",
+		].join("\n");
+		const input = captureJson({ rawText: `PRIVATE_KEY=${pem}` });
+		const result = sanitizeCapture(input);
+		expect(result).not.toContain("MIIEowIBAAKCAQEAy8Dbv8prpJ");
+		expect(result).not.toContain("vGZlGJpmn65");
+		expect(result).not.toContain("Qt/DbCdvsF9wF8gRK0ptx9M6R13NvBxvVQApfc9jB9nT");
+		expect(result).toContain("PRIVATE_KEY=[REDACTED]");
+		// Still valid JSON after collapsing a multi-line value.
+		expect(() => JSON.parse(result)).not.toThrow();
+	});
+
+	it("redacts a bare OPENSSH key block with no KEY= prefix", () => {
+		const pem = [
+			"-----BEGIN OPENSSH PRIVATE KEY-----",
+			"b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABlwAAAAdz",
+			"-----END OPENSSH PRIVATE KEY-----",
+		].join("\n");
+		const input = captureJson({ rawText: `cat ~/.ssh/id_rsa\n${pem}` });
+		const result = sanitizeCapture(input);
+		expect(result).not.toContain("b3BlbnNzaC1rZXktdjEAAAAABG5vbmU");
+		expect(result).toContain("-----BEGIN OPENSSH PRIVATE KEY-----[REDACTED]");
+	});
+
+	it("does NOT touch a public CERTIFICATE block", () => {
+		const cert = [
+			"-----BEGIN CERTIFICATE-----",
+			"MIIDdzCCAl+gAwIBAgIEbnhXNDANBgkqhkiG9w0BAQsFADBsMQswCQYDVQQGEwJ1",
+			"-----END CERTIFICATE-----",
+		].join("\n");
+		const input = captureJson({ rawText: cert });
+		const result = sanitizeCapture(input);
+		expect(result).toBe(input);
+	});
+
+	it("is idempotent on an already-redacted PEM block", () => {
+		const input = captureJson({
+			rawText:
+				"-----BEGIN RSA PRIVATE KEY-----[REDACTED]-----END RSA PRIVATE KEY-----",
+		});
+		expect(sanitizeCapture(input)).toBe(input);
 	});
 });
 
