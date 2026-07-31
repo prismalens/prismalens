@@ -110,10 +110,25 @@ export const RunFidelitySchema = z.object({
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 
+/**
+ * Structured culprit identification (ADR-0026 / D3).
+ * Identification only — no numeric confidence or ordering.
+ */
+export const CulpritSchema = z.object({
+	/** The service the root cause lives in. */
+	service: z.string().nullable().default(null),
+	/** Deploy/commit/change-event reference. */
+	changeRef: z.string().nullable().default(null),
+	/** Short failure mechanism (e.g. "connection-pool exhaustion"). */
+	mechanism: z.string().nullable().default(null),
+});
+
 export const InvestigationReportSchema = z.object({
 	summary: z.string().min(1),
 	rootCause: z.string().nullable(),
 	rootCauseCategory: RootCauseCategorySchema.nullable(),
+	/** Structured culprit sub-object (ADR-0026). All fields nullable; whole object optional. */
+	culprit: CulpritSchema.nullable().optional(),
 	/** Ordered most → least plausible (array order is the ordering). */
 	hypotheses: z.array(HypothesisSchema),
 	ruledOut: z.array(RuledOutSchema),
@@ -191,6 +206,10 @@ export const InvestigationSchema = z.object({
 	 */
 	overlay: OverlaySchema.nullable().optional(),
 	error: z.string().nullable(),
+	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
+	origin: z.string().optional().default("local"),
+	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
+	schemaVersion: z.number().int().optional().default(1),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -320,6 +339,8 @@ export const WriteInvestigationResultSchema = z.object({
 	error: z.string().optional(),
 	agentExecutions: z.array(CreateAgentExecutionInputSchema).optional(),
 	recommendations: z.array(CreateRecommendationInputSchema).optional(),
+	origin: z.string().optional(),
+	schemaVersion: z.number().int().optional(),
 });
 
 // =============================================================================
@@ -454,6 +475,7 @@ export type Hypothesis = z.infer<typeof HypothesisSchema>;
 export type RuledOut = z.infer<typeof RuledOutSchema>;
 export type Coverage = z.infer<typeof CoverageSchema>;
 export type NextStep = z.infer<typeof NextStepSchema>;
+export type Culprit = z.infer<typeof CulpritSchema>;
 export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type StreamToolResult = z.infer<typeof StreamToolResultSchema>;
 export type CanonicalEvent = z.infer<typeof CanonicalEventSchema>;
