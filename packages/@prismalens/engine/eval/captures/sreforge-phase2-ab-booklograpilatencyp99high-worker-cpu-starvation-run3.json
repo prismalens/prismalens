@@ -990,7 +990,7 @@
           "source": "Bash({\"command\":\"echo \\\"--- check DB for book count (try via docker or psql if available) ---\\\"\\nwhich psql 2>/dev/null\\ndocker ps 2>/dev/null | grep -i postgres\\necho \\\"--- try hitting API directly for timing ---\\\"\\ntime curl -s -o /dev/null -w \\\"%{http_code} %{time_total}s\\\\n\\\" http://localhost:5000/v1/books 2>&1 | tail -5\"})",
           "ok": true,
           "error": null,
-          "preview": "Command running in background with ID: bcp1v3swh. Output is being written to: /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/ef5fa984-bb25-4667-8432-94f106a00ef3/tasks/bcp1v3swh.output. You will be notified when it completes. To check interim output, use Read on that file path."
+          "preview": "Command running in background with ID: bcp1v3swh. Output is being written to: /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/ef5fa984-bb25-4667-8432-94f106a00ef3/tasks/bcp1v3swh.output. You will be notified when it completes. To check interim output, use Read on that file path."
         }
       },
       {
@@ -1044,7 +1044,7 @@
             "toolCallId": "toolu_01CJujMYG5dDsnZVU8oxoLqV",
             "name": "Read",
             "args": {
-              "file_path": "/tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/ef5fa984-bb25-4667-8432-94f106a00ef3/tasks/bcp1v3swh.output"
+              "file_path": "/tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/ef5fa984-bb25-4667-8432-94f106a00ef3/tasks/bcp1v3swh.output"
             }
           }
         ]
@@ -1061,7 +1061,7 @@
           "name": "Read",
           "toolCategory": "file",
           "toolCallId": "toolu_01CJujMYG5dDsnZVU8oxoLqV",
-          "source": "Read({\"file_path\":\"/tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/ef5fa984-bb25-4667-8432-94f106a00ef3/tasks/bcp1v3swh.output\"})",
+          "source": "Read({\"file_path\":\"/tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/ef5fa984-bb25-4667-8432-94f106a00ef3/tasks/bcp1v3swh.output\"})",
           "ok": true,
           "error": null,
           "preview": "1\t--- check DB for book count (try via docker or psql if available) ---\n2\tf397c601e40e   postgres:16-alpine              \"docker-entrypoint.s…\"   2 hours ago     Up 2 hours (healthy)       0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp                                          booklogr-db\n3\t--- try hitting API directly for timing ---\n4\t"

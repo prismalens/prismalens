@@ -1325,7 +1325,7 @@
           "source": "Bash({\"command\":\"curl -s -o /dev/null -w \\\"HTTP:%{http_code} time:%{time_total}\\\\n\\\" 'http://localhost:5000/v1/books' -H \\\"Authorization: Bearer test\\\"\\necho \\\"---rating sort---\\\"\\ncurl -s 'http://localhost:5000/v1/books?sort_by=rating' -H \\\"Authorization: Bearer test\\\" | head -c 500\"})",
           "ok": true,
           "error": null,
-          "preview": "Command running in background with ID: bqwxl3fkb. Output is being written to: /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output. You will be notified when it completes. To check interim output, use Read on that file path."
+          "preview": "Command running in background with ID: bqwxl3fkb. Output is being written to: /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output. You will be notified when it completes. To check interim output, use Read on that file path."
         }
       },
       {
@@ -1390,7 +1390,7 @@
             "toolCallId": "toolu_01HzXiK3n5oFqsisHCyTANEa",
             "name": "Bash",
             "args": {
-              "command": "sleep 8; cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output"
+              "command": "sleep 8; cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output"
             }
           }
         ]
@@ -1407,7 +1407,7 @@
           "name": "Bash",
           "toolCategory": null,
           "toolCallId": "toolu_01HzXiK3n5oFqsisHCyTANEa",
-          "source": "Bash({\"command\":\"sleep 8; cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output\"})",
+          "source": "Bash({\"command\":\"sleep 8; cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output\"})",
           "ok": true,
           "error": null,
           "preview": "HTTP:500 time:85.985205\n---rating sort---"
@@ -1427,7 +1427,7 @@
             "toolCallId": "toolu_01VmaLPn5Kav1JHhVrQDu8DC",
             "name": "Bash",
             "args": {
-              "command": "sleep 15; cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output; echo \"===STATUS===\"; jobs -l"
+              "command": "sleep 15; cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output; echo \"===STATUS===\"; jobs -l"
             }
           }
         ]
@@ -1444,7 +1444,7 @@
           "name": "Bash",
           "toolCategory": null,
           "toolCallId": "toolu_01VmaLPn5Kav1JHhVrQDu8DC",
-          "source": "Bash({\"command\":\"sleep 15; cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output; echo \\\"===STATUS===\\\"; jobs -l\"})",
+          "source": "Bash({\"command\":\"sleep 15; cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/c004fd37-c565-41bc-8b61-01e6359d80a8/tasks/bqwxl3fkb.output; echo \\\"===STATUS===\\\"; jobs -l\"})",
           "ok": true,
           "error": null,
           "preview": "HTTP:500 time:85.985205\n---rating sort---\n<!doctype html>\n<html lang=en>\n<title>500 Internal Server Error</title>\n<h1>Internal Server Error</h1>\n<p>The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application.</p>\n===STATUS==="

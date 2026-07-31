@@ -1812,7 +1812,7 @@
           "source": "Bash({\"command\":\"curl -s -o /dev/null -w \\\"http_code:%{http_code} time:%{time_total}\\\\n\\\" 'http://localhost:5000/v1/books/search?q=test' 2>&1\\necho \\\"---settings---\\\"\\ncurl -s 'http://localhost:5000/health' 2>&1 | head -5\\necho \\\"---\\\"\\ngrep -rn \\\"book-metadata\\\\|8080\\\" api/config.py docker-compose.yml docker-compose.postgres.yml 2>/dev/null\",\"description\":\"Test search endpoint timing and check for config exposing provider\"})",
           "ok": true,
           "error": null,
-          "preview": "Command running in background with ID: bctoqbogu. Output is being written to: /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/46b38ac5-cd4e-480e-95fb-812bc1c99c35/tasks/bctoqbogu.output. You will be notified when it completes. To check interim output, use Read on that file path."
+          "preview": "Command running in background with ID: bctoqbogu. Output is being written to: /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/46b38ac5-cd4e-480e-95fb-812bc1c99c35/tasks/bctoqbogu.output. You will be notified when it completes. To check interim output, use Read on that file path."
         }
       },
       {
@@ -2000,7 +2000,7 @@
           "source": "Bash({\"command\":\"ls -la .env* 2>/dev/null; find . -maxdepth 2 -iname \\\".env*\\\"\",\"description\":\"Locate env files\"})",
           "ok": true,
           "error": null,
-          "preview": "-rw-r--r-- 1 sumit sumit 825 Jul 22 12:08 .env.example\n./.env.example\n./web/.env.example\n./web/.env.production"
+          "preview": "-rw-r--r-- 1 user user 825 Jul 22 12:08 .env.example\n./.env.example\n./web/.env.example\n./web/.env.production"
         }
       },
       {
@@ -2054,7 +2054,7 @@
             "toolCallId": "toolu_01HWqkn4fBaUn4oq6SABpZry",
             "name": "Bash",
             "args": {
-              "command": "cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/46b38ac5-cd4e-480e-95fb-812bc1c99c35/tasks/bctoqbogu.output 2>/dev/null",
+              "command": "cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/46b38ac5-cd4e-480e-95fb-812bc1c99c35/tasks/bctoqbogu.output 2>/dev/null",
               "description": "Check output of background curl test"
             }
           }
@@ -2072,7 +2072,7 @@
           "name": "Bash",
           "toolCategory": null,
           "toolCallId": "toolu_01HWqkn4fBaUn4oq6SABpZry",
-          "source": "Bash({\"command\":\"cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/46b38ac5-cd4e-480e-95fb-812bc1c99c35/tasks/bctoqbogu.output 2>/dev/null\",\"description\":\"Check output of background curl test\"})",
+          "source": "Bash({\"command\":\"cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/46b38ac5-cd4e-480e-95fb-812bc1c99c35/tasks/bctoqbogu.output 2>/dev/null\",\"description\":\"Check output of background curl test\"})",
           "ok": true,
           "error": null,
           "preview": "http_code:200 time:101.814333\n---settings---"

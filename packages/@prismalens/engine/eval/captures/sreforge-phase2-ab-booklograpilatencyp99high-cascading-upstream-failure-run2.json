@@ -474,7 +474,7 @@
           "source": "Bash({\"command\":\"for i in 1 2 3; do curl -s -o /dev/null -w \\\"default(title) sort: %{time_total}s\\\\n\\\" 'http://localhost:5000/v1/books' -H \\\"Authorization: Bearer test\\\"; done\\nfor i in 1 2 3; do curl -s -o /dev/null -w \\\"created_on sort: %{time_total}s\\\\n\\\" 'http://localhost:5000/v1/books?sort_by=created_on' -H \\\"Authorization: Bearer test\\\"; done\"})",
           "ok": true,
           "error": null,
-          "preview": "Command running in background with ID: bkt0dataq. Output is being written to: /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/e7d7489a-33b3-4f3b-8d6b-ac9bcab99f90/tasks/bkt0dataq.output. You will be notified when it completes. To check interim output, use Read on that file path."
+          "preview": "Command running in background with ID: bkt0dataq. Output is being written to: /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/e7d7489a-33b3-4f3b-8d6b-ac9bcab99f90/tasks/bkt0dataq.output. You will be notified when it completes. To check interim output, use Read on that file path."
         }
       },
       {
@@ -491,7 +491,7 @@
             "toolCallId": "toolu_01NfM65LtmfPa3n533TFEc3e",
             "name": "Bash",
             "args": {
-              "command": "sleep 1; cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/e7d7489a-33b3-4f3b-8d6b-ac9bcab99f90/tasks/bkt0dataq.output 2>/dev/null || echo \"not ready\""
+              "command": "sleep 1; cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/e7d7489a-33b3-4f3b-8d6b-ac9bcab99f90/tasks/bkt0dataq.output 2>/dev/null || echo \"not ready\""
             }
           }
         ]
@@ -508,7 +508,7 @@
           "name": "Bash",
           "toolCategory": null,
           "toolCallId": "toolu_01NfM65LtmfPa3n533TFEc3e",
-          "source": "Bash({\"command\":\"sleep 1; cat /tmp/claude-1000/-home-sumit-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/e7d7489a-33b3-4f3b-8d6b-ac9bcab99f90/tasks/bkt0dataq.output 2>/dev/null || echo \\\"not ready\\\"\"})",
+          "source": "Bash({\"command\":\"sleep 1; cat /tmp/claude-1000/-home-user-sources-sreforge-workspace-sreforge-use-cases-booklogr-stacks-flask-compose-substrate-booklogr/e7d7489a-33b3-4f3b-8d6b-ac9bcab99f90/tasks/bkt0dataq.output 2>/dev/null || echo \\\"not ready\\\"\"})",
           "ok": true,
           "error": null,
           "preview": "default(title) sort: 23.481350s\ndefault(title) sort: 22.874720s\ndefault(title) sort: 22.571348s\ncreated_on sort: 22.799385s\ncreated_on sort: 22.845649s"
