@@ -9,17 +9,48 @@
  * provides access to auth APIs throughout the application.
  */
 
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import {
+	Injectable,
+	Logger,
+	OnApplicationBootstrap,
+	OnModuleInit,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { type Auth, createAuth } from "@prismalens/auth";
 import { prisma } from "@prismalens/database";
+import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
-export class AuthService implements OnModuleInit {
+export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 	private readonly logger = new Logger(AuthService.name);
 	private _auth: Auth | null = null;
 
-	constructor(private readonly configService: ConfigService) {}
+	constructor(
+		private readonly configService: ConfigService,
+		private readonly prismaService: PrismaService,
+	) {}
+
+	async onApplicationBootstrap(): Promise<void> {
+		// Availability rule: boot aborts only on positive evidence of violation.
+		// An unreadable count (fresh install before db init, transient outage)
+		// must not brick startup — creation stays fail-closed in the auth hook.
+		let count: number;
+		try {
+			count = await this.prismaService.organization.count();
+		} catch (err) {
+			this.logger.warn(
+				`ADR-0011 §6 single-tenant invariant could not be verified at startup (${
+					err instanceof Error ? err.message : String(err)
+				}). Continuing — the invariant remains enforced on the organization-creation path.`,
+			);
+			return;
+		}
+		if (count > 1) {
+			const message = `ADR-0011 §6 single-tenant core invariant violation: expected at most 1 organization, found ${count}. Startup aborted.`;
+			this.logger.error(message);
+			throw new Error(message);
+		}
+	}
 
 	onModuleInit() {
 		const databaseUrl = this.configService.get<string>("DATABASE_URL", "");

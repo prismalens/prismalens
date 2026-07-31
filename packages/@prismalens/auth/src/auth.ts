@@ -12,7 +12,7 @@
  * - Role-based access control
  */
 
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin, organization } from "better-auth/plugins";
 
@@ -23,9 +23,30 @@ import { admin, organization } from "better-auth/plugins";
  * because we can't directly import it here (would cause circular dependency).
  * The API package will call this with its Prisma instance.
  */
-export function createAuth(prisma: any, options: AuthOptions) {
+export async function assertOrganizationCreatable(
+	prisma: unknown,
+): Promise<void> {
+	const prismaClient = prisma as {
+		organization?: { count?: () => Promise<number> };
+	};
+	let count: number | undefined;
+	try {
+		count = await prismaClient?.organization?.count?.();
+	} catch {
+		count = undefined;
+	}
+	// Fail closed (ADR-0011 §6): an unreadable or failing count blocks creation too.
+	if (typeof count !== "number" || count >= 1) {
+		throw new APIError("BAD_REQUEST", {
+			message:
+				"Organization creation is disabled in single-tenant mode (ADR-0011 §6)",
+		});
+	}
+}
+
+export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
-		database: prismaAdapter(prisma, {
+		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
 			provider: options.databaseProvider,
 		}),
 
@@ -73,7 +94,14 @@ export function createAuth(prisma: any, options: AuthOptions) {
 			// Organization plugin for team management and invitations
 			organization({
 				// For Community Edition, we use a single organization
-				allowUserToCreateOrganization: true,
+				allowUserToCreateOrganization: false,
+				organizationLimit: 1,
+
+				organizationHooks: {
+					async beforeCreateOrganization() {
+						await assertOrganizationCreatable(prisma);
+					},
+				},
 
 				// Custom invitation email handler
 				// If SMTP is configured, this sends the email
