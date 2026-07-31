@@ -450,7 +450,6 @@ model ChangeEvent {
   serviceId   String?
   description String?
   metadata    String? // JSON: { version, environment, author, url, etc. }
-  riskScore   Int? // 0-100, calculated based on time proximity and change type
 
   createdAt DateTime @default(now())
 

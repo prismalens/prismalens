@@ -291,7 +291,6 @@ CREATE TABLE "change_events" (
     "serviceId" TEXT,
     "description" TEXT,
     "metadata" TEXT,
-    "riskScore" INTEGER,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "change_events_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "services" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );

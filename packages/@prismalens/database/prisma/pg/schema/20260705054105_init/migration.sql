@@ -392,7 +392,6 @@ CREATE TABLE "change_events" (
     "serviceId" TEXT,
     "description" TEXT,
     "metadata" TEXT,
-    "riskScore" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "change_events_pkey" PRIMARY KEY ("id")
