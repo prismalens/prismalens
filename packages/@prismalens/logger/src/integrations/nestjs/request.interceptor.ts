@@ -7,9 +7,8 @@ import {
 	Injectable,
 	type NestInterceptor,
 } from "@nestjs/common";
-import type { Observable } from "rxjs";
-import { catchError, finalize, tap } from "rxjs";
-import { enrichContext } from "../../core/context.js";
+import { catchError, finalize, Observable, tap } from "rxjs";
+import { enrichContext, runInRequestContext } from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
 import type { WideEvent } from "../../types/wide-event.js";
 
@@ -95,49 +94,51 @@ export class WideEventInterceptor implements NestInterceptor {
 			};
 		}
 
-		// Store initial context for this request (simplified - no AsyncLocalStorage wrapper)
-		// The enrichContext calls will still work for basic logging
-		enrichContext(initialContext);
-
-		// Return a proper rxjs Observable chain using pipe operators
-		return next.handle().pipe(
-			tap((data: unknown) => {
-				// Enrich with response data on success
-				enrichContext({
-					response: {
-						status_code: response.statusCode,
-						body_size: data ? this.getBodySize(data) : 0,
-					},
-				});
-			}),
-			catchError(
-				(
-					error: Error & {
-						status?: number;
-						statusCode?: number;
-						code?: string;
-					},
-				) => {
-					// Enrich with error data on failure
-					enrichContext({
-						error: {
-							type: error.name || "Error",
-							message: error.message,
-							stack: error.stack,
-							code: error.code,
-						},
-						response: {
-							status_code: error.status || error.statusCode || 500,
-						},
-					});
-					throw error;
-				},
-			),
-			finalize(() => {
-				// Emit wide event when request completes (success or error)
-				this.emitWideEvent();
-			}),
-		);
+		return new Observable((subscriber) => {
+			return runInRequestContext(() => {
+				return next
+					.handle()
+					.pipe(
+						tap((data: unknown) => {
+							// Enrich with response data on success
+							enrichContext({
+								response: {
+									status_code: response.statusCode,
+									body_size: data ? this.getBodySize(data) : 0,
+								},
+							});
+						}),
+						catchError(
+							(
+								error: Error & {
+									status?: number;
+									statusCode?: number;
+									code?: string;
+								},
+							) => {
+								// Enrich with error data on failure
+								enrichContext({
+									error: {
+										type: error.name || "Error",
+										message: error.message,
+										stack: error.stack,
+										code: error.code,
+									},
+									response: {
+										status_code: error.status || error.statusCode || 500,
+									},
+								});
+								throw error;
+							},
+						),
+						finalize(() => {
+							// Emit wide event when request completes (success or error)
+							this.emitWideEvent();
+						}),
+					)
+					.subscribe(subscriber);
+			}, initialContext);
+		});
 	}
 
 	/**

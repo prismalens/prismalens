@@ -44,19 +44,21 @@ const SENSITIVE_KEYS = new Set([
 const REDACTED = "[REDACTED]";
 
 /**
- * Redact sensitive data from a wide event.
+ * Redact sensitive data from a wide event or log object.
  * Creates a new object, does not mutate the original.
  */
-export function redactSensitiveData(
-	event: Partial<WideEvent>,
-): Partial<WideEvent> {
+export function redactSensitiveData<T extends Record<string, unknown>>(
+	data: T,
+): T {
+	if (!data || typeof data !== "object") return data;
+	const event = data as Partial<WideEvent> & Record<string, unknown>;
 	const result = { ...event };
 
 	// Redact request headers
 	if (result.request?.headers) {
 		result.request = {
 			...result.request,
-			headers: redactHeaders(result.request.headers),
+			headers: redactHeaders(result.request.headers as Record<string, string>),
 		};
 	}
 
@@ -64,7 +66,7 @@ export function redactSensitiveData(
 	if (result.response?.headers) {
 		result.response = {
 			...result.response,
-			headers: redactHeaders(result.response.headers),
+			headers: redactHeaders(result.response.headers as Record<string, string>),
 		};
 	}
 
@@ -72,7 +74,7 @@ export function redactSensitiveData(
 	if (result.request?.query) {
 		result.request = {
 			...result.request,
-			query: redactObject(result.request.query),
+			query: redactObject(result.request.query as Record<string, unknown>),
 		};
 	}
 
@@ -85,11 +87,11 @@ export function redactSensitiveData(
 	}
 
 	// Redact context values
-	if (result.context) {
-		result.context = redactObject(result.context);
+	if (result.context && typeof result.context === "object") {
+		result.context = redactObject(result.context as Record<string, unknown>);
 	}
 
-	return result;
+	return redactObject(result as Record<string, unknown>) as T;
 }
 
 /**
@@ -110,14 +112,20 @@ function redactHeaders(
 }
 
 /**
- * Redact sensitive keys in an object.
+ * Redact sensitive keys in an object recursively.
  */
 function redactObject(obj: Record<string, unknown>): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(obj)) {
 		if (SENSITIVE_KEYS.has(key.toLowerCase())) {
 			result[key] = REDACTED;
-		} else if (value && typeof value === "object" && !Array.isArray(value)) {
+		} else if (Array.isArray(value)) {
+			result[key] = value.map((item) =>
+				item && typeof item === "object"
+					? redactObject(item as Record<string, unknown>)
+					: item,
+			);
+		} else if (value && typeof value === "object") {
 			result[key] = redactObject(value as Record<string, unknown>);
 		} else {
 			result[key] = value;
