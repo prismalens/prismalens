@@ -125,4 +125,35 @@ describe("CorrelationService", () => {
 			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("testCorrelation", () => {
+		it("should return non-null matchedRule when a rule matches", async () => {
+			const rule = {
+				id: "rule-10",
+				name: "Database High Severity Rule",
+				action: "correlate",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({
+					match: { severity: ["high"] },
+				}),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce({
+				id: "inc-99",
+				number: 99,
+			});
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.matchedRule).toEqual(rule);
+			expect(result.action).toBe("correlate");
+			expect(result.reason).toContain("Matched by rule: Database High Severity Rule");
+			expect(mockIncidentsService.create).not.toHaveBeenCalled();
+			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
+		});
+	});
 });

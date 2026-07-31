@@ -439,4 +439,103 @@ export class CorrelationService {
 
 		return { matched: false, isNewIncident: false };
 	}
+
+	/**
+	 * Test correlation rules and matching logic against a sample alert (read-only)
+	 */
+	async testCorrelation(alertData: Record<string, unknown>): Promise<{
+		matchedRule: CorrelationRule | null;
+		action: "correlate" | "create_incident" | "suppress";
+		reason: string;
+	}> {
+		const alert = {
+			...alertData,
+			fingerprint:
+				(alertData.fingerprint as string | undefined) ??
+				(alertData.title
+					? this.generateFingerprint({
+							title: alertData.title as string,
+							description: alertData.description as string | undefined,
+						})
+					: undefined),
+		} as unknown as Alert;
+
+		// 1. Try rule-based correlation
+		const rules = await this.findAllRules({ enabled: true });
+		for (const rule of rules) {
+			if (this.alertMatchesRule(alert, rule)) {
+				if (rule.action === "suppress") {
+					return {
+						matchedRule: rule,
+						action: "suppress",
+						reason: `Suppressed by rule: ${rule.name}`,
+					};
+				}
+
+				const incident = await this.findMatchingIncident(alert, rule);
+				if (incident) {
+					return {
+						matchedRule: rule,
+						action: "correlate",
+						reason: `Matched by rule: ${rule.name}`,
+					};
+				}
+
+				return {
+					matchedRule: rule,
+					action: rule.action as "correlate" | "create_incident" | "suppress",
+					reason: `Matched by rule: ${rule.name} - would create new incident`,
+				};
+			}
+		}
+
+		// 2. Try fingerprint-based correlation
+		if (alert.fingerprint) {
+			const timeWindowStart = new Date(Date.now() - 60 * 60 * 1000);
+			const similarAlert = await this.prisma.alert.findFirst({
+				where: {
+					fingerprint: alert.fingerprint,
+					...(alert.id ? { id: { not: alert.id } } : {}),
+					incidentId: { not: null },
+					triggeredAt: { gte: timeWindowStart },
+				},
+				include: { incident: true },
+				orderBy: { triggeredAt: "desc" },
+			});
+
+			if (similarAlert?.incident) {
+				return {
+					matchedRule: null,
+					action: "correlate",
+					reason: "Matched by fingerprint similarity",
+				};
+			}
+		}
+
+		// 3. Try time-window based correlation
+		const timeWindowStart = new Date(Date.now() - 60 * 60 * 1000);
+		const incident = await this.prisma.incident.findFirst({
+			where: {
+				status: { notIn: ["resolved", "closed"] },
+				triggeredAt: { gte: timeWindowStart },
+				...(alert.serviceId ? { serviceId: alert.serviceId } : {}),
+			},
+			orderBy: { triggeredAt: "desc" },
+		});
+
+		if (incident) {
+			return {
+				matchedRule: null,
+				action: "correlate",
+				reason: "Matched by time window correlation",
+			};
+		}
+
+		return {
+			matchedRule: null,
+			action: "create_incident",
+			reason:
+				"No matching rule, fingerprint, or time window found - would create new incident",
+		};
+	}
 }
