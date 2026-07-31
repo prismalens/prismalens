@@ -121,7 +121,22 @@ describe("CulpritSchema and InvestigationReportSchema culprit (ADR-0026)", () =>
 			mechanism: null,
 		});
 
-		// 3. Absent culprit
+		// 3. Explicit null culprit is preserved
+		const parsedNull = InvestigationReportSchema.parse({
+			...baseReport,
+			culprit: null,
+		});
+		expect(parsedNull.culprit).toBeNull();
+
+		// 4. Omitted nullable properties default to null
+		const parsedDefaults = CulpritSchema.parse({ service: "payment-service" });
+		expect(parsedDefaults).toEqual({
+			service: "payment-service",
+			changeRef: null,
+			mechanism: null,
+		});
+
+		// 5. Absent culprit
 		const parsedAbsent = InvestigationReportSchema.parse(baseReport);
 		expect(parsedAbsent.culprit).toBeUndefined();
 	});

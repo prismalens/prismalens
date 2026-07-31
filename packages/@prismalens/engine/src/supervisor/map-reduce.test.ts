@@ -395,7 +395,7 @@ describe("synthesize — culprit sub-object mapping (ADR-0026 / D3)", () => {
 		expect(out.culprit).toEqual(cannedCulprit);
 	});
 
-	it("absent/unparseable culprit maps to nulls or null", async () => {
+	it("preserves a null culprit through reduce", async () => {
 		const events = [agentStep("root", 0), toolResult("root", 1)];
 		const expectedReport = report("synthesized report without culprit");
 		const { model } = stubModel([expectedReport], expectedReport);

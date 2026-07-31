@@ -78,6 +78,14 @@ const SCHEMA_CHECK = `
 		SELECT id, group_id, late, payload FROM group_alerts LIMIT 1;
 `;
 
+// Columns added after a release ship as in-place ALTERs: replacing the
+// database would orphan the user's run history, which schema_version exists
+// to protect (ADR-0026). SQLite backfills existing rows from the DEFAULT.
+const ADDITIVE_MIGRATIONS = [
+	`ALTER TABLE runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'local'`,
+	`ALTER TABLE runs ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1`,
+];
+
 export function openDatabase(baseDir: string): DatabaseSyncType {
 	mkdirSync(baseDir, { recursive: true });
 	const dbPath = join(baseDir, "prismalens.db");
@@ -93,6 +101,24 @@ export function openDatabase(baseDir: string): DatabaseSyncType {
 				db.close();
 			} catch {}
 			throw err;
+		}
+
+		// Additive migration first — only if it cannot make the schema whole
+		// does the backup-and-recreate path below run.
+		try {
+			for (const stmt of ADDITIVE_MIGRATIONS) {
+				try {
+					db.exec(stmt);
+				} catch (migErr: unknown) {
+					const m = migErr instanceof Error ? migErr.message : String(migErr);
+					if (!/duplicate column name/i.test(m)) throw migErr;
+				}
+			}
+			db.exec(SCHEMA);
+			db.exec(SCHEMA_CHECK);
+			return db;
+		} catch {
+			// Fall through to backup-and-recreate.
 		}
 
 		// Schema mismatch or corruption detected.
