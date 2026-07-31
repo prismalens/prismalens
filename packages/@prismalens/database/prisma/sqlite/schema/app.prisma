@@ -264,6 +264,8 @@ model Investigation {
   overlay           String? // JSON: reduce overlay (ADR-0016 §5c) — app-side post-report enrichment, computed BESIDE the canonical report
   error             String?
   harnessThreadId   String?   @unique // Harness checkpoint thread ID for resume/replay
+  origin            String    @default("local")
+  schemaVersion     Int       @default(1)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

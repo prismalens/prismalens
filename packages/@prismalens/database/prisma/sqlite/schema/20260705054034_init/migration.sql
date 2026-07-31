@@ -169,6 +169,8 @@ CREATE TABLE "investigations" (
     "overlay" TEXT,
     "error" TEXT,
     "harnessThreadId" TEXT,
+    "origin" TEXT NOT NULL DEFAULT 'local',
+    "schemaVersion" INTEGER NOT NULL DEFAULT 1,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     "triggerType" TEXT,

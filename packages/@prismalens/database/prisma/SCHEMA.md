@@ -123,6 +123,8 @@ AI-driven analysis of an incident. Each investigation runs the two-tier engine (
 | `report` | JSON? | Full ordered-evidence report (ADR-0002): hypotheses, ruledOut, coverage, nextSteps |
 | `error` | string? | Error message if status is "failed" |
 | `harnessThreadId` | string? | **Unique** harness checkpoint thread ID for resume/replay |
+| `origin` | string | Execution origin stamp (default `"local"`, ADR-0026) |
+| `schemaVersion` | int | Persisted schema version stamp (default `1`, ADR-0026) |
 | `triggerType` | InvestigationTriggerType? | How this investigation was triggered |
 | `triggerReason` | string? | Human-readable trigger reason |
 
