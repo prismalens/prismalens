@@ -7,7 +7,7 @@ import {
 	Injectable,
 	type NestInterceptor,
 } from "@nestjs/common";
-import { catchError, finalize, Observable, tap } from "rxjs";
+import { catchError, finalize, Observable, type Subscription, tap } from "rxjs";
 import { enrichContext, runInRequestContext } from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
 import type { WideEvent } from "../../types/wide-event.js";
@@ -95,8 +95,10 @@ export class WideEventInterceptor implements NestInterceptor {
 		}
 
 		return new Observable((subscriber) => {
-			return runInRequestContext(() => {
-				return next
+			let subscription: Subscription | undefined;
+
+			runInRequestContext(() => {
+				subscription = next
 					.handle()
 					.pipe(
 						tap((data: unknown) => {
@@ -138,6 +140,8 @@ export class WideEventInterceptor implements NestInterceptor {
 					)
 					.subscribe(subscriber);
 			}, initialContext);
+
+			return () => subscription?.unsubscribe();
 		});
 	}
 
