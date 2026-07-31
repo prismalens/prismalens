@@ -9,8 +9,8 @@
 import { InjectQueue, Processor, WorkerHost } from "@nestjs/bullmq";
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { Job, Queue } from "bullmq";
-import type { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { IntegrationsService } from "./integrations.service.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { IntegrationsService } from "./integrations.service.js";
 
 export const TOKEN_REFRESH_QUEUE = "token-refresh";
 const JOB_NAME = "refresh-expiring-tokens";
