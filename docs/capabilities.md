@@ -27,7 +27,10 @@ capability names its surface; "works" on one says nothing about the other.
 | C13 | Approve → execute (act phase) | app UI | ⬜ OSS-bounded | [#299](https://github.com/prismalens/prismalens/issues/299) |
 
 Statuses: ✅ every step works today · 🟦 core loop works, listed children remain · 🟨 journey
-has open gaps · ⬜ this repository intentionally ships only the inert shell (see C13).
+has open gaps · ⬜ this repository intentionally ships only the inert shell — the executing
+half lives behind the commercial module boundary (ADR-0023), so C13's definition of done here
+is: shell renders inert states correctly, the capability-flag/module seam is verified, and no
+execution path exists without a verified module.
 
 ## Complete today
 
