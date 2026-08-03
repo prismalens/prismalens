@@ -83,16 +83,17 @@ export class AlertMappingController {
 				this.logger.log(
 					`Testing mapping for alert: "${alertData.title || "unknown"}"`,
 				);
-				const service = await this.alertMappingService.resolveServiceForAlert({
-					source: alertData.source as string | undefined,
-					labels: alertData.labels as Record<string, string> | undefined,
-					tags: alertData.tags as string[] | undefined,
-					title: (alertData.title as string) || "",
-					description: alertData.description as string | undefined,
-				});
+				const { rule, service } =
+					await this.alertMappingService.resolveMappingForAlert({
+						source: alertData.source as string | undefined,
+						labels: alertData.labels as Record<string, string> | undefined,
+						tags: alertData.tags as string[] | undefined,
+						title: (alertData.title as string) || "",
+						description: alertData.description as string | undefined,
+					});
 
 				return {
-					matchedRule: null, // Service doesn't return the matched rule
+					matchedRule: rule ? this.serializeRule(rule) : null,
 					serviceId: service?.id ?? null,
 					serviceName: service?.name ?? null,
 				};
@@ -101,13 +102,28 @@ export class AlertMappingController {
 	}
 
 	private serializeRule(rule: Record<string, any>): AlertMappingRule {
+		// Drop the raw `service` relation. Rules loaded via findAll/findById carry
+		// the full Service row, and spreading it here would emit every column —
+		// bypassing serializeRuleWithService's four-field whitelist, which is the
+		// only place a service is allowed to be exposed.
+		const { service: _service, ...rest } = rule;
+
 		return {
-			...rule,
-			matchCriteria: rule.conditions
-				? JSON.parse(rule.conditions)
-				: (rule.matchCriteria ?? {}),
-			createdAt: rule.createdAt?.toISOString(),
-			updatedAt: rule.updatedAt?.toISOString(),
+			...rest,
+			matchCriteria:
+				typeof rule.matchCriteria === "string"
+					? JSON.parse(rule.matchCriteria)
+					: rule.conditions
+						? JSON.parse(rule.conditions)
+						: (rule.matchCriteria ?? {}),
+			createdAt:
+				rule.createdAt instanceof Date
+					? rule.createdAt.toISOString()
+					: rule.createdAt,
+			updatedAt:
+				rule.updatedAt instanceof Date
+					? rule.updatedAt.toISOString()
+					: rule.updatedAt,
 		} as AlertMappingRule;
 	}
 

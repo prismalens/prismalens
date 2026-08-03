@@ -22,6 +22,7 @@ describe("CorrelationService", () => {
 		},
 		incident: {
 			findFirst: vi.fn(),
+			findUnique: vi.fn(),
 			update: vi.fn(),
 		},
 		alert: {
@@ -99,6 +100,160 @@ describe("CorrelationService", () => {
 			await service.correlateAlert(alert);
 
 			expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+		});
+
+		it("should short-circuit runCorrelation if alert is already linked to an incident", async () => {
+			const alert = { id: "alert-1", incidentId: "inc-1" } as Alert;
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				number: 42,
+			});
+
+			const result = await service.correlateAlert(alert);
+
+			expect(result).toEqual({
+				matched: true,
+				incidentId: "inc-1",
+				incidentNumber: 42,
+				reason: "Already correlated to incident",
+				isNewIncident: false,
+				alreadyCorrelated: true,
+			});
+			expect(mockPrisma.incident.findUnique).toHaveBeenCalledWith({
+				where: { id: "inc-1" },
+			});
+			expect(mockIncidentsService.create).not.toHaveBeenCalled();
+			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
+		});
+
+		it("should not re-emit ALERT_CORRELATED_EVENT when the alert was already correlated", async () => {
+			const alert = { id: "alert-1", incidentId: "inc-1" } as Alert;
+			mockPrisma.incident.findUnique.mockResolvedValueOnce({
+				id: "inc-1",
+				number: 42,
+			});
+
+			const result = await service.correlateAlert(alert);
+
+			expect(result.alreadyCorrelated).toBe(true);
+			expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("testCorrelation", () => {
+		it("should return non-null matchedRule when a rule matches", async () => {
+			const rule = {
+				id: "rule-10",
+				name: "Database High Severity Rule",
+				action: "correlate",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({
+					match: { severity: ["high"] },
+				}),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce({
+				id: "inc-99",
+				number: 99,
+			});
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.matchedRule).toEqual(rule);
+			expect(result.action).toBe("correlate");
+			expect(result.reason).toContain("Matched by rule: Database High Severity Rule");
+			expect(mockIncidentsService.create).not.toHaveBeenCalled();
+			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
+		});
+
+		it("should fall through to fingerprint correlation when a rule matches but no incident is in its window", async () => {
+			// matchToIncidentByRules keeps going in this situation, so the test
+			// endpoint must not stop at "would create new incident".
+			const rule = {
+				id: "rule-11",
+				name: "Database High Severity Rule",
+				action: "correlate",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({ match: { severity: ["high"] } }),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			// No incident inside the rule's window.
+			mockPrisma.incident.findFirst.mockResolvedValueOnce(null);
+			// …but an alert with the same fingerprint is already on an incident.
+			mockPrisma.alert.findFirst.mockResolvedValueOnce({
+				id: "alert-77",
+				incident: { id: "inc-77", number: 77 },
+			});
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.action).toBe("correlate");
+			expect(result.reason).toContain("fingerprint");
+			expect(result.matchedRule).toBeNull();
+			expect(mockIncidentsService.create).not.toHaveBeenCalled();
+			expect(mockIncidentsService.addAlert).not.toHaveBeenCalled();
+		});
+
+		it("should report create_incident only when rule, fingerprint and time window all miss", async () => {
+			const rule = {
+				id: "rule-12",
+				name: "Database High Severity Rule",
+				action: "correlate",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({ match: { severity: ["high"] } }),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			// Once for the rule's window, once for the time-window fallback.
+			mockPrisma.incident.findFirst
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(null);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce(null);
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.action).toBe("create_incident");
+			expect(result.matchedRule).toBeNull();
+		});
+
+		it("should fall through past a matching suppress rule instead of predicting 'suppress'", async () => {
+			// matchToIncidentByRules returns matched: false as soon as it hits a
+			// suppress rule — it never actually suppresses the alert. The preview
+			// must mirror that and fall through to fingerprint/time-window/
+			// create_incident rather than report an outcome the engine never
+			// produces.
+			const rule = {
+				id: "rule-13",
+				name: "Noisy Service Suppress Rule",
+				action: "suppress",
+				timeWindowMinutes: 30,
+				matchCriteria: JSON.stringify({ match: { severity: ["high"] } }),
+			};
+
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			mockPrisma.incident.findFirst
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(null);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce(null);
+
+			const result = await service.testCorrelation({
+				title: "DB Error",
+				severity: "high",
+			});
+
+			expect(result.action).toBe("create_incident");
+			expect(result.matchedRule).toBeNull();
 		});
 	});
 });

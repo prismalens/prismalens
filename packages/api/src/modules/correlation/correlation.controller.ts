@@ -87,14 +87,15 @@ export class CorrelationController {
 
 			// POST /correlation/test - Test correlation rules against sample alert
 			test: implement(correlationContract.test).handler(async ({ input }) => {
-				// Test which rule would match this alert
-				// For now, return a placeholder since testRules doesn't exist
-				// In a full implementation, this would call the correlation engine
+				const result = await this.correlationService.testCorrelation(
+					input.alertData as Record<string, unknown>,
+				);
 				return {
-					matchedRule: null,
-					action: "create_incident" as const,
-					reason:
-						"No matching existing incident found - would create new incident",
+					matchedRule: result.matchedRule
+						? this.serializeRule(result.matchedRule)
+						: null,
+					action: result.action,
+					reason: result.reason,
 				};
 			}),
 		};
@@ -103,11 +104,20 @@ export class CorrelationController {
 	private serializeRule(rule: Record<string, any>): CorrelationRule {
 		return {
 			...rule,
-			matchCriteria: rule.conditions
-				? JSON.parse(rule.conditions)
-				: (rule.matchCriteria ?? {}),
-			createdAt: rule.createdAt?.toISOString(),
-			updatedAt: rule.updatedAt?.toISOString(),
+			matchCriteria:
+				typeof rule.matchCriteria === "string"
+					? JSON.parse(rule.matchCriteria)
+					: typeof rule.conditions === "string"
+						? JSON.parse(rule.conditions)
+						: (rule.matchCriteria ?? rule.conditions ?? {}),
+			createdAt:
+				rule.createdAt instanceof Date
+					? rule.createdAt.toISOString()
+					: rule.createdAt,
+			updatedAt:
+				rule.updatedAt instanceof Date
+					? rule.updatedAt.toISOString()
+					: rule.updatedAt,
 		} as CorrelationRule;
 	}
 }

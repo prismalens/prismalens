@@ -248,6 +248,9 @@ export class Logger {
 			};
 		}
 
+		// Apply redaction to log object before emitting
+		const safeLogObj = redactSensitiveData(logObj);
+
 		// Use Pino to emit the log
 		const pinoLevel = PINO_LEVEL_MAP[level];
 		(
@@ -255,7 +258,7 @@ export class Logger {
 				obj: unknown,
 				msg: string,
 			) => void
-		)(logObj, message);
+		)(safeLogObj, message);
 	}
 
 	/**
