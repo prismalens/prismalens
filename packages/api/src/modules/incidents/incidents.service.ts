@@ -128,6 +128,7 @@ export class IncidentsService {
 						rootCause: true,
 						rootCauseCategory: true,
 						createdAt: true,
+						completedAt: true,
 					},
 					orderBy: { createdAt: "desc" },
 				},
@@ -157,6 +158,7 @@ export class IncidentsService {
 						rootCause: true,
 						rootCauseCategory: true,
 						createdAt: true,
+						completedAt: true,
 					},
 					orderBy: { createdAt: "desc" },
 				},
@@ -210,6 +212,7 @@ export class IncidentsService {
 							rootCause: true,
 							rootCauseCategory: true,
 							createdAt: true,
+							completedAt: true,
 						},
 					},
 					postmortem: {

@@ -17,8 +17,12 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 describe("seedDemoData", () => {
 	let tempDir: string;
 	let prisma: PrismaClient;
+	let previousWorkspaceDir: string | undefined;
+	let previousConsent: string | undefined;
 
 	beforeAll(() => {
+		previousWorkspaceDir = process.env.PRISMALENS_WORKSPACE_DIR;
+		previousConsent = process.env.PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION;
 		tempDir = mkdtempSync(join(tmpdir(), "prismalens-seed-test-"));
 		process.env.PRISMALENS_WORKSPACE_DIR = tempDir;
 		process.env.PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION = "yes";
@@ -49,6 +53,17 @@ describe("seedDemoData", () => {
 		if (tempDir) {
 			rmSync(tempDir, { recursive: true, force: true });
 		}
+		if (previousWorkspaceDir === undefined) {
+			delete process.env.PRISMALENS_WORKSPACE_DIR;
+		} else {
+			process.env.PRISMALENS_WORKSPACE_DIR = previousWorkspaceDir;
+		}
+		if (previousConsent === undefined) {
+			delete process.env.PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION;
+		} else {
+			process.env.PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION = previousConsent;
+		}
+		resetConfig();
 	});
 
 	it("seeds demo data with correct row counts and structure on first run", async () => {
