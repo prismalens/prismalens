@@ -18,7 +18,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { singleAlertContext } from "@prismalens/contracts";
+import { singleAlertContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { fetchFiringAlerts } from "./alert-source.js";
 import { deepAgentsHarness, investigateIncident } from "./investigate.js";

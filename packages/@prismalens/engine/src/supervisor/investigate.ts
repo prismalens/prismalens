@@ -22,7 +22,7 @@ import type {
 	InvestigationContext,
 	InvestigationReport,
 	RunFidelity,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
 	type AcpClientConfig,

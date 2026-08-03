@@ -7,7 +7,7 @@
  * straight into the adapter and assert the SdkMessage → CanonicalEvent mapping,
  * validating every emitted event against the canonical schema.
  */
-import { CanonicalEventSchema } from "@prismalens/contracts";
+import { CanonicalEventSchema } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import {
 	ClaudeCodeAdapter,

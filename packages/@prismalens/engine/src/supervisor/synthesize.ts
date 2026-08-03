@@ -32,7 +32,7 @@ import {
 	type InvestigationContext,
 	type InvestigationReport,
 	InvestigationReportSchema,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import { generateObject, generateText } from "ai";
 import {
 	CONTEXT_PACK_FENCE_CLOSE,

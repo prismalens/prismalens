@@ -20,7 +20,7 @@ import {
 	HARNESS_REGISTRY,
 	type PermissionMode,
 } from "@prismalens/config/harness";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import type { AdapterContext } from "../adapter/acp-adapter.js";
 import {
 	ClaudeCodeAdapter,

@@ -13,11 +13,11 @@
  * and the render-time sanitizer against a fixed adversarial corpus. Every assertion
  * is a DETERMINISTIC string check — no LLM judge — so it runs in CI.
  */
-import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts";
+import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts/schemas";
 import {
 	InvestigationContextSchema,
 	singleAlertContext,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import {
 	buildInvestigationPrompt,

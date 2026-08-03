@@ -18,7 +18,7 @@ import {
 	type CanonicalEvent,
 	type InvestigationReport,
 	singleAlertContext,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { fetchFiringAlerts } from "./alert-source.js";
 import {

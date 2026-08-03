@@ -28,7 +28,7 @@
  * for THAT branch, and the run continues — the reduce step then excludes an
  * evidence-less branch (per-branch no-evidence guard, ADR-0002).
  */
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import type { Branch } from "./decompose.js";
 import type { HarnessRunner } from "./investigate.js";
 

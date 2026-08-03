@@ -13,7 +13,7 @@
  *  2. One branch throwing does NOT kill its siblings — the run continues and the
  *     failed branch is terminated with a synthesized `error` event (correct branchId).
  */
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import type { Branch } from "./decompose.js";
 import { fanOut } from "./fan-out.js";
