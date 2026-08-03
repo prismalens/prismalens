@@ -180,67 +180,73 @@ export class IncidentsService {
 		toDate?: Date;
 		limit?: number;
 		offset?: number;
-	}): Promise<IncidentWithRelations[]> {
-		return this.prisma.incident.findMany({
-			where: {
-				...(options?.status && { status: options.status }),
-				...(options?.severity && { severity: options.severity }),
-				...(options?.priority && { priority: options.priority }),
-				...(options?.serviceId && { serviceId: options.serviceId }),
-				...((options?.fromDate || options?.toDate) && {
-					triggeredAt: {
-						...(options?.fromDate && { gte: options.fromDate }),
-						...(options?.toDate && { lte: options.toDate }),
+	}): Promise<{ data: IncidentWithRelations[]; total: number }> {
+		const where = {
+			...(options?.status && { status: options.status }),
+			...(options?.severity && { severity: options.severity }),
+			...(options?.priority && { priority: options.priority }),
+			...(options?.serviceId && { serviceId: options.serviceId }),
+			...((options?.fromDate || options?.toDate) && {
+				triggeredAt: {
+					...(options?.fromDate && { gte: options.fromDate }),
+					...(options?.toDate && { lte: options.toDate }),
+				},
+			}),
+		};
+
+		const [data, total] = await Promise.all([
+			this.prisma.incident.findMany({
+				where,
+				include: {
+					alerts: {
+						take: 5, // Only include first 5 alerts for list view
+						orderBy: { triggeredAt: "desc" },
 					},
-				}),
-			},
-			include: {
-				alerts: {
-					take: 5, // Only include first 5 alerts for list view
-					orderBy: { triggeredAt: "desc" },
-				},
-				service: {
-					select: { id: true, name: true, displayName: true },
-				},
-				investigations: {
-					where: { status: "completed" },
-					orderBy: { createdAt: "desc" },
-					take: 1,
-					select: {
-						id: true,
-						status: true,
-						summary: true,
-						rootCause: true,
-						rootCauseCategory: true,
-						createdAt: true,
+					service: {
+						select: { id: true, name: true, displayName: true },
+					},
+					investigations: {
+						where: { status: "completed" },
+						orderBy: { createdAt: "desc" },
+						take: 1,
+						select: {
+							id: true,
+							status: true,
+							summary: true,
+							rootCause: true,
+							rootCauseCategory: true,
+							createdAt: true,
+						},
+					},
+					postmortem: {
+						select: { summary: true, whatHappened: true, whyItHappened: true },
+					},
+					_count: {
+						select: { alerts: true, investigations: true },
 					},
 				},
-				postmortem: {
-					select: { summary: true, whatHappened: true, whyItHappened: true },
-				},
-				_count: {
-					select: { alerts: true, investigations: true },
-				},
-			},
-			orderBy: [
-				{ priority: "asc" },
-				{ severity: "asc" },
-				{ triggeredAt: "desc" },
-			],
-			take: options?.limit,
-			skip: options?.offset,
-		});
+				orderBy: [
+					{ priority: "asc" },
+					{ severity: "asc" },
+					{ triggeredAt: "desc" },
+				],
+				take: options?.limit,
+				skip: options?.offset,
+			}),
+			this.prisma.incident.count({ where }),
+		]);
+
+		return { data, total };
 	}
 
 	/**
 	 * Find active (open) incidents
 	 */
 	async findActive(): Promise<IncidentWithRelations[]> {
-		return this.findAll({
+		const { data } = await this.findAll({
 			status: undefined, // We'll filter below
-		}).then((incidents) =>
-			incidents.filter((i) => !["resolved", "closed"].includes(i.status)),
-		);
+		});
+		return data.filter((i) => !["resolved", "closed"].includes(i.status));
 	}
 
 	/**

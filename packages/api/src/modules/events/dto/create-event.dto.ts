@@ -12,6 +12,9 @@ export class CreateEventDto {
 	/** Optional ID from source system for deduplication */
 	sourceEventId?: string;
 
+	/** Optional idempotency key for webhooks */
+	idempotencyKey?: string;
+
 	/** Event type: alert, deployment, commit */
 	eventType!: string;
 

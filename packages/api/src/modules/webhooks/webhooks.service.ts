@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import { ORPCError } from "@orpc/nest";
+import { Prisma } from "@prismalens/database";
 import { Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import type { Alert } from "../alerts/alerts.service.js";
@@ -25,6 +27,29 @@ export interface WebhookResult {
 	mappedServiceId?: string;
 }
 
+/**
+ * How long an event that carries an idempotency key but no alert is assumed to
+ * belong to a delivery that is still being processed.
+ *
+ * `Event.idempotencyKey` is unique, so a second delivery of the same key cannot
+ * insert its own event — it has to decide what the existing, unlinked event
+ * means. Within the grace window it is treated as a concurrent in-flight
+ * delivery and rejected with CONFLICT so the sender retries and picks up the
+ * cached result. Past the window the original attempt is assumed to have died
+ * between event creation and `markProcessed`, and processing resumes on that
+ * same event rather than blocking the delivery forever.
+ */
+const IN_FLIGHT_GRACE_MS = 30_000;
+
+/** What a lookup by idempotency key says the caller should do next. */
+type IdempotentDelivery =
+	/** Already fully processed — return the cached result verbatim. */
+	| { kind: "replay"; result: WebhookResult }
+	/** A previous attempt died mid-flight — continue with its event record. */
+	| { kind: "resume"; event: Event }
+	/** Never seen — ingest normally. */
+	| { kind: "fresh" };
+
 @Injectable()
 export class WebhooksService {
 	private readonly logger = new Logger(WebhooksService.name);
@@ -38,18 +63,106 @@ export class WebhooksService {
 		private readonly alertMappingService: AlertMappingService,
 	) {}
 
-	async processGenericWebhook(dto: GenericWebhookDto): Promise<WebhookResult> {
+	/**
+	 * Resolve what a delivery carrying `idempotencyKey` should do: replay a
+	 * cached result, resume an abandoned event, or ingest fresh.
+	 *
+	 * @throws ORPCError CONFLICT when a concurrent delivery of the same key is
+	 * still in flight.
+	 */
+	private async resolveIdempotentDelivery(
+		idempotencyKey: string,
+	): Promise<IdempotentDelivery> {
+		const existingEvent =
+			await this.eventsService.findByIdempotencyKey(idempotencyKey);
+		if (!existingEvent) {
+			return { kind: "fresh" };
+		}
+
+		if (existingEvent.alertId) {
+			const alert = await this.alertsService.findById(existingEvent.alertId);
+			if (alert) {
+				return {
+					kind: "replay",
+					result: {
+						event: existingEvent,
+						alert,
+						incidentId: alert.incidentId ?? undefined,
+						incidentNumber: alert.incident?.number,
+						correlationReason:
+							"Idempotent replay of a previously processed webhook delivery",
+						isNewIncident: false,
+					},
+				};
+			}
+		}
+
+		const ageMs = Date.now() - existingEvent.receivedAt.getTime();
+		if (ageMs < IN_FLIGHT_GRACE_MS) {
+			throw new ORPCError("CONFLICT", {
+				message:
+					"A webhook delivery with this idempotency key is still being processed. Retry the delivery.",
+			});
+		}
+
+		this.logger.warn(
+			`Resuming abandoned event ${existingEvent.id} for idempotency key ${idempotencyKey} (age ${ageMs}ms)`,
+		);
+		return { kind: "resume", event: existingEvent };
+	}
+
+	/**
+	 * Obtain the event record to process this delivery against, honouring the
+	 * idempotency key both on the read path and on a lost insert race (P2002 on
+	 * the unique `idempotencyKey`).
+	 */
+	private async ingestEvent(
+		idempotencyKey: string | undefined,
+		createEvent: () => Promise<Event>,
+	): Promise<{ replay: WebhookResult } | { event: Event }> {
+		if (idempotencyKey) {
+			const delivery = await this.resolveIdempotentDelivery(idempotencyKey);
+			if (delivery.kind === "replay") return { replay: delivery.result };
+			if (delivery.kind === "resume") return { event: delivery.event };
+		}
+
+		try {
+			return { event: await createEvent() };
+		} catch (error) {
+			const lostRace =
+				idempotencyKey !== undefined &&
+				error instanceof Prisma.PrismaClientKnownRequestError &&
+				error.code === "P2002";
+			if (!lostRace) throw error;
+
+			// A concurrent delivery of the same key won the insert; defer to it.
+			const delivery = await this.resolveIdempotentDelivery(idempotencyKey);
+			if (delivery.kind === "replay") return { replay: delivery.result };
+			if (delivery.kind === "resume") return { event: delivery.event };
+			throw error;
+		}
+	}
+
+	async processGenericWebhook(
+		dto: GenericWebhookDto,
+		idempotencyKey?: string,
+	): Promise<WebhookResult> {
 		// 1. Create immutable event record
-		const event = await this.eventsService.create({
-			source: dto.source ?? "webhook",
-			sourceEventId: dto.sourceEventId,
-			eventType: "alert",
-			payload: dto.rawPayload ?? {
-				title: dto.title,
-				description: dto.description,
-			},
-			eventTime: dto.eventTime,
-		});
+		const ingested = await this.ingestEvent(idempotencyKey, () =>
+			this.eventsService.create({
+				source: dto.source ?? "webhook",
+				sourceEventId: dto.sourceEventId,
+				idempotencyKey,
+				eventType: "alert",
+				payload: dto.rawPayload ?? {
+					title: dto.title,
+					description: dto.description,
+				},
+				eventTime: dto.eventTime,
+			}),
+		);
+		if ("replay" in ingested) return ingested.replay;
+		const event = ingested.event;
 
 		this.logger.log(`Created event ${event.id} from generic webhook`);
 
@@ -138,14 +251,22 @@ export class WebhooksService {
 		};
 	}
 
-	async processRenderWebhook(dto: RenderWebhookDto): Promise<WebhookResult> {
+	async processRenderWebhook(
+		dto: RenderWebhookDto,
+		idempotencyKey?: string,
+	): Promise<WebhookResult> {
 		// 1. Create immutable event record
-		const event = await this.eventsService.create({
-			source: "render",
-			sourceEventId: dto.deploy?.id ?? dto.service?.id,
-			eventType: "deployment",
-			payload: dto as unknown as Record<string, unknown>,
-		});
+		const ingested = await this.ingestEvent(idempotencyKey, () =>
+			this.eventsService.create({
+				source: "render",
+				sourceEventId: dto.deploy?.id ?? dto.service?.id,
+				idempotencyKey,
+				eventType: "deployment",
+				payload: dto as unknown as Record<string, unknown>,
+			}),
+		);
+		if ("replay" in ingested) return ingested.replay;
+		const event = ingested.event;
 
 		this.logger.log(`Created event ${event.id} from Render webhook`);
 

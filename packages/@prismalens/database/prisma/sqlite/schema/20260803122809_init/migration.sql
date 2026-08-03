@@ -86,6 +86,7 @@ CREATE TABLE "events" (
     "tenantId" TEXT,
     "source" TEXT NOT NULL,
     "sourceEventId" TEXT,
+    "idempotencyKey" TEXT,
     "eventType" TEXT NOT NULL,
     "payload" TEXT NOT NULL,
     "receivedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -179,6 +180,17 @@ CREATE TABLE "investigations" (
 );
 
 -- CreateTable
+CREATE TABLE "investigation_events" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "investigationId" TEXT NOT NULL,
+    "seq" INTEGER NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "event" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "investigation_events_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "agent_executions" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "investigationId" TEXT NOT NULL,
@@ -230,17 +242,6 @@ CREATE TABLE "recommendations" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "recommendations_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "investigation_events" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "investigationId" TEXT NOT NULL,
-    "seq" INTEGER NOT NULL,
-    "branchId" TEXT NOT NULL,
-    "event" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "investigation_events_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -572,6 +573,9 @@ CREATE UNIQUE INDEX "deployments_connectionId_externalId_key" ON "deployments"("
 CREATE UNIQUE INDEX "service_dependencies_dependentId_dependencyId_key" ON "service_dependencies"("dependentId", "dependencyId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "events_idempotencyKey_key" ON "events"("idempotencyKey");
+
+-- CreateIndex
 CREATE INDEX "events_source_sourceEventId_idx" ON "events"("source", "sourceEventId");
 
 -- CreateIndex
@@ -632,6 +636,12 @@ CREATE INDEX "investigations_incidentId_idx" ON "investigations"("incidentId");
 CREATE INDEX "investigations_status_idx" ON "investigations"("status");
 
 -- CreateIndex
+CREATE INDEX "investigation_events_investigationId_seq_idx" ON "investigation_events"("investigationId", "seq");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "investigation_events_investigationId_branchId_seq_key" ON "investigation_events"("investigationId", "branchId", "seq");
+
+-- CreateIndex
 CREATE INDEX "agent_executions_investigationId_idx" ON "agent_executions"("investigationId");
 
 -- CreateIndex
@@ -651,12 +661,6 @@ CREATE INDEX "recommendations_status_idx" ON "recommendations"("status");
 
 -- CreateIndex
 CREATE INDEX "recommendations_priority_idx" ON "recommendations"("priority");
-
--- CreateIndex
-CREATE INDEX "investigation_events_investigationId_seq_idx" ON "investigation_events"("investigationId", "seq");
-
--- CreateIndex
-CREATE UNIQUE INDEX "investigation_events_investigationId_branchId_seq_key" ON "investigation_events"("investigationId", "branchId", "seq");
 
 -- CreateIndex
 CREATE INDEX "timeline_entries_incidentId_idx" ON "timeline_entries"("incidentId");

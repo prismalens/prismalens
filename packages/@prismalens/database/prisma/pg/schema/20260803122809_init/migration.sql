@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "ServiceType" AS ENUM ('service', 'database', 'queue', 'cache', 'gateway', 'external', 'infrastructure');
 
@@ -182,6 +185,7 @@ CREATE TABLE "events" (
     "tenantId" TEXT,
     "source" TEXT NOT NULL,
     "sourceEventId" TEXT,
+    "idempotencyKey" TEXT,
     "eventType" TEXT NOT NULL,
     "payload" TEXT NOT NULL,
     "receivedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -276,6 +280,18 @@ CREATE TABLE "investigations" (
 );
 
 -- CreateTable
+CREATE TABLE "investigation_events" (
+    "id" TEXT NOT NULL,
+    "investigationId" TEXT NOT NULL,
+    "seq" INTEGER NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "event" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "investigation_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "agent_executions" (
     "id" TEXT NOT NULL,
     "investigationId" TEXT NOT NULL,
@@ -330,18 +346,6 @@ CREATE TABLE "recommendations" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "recommendations_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "investigation_events" (
-    "id" TEXT NOT NULL,
-    "investigationId" TEXT NOT NULL,
-    "seq" INTEGER NOT NULL,
-    "branchId" TEXT NOT NULL,
-    "event" JSONB NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "investigation_events_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -490,7 +494,7 @@ CREATE TABLE "user" (
     "image" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "role" TEXT NOT NULL DEFAULT 'user',
+    "role" TEXT NOT NULL DEFAULT 'member',
     "banned" BOOLEAN,
     "banReason" TEXT,
     "banExpires" TIMESTAMP(3),
@@ -695,6 +699,9 @@ CREATE UNIQUE INDEX "deployments_connectionId_externalId_key" ON "deployments"("
 CREATE UNIQUE INDEX "service_dependencies_dependentId_dependencyId_key" ON "service_dependencies"("dependentId", "dependencyId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "events_idempotencyKey_key" ON "events"("idempotencyKey");
+
+-- CreateIndex
 CREATE INDEX "events_source_sourceEventId_idx" ON "events"("source", "sourceEventId");
 
 -- CreateIndex
@@ -755,6 +762,12 @@ CREATE INDEX "investigations_incidentId_idx" ON "investigations"("incidentId");
 CREATE INDEX "investigations_status_idx" ON "investigations"("status");
 
 -- CreateIndex
+CREATE INDEX "investigation_events_investigationId_seq_idx" ON "investigation_events"("investigationId", "seq");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "investigation_events_investigationId_branchId_seq_key" ON "investigation_events"("investigationId", "branchId", "seq");
+
+-- CreateIndex
 CREATE INDEX "agent_executions_investigationId_idx" ON "agent_executions"("investigationId");
 
 -- CreateIndex
@@ -774,12 +787,6 @@ CREATE INDEX "recommendations_status_idx" ON "recommendations"("status");
 
 -- CreateIndex
 CREATE INDEX "recommendations_priority_idx" ON "recommendations"("priority");
-
--- CreateIndex
-CREATE INDEX "investigation_events_investigationId_seq_idx" ON "investigation_events"("investigationId", "seq");
-
--- CreateIndex
-CREATE UNIQUE INDEX "investigation_events_investigationId_branchId_seq_key" ON "investigation_events"("investigationId", "branchId", "seq");
 
 -- CreateIndex
 CREATE INDEX "timeline_entries_incidentId_idx" ON "timeline_entries"("incidentId");
@@ -947,6 +954,9 @@ ALTER TABLE "incidents" ADD CONSTRAINT "incidents_correlationRuleId_fkey" FOREIG
 ALTER TABLE "investigations" ADD CONSTRAINT "investigations_incidentId_fkey" FOREIGN KEY ("incidentId") REFERENCES "incidents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "investigation_events" ADD CONSTRAINT "investigation_events_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "agent_executions" ADD CONSTRAINT "agent_executions_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -954,9 +964,6 @@ ALTER TABLE "tool_executions" ADD CONSTRAINT "tool_executions_agentExecutionId_f
 
 -- AddForeignKey
 ALTER TABLE "recommendations" ADD CONSTRAINT "recommendations_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "investigation_events" ADD CONSTRAINT "investigation_events_investigationId_fkey" FOREIGN KEY ("investigationId") REFERENCES "investigations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "timeline_entries" ADD CONSTRAINT "timeline_entries_incidentId_fkey" FOREIGN KEY ("incidentId") REFERENCES "incidents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1011,3 +1018,4 @@ ALTER TABLE "service_suggestions" ADD CONSTRAINT "service_suggestions_acceptedSe
 
 -- AddForeignKey
 ALTER TABLE "service_suggestions" ADD CONSTRAINT "service_suggestions_acceptedDeploymentId_fkey" FOREIGN KEY ("acceptedDeploymentId") REFERENCES "deployments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

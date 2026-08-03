@@ -35,6 +35,8 @@ describe("IncidentsService", () => {
 		incident: {
 			update: vi.fn(),
 			findFirst: vi.fn(),
+			findMany: vi.fn(),
+			count: vi.fn(),
 		},
 		$transaction: vi.fn(),
 	};
@@ -160,4 +162,18 @@ describe("IncidentsService", () => {
 			expect(mockTx.timelineEntry.create).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("findAll", () => {
+		it("returns paginated data and total count", async () => {
+			const incidents = [{ id: "inc-1" }, { id: "inc-2" }];
+			mockPrisma.incident.findMany.mockResolvedValue(incidents);
+			mockPrisma.incident.count.mockResolvedValue(5);
+
+			const result = await service.findAll({ limit: 2, offset: 0 });
+
+			expect(result.data).toEqual(incidents);
+			expect(result.total).toBe(5);
+		});
+	});
 });
+

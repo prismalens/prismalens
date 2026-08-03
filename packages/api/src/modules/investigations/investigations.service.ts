@@ -132,32 +132,39 @@ export class InvestigationsService {
 		status?: string;
 		limit?: number;
 		offset?: number;
-	}): Promise<InvestigationWithRelations[]> {
-		return this.prisma.investigation.findMany({
-			where: {
-				...(options?.status && { status: options.status }),
-			},
-			include: {
-				incident: {
-					select: {
-						id: true,
-						number: true,
-						title: true,
-						severity: true,
-						status: true,
+	}): Promise<{ data: InvestigationWithRelations[]; total: number }> {
+		const where = {
+			...(options?.status && { status: options.status }),
+		};
+
+		const [data, total] = await Promise.all([
+			this.prisma.investigation.findMany({
+				where,
+				include: {
+					incident: {
+						select: {
+							id: true,
+							number: true,
+							title: true,
+							severity: true,
+							status: true,
+						},
 					},
-				},
-				agentExecutions: {
-					include: {
-						toolExecutions: true,
+					agentExecutions: {
+						include: {
+							toolExecutions: true,
+						},
 					},
+					recommendations: true,
 				},
-				recommendations: true,
-			},
-			orderBy: { createdAt: "desc" },
-			take: options?.limit,
-			skip: options?.offset,
-		});
+				orderBy: { createdAt: "desc" },
+				take: options?.limit,
+				skip: options?.offset,
+			}),
+			this.prisma.investigation.count({ where }),
+		]);
+
+		return { data, total };
 	}
 
 	/**

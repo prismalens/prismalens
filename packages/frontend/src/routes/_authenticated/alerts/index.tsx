@@ -28,11 +28,12 @@ function AlertsPage() {
 
 	// Fetch alerts
 	const {
-		data: alerts = [],
+		data: alertsResponse,
 		isLoading,
 		refetch,
 		isRefetching,
 	} = useQuery(orpc.alerts.list.queryOptions({ input: queryParams }));
+	const alerts = alertsResponse?.data ?? [];
 
 	// Fetch stats
 	const { data: stats } = useQuery(
