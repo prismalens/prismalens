@@ -6,7 +6,7 @@ This package is `private: true` and meant for Node server environments.
 ## Demo Data Seeding
 
 Demo data seed logic lives in `prisma/seeds/demo-data.ts`.
-It provisions monitoed services, correlation rules, incidents, alerts, and investigations for empty dev databases.
+It provisions monitored services, correlation rules, incidents, alerts, and investigations for empty dev databases.
 
 To extend the demo dataset:
 1. Add or modify seed functions in `prisma/seeds/`.

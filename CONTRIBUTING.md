@@ -61,6 +61,8 @@ pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 
 The dev login is `admin@prismalens.dev` / `admin123`. On first boot against an empty database, the owner account and demo data (~60 alerts, incidents, investigations) are provisioned automatically.
 
+Auto-seeding only runs when `NODE_ENV=development`. To force the same seed outside development — e.g. in e2e tests or CI, where the API runs against an empty database with `NODE_ENV` unset or set to something else — set `PRISMALENS_SEED_DEMO=1`. It is an explicit opt-in: the flag is never set implicitly, and seeding still only happens once, against an empty database.
+
 ## Making a change
 
 1. **Branch** off `main`: `git checkout -b fix/short-description main`.
