@@ -154,13 +154,18 @@ export function parseInvestigateParams(raw: unknown): InvestigateParams {
 
 /**
  * Routes a JSON-RPC dispatch failure to the right log level (#192). A
- * `JSONRPCErrorException` is a well-formed CLIENT input error — the caller already
- * gets a clean -32602/-32000 response on stdout, so stderr gets one WARN line, not
- * a stack trace. Anything else is a genuinely unexpected failure and keeps the full
- * error object (stack trace) on stderr, unchanged from today's behavior.
+ * `JSONRPCErrorException` carrying `INVALID_PARAMS` or `NO_EVIDENCE` is a
+ * well-formed CLIENT input error — the caller already gets a clean
+ * -32602/-32000 response on stdout, so stderr gets one WARN line, not a stack
+ * trace. `INTERNAL_ERROR` (-32603) and anything else is a genuinely
+ * unexpected failure and keeps the full error object (stack trace) on
+ * stderr, unchanged from today's behavior.
  */
 export function logJsonRpcDispatchError(message: string, error: unknown): void {
-	if (error instanceof JSONRPCErrorException) {
+	if (
+		error instanceof JSONRPCErrorException &&
+		(error.code === INVALID_PARAMS || error.code === NO_EVIDENCE)
+	) {
 		consola.warn(`${message} ${error.message}`);
 		return;
 	}

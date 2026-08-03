@@ -77,14 +77,14 @@ describe("logJsonRpcDispatchError", () => {
 	it("logs a single WARN line for a JSONRPCErrorException, never consola.error", () => {
 		const warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => consola);
 		const errorSpy = vi.spyOn(consola, "error").mockImplementation(() => consola);
+		const message =
+			'An unexpected error occurred while executing "investigate" JSON-RPC method:';
 		const err = new JSONRPCErrorException('Invalid sandbox mode "bogus".', -32602);
 
-		logJsonRpcDispatchError(
-			'An unexpected error occurred while executing "investigate" JSON-RPC method:',
-			err,
-		);
+		logJsonRpcDispatchError(message, err);
 
 		expect(warnSpy).toHaveBeenCalledTimes(1);
+		expect(warnSpy).toHaveBeenCalledWith(`${message} ${err.message}`);
 		expect(errorSpy).not.toHaveBeenCalled();
 
 		warnSpy.mockRestore();
@@ -102,6 +102,22 @@ describe("logJsonRpcDispatchError", () => {
 		);
 
 		expect(errorSpy).toHaveBeenCalledWith(expect.any(String), err);
+		expect(warnSpy).not.toHaveBeenCalled();
+
+		warnSpy.mockRestore();
+		errorSpy.mockRestore();
+	});
+
+	it("keeps the stack-trace path for a JSONRPCErrorException carrying INTERNAL_ERROR (-32603)", () => {
+		const warnSpy = vi.spyOn(consola, "warn").mockImplementation(() => consola);
+		const errorSpy = vi.spyOn(consola, "error").mockImplementation(() => consola);
+		const message =
+			'An unexpected error occurred while executing "investigate" JSON-RPC method:';
+		const err = new JSONRPCErrorException("investigation produced no evidence", -32603);
+
+		logJsonRpcDispatchError(message, err);
+
+		expect(errorSpy).toHaveBeenCalledWith(message, err);
 		expect(warnSpy).not.toHaveBeenCalled();
 
 		warnSpy.mockRestore();
