@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
 	CanonicalEvent,
+	Evidence,
 	InvestigationContext,
 	InvestigationReport,
 	RunFidelity,
@@ -341,6 +342,9 @@ export async function* investigateIncidentStream(
 		yield cancelledErrorEvent(runId, collected.length);
 		return;
 	}
+	// Deterministic provenance, applied post-synthesis in the same place as fidelity:
+	// a host-supplied fact can never be cited as a tool observation (ADR-0002).
+	const provenanced = coercePackEvidence(report);
 	yield {
 		kind: "report",
 		runId,
@@ -348,7 +352,65 @@ export async function* investigateIncidentStream(
 		ts: new Date().toISOString(),
 		// Attach the deterministic fidelity AFTER synthesis (ADR-0017): the LLM never
 		// generates it — reduce() omits it, we spread it on here.
-		report: opts.fidelity ? { ...report, fidelity: opts.fidelity } : report,
+		report: opts.fidelity
+			? { ...provenanced, fidelity: opts.fidelity }
+			: provenanced,
+	};
+}
+
+/**
+ * The `source` prefix every context-pack citation must carry (ADR-0002 §5 rule 1).
+ * This — NOT the `origin` field — is the coercion's discriminant.
+ */
+const PACK_SOURCE_PREFIX = "context-pack:";
+
+/**
+ * NORMALISE before matching. A raw `startsWith` is case- and whitespace-sensitive, so
+ * `"Context-pack: changes"` or `" context-pack:changes"` — plainly pack citations — slipped
+ * past the discriminant and kept `status: "verified"` plus a fabricated `toolCallId`. The
+ * point of this rule is that the model cannot opt out of it, so the match must not hinge on
+ * the model's capitalisation.
+ */
+const isPackEvidence = (e: Evidence): boolean =>
+	e.source.trimStart().toLowerCase().startsWith(PACK_SOURCE_PREFIX);
+
+/**
+ * Force honest provenance on every context-pack citation (#71/#207, ADR-0002 §5).
+ * A host-assembled fact is not a tool observation: it is at best `inferred`, it has
+ * no originating tool call, and its `origin` says so.
+ *
+ * KEYED ON `source`, NEVER ON `origin` — this is what makes the rule real rather
+ * than aspirational. `origin` is optional and absent means "tool", so a coercion
+ * testing `origin === "context-pack"` would let a model keep `status: "verified"`
+ * and a fabricated `toolCallId` simply by OMITTING the field. Rule 1 mandates the
+ * `context-pack:` prefix on `source`; we match that prefix and WRITE `origin`. Same
+ * precedent as `fidelity`: the model does not get the final word on provenance —
+ * and that has to mean it cannot opt out by omission.
+ *
+ * Returns the report unchanged (same object) when nothing matched, so the pack-free
+ * path allocates nothing.
+ */
+function coercePackEvidence(report: InvestigationReport): InvestigationReport {
+	const touched =
+		report.hypotheses.some((h) => h.evidence.some(isPackEvidence)) ||
+		report.ruledOut.some((r) => r.evidence.some(isPackEvidence));
+	if (!touched) return report;
+
+	const coerce = (e: Evidence): Evidence =>
+		isPackEvidence(e)
+			? { ...e, status: "inferred", toolCallId: null, origin: "context-pack" }
+			: e;
+
+	return {
+		...report,
+		hypotheses: report.hypotheses.map((h) => ({
+			...h,
+			evidence: h.evidence.map(coerce),
+		})),
+		ruledOut: report.ruledOut.map((r) => ({
+			...r,
+			evidence: r.evidence.map(coerce),
+		})),
 	};
 }
 

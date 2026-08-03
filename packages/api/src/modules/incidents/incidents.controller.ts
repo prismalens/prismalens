@@ -3,12 +3,16 @@
 
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { incidentsContract } from "@prismalens/contracts";
+import { incidentsContract, toFiringAlert } from "@prismalens/contracts";
 import type {
+	Alert,
 	Incident,
 	IncidentWithRelations,
 } from "@prismalens/contracts/schemas";
-import type { Incident as PrismaIncident } from "@prismalens/database";
+import type {
+	Alert as PrismaAlert,
+	Incident as PrismaIncident,
+} from "@prismalens/database";
 import { QueueService } from "../../infrastructure/queue/queue.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -153,6 +157,11 @@ export class IncidentsController {
 							serviceName: incident.service?.name,
 						},
 						connectionIds,
+						alerts: incident.alerts
+							? incident.alerts.map((a: Record<string, unknown>) =>
+									toFiringAlert(a),
+								)
+							: undefined,
 					});
 
 					return {
@@ -233,6 +242,46 @@ export class IncidentsController {
 		} as Incident;
 	}
 
+	private serializeAlert(alert: PrismaAlert | Record<string, any>): Alert {
+		return {
+			...alert,
+			tags: alert.tags
+				? typeof alert.tags === "string"
+					? JSON.parse(alert.tags)
+					: alert.tags
+				: null,
+			labels: alert.labels
+				? typeof alert.labels === "string"
+					? JSON.parse(alert.labels)
+					: alert.labels
+				: null,
+			triggeredAt:
+				alert.triggeredAt instanceof Date
+					? alert.triggeredAt.toISOString()
+					: alert.triggeredAt,
+			acknowledgedAt:
+				alert.acknowledgedAt instanceof Date
+					? alert.acknowledgedAt.toISOString()
+					: (alert.acknowledgedAt ?? null),
+			resolvedAt:
+				alert.resolvedAt instanceof Date
+					? alert.resolvedAt.toISOString()
+					: (alert.resolvedAt ?? null),
+			lastOccurrence:
+				alert.lastOccurrence instanceof Date
+					? alert.lastOccurrence.toISOString()
+					: alert.lastOccurrence,
+			createdAt:
+				alert.createdAt instanceof Date
+					? alert.createdAt.toISOString()
+					: alert.createdAt,
+			updatedAt:
+				alert.updatedAt instanceof Date
+					? alert.updatedAt.toISOString()
+					: alert.updatedAt,
+		} as Alert;
+	}
+
 	private serializeIncidentWithRelations(
 		incident: Record<string, any>,
 	): IncidentWithRelations {
@@ -250,12 +299,9 @@ export class IncidentsController {
 		}
 
 		if (incident.alerts) {
-			serialized.alerts = incident.alerts.map((a: any) => ({
-				id: a.id,
-				title: a.title,
-				severity: a.severity,
-				status: a.status,
-			}));
+			serialized.alerts = incident.alerts.map((a: any) =>
+				this.serializeAlert(a),
+			);
 		}
 
 		if (incident.investigations) {

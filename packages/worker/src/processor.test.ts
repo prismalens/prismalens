@@ -38,6 +38,7 @@ const {
 	harnessTakesSandbox,
 	deriveWorkerAllowedHosts,
 	buildRequest,
+	default: processInvestigationJob,
 } = await import("./processor.js");
 
 const API_KEY = "secret-key";
@@ -213,10 +214,217 @@ describe("buildRequest settings isolation (ADR-0020 server placement)", () => {
 			{
 				incidentId: "inc-2",
 				investigationId: "inv-2",
-				alerts: [{ title: "HighLatency", severity: "critical" }],
+				alerts: [{ alertname: "HighLatency", severity: "critical" }],
 			},
 			"run-2",
 		);
 		expect(request.isolateSettings).toBe(true);
 	});
 });
+
+describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+	});
+
+	function armWorkerEnv(): void {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
+		vi.stubEnv("PRISMALENS_SANDBOX", "process");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+				}),
+			})),
+		);
+	}
+
+	it("preserves M>1 alerts crossing via job payload data.alerts", async () => {
+		armWorkerEnv();
+		const { request } = await buildRequest(
+			{
+				incidentId: "inc-storm-1",
+				investigationId: "inv-storm-1",
+				alerts: [
+					{ alertname: "HighCPU", severity: "critical", labels: { service: "checkout" } },
+					{ alertname: "MemoryLeak", severity: "high", labels: { service: "checkout" } },
+					{ alertname: "LatencySpike", severity: "medium", labels: { service: "checkout" } },
+				],
+			},
+			"run-storm-1",
+		);
+		expect(request.context?.alerts).toHaveLength(3);
+		expect(request.context?.alerts[0].alertname).toBe("HighCPU");
+		expect(request.context?.alerts[1].alertname).toBe("MemoryLeak");
+		expect(request.context?.alerts[2].alertname).toBe("LatencySpike");
+	});
+
+	it("preserves M>1 alerts fetched from correlated incident DB rows when job alerts are omitted", async () => {
+		armWorkerEnv();
+		const { api } = await import("./orpc-client.js");
+		type IncidentGetResult = Awaited<ReturnType<typeof api.incidents.get>>;
+		vi.spyOn(api.incidents, "get").mockResolvedValueOnce({
+			id: "inc-storm-2",
+			title: "Database Degradation Storm",
+			severity: "critical",
+			alerts: [
+				{
+					id: "a1",
+					title: "DB Connection Timeout",
+					severity: "critical",
+					labels: { service: "db" },
+					triggeredAt: "2026-07-31T10:00:00Z",
+				},
+				{
+					id: "a2",
+					title: "DB Lock Contention",
+					severity: "high",
+					labels: { service: "db" },
+					triggeredAt: "2026-07-31T10:01:00Z",
+				},
+				{
+					id: "a3",
+					title: "Disk I/O Saturated",
+					severity: "critical",
+					labels: { service: "db" },
+					triggeredAt: "2026-07-31T10:02:00Z",
+				},
+				{
+					id: "a4",
+					title: "Replica Lag High",
+					severity: "medium",
+					labels: { service: "db" },
+					triggeredAt: "2026-07-31T10:03:00Z",
+				},
+			],
+		} as unknown as IncidentGetResult);
+
+		const { request } = await buildRequest(
+			{
+				incidentId: "inc-storm-2",
+				investigationId: "inv-storm-2",
+			},
+			"run-storm-2",
+		);
+
+		expect(request.context?.alerts).toHaveLength(4);
+		expect(request.context?.alerts.map((a) => a.alertname)).toEqual([
+			"DB Connection Timeout",
+			"DB Lock Contention",
+			"Disk I/O Saturated",
+			"Replica Lag High",
+		]);
+	});
+});
+
+/**
+ * Issue #243 item 6 (per-alert cwd parity with `pl listen`) is DEFERRED, not
+ * implemented: app mode has no source for a service→local-checkout mapping (the
+ * DB records remote repos only, and the worker reads no `prismalens.config.yaml`
+ * — that layer arrives with ADR-0014's D11 amendment at Phase 5). These lock the
+ * honest behaviour in so a future config surface has to change a test to change
+ * the contract, rather than a dead call silently pretending to resolve.
+ */
+describe("buildRequest harness cwd (app mode has no per-alert repo mapping)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+	});
+
+	function armWorkerEnv(): void {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
+		vi.stubEnv("PRISMALENS_SANDBOX", "process");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+				}),
+			})),
+		);
+	}
+
+	it("falls back to the worker's own cwd — service labels do NOT steer it", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
+		const { request } = await buildRequest(
+			{
+				incidentId: "inc-cwd-1",
+				investigationId: "inv-cwd-1",
+				alerts: [
+					{
+						alertname: "HighCPU",
+						severity: "critical",
+						labels: { service: "checkout" },
+					},
+				],
+			},
+			"run-cwd-1",
+		);
+		expect(request.cwd).toBe(process.cwd());
+	});
+
+	it("honours the one explicit override, PRISMALENS_INVESTIGATION_CWD", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", "/srv/checkouts/checkout");
+		const { request } = await buildRequest(
+			{
+				incidentId: "inc-cwd-2",
+				investigationId: "inv-cwd-2",
+				alerts: [
+					{
+						alertname: "HighCPU",
+						severity: "critical",
+						labels: { service: "checkout" },
+					},
+				],
+			},
+			"run-cwd-2",
+		);
+		expect(request.cwd).toBe("/srv/checkouts/checkout");
+	});
+});
+
+describe("processInvestigationJob schema validation", () => {
+	it("malformed job payload -> processor throws, not silent degradation", async () => {
+		const malformedJob = {
+			id: "job-malformed",
+			name: "investigation",
+			data: {
+				// Missing required incidentId and investigationId
+				priority: "invalid-priority",
+			},
+		};
+
+		await expect(
+			processInvestigationJob(malformedJob as any),
+		).rejects.toThrow();
+	});
+
+	it("missing or absent alerts remains valid per schema", async () => {
+		const validJobWithoutAlerts = {
+			incidentId: "inc-123",
+			investigationId: "inv-123",
+		};
+		const { InvestigationJobDataSchema } = await import(
+			"@prismalens/contracts"
+		);
+		expect(() =>
+			InvestigationJobDataSchema.parse(validJobWithoutAlerts),
+		).not.toThrow();
+	});
+});
+
+
