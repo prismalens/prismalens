@@ -28,6 +28,8 @@ export interface CorrelationResult {
 	isNewIncident: boolean;
 	/** Set when the alert was already linked to `incidentId` — signals correlateAlert to skip re-emitting ALERT_CORRELATED_EVENT. */
 	alreadyCorrelated?: boolean;
+	/** Rule-based suppression: terminal, no incident, alert marked suppressed. */
+	suppressed?: boolean;
 }
 
 interface MatchCriteria {
@@ -216,7 +218,7 @@ export class CorrelationService {
 
 		// 1. First try rule-based correlation
 		const ruleResult = await this.matchToIncidentByRules(alert);
-		if (ruleResult.matched) {
+		if (ruleResult.matched || ruleResult.suppressed) {
 			return ruleResult;
 		}
 
@@ -269,8 +271,18 @@ export class CorrelationService {
 		for (const rule of rules) {
 			if (this.alertMatchesRule(alert, rule)) {
 				if (rule.action === "suppress") {
+					if (alert.status !== "suppressed") {
+						await this.prisma.alert.update({
+							where: { id: alert.id },
+							data: { status: "suppressed" },
+						});
+						this.logger.log(
+							`Suppressed alert ${alert.id} by rule: ${rule.name}`,
+						);
+					}
 					return {
 						matched: false,
+						suppressed: true,
 						reason: `Suppressed by rule: ${rule.name}`,
 						ruleId: rule.id,
 						ruleName: rule.name,
@@ -468,13 +480,11 @@ export class CorrelationService {
 		for (const rule of rules) {
 			if (this.alertMatchesRule(alert, rule)) {
 				if (rule.action === "suppress") {
-					// matchToIncidentByRules returns matched: false as soon as it
-					// hits a suppress rule — it does not actually suppress the alert,
-					// it just stops the rule stage and falls through to fingerprint,
-					// then time-window, then new-incident. Predicting "suppress"
-					// here would describe a behavior the engine never produces, so
-					// mirror the engine and stop scanning rules too.
-					break;
+					return {
+						matchedRule: rule,
+						action: "suppress",
+						reason: `Suppressed by rule: ${rule.name}`,
+					};
 				}
 
 				const incident = await this.findMatchingIncident(alert, rule);
