@@ -42,16 +42,22 @@ export class AlertMappingService {
 		});
 	}
 
-	async findAll(): Promise<AlertMappingRule[]> {
+	async findAll(): Promise<
+		(AlertMappingRule & { service?: Service | null })[]
+	> {
 		return this.prisma.alertMappingRule.findMany({
 			where: { enabled: true },
+			include: { service: true },
 			orderBy: { priority: "asc" },
 		});
 	}
 
-	async findById(id: string): Promise<AlertMappingRule | null> {
+	async findById(
+		id: string,
+	): Promise<(AlertMappingRule & { service?: Service | null }) | null> {
 		return this.prisma.alertMappingRule.findUnique({
 			where: { id },
+			include: { service: true },
 		});
 	}
 
@@ -91,11 +97,12 @@ export class AlertMappingService {
 	// =========================================================================
 
 	/**
-	 * Resolve which service an alert should map to based on mapping rules.
-	 * Rules are evaluated in priority order (lower number = higher priority).
-	 * Returns null if no rule matches.
+	 * Resolve mapping rule and service for an alert.
 	 */
-	async resolveServiceForAlert(alert: AlertInfo): Promise<Service | null> {
+	async resolveMappingForAlert(alert: AlertInfo): Promise<{
+		rule: (AlertMappingRule & { service?: Service | null }) | null;
+		service: Service | null;
+	}> {
 		const rules = await this.findAll();
 
 		this.logger.debug(
@@ -109,17 +116,28 @@ export class AlertMappingService {
 					`Alert "${alert.title}" matched rule "${rule.name}" → service ${rule.serviceId}`,
 				);
 
-				// Fetch the service
-				const service = await this.prisma.service.findUnique({
-					where: { id: rule.serviceId },
-				});
+				const service =
+					rule.service ??
+					(await this.prisma.service.findUnique({
+						where: { id: rule.serviceId },
+					}));
 
-				return service;
+				return { rule, service };
 			}
 		}
 
 		this.logger.debug(`Alert "${alert.title}" did not match any rules`);
-		return null;
+		return { rule: null, service: null };
+	}
+
+	/**
+	 * Resolve which service an alert should map to based on mapping rules.
+	 * Rules are evaluated in priority order (lower number = higher priority).
+	 * Returns null if no rule matches.
+	 */
+	async resolveServiceForAlert(alert: AlertInfo): Promise<Service | null> {
+		const { service } = await this.resolveMappingForAlert(alert);
+		return service;
 	}
 
 	/**

@@ -17,6 +17,7 @@ const mockAlertMappingService = {
 	update: vi.fn(),
 	delete: vi.fn(),
 	resolveServiceForAlert: vi.fn(),
+	resolveMappingForAlert: vi.fn(),
 };
 
 describe("AlertMappingController (BDD)", () => {
@@ -277,7 +278,7 @@ describe("AlertMappingController (BDD)", () => {
 	});
 
 	describe("test", () => {
-		it("should test alert mapping and return matched result", async () => {
+		it("should test alert mapping and return matched result with non-null matchedRule", async () => {
 			const alertData = {
 				source: "prometheus",
 				title: "Test Alert",
@@ -285,7 +286,7 @@ describe("AlertMappingController (BDD)", () => {
 			};
 
 			const matchedService = {
-				id: "service-1",
+				id: "00000000-0000-0000-0000-000000000001",
 				name: "API Service",
 				createdAt: new Date(),
 				updatedAt: new Date(),
@@ -293,27 +294,78 @@ describe("AlertMappingController (BDD)", () => {
 				discoveryPath: null,
 			};
 
-			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(
-				matchedService,
-			);
+			const matchedRule = {
+				id: "00000000-0000-0000-0000-000000000002",
+				name: "Prometheus Prod Rule",
+				priority: 10,
+				enabled: true,
+				matchCriteria: JSON.stringify({ source: "prometheus" }),
+				serviceId: matchedService.id,
+				createdAt: new Date("2026-01-01T00:00:00Z"),
+				updatedAt: new Date("2026-01-01T00:00:00Z"),
+			};
+
+			mockAlertMappingService.resolveMappingForAlert.mockResolvedValue({
+				rule: matchedRule,
+				service: matchedService,
+			});
 
 			const handlers = getHandlers();
 			const result = await handlers.test({
 				input: { alertData },
 			} as any);
 
-			expect(result).toEqual({
-				matchedRule: null,
-				serviceId: matchedService.id,
-				serviceName: matchedService.name,
-			});
-			expect(service.resolveServiceForAlert).toHaveBeenCalledWith(
+			expect(result.matchedRule).not.toBeNull();
+			expect(result.matchedRule?.id).toBe(matchedRule.id);
+			expect(result.serviceId).toBe(matchedService.id);
+			expect(result.serviceName).toBe(matchedService.name);
+			expect(service.resolveMappingForAlert).toHaveBeenCalledWith(
 				expect.objectContaining({
 					source: "prometheus",
 					title: "Test Alert",
 					labels: { env: "prod" },
 				}),
 			);
+		});
+
+		it("should not leak the raw service relation through matchedRule", async () => {
+			const matchedService = {
+				id: "00000000-0000-0000-0000-000000000001",
+				name: "API Service",
+				internalNotes: "on-call rotation secrets live here",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			};
+
+			// findAll/findById hydrate rules with the full Service row; the
+			// serializer must drop it rather than spread it into the response.
+			const matchedRule = {
+				id: "00000000-0000-0000-0000-000000000002",
+				name: "Prometheus Prod Rule",
+				priority: 10,
+				enabled: true,
+				matchCriteria: JSON.stringify({ source: "prometheus" }),
+				serviceId: matchedService.id,
+				createdAt: new Date("2026-01-01T00:00:00Z"),
+				updatedAt: new Date("2026-01-01T00:00:00Z"),
+				service: matchedService,
+			};
+
+			mockAlertMappingService.resolveMappingForAlert.mockResolvedValue({
+				rule: matchedRule,
+				service: matchedService,
+			});
+
+			const handlers = getHandlers();
+			const result = await handlers.test({
+				input: { alertData: { source: "prometheus", title: "Test Alert" } },
+			} as any);
+
+			expect(result.matchedRule).not.toBeNull();
+			expect(result.matchedRule).not.toHaveProperty("service");
+			expect(JSON.stringify(result)).not.toContain("internalNotes");
+			expect(result.serviceId).toBe(matchedService.id);
+			expect(result.serviceName).toBe(matchedService.name);
 		});
 
 		it("should return unmatched result when no service found", async () => {
@@ -323,7 +375,10 @@ describe("AlertMappingController (BDD)", () => {
 				labels: { env: "dev" },
 			};
 
-			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(null);
+			mockAlertMappingService.resolveMappingForAlert.mockResolvedValue({
+				rule: null,
+				service: null,
+			});
 
 			const handlers = getHandlers();
 			const result = await handlers.test({
@@ -343,7 +398,10 @@ describe("AlertMappingController (BDD)", () => {
 				title: "Test Alert",
 			};
 
-			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(null);
+			mockAlertMappingService.resolveMappingForAlert.mockResolvedValue({
+				rule: null,
+				service: null,
+			});
 
 			const handlers = getHandlers();
 			await handlers.test({ input: { alertData } } as any);
@@ -362,12 +420,15 @@ describe("AlertMappingController (BDD)", () => {
 				tags: ["critical", "database"],
 			};
 
-			mockAlertMappingService.resolveServiceForAlert.mockResolvedValue(null);
+			mockAlertMappingService.resolveMappingForAlert.mockResolvedValue({
+				rule: null,
+				service: null,
+			});
 
 			const handlers = getHandlers();
 			await handlers.test({ input: { alertData } } as any);
 
-			expect(service.resolveServiceForAlert).toHaveBeenCalledWith(
+			expect(service.resolveMappingForAlert).toHaveBeenCalledWith(
 				expect.objectContaining({
 					source: "prometheus",
 					title: "Test Alert",

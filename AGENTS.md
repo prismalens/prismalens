@@ -42,6 +42,27 @@ Every implementation spec handed to a coding agent must name a **Docs surfaces**
 
 Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
 
+## Frontend changes carry a design gate, a UX-ledger entry, and an e2e spec
+
+Every PR touching `packages/frontend` — regardless of which agent or session produces it:
+
+1. **Design validation before merge.** Capture screenshots of the changed surface from the
+   running dev stack (default + dark + empty/error states) and pass a design review against
+   the frontend-design standards. A frontend PR with no captured screenshots and no recorded
+   verdict does not merge. (Mechanical enforcement is planned as a `design-evidence` status —
+   #304 — deferred until #301's gate pattern is promoted here.)
+2. **UX review ledger entry.** Append a section to the operator's UX review ledger
+   (`~/ai-context/prismalens-ux-ledger.html`): what changed and why (issue/ADR), where to
+   click, what to verify per state, and any judgment calls made. The operator walks the
+   ledger as a milestone sign-off requirement. **UX-shape changes** (new page, navigation
+   change, new interaction model) are flagged to the operator immediately, not batched.
+3. **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303).
+   Until the harness lands, the PR body must name the intended spec so coverage debt stays
+   visible. Coverage is audited at each milestone alongside the ledger walkthrough.
+
+An implementation spec for frontend work that omits these deliverables is incomplete — do
+not start implementation until they are added.
+
 ## Implementation specs must declare a capability tier
 
 Every implementation spec also states its **capability tier**: `free` (the default — everything

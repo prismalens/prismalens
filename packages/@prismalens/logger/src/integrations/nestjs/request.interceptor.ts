@@ -7,9 +7,12 @@ import {
 	Injectable,
 	type NestInterceptor,
 } from "@nestjs/common";
-import type { Observable } from "rxjs";
-import { catchError, finalize, tap } from "rxjs";
-import { enrichContext } from "../../core/context.js";
+import { catchError, finalize, Observable, type Subscription, tap } from "rxjs";
+import {
+	enrichContext,
+	hasRequestContext,
+	runInRequestContext,
+} from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
 import type { WideEvent } from "../../types/wide-event.js";
 
@@ -95,49 +98,61 @@ export class WideEventInterceptor implements NestInterceptor {
 			};
 		}
 
-		// Store initial context for this request (simplified - no AsyncLocalStorage wrapper)
-		// The enrichContext calls will still work for basic logging
-		enrichContext(initialContext);
+		return new Observable((subscriber) => {
+			let subscription: Subscription | undefined;
 
-		// Return a proper rxjs Observable chain using pipe operators
-		return next.handle().pipe(
-			tap((data: unknown) => {
-				// Enrich with response data on success
-				enrichContext({
-					response: {
-						status_code: response.statusCode,
-						body_size: data ? this.getBodySize(data) : 0,
-					},
-				});
-			}),
-			catchError(
-				(
-					error: Error & {
-						status?: number;
-						statusCode?: number;
-						code?: string;
-					},
-				) => {
-					// Enrich with error data on failure
-					enrichContext({
-						error: {
-							type: error.name || "Error",
-							message: error.message,
-							stack: error.stack,
-							code: error.code,
-						},
-						response: {
-							status_code: error.status || error.statusCode || 500,
-						},
-					});
-					throw error;
-				},
-			),
-			finalize(() => {
-				// Emit wide event when request completes (success or error)
-				this.emitWideEvent();
-			}),
-		);
+			runInRequestContext(() => {
+				subscription = next
+					.handle()
+					.pipe(
+						tap((data: unknown) => {
+							// Enrich with response data on success
+							enrichContext({
+								response: {
+									status_code: response.statusCode,
+									body_size: data ? this.getBodySize(data) : 0,
+								},
+							});
+						}),
+						catchError(
+							(
+								error: Error & {
+									status?: number;
+									statusCode?: number;
+									code?: string;
+								},
+							) => {
+								// Enrich with error data on failure
+								enrichContext({
+									error: {
+										type: error.name || "Error",
+										message: error.message,
+										stack: error.stack,
+										code: error.code,
+									},
+									response: {
+										status_code: error.status || error.statusCode || 500,
+									},
+								});
+								throw error;
+							},
+						),
+						finalize(() => {
+							// Emit wide event when request completes (success or error).
+							// finalize() also runs on unsubscribe (e.g. an aborted
+							// request), which happens outside runInRequestContext, so
+							// there is no scope to enrich the event with — skip it rather
+							// than emit a wide event with no request_id/user/duration.
+							if (hasRequestContext()) {
+								this.emitWideEvent();
+							}
+						}),
+					)
+					.subscribe(subscriber);
+			}, initialContext);
+
+			return () => subscription?.unsubscribe();
+		});
 	}
 
 	/**

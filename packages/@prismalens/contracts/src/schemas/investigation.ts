@@ -19,6 +19,7 @@ import {
 	ToolExecutionStatusSchema,
 	WorkflowStatusSchema,
 } from "./common.js";
+import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
 
 // =============================================================================
@@ -42,6 +43,21 @@ export const EvidenceSchema = z.object({
 	 * originating call.
 	 */
 	toolCallId: z.string().nullable().optional(),
+	/**
+	 * Where this evidence came from. "tool" = a command/query the harness ran
+	 * (the default and the only kind before the context pack). "context-pack" = a
+	 * fact the HOST supplied (ADR-0016 §5) which the harness did not itself
+	 * observe. Context-pack evidence is coerced to status "inferred" with a null
+	 * toolCallId after synthesis — the model cannot promote a host fact to
+	 * "verified" without re-observing it with a tool and citing that tool.
+	 *
+	 * NOTE: this field is a LABEL, not the trigger. The deterministic coercion
+	 * keys off `source` matching the `context-pack:` prefix, because a model that
+	 * simply OMITS `origin` must not thereby escape the coercion. Optional, not
+	 * defaulted, so every persisted report already in the DB still parses;
+	 * absent ⇒ treat as "tool".
+	 */
+	origin: z.enum(["tool", "context-pack"]).optional(),
 });
 
 export const HypothesisSchema = z.object({
@@ -140,6 +156,35 @@ export const InvestigationReportSchema = z.object({
 	 * LLM-generated.
 	 */
 	fidelity: RunFidelitySchema.nullable().optional(),
+	/**
+	 * Content in the input that attempted to instruct the model rather than
+	 * inform it (#207). The correct response to an injection attempt is to
+	 * IGNORE the instruction, CONTINUE the investigation, and RECORD it here —
+	 * never to silently drop it. Absent/empty = nothing flagged.
+	 *
+	 * Unlike `fidelity` (deterministic, stamped post-synthesis), this one IS
+	 * LLM-authored — only the model can notice an instruction attempt.
+	 */
+	flaggedContent: z
+		.array(
+			z.object({
+				where: z.enum(["context-pack", "tool-output"]),
+				/**
+				 * The offending text, quoted and HARD-capped at 120 chars.
+				 * DANGER: this is a schema-blessed channel for copying an
+				 * attacker's payload verbatim into the NEXT model call (the
+				 * reduce merge serializes whole branch reports). The cap is the
+				 * first half of the mitigation; the sanitize-and-fence at the
+				 * merge boundary (synthesize.ts `mergePrompt`) is the second.
+				 * Never widen this cap.
+				 */
+				quote: z.string().max(120),
+				/** Why it was flagged — the model's own words, not the attacker's. */
+				why: z.string().max(300),
+			}),
+		)
+		.max(10)
+		.optional(),
 });
 
 // =============================================================================
@@ -596,7 +641,15 @@ export const LogSystemContextSchema = z.object({
 });
 export type LogSystemContext = z.infer<typeof LogSystemContextSchema>;
 
-/** A prior investigation summary — an episodic-memory seed (top-N similar past). */
+/**
+ * A prior investigation summary — an episodic-memory seed (top-N similar past).
+ *
+ * Superseded in practice by `contextPack.priorIncidents`, which carries the same
+ * intent with a fence, a rank, and an honest `matchedOn`. Retained because ADR-0015
+ * names this field in the host->engine contract and that contract is EXTEND-ONLY:
+ * removing it is a breaking narrowing, not a cleanup, even while no host populates
+ * it and no stage reads it. Retire it via an ADR-0015 amendment, not a diff.
+ */
 export const PriorInvestigationSchema = z.object({
 	incidentTitle: z.string().optional(),
 	summary: z.string().optional(),
@@ -607,7 +660,7 @@ export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
 /**
  * The host-assembled investigation context (ADR-0015). `alerts` (≥1) + `telemetry`
  * are the always-present core; the rest are optional enrichments a richer host (the
- * app/cloud) supplies and the future context-pack (ADR-0016 §5) rides on. A later
+ * app/cloud) supplies, and the context-pack (ADR-0016 §5) rides on. A later
  * per-alert fan-out needs no change here — the context is already 1..N.
  */
 export const InvestigationContextSchema = z.object({
@@ -621,6 +674,12 @@ export const InvestigationContextSchema = z.object({
 	repos: z.array(z.string()).optional(),
 	logs: LogSystemContextSchema.optional(),
 	priorInvestigations: z.array(PriorInvestigationSchema).optional(),
+	/**
+	 * Host-assembled facts the harness cannot reach by iterating (ADR-0016 §5).
+	 * Absent on the CLI/degenerate path and on any host that could not assemble
+	 * one — the engine renders nothing and behaves exactly as before.
+	 */
+	contextPack: ContextPackSchema.optional(),
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 
@@ -631,6 +690,7 @@ export interface InvestigationContextExtras {
 	repos?: string[];
 	logs?: LogSystemContext;
 	priorInvestigations?: PriorInvestigation[];
+	contextPack?: ContextPack;
 }
 
 /**
@@ -669,6 +729,7 @@ export function correlatedAlertsContext(
 		...(extras.priorInvestigations
 			? { priorInvestigations: extras.priorInvestigations }
 			: {}),
+		...(extras.contextPack ? { contextPack: extras.contextPack } : {}),
 	};
 }
 
@@ -682,4 +743,66 @@ export function singleAlertContext(
 	extras: InvestigationContextExtras = {},
 ): InvestigationContext {
 	return correlatedAlertsContext([alert], telemetry, extras);
+}
+
+// =============================================================================
+// INVESTIGATION QUEUE JOB DATA SCHEMAS
+// =============================================================================
+
+export const InvestigationJobDataSchema = z.object({
+	incidentId: z.string(),
+	investigationId: z.string(),
+	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+	context: z.record(z.string(), z.unknown()).optional(),
+	connectionIds: z.array(z.string()).optional(),
+	alerts: z.array(FiringAlertSchema).optional(),
+});
+
+export type InvestigationJobData = z.infer<typeof InvestigationJobDataSchema>;
+
+/** Map an alert object or DB alert row into a FiringAlert projection. */
+export function toFiringAlert(row: Record<string, unknown>): FiringAlert {
+	const rawLabels = row.labels;
+	let labels: Record<string, string> = {};
+	if (typeof rawLabels === "string") {
+		try {
+			labels = JSON.parse(rawLabels) as Record<string, string>;
+		} catch {
+			labels = {};
+		}
+	} else if (rawLabels && typeof rawLabels === "object") {
+		labels = rawLabels as Record<string, string>;
+	}
+
+	const rawAnnotations = row.annotations;
+	let annotations: Record<string, string> = {};
+	if (typeof rawAnnotations === "string") {
+		try {
+			annotations = JSON.parse(rawAnnotations) as Record<string, string>;
+		} catch {
+			annotations = {};
+		}
+	} else if (rawAnnotations && typeof rawAnnotations === "object") {
+		annotations = { ...(rawAnnotations as Record<string, string>) };
+	}
+
+	if (row.description && !annotations.summary && !annotations.description) {
+		annotations.summary = String(row.description);
+	}
+
+	const rawStartsAt = row.triggeredAt ?? row.startsAt ?? null;
+	const startsAt =
+		rawStartsAt instanceof Date
+			? rawStartsAt.toISOString()
+			: typeof rawStartsAt === "string"
+				? rawStartsAt
+				: null;
+
+	return {
+		alertname: (row.title as string) ?? (row.alertname as string) ?? "Alert",
+		severity: (row.severity as string) ?? labels.severity ?? null,
+		labels,
+		annotations,
+		startsAt,
+	};
 }

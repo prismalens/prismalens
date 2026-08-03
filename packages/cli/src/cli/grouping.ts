@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { createHash, randomUUID } from "node:crypto";
-import { pickServiceLabel } from "../core/run-investigation.js";
+import { pickServiceLabel } from "@prismalens/config";
 import type { GroupRecord, SessionManager } from "../core/session.js";
 
 export interface GroupingPort {

@@ -176,6 +176,7 @@ describe("AlertMappingService (BDD)", () => {
 			expect(result).toEqual(rules);
 			expect(mockPrismaService.alertMappingRule.findMany).toHaveBeenCalledWith({
 				where: { enabled: true },
+				include: { service: true },
 				orderBy: { priority: "asc" },
 			});
 		});
@@ -201,6 +202,7 @@ describe("AlertMappingService (BDD)", () => {
 
 			expect(mockPrismaService.alertMappingRule.findMany).toHaveBeenCalledWith({
 				where: { enabled: true },
+				include: { service: true },
 				orderBy: { priority: "asc" },
 			});
 		});
@@ -232,6 +234,7 @@ describe("AlertMappingService (BDD)", () => {
 				mockPrismaService.alertMappingRule.findUnique,
 			).toHaveBeenCalledWith({
 				where: { id: ruleId },
+				include: { service: true },
 			});
 		});
 
