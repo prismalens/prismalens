@@ -36,6 +36,28 @@ Webhook endpoints accept an optional `X-Idempotency-Key` header. When provided:
 - Retried webhook deliveries matching a previously processed idempotency key return the cached alert and incident response without creating duplicate `Event` or `Alert` records or re-running correlation.
 - Idempotency keys do not expire.
 
+## Pagination Metadata
+
+List endpoints (`GET /alerts`, `GET /incidents`, `GET /investigations`, `GET /services`, `GET /deployments`, `GET /repositories`) return a standardized paginated response envelope:
+
+```json
+{
+  "data": [ ... ],
+  "pagination": {
+    "total": 120,
+    "limit": 50,
+    "offset": 0,
+    "hasMore": true
+  }
+}
+```
+
+Fields:
+- `total`: Total number of matching items in the database for the given filters.
+- `limit`: Page size requested/applied.
+- `offset`: Starting index of items in the page.
+- `hasMore`: `true` if additional matching items exist past `offset + data.length`.
+
 ## License
 
 Apache-2.0

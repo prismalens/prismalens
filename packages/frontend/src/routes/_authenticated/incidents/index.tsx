@@ -92,11 +92,12 @@ function IncidentsPage() {
 
 	// Fetch incidents
 	const {
-		data: incidents = [],
+		data: incidentsResponse,
 		isLoading,
 		refetch,
 		isRefetching,
 	} = useQuery(orpc.incidents.list.queryOptions({ input: queryParams }));
+	const incidents = incidentsResponse?.data ?? [];
 
 	// Acknowledge mutation (updates status to investigating)
 	const acknowledgeMutation = useMutation({

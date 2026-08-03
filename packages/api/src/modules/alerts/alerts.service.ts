@@ -183,38 +183,45 @@ export class AlertsService {
 		hasIncident?: boolean;
 		limit?: number;
 		offset?: number;
-	}): Promise<AlertWithRelations[]> {
-		return this.prisma.alert.findMany({
-			where: {
-				...(options?.status && { status: options.status }),
-				...(options?.severity && { severity: options.severity }),
-				...(options?.serviceId && { serviceId: options.serviceId }),
-				...(options?.incidentId && { incidentId: options.incidentId }),
-				...(options?.hasIncident !== undefined && {
-					incidentId: options.hasIncident ? { not: null } : null,
-				}),
-			},
-			include: {
-				incident: {
-					select: {
-						id: true,
-						number: true,
-						title: true,
-						status: true,
+	}): Promise<{ data: AlertWithRelations[]; total: number }> {
+		const where = {
+			...(options?.status && { status: options.status }),
+			...(options?.severity && { severity: options.severity }),
+			...(options?.serviceId && { serviceId: options.serviceId }),
+			...(options?.incidentId && { incidentId: options.incidentId }),
+			...(options?.hasIncident !== undefined && {
+				incidentId: options.hasIncident ? { not: null } : null,
+			}),
+		};
+
+		const [data, total] = await Promise.all([
+			this.prisma.alert.findMany({
+				where,
+				include: {
+					incident: {
+						select: {
+							id: true,
+							number: true,
+							title: true,
+							status: true,
+						},
+					},
+					service: {
+						select: {
+							id: true,
+							name: true,
+							displayName: true,
+						},
 					},
 				},
-				service: {
-					select: {
-						id: true,
-						name: true,
-						displayName: true,
-					},
-				},
-			},
-			orderBy: { triggeredAt: "desc" },
-			take: options?.limit,
-			skip: options?.offset,
-		});
+				orderBy: { triggeredAt: "desc" },
+				take: options?.limit,
+				skip: options?.offset,
+			}),
+			this.prisma.alert.count({ where }),
+		]);
+
+		return { data, total };
 	}
 
 	/**

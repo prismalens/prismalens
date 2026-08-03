@@ -15,6 +15,7 @@ import {
 	IncidentStatsSchema,
 	IncidentWithRelationsSchema,
 	InvestigateIncidentResponseSchema,
+	paginatedResponseSchema,
 	SuccessResponseSchema,
 	UpdateIncidentSchema,
 } from "../schemas/index.js";
@@ -46,7 +47,7 @@ export const incidentsContract = {
 			tags: ["incidents"],
 		})
 		.input(IncidentQuerySchema)
-		.output(z.array(IncidentWithRelationsSchema)),
+		.output(paginatedResponseSchema(IncidentWithRelationsSchema)),
 
 	/**
 	 * Get active incidents

@@ -18,6 +18,29 @@ Single Source of Truth (SSOT) for all business domain types: Zod enum schemas, e
 - **API route contracts**: oRPC contract definitions for each endpoint group
 - **Utility schemas**: pagination, date strings, JSON fields
 
+## Pagination Utility (`paginatedResponseSchema`)
+
+The `paginatedResponseSchema(itemSchema)` helper creates a standardized Zod response envelope for paginated list endpoints:
+
+```typescript
+import { paginatedResponseSchema } from "@prismalens/contracts/schemas";
+
+export const MyPaginatedListSchema = paginatedResponseSchema(MyItemSchema);
+```
+
+Response envelope shape:
+```json
+{
+  "data": [ ... ],
+  "pagination": {
+    "total": 100,
+    "limit": 50,
+    "offset": 0,
+    "hasMore": true
+  }
+}
+```
+
 ## Investigation report: the `culprit` field (ADR-0026)
 
 `InvestigationReportSchema.culprit` is a structured culprit identification synthesized by the

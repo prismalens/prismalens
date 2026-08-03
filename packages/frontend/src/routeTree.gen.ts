@@ -10,27 +10,22 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
-import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
-import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
-import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
-import { Route as AuthenticatedInvestigationsIndexRouteImport } from './routes/_authenticated/investigations/index'
-import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
+import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
+import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
+import { Route as AuthenticatedInvestigationsIndexRouteImport } from './routes/_authenticated/investigations/index'
+import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedServicesDiscoveryRouteImport } from './routes/_authenticated/services/discovery'
-import { Route as AuthenticatedServicesIdIndexRouteImport } from './routes/_authenticated/services/$id/index'
-import { Route as AuthenticatedInvestigationsIdIndexRouteImport } from './routes/_authenticated/investigations/$id/index'
+import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedIncidentsIdIndexRouteImport } from './routes/_authenticated/incidents/$id/index'
+import { Route as AuthenticatedInvestigationsIdIndexRouteImport } from './routes/_authenticated/investigations/$id/index'
+import { Route as AuthenticatedServicesIdIndexRouteImport } from './routes/_authenticated/services/$id/index'
 import { Route as AuthenticatedSettingsIntegrationsConfigureRouteImport } from './routes/_authenticated/settings/integrations/configure'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SetupIndexRoute = SetupIndexRouteImport.update({
-  id: '/setup/',
-  path: '/setup/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -43,22 +38,15 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/auth/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedSettingsIndexRoute =
-  AuthenticatedSettingsIndexRouteImport.update({
-    id: '/settings/',
-    path: '/settings/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedServicesIndexRoute =
-  AuthenticatedServicesIndexRouteImport.update({
-    id: '/services/',
-    path: '/services/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedInvestigationsIndexRoute =
-  AuthenticatedInvestigationsIndexRouteImport.update({
-    id: '/investigations/',
-    path: '/investigations/',
+const SetupIndexRoute = SetupIndexRouteImport.update({
+  id: '/setup/',
+  path: '/setup/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAlertsIndexRoute =
+  AuthenticatedAlertsIndexRouteImport.update({
+    id: '/alerts/',
+    path: '/alerts/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedIncidentsIndexRoute =
@@ -67,10 +55,16 @@ const AuthenticatedIncidentsIndexRoute =
     path: '/incidents/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedAlertsIndexRoute =
-  AuthenticatedAlertsIndexRouteImport.update({
-    id: '/alerts/',
-    path: '/alerts/',
+const AuthenticatedInvestigationsIndexRoute =
+  AuthenticatedInvestigationsIndexRouteImport.update({
+    id: '/investigations/',
+    path: '/investigations/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedServicesIndexRoute =
+  AuthenticatedServicesIndexRouteImport.update({
+    id: '/services/',
+    path: '/services/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedServicesDiscoveryRoute =
@@ -79,10 +73,16 @@ const AuthenticatedServicesDiscoveryRoute =
     path: '/services/discovery',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedServicesIdIndexRoute =
-  AuthenticatedServicesIdIndexRouteImport.update({
-    id: '/services/$id/',
-    path: '/services/$id/',
+const AuthenticatedSettingsIndexRoute =
+  AuthenticatedSettingsIndexRouteImport.update({
+    id: '/settings/',
+    path: '/settings/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedIncidentsIdIndexRoute =
+  AuthenticatedIncidentsIdIndexRouteImport.update({
+    id: '/incidents/$id/',
+    path: '/incidents/$id/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedInvestigationsIdIndexRoute =
@@ -91,10 +91,10 @@ const AuthenticatedInvestigationsIdIndexRoute =
     path: '/investigations/$id/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedIncidentsIdIndexRoute =
-  AuthenticatedIncidentsIdIndexRouteImport.update({
-    id: '/incidents/$id/',
-    path: '/incidents/$id/',
+const AuthenticatedServicesIdIndexRoute =
+  AuthenticatedServicesIdIndexRouteImport.update({
+    id: '/services/$id/',
+    path: '/services/$id/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedSettingsIntegrationsConfigureRoute =
@@ -215,13 +215,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/setup/': {
-      id: '/setup/'
-      path: '/setup'
-      fullPath: '/setup/'
-      preLoaderRoute: typeof SetupIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated/': {
       id: '/_authenticated/'
       path: '/'
@@ -236,25 +229,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/settings/': {
-      id: '/_authenticated/settings/'
-      path: '/settings'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/setup/': {
+      id: '/setup/'
+      path: '/setup'
+      fullPath: '/setup/'
+      preLoaderRoute: typeof SetupIndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/services/': {
-      id: '/_authenticated/services/'
-      path: '/services'
-      fullPath: '/services/'
-      preLoaderRoute: typeof AuthenticatedServicesIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/investigations/': {
-      id: '/_authenticated/investigations/'
-      path: '/investigations'
-      fullPath: '/investigations/'
-      preLoaderRoute: typeof AuthenticatedInvestigationsIndexRouteImport
+    '/_authenticated/alerts/': {
+      id: '/_authenticated/alerts/'
+      path: '/alerts'
+      fullPath: '/alerts/'
+      preLoaderRoute: typeof AuthenticatedAlertsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/incidents/': {
@@ -264,11 +250,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIncidentsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/alerts/': {
-      id: '/_authenticated/alerts/'
-      path: '/alerts'
-      fullPath: '/alerts/'
-      preLoaderRoute: typeof AuthenticatedAlertsIndexRouteImport
+    '/_authenticated/investigations/': {
+      id: '/_authenticated/investigations/'
+      path: '/investigations'
+      fullPath: '/investigations/'
+      preLoaderRoute: typeof AuthenticatedInvestigationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/services/': {
+      id: '/_authenticated/services/'
+      path: '/services'
+      fullPath: '/services/'
+      preLoaderRoute: typeof AuthenticatedServicesIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/services/discovery': {
@@ -278,11 +271,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedServicesDiscoveryRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/services/$id/': {
-      id: '/_authenticated/services/$id/'
-      path: '/services/$id'
-      fullPath: '/services/$id/'
-      preLoaderRoute: typeof AuthenticatedServicesIdIndexRouteImport
+    '/_authenticated/settings/': {
+      id: '/_authenticated/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/incidents/$id/': {
+      id: '/_authenticated/incidents/$id/'
+      path: '/incidents/$id'
+      fullPath: '/incidents/$id/'
+      preLoaderRoute: typeof AuthenticatedIncidentsIdIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/investigations/$id/': {
@@ -292,11 +292,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInvestigationsIdIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/incidents/$id/': {
-      id: '/_authenticated/incidents/$id/'
-      path: '/incidents/$id'
-      fullPath: '/incidents/$id/'
-      preLoaderRoute: typeof AuthenticatedIncidentsIdIndexRouteImport
+    '/_authenticated/services/$id/': {
+      id: '/_authenticated/services/$id/'
+      path: '/services/$id'
+      fullPath: '/services/$id/'
+      preLoaderRoute: typeof AuthenticatedServicesIdIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/settings/integrations/configure': {

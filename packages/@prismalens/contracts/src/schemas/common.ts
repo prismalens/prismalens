@@ -278,6 +278,29 @@ export const PaginationSchema = z.object({
 	offset: z.coerce.number().int().min(0).default(0),
 });
 
+export const paginatedResponseSchema = <T extends z.ZodTypeAny>(
+	itemSchema: T,
+) =>
+	z.object({
+		data: z.array(itemSchema),
+		pagination: z.object({
+			total: z.number().int(),
+			limit: z.number().int(),
+			offset: z.number().int(),
+			hasMore: z.boolean(),
+		}),
+	});
+
+export type PaginatedResponse<T> = {
+	data: T[];
+	pagination: {
+		total: number;
+		limit: number;
+		offset: number;
+		hasMore: boolean;
+	};
+};
+
 export const IdParamSchema = z.object({
 	id: z.string().uuid(),
 });

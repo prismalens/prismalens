@@ -62,11 +62,12 @@ function InvestigationsPage() {
 
 	// Fetch investigations
 	const {
-		data: investigations = [],
+		data: investigationsResponse,
 		isLoading,
 		refetch,
 		isRefetching,
 	} = useQuery(orpc.investigations.list.queryOptions({ input: queryParams }));
+	const investigations = investigationsResponse?.data ?? [];
 
 	const handleClearFilters = () => {
 		setStatusFilter("all");

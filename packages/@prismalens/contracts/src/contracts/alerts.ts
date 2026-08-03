@@ -15,6 +15,7 @@ import {
 	CorrelateAlertResponseSchema,
 	CreateAlertSchema,
 	IdParamSchema,
+	paginatedResponseSchema,
 	UpdateAlertSchema,
 } from "../schemas/index.js";
 
@@ -45,7 +46,7 @@ export const alertsContract = {
 			tags: ["alerts"],
 		})
 		.input(AlertQuerySchema)
-		.output(z.array(AlertWithRelationsSchema)),
+		.output(paginatedResponseSchema(AlertWithRelationsSchema)),
 
 	/**
 	 * Get uncorrelated alerts

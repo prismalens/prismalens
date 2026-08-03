@@ -41,7 +41,7 @@ export class IncidentsController {
 
 			// GET /incidents - List incidents with filtering
 			list: implement(incidentsContract.list).handler(async ({ input }) => {
-				const incidents = await this.incidentsService.findAll({
+				const { data, total } = await this.incidentsService.findAll({
 					status: input.status,
 					severity: input.severity,
 					priority: input.priority,
@@ -51,7 +51,17 @@ export class IncidentsController {
 					limit: input.limit,
 					offset: input.offset,
 				});
-				return incidents.map((i) => this.serializeIncidentWithRelations(i));
+				const limit = input.limit;
+				const offset = input.offset;
+				return {
+					data: data.map((i) => this.serializeIncidentWithRelations(i)),
+					pagination: {
+						total,
+						limit,
+						offset,
+						hasMore: offset + data.length < total,
+					},
+				};
 			}),
 
 			// GET /incidents/active - List active incidents

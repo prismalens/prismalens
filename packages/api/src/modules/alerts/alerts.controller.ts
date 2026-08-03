@@ -45,7 +45,7 @@ export class AlertsController {
 
 			// GET /alerts - List alerts with filtering
 			list: implement(alertsContract.list).handler(async ({ input }) => {
-				const alerts = await this.alertsService.findAll({
+				const { data, total } = await this.alertsService.findAll({
 					status: input.status,
 					severity: input.severity,
 					serviceId: input.serviceId,
@@ -54,7 +54,17 @@ export class AlertsController {
 					limit: input.limit,
 					offset: input.offset,
 				});
-				return alerts.map((a) => this.serializeAlertWithRelations(a));
+				const limit = input.limit;
+				const offset = input.offset;
+				return {
+					data: data.map((a) => this.serializeAlertWithRelations(a)),
+					pagination: {
+						total,
+						limit,
+						offset,
+						hasMore: offset + data.length < total,
+					},
+				};
 			}),
 
 			// GET /alerts/uncorrelated - List uncorrelated alerts

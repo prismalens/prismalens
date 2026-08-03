@@ -151,27 +151,32 @@ describe("AlertsService (BDD)", () => {
 	});
 
 	describe("findAll", () => {
-		it("should return all alerts", async () => {
+		it("should return all alerts with total count", async () => {
 			const alerts = AlertFactory.createMany(3);
 			mockPrismaService.alert.findMany.mockResolvedValue(alerts);
+			mockPrismaService.alert.count.mockResolvedValue(3);
 
 			const result = await service.findAll();
 
-			expect(result).toEqual(alerts);
+			expect(result).toEqual({ data: alerts, total: 3 });
 			expect(mockPrismaService.alert.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({
 					where: {},
 					orderBy: { triggeredAt: "desc" },
 				}),
 			);
+			expect(mockPrismaService.alert.count).toHaveBeenCalledWith({ where: {} });
 		});
 
-		it("should filter by status", async () => {
+		it("should filter by status and return count", async () => {
 			const alerts = AlertFactory.createMany(2, { status: "acknowledged" });
 			mockPrismaService.alert.findMany.mockResolvedValue(alerts);
+			mockPrismaService.alert.count.mockResolvedValue(2);
 
-			await service.findAll({ status: "acknowledged" });
+			const result = await service.findAll({ status: "acknowledged" });
 
+			expect(result.data).toEqual(alerts);
+			expect(result.total).toBe(2);
 			expect(mockPrismaService.alert.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({
 					where: { status: "acknowledged" },
@@ -179,16 +184,19 @@ describe("AlertsService (BDD)", () => {
 			);
 		});
 
-		it("should apply pagination", async () => {
-			const alerts = AlertFactory.createMany(1);
+		it("should apply pagination and reflect full total count even when data is truncated", async () => {
+			const alerts = AlertFactory.createMany(2);
 			mockPrismaService.alert.findMany.mockResolvedValue(alerts);
+			mockPrismaService.alert.count.mockResolvedValue(5);
 
-			await service.findAll({ limit: 10, offset: 20 });
+			const result = await service.findAll({ limit: 2, offset: 0 });
 
+			expect(result.data.length).toBe(2);
+			expect(result.total).toBe(5);
 			expect(mockPrismaService.alert.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({
-					take: 10,
-					skip: 20,
+					take: 2,
+					skip: 0,
 				}),
 			);
 		});

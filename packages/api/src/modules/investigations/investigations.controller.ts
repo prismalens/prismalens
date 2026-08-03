@@ -69,14 +69,22 @@ export class InvestigationsController {
 			// GET /investigations - List investigations with filtering
 			list: implement(investigationsContract.list).handler(
 				async ({ input }) => {
-					const investigations = await this.investigationsService.findAll({
+					const { data, total } = await this.investigationsService.findAll({
 						status: input.status,
 						limit: input.limit,
 						offset: input.offset,
 					});
-					return investigations.map((i) =>
-						this.serializeInvestigationWithRelations(i),
-					);
+					const limit = input.limit;
+					const offset = input.offset;
+					return {
+						data: data.map((i) => this.serializeInvestigationWithRelations(i)),
+						pagination: {
+							total,
+							limit,
+							offset,
+							hasMore: offset + data.length < total,
+						},
+					};
 				},
 			),
 

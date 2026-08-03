@@ -47,18 +47,20 @@ function CommandCenter() {
 	const isLlmConfigured = !!llmSettings?.activeProvider;
 
 	// Fetch active incidents (not resolved)
-	const { data: incidents = [], isLoading: incidentsLoading } = useQuery(
+	const { data: incidentsResponse, isLoading: incidentsLoading } = useQuery(
 		orpc.incidents.list.queryOptions({
 			input: { limit: 50 },
 		}),
 	);
+	const incidents = incidentsResponse?.data ?? [];
 
 	// Fetch alerts for stats
-	const { data: alerts = [], isLoading: alertsLoading } = useQuery(
+	const { data: alertsResponse, isLoading: alertsLoading } = useQuery(
 		orpc.alerts.list.queryOptions({
 			input: { status: "triggered", limit: 100 },
 		}),
 	);
+	const alerts = alertsResponse?.data ?? [];
 
 	// Fetch pending recommendations
 	const { data: recommendations = [], isLoading: recommendationsLoading } =

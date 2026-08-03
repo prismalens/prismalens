@@ -16,6 +16,7 @@ import {
 	InvestigationSchema,
 	InvestigationStatusSchema,
 	InvestigationWithRelationsSchema,
+	paginatedResponseSchema,
 	UpdateInvestigationStatusSchema,
 	WriteInvestigationResultSchema,
 } from "../schemas/index.js";
@@ -47,7 +48,7 @@ export const investigationsContract = {
 			tags: ["investigations"],
 		})
 		.input(InvestigationQuerySchema)
-		.output(z.array(InvestigationWithRelationsSchema)),
+		.output(paginatedResponseSchema(InvestigationWithRelationsSchema)),
 
 	/**
 	 * Get a single investigation by ID
