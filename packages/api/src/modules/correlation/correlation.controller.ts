@@ -107,9 +107,9 @@ export class CorrelationController {
 			matchCriteria:
 				typeof rule.matchCriteria === "string"
 					? JSON.parse(rule.matchCriteria)
-					: rule.conditions
+					: typeof rule.conditions === "string"
 						? JSON.parse(rule.conditions)
-						: (rule.matchCriteria ?? {}),
+						: (rule.matchCriteria ?? rule.conditions ?? {}),
 			createdAt:
 				rule.createdAt instanceof Date
 					? rule.createdAt.toISOString()

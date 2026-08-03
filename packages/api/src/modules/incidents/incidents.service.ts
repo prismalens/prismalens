@@ -308,7 +308,7 @@ export class IncidentsService {
 				async (tx): Promise<"missing" | "already-linked" | "linked"> => {
 					const existingAlert = await tx.alert.findUnique({
 						where: { id: alertId },
-						select: { title: true },
+						select: { title: true, incidentId: true },
 					});
 
 					if (!existingAlert) {
@@ -335,6 +335,21 @@ export class IncidentsService {
 
 					if (claim.count === 0) {
 						return "already-linked";
+					}
+
+					// The claim above can also move an alert off a DIFFERENT incident
+					// (the OR clause matches incidentId !== target too), so that
+					// incident's alertCount must be decremented in the same
+					// transaction — otherwise it keeps counting an alert it no
+					// longer owns.
+					const previousIncidentId = existingAlert.incidentId;
+					if (previousIncidentId && previousIncidentId !== incidentId) {
+						await tx.incident.update({
+							where: { id: previousIncidentId },
+							data: {
+								alertCount: { decrement: 1 },
+							},
+						});
 					}
 
 					await tx.incident.update({

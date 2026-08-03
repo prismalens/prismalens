@@ -128,6 +128,27 @@ describe("IncidentsService", () => {
 			expect(mockTx.timelineEntry.create).toHaveBeenCalledTimes(1);
 		});
 
+		it("should decrement the previous incident's alertCount when re-pointing an alert to a different incident", async () => {
+			mockTx.alert.findUnique.mockResolvedValue({
+				title: "Flapping Alert",
+				incidentId: "inc-old",
+			});
+			mockTx.alert.updateMany.mockResolvedValueOnce({ count: 1 });
+
+			const result = await service.addAlert("inc-new", "alert-9");
+
+			expect(result).toBe(true);
+			expect(mockTx.incident.update).toHaveBeenCalledWith({
+				where: { id: "inc-old" },
+				data: { alertCount: { decrement: 1 } },
+			});
+			expect(mockTx.incident.update).toHaveBeenCalledWith({
+				where: { id: "inc-new" },
+				data: { alertCount: { increment: 1 } },
+			});
+			expect(mockTx.incident.update).toHaveBeenCalledTimes(2);
+		});
+
 		it("should return false and write nothing when the alert does not exist", async () => {
 			mockTx.alert.findUnique.mockResolvedValue(null);
 

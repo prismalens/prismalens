@@ -26,6 +26,8 @@ export interface CorrelationResult {
 	ruleId?: string;
 	ruleName?: string;
 	isNewIncident: boolean;
+	/** Set when the alert was already linked to `incidentId` — signals correlateAlert to skip re-emitting ALERT_CORRELATED_EVENT. */
+	alreadyCorrelated?: boolean;
 }
 
 interface MatchCriteria {
@@ -178,7 +180,7 @@ export class CorrelationService {
 	 */
 	async correlateAlert(alert: Alert): Promise<CorrelationResult> {
 		const result = await this.runCorrelation(alert);
-		if (result.matched && result.incidentId) {
+		if (result.matched && result.incidentId && !result.alreadyCorrelated) {
 			const payload: AlertCorrelatedEvent = {
 				alertId: alert.id,
 				incidentId: result.incidentId,
@@ -207,6 +209,7 @@ export class CorrelationService {
 					incidentNumber: existingIncident.number,
 					reason: "Already correlated to incident",
 					isNewIncident: false,
+					alreadyCorrelated: true,
 				};
 			}
 		}
@@ -465,11 +468,13 @@ export class CorrelationService {
 		for (const rule of rules) {
 			if (this.alertMatchesRule(alert, rule)) {
 				if (rule.action === "suppress") {
-					return {
-						matchedRule: rule,
-						action: "suppress",
-						reason: `Suppressed by rule: ${rule.name}`,
-					};
+					// matchToIncidentByRules returns matched: false as soon as it
+					// hits a suppress rule — it does not actually suppress the alert,
+					// it just stops the rule stage and falls through to fingerprint,
+					// then time-window, then new-incident. Predicting "suppress"
+					// here would describe a behavior the engine never produces, so
+					// mirror the engine and stop scanning rules too.
+					break;
 				}
 
 				const incident = await this.findMatchingIncident(alert, rule);

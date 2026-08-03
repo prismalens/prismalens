@@ -2,11 +2,25 @@
 // Copyright 2026 Sumit Patel
 
 import type { CallHandler, ExecutionContext } from "@nestjs/common";
-import { of } from "rxjs";
+import { Observable, of } from "rxjs";
 import { getCurrentWideEvent, runInRequestContext } from "./core/context.js";
 import { Logger } from "./core/logger.js";
 import { WideEventInterceptor } from "./integrations/nestjs/request.interceptor.js";
 import { redactSensitiveData } from "./utils/redaction.js";
+
+const createMockContext = (path: string, userAgent: string) =>
+	({
+		switchToHttp: () => ({
+			getRequest: () => ({
+				method: "GET",
+				path,
+				headers: { "user-agent": userAgent },
+			}),
+			getResponse: () => ({
+				statusCode: 200,
+			}),
+		}),
+	}) as unknown as ExecutionContext;
 
 describe("Logger & WideEventInterceptor (#249)", () => {
 	beforeEach(() => {
@@ -24,20 +38,6 @@ describe("Logger & WideEventInterceptor (#249)", () => {
 				const evt = getCurrentWideEvent();
 				if (evt) eventsEmitted.push(evt);
 			});
-
-			const createMockContext = (path: string, userAgent: string) =>
-				({
-					switchToHttp: () => ({
-						getRequest: () => ({
-							method: "GET",
-							path,
-							headers: { "user-agent": userAgent },
-						}),
-						getResponse: () => ({
-							statusCode: 200,
-						}),
-					}),
-				}) as unknown as ExecutionContext;
 
 			const mockHandler: CallHandler = {
 				handle: () => of({ ok: true }),
@@ -69,6 +69,33 @@ describe("Logger & WideEventInterceptor (#249)", () => {
 			expect([pathA, pathB]).toContain("/route-A");
 			expect([pathA, pathB]).toContain("/route-B");
 			expect(pathA).not.toEqual(pathB);
+		});
+	});
+
+	describe("Unsubscribe (aborted request) safety (#279 review)", () => {
+		it("should not emit a wide event when the request is unsubscribed before the handler completes", () => {
+			const interceptor = new WideEventInterceptor();
+
+			let emitCount = 0;
+			vi.spyOn(Logger.prototype, "emitWideEvent").mockImplementation(() => {
+				emitCount++;
+			});
+
+			// A handler that never completes/errors on its own — the only way
+			// this pipeline finishes is via an external unsubscribe, same as an
+			// aborted request.
+			const mockHandler: CallHandler = {
+				handle: () => new Observable(() => {}),
+			};
+
+			const ctx = createMockContext("/route-abort", "Agent-Abort");
+			const subscription = interceptor
+				.intercept(ctx, mockHandler)
+				.subscribe();
+
+			subscription.unsubscribe();
+
+			expect(emitCount).toBe(0);
 		});
 	});
 

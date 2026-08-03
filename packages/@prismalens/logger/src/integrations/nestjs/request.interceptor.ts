@@ -8,7 +8,11 @@ import {
 	type NestInterceptor,
 } from "@nestjs/common";
 import { catchError, finalize, Observable, type Subscription, tap } from "rxjs";
-import { enrichContext, runInRequestContext } from "../../core/context.js";
+import {
+	enrichContext,
+	hasRequestContext,
+	runInRequestContext,
+} from "../../core/context.js";
 import { Logger } from "../../core/logger.js";
 import type { WideEvent } from "../../types/wide-event.js";
 
@@ -134,8 +138,14 @@ export class WideEventInterceptor implements NestInterceptor {
 							},
 						),
 						finalize(() => {
-							// Emit wide event when request completes (success or error)
-							this.emitWideEvent();
+							// Emit wide event when request completes (success or error).
+							// finalize() also runs on unsubscribe (e.g. an aborted
+							// request), which happens outside runInRequestContext, so
+							// there is no scope to enrich the event with — skip it rather
+							// than emit a wide event with no request_id/user/duration.
+							if (hasRequestContext()) {
+								this.emitWideEvent();
+							}
 						}),
 					)
 					.subscribe(subscriber);
