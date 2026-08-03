@@ -11,6 +11,8 @@ export * from "./alert-mapping.js";
 export * from "./change-event.js";
 // Common schemas (enums, pagination, utilities)
 export * from "./common.js";
+// The PRE-dispatch context pack (ADR-0016 §5) — not ./overlay.js's post-report object.
+export * from "./context-pack.js";
 export * from "./correlation.js";
 export * from "./deployment.js";
 export * from "./event.js";
