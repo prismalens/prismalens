@@ -15,8 +15,8 @@ import type {
 	CanonicalEvent,
 	FiringAlert,
 	InvestigationReport,
-} from "@prismalens/contracts";
-import { singleAlertContext } from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
+import { singleAlertContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it, vi } from "vitest";
 import {
 	CANCELLED_MESSAGE,

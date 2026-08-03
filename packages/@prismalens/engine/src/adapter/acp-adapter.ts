@@ -35,7 +35,7 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 	ToolCategory,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 
 /**
  * The structural subset of an ACP `session/update` payload's `update` object the

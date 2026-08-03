@@ -6,7 +6,7 @@ Runtime configuration, environment variable validation, and identity registries 
 
 | Export path | Contents | Runtime deps | Safe for |
 |-------------|----------|-------------|----------|
-| `@prismalens/config` | Env var schemas, `getConfig()`, secrets management | `zod`, `dotenv`, Node.js `fs`/`crypto` | **Node.js only** (API, worker) |
+| `@prismalens/config` | Env var schemas, `getConfig()`, secrets management | `zod`, Node.js `fs`/`crypto` | **Node.js only** (API, worker) |
 | `@prismalens/config/agents` | Agent identity registry, `agentIdSchema` | `zod` only | All (browser-safe) |
 | `@prismalens/config/llm` | LLM provider metadata, `llmProviderIdSchema` | `zod` only | All (browser-safe) |
 | `@prismalens/config/mcp` | MCP server metadata, transport schemas | `zod` only | All (browser-safe) |
@@ -28,7 +28,7 @@ Runtime configuration, environment variable validation, and identity registries 
 
 ## Browser-safe vs Node-only
 
-The main export (`@prismalens/config`) requires Node.js — it uses `dotenv`, `fs`, and `crypto`. The sub-exports (`/agents`, `/llm`, `/mcp`) are browser-safe and only depend on `zod`.
+The main export (`@prismalens/config`) requires Node.js — it uses Node.js `fs` and `crypto`. The sub-exports (`/agents`, `/llm`, `/mcp`) are browser-safe and only depend on `zod`.
 
 ```typescript
 // Node.js only (API, worker)

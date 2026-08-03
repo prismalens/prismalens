@@ -27,8 +27,8 @@ import type {
 	FiringAlert,
 	InvestigationContext,
 	InvestigationReport,
-} from "@prismalens/contracts";
-import { singleAlertContext } from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
+import { singleAlertContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { rawArmPromptContext } from "../../eval/ab-runner.js";
 import {

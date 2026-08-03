@@ -22,7 +22,7 @@ import type {
 	ContextPack,
 	FiringAlert,
 	InvestigationContext,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 
 /** One unit of investigation the supervisor hands to a rented harness. */
 export interface Branch {

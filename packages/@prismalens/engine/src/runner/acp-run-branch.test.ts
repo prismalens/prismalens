@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { CanonicalEventSchema } from "@prismalens/contracts";
+import { CanonicalEventSchema } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import type { AcpStreamItem } from "./acp-client.js";
 import { runBranch } from "./acp-run-branch.js";

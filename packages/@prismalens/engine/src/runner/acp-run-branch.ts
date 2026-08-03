@@ -14,7 +14,7 @@
  * Decoupled from the transport (takes any `AsyncIterable<AcpStreamItem>`) so it is
  * fixture-testable without spawning a subprocess.
  */
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import {
 	AcpAdapter,
 	type AdapterContext,

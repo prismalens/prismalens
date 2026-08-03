@@ -13,8 +13,8 @@
  * no report and return before reduce(). The happy-path finish(report) assertion is
  * omitted here because producing a real report requires a live reduce() LLM call.
  */
-import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts";
-import { singleAlertContext } from "@prismalens/contracts";
+import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts/schemas";
+import { singleAlertContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { conductRun, type InvestigationStore } from "./conductor.js";
 import {

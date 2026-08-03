@@ -16,8 +16,8 @@ import type {
 	FiringAlert,
 	InvestigationContext,
 	InvestigationReport,
-} from "@prismalens/contracts";
-import { singleAlertContext } from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
+import { singleAlertContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import type { HarnessRunner } from "./investigate.js";
 import { investigateIncidentStream } from "./investigate.js";
