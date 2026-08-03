@@ -21,6 +21,7 @@ import {
 	InvestigationReportSchema,
 	InvestigationSchema,
 	RunFidelitySchema,
+	toFiringAlert,
 } from "./investigation.js";
 
 describe("RunFidelitySchema (ADR-0017/ADR-0020 sandbox field)", () => {
@@ -369,5 +370,23 @@ describe("InvestigationReportSchema — origin + flaggedContent (#207)", () => {
 				],
 			}),
 		).toThrow();
+	});
+});
+
+describe("toFiringAlert", () => {
+	it("parses JSON string labels/annotations and formats Date timestamps", () => {
+		const rawRow = {
+			title: "Database Lock",
+			severity: "high",
+			labels: JSON.stringify({ service: "checkout", environment: "prod" }),
+			annotations: JSON.stringify({ summary: "High latency" }),
+			triggeredAt: new Date("2026-07-31T10:00:00.000Z"),
+		};
+		const alert = toFiringAlert(rawRow);
+		expect(alert.alertname).toBe("Database Lock");
+		expect(alert.severity).toBe("high");
+		expect(alert.labels).toEqual({ service: "checkout", environment: "prod" });
+		expect(alert.annotations).toEqual({ summary: "High latency" });
+		expect(alert.startsAt).toBe("2026-07-31T10:00:00.000Z");
 	});
 });
