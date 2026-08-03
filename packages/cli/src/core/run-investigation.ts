@@ -13,6 +13,7 @@
  * JSON-RPC `serve` path stay in lockstep, unchanged.
  */
 import { resolve } from "node:path";
+import { pickServiceLabel } from "@prismalens/config";
 import { ensureV1, resolveCredentials } from "@prismalens/config/credentials";
 import type { PermissionMode } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
@@ -272,16 +273,4 @@ function selectService(
 		...(cfg.repo ? { repo: cfg.repo } : {}),
 		...(cfg.depends_on.length > 0 ? { dependsOn: cfg.depends_on } : {}),
 	};
-}
-
-/**
- * The alert's service identity label — `service`, else `namespace`, else `job`.
- * Exported for the `listen` path's per-payload repo resolution (issue #58 AC5).
- */
-export function pickServiceLabel(
-	alert: Record<string, unknown> | undefined,
-): string | undefined {
-	const labels = (alert?.labels ?? {}) as Record<string, unknown>;
-	const pick = labels.service ?? labels.namespace ?? labels.job;
-	return typeof pick === "string" && pick ? pick : undefined;
 }

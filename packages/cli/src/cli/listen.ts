@@ -10,14 +10,12 @@
  * webhook without a restart. Alert grouping via a debounce window is implemented;
  * global caps (#62) and Slack notification are still future slices.
  */
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { conductRun as engineConductRun } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import { consola } from "consola";
 import { loadConfig } from "../config/loader.js";
-import type { PlConfig } from "../config/schema.js";
 import {
 	type CapsGate,
 	createCapsGate,
@@ -27,9 +25,9 @@ import { resolveRepoSlug } from "../core/detect-repo.js";
 import { createFileSessionStore } from "../core/file-session-store.js";
 import {
 	isSynthConfigured,
-	pickServiceLabel,
 	resolveInvestigation,
 } from "../core/run-investigation.js";
+
 import { createSessionManager, type SessionManager } from "../core/session.js";
 import {
 	type ListenServer,
@@ -79,36 +77,9 @@ export interface InvestigationRunnerDeps {
  * on a failed run (the server logs it and keeps serving); the sandbox is
  * CALLER-OWNED and destroyed in `finally` (ADR-0020), matching investigate/serve.
  */
-/**
- * Per-payload repo/cwd resolution (issue #58 AC5): the alert's service label
- * (`service`/`namespace`/`job`) → `services[name].repo` → a `repos` entry's
- * `local_path`, else the value itself when it is an existing local checkout.
- * No label / no catalog match / no checkout ⇒ the listen cwd, exactly like a
- * manual `pl investigate` run from that directory (single-player default).
- */
-export function resolveRepoPath(
-	alert: Record<string, unknown>,
-	config: PlConfig,
-): string {
-	const name = pickServiceLabel(alert);
-	if (!name) {
-		throw new Error(
-			`Listen dispatch refused: alert is missing a service label (cannot resolve an investigation workspace).`,
-		);
-	}
-	const repoRef = config.services[name]?.repo;
-	if (!repoRef) {
-		throw new Error(
-			`Listen dispatch refused: service "${name}" has no mapped repo in config (cannot resolve an investigation workspace).`,
-		);
-	}
-	const localPath = config.repos[repoRef]?.local_path;
-	if (localPath) return resolve(localPath);
-	if (existsSync(repoRef)) return resolve(repoRef);
-	throw new Error(
-		`Listen dispatch refused: repo "${repoRef}" (mapped from service "${name}") does not exist locally (cannot resolve an investigation workspace).`,
-	);
-}
+import { resolveRepoPath } from "@prismalens/config";
+
+export { resolveRepoPath };
 
 export function createInvestigationRunner(
 	options: InvestigationRunnerOptions,
