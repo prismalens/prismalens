@@ -26,12 +26,16 @@ export class WebhookSignatureGuard implements CanActivate {
 	) {}
 
 	canActivate(context: ExecutionContext): boolean {
+		const request = context.switchToHttp().getRequest<Request>();
+		if (request.path === "/webhooks/render") {
+			return true; // Render has its own dedicated signature guard
+		}
+
 		const secret = this.configService.get("PRISMALENS_WEBHOOK_SECRET");
 		if (!secret) {
 			return true; // No secret configured — allow all (community edition default)
 		}
 
-		const request = context.switchToHttp().getRequest<Request>();
 		const signature = request.headers["x-hub-signature-256"] as
 			| string
 			| undefined;

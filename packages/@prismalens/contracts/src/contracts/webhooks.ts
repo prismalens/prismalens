@@ -10,6 +10,8 @@ import {
 	GenericWebhookSchema,
 	PrometheusWebhookResponseSchema,
 	PrometheusWebhookSchema,
+	RenderWebhookResponseSchema,
+	RenderWebhookSchema,
 } from "../schemas/index.js";
 
 export const webhooksContract = {
@@ -40,4 +42,18 @@ export const webhooksContract = {
 		})
 		.input(GenericWebhookSchema)
 		.output(GenericWebhookResponseSchema),
+
+	/**
+	 * Receive Render deploy/health webhook
+	 * POST /webhooks/render
+	 */
+	render: oc
+		.route({
+			method: "POST",
+			path: "/webhooks/render",
+			summary: "Receive Render deploy/health webhook",
+			tags: ["webhooks"],
+		})
+		.input(RenderWebhookSchema)
+		.output(RenderWebhookResponseSchema),
 };

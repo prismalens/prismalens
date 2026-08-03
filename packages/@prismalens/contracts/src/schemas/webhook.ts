@@ -65,6 +65,41 @@ export const GenericWebhookResponseSchema = z.object({
 });
 
 // =============================================================================
+// RENDER WEBHOOK SCHEMAS
+// =============================================================================
+
+export const RenderWebhookSchema = z.object({
+	type: z.string().optional(),
+	service: z
+		.object({
+			id: z.string(),
+			name: z.string(),
+			type: z.string().optional(),
+		})
+		.optional(),
+	deploy: z
+		.object({
+			id: z.string(),
+			status: z.string(),
+			finishedAt: z.string().optional(),
+		})
+		.optional(),
+	healthCheck: z
+		.object({
+			path: z.string().optional(),
+			protocol: z.string().optional(),
+		})
+		.optional(),
+	timestamp: z.string().optional(),
+});
+
+export const RenderWebhookResponseSchema = z.object({
+	alertId: z.string().uuid(),
+	incidentId: z.string().uuid().optional(),
+	isNewIncident: z.boolean(),
+});
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -77,3 +112,5 @@ export type GenericWebhook = z.infer<typeof GenericWebhookSchema>;
 export type GenericWebhookResponse = z.infer<
 	typeof GenericWebhookResponseSchema
 >;
+export type RenderWebhook = z.infer<typeof RenderWebhookSchema>;
+export type RenderWebhookResponse = z.infer<typeof RenderWebhookResponseSchema>;

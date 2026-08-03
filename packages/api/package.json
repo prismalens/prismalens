@@ -44,7 +44,8 @@
 		"class-validator": "^0.15.1",
 		"ioredis": "catalog:",
 		"reflect-metadata": "^0.2.2",
-		"rxjs": "catalog:"
+		"rxjs": "catalog:",
+		"svix": "^1.99.1"
 	},
 	"devDependencies": {
 		"@faker-js/faker": "^10.5.0",

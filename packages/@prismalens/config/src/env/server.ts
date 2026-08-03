@@ -59,6 +59,14 @@ export const globalSchema = z.object({
 			"Optional shared secret for webhook HMAC-SHA256 signature verification. " +
 				"When set, incoming webhooks must include a valid X-Hub-Signature-256 header.",
 		),
+	PRISMALENS_RENDER_WEBHOOK_SECRET: z
+		.string()
+		.min(16, "Render webhook secret must be at least 16 characters")
+		.optional()
+		.describe(
+			"Optional secret for Render Standard Webhooks signature verification. " +
+				"When set, incoming Render webhooks must include a valid webhook-signature or svix-signature header.",
+		),
 
 	PRISMALENS_CORS_ORIGIN: z
 		.string()
