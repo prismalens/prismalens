@@ -106,7 +106,9 @@ function CulpritSection({ culprit }: { culprit: Culprit }) {
 				</div>
 				<div>
 					<span className="text-muted-foreground text-xs">Change ref</span>
-					<p className="font-mono">{changeRef ?? "—"}</p>
+					<p className="font-mono truncate" title={changeRef ?? undefined}>
+						{changeRef ?? "—"}
+					</p>
 				</div>
 				<div>
 					<span className="text-muted-foreground text-xs">Mechanism</span>
@@ -249,7 +251,10 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 							</p>
 							{investigation.rootCauseCategory && (
 								<div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-									<Badge variant="outline">
+									<Badge
+										variant="outline"
+										className="border-purple-300 dark:border-purple-700 text-purple-900 dark:text-purple-100"
+									>
 										{investigation.rootCauseCategory}
 									</Badge>
 								</div>
