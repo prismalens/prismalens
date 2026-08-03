@@ -441,6 +441,7 @@ model Event {
   tenantId      String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   source        String // Source system: "prometheus", "github", "render", "generic"
   sourceEventId String? // ID from source system for deduplication
+  idempotencyKey String?  @unique
   eventType     String // Event type: "alert", "deployment", "commit", "incident"
   payload       String // Full raw JSON payload (stored as string)
   receivedAt    DateTime  @default(now())

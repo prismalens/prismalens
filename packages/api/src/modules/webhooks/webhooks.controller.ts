@@ -7,7 +7,8 @@ import { Implement, implement } from "@orpc/nest";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
 import { Severity } from "../../shared/enums/index.js";
-import type { GenericWebhookDto } from "./dto/index.js";
+import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
+import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
 import { WebhookResult, WebhooksService } from "./webhooks.service.js";
 
@@ -20,16 +21,23 @@ export class WebhooksController {
 
 	constructor(private readonly webhooksService: WebhooksService) {}
 
-	@Implement(webhooksContract)
+	@Implement({
+		generic: webhooksContract.generic,
+		prometheus: webhooksContract.prometheus,
+	})
 	webhooks() {
 		return {
 			// POST /webhooks/generic - Receive generic webhook
 			generic: implement(webhooksContract.generic).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					this.logger.log("Received generic webhook");
+					const idempotencyKey = context?.request?.headers?.[
+						"x-idempotency-key"
+					] as string | undefined;
 
 					const result = await this.webhooksService.processGenericWebhook(
 						input as unknown as GenericWebhookDto,
+						idempotencyKey,
 					);
 
 					return this.formatResponse(result);
@@ -38,10 +46,13 @@ export class WebhooksController {
 
 			// POST /webhooks/prometheus - Receive Prometheus AlertManager webhook
 			prometheus: implement(webhooksContract.prometheus).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					this.logger.log(
 						`Received Prometheus webhook with ${input.alerts?.length ?? 0} alerts`,
 					);
+					const idempotencyKey = context?.request?.headers?.[
+						"x-idempotency-key"
+					] as string | undefined;
 
 					// Process each Prometheus alert through the generic webhook handler
 					const alertIds: string[] = [];
@@ -58,8 +69,10 @@ export class WebhooksController {
 								labels: alert.labels,
 								sourceEventId: alert.fingerprint,
 							};
-							const result =
-								await this.webhooksService.processGenericWebhook(genericDto);
+							const result = await this.webhooksService.processGenericWebhook(
+								genericDto,
+								idempotencyKey,
+							);
 							alertIds.push(result.alert.id);
 						} catch (error) {
 							this.logger.error(`Failed to process Prometheus alert: ${error}`);
@@ -74,6 +87,26 @@ export class WebhooksController {
 				},
 			),
 		};
+	}
+
+	@UseGuards(RenderWebhookSignatureGuard)
+	@Implement(webhooksContract.render)
+	render() {
+		return implement(webhooksContract.render).handler(
+			async ({ input, context }) => {
+				this.logger.log("Received Render webhook");
+				const idempotencyKey = context?.request?.headers?.[
+					"x-idempotency-key"
+				] as string | undefined;
+
+				const result = await this.webhooksService.processRenderWebhook(
+					input as unknown as RenderWebhookDto,
+					idempotencyKey,
+				);
+
+				return this.formatResponse(result);
+			},
+		);
 	}
 
 	private mapPrometheusLabelToSeverity(

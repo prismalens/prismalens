@@ -38,11 +38,34 @@ export class WebhooksService {
 		private readonly alertMappingService: AlertMappingService,
 	) {}
 
-	async processGenericWebhook(dto: GenericWebhookDto): Promise<WebhookResult> {
+	async processGenericWebhook(
+		dto: GenericWebhookDto,
+		idempotencyKey?: string,
+	): Promise<WebhookResult> {
+		if (idempotencyKey) {
+			const existingEvent =
+				await this.eventsService.findByIdempotencyKey(idempotencyKey);
+			if (existingEvent?.alertId) {
+				const alert = await this.alertsService.findById(existingEvent.alertId);
+				if (alert) {
+					return {
+						event: existingEvent,
+						alert,
+						incidentId: alert.incidentId ?? undefined,
+						incidentNumber: alert.incident?.number,
+						correlationReason:
+							"Idempotent replay of a previously processed webhook delivery",
+						isNewIncident: false,
+					};
+				}
+			}
+		}
+
 		// 1. Create immutable event record
 		const event = await this.eventsService.create({
 			source: dto.source ?? "webhook",
 			sourceEventId: dto.sourceEventId,
+			idempotencyKey,
 			eventType: "alert",
 			payload: dto.rawPayload ?? {
 				title: dto.title,
@@ -138,11 +161,34 @@ export class WebhooksService {
 		};
 	}
 
-	async processRenderWebhook(dto: RenderWebhookDto): Promise<WebhookResult> {
+	async processRenderWebhook(
+		dto: RenderWebhookDto,
+		idempotencyKey?: string,
+	): Promise<WebhookResult> {
+		if (idempotencyKey) {
+			const existingEvent =
+				await this.eventsService.findByIdempotencyKey(idempotencyKey);
+			if (existingEvent?.alertId) {
+				const alert = await this.alertsService.findById(existingEvent.alertId);
+				if (alert) {
+					return {
+						event: existingEvent,
+						alert,
+						incidentId: alert.incidentId ?? undefined,
+						incidentNumber: alert.incident?.number,
+						correlationReason:
+							"Idempotent replay of a previously processed webhook delivery",
+						isNewIncident: false,
+					};
+				}
+			}
+		}
+
 		// 1. Create immutable event record
 		const event = await this.eventsService.create({
 			source: "render",
 			sourceEventId: dto.deploy?.id ?? dto.service?.id,
+			idempotencyKey,
 			eventType: "deployment",
 			payload: dto as unknown as Record<string, unknown>,
 		});

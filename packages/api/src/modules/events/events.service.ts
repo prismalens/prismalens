@@ -31,6 +31,7 @@ export class EventsService {
 			data: {
 				source: dto.source,
 				sourceEventId: dto.sourceEventId,
+				idempotencyKey: dto.idempotencyKey,
 				eventType: dto.eventType,
 				payload:
 					typeof dto.payload === "string"
@@ -43,6 +44,15 @@ export class EventsService {
 
 		this.logger.log(`Created event ${event.id} from ${dto.source}`);
 		return event;
+	}
+
+	/**
+	 * Find event by idempotency key
+	 */
+	async findByIdempotencyKey(key: string): Promise<Event | null> {
+		return this.prisma.event.findUnique({
+			where: { idempotencyKey: key },
+		});
 	}
 
 	/**
