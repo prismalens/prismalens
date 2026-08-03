@@ -131,15 +131,10 @@ export class AlertsService {
 						number: true,
 						title: true,
 						status: true,
+						severity: true,
 					},
 				},
-				service: {
-					select: {
-						id: true,
-						name: true,
-						displayName: true,
-					},
-				},
+				service: true,
 				events: {
 					select: {
 						id: true,
@@ -208,15 +203,10 @@ export class AlertsService {
 							number: true,
 							title: true,
 							status: true,
+							severity: true,
 						},
 					},
-					service: {
-						select: {
-							id: true,
-							name: true,
-							displayName: true,
-						},
-					},
+					service: true,
 				},
 				orderBy: { triggeredAt: "desc" },
 				take: options?.limit,

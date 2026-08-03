@@ -59,7 +59,7 @@ pnpm db:init      # initialise the local SQLite database
 pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 ```
 
-The dev login is `admin@prismalens.dev` / `admin123`.
+The dev login is `admin@prismalens.dev` / `admin123`. On first boot against an empty database, the owner account and demo data (~60 alerts, incidents, investigations) are provisioned automatically.
 
 ## Making a change
 

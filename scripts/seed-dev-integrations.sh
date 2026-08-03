@@ -79,7 +79,7 @@ LOGIN_RESPONSE=$(curl -s -c "$COOKIE_FILE" -X POST "${API_BASE}/api/auth/sign-in
 # Verify we got a session
 AUTH_STATUS=$(check_http "/api/auth/get-session")
 if [ "$AUTH_STATUS" != "200" ]; then
-	die "Login failed. Make sure dev user is seeded (run: bash scripts/seed-default-user.sh)"
+	die "Login failed. Make sure the API is running in development mode (pnpm dev)."
 fi
 echo "  Logged in."
 

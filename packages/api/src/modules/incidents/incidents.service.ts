@@ -119,9 +119,7 @@ export class IncidentsService {
 					// Deliberate current choice: order newest alert first as primary alert downstream
 					orderBy: { triggeredAt: "desc" },
 				},
-				service: {
-					select: { id: true, name: true, displayName: true },
-				},
+				service: true,
 				investigations: {
 					select: {
 						id: true,
@@ -150,9 +148,7 @@ export class IncidentsService {
 				alerts: {
 					orderBy: { triggeredAt: "desc" },
 				},
-				service: {
-					select: { id: true, name: true, displayName: true },
-				},
+				service: true,
 				investigations: {
 					select: {
 						id: true,
@@ -202,9 +198,7 @@ export class IncidentsService {
 						take: 5, // Only include first 5 alerts for list view
 						orderBy: { triggeredAt: "desc" },
 					},
-					service: {
-						select: { id: true, name: true, displayName: true },
-					},
+					service: true,
 					investigations: {
 						where: { status: "completed" },
 						orderBy: { createdAt: "desc" },

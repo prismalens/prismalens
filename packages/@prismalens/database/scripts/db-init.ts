@@ -90,9 +90,15 @@ async function main() {
 			},
 		);
 	} else if (!dbExists) {
-		// Migrations exist but DB is missing - apply them
+		// Migrations exist but DB is missing - apply them and seed demo data
 		console.log("🔄 Applying migrations to new database...");
 		execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
+			cwd: DATABASE_PATH,
+			stdio: "inherit",
+			env: { ...process.env },
+		});
+		console.log("🌱 Provisioning demo data for new database...");
+		execSync("pnpm exec prisma db seed --config prisma.config.ts", {
 			cwd: DATABASE_PATH,
 			stdio: "inherit",
 			env: { ...process.env },

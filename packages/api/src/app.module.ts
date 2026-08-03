@@ -38,6 +38,7 @@ import { SetupModule } from "./core/setup/setup.module.js";
 import { UsersModule } from "./core/users/users.module.js";
 
 // Infrastructure modules
+import { DevSeedModule } from "./infrastructure/dev-seed/dev-seed.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
 import { InternalModule } from "./infrastructure/internal/internal.module.js";
 import { QueueModule } from "./infrastructure/queue/queue.module.js";
@@ -132,6 +133,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		HealthModule,
 		QueueModule.forRoot(),
 		InternalModule,
+		DevSeedModule,
 
 		// Note: Frontend is now served by TanStack Start via Caddy reverse proxy
 		// ServeStaticModule removed - Caddy routes /api/* to this service, /* to frontend
