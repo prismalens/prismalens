@@ -12,6 +12,12 @@ import { prisma } from "../client.js";
 import { seedDemoData } from "./seeds/demo-data.js";
 
 async function main() {
+	const alertCount = await prisma.alert.count();
+	if (alertCount > 0) {
+		console.log("database not empty — skipping demo seed");
+		return;
+	}
+
 	console.log("🌱 Starting database seeding...\n");
 	await seedDemoData(prisma);
 	console.log("\n✅ Database seeding complete!");
