@@ -17,9 +17,12 @@
  *     that ALSO loads the skill — yields a structured InvestigationReport via Tier-1
  *     reduce().
  *
- * The prompt is byte-identical across arms: both use {@link buildInvestigationPrompt}
- * (for a single-alert context, decompose's root branch already uses it byte-identically,
- * so arm (b)'s internal prompt matches arm (a)'s verbatim).
+ * The prompt is byte-identical across arms MODULO the context pack, which is arm (b)'s
+ * treatment (and, if it is ever built, an L4 rung's): both use {@link buildInvestigationPrompt} (for a
+ * single-alert context, decompose's root branch already uses it byte-identically, so
+ * arm (b)'s internal prompt matches arm (a)'s verbatim), but {@link runRawArm} strips
+ * `context.contextPack` unless the arm explicitly opts in via
+ * {@link ArmOptions.carryContextPack}.
  */
 import { randomUUID } from "node:crypto";
 
@@ -170,6 +173,16 @@ export interface ArmOptions {
 	synth: SynthesisModelConfig;
 	/** Cooperative cancellation, threaded to the prismalens arm's supervisor. */
 	signal?: AbortSignal;
+	/**
+	 * Render `context.contextPack` into the raw arm's prompt. DEFAULT FALSE: the raw
+	 * arm is the ablation baseline and must not receive arm (b)'s treatment.
+	 *
+	 * **No rung sets this true today.** `Rung` is `L0|L1|L2|L3` (`eval/ladder.ts`) and an
+	 * L4 "bare tool loop + pack" rung is NOT built — `run-ladder.ts` errors on anything
+	 * else. The parameter exists so the strip is a decision at the call site rather than
+	 * an invisible default; if L4 is never built, delete it and strip unconditionally.
+	 */
+	carryContextPack?: boolean;
 }
 
 /** Options for the paired driver (both arms + orchestration). */
@@ -198,6 +211,28 @@ export function skillNative(skillPluginPath?: string): Record<string, unknown> {
 }
 
 /**
+ * The context the raw arm actually builds its prompt from: the pack is STRIPPED
+ * unless the arm opted in. The raw arm is the ablation baseline — if it receives arm
+ * (b)'s treatment, the ablation the #73 gate depends on is destroyed.
+ *
+ * Exported so the ablation can be ASSERTED rather than trusted to a comment. It lives
+ * here, on the context, and not as a parameter on `buildInvestigationPrompt`: the
+ * engine's prompt builder must stay a pure function of the context, and an
+ * unconditional strip would foreclose an L4 (bare loop + pack) rung, which is NOT
+ * built today — `Rung` is L0|L1|L2|L3 and run-ladder.ts errors on anything else. Named
+ * here as a deliberately-kept seam, not as a description of existing work, since
+ * `rungArmOptions` has no other channel to put the pack back.
+ */
+export function rawArmPromptContext(
+	context: InvestigationContext,
+	carryContextPack?: boolean,
+): InvestigationContext {
+	if (carryContextPack) return context;
+	const { contextPack: _stripped, ...bare } = context;
+	return bare;
+}
+
+/**
  * Arm (a) "raw": drive a BARE Claude Code harness over the neutral on-call brief with
  * the incident-response skill loaded and NO supervisor. The diagnosis is the terminal
  * agent text; cost/tokens come from the terminal branch_done event.
@@ -210,7 +245,9 @@ export async function runRawArm(
 	const ctx: AdapterContext = { runId, branchId: "root" };
 	const config: ClaudeCodeConfig = {
 		cwd: opts.cwd,
-		prompt: buildInvestigationPrompt(context),
+		prompt: buildInvestigationPrompt(
+			rawArmPromptContext(context, opts.carryContextPack),
+		),
 		model: opts.model,
 		maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS,
 		// Isolate host settings/hooks/plugins so the ONLY loaded skill is the vendored
