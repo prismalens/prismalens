@@ -16,7 +16,7 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 	ToolCategory,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import { type AdapterContext, deriveSource } from "./acp-adapter.js";
 
 /** Structural subset of a Claude Agent SDK content block we consume. */

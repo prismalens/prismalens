@@ -32,7 +32,7 @@ import {
 	type ServiceContext,
 	singleAlertContext,
 	type TelemetryEndpoints,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 import {
 	claudeCodeHarness,

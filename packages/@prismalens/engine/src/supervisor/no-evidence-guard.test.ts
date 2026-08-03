@@ -10,8 +10,8 @@
  * Hermetic: the guard in investigateIncidentStream returns BEFORE reduce() (the one
  * supervisor LLM call) ever runs, so this needs no network / no LLM.
  */
-import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts";
-import { singleAlertContext } from "@prismalens/contracts";
+import type { CanonicalEvent, FiringAlert } from "@prismalens/contracts/schemas";
+import { singleAlertContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import type { HarnessRunner } from "./investigate.js";
 import { investigateIncidentStream } from "./investigate.js";

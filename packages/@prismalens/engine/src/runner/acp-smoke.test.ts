@@ -18,7 +18,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { runDeepAgentsBranch } from "./acp-run-branch.js";
 

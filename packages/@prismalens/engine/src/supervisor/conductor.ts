@@ -29,7 +29,7 @@ import { randomUUID } from "node:crypto";
 import type {
 	CanonicalEvent,
 	InvestigationReport,
-} from "@prismalens/contracts";
+} from "@prismalens/contracts/schemas";
 import {
 	type InvestigateOptions,
 	investigateIncidentStream,

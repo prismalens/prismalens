@@ -9,7 +9,7 @@
  * as the starting point for the investigation. (This mirrors PrismaLens's own
  * Alertmanager/webhook alert ingestion.)
  */
-import type { FiringAlert } from "@prismalens/contracts";
+import type { FiringAlert } from "@prismalens/contracts/schemas";
 
 function isRecord(x: unknown): x is Record<string, unknown> {
 	return x !== null && typeof x === "object";

@@ -10,7 +10,7 @@
 import { existsSync, mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
 import { runClaudeCodeBranch } from "./claude-code-runner.js";
 
