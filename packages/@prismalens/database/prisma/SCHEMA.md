@@ -316,7 +316,7 @@ Alert status lifecycle.
 | `acknowledged` | Someone/something is looking at it |
 | `correlated` | Alert has been linked to an Incident |
 | `resolved` | Alert condition cleared |
-| `suppressed` | Manually suppressed/ignored |
+| `suppressed` | Suppressed manually or automatically by a `suppress` correlation rule (terminal for automatic path, excluded from `findUncorrelated`) |
 
 ### IncidentStatus
 Incident status lifecycle.
@@ -497,7 +497,7 @@ Actions for correlation rules.
 | Value | Description |
 |-------|-------------|
 | `correlate` | Add alert to existing incident (or create new) |
-| `suppress` | Suppress the alert (don't create incident) |
+| `suppress` | Suppress the alert: alert is stored, status set to `suppressed`, `incidentId` stays null, correlation waterfall terminates (no fingerprint/time-window/new-incident fallback), forward-only |
 | `create_incident` | Always create a new incident |
 
 ### SettingType
@@ -586,6 +586,7 @@ Status for service suggestions.
 ```
 
 ### Correlation Rule Match Criteria
+Rule precedence: first matching enabled rule by ascending `priority` wins, regardless of action.
 ```json
 {
   "match": {

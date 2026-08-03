@@ -31,9 +31,11 @@ export class AlertsController {
 				const alert = await this.alertsService.create(input as CreateAlertDto);
 				const correlationResult =
 					await this.correlationService.correlateAlert(alert);
+				const finalAlert =
+					(await this.alertsService.findById(alert.id)) ?? alert;
 
 				return {
-					alert: this.serializeAlert(alert),
+					alert: this.serializeAlert(finalAlert),
 					correlation: {
 						incidentId: correlationResult.incidentId,
 						incidentNumber: correlationResult.incidentNumber,
