@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	Culprit,
 	InvestigationWithRelations,
 	RunFidelity,
 	RunFidelitySandbox,
@@ -81,6 +82,38 @@ function SandboxBadge({ sandbox }: { sandbox: RunFidelitySandbox }) {
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>
+	);
+}
+
+/**
+ * Structured culprit identification (ADR-0026 / D3) — service / changeRef /
+ * mechanism, each independently nullable. Identification only: unlike
+ * {@link FidelityBadge}, no field here carries a confidence score, so this
+ * renders as plain labeled values, never a colored/toned badge. Renders
+ * nothing when every field is null.
+ */
+function CulpritSection({ culprit }: { culprit: Culprit }) {
+	const { service, changeRef, mechanism } = culprit;
+	if (!service && !changeRef && !mechanism) return null;
+
+	return (
+		<div className="mt-3 p-3 bg-muted rounded-lg text-sm">
+			<p className="text-muted-foreground mb-2">Culprit</p>
+			<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+				<div>
+					<span className="text-muted-foreground text-xs">Service</span>
+					<p className="font-mono">{service ?? "—"}</p>
+				</div>
+				<div>
+					<span className="text-muted-foreground text-xs">Change ref</span>
+					<p className="font-mono">{changeRef ?? "—"}</p>
+				</div>
+				<div>
+					<span className="text-muted-foreground text-xs">Mechanism</span>
+					<p>{mechanism ?? "—"}</p>
+				</div>
+			</div>
+		</div>
 	);
 }
 
@@ -227,6 +260,7 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 							Root cause analysis not available yet
 						</p>
 					)}
+					{report?.culprit && <CulpritSection culprit={report.culprit} />}
 				</CardContent>
 			</Card>
 
@@ -424,6 +458,16 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 							<span className="text-muted-foreground">Last Updated</span>
 							<p className="font-medium">
 								{new Date(investigation.updatedAt).toLocaleString()}
+							</p>
+						</div>
+						<div>
+							<span className="text-muted-foreground">Origin</span>
+							<p className="font-medium font-mono">{investigation.origin}</p>
+						</div>
+						<div>
+							<span className="text-muted-foreground">Schema version</span>
+							<p className="font-medium font-mono">
+								{investigation.schemaVersion}
 							</p>
 						</div>
 					</div>
