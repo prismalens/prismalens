@@ -62,6 +62,13 @@ export const globalSchema = z.object({
 	PRISMALENS_RENDER_WEBHOOK_SECRET: z
 		.string()
 		.min(16, "Render webhook secret must be at least 16 characters")
+		// Standard Webhooks secrets are base64, optionally carrying the `whsec_`
+		// prefix Render/Svix display in their dashboards. Catching a malformed
+		// secret here beats every delivery failing signature verification later.
+		.regex(
+			/^(whsec_)?(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
+			"Render webhook secret must be base64, optionally prefixed with 'whsec_'",
+		)
 		.optional()
 		.describe(
 			"Optional secret for Render Standard Webhooks signature verification. " +

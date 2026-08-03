@@ -19,6 +19,8 @@ import { LoggerModule } from "@prismalens/logger/nestjs";
 import type { Request } from "express";
 import { AppController } from "./app.controller.js";
 import { WebhookCorsMiddleware } from "./middlewares/webhook-cors.middleware.js";
+import { WebhookRawBodyMiddleware } from "./middlewares/webhook-raw-body.middleware.js";
+import { WEBHOOK_ROUTE_WILDCARD } from "./shared/constants/routes.js";
 
 // Extend oRPC global context for type safety
 declare module "@orpc/nest" {
@@ -160,7 +162,12 @@ export class AppModule implements NestModule {
 		// Apply permissive CORS middleware only to webhook routes
 		// This allows browser-based testing tools while keeping main API restricted
 		if (getConfig().PRISMALENS_CORS_WEBHOOK_OPEN) {
-			consumer.apply(WebhookCorsMiddleware).forRoutes("webhooks/*path");
+			consumer.apply(WebhookCorsMiddleware).forRoutes(WEBHOOK_ROUTE_WILDCARD);
 		}
+
+		// Capture raw request bytes on webhook routes so the signature guards can
+		// verify what the sender actually signed. Scoped to webhooks: every other
+		// route keeps the untouched stream that oRPC reads itself.
+		consumer.apply(WebhookRawBodyMiddleware).forRoutes(WEBHOOK_ROUTE_WILDCARD);
 	}
 }

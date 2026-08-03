@@ -8,6 +8,10 @@ import { NestFactory } from "@nestjs/core";
 import { getConfig } from "@prismalens/config";
 import { Logger } from "@prismalens/logger";
 import { AppModule } from "./app.module.js";
+import {
+	API_GLOBAL_PREFIX,
+	API_GLOBAL_PREFIX_EXCLUDE,
+} from "./shared/constants/routes.js";
 
 // Set service info for all loggers
 Logger.setServiceInfo({
@@ -124,8 +128,8 @@ async function bootstrap() {
 	);
 
 	// API prefix
-	app.setGlobalPrefix("api", {
-		exclude: ["health", "/"],
+	app.setGlobalPrefix(API_GLOBAL_PREFIX, {
+		exclude: API_GLOBAL_PREFIX_EXCLUDE,
 	});
 
 	// Prefer PRISMALENS_PORT/HOST over generics if available in Config setup (mapped in schemas/Global)

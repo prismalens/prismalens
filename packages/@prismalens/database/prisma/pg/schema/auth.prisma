@@ -21,7 +21,7 @@ model User {
   updatedAt     DateTime @updatedAt
 
   // PrismaLens-specific fields
-  role       String    @default("user") // Better Auth admin plugin role
+  role       String    @default("member") // "owner" | "admin" | "member"
   banned     Boolean?
   banReason  String?
   banExpires DateTime?

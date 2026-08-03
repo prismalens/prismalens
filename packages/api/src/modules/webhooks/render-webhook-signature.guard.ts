@@ -9,13 +9,19 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "@prismalens/config";
-import type { Request } from "express";
 import { Webhook } from "svix";
+import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
 
 /**
  * Render Webhook Signature Guard.
  * Uses Svix standard webhooks verification scheme.
  * Checks for webhook-signature (falling back to svix-signature).
+ *
+ * Verification runs against the raw request bytes captured by
+ * `WebhookRawBodyMiddleware`. Re-serializing the parsed body would hash a
+ * different byte sequence than the sender signed, so a request that reaches
+ * this guard without `rawBody` is rejected rather than verified against a
+ * reconstruction.
  */
 @Injectable()
 export class RenderWebhookSignatureGuard implements CanActivate {
@@ -31,7 +37,7 @@ export class RenderWebhookSignatureGuard implements CanActivate {
 			return true; // No secret configured — allow all (community edition default)
 		}
 
-		const request = context.switchToHttp().getRequest<Request>();
+		const request = context.switchToHttp().getRequest<RequestWithRawBody>();
 		const headers = request.headers;
 
 		const id = (headers["webhook-id"] ?? headers["svix-id"]) as
@@ -49,12 +55,13 @@ export class RenderWebhookSignatureGuard implements CanActivate {
 			return false;
 		}
 
-		const reqWithRaw = request as Request & { rawBody?: Buffer };
-		const rawBody = reqWithRaw.rawBody
-			? reqWithRaw.rawBody.toString("utf8")
-			: typeof request.body === "string"
-				? request.body
-				: JSON.stringify(request.body ?? {});
+		const rawBody = request.rawBody;
+		if (!rawBody) {
+			this.logger.warn(
+				"Render webhook rejected: raw request body unavailable — WebhookRawBodyMiddleware must run for this route",
+			);
+			return false;
+		}
 
 		const svixHeaders: Record<string, string> = {
 			"svix-id": id,

@@ -188,10 +188,14 @@ export class AlertsService {
 			...(options?.status && { status: options.status }),
 			...(options?.severity && { severity: options.severity }),
 			...(options?.serviceId && { serviceId: options.serviceId }),
-			...(options?.incidentId && { incidentId: options.incidentId }),
-			...(options?.hasIncident !== undefined && {
-				incidentId: options.hasIncident ? { not: null } : null,
-			}),
+			// A specific incidentId wins over the coarser hasIncident predicate.
+			// Both write the same key, so spreading hasIncident unconditionally
+			// would silently discard the caller's incidentId filter.
+			...(options?.incidentId
+				? { incidentId: options.incidentId }
+				: options?.hasIncident !== undefined && {
+						incidentId: options.hasIncident ? { not: null } : null,
+					}),
 		};
 
 		const [data, total] = await Promise.all([

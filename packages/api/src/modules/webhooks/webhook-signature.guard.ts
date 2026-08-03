@@ -10,12 +10,17 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "@prismalens/config";
-import type { Request } from "express";
+import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
+import { RENDER_WEBHOOK_PATH } from "../../shared/constants/routes.js";
 
 /**
  * Optional HMAC signature verification guard for webhooks.
  * When PRISMALENS_WEBHOOK_SECRET is set, requires valid X-Hub-Signature-256 header.
  * When not set, all requests pass through (community edition default).
+ *
+ * Like the Render guard, the HMAC is computed over the raw bytes captured by
+ * `WebhookRawBodyMiddleware` — re-serializing the parsed body would hash a
+ * different byte sequence than the sender signed.
  */
 @Injectable()
 export class WebhookSignatureGuard implements CanActivate {
@@ -26,8 +31,8 @@ export class WebhookSignatureGuard implements CanActivate {
 	) {}
 
 	canActivate(context: ExecutionContext): boolean {
-		const request = context.switchToHttp().getRequest<Request>();
-		if (request.path === "/webhooks/render") {
+		const request = context.switchToHttp().getRequest<RequestWithRawBody>();
+		if (request.path === RENDER_WEBHOOK_PATH) {
 			return true; // Render has its own dedicated signature guard
 		}
 
@@ -45,8 +50,15 @@ export class WebhookSignatureGuard implements CanActivate {
 			return false;
 		}
 
-		const body = JSON.stringify(request.body);
-		const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+		const rawBody = request.rawBody;
+		if (!rawBody) {
+			this.logger.warn(
+				"Webhook rejected: raw request body unavailable — WebhookRawBodyMiddleware must run for this route",
+			);
+			return false;
+		}
+
+		const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
 
 		try {
 			const sigBuf = Buffer.from(signature);

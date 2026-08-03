@@ -75,9 +75,10 @@ function InvestigationsPage() {
 
 	const hasFilters = statusFilter !== "all";
 
-	// Calculate stats
+	// Calculate stats. The total comes from the pagination envelope — the loaded
+	// page is capped at `limit`, so counting rows would under-report it.
 	const stats = {
-		total: investigations.length,
+		total: investigationsResponse?.pagination.total ?? 0,
 		running: investigations.filter((i) => i.status === "running").length,
 		completed: investigations.filter((i) => i.status === "completed").length,
 		failed: investigations.filter((i) => i.status === "failed").length,
