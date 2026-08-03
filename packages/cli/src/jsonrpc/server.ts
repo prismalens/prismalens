@@ -29,6 +29,7 @@ import {
 	type SandboxMode,
 	type SandboxSelection,
 } from "@prismalens/engine";
+import { consola } from "consola";
 import {
 	JSONRPCErrorException,
 	type JSONRPCRequest,
@@ -149,6 +150,26 @@ export function parseInvestigateParams(raw: unknown): InvestigateParams {
 		out.maxTurns = p.maxTurns;
 	}
 	return out;
+}
+
+/**
+ * Routes a JSON-RPC dispatch failure to the right log level (#192). A
+ * `JSONRPCErrorException` carrying `INVALID_PARAMS` or `NO_EVIDENCE` is a
+ * well-formed CLIENT input error — the caller already gets a clean
+ * -32602/-32000 response on stdout, so stderr gets one WARN line, not a stack
+ * trace. `INTERNAL_ERROR` (-32603) and anything else is a genuinely
+ * unexpected failure and keeps the full error object (stack trace) on
+ * stderr, unchanged from today's behavior.
+ */
+export function logJsonRpcDispatchError(message: string, error: unknown): void {
+	if (
+		error instanceof JSONRPCErrorException &&
+		(error.code === INVALID_PARAMS || error.code === NO_EVIDENCE)
+	) {
+		consola.warn(`${message} ${error.message}`);
+		return;
+	}
+	consola.error(message, error);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +318,7 @@ export async function runJsonRpcServer(
 		}
 	};
 
-	const server = new JSONRPCServer();
+	const server = new JSONRPCServer({ errorListener: logJsonRpcDispatchError });
 	server.addMethod("initialize", () => handleInitialize());
 	server.addMethod("investigate", (params: unknown) =>
 		handleInvestigate(params),
