@@ -5,11 +5,14 @@ import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-	CanonicalEvent,
-	InvestigationReport,
+import {
+	type CanonicalEvent,
+	type InvestigationReport,
+	InvestigationReportSchema,
 } from "@prismalens/contracts";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import consola from "consola";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import reportCommand from "../cli/report.js";
 import { createSessionManager, type GroupRecord } from "./session.js";
 
 /** Read a group's row + its alerts back out of the raw db (not on the interface). */
@@ -321,5 +324,269 @@ describe("SqliteSessionManager", () => {
 		expect(g.group?.group_key).toBe("k2");
 		expect(g.alerts).toEqual([{ fingerprint: "b1" }, { fingerprint: "b2" }]);
 		expect(g.lateAlerts).toEqual([]);
+	});
+
+	it("16. R5b-5: months-old session record re-renders schema-valid with defaults backfilled and no data loss (ADR-0026)", async () => {
+		const { DatabaseSync } = await import("node:sqlite");
+		const { mkdirSync } = await import("node:fs");
+
+		const oldBaseDir = join(baseDir, "old-db-test");
+		mkdirSync(oldBaseDir, { recursive: true });
+		const oldDbPath = join(oldBaseDir, "prismalens.db");
+		const rawDb = new DatabaseSync(oldDbPath);
+
+		const oldRunId = "old-run-2025-08";
+		const createdAt = "2025-08-15T08:00:00.000Z";
+		const completedAt = "2025-08-15T08:05:00.000Z";
+
+		const oldReportPayload = {
+			summary:
+				"High memory usage caused by memory leak in payment token cache",
+			rootCause:
+				"LRU cache retained expired session tokens without eviction ceiling",
+			rootCauseCategory: "code" as const,
+			hypotheses: [
+				{
+					statement: "Token cache retains invalid entries under load",
+					status: "confirmed" as const,
+					evidence: [
+						{
+							observation:
+								"Heap profile shows 80% memory held by Map in token-store.js",
+							source: "node --prof",
+							direction: "supports" as const,
+							status: "verified" as const,
+						},
+					],
+				},
+			],
+			ruledOut: [
+				{
+					statement: "External database socket leak",
+					why: "Socket count stayed constant at 20 connections",
+					evidence: [
+						{
+							observation: "netstat count for DB port remained 20",
+							source: "netstat",
+							direction: "contradicts" as const,
+							status: "verified" as const,
+						},
+					],
+				},
+			],
+			coverage: {
+				queried: ["node --prof", "netstat"],
+				notQueried: ["redis.info"],
+			},
+			nextSteps: [
+				{
+					title: "Set TTL and max size on token cache",
+					detail: "Configure lru-cache with max: 10000 items",
+					priority: "high" as const,
+				},
+			],
+		};
+
+		const event1 = { kind: "started", runId: oldRunId };
+		const event2 = {
+			kind: "agent_step",
+			runId: oldRunId,
+			text: "Investigating memory leak...",
+			toolCalls: [],
+		};
+		const event3 = { kind: "completed", runId: oldRunId };
+
+		try {
+			rawDb.exec(`
+				CREATE TABLE groups (
+					id         TEXT PRIMARY KEY,
+					group_key  TEXT,
+					formed_by  TEXT NOT NULL DEFAULT 'window',
+					created_at TEXT NOT NULL
+				);
+
+				CREATE TABLE runs (
+					run_id         TEXT PRIMARY KEY,
+					group_id       TEXT REFERENCES groups(id),
+					status         TEXT NOT NULL CHECK (status IN ('running','done','errored','suppressed')),
+					alertname      TEXT,
+					agent          TEXT,
+					repo           TEXT,
+					workspace_path TEXT NOT NULL,
+					error          TEXT,
+					suppression_reason TEXT,
+					created_at     TEXT NOT NULL,
+					updated_at     TEXT NOT NULL,
+					completed_at   TEXT
+				);
+
+				CREATE TABLE events (
+					id      INTEGER PRIMARY KEY AUTOINCREMENT,
+					run_id  TEXT NOT NULL REFERENCES runs(run_id),
+					payload TEXT NOT NULL
+				);
+
+				CREATE TABLE reports (
+					run_id  TEXT PRIMARY KEY REFERENCES runs(run_id),
+					payload TEXT NOT NULL
+				);
+
+				CREATE TABLE group_alerts (
+					id       INTEGER PRIMARY KEY AUTOINCREMENT,
+					group_id TEXT NOT NULL REFERENCES groups(id),
+					late     INTEGER NOT NULL,
+					payload  TEXT NOT NULL
+				);
+			`);
+
+			rawDb
+				.prepare(`
+				INSERT INTO groups (id, group_key, formed_by, created_at)
+				VALUES (?, '{}:{alertname="HighMemoryUsage"}', 'window', ?)
+			`)
+				.run(oldRunId, createdAt);
+
+			rawDb
+				.prepare(`
+				INSERT INTO runs (
+					run_id, group_id, status, alertname, agent, repo,
+					workspace_path, created_at, updated_at, completed_at
+				) VALUES (?, ?, 'done', 'HighMemoryUsage', 'deepagents', 'acme/payment-service', ?, ?, ?, ?)
+			`)
+				.run(
+					oldRunId,
+					oldRunId,
+					`/home/sumit/.prismalens/runs/${oldRunId}`,
+					createdAt,
+					completedAt,
+					completedAt,
+				);
+
+			rawDb
+				.prepare(`
+				INSERT INTO reports (run_id, payload)
+				VALUES (?, ?)
+			`)
+				.run(oldRunId, JSON.stringify(oldReportPayload));
+
+			rawDb
+				.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
+				.run(oldRunId, JSON.stringify(event1));
+			rawDb
+				.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
+				.run(oldRunId, JSON.stringify(event2));
+			rawDb
+				.prepare("INSERT INTO events (run_id, payload) VALUES (?, ?)")
+				.run(oldRunId, JSON.stringify(event3));
+		} finally {
+			rawDb.close();
+		}
+
+		// 2. Load the old database via current SessionManager code
+		const currentSessions = createSessionManager(oldBaseDir);
+
+		try {
+			// (a) Assert session record reads back with defaults backfilled
+			const fetchedSession = await currentSessions.get(oldRunId);
+			expect(fetchedSession).not.toBeNull();
+			expect(fetchedSession?.runId).toBe(oldRunId);
+			expect(fetchedSession?.status).toBe("done");
+			expect(fetchedSession?.alertname).toBe("HighMemoryUsage");
+			expect(fetchedSession?.agent).toBe("deepagents");
+			expect(fetchedSession?.repo).toBe("acme/payment-service");
+			expect(fetchedSession?.workspacePath).toBe(
+				`/home/sumit/.prismalens/runs/${oldRunId}`,
+			);
+			expect(fetchedSession?.createdAt).toBe(createdAt);
+			expect(fetchedSession?.completedAt).toBe(completedAt);
+			// Backfilled defaults (ADR-0026)
+			expect(fetchedSession?.schemaVersion).toBe(1);
+			expect(fetchedSession?.origin).toBe("local");
+
+			// (b) Assert readReport() returns a schema-valid report without throwing
+			const fetchedReport = await currentSessions.readReport(oldRunId);
+			expect(fetchedReport).not.toBeNull();
+
+			const parsedReport = InvestigationReportSchema.parse(fetchedReport);
+			expect(parsedReport).toBeDefined();
+
+			// (c) Assert no field present in old record is dropped
+			expect(parsedReport.summary).toBe(oldReportPayload.summary);
+			expect(parsedReport.rootCause).toBe(oldReportPayload.rootCause);
+			expect(parsedReport.rootCauseCategory).toBe(
+				oldReportPayload.rootCauseCategory,
+			);
+			expect(parsedReport.hypotheses).toEqual(oldReportPayload.hypotheses);
+			expect(parsedReport.ruledOut).toEqual(oldReportPayload.ruledOut);
+			expect(parsedReport.coverage).toEqual(oldReportPayload.coverage);
+			expect(parsedReport.nextSteps).toEqual(oldReportPayload.nextSteps);
+			// Omitted optional ADR-0026/0017 fields resolve cleanly
+			expect(parsedReport.culprit).toBeUndefined();
+			expect(parsedReport.fidelity).toBeUndefined();
+
+			// Assert timeline events are also preserved intact
+			const fetchedEvents = await currentSessions.readEvents(oldRunId);
+			expect(fetchedEvents).toEqual([event1, event2, event3]);
+		} finally {
+			currentSessions.close?.();
+		}
+
+		// (d) Assert pl report CLI command path re-renders without throwing or erroring
+		// Preserve/restore the ambient exitCode rather than always forcing it to
+		// undefined, so this test can't clobber state a sibling test relies on.
+		const originalExitCode = process.exitCode;
+		const stdoutSpy = vi
+			.spyOn(process.stdout, "write")
+			.mockImplementation(() => true);
+		process.exitCode = undefined;
+		try {
+			await reportCommand.run({
+				args: {
+					id: oldRunId,
+					"workspace-dir": oldBaseDir,
+					json: true,
+					events: true,
+				},
+				cmd: reportCommand,
+			});
+			expect(stdoutSpy).toHaveBeenCalled();
+			const outputJson = JSON.parse(stdoutSpy.mock.calls[0]?.[0] as string);
+			expect(outputJson.report.summary).toBe(oldReportPayload.summary);
+			expect(outputJson.events).toEqual([event1, event2, event3]);
+			expect(process.exitCode).toBeFalsy();
+		} finally {
+			stdoutSpy.mockRestore();
+			process.exitCode = originalExitCode;
+		}
+
+		// Also test non-JSON human-readable consola output path
+		const consolaSpy = vi
+			.spyOn(consola, "log")
+			.mockImplementation(() => undefined);
+		process.exitCode = undefined;
+		try {
+			await reportCommand.run({
+				args: {
+					id: oldRunId,
+					"workspace-dir": oldBaseDir,
+					json: false,
+					events: true,
+				},
+				cmd: reportCommand,
+			});
+			expect(consolaSpy).toHaveBeenCalled();
+			// Assert the rendered human-readable output actually carries the
+			// report content and timeline events, not just that logging happened.
+			const humanReport = JSON.parse(consolaSpy.mock.calls[0]?.[0] as string);
+			expect(humanReport.summary).toBe(oldReportPayload.summary);
+			const humanEvents = consolaSpy.mock.calls
+				.slice(2)
+				.map((call) => JSON.parse(call[0] as string));
+			expect(humanEvents).toEqual([event1, event2, event3]);
+			expect(process.exitCode).toBeFalsy();
+		} finally {
+			consolaSpy.mockRestore();
+			process.exitCode = originalExitCode;
+		}
 	});
 });
