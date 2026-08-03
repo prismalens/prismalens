@@ -16,17 +16,8 @@
 			"types": "./dist/colors.d.ts",
 			"import": "./dist/colors.js"
 		},
-		"./fonts": {
-			"types": "./dist/fonts.d.ts",
-			"import": "./dist/fonts.js"
-		},
-		"./animations": {
-			"types": "./dist/animations.d.ts",
-			"import": "./dist/animations.js"
-		},
 		"./tokens.css": "./css/tokens.css",
-		"./tailwind-preset.css": "./css/tailwind-preset.css",
-		"./starlight.css": "./css/starlight.css"
+		"./tailwind-preset.css": "./css/tailwind-preset.css"
 	},
 	"scripts": {
 		"build": "tsc",
