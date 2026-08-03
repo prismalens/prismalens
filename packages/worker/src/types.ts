@@ -5,6 +5,7 @@ import type {
 	AgentType,
 	EffortEstimate,
 	ExecutionStatus,
+	InvestigationJobData,
 	RecommendationCategory,
 	RecommendationPriority,
 	ToolCategory,
@@ -12,17 +13,7 @@ import type {
 	Urgency,
 } from "@prismalens/contracts/schemas";
 
-export interface InvestigationJobData {
-	incidentId: string;
-	investigationId: string;
-	/** BullMQ queue priority — not a domain enum */
-	priority?: "low" | "normal" | "high" | "critical";
-	context?: Record<string, unknown>;
-	/** Connection IDs for integration credentials - worker fetches on-demand */
-	connectionIds?: string[];
-	incidentData?: Record<string, unknown>;
-	alerts?: unknown[];
-}
+export type { InvestigationJobData };
 
 export interface InvestigationResult {
 	success: boolean;

@@ -116,6 +116,7 @@ export class IncidentsService {
 			where: { id },
 			include: {
 				alerts: {
+					// Deliberate current choice: order newest alert first as primary alert downstream
 					orderBy: { triggeredAt: "desc" },
 				},
 				service: {

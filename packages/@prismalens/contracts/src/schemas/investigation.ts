@@ -683,3 +683,65 @@ export function singleAlertContext(
 ): InvestigationContext {
 	return correlatedAlertsContext([alert], telemetry, extras);
 }
+
+// =============================================================================
+// INVESTIGATION QUEUE JOB DATA SCHEMAS
+// =============================================================================
+
+export const InvestigationJobDataSchema = z.object({
+	incidentId: z.string(),
+	investigationId: z.string(),
+	priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+	context: z.record(z.string(), z.unknown()).optional(),
+	connectionIds: z.array(z.string()).optional(),
+	alerts: z.array(FiringAlertSchema).optional(),
+});
+
+export type InvestigationJobData = z.infer<typeof InvestigationJobDataSchema>;
+
+/** Map an alert object or DB alert row into a FiringAlert projection. */
+export function toFiringAlert(row: Record<string, unknown>): FiringAlert {
+	const rawLabels = row.labels;
+	let labels: Record<string, string> = {};
+	if (typeof rawLabels === "string") {
+		try {
+			labels = JSON.parse(rawLabels) as Record<string, string>;
+		} catch {
+			labels = {};
+		}
+	} else if (rawLabels && typeof rawLabels === "object") {
+		labels = rawLabels as Record<string, string>;
+	}
+
+	const rawAnnotations = row.annotations;
+	let annotations: Record<string, string> = {};
+	if (typeof rawAnnotations === "string") {
+		try {
+			annotations = JSON.parse(rawAnnotations) as Record<string, string>;
+		} catch {
+			annotations = {};
+		}
+	} else if (rawAnnotations && typeof rawAnnotations === "object") {
+		annotations = { ...(rawAnnotations as Record<string, string>) };
+	}
+
+	if (row.description && !annotations.summary && !annotations.description) {
+		annotations.summary = String(row.description);
+	}
+
+	const rawStartsAt = row.triggeredAt ?? row.startsAt ?? null;
+	const startsAt =
+		rawStartsAt instanceof Date
+			? rawStartsAt.toISOString()
+			: typeof rawStartsAt === "string"
+				? rawStartsAt
+				: null;
+
+	return {
+		alertname: (row.title as string) ?? (row.alertname as string) ?? "Alert",
+		severity: (row.severity as string) ?? labels.severity ?? null,
+		labels,
+		annotations,
+		startsAt,
+	};
+}
