@@ -485,54 +485,60 @@ describe("SqliteSessionManager", () => {
 		// 2. Load the old database via current SessionManager code
 		const currentSessions = createSessionManager(oldBaseDir);
 
-		// (a) Assert session record reads back with defaults backfilled
-		const fetchedSession = await currentSessions.get(oldRunId);
-		expect(fetchedSession).not.toBeNull();
-		expect(fetchedSession?.runId).toBe(oldRunId);
-		expect(fetchedSession?.status).toBe("done");
-		expect(fetchedSession?.alertname).toBe("HighMemoryUsage");
-		expect(fetchedSession?.agent).toBe("deepagents");
-		expect(fetchedSession?.repo).toBe("acme/payment-service");
-		expect(fetchedSession?.workspacePath).toBe(
-			`/home/sumit/.prismalens/runs/${oldRunId}`,
-		);
-		expect(fetchedSession?.createdAt).toBe(createdAt);
-		expect(fetchedSession?.completedAt).toBe(completedAt);
-		// Backfilled defaults (ADR-0026)
-		expect(fetchedSession?.schemaVersion).toBe(1);
-		expect(fetchedSession?.origin).toBe("local");
+		try {
+			// (a) Assert session record reads back with defaults backfilled
+			const fetchedSession = await currentSessions.get(oldRunId);
+			expect(fetchedSession).not.toBeNull();
+			expect(fetchedSession?.runId).toBe(oldRunId);
+			expect(fetchedSession?.status).toBe("done");
+			expect(fetchedSession?.alertname).toBe("HighMemoryUsage");
+			expect(fetchedSession?.agent).toBe("deepagents");
+			expect(fetchedSession?.repo).toBe("acme/payment-service");
+			expect(fetchedSession?.workspacePath).toBe(
+				`/home/sumit/.prismalens/runs/${oldRunId}`,
+			);
+			expect(fetchedSession?.createdAt).toBe(createdAt);
+			expect(fetchedSession?.completedAt).toBe(completedAt);
+			// Backfilled defaults (ADR-0026)
+			expect(fetchedSession?.schemaVersion).toBe(1);
+			expect(fetchedSession?.origin).toBe("local");
 
-		// (b) Assert readReport() returns a schema-valid report without throwing
-		const fetchedReport = await currentSessions.readReport(oldRunId);
-		expect(fetchedReport).not.toBeNull();
+			// (b) Assert readReport() returns a schema-valid report without throwing
+			const fetchedReport = await currentSessions.readReport(oldRunId);
+			expect(fetchedReport).not.toBeNull();
 
-		const parsedReport = InvestigationReportSchema.parse(fetchedReport);
-		expect(parsedReport).toBeDefined();
+			const parsedReport = InvestigationReportSchema.parse(fetchedReport);
+			expect(parsedReport).toBeDefined();
 
-		// (c) Assert no field present in old record is dropped
-		expect(parsedReport.summary).toBe(oldReportPayload.summary);
-		expect(parsedReport.rootCause).toBe(oldReportPayload.rootCause);
-		expect(parsedReport.rootCauseCategory).toBe(
-			oldReportPayload.rootCauseCategory,
-		);
-		expect(parsedReport.hypotheses).toEqual(oldReportPayload.hypotheses);
-		expect(parsedReport.ruledOut).toEqual(oldReportPayload.ruledOut);
-		expect(parsedReport.coverage).toEqual(oldReportPayload.coverage);
-		expect(parsedReport.nextSteps).toEqual(oldReportPayload.nextSteps);
-		// Omitted optional ADR-0026/0017 fields resolve cleanly
-		expect(parsedReport.culprit).toBeUndefined();
-		expect(parsedReport.fidelity).toBeUndefined();
+			// (c) Assert no field present in old record is dropped
+			expect(parsedReport.summary).toBe(oldReportPayload.summary);
+			expect(parsedReport.rootCause).toBe(oldReportPayload.rootCause);
+			expect(parsedReport.rootCauseCategory).toBe(
+				oldReportPayload.rootCauseCategory,
+			);
+			expect(parsedReport.hypotheses).toEqual(oldReportPayload.hypotheses);
+			expect(parsedReport.ruledOut).toEqual(oldReportPayload.ruledOut);
+			expect(parsedReport.coverage).toEqual(oldReportPayload.coverage);
+			expect(parsedReport.nextSteps).toEqual(oldReportPayload.nextSteps);
+			// Omitted optional ADR-0026/0017 fields resolve cleanly
+			expect(parsedReport.culprit).toBeUndefined();
+			expect(parsedReport.fidelity).toBeUndefined();
 
-		// Assert timeline events are also preserved intact
-		const fetchedEvents = await currentSessions.readEvents(oldRunId);
-		expect(fetchedEvents).toEqual([event1, event2, event3]);
-
-		currentSessions.close?.();
+			// Assert timeline events are also preserved intact
+			const fetchedEvents = await currentSessions.readEvents(oldRunId);
+			expect(fetchedEvents).toEqual([event1, event2, event3]);
+		} finally {
+			currentSessions.close?.();
+		}
 
 		// (d) Assert pl report CLI command path re-renders without throwing or erroring
+		// Preserve/restore the ambient exitCode rather than always forcing it to
+		// undefined, so this test can't clobber state a sibling test relies on.
+		const originalExitCode = process.exitCode;
 		const stdoutSpy = vi
 			.spyOn(process.stdout, "write")
 			.mockImplementation(() => true);
+		process.exitCode = undefined;
 		try {
 			await reportCommand.run({
 				args: {
@@ -547,14 +553,17 @@ describe("SqliteSessionManager", () => {
 			const outputJson = JSON.parse(stdoutSpy.mock.calls[0]?.[0] as string);
 			expect(outputJson.report.summary).toBe(oldReportPayload.summary);
 			expect(outputJson.events).toEqual([event1, event2, event3]);
+			expect(process.exitCode).toBeFalsy();
 		} finally {
 			stdoutSpy.mockRestore();
+			process.exitCode = originalExitCode;
 		}
 
 		// Also test non-JSON human-readable consola output path
 		const consolaSpy = vi
 			.spyOn(consola, "log")
 			.mockImplementation(() => undefined);
+		process.exitCode = undefined;
 		try {
 			await reportCommand.run({
 				args: {
@@ -566,8 +575,18 @@ describe("SqliteSessionManager", () => {
 				cmd: reportCommand,
 			});
 			expect(consolaSpy).toHaveBeenCalled();
+			// Assert the rendered human-readable output actually carries the
+			// report content and timeline events, not just that logging happened.
+			const humanReport = JSON.parse(consolaSpy.mock.calls[0]?.[0] as string);
+			expect(humanReport.summary).toBe(oldReportPayload.summary);
+			const humanEvents = consolaSpy.mock.calls
+				.slice(2)
+				.map((call) => JSON.parse(call[0] as string));
+			expect(humanEvents).toEqual([event1, event2, event3]);
+			expect(process.exitCode).toBeFalsy();
 		} finally {
 			consolaSpy.mockRestore();
+			process.exitCode = originalExitCode;
 		}
 	});
 });
