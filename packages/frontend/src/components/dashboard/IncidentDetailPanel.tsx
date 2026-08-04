@@ -32,11 +32,29 @@ export interface IncidentDetailPanelProps {
 		}>;
 	};
 	isLlmConfigured: boolean;
+	onAcknowledge?: () => void;
+	onInvestigate?: () => void;
+	onResolve?: () => void;
+	canAcknowledge?: boolean;
+	canInvestigate?: boolean;
+	canResolve?: boolean;
+	isAcknowledging?: boolean;
+	isInvestigating?: boolean;
+	isResolving?: boolean;
 }
 
 export function IncidentDetailPanel({
 	incident,
 	isLlmConfigured,
+	onAcknowledge,
+	onInvestigate,
+	onResolve,
+	canAcknowledge = incident.status === "triggered",
+	canInvestigate = ["triggered", "investigating"].includes(incident.status),
+	canResolve = !["resolved", "closed"].includes(incident.status),
+	isAcknowledging,
+	isInvestigating,
+	isResolving,
 }: IncidentDetailPanelProps) {
 	const latestInvestigation = incident.investigations?.[0];
 
@@ -176,18 +194,20 @@ export function IncidentDetailPanel({
 								<p className="text-sm text-muted-foreground mb-3">
 									No investigation yet
 								</p>
-								{isLlmConfigured ? (
-									<Button size="sm" asChild>
-										<Link to="/incidents/$id" params={{ id: incident.id }}>
-											<Brain className="h-4 w-4 mr-2" />
-											Start Investigation
-										</Link>
+								{isLlmConfigured && canInvestigate && onInvestigate ? (
+									<Button
+										size="sm"
+										onClick={onInvestigate}
+										disabled={isInvestigating}
+									>
+										<Brain className="h-4 w-4 mr-2" />
+										{isInvestigating ? "Starting..." : "Start Investigation"}
 									</Button>
-								) : (
+								) : !isLlmConfigured ? (
 									<p className="text-xs text-muted-foreground">
 										Configure LLM in settings to enable AI investigations
 									</p>
-								)}
+								) : null}
 							</div>
 						)}
 					</TabsContent>
@@ -206,18 +226,30 @@ export function IncidentDetailPanel({
 				</Tabs>
 
 				{/* Quick Actions */}
-				<div className="flex gap-2 mt-4 pt-4 border-t">
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents/$id" params={{ id: incident.id }}>
-							Acknowledge
-						</Link>
-					</Button>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/incidents/$id" params={{ id: incident.id }}>
-							Resolve
-						</Link>
-					</Button>
-				</div>
+				{((canAcknowledge && onAcknowledge) || (canResolve && onResolve)) && (
+					<div className="flex gap-2 mt-4 pt-4 border-t">
+						{canAcknowledge && onAcknowledge && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={onAcknowledge}
+								disabled={isAcknowledging}
+							>
+								{isAcknowledging ? "Acknowledging..." : "Acknowledge"}
+							</Button>
+						)}
+						{canResolve && onResolve && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={onResolve}
+								disabled={isResolving}
+							>
+								{isResolving ? "Resolving..." : "Resolve"}
+							</Button>
+						)}
+					</div>
+				)}
 			</CardContent>
 		</>
 	);
