@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLlmSettings } from "@/lib/api/hooks";
+import { incidentKeys, investigationKeys, useLlmSettings } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
@@ -119,7 +119,7 @@ function CommandCenter() {
 	const updateMutation = useMutation({
 		...orpc.incidents.update.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
 		},
 	});
 
@@ -127,8 +127,8 @@ function CommandCenter() {
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
 		onSuccess: (data) => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
-			queryClient.invalidateQueries({ queryKey: ["investigations"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
 			// Navigate to the investigation
 			if (data.investigationId) {
 				navigate({
@@ -143,7 +143,7 @@ function CommandCenter() {
 	const resolveMutation = useMutation({
 		...orpc.incidents.resolve.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
 		},
 	});
 
