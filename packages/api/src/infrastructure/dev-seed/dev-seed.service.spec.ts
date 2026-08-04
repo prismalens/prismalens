@@ -32,6 +32,9 @@ describe("DevSeedService", () => {
 		alert: {
 			count: vi.fn(),
 		},
+		incident: {
+			count: vi.fn(),
+		},
 	};
 
 	beforeEach(async () => {
@@ -65,6 +68,7 @@ describe("DevSeedService", () => {
 
 		mockUsersService.isSetupComplete.mockResolvedValue(false);
 		mockPrisma.alert.count.mockResolvedValue(0);
+		mockPrisma.incident.count.mockResolvedValue(0);
 
 		await service.onApplicationBootstrap();
 
@@ -82,6 +86,7 @@ describe("DevSeedService", () => {
 
 		mockUsersService.isSetupComplete.mockResolvedValue(false);
 		mockPrisma.alert.count.mockResolvedValue(0);
+		mockPrisma.incident.count.mockResolvedValue(0);
 
 		await service.onApplicationBootstrap();
 
@@ -106,10 +111,23 @@ describe("DevSeedService", () => {
 
 		mockUsersService.isSetupComplete.mockResolvedValue(true);
 		mockPrisma.alert.count.mockResolvedValue(60);
+		mockPrisma.incident.count.mockResolvedValue(0);
 
 		await service.onApplicationBootstrap();
 
 		expect(mockUsersService.setupOwner).not.toHaveBeenCalled();
+		expect(mockSeedDemoData).not.toHaveBeenCalled();
+	});
+
+	it("does NOT seed demo data when alerts are empty but incidents already exist", async () => {
+		process.env.NODE_ENV = "development";
+
+		mockUsersService.isSetupComplete.mockResolvedValue(true);
+		mockPrisma.alert.count.mockResolvedValue(0);
+		mockPrisma.incident.count.mockResolvedValue(3);
+
+		await service.onApplicationBootstrap();
+
 		expect(mockSeedDemoData).not.toHaveBeenCalled();
 	});
 });

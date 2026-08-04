@@ -39,8 +39,11 @@ export class DevSeedService implements OnApplicationBootstrap {
 				this.logger.log("Default owner user created");
 			}
 
-			const alertCount = await this.prisma.alert.count();
-			if (alertCount === 0) {
+			const [alertCount, incidentCount] = await Promise.all([
+				this.prisma.alert.count(),
+				this.prisma.incident.count(),
+			]);
+			if (alertCount === 0 && incidentCount === 0) {
 				this.logger.log("Seeding demo data into empty database...");
 				await seedDemoData(this.prisma);
 				this.logger.log("Demo data seeded successfully");
