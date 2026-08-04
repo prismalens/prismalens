@@ -48,6 +48,7 @@ pnpm install
 pnpm build        # turbo run build
 pnpm typecheck    # turbo run typecheck
 pnpm test         # turbo run test
+pnpm --filter @prismalens/frontend test:e2e  # Playwright e2e smoke suite (boots isolated workspace via PRISMALENS_WORKSPACE_DIR + seeded demo data; requires ports 3000 and 3001 free)
 pnpm format-and-lint        # biome check . (lint + format)
 pnpm format-and-lint:fix    # biome check . --write
 ```

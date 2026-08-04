@@ -97,7 +97,9 @@ function AlertsPage() {
 				<div className="flex items-center gap-6 text-sm">
 					<div>
 						<span className="text-muted-foreground">Total:</span>{" "}
-						<span className="font-medium">{stats.total}</span>
+						<span className="font-medium" data-testid="alerts-total-count">
+							{stats.total}
+						</span>
 					</div>
 					<div>
 						<span className="text-muted-foreground">Triggered:</span>{" "}
