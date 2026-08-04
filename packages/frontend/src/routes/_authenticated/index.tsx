@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import {
 	AlertCircle,
@@ -28,7 +28,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLlmSettings } from "@/lib/api/hooks";
+import {
+	incidentKeys,
+	investigationKeys,
+	useLlmSettings,
+} from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +42,8 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function CommandCenter() {
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(
 		null,
 	);
@@ -112,6 +118,64 @@ function CommandCenter() {
 	}, [activeIncidents, selectedIncidentId]);
 
 	const isLoading = incidentsLoading || alertsLoading || recommendationsLoading;
+
+	// Update incident mutation (for acknowledge)
+	const updateMutation = useMutation({
+		...orpc.incidents.update.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
+		},
+	});
+
+	// Investigate mutation
+	const investigateMutation = useMutation({
+		...orpc.incidents.investigate.mutationOptions(),
+		onSuccess: (data) => {
+			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
+			// Navigate to the investigation
+			if (data.investigationId) {
+				navigate({
+					to: "/investigations/$id",
+					params: { id: data.investigationId },
+				});
+			}
+		},
+	});
+
+	// Resolve mutation
+	const resolveMutation = useMutation({
+		...orpc.incidents.resolve.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
+		},
+	});
+
+	const canAcknowledge = selectedIncident
+		? selectedIncident.status === "triggered"
+		: false;
+	const canInvestigate = selectedIncident
+		? ["triggered", "investigating"].includes(selectedIncident.status)
+		: false;
+	const canResolve = selectedIncident
+		? !["resolved", "closed"].includes(selectedIncident.status)
+		: false;
+
+	const handleAcknowledge = selectedIncident
+		? () =>
+				updateMutation.mutate({
+					id: selectedIncident.id,
+					status: "investigating",
+				})
+		: undefined;
+
+	const handleInvestigate = selectedIncident
+		? () => investigateMutation.mutate({ id: selectedIncident.id })
+		: undefined;
+
+	const handleResolve = selectedIncident
+		? () => resolveMutation.mutate({ id: selectedIncident.id })
+		: undefined;
 
 	return (
 		<div className="space-y-6">
@@ -251,6 +315,15 @@ function CommandCenter() {
 							<IncidentDetailPanel
 								incident={selectedIncident}
 								isLlmConfigured={isLlmConfigured}
+								onAcknowledge={handleAcknowledge}
+								onInvestigate={handleInvestigate}
+								onResolve={handleResolve}
+								canAcknowledge={canAcknowledge}
+								canInvestigate={canInvestigate}
+								canResolve={canResolve}
+								isAcknowledging={updateMutation.isPending}
+								isInvestigating={investigateMutation.isPending}
+								isResolving={resolveMutation.isPending}
 							/>
 						) : (
 							<CardContent className="flex flex-col items-center justify-center h-[500px]">
