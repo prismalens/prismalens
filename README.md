@@ -96,6 +96,7 @@ pnpm install
 
 pnpm build           # turbo build across the workspace
 pnpm test            # turbo test across the workspace
+pnpm --filter @prismalens/frontend test:e2e # Playwright e2e smoke suite
 pnpm typecheck       # turbo typecheck across the workspace
 pnpm format-and-lint # biome check
 ```
