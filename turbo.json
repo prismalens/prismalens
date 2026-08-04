@@ -32,6 +32,10 @@
 		"@prismalens/database#typecheck": {
 			"dependsOn": ["^build", "db:generate"]
 		},
+		"@prismalens/database#test": {
+			"dependsOn": ["^build", "db:generate"],
+			"outputs": ["coverage/**", "*.xml"]
+		},
 		"db:migrate": {
 			"cache": false,
 			"persistent": true

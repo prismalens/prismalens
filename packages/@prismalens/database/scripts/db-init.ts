@@ -90,13 +90,28 @@ async function main() {
 			},
 		);
 	} else if (!dbExists) {
-		// Migrations exist but DB is missing - apply them
+		// Migrations exist but DB is missing - apply them and seed demo data
 		console.log("🔄 Applying migrations to new database...");
 		execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
 			cwd: DATABASE_PATH,
 			stdio: "inherit",
 			env: { ...process.env },
 		});
+		const seedDemo =
+			process.env.PRISMALENS_SEED_DEMO === "1" ||
+			process.env.NODE_ENV === "development";
+		if (seedDemo) {
+			console.log("🌱 Provisioning demo data for new database...");
+			execSync("pnpm exec prisma db seed --config prisma.config.ts", {
+				cwd: DATABASE_PATH,
+				stdio: "inherit",
+				env: { ...process.env },
+			});
+		} else {
+			console.log(
+				"⏭️  Skipping demo data (set PRISMALENS_SEED_DEMO=1 or NODE_ENV=development to provision it)",
+			);
+		}
 	} else {
 		// Check for pending migrations using migrate status
 		console.log("✅ Database ready (checking for pending migrations...)");
