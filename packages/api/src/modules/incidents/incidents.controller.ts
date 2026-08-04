@@ -243,6 +243,17 @@ export class IncidentsController {
 	private serializeIncident(incident: PrismaIncident): Incident {
 		return {
 			...incident,
+			description: incident.description ?? null,
+			serviceId: incident.serviceId ?? null,
+			assignedToId: incident.assignedToId ?? null,
+			correlationReason: incident.correlationReason ?? null,
+			correlationRuleId: incident.correlationRuleId ?? null,
+			customerImpact: incident.customerImpact ?? null,
+			affectedSystems: incident.affectedSystems
+				? JSON.parse(incident.affectedSystems)
+				: null,
+			timeToAcknowledge: incident.timeToAcknowledge ?? null,
+			timeToResolve: incident.timeToResolve ?? null,
 			tags: incident.tags ? JSON.parse(incident.tags) : null,
 			triggeredAt: incident.triggeredAt?.toISOString(),
 			acknowledgedAt: incident.acknowledgedAt?.toISOString() ?? null,
@@ -255,6 +266,14 @@ export class IncidentsController {
 	private serializeAlert(alert: PrismaAlert | Record<string, any>): Alert {
 		return {
 			...alert,
+			fingerprint: alert.fingerprint ?? null,
+			externalId: alert.externalId ?? null,
+			description: alert.description ?? null,
+			source: alert.source ?? null,
+			sourceUrl: alert.sourceUrl ?? null,
+			serviceId: alert.serviceId ?? null,
+			incidentId: alert.incidentId ?? null,
+			rawPayload: alert.rawPayload ?? null,
 			tags: alert.tags
 				? typeof alert.tags === "string"
 					? JSON.parse(alert.tags)
@@ -301,10 +320,29 @@ export class IncidentsController {
 
 		if (incident.service) {
 			serialized.service = {
-				id: incident.service.id,
-				name: incident.service.name,
-				type: incident.service.type,
-				tier: incident.service.tier,
+				...incident.service,
+				displayName: incident.service.displayName ?? null,
+				description: incident.service.description ?? null,
+				team: incident.service.team ?? null,
+				slackChannel: incident.service.slackChannel ?? null,
+				tags: incident.service.tags
+					? typeof incident.service.tags === "string"
+						? JSON.parse(incident.service.tags)
+						: incident.service.tags
+					: null,
+				metadata: incident.service.metadata
+					? typeof incident.service.metadata === "string"
+						? JSON.parse(incident.service.metadata)
+						: incident.service.metadata
+					: null,
+				createdAt:
+					incident.service.createdAt instanceof Date
+						? incident.service.createdAt.toISOString()
+						: incident.service.createdAt,
+				updatedAt:
+					incident.service.updatedAt instanceof Date
+						? incident.service.updatedAt.toISOString()
+						: incident.service.updatedAt,
 			};
 		}
 
@@ -318,6 +356,12 @@ export class IncidentsController {
 			serialized.investigations = incident.investigations.map((i: any) => ({
 				id: i.id,
 				status: i.status,
+				createdAt:
+					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
+				completedAt:
+					i.completedAt instanceof Date
+						? i.completedAt.toISOString()
+						: (i.completedAt ?? null),
 			}));
 		}
 

@@ -186,6 +186,11 @@ export class AlertsController {
 	private serializeAlert(alert: PrismaAlert): Alert {
 		return {
 			...alert,
+			fingerprint: alert.fingerprint ?? null,
+			externalId: alert.externalId ?? null,
+			source: alert.source ?? null,
+			sourceUrl: alert.sourceUrl ?? null,
+			rawPayload: alert.rawPayload ?? null,
 			tags: alert.tags ? JSON.parse(alert.tags) : null,
 			labels: alert.labels ? JSON.parse(alert.labels) : null,
 			triggeredAt: alert.triggeredAt?.toISOString(),
@@ -208,12 +213,13 @@ export class AlertsController {
 		if (alert.service) {
 			serialized.service = {
 				...alert.service,
+				displayName: alert.service.displayName ?? null,
+				description: alert.service.description ?? null,
+				team: alert.service.team ?? null,
+				slackChannel: alert.service.slackChannel ?? null,
 				tags: alert.service.tags ? JSON.parse(alert.service.tags) : null,
 				metadata: alert.service.metadata
 					? JSON.parse(alert.service.metadata)
-					: null,
-				discoveryMetadata: alert.service.discoveryMetadata
-					? JSON.parse(alert.service.discoveryMetadata)
 					: null,
 				createdAt: alert.service.createdAt?.toISOString(),
 				updatedAt: alert.service.updatedAt?.toISOString(),

@@ -19,6 +19,7 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
+		"test": "vitest run",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"db:init": "tsx scripts/db-init.ts",
 		"db:generate": "prisma generate --config prisma.config.ts",
@@ -41,7 +42,8 @@
 		"@types/node": "catalog:",
 		"@types/pg": "^8.20.0",
 		"prisma": "^7.9.1",
-		"typescript": "catalog:"
+		"typescript": "catalog:",
+		"vitest": "catalog:"
 	},
 	"engines": {
 		"node": ">=24.0.0"
