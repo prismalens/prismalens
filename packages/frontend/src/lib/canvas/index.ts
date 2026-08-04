@@ -18,3 +18,4 @@ export {
 	type TransformResult,
 	transformExecutionsToCanvas,
 } from "./transform-executions";
+export { transformLiveEventsToCanvas } from "./transform-live-events";

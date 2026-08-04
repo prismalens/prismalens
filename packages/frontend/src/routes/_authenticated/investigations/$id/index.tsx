@@ -244,6 +244,8 @@ function InvestigationDetailPage() {
 									agentExecutions={investigation.agentExecutions ?? []}
 									status={investigation.status}
 									investigationId={investigationId}
+									streamEvents={isActive ? stream.events : undefined}
+									streamConnecting={isActive && stream.status === "connecting"}
 								/>
 							</Suspense>
 						</CardContent>

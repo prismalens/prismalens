@@ -160,12 +160,12 @@ export function getAgentMiniMapColor(agentName: string): string {
 // =============================================================================
 
 const _NODE_WIDTH = 240;
-const NODE_HEIGHT = 100;
-const VERTICAL_SPACING = 40;
-const START_X = 250;
-const START_Y = 0;
+export const NODE_HEIGHT = 100;
+export const VERTICAL_SPACING = 40;
+export const START_X = 250;
+export const START_Y = 0;
 
-function calculateNodePosition(index: number, _totalNodes: number) {
+export function calculateNodePosition(index: number, _totalNodes: number) {
 	// Simple vertical layout for now
 	// Future: could support branching for parallel executions
 	return {

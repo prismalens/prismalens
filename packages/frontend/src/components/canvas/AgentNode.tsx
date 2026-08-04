@@ -61,7 +61,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentNodeData>) {
 			{/* Metadata row */}
 			<div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
 				{/* Execution time */}
-				{data.status !== "pending" && (
+				{data.status !== "pending" && data.executionTimeMs != null && (
 					<span>{formatExecutionTime(data.executionTimeMs)}</span>
 				)}
 
