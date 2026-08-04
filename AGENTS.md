@@ -71,3 +71,14 @@ this repository — not even disabled behind a boolean. They integrate only thro
 capability-flag + dynamically-loaded-module seam (#264); the flags and UI shells here stay inert
 without a verified module. A spec that adds gated-but-present behavior to this repo is
 misdesigned — send it back.
+
+## Agents never operate in the main checkout
+
+All agent work — coding, running commands, checking out branches, anything that touches
+files or git state — happens in a worktree at `~/worktrees/<repo>/<branch-slug>`, never in
+the main checkout at the repo root. The main checkout, and the dev stack it serves (the
+one running `pnpm dev` for manual verification), is orchestrator territory: only the
+orchestrator switches its branch or restarts its stack, and only deliberately. An agent
+that finds itself pointed at the main checkout stops and reports rather than proceeding —
+a prior incident had an agent "restore" the main repo to a stale branch, which cascaded
+into compile failures and an invalid-data DB reseed.
