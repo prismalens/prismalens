@@ -28,7 +28,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { incidentKeys, investigationKeys, useLlmSettings } from "@/lib/api/hooks";
+import {
+	incidentKeys,
+	investigationKeys,
+	useLlmSettings,
+} from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
