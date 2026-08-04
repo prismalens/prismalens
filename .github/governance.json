@@ -52,6 +52,16 @@
 			"name": "question",
 			"color": "d876e3",
 			"description": "Further information is requested"
+		},
+		{
+			"name": "review-ready",
+			"color": "0e8a16",
+			"description": "Admit this PR to CodeRabbit online review"
+		},
+		{
+			"name": "cr:queue",
+			"color": "fbca04",
+			"description": "Queued for online review; drip promotes to review-ready"
 		}
 	],
 	"ruleset": {
@@ -85,7 +95,8 @@
 					"do_not_enforce_on_create": false,
 					"required_status_checks": [
 						{ "context": "CI gate" },
-						{ "context": "Validate PR title (conventional commits)" }
+						{ "context": "Validate PR title (conventional commits)" },
+						{ "context": "review-evidence" }
 					]
 				}
 			}
