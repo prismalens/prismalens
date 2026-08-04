@@ -21,6 +21,10 @@
 			"dependsOn": ["^build"],
 			"outputs": ["coverage/**", "*.xml"]
 		},
+		"test:e2e": {
+			"cache": false,
+			"dependsOn": ["^build"]
+		},
 		"db:generate": {
 			"cache": false,
 			"dependsOn": ["@prismalens/config#build"]
@@ -32,6 +36,10 @@
 		"@prismalens/database#typecheck": {
 			"dependsOn": ["^build", "db:generate"]
 		},
+		"@prismalens/database#test": {
+			"dependsOn": ["^build", "db:generate"],
+			"outputs": ["coverage/**", "*.xml"]
+		},
 		"db:migrate": {
 			"cache": false,
 			"persistent": true
@@ -41,7 +49,7 @@
 		},
 		"db:init": {
 			"cache": false,
-			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR"]
+			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR", "PRISMALENS_SEED_DEMO"]
 		},
 		"db:studio": {
 			"cache": false,
