@@ -49,19 +49,22 @@ export function InvestigationStreamPanel({
 
 	// Auto-scroll to bottom on new events (target the Radix viewport)
 	useEffect(() => {
+		if (events.length === 0) return;
 		const viewport = scrollRef.current?.querySelector(
 			"[data-radix-scroll-area-viewport]",
 		);
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
-	}, []);
+	}, [events.length]);
 
 	// Group by branchId (ADR-0016 fan-out seam — CanonicalEvent already carries
 	// branchId/path). N=1 today collapses to a single "root" branch, so this is a
 	// no-op shape until fan-out lands.
 	const grouped = useMemo(() => groupEventsByBranch(events), [events]);
-	const isMultiBranch = grouped.branches.length > 1;
+	const isMultiBranch =
+		grouped.branches.length > 1 ||
+		grouped.branches.some((b) => b.branchId !== "root");
 
 	// Single-branch (today's default): flatten back to one list, report row
 	// last, so the panel renders EXACTLY as before the grouping was added.
@@ -84,6 +87,12 @@ export function InvestigationStreamPanel({
 							<AlertTriangle className="h-4 w-4 text-amber-500" />
 						)}
 						Investigation Progress
+						{isMultiBranch && (
+							<span className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex items-center gap-1">
+								<GitBranch className="h-3 w-3" />
+								{grouped.branches.length} branches
+							</span>
+						)}
 					</CardTitle>
 					{latestText && (
 						<span className="text-sm text-muted-foreground max-w-md truncate">
