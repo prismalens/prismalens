@@ -69,13 +69,21 @@ BOT_AUTHORS="${BOT_AUTHORS:-dependabot[bot] github-actions[bot]}"
 # `.coderabbit.yaml`'s `ignore_title_keywords`, so it will never receive an
 # online review either — without this branch it would sit red forever.
 #
-# Two factors are required together, because either alone is weak. Both are
-# fixed by `changesets/action` configuration in release.yml (`title:` and the
-# action's own branch naming) and neither would be produced incidentally. The
-# label factor used upstream is unavailable: changesets/action applies no label
-# and this repo declares none for releases. Given merges stay attended, that is
-# enough here — but it is the softest branch in this gate, so it is deliberately
-# narrow, and it fails CLOSED if release.yml's title ever drifts.
+# THREE factors are required together. The label factor used upstream is
+# unavailable — changesets/action applies no label and this repo declares none
+# for releases — and the two that remain, branch name and title, are both
+# attacker-settable on a FORK: anyone can open a PR from a branch named
+# `changeset-release/main` titled `chore: version packages` and collect a free
+# `success`. Upstream's label factor did not have that weakness, because applying
+# a label requires write access. The same-repo check restores exactly that
+# property, so it is not belt-and-braces — it is the load-bearing factor, and the
+# other two are the ones that make it specific.
+#
+# The remaining two are fixed by `changesets/action` configuration in release.yml
+# (`title:` and the action's own branch naming) and would not be produced
+# incidentally. Given merges stay attended, that is enough here — but it is the
+# softest branch in this gate, so it is deliberately narrow, and it fails CLOSED
+# if release.yml's title ever drifts.
 GENERATED_PR_BRANCH_RE="${GENERATED_PR_BRANCH_RE:-^changeset-release/}"
 GENERATED_PR_TITLE_RE="${GENERATED_PR_TITLE_RE:-^chore: version packages$}"
 
@@ -134,7 +142,7 @@ api_query () { # api_query <path> <jq filter> [jq args...]
 }
 
 evaluate_pr () { # evaluate_pr <number>
-  local n="$1" pr sha author state draft head_ref title
+  local n="$1" pr sha author state draft head_ref head_repo title
 
   # A fetch failure is not "nothing to do" — it means we cannot evaluate, and the
   # caller must learn about it through the exit code rather than see a clean run.
@@ -147,6 +155,9 @@ evaluate_pr () { # evaluate_pr <number>
   draft=$(jq -r '.draft'       <<<"$pr")
   head_ref=$(jq -r '.head.ref' <<<"$pr")
   title=$(jq -r '.title'       <<<"$pr")
+  # `// ""` matters: head.repo is null when the fork was deleted, and a null here
+  # must not compare equal to $REPO.
+  head_repo=$(jq -r '.head.repo.full_name // ""' <<<"$pr")
 
   printf '  PR #%s  head=%s  author=%s  branch=%s  state=%s  draft=%s\n' \
          "$n" "${sha:0:8}" "$author" "$head_ref" "$state" "$draft"
@@ -161,8 +172,9 @@ evaluate_pr () { # evaluate_pr <number>
     return $?
   fi
 
-  # --- branch B2: machine-generated release PR (branch AND title) ----------
-  if [[ "$head_ref" =~ $GENERATED_PR_BRANCH_RE ]] \
+  # --- branch B2: machine-generated release PR (same-repo AND branch AND title)
+  if [ "$head_repo" = "$REPO" ] \
+     && [[ "$head_ref" =~ $GENERATED_PR_BRANCH_RE ]] \
      && [[ "$title" =~ $GENERATED_PR_TITLE_RE ]]; then
     publish "$sha" success "Generated release PR ($head_ref); CI gate applies separately"
     return $?
@@ -171,12 +183,19 @@ evaluate_pr () { # evaluate_pr <number>
   # --- branch A: a formal review AT THE CURRENT HEAD -----------------------
   # `commit_id` is the commit the review was actually made against, so this is
   # exact: a review of an earlier commit does not satisfy a later head.
+  #
+  # DISMISSED is excluded because dismissal is the explicit act of withdrawing a
+  # review — treating a withdrawn review as evidence would let the gate vouch for
+  # a verdict its author retracted. PENDING is an unsubmitted draft and is not a
+  # verdict at all. Both are `state` values that survive on the review object, so
+  # neither is filtered out by the commit_id match.
   local reviewer q_rc
   reviewer=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
         ($logins | split(" ")) as $allowed
         | [ .[]
             | select(.user.login as $u | $allowed | index($u))
             | select(.commit_id == $sha)
+            | select(.state != "DISMISSED" and .state != "PENDING")
           ] | if length > 0 then .[-1].user.login else empty end' \
       --arg sha "$sha" --arg logins "$REVIEWER_LOGINS")
   q_rc=$?
