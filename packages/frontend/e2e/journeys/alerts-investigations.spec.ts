@@ -38,7 +38,10 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			page.getByText("connection-pool exhaustion", { exact: false }).first(),
 		).toBeVisible({ timeout: 15_000 });
 
-		// 4. Open no-culprit investigation (d0222222) and verify Analysis tab renders without crashing
+		// 4. Open no-culprit investigation (d0222222) and verify the stable
+		//    no-culprit state: report renders, but absence stays absence —
+		//    no service, change ref, or mechanism is invented (culprit: null
+		//    in the seed, so AnalysisTab must render no Culprit section at all).
 		await page.goto("/investigations/d0222222-2222-4222-8222-222222222222");
 		await expect(
 			page.getByRole("tab", { name: "Analysis" }),
@@ -52,5 +55,8 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 				"Upstream payment provider experiencing elevated processing latencies.",
 			),
 		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByText("Culprit", { exact: true }),
+		).not.toBeVisible();
 	});
 });
