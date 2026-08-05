@@ -10,7 +10,14 @@
  */
 import { Test, type TestingModule } from "@nestjs/testing";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -41,16 +48,21 @@ let root: string;
 let gitRepo: string;
 let plainDir: string;
 let regularFile: string;
+let linkedRepo: string;
 let service: ServicesService;
 
 beforeAll(() => {
-	root = mkdtempSync(join(tmpdir(), "pl-331-api-"));
+	// `realpathSync` the fixture root — on macOS `os.tmpdir()` is `/tmp`, a symlink
+	// to `/private/tmp`, and the service stores the RESOLVED path (#331).
+	root = realpathSync(mkdtempSync(join(tmpdir(), "pl-331-api-")));
 	gitRepo = join(root, "checkout");
 	plainDir = join(root, "not-a-repo");
 	regularFile = join(root, "a-file.txt");
+	linkedRepo = join(root, "linked-checkout");
 	mkdirSync(gitRepo, { recursive: true });
 	mkdirSync(plainDir, { recursive: true });
 	writeFileSync(regularFile, "not a directory\n");
+	symlinkSync(gitRepo, linkedRepo);
 	execFileSync("git", ["init", "--quiet"], { cwd: gitRepo });
 });
 
@@ -89,6 +101,24 @@ describe("ServicesService — local checkout persistence (#331)", () => {
 			}),
 		);
 		expect(created.localCheckoutPath).toBe(gitRepo);
+	});
+
+	it("a symlinked path is stored RESOLVED — the mapping names the tree the harness enters", async () => {
+		mockPrismaService.service.update.mockResolvedValue({
+			id: "svc-1",
+			name: "checkout",
+			localCheckoutPath: gitRepo,
+		});
+
+		await service.update("svc-1", {
+			localCheckoutPath: linkedRepo,
+		} as UpdateServiceDto);
+
+		expect(mockPrismaService.service.update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ localCheckoutPath: gitRepo }),
+			}),
+		);
 	});
 
 	it("update stores the mapping", async () => {

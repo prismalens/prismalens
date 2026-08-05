@@ -110,7 +110,11 @@ that alerted.
 3. *Check* validates it server-side before you save — a path that does not exist, is a
    file, or is not inside a git work tree is refused with the reason. Saving re-runs the
    same check, so a direct API call cannot store a broken path either.
-4. *Clear mapping* returns the service to the unmapped warning.
+4. **Symlinks are resolved**, and the resolved path is what gets stored — so the field can
+   read back as the real directory rather than the link you typed. That is deliberate: it
+   names the directory the investigation actually runs in, and two services pointing at one
+   tree through different symlinks stay one mapping instead of two.
+5. *Clear mapping* returns the service to the unmapped warning.
 
 ## Complete today
 

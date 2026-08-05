@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { execFile } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -95,7 +95,10 @@ export type CheckoutRejection =
 
 export interface CheckoutValidation {
 	valid: boolean;
-	/** The normalised absolute path the caller should persist. */
+	/**
+	 * The absolute path the caller should persist — symlinks RESOLVED, so it is
+	 * the directory the harness will actually run in.
+	 */
 	path: string;
 	reason?: CheckoutRejection;
 	/** Operator-facing sentence; safe to render verbatim in the UI. */
@@ -128,6 +131,17 @@ export function normalizeCheckoutPath(raw: string | null | undefined): string {
  *
  * Accepts a subdirectory of a work tree (monorepo packages are a real mapping),
  * and reports the enclosing root so the UI can say which repo was recognised.
+ *
+ * SYMLINKS ARE RESOLVED, and the RESOLVED path is what callers should store:
+ *   - `git rev-parse --show-toplevel` always answers with the real path, so
+ *     comparing it against an unresolved input mislabels a repo ROOT reached
+ *     through a symlink as a subdirectory of itself. This is not a macOS quirk
+ *     (`/tmp` → `/private/tmp` is just where it bites first) — a symlinked home
+ *     or workspace directory reproduces it on Linux too.
+ *   - the resolved path is what the harness actually `cd`s into, so storing it
+ *     means the mapping says what the run will really do.
+ *   - two services pointing at one tree through different symlinks collapse to
+ *     the same mapping instead of reading as two different checkouts.
  */
 export async function validateLocalCheckout(
 	raw: string | null | undefined,
@@ -149,6 +163,8 @@ export async function validateLocalCheckout(
 			message: `"${path}" is not an absolute path. Use a full path such as /home/you/code/checkout.`,
 		};
 	}
+	// `statSync` follows symlinks, so a symlink pointing at a directory reads as a
+	// directory here — which is what we want: the operator mapped what it points at.
 	let isDirectory: boolean;
 	try {
 		isDirectory = statSync(path).isDirectory();
@@ -168,29 +184,48 @@ export async function validateLocalCheckout(
 			message: `"${path}" is a file, not a directory.`,
 		};
 	}
-	let repoRoot: string;
+	// From here on, work in real paths only — see the note above. The path is
+	// known to exist, so this cannot realistically throw; fall back to the
+	// lexical path rather than failing a checkout that is otherwise fine.
+	let realPath: string;
+	try {
+		realPath = realpathSync(path);
+	} catch {
+		realPath = path;
+	}
+	let rawRoot: string;
 	try {
 		const { stdout } = await execFileAsync(
 			"git",
 			["rev-parse", "--show-toplevel"],
-			{ cwd: path },
+			{ cwd: realPath },
 		);
-		repoRoot = resolve(stdout.trim());
+		rawRoot = stdout.trim();
 	} catch {
 		return {
 			valid: false,
-			path,
+			path: realPath,
 			reason: "not_a_git_repo",
 			message: `"${path}" is not a git checkout (no repository found at or above it).`,
 		};
 	}
-	const repoSlug = await detectRepoSlug(path);
+	// git already answers with a real path; resolve again anyway so both sides of
+	// the `isSubdirectory` comparison are normalised identically on every platform.
+	// Kept out of the try above so a realpath hiccup cannot masquerade as
+	// "not a git checkout".
+	let repoRoot = resolve(rawRoot);
+	try {
+		repoRoot = realpathSync(repoRoot);
+	} catch {
+		// keep the lexical resolution
+	}
+	const repoSlug = await detectRepoSlug(realPath);
 	return {
 		valid: true,
-		path,
+		path: realPath,
 		repoRoot,
 		...(repoSlug ? { repoSlug } : {}),
-		isSubdirectory: repoRoot !== path,
+		isSubdirectory: repoRoot !== realPath,
 	};
 }
 

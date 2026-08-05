@@ -10,7 +10,14 @@
  * `execFile` would assert nothing about that.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -25,17 +32,25 @@ let gitRepo: string;
 let plainDir: string;
 let nestedPackage: string;
 let regularFile: string;
+let linkedRepo: string;
 
 beforeAll(() => {
-	root = mkdtempSync(join(tmpdir(), "pl-331-"));
+	// `realpathSync` the fixture root: on macOS `os.tmpdir()` is `/tmp`, a symlink
+	// to `/private/tmp`. Without this the fixture paths and git's answers differ by
+	// a symlink hop and every comparison below is testing the wrong thing.
+	root = realpathSync(mkdtempSync(join(tmpdir(), "pl-331-")));
 	gitRepo = join(root, "checkout");
 	plainDir = join(root, "not-a-repo");
 	nestedPackage = join(gitRepo, "packages", "api");
 	regularFile = join(root, "a-file.txt");
+	linkedRepo = join(root, "linked-checkout");
 
 	mkdirSync(nestedPackage, { recursive: true });
 	mkdirSync(plainDir, { recursive: true });
 	writeFileSync(regularFile, "not a directory\n");
+	// A symlink to the checkout — reproduces on Linux exactly what macOS's
+	// `/tmp` → `/private/tmp` does, so this is not a CI-only concern.
+	symlinkSync(gitRepo, linkedRepo);
 
 	execFileSync("git", ["init", "--quiet"], { cwd: gitRepo });
 	execFileSync(
@@ -71,6 +86,54 @@ describe("validateLocalCheckout — accepts a real checkout", () => {
 		const result = await validateLocalCheckout(`  ${gitRepo}\n`);
 		expect(result.valid).toBe(true);
 		expect(result.path).toBe(gitRepo);
+	});
+});
+
+/**
+ * REGRESSION (#331): git's `rev-parse --show-toplevel` always answers with the
+ * REAL path. Comparing it against an unresolved input made a repo ROOT reached
+ * through a symlink report `isSubdirectory: true` with a `repoRoot` the operator
+ * never typed — and stored an unresolved path that two different symlinks to one
+ * tree would record as two different mappings.
+ *
+ * macOS CI hit this first (`/tmp` → `/private/tmp`), but an explicit symlink
+ * reproduces it on Linux, which is why these run everywhere.
+ */
+describe("validateLocalCheckout — symlinked checkouts resolve to the real tree", () => {
+	it("a symlink TO THE ROOT is the root, not a subdirectory of itself", async () => {
+		const result = await validateLocalCheckout(linkedRepo);
+		expect(result.valid).toBe(true);
+		expect(result.isSubdirectory).toBe(false);
+		expect(result.repoRoot).toBe(gitRepo);
+	});
+
+	it("stores the RESOLVED path, so the mapping names the directory the harness enters", async () => {
+		const result = await validateLocalCheckout(linkedRepo);
+		expect(result.path).toBe(gitRepo);
+		expect(result.path).not.toBe(linkedRepo);
+	});
+
+	it("two symlinks onto one tree collapse to the SAME stored mapping", async () => {
+		const second = join(root, "another-link");
+		symlinkSync(gitRepo, second);
+		const viaFirst = await validateLocalCheckout(linkedRepo);
+		const viaSecond = await validateLocalCheckout(second);
+		expect(viaSecond.path).toBe(viaFirst.path);
+	});
+
+	it("a package reached THROUGH a symlink still reports the real enclosing root", async () => {
+		const result = await validateLocalCheckout(
+			join(linkedRepo, "packages", "api"),
+		);
+		expect(result.valid).toBe(true);
+		expect(result.isSubdirectory).toBe(true);
+		expect(result.path).toBe(nestedPackage);
+		expect(result.repoRoot).toBe(gitRepo);
+	});
+
+	it("the origin slug is still detected through the symlink", async () => {
+		const result = await validateLocalCheckout(linkedRepo);
+		expect(result.repoSlug).toBe("acme/checkout");
 	});
 });
 
