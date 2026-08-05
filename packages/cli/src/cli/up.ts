@@ -27,9 +27,37 @@ export default defineCommand({
 		process.env.PRISMALENS_STATIC_DIR = staticDir;
 
 		// Ensure PRISMALENS_WORKSPACE_DIR is set to isolate app database
-		if (!process.env.PRISMALENS_WORKSPACE_DIR) {
-			const workspaceDir = path.resolve(process.cwd(), ".prismalens-workspace");
-			process.env.PRISMALENS_WORKSPACE_DIR = workspaceDir;
+		const workspaceDir =
+			process.env.PRISMALENS_WORKSPACE_DIR ||
+			path.resolve(process.cwd(), ".prismalens-workspace");
+		process.env.PRISMALENS_WORKSPACE_DIR = workspaceDir;
+		fs.mkdirSync(workspaceDir, { recursive: true });
+
+		// Auto-initialize SQLite database if missing or empty
+		const dbPath = path.join(workspaceDir, "prismalens.db");
+		if (!fs.existsSync(dbPath) || fs.statSync(dbPath).size === 0) {
+			consola.info("Initializing fresh SQLite database at:", dbPath);
+			const migrationPaths = [
+				path.resolve(
+					__dirname,
+					"../../prisma/schema/20260803122809_init/migration.sql",
+				),
+				path.resolve(
+					__dirname,
+					"../../node_modules/@prismalens/database/prisma/sqlite/schema/20260803122809_init/migration.sql",
+				),
+			];
+			const sqlPath = migrationPaths.find((p) => fs.existsSync(p));
+			if (sqlPath) {
+				const Database = (await import("better-sqlite3")).default;
+				const db = new Database(dbPath);
+				const sql = fs.readFileSync(sqlPath, "utf8");
+				db.exec(sql);
+				db.close();
+				consola.info("Database schema initialized successfully.");
+			} else {
+				consola.warn("Migration SQL file not found for database auto-init.");
+			}
 		}
 
 		// Resolve Nest main entry point inside packed artifact
