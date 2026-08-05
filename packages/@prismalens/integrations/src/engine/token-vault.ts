@@ -81,9 +81,12 @@ export class TokenVault {
 
 		const masked: Record<string, unknown> = {};
 		for (const [key, value] of Object.entries(credentials)) {
+			// Normalize separators so snake_case/kebab-case field names
+			// (api_key, access-token) match the same way camelCase does.
+			const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
 			if (
 				typeof value === "string" &&
-				sensitiveFields.some((f) => key.toLowerCase().includes(f))
+				sensitiveFields.some((f) => normalizedKey.includes(f))
 			) {
 				masked[key] = maskString(value);
 			} else if (typeof value === "object" && value !== null) {
