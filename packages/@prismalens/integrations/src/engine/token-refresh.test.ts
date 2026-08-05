@@ -189,7 +189,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 	});
 }
 
-/** A response that only settles after `ticks` microtask/macrotask turns. */
+/** A response that only settles after `ms` milliseconds, via setTimeout. */
 function delayed(response: Response, ms = 10): Promise<Response> {
 	return new Promise((resolve) => setTimeout(() => resolve(response), ms));
 }
