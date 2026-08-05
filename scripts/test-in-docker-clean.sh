@@ -53,7 +53,16 @@ prismalens up > /tmp/boot.log 2>&1 &
 APP_PID=$!
 
 echo "Waiting for app to initialize and map routes..."
-sleep 12
+FOR_I=0
+while [ $FOR_I -lt 30 ]; do
+  if curl -s http://localhost:3001/health >/dev/null 2>&1; then
+    echo "App is up and responding on port 3001 after ${FOR_I}s!"
+    break
+  fi
+  sleep 1
+  FOR_I=$((FOR_I + 1))
+done
+
 
 echo "=== FULL BOOT LOG ==="
 cat /tmp/boot.log
