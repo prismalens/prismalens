@@ -128,5 +128,5 @@ echo -e "\n=====================================================================
 echo "=== CONTAINER TEST COMPLETE ==="
 echo "================================================================================"
 
-kill $APP_PID 2>/dev/null || true
+kill -9 $APP_PID 2>/dev/null || true
 DOCKER_SCRIPT
