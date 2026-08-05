@@ -10,6 +10,7 @@ docker run --rm -i \
   -v "$TARBALL_PATH:/tmp/prismalens-0.4.0.tgz:ro" \
   node:22-slim bash -s << 'DOCKER_SCRIPT'
 set -eu
+set -m
 
 apt-get update -qq && apt-get install -y -qq curl procps >/dev/null
 
