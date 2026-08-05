@@ -490,6 +490,18 @@ describe("TokenRefresher — OAuth2 refresh strategy", () => {
 		expect(deps.updates).toHaveLength(0);
 		expect(deps.errors[0].status).toBe("REFRESH_FAILED");
 	});
+
+	it("treats a whitespace-only access token as no token at all", async () => {
+		const deps = new MemoryRefreshDeps();
+		seed(deps);
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "   " }));
+		const refresher = new TokenRefresher(VAULT, deps);
+
+		await expect(refresher.getValidToken("conn_1")).rejects.toThrow(
+			/access_token/,
+		);
+		expect(deps.updates).toHaveLength(0);
+	});
 });
 
 describe("TokenRefresher — GitHub App refresh strategy", () => {

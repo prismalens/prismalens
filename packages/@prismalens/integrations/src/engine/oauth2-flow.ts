@@ -155,10 +155,11 @@ export class OAuth2Flow {
 			throw new Error(`OAuth error: ${data.error_description ?? data.error}`);
 		}
 
-		// A 2xx with no access_token is not a success — without this guard the
-		// credential is stored with `accessToken: undefined`.
+		// A 2xx with no usable access_token is not a success — without this guard
+		// the credential is stored with `accessToken: undefined`. Whitespace-only
+		// counts as absent.
 		const accessToken = data.access_token;
-		if (typeof accessToken !== "string" || accessToken.length === 0) {
+		if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
 			throw new Error("Token exchange response has no access_token");
 		}
 
