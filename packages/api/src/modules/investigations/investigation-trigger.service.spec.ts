@@ -6,7 +6,7 @@ import { Test } from "@nestjs/testing";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { SettingsService } from "../../core/settings/settings.service.js";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { ALERT_CORRELATED_EVENT } from "../../shared/events/investigation-events.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
@@ -21,7 +21,7 @@ describe("InvestigationTriggerService", () => {
 	let service: InvestigationTriggerService;
 	let prisma: PrismaService;
 	let settingsService: SettingsService;
-	let queueService: QueueService;
+	let dispatchService: DispatchService;
 	let integrationsService: IntegrationsService;
 	let timelineService: TimelineService;
 
@@ -44,7 +44,7 @@ describe("InvestigationTriggerService", () => {
 		getInvestigationPolicies: vi.fn(),
 	};
 
-	const mockQueueService = {
+	const mockDispatchService = {
 		addInvestigationJob: vi.fn(),
 	};
 
@@ -68,7 +68,7 @@ describe("InvestigationTriggerService", () => {
 				InvestigationTriggerService,
 				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: SettingsService, useValue: mockSettingsService },
-				{ provide: QueueService, useValue: mockQueueService },
+				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: IntegrationsService, useValue: mockIntegrationsService },
 				{ provide: TimelineService, useValue: mockTimelineService },
 			],
@@ -77,7 +77,7 @@ describe("InvestigationTriggerService", () => {
 		service = moduleRef.get(InvestigationTriggerService);
 		prisma = moduleRef.get(PrismaService);
 		settingsService = moduleRef.get(SettingsService);
-		queueService = moduleRef.get(QueueService);
+		dispatchService = moduleRef.get(DispatchService);
 		integrationsService = moduleRef.get(IntegrationsService);
 		timelineService = moduleRef.get(TimelineService);
 	});
@@ -205,12 +205,12 @@ describe("InvestigationTriggerService", () => {
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([
 				{ connectionId: "c1" },
 			]);
-			mockQueueService.addInvestigationJob.mockResolvedValue("job-1");
+			mockDispatchService.addInvestigationJob.mockResolvedValue("job-1");
 
 			await service.triggerInvestigation(incident, decision);
 
 			expect(mockPrisma.investigation.create).toHaveBeenCalled();
-			expect(mockQueueService.addInvestigationJob).toHaveBeenCalledWith(
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
 				expect.objectContaining({
 					incidentId: "inc-1",
 					investigationId: "inv-1",
@@ -225,7 +225,7 @@ describe("InvestigationTriggerService", () => {
 		it("should handle enqueue failure", async () => {
 			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
-			mockQueueService.addInvestigationJob.mockResolvedValue(null);
+			mockDispatchService.addInvestigationJob.mockResolvedValue(null);
 
 			await service.triggerInvestigation(incident, decision);
 
@@ -246,7 +246,7 @@ describe("InvestigationTriggerService", () => {
 
 			await service.triggerInvestigation(incident, decision);
 
-			expect(mockQueueService.addInvestigationJob).not.toHaveBeenCalled();
+			expect(mockDispatchService.addInvestigationJob).not.toHaveBeenCalled();
 			expect(mockPrisma.investigation.update).toHaveBeenCalledWith(
 				expect.objectContaining({
 					where: { id: "inv-1" },

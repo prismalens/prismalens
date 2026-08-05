@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "../../core/prisma/prisma.module.js";
@@ -10,17 +9,10 @@ import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
 import { OAuthController } from "./oauth/oauth.controller.js";
 import { OAuthService } from "./oauth/oauth.service.js";
-import {
-	TOKEN_REFRESH_QUEUE,
-	TokenRefreshProcessor,
-} from "./token-refresh.processor.js";
+import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 @Module({
-	imports: [
-		PrismaModule,
-		ConfigModule,
-		BullModule.registerQueue({ name: TOKEN_REFRESH_QUEUE }),
-	],
+	imports: [PrismaModule, ConfigModule],
 	controllers: [IntegrationsController, OAuthController],
 	providers: [
 		IntegrationsService,

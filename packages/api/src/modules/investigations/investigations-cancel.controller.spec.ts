@@ -2,18 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * CANCEL slice (ADR-0018): POST /investigations/:id/cancel publishes to the Redis
- * cancel channel and rejects a run already in a terminal state. A worker that
- * RECEIVED the publish owns the terminal "cancelled" write; when nobody received it
- * (after the grace retries), the API owns the fallback terminal write — pub/sub has
+ * CANCEL slice (ADR-0018): POST /investigations/:id/cancel publishes on the run's
+ * EventBus cancel topic and rejects a run already in a terminal state. A dispatcher
+ * that RECEIVED the publish owns the terminal "cancelled" write; when nobody received
+ * it (after the grace retries), the API owns the fallback terminal write — the bus has
  * no retention, so zero receivers means nobody else ever will. Mocked service +
- * queue; no DB, no Redis.
+ * dispatch; no DB, no broker.
  */
 
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { ORPCError } from "@orpc/nest";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 
@@ -23,10 +23,10 @@ const mockInvestigationsService = {
 	cancelPending: vi.fn(),
 };
 
-const mockQueueService = {
-	publishCancel: vi.fn(),
+const mockDispatchService = {
+	requestCancel: vi.fn(),
 	getJobStatus: vi.fn(),
-	removeJob: vi.fn(),
+	cancelPendingJob: vi.fn(),
 };
 
 function investigation(id: string, status: string) {
@@ -57,7 +57,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 			controllers: [InvestigationsController],
 			providers: [
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
-				{ provide: QueueService, useValue: mockQueueService },
+				{ provide: DispatchService, useValue: mockDispatchService },
 			],
 		})
 			.overrideGuard(ThrottlerGuard)
@@ -77,35 +77,35 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 	it("running run: publishes to the cancel channel and returns the run unchanged (no status flip)", async () => {
 		const run = investigation("inv-1", "running");
 		mockInvestigationsService.findById.mockResolvedValue(run);
-		mockQueueService.publishCancel.mockResolvedValue(1);
+		mockDispatchService.requestCancel.mockResolvedValue(1);
 
 		const result = await cancelHandler()({ input: { id: "inv-1" } });
 
-		expect(mockQueueService.publishCancel).toHaveBeenCalledWith("inv-1");
-		// A worker received the cancel — it owns the terminal write, not this endpoint.
+		expect(mockDispatchService.requestCancel).toHaveBeenCalledWith("inv-1");
+		// A dispatcher received the cancel — it owns the terminal write, not this endpoint.
 		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
-		// A running run is never removed from the queue (it is already active).
-		expect(mockQueueService.removeJob).not.toHaveBeenCalled();
+		// A running run is never cancelled at the row level (it is already claimed).
+		expect(mockDispatchService.cancelPendingJob).not.toHaveBeenCalled();
 		expect(result.status).toBe("running");
 	});
 
 	it("running run nobody hears: retries the publish, then writes the terminal record itself", async () => {
 		const run = investigation("inv-5", "running");
 		mockInvestigationsService.findById.mockResolvedValue(run);
-		// Zero receivers on every attempt: worker crashed / stuck record / Redis down.
-		mockQueueService.publishCancel.mockResolvedValue(0);
+		// Zero receivers on every attempt: child crashed, or the record is stuck.
+		mockDispatchService.requestCancel.mockResolvedValue(0);
 		mockInvestigationsService.cancelPending.mockResolvedValue(
 			investigation("inv-5", "cancelled"),
 		);
 
 		const result = await cancelHandler()({ input: { id: "inv-5" } });
 
-		expect(mockQueueService.publishCancel).toHaveBeenCalledTimes(3);
+		expect(mockDispatchService.requestCancel).toHaveBeenCalledTimes(3);
 		// Nobody will ever act on the dropped publish — the API owns the write.
 		expect(mockInvestigationsService.cancelPending).toHaveBeenCalledWith(
 			"inv-5",
 			"inc-1",
-			expect.stringContaining("no worker held the run"),
+			expect.stringContaining("no run held it"),
 		);
 		expect(result.status).toBe("cancelled");
 	});
@@ -113,58 +113,54 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 	it("running run heard on a retry: no fallback write", async () => {
 		const run = investigation("inv-6", "running");
 		mockInvestigationsService.findById.mockResolvedValue(run);
-		// First publish lands in the worker's lock→subscribe window; the retry is heard.
-		mockQueueService.publishCancel
+		// First publish lands in the claim→subscribe window; the retry is heard.
+		mockDispatchService.requestCancel
 			.mockResolvedValueOnce(0)
 			.mockResolvedValueOnce(1);
 
 		const result = await cancelHandler()({ input: { id: "inv-6" } });
 
-		expect(mockQueueService.publishCancel).toHaveBeenCalledTimes(2);
+		expect(mockDispatchService.requestCancel).toHaveBeenCalledTimes(2);
 		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
 		expect(result.status).toBe("running");
 	});
 
-	it("pending run: removes the queued job and writes the terminal 'cancelled' record (no publish)", async () => {
+	it("pending run: cancels the unclaimed job and writes the terminal 'cancelled' record (no publish)", async () => {
 		mockInvestigationsService.findById.mockResolvedValue(
 			investigation("inv-2", "pending"),
 		);
-		mockQueueService.removeJob.mockResolvedValue(true);
+		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
 		mockInvestigationsService.cancelPending.mockResolvedValue(
 			investigation("inv-2", "cancelled"),
 		);
 
 		const result = await cancelHandler()({ input: { id: "inv-2" } });
 
-		// A pending run has no subscribed worker — removing the job is the reliable stop.
-		expect(mockQueueService.removeJob).toHaveBeenCalledWith(
-			"investigation-inv-2",
-		);
-		// The API owns the terminal write for a pending cancel (no worker has the run).
+		// A pending run has nothing subscribed — cancelling the row is the reliable stop.
+		expect(mockDispatchService.cancelPendingJob).toHaveBeenCalledWith("inv-2");
+		// The API owns the terminal write for a pending cancel (nobody holds the run).
 		expect(mockInvestigationsService.cancelPending).toHaveBeenCalledWith(
 			"inv-2",
 			"inc-1",
 		);
-		// No fire-and-forget publish — pub/sub would be dropped with no subscriber.
-		expect(mockQueueService.publishCancel).not.toHaveBeenCalled();
+		// No fire-and-forget publish — it would be dropped with no subscriber.
+		expect(mockDispatchService.requestCancel).not.toHaveBeenCalled();
 		expect(result.status).toBe("cancelled");
 	});
 
-	it("pending run but the worker won the race: removal fails → falls through to publish", async () => {
+	it("pending run but a dispatcher won the race: row cancel fails → falls through to publish", async () => {
 		mockInvestigationsService.findById.mockResolvedValue(
 			investigation("inv-4", "pending"),
 		);
-		// removeJob returns false when a worker grabbed (locked) the job mid-race.
-		mockQueueService.removeJob.mockResolvedValue(false);
-		mockQueueService.publishCancel.mockResolvedValue(1);
+		// cancelPendingJob returns false when a dispatcher claimed the job mid-race.
+		mockDispatchService.cancelPendingJob.mockResolvedValue(false);
+		mockDispatchService.requestCancel.mockResolvedValue(1);
 
 		await cancelHandler()({ input: { id: "inv-4" } });
 
-		expect(mockQueueService.removeJob).toHaveBeenCalledWith(
-			"investigation-inv-4",
-		);
-		// The worker now owns the run → the publish path (worker owns the terminal write).
-		expect(mockQueueService.publishCancel).toHaveBeenCalledWith("inv-4");
+		expect(mockDispatchService.cancelPendingJob).toHaveBeenCalledWith("inv-4");
+		// The run is live → the publish path (the run owns the terminal write).
+		expect(mockDispatchService.requestCancel).toHaveBeenCalledWith("inv-4");
 		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
 	});
 
@@ -180,7 +176,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		await expect(
 			cancelHandler()({ input: { id: "inv-3" } }),
 		).rejects.toBeInstanceOf(ORPCError);
-		expect(mockQueueService.publishCancel).not.toHaveBeenCalled();
+		expect(mockDispatchService.requestCancel).not.toHaveBeenCalled();
 	});
 
 	it("unknown investigation: NOT_FOUND, no publish", async () => {
@@ -189,6 +185,6 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		await expect(
 			cancelHandler()({ input: { id: "missing" } }),
 		).rejects.toBeInstanceOf(ORPCError);
-		expect(mockQueueService.publishCancel).not.toHaveBeenCalled();
+		expect(mockDispatchService.requestCancel).not.toHaveBeenCalled();
 	});
 });

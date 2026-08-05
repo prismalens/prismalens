@@ -515,8 +515,9 @@ export class InvestigationsService {
 	/**
 	 * Delete the durable canonical event record for an investigation (ADR-0018 B.4).
 	 *
-	 * Called by the worker at the START of a BullMQ RETRY (attempt 2+): each attempt's
-	 * events are keyed on `(investigationId, branchId, seq)`, so a retry's rows collide
+	 * Called by the run at the START of a RERUN (attempt 2+ — a retry, or the rerun a
+	 * reclaimed claim produces): each attempt's events are keyed on
+	 * `(investigationId, branchId, seq)`, so a rerun's rows collide
 	 * with the failed attempt's and get swallowed as duplicates (P2002) — leaving the
 	 * durable record showing the FAILED attempt's events for a run that later completed.
 	 * Clearing first gives each attempt a fresh record. Idempotent (deleteMany of zero
