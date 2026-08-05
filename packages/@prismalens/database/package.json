@@ -15,15 +15,19 @@
 		"./migrate": {
 			"types": "./dist/migrate.d.ts",
 			"import": "./dist/migrate.js"
+		},
+		"./migrator": {
+			"types": "./dist/src/migrator/index.d.ts",
+			"import": "./dist/src/migrator/index.js"
 		}
 	},
 	"prisma": {
 		"seed": "tsx prisma/seed.ts"
 	},
 	"scripts": {
-		"build": "tsc",
+		"build": "tsc && node scripts/copy-migrations.mjs",
 		"dev": "tsc --watch",
-		"test": "vitest run",
+		"test": "vitest run --coverage",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"db:init": "tsx scripts/db-init.ts",
 		"db:generate": "prisma generate --config prisma.config.ts",
@@ -46,6 +50,7 @@
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "catalog:",
 		"@types/pg": "^8.20.0",
+		"@vitest/coverage-v8": "^4.1.10",
 		"prisma": "^7.9.1",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

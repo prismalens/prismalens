@@ -65,6 +65,24 @@ Both `prismalens` and the shorter `pl` alias point at the same binary. Full
 setup (providers, harnesses, configuration, commands) lives at
 **[docs.prismalens.io](https://docs.prismalens.io)**.
 
+### Upgrading
+
+```bash
+npm install -g prismalens@latest
+```
+
+Your data stays where it is. PrismaLens keeps everything under
+`~/.prismalens` (override with `PRISMALENS_WORKSPACE_DIR`), and on the next
+start it applies any pending database migrations in place — no export, no
+re-import, no `--reset` step. Before it writes to a database that already holds
+data it takes a backup alongside it, as `prismalens.db.bak-<timestamp>`.
+
+Migration history is append-only from v0.5.0 onward, so a newer release always
+knows how to advance an older database. The reverse is not true: if you *down*grade
+and the older binary meets a database a newer one already migrated, it stops with
+an explanation instead of touching your data. Upgrade again, or point
+`PRISMALENS_WORKSPACE_DIR` somewhere fresh.
+
 ## How it works
 
 - **Two-tier engine.** A thin, deterministic PrismaLens supervisor (Tier-1)

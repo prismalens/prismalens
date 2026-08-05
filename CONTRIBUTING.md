@@ -83,6 +83,72 @@ Two things to know before running it locally:
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
+## Database migrations
+
+**Migration history is append-only.** Never delete, edit, rename, or squash a
+migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, and
+never tell anyone to delete `prismalens.db`. Installed copies of PrismaLens
+record each migration's checksum; an edited history is unreconcilable with a
+database that already exists, and the runner refuses rather than guessing.
+
+(This replaces an earlier development-phase rule that said to squash the `init`
+migration and delete the database. It was safe only while every database in the
+world belonged to a contributor — see issue #335.)
+
+### The lifecycle, end to end
+
+SQLite app-data databases are migrated **by the app itself, at boot**, not by the
+Prisma CLI: `pl up` runs on a machine with no `pnpm`, no `prisma` binary, and no
+schema source. Four stages, and what carries each:
+
+| Stage | Who does it | Where it lives | How to see it |
+|---|---|---|---|
+| **Author** | you, once per schema change | `prisma/sqlite/schema/<timestamp>_<name>/migration.sql` (+ the `pg` twin) | `pnpm db:migrate` |
+| **Ship** | `pnpm build` | `dist/prisma/<flavour>/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
+| **Detect** | the runner, on every app start | shipped migrations minus the rows in `_prisma_migrations` | `pnpm db:init` prints what it will apply |
+| **Apply + record** | the runner, in one `BEGIN IMMEDIATE` transaction | the SQL runs and its `_prisma_migrations` row is written **in the same transaction** — there is no half-applied state to repair | `pnpm exec prisma migrate status` agrees with it |
+
+The runner writes `_prisma_migrations` byte-for-byte the way Prisma does
+(identical DDL, sha256-of-the-file checksum, `applied_steps_count = 1`), so a
+database it created stays legible to the Prisma CLI:
+
+```
+$ pnpm db:init
+🔍 Checking database state...
+   Database type: sqlite
+   Migrations path: prisma/sqlite/schema
+   Database file: /home/you/.prismalens/prismalens.db
+   Database exists: false
+   Applying migration 20260803122809_init…
+   Applied 1 migration(s): 20260803122809_init.
+🔄 Applied: 20260803122809_init
+✅ Database initialization complete
+
+$ pnpm db:init                      # again — nothing pending
+   Database is up to date (1 migration(s) applied).
+✅ All migrations are up to date
+
+$ pnpm exec prisma migrate status --config prisma.config.ts
+Database schema is up to date!
+```
+
+### When the runner refuses
+
+It never partially applies. Each of these leaves the database exactly as found:
+
+| `MigrationError.code` | What happened | What to do |
+|---|---|---|
+| `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
+| `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only |
+| `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore the newest `prismalens.db.bak-*` sitting next to the database |
+| `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
+
+Before applying anything to a database that already holds data, the runner takes
+an online backup to `prismalens.db.bak-<epoch-ms>` next to it.
+
+PostgreSQL (the server placement) is out of the runner's scope and keeps using
+`prisma migrate deploy` — a server deploy has the CLI.
+
 ## Making a change
 
 1. **Branch** off `main`: `git checkout -b fix/short-description main`.

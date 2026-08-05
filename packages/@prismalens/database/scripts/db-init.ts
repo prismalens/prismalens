@@ -2,28 +2,40 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { execSync } from "node:child_process";
 /**
- * Smart database initialization script.
- * Detects database state and runs appropriate Prisma commands.
- * Supports separate migration folders for SQLite and PostgreSQL.
+ * Local database initialisation for contributors (`pnpm db:init`).
+ *
+ * For SQLite this deliberately runs the SAME shipped runner an end user's
+ * `pl up` runs (`@prismalens/database/migrator`) rather than shelling out to
+ * `prisma migrate deploy`. Two reasons:
+ *
+ * 1. A packed install has neither `pnpm` nor the `prisma` CLI — that path could
+ *    never have worked outside this repo.
+ * 2. Migrate-on-boot had never run in anger, because a second migration had
+ *    never existed. Routing the daily dev loop through it means the runner is
+ *    exercised on every contributor machine, not only on upgrade day.
+ *
+ * PostgreSQL (the server placement) still uses the Prisma CLI: that deploy has
+ * a CLI available and is outside the shipped runner's scope.
+ *
+ * Authoring a NEW migration is `pnpm db:migrate` (`prisma migrate dev`). This
+ * script never creates one — migration history is append-only from R1 onward
+ * (issue #335), and a script that can mint an `init` is a script that can
+ * silently replace a user's history.
  */
+
+import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import "dotenv/config";
+import { MigrationError, runMigrations } from "../src/migrator/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// __dirname is packages/@prismalens/database/scripts. prisma.config.ts,
-// the schema, and the migrations all live one level up, in the database
-// package itself — NOT in packages/api. The previous version of this file
-// resolved a `packages/api` path here and passed it to execSync as `cwd`,
-// which does not exist, surfacing as `spawnSync /bin/sh ENOENT` (Node can't
-// chdir into a missing directory). It also pointed migrationsExist() at
-// invented `prisma/migrations-{sqlite,pg}` folders that were never the real
-// location — the actual migrations live alongside the schema, at
-// `prisma/{sqlite,pg}/schema`, per prisma.config.ts's `migrations.path`.
+// __dirname is packages/@prismalens/database/scripts. prisma.config.ts, the
+// schema, and the migrations all live one level up, in the database package
+// itself — NOT in packages/api.
 const DATABASE_PATH = resolve(__dirname, "..");
 
 type DbType = "sqlite" | "postgresql";
@@ -42,24 +54,38 @@ function migrationsExist(dbType: DbType): boolean {
 	if (!existsSync(migrationsPath)) return false;
 	try {
 		const entries = readdirSync(migrationsPath, { withFileTypes: true });
-		// Check for actual migration folders (not just migration_lock.toml)
+		// Actual migration folders, not just migration_lock.toml.
 		return entries.some((e) => e.isDirectory() && !e.name.startsWith("."));
 	} catch {
 		return false;
 	}
 }
 
-function sqliteDbExists(): boolean {
-	// Matches @prismalens/config's buildSqliteUrl()/getAppDataDir(): the db
-	// file lives in the app data dir (~/.prismalens by default, or
-	// PRISMALENS_WORKSPACE_DIR). Duplicated inline rather than imported from
-	// @prismalens/config to keep this script's dependency surface minimal —
-	// that package's src currently throws at runtime (zod's `.prefault()` is
-	// not available on the installed zod 3.25.76) when resolved through tsx's
-	// workspace source-path aliasing; see repo db:init friction notes.
+function sqliteDbPath(): string {
+	// Matches @prismalens/config's buildSqliteUrl()/getAppDataDir(): the db file
+	// lives in the app data dir (~/.prismalens by default, or
+	// PRISMALENS_WORKSPACE_DIR).
 	const appDataDir =
 		process.env.PRISMALENS_WORKSPACE_DIR || join(homedir(), ".prismalens");
-	return existsSync(join(appDataDir, "prismalens.db"));
+	return join(appDataDir, "prismalens.db");
+}
+
+function seed(): void {
+	const seedDemo =
+		process.env.PRISMALENS_SEED_DEMO === "1" ||
+		process.env.NODE_ENV === "development";
+	if (!seedDemo) {
+		console.log(
+			"⏭️  Skipping demo data (set PRISMALENS_SEED_DEMO=1 or NODE_ENV=development to provision it)",
+		);
+		return;
+	}
+	console.log("🌱 Provisioning demo data for new database...");
+	execSync("pnpm exec prisma db seed --config prisma.config.ts", {
+		cwd: DATABASE_PATH,
+		stdio: "inherit",
+		env: { ...process.env },
+	});
 }
 
 async function main() {
@@ -68,93 +94,57 @@ async function main() {
 	const dbType = getDbType();
 	const migrationsFolder =
 		dbType === "postgresql" ? "pg/schema" : "sqlite/schema";
-	const hasMigrations = migrationsExist(dbType);
-	const dbExists = dbType === "sqlite" ? sqliteDbExists() : true; // PostgreSQL connectivity deferred to Prisma
 
 	console.log(`   Database type: ${dbType}`);
 	console.log(`   Migrations path: prisma/${migrationsFolder}`);
-	console.log(`   Migrations exist: ${hasMigrations}`);
-	if (dbType === "sqlite") {
-		console.log(`   Database exists: ${dbExists}`);
+
+	if (!migrationsExist(dbType)) {
+		throw new Error(
+			`No migrations found in prisma/${migrationsFolder}. Author one with ` +
+				"`pnpm db:migrate` — this script never creates an initial migration, " +
+				"because migration history is append-only from R1 onward (#335).",
+		);
 	}
 
-	if (!hasMigrations) {
-		// Fresh install - create initial migration
-		console.log("📦 Creating initial migration...");
-		execSync(
-			"pnpm exec prisma migrate dev --name init --config prisma.config.ts",
-			{
-				cwd: DATABASE_PATH,
-				stdio: "inherit",
-				env: { ...process.env },
-			},
-		);
-	} else if (!dbExists) {
-		// Migrations exist but DB is missing - apply them and seed demo data
-		console.log("🔄 Applying migrations to new database...");
+	if (dbType === "postgresql") {
+		// Server placement: the Prisma CLI is available here by definition.
+		console.log("🔄 Applying migrations with the Prisma CLI...");
 		execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
 			cwd: DATABASE_PATH,
 			stdio: "inherit",
 			env: { ...process.env },
 		});
-		const seedDemo =
-			process.env.PRISMALENS_SEED_DEMO === "1" ||
-			process.env.NODE_ENV === "development";
-		if (seedDemo) {
-			console.log("🌱 Provisioning demo data for new database...");
-			execSync("pnpm exec prisma db seed --config prisma.config.ts", {
-				cwd: DATABASE_PATH,
-				stdio: "inherit",
-				env: { ...process.env },
-			});
-		} else {
-			console.log(
-				"⏭️  Skipping demo data (set PRISMALENS_SEED_DEMO=1 or NODE_ENV=development to provision it)",
-			);
-		}
-	} else {
-		// Check for pending migrations using migrate status
-		console.log("✅ Database ready (checking for pending migrations...)");
-		try {
-			const result = execSync(
-				"pnpm exec prisma migrate status --config prisma.config.ts",
-				{
-					cwd: DATABASE_PATH,
-					stdio: "pipe",
-					env: { ...process.env },
-				},
-			);
-			const output = result.toString();
-
-			// If output mentions pending migrations, apply them
-			if (
-				output.includes("Following migration") ||
-				output.includes("have not yet been applied")
-			) {
-				console.log("🔄 Applying pending migrations...");
-				execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
-					cwd: DATABASE_PATH,
-					stdio: "inherit",
-					env: { ...process.env },
-				});
-			} else {
-				console.log("✅ All migrations are up to date");
-			}
-		} catch (_error) {
-			// migrate status returns non-zero if there are pending migrations or issues
-			console.log("🔄 Applying pending migrations...");
-			execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
-				cwd: DATABASE_PATH,
-				stdio: "inherit",
-				env: { ...process.env },
-			});
-		}
+		console.log("✅ Database initialization complete");
+		return;
 	}
+
+	const dbPath = sqliteDbPath();
+	const wasFresh = !existsSync(dbPath);
+	console.log(`   Database file: ${dbPath}`);
+	console.log(`   Database exists: ${!wasFresh}`);
+
+	const result = await runMigrations({
+		databaseFile: dbPath,
+		log: (message) => console.log(`   ${message}`),
+	});
+
+	if (result.status === "applied") {
+		console.log(`🔄 Applied: ${result.applied.join(", ")}`);
+	} else {
+		console.log("✅ All migrations are up to date");
+	}
+
+	if (wasFresh) seed();
 
 	console.log("✅ Database initialization complete");
 }
 
 main().catch((err) => {
-	console.error("❌ Database initialization failed:", err.message);
+	if (err instanceof MigrationError) {
+		console.error(`❌ Database initialization failed [${err.code}]`);
+		console.error(err.message);
+	} else {
+		console.error("❌ Database initialization failed:", err.message);
+	}
 	process.exit(1);
 });
