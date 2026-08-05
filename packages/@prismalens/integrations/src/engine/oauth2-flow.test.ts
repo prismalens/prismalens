@@ -541,7 +541,7 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 				"client-abc",
 				"secret-xyz",
 			),
-		).rejects.toThrow();
+		).rejects.toThrow(SyntaxError);
 	});
 
 	it("throws when a 200 response carries no access token (half-populated credential)", async () => {

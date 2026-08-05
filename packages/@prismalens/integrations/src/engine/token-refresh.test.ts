@@ -391,7 +391,7 @@ describe("TokenRefresher — OAuth2 refresh strategy", () => {
 		).toBeNull();
 	});
 
-	it("keeps the old refresh token when the provider does not rotate", async () => {
+	it("ignores a rotated refresh token when the template does not declare rotation", async () => {
 		const deps = new MemoryRefreshDeps();
 		seed(deps);
 		fetchMock.mockResolvedValue(
@@ -696,10 +696,12 @@ describe("TokenRefresher — concurrent refresh (the #253 race falsifier)", () =
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
-	it("does not serve a cached token to callers that arrive after the refresh settles", async () => {
+	it("serves the refreshed token from cache to callers arriving after it settles", async () => {
 		const deps = new MemoryRefreshDeps();
 		seed(deps);
-		fetchMock.mockResolvedValue(
+		// A fresh Response per call, so a second fetch shows up as a call-count
+		// failure rather than a consumed-body error.
+		fetchMock.mockImplementation(() =>
 			jsonResponse({ access_token: "at_new", expires_in: 3600 }),
 		);
 		const refresher = new TokenRefresher(VAULT, deps);

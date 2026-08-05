@@ -82,19 +82,21 @@ describe("GitHubAppFlow.generateJWT — minting", () => {
 	});
 
 	it("sets iss to the app id, backdates iat by 60s and expires 10 minutes out", () => {
-		const now = Math.floor(Date.now() / 1000);
-		const { payload } = decode(
-			GitHubAppFlow.generateJWT(APP_ID, keyPair.privateKey),
-		);
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+			const now = Math.floor(Date.now() / 1000);
+			const { payload } = decode(
+				GitHubAppFlow.generateJWT(APP_ID, keyPair.privateKey),
+			);
 
-		expect(payload.iss).toBe(APP_ID);
-		const iat = payload.iat as number;
-		const exp = payload.exp as number;
-		// 60s clock-drift buffer behind, 600s ahead — GitHub caps the window at 10 min.
-		expect(iat).toBeGreaterThanOrEqual(now - 62);
-		expect(iat).toBeLessThanOrEqual(now - 58);
-		expect(exp - iat).toBe(660);
-		expect(exp).toBeLessThanOrEqual(now + 600);
+			expect(payload.iss).toBe(APP_ID);
+			// 60s clock-drift buffer behind, 600s ahead — GitHub caps the window at 10 min.
+			expect(payload.iat).toBe(now - 60);
+			expect(payload.exp).toBe(now + 600);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("produces a fresh token per call (iat/exp track the clock)", () => {
