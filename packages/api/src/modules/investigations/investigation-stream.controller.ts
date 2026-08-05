@@ -29,7 +29,11 @@ import { StreamRelayService } from "./stream-relay.service.js";
  * `@Sse()` produced for a `{ data }` message (`data: <json>\n\n`), so clients are
  * unaffected.
  */
-@Controller("api/investigations")
+// `api` is already the global prefix (main.ts `setGlobalPrefix`), so this must NOT
+// repeat it. It did, which mapped the route at `/api/api/investigations/:id/stream`
+// while the only client calls `/api/investigations/:id/stream` — the live stream has
+// been a 404 since the prefix was introduced. Verified against a running server.
+@Controller("investigations")
 @UseGuards(ThrottlerGuard)
 export class InvestigationStreamController {
 	private readonly logger = new Logger(InvestigationStreamController.name);
