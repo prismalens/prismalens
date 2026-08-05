@@ -133,7 +133,14 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 
 		const data = (await response.json()) as Record<string, unknown>;
 
-		const newAccessToken = data.access_token as string;
+		// A 2xx with no access_token is not a refresh — without this guard the
+		// working credential is overwritten with `accessToken: undefined` and the
+		// connection is marked ACTIVE.
+		const newAccessToken = data.access_token;
+		if (typeof newAccessToken !== "string" || newAccessToken.length === 0) {
+			throw new Error("Token refresh response has no access_token");
+		}
+
 		const newRefreshToken = template.oauth2.rotatesRefreshToken
 			? ((data.refresh_token as string) ?? refreshToken)
 			: refreshToken;

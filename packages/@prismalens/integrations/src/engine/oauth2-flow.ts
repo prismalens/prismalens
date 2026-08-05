@@ -214,6 +214,13 @@ export class OAuth2Flow {
 			throw new Error(`OAuth error: ${data.error_description ?? data.error}`);
 		}
 
+		// A 2xx with no access_token is not a success — without this guard the
+		// credential is stored with `accessToken: undefined`.
+		const accessToken = data.access_token;
+		if (typeof accessToken !== "string" || accessToken.length === 0) {
+			throw new Error("Token exchange response has no access_token");
+		}
+
 		const metadata: Record<string, unknown> = {};
 		for (const path of template.oauth2.tokenResponseMetadata ?? []) {
 			const value = getNestedValue(data, path);
@@ -225,7 +232,7 @@ export class OAuth2Flow {
 		const separator = template.oauth2.scopeSeparator ?? " ";
 
 		return {
-			accessToken: data.access_token as string,
+			accessToken,
 			refreshToken: (data.refresh_token as string) ?? null,
 			tokenType: (data.token_type as string) ?? "bearer",
 			expiresIn: (data.expires_in as number) ?? null,
