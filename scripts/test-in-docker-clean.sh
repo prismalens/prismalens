@@ -55,7 +55,7 @@ APP_PID=$!
 echo "Waiting for app to initialize and map routes..."
 FOR_I=0
 READY=0
-while [ $FOR_I -lt 60 ]; do
+while [ $FOR_I -lt 90 ]; do
   if curl -s http://localhost:3001/health >/dev/null 2>&1; then
     echo "App is up and responding on port 3001 after ${FOR_I}s!"
     READY=1
