@@ -49,6 +49,9 @@ export class QueueModule {
 	static forRoot(): DynamicModule {
 		logger.log("Initializing BullMQ with Redis connection");
 		const redisConnection = buildRedisConnection();
+		redisConnection.on("error", (err) => {
+			logger.debug(`Redis connection error: ${err.message}`);
+		});
 
 		return {
 			module: QueueModule,
