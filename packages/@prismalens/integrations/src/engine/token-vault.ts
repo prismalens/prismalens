@@ -89,6 +89,14 @@ export class TokenVault {
 				sensitiveFields.some((f) => normalizedKey.includes(f))
 			) {
 				masked[key] = maskString(value);
+			} else if (Array.isArray(value)) {
+				// Preserve array shape — recursing into an array as a record turns
+				// ["repo", "read:org"] into { "0": "repo", "1": "read:org" }.
+				masked[key] = value.map((item) =>
+					typeof item === "object" && item !== null
+						? TokenVault.mask(item as Record<string, unknown>)
+						: item,
+				);
 			} else if (typeof value === "object" && value !== null) {
 				masked[key] = TokenVault.mask(value as Record<string, unknown>);
 			} else {

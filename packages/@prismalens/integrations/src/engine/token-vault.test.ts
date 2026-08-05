@@ -246,4 +246,19 @@ describe("TokenVault.mask", () => {
 		expect(masked.auth.scope).toBe("repo");
 		expect(masked.auth.accessToken).toBe(`abcd${"*".repeat(8)}mnop`);
 	});
+
+	it("preserves array-valued fields instead of turning them into objects", () => {
+		const masked = TokenVault.mask({
+			scopes: ["repo", "read:org"],
+			installations: [{ id: 1, accessToken: "abcdefghijklmnop" }],
+		}) as { scopes: unknown; installations: Array<Record<string, unknown>> };
+
+		expect(Array.isArray(masked.scopes)).toBe(true);
+		expect(masked.scopes).toEqual(["repo", "read:org"]);
+		expect(Array.isArray(masked.installations)).toBe(true);
+		expect(masked.installations[0].id).toBe(1);
+		expect(masked.installations[0].accessToken).toBe(
+			`abcd${"*".repeat(8)}mnop`,
+		);
+	});
 });
