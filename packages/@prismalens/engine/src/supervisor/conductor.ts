@@ -11,11 +11,11 @@
  *   - SINK  (live/ephemeral) — every canonical event as it streams:
  *       CLI `investigate` → a terminal timeline line
  *       CLI `serve`       → a JSON-RPC `investigate/event` notification
- *       web worker        → publish to the Redis stream channel (→ SSE → UI)
+ *       app run           → hand to the host over IPC (→ EventBus → SSE → UI)
  *       standalone        → append to the `~/.prismalens` events file
  *   - STORE (durable lifecycle) — create → append(per event) → finish|fail:
  *       CLI  → sessions.create → appendEvent → writeReport+done | update(errored)
- *       worker → status(running)+timeline(started) → NO-OP append →
+ *       app run → status(running)+timeline(started) → bulk-appended event record →
  *                writeResult+timeline(completed) | status(failed)+timeline(failed)
  *
  * The engine stays db/env-clean (ADR-0011): the caller supplies a {@link
@@ -48,7 +48,7 @@ export type InvestigationSink = (event: CanonicalEvent) => void | Promise<void>;
 export interface InvestigationStore {
 	/** Open the durable record before the stream starts. */
 	create(): Promise<void>;
-	/** Persist one canonical event (worker relays via Redis only → no-op). */
+	/** Persist one canonical event. */
 	append(event: CanonicalEvent): Promise<void>;
 	/** Fold the synthesized report into the record + mark it done. */
 	finish(report: InvestigationReport): Promise<void>;
