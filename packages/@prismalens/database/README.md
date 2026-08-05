@@ -10,12 +10,21 @@ no `prisma` binary, no `pnpm`, no schema source — because `pl up` runs on an e
 user's machine where none of those exist.
 
 ```ts
+import { getConfig } from "@prismalens/config";
 import { runMigrations } from "@prismalens/database/migrator";
 
 // Called from packages/api/src/main.ts before Nest starts.
-const result = await runMigrations({ log: (m) => logger.info(m) });
-// → { status: "applied" | "up-to-date" | "skipped-non-sqlite", applied, backupFile, … }
+const result = await runMigrations({
+	dbType: getConfig().PRISMALENS_DB_TYPE,
+	log: (message) => console.info(message),
+});
+
+console.info(result.status, result.applied, result.backupFile);
 ```
+
+`result.status` is `"applied"`, `"up-to-date"`, or `"skipped-non-sqlite"`;
+`applied` lists what this run changed, and `backupFile` is the pre-migration
+backup path when one was taken.
 
 Importing this subpath does **not** construct a `PrismaClient`, so the database
 can be migrated before anything opens it.

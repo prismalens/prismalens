@@ -27,6 +27,8 @@ const SCRATCH_ROOT = join(PACKAGE_DIR, ".tmp-migrator-tests");
  * SQL is caught here rather than on a user's machine.
  */
 const SHIPPED_INIT = "20260803122809_init";
+const SHIPPED_INIT_CHECKSUM =
+	"a84e9ba7b1a98555e67f8e08e9f93e6f72b99aca6dd88debaeebe4affb467d8f";
 
 /** Prisma's own `_prisma_migrations` DDL, as SQLite stores it in sqlite_master. */
 const PRISMA_LEDGER_DDL = `CREATE TABLE "_prisma_migrations" (
@@ -200,6 +202,17 @@ describe("runMigrations — fresh database", () => {
 		expect(tableNames(file)).toEqual(
 			expect.arrayContaining(["services", "repositories"]),
 		);
+
+		// Pinned to the checksum a real `prisma migrate deploy` recorded for this
+		// migration. Editing the shipped SQL fails here — which is the point:
+		// history is append-only, and an edited migration is unreconcilable with
+		// every database already in the wild.
+		expect(sha256OfFile(join(result.migrationsDir as string, SHIPPED_INIT, "migration.sql"))).toBe(
+			SHIPPED_INIT_CHECKSUM,
+		);
+		expect(rows.find((r) => r.migration_name === SHIPPED_INIT)?.checksum).toBe(
+			SHIPPED_INIT_CHECKSUM,
+		);
 	});
 });
 
@@ -370,6 +383,31 @@ describe("runMigrations — refuses incompatible histories", () => {
 		).map((c) => c.name);
 		db.close();
 		expect(cols).toEqual(["id", "name"]);
+	});
+
+	it("hard-stops when a later migration is recorded without its predecessor", async () => {
+		const file = dbFile();
+		const migrationsDir = lineage([BASE, ADD_COLOUR]);
+		// Bootstrap a ledger, then remove BASE's row: the database now claims
+		// ADD_COLOUR ran without BASE. Applying BASE on top would run an older
+		// migration after a newer one.
+		await runMigrations({ databaseFile: file, migrationsDir });
+		const db = new Database(file);
+		db.prepare(`DELETE FROM "_prisma_migrations" WHERE "migration_name" = ?`).run(
+			BASE,
+		);
+		db.close();
+		const before = readLedger(file);
+
+		await expect(
+			runMigrations({ databaseFile: file, migrationsDir }),
+		).rejects.toMatchObject({
+			name: "MigrationError",
+			code: "history-gap",
+		});
+
+		expect(readLedger(file)).toEqual(before);
+		expect(backupsIn(scratch)).toEqual([]);
 	});
 
 	it("throws when the build ships no migrations at all", async () => {

@@ -71,17 +71,38 @@ setup (providers, harnesses, configuration, commands) lives at
 npm install -g prismalens@latest
 ```
 
-Your data stays where it is. PrismaLens keeps everything under
-`~/.prismalens` (override with `PRISMALENS_WORKSPACE_DIR`), and on the next
-start it applies any pending database migrations in place — no export, no
-re-import, no `--reset` step. Before it writes to a database that already holds
-data it takes a backup alongside it, as `prismalens.db.bak-<timestamp>`.
+Your data stays where it is. PrismaLens keeps everything under `~/.prismalens`
+(override with `PRISMALENS_WORKSPACE_DIR`) and never asks you to export, re-import,
+or reset it.
 
-Migration history is append-only from v0.5.0 onward, so a newer release always
-knows how to advance an older database. The reverse is not true: if you *down*grade
-and the older binary meets a database a newer one already migrated, it stops with
-an explanation instead of touching your data. Upgrade again, or point
-`PRISMALENS_WORKSPACE_DIR` somewhere fresh.
+From v0.5.0 — the release that adds the local app (`pl up`) and its database —
+that guarantee has a mechanism behind it. Starting the app applies any pending
+database migrations **in place**, and before it writes to a database that already
+holds data it takes a backup alongside it as `prismalens.db.bak-<timestamp>`.
+Migration history is append-only, so a newer release always knows how to advance
+an older database:
+
+```console
+$ pl up
+Backed up /home/you/.prismalens/prismalens.db to /home/you/.prismalens/prismalens.db.bak-1785959532898 before migrating.
+Applying migration 20260910084500_add_postmortem_owner…
+Database migrated: 20260910084500_add_postmortem_owner
+```
+
+The reverse does not hold, and PrismaLens refuses rather than guesses. Downgrade
+onto a database a newer release already migrated and it stops without touching
+your data:
+
+```console
+$ pl up
+Database migration refused [version-skew]
+The database at /home/you/.prismalens/prismalens.db was written by a newer PrismaLens:
+it records a migration this build does not ship (20260910084500_add_postmortem_owner).
+Nothing was applied. Upgrade PrismaLens (`npm install -g prismalens@latest`), or point
+PRISMALENS_WORKSPACE_DIR at a different directory to start fresh.
+```
+
+(Migration names above are illustrative — `pl up` and its database land in v0.5.0.)
 
 ## How it works
 

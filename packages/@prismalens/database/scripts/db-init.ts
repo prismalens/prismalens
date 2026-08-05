@@ -40,8 +40,19 @@ const DATABASE_PATH = resolve(__dirname, "..");
 
 type DbType = "sqlite" | "postgresql";
 
+const DB_TYPES: readonly DbType[] = ["sqlite", "postgresql"];
+
 function getDbType(): DbType {
-	return (process.env.PRISMALENS_DB_TYPE || "sqlite") as DbType;
+	const raw = process.env.PRISMALENS_DB_TYPE || "sqlite";
+	// Validate rather than cast: an unrecognised value used to fall through to
+	// the SQLite branch, where the runner would skip it as non-SQLite and this
+	// script would still report success.
+	if (!DB_TYPES.includes(raw as DbType)) {
+		throw new Error(
+			`Unsupported PRISMALENS_DB_TYPE "${raw}". Supported: ${DB_TYPES.join(", ")}.`,
+		);
+	}
+	return raw as DbType;
 }
 
 function getMigrationsPath(dbType: DbType): string {
@@ -125,6 +136,7 @@ async function main() {
 
 	const result = await runMigrations({
 		databaseFile: dbPath,
+		dbType,
 		log: (message) => console.log(`   ${message}`),
 	});
 

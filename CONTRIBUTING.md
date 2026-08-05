@@ -140,6 +140,7 @@ It never partially applies. Each of these leaves the database exactly as found:
 |---|---|---|
 | `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
 | `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only |
+| `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore the newest `prismalens.db.bak-*`, or reconcile with the Prisma CLI |
 | `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore the newest `prismalens.db.bak-*` sitting next to the database |
 | `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
 

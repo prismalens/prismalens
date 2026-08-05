@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	MIGRATIONS_DIR_ENV,
+	type MigrationFlavour,
 	migrationDirCandidates,
 	readShippedMigrations,
 	resolveMigrationsDir,
@@ -56,25 +57,51 @@ describe("resolveMigrationsDir", () => {
 		expect(resolveMigrationsDir("sqlite")).toBe(scratch);
 	});
 
-	it("names every path it tried when nothing is found", () => {
+	it("names the configured override when it does not exist", () => {
 		process.env[MIGRATIONS_DIR_ENV] = join(scratch, "nope");
 		expect(() => resolveMigrationsDir("sqlite")).toThrow(/nope/);
+	});
+
+	it("names every candidate it tried when the search finds nothing", () => {
+		// A lineage that does not exist, so every candidate misses and the search
+		// path (not the override path) produces the message.
+		const missing = "mysql" as MigrationFlavour;
+		let message = "";
+		try {
+			resolveMigrationsDir(missing);
+		} catch (error) {
+			message = (error as Error).message;
+		}
+		expect(message).not.toBe("");
+		for (const candidate of migrationDirCandidates(missing)) {
+			expect(message).toContain(candidate);
+		}
+		expect(message).toContain(MIGRATIONS_DIR_ENV);
 	});
 });
 
 describe("readShippedMigrations", () => {
-	it("returns migrations in timestamp order and skips directories without SQL", () => {
+	it("returns migrations in timestamp order, ignoring dot-directories", () => {
 		for (const name of ["20260102000000_b", "20260101000000_a", ".keep"]) {
 			mkdirSync(join(scratch, name), { recursive: true });
 		}
 		writeFileSync(join(scratch, "20260101000000_a", "migration.sql"), "SELECT 1;");
 		writeFileSync(join(scratch, "20260102000000_b", "migration.sql"), "SELECT 2;");
-		mkdirSync(join(scratch, "20260103000000_empty"), { recursive: true });
 
 		expect(readShippedMigrations(scratch).map((m) => m.name)).toEqual([
 			"20260101000000_a",
 			"20260102000000_b",
 		]);
+	});
+
+	it("throws on a migration directory with no SQL rather than under-migrating", () => {
+		mkdirSync(join(scratch, "20260101000000_a"), { recursive: true });
+		writeFileSync(join(scratch, "20260101000000_a", "migration.sql"), "SELECT 1;");
+		mkdirSync(join(scratch, "20260103000000_empty"), { recursive: true });
+
+		expect(() => readShippedMigrations(scratch)).toThrow(
+			/20260103000000_empty.*missing migration\.sql/,
+		);
 	});
 
 	it("checksums the raw bytes with sha256, matching Prisma", () => {

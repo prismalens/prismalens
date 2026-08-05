@@ -15,7 +15,7 @@
  * so the build product must not be flavour-specific.
  */
 
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +31,10 @@ for (const flavour of flavours) {
 			`Expected migrations at ${from}, but the directory is missing.`,
 		);
 	}
+	// Wipe the destination first. `cpSync` merges, so an incremental build after
+	// switching branches would leave a migration in `dist` that no longer exists
+	// in source — and the runner would try to apply it.
+	rmSync(to, { recursive: true, force: true });
 	mkdirSync(to, { recursive: true });
 	cpSync(from, to, {
 		recursive: true,

@@ -52,9 +52,15 @@ async function bootstrap() {
 	 * the package and is applied programmatically (issue #335). A current
 	 * database is a no-op; an incompatible one is a hard stop with instructions
 	 * rather than a partial apply.
+	 *
+	 * The database type comes from the VALIDATED config, not raw `process.env`:
+	 * a Postgres deploy has the Prisma CLI and keeps `prisma migrate deploy`, and
+	 * an unsupported value must fail validation above rather than fall through to
+	 * a silent skip here.
 	 */
 	try {
 		const migration = await runMigrations({
+			dbType: getConfig().PRISMALENS_DB_TYPE,
 			log: (message) => logger.info(message),
 		});
 		if (migration.status === "applied") {

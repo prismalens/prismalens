@@ -26,6 +26,8 @@ export default defineConfig({
 			exclude: ["src/**/*.test.ts"],
 			reporter: ["text-summary", "text"],
 			thresholds: {
+				// perFile so one well-covered module cannot mask a thin one.
+				perFile: true,
 				"src/migrator/**/*.ts": NEW_CODE_THRESHOLD,
 			},
 		},

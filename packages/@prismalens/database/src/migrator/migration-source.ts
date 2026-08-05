@@ -121,7 +121,14 @@ export function readShippedMigrations(dir: string): ShippedMigration[] {
 	const migrations: ShippedMigration[] = [];
 	for (const name of names) {
 		const path = join(dir, name, MIGRATION_FILE);
-		if (!existsSync(path)) continue;
+		// A migration directory with no SQL means the artifact is mis-packaged.
+		// Skipping it silently would under-migrate the database and then report
+		// success — exactly the failure this runner exists to make impossible.
+		if (!existsSync(path)) {
+			throw new Error(
+				`Migration "${name}" is missing ${MIGRATION_FILE} (expected at ${path}). The shipped migrations are incomplete.`,
+			);
+		}
 		const bytes = readFileSync(path);
 		migrations.push({
 			name,

@@ -26,11 +26,14 @@
  *   mid-apply rolls the schema **and** the ledger row back together — there is
  *   no partially-applied state to clean up.
  * - **Backed up before any write.** An existing, already-populated database is
- *   copied via SQLite's online-backup API before the transaction opens.
+ *   copied via SQLite's online-backup API — taken *after* the write lock is held
+ *   and *before* the first DDL, so the copy describes exactly the state the
+ *   migration runs against.
  * - **Never applies over an unknown history.** A database recording a migration
- *   this build does not ship (version skew), or a shipped migration whose
- *   checksum no longer matches what was applied (a squashed/edited history), is
- *   a hard stop with instructions — never a partial apply.
+ *   this build does not ship (version skew), a shipped migration whose checksum
+ *   no longer matches what was applied (a squashed/edited history), or a
+ *   recorded set that is not an ordered prefix of the shipped one (a gap or a
+ *   duplicate) is a hard stop with instructions — never a partial apply.
  */
 
 import { randomUUID } from "node:crypto";
@@ -80,6 +83,8 @@ export type MigrationErrorCode =
 	| "checksum-mismatch"
 	/** A previous run left a migration started-but-unfinished. */
 	| "incomplete-migration"
+	/** The recorded migrations are not an ordered prefix of the shipped ones. */
+	| "history-gap"
 	/** No migration SQL shipped with this build. */
 	| "no-migrations"
 	/** Another process held the write lock for the whole retry budget. */
@@ -217,18 +222,44 @@ function assertHistoryIsCompatible(
 				`an edited or squashed migration cannot be reconciled with an existing database.`,
 		);
 	}
+
+	// History is append-only, so what was applied must be an ordered PREFIX of
+	// what ships. Anything else — a duplicate row, or a later migration recorded
+	// without its predecessor — would make the runner apply an older migration
+	// on top of a newer one. Refuse instead.
+	const appliedNames = settled.map((row) => row.migration_name).sort();
+	const expectedPrefix = shipped
+		.slice(0, appliedNames.length)
+		.map((m) => m.name);
+	if (appliedNames.join(" ") !== expectedPrefix.join(" ")) {
+		throw new MigrationError(
+			"history-gap",
+			`The migrations recorded in ${databaseFile} are not an ordered prefix of the migrations this build ships: ` +
+				`recorded [${appliedNames.join(", ")}], expected [${expectedPrefix.join(", ")}]. ` +
+				`Nothing was applied. A gap or a duplicate row means the history was edited outside this runner; ` +
+				`restore the most recent prismalens.db.bak-* file next to it, or reconcile with the Prisma CLI.`,
+		);
+	}
 }
 
 /**
  * Copy the database with SQLite's online-backup API. A plain file copy is not
  * safe here: any `-wal` content would be left behind.
+ *
+ * Reads through a SEPARATE read-only connection, because the caller takes the
+ * backup while the migration connection already holds the write lock — that
+ * ordering is what makes the backup match the state the migration will run
+ * against. Readers are still admitted under a RESERVED lock, and no DDL has run
+ * yet, so what this copies is the last committed state.
  */
-async function backupDatabase(
-	db: SqliteDatabase,
-	databaseFile: string,
-): Promise<string> {
+async function backupDatabase(databaseFile: string): Promise<string> {
 	const backupFile = `${databaseFile}.bak-${Date.now()}`;
-	await db.backup(backupFile);
+	const source = new Database(databaseFile, { readonly: true });
+	try {
+		await source.backup(backupFile);
+	} finally {
+		source.close();
+	}
 	return backupFile;
 }
 
@@ -362,17 +393,14 @@ export async function runMigrations(
 			};
 		}
 
-		let backupFile: string | null = null;
-		if (hadExistingData) {
-			backupFile = await backupDatabase(db, databaseFile);
-			log(`Backed up ${databaseFile} to ${backupFile} before migrating.`);
-		}
-
+		// Take the write lock BEFORE the backup. A competing writer that commits
+		// between the two would otherwise be silently discarded if the backup were
+		// ever restored — the backup has to describe the state the migration
+		// actually runs against.
 		await beginImmediate(db, databaseFile);
+		let backupFile: string | null = null;
 		const applied: string[] = [];
 		try {
-			db.exec(CREATE_MIGRATIONS_TABLE_SQL);
-
 			// Re-read the ledger now that the write lock is held: a competing
 			// process may have applied everything between our read and this point.
 			// Re-check compatibility too — if that competitor was a NEWER build, we
@@ -384,14 +412,23 @@ export async function runMigrations(
 					.filter((row) => row.rolled_back_at === null)
 					.map((row) => row.migration_name),
 			);
+			const lockedPending = shipped.filter((m) => !lockedApplied.has(m.name));
 
-			for (const migration of shipped) {
-				if (lockedApplied.has(migration.name)) continue;
-				const startedAt = Date.now();
-				log(`Applying migration ${migration.name}…`);
-				db.exec(migration.sql);
-				recordApplied(db, migration, startedAt);
-				applied.push(migration.name);
+			if (lockedPending.length > 0) {
+				// Still nothing written at this point — the lock holds no data yet.
+				if (hadExistingData) {
+					backupFile = await backupDatabase(databaseFile);
+					log(`Backed up ${databaseFile} to ${backupFile} before migrating.`);
+				}
+
+				db.exec(CREATE_MIGRATIONS_TABLE_SQL);
+				for (const migration of lockedPending) {
+					const startedAt = Date.now();
+					log(`Applying migration ${migration.name}…`);
+					db.exec(migration.sql);
+					recordApplied(db, migration, startedAt);
+					applied.push(migration.name);
+				}
 			}
 
 			db.exec("COMMIT");

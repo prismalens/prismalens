@@ -15,7 +15,8 @@ init migration, then delete prismalens.db"*. **That rule is gone.** It was corre
 only database in the world was a contributor's, and it becomes data loss the moment `pl up`
 creates a database on a stranger's machine.
 
-* **Never** delete, edit, rename, or squash a migration under `prisma/{sqlite,pg}/schema/`.
+* **Never** delete, edit, rename, or squash a migration under
+  `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`.
   Their checksums are recorded in every existing database; the shipped runner hard-stops
   (`checksum-mismatch`) rather than reconciling an edited history.
 * A schema change means a **new additive migration**: `pnpm db:migrate` (`prisma migrate dev`).
