@@ -61,7 +61,7 @@ vi.mock("@prismalens/logger/standalone", () => ({
 
 process.env.PRISMALENS_INTERNAL_SECRET = "test-secret";
 
-const fetchMock = vi.fn(async (url: string | URL) => {
+const fetchMock = vi.fn(async (url: string | URL, _init?: RequestInit) => {
 	if (String(url).includes("/events/clear")) {
 		return { ok: true, json: async () => ({ deleted: 3 }) } as Response;
 	}

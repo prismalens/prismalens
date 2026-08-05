@@ -26,7 +26,15 @@ const mocks = vi.hoisted(() => {
 			updateStatus: vi.fn(async () => ({})),
 			get: vi.fn(async () => ({ id: "inv-1", status: "running" })),
 		},
-		timeline: { create: vi.fn(async () => ({})) },
+		// The parameter is declared (rather than left inferred as zero-arity) so
+		// `create.mock.calls` carries the recorded argument. Without it the calls
+		// tuple is empty and `workspaceEntry()` below can only get at the entry by
+		// asserting `undefined` into a shape — which would silence the checker
+		// instead of establishing the fact. (#302 follow-up 3 removes this
+		// package's test exclusion, so these files are type-checked now.)
+		timeline: {
+			create: vi.fn(async (_entry: Record<string, unknown>) => ({})),
+		},
 		incidents: { get: vi.fn(async () => ({}) as Record<string, unknown>) },
 		services: {
 			list: vi.fn(async () => ({ data: [], total: 0 })),
@@ -121,8 +129,8 @@ function makeIo() {
 /** The timeline call this feature owns, isolated from the run's other writes. */
 function workspaceEntry() {
 	return mocks.api.timeline.create.mock.calls
-		.map(([arg]) => arg as Record<string, unknown>)
-		.find((arg) => arg?.type === "investigation_started");
+		.map(([entry]) => entry)
+		.find((entry) => entry?.type === "investigation_started");
 }
 
 describe("#331 workspace record (post-#350 forked-child run)", () => {
