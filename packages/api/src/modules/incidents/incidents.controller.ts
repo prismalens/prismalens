@@ -264,11 +264,19 @@ export class IncidentsController {
 	}
 
 	private serializeAlert(alert: PrismaAlert | Record<string, any>): Alert {
+		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
+		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns
+		// must stay out of the API response. oRPC output validation strips unknowns,
+		// but defense-in-depth applies.
 		return {
-			...alert,
+			id: alert.id,
+			dedupKey: alert.dedupKey,
 			fingerprint: alert.fingerprint ?? null,
 			externalId: alert.externalId ?? null,
+			title: alert.title,
 			description: alert.description ?? null,
+			severity: alert.severity,
+			status: alert.status,
 			source: alert.source ?? null,
 			sourceUrl: alert.sourceUrl ?? null,
 			serviceId: alert.serviceId ?? null,
@@ -284,6 +292,7 @@ export class IncidentsController {
 					? JSON.parse(alert.labels)
 					: alert.labels
 				: null,
+			occurrenceCount: alert.occurrenceCount,
 			triggeredAt:
 				alert.triggeredAt instanceof Date
 					? alert.triggeredAt.toISOString()
