@@ -3,10 +3,6 @@
 
 export { AIProviderSettings } from "./AIProviderSettings";
 export { ConnectionsTab } from "./ConnectionsTab";
-export {
-	CorrelationRulesSettings,
-	type CorrelationRulesSettingsProps,
-} from "./CorrelationRulesSettings";
 export { DangerZoneSettings } from "./DangerZoneSettings";
 export { IntegrationsSettings } from "./IntegrationsSettings";
 export { IntegrationsTab } from "./IntegrationsTab";
