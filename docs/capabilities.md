@@ -10,6 +10,10 @@ PrismaLens has two independent front doors onto the same investigation engine â€
 (API + worker + web UI) and the **CLI** (local-first, `~/.prismalens` as its record). Every
 capability names its surface; "works" on one says nothing about the other.
 
+For the app surfaces, [`ui-flows-and-e2e-strategy.md`](./ui-flows-and-e2e-strategy.md) maps these
+capabilities onto the concrete routes users take through them, and records which journeys are
+covered by an e2e spec and which are not.
+
 | # | Capability | Surface | Status | Tracking |
 |---|---|---|---|---|
 | C1 | Service catalog & discovery | app UI | âœ… Complete | [#287](https://github.com/prismalens/prismalens/issues/287) |
