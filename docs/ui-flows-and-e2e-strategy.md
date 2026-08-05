@@ -40,10 +40,15 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | J14 | Team operations & RBAC | — | C12 | — | ◻️ |
 | J15 | Correlation-rule management | — | C8 | — | ◻️ |
 | J16 | Approve → execute | — | C13 | — | ◻️ by design (ADR-0023) |
+| J17 | Manual authorship (demo without an alert source) | — | C10 | — | ◻️ |
 
-**Read this matrix as: 16 journeys, 4 specs, 0 journeys verified end-to-end.** Every ✅-shaped
+**Read this matrix as: 17 journeys, 4 specs, 0 journeys verified end-to-end.** Every ✅-shaped
 claim the suite could make, it does not yet make. See [What the four specs actually
 prove](#what-the-four-specs-actually-prove).
+
+Every capability in [`capabilities.md`](./capabilities.md) has a row above except **C4 (CLI local
+investigation loop)**, which is a CLI surface with no frontend journey by definition — it is
+covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwright.
 
 ## The journeys
 
@@ -97,11 +102,12 @@ prove](#what-the-four-specs-actually-prove).
 - **States**: loading; empty catalog; populated; unlinked-repository / unlinked-deployment counts
   surfaced as badges; discovery running; discovery empty; discovery error; per-suggestion
   accept / reject / ignore; bulk accept.
-- **Write paths**: `services.create`, `repositories.batchCreate`,
-  `serviceDiscovery.triggerDiscovery`, `acceptSuggestion`, `rejectSuggestion`, `ignoreSuggestion`,
-  `acceptBulkSuggestions`.
+- **Write paths** (nine): `services.create`, `services.update`, `services.delete`,
+  `repositories.batchCreate`, `serviceDiscovery.triggerDiscovery`,
+  `serviceDiscovery.acceptSuggestion`, `serviceDiscovery.rejectSuggestion`,
+  `serviceDiscovery.ignoreSuggestion`, `serviceDiscovery.acceptBulkSuggestions`.
 - **Coverage**: `services-discovery.spec.ts` asserts five seeded service names render, and that
-  `/services/discovery` renders its heading. No write path is exercised — not one of the eight
+  `/services/discovery` renders its heading. No write path is exercised — not one of the nine
   mutations above is called by any test.
 
 ### J5 — Service detail
@@ -247,6 +253,21 @@ in `InvestigationCanvas`'s `nodeTypes`. This is correct per ADR-0023 — this re
 inert shell only. The e2e obligation here is the inverse of the others: a spec should eventually
 assert that **no execution path exists without a verified module**, not that approval works.
 
+### J17 — Manual authorship (demo without an alert source) — ◻️ no surface
+
+C10's premise is that you can demonstrate the product without wiring a real alert source: author an
+alert, an incident, or an investigation by hand. The API procedures for it exist and are wrapped in
+hooks — `alerts.create`, `incidents.create`, `incidents.addAlert`, `investigations.create` — but
+**not one of them has a UI caller.** The corresponding hooks (`useCreateAlert`, `useCreateIncident`,
+`useAddAlertToIncident`, `useCreateInvestigation`) are exported and never imported by any component
+or route. There is no "New Alert" or "New Incident" control anywhere in the app; investigations
+start only via `incidents.investigate` from an incident that already exists.
+
+So today, the only way to get data into a running instance is the webhook intake or the demo seed.
+Nothing to cover until the authorship controls are built — which matters more than it looks, because
+manual authorship is the fallback path for exactly the `pl up` user who has no Alertmanager to point
+at yet.
+
 ## What the four specs actually prove
 
 Worth stating plainly, because "we have 4 e2e specs" and "4 journeys are covered" are different
@@ -276,10 +297,20 @@ Two further structural facts about the harness:
 
 ## The e2e strategy decision
 
-### 1. Scope — smoke journeys, plus writes on the paths that can silently break
+### 1. Scope — smoke every journey, write-assert the paths that gate the product
 
-**Decision: smoke everywhere, one write assertion per journey that has a write path, and full-flow
-only for J11 (storm).** Not full-flow coverage across the board.
+**Decision: route-level smoke on every journey; a write assertion on the five journeys named below,
+not on every journey that happens to have a write path; full-flow only for J11 (storm).** Not
+full-flow coverage across the board.
+
+Two definitions, because both were doing unstated work in an earlier draft of this decision:
+
+- **Smoke** = navigate to the route (and to each of its tabs), assert the surface rendered its own
+  frame — a heading, a table, or its empty state. It does **not** mean asserting the contents of
+  what renders. For J7 that means the `analytics` tab **must be navigated to and asserted at
+  heading level**; the four charts' data is explicitly not asserted.
+- **Write assertion** = perform one mutation through the UI and assert it persisted across a
+  reload. One per targeted journey, not one per mutation.
 
 The reasoning is the repo's own gate doctrine. AGENTS.md already requires every PR touching
 `packages/frontend` to ship or extend a spec covering its changed surface. That is a *growth* rule:
@@ -288,6 +319,25 @@ big-bang full-flow suite front-loads the cost, ages badly against a UI still bei
 duplicates what the per-PR rule will produce for free. What the per-PR rule cannot produce is a
 baseline — it only covers surfaces someone happened to touch. The baseline is what this decision
 buys.
+
+**Which write paths get a baseline assertion, and which wait.** The frontend wires write paths on
+nine journeys. Naming a rule and then covering five of them without saying so would leave the next
+reader unable to tell what was considered from what was missed, so the disposition is exhaustive:
+
+| Journey | Write paths | Disposition |
+|---|---|---|
+| J1 setup | `setup.createOwner` | **Baseline now** — nothing works if it fails, and it is untestable later without an unseeded project. |
+| J4/J5 services | 9, incl. `services.create`, discovery accept/reject/ignore | **Baseline now** — the catalog is the substrate every other journey reads from. |
+| J9 postmortem | `postmortems.create/update/publish/delete`, `timeline.create` | **Baseline now** (extension) — `publish` is a state transition that locks the record; a silent failure is unrecoverable by the user. |
+| J11 storm | webhook intake → grouping → investigate | **Baseline now, full flow** — §3, and #238's gate depends on it. |
+| J12 settings | LLM credential save/test/delete, policy + limits, connections CRUD, danger-zone resets | **Baseline now** — the AI-provider save is a hard prerequisite for any investigation running at all. |
+| J6 alerts | `alerts.acknowledge`, `alerts.resolve` | **Deferred to the growth rule.** Both are single-field status flips wired inline in the route, immediately visible in the same table, with no downstream state. A user notices instantly; nothing else breaks silently. |
+| J8 recommendations | `recommendations.update` (wired), `complete`/`dismiss` (hooks, no UI caller yet) | **Deferred to the growth rule.** Only one of the three is reachable from the UI today, and the tab is on C13's act-phase path (ADR-0023), so the surface is expected to change shape before a baseline spec would pay for itself. |
+| J8 investigate | `incidents.investigate` | **Deferred — but only because J11 covers it.** `storm-intake.spec.ts` drives an incident to an investigation, which is the same procedure from the same surface. A second assertion would be duplication. |
+| J13 integration config | `integrations.connectGitHubInstallation`, `updateConnectionConfig` | **Deferred — cannot be asserted in-process.** Both complete against live GitHub/OAuth; a stub deep enough to make the assertion meaningful would test the stub. J12's connection CRUD covers the persistence half that *is* local. |
+
+Deferred does not mean uncovered forever — it means the per-PR growth rule picks them up the next
+time someone touches that surface, rather than the baseline paying for them now.
 
 Concretely, **five new specs on top of the four merged**, target of nine:
 
@@ -299,14 +349,14 @@ Concretely, **five new specs on top of the four merged**, target of nine:
 | `services-write.spec.ts` | J4, J5 | Create a service; accept one discovery suggestion; assert both persist. The catalog is the substrate every other journey reads from. |
 | `storm-intake.spec.ts` | J11 | #225's artifact. See §3. |
 
-Plus **two extensions to existing specs**, not new files: postmortem *publish* (the read-only lock)
-into `incident-postmortem.spec.ts`, and the investigation *stream panel* states into
-`alerts-investigations.spec.ts`.
+Plus **three extensions to existing specs**, not new files: postmortem *publish* (the read-only
+lock) and the J7 *analytics tab* smoke into `incident-postmortem.spec.ts`, and the investigation
+*stream panel* states into `alerts-investigations.spec.ts`.
 
-Deliberately **out of scope**: the React Flow canvas (graph rendering is expensive to assert and
-cheap to eyeball — the design gate covers it), the four analytics charts (same reasoning),
-per-integration OAuth loops (they need live third parties), and anything under J14/J15/J16 until
-those surfaces are routed.
+Deliberately **out of scope**: the React Flow canvas's graph rendering (expensive to assert, cheap
+to eyeball — the design gate covers it), the *contents* of the four analytics charts (same
+reasoning; the tab itself is smoked, per the definition above), per-integration OAuth loops (they
+need live third parties), and anything under J14, J15, J16, or J17 until those surfaces are routed.
 
 ### 2. CI tier — stay non-required, with a stated promotion trigger
 
@@ -445,8 +495,9 @@ Two follow-ups worth filing, neither blocking:
   is (CONTRIBUTING.md, *Making a change*).
 - A PR that **adds a spec** flips that journey's verdict. `🟦 → ✅` requires the journey's write
   path to be exercised, not just its route to render.
-- A journey marked **◻️** graduates to a real row the moment its surface is routed — J14 (RBAC) and
-  J15 (correlation rules) are both one route wiring away from being real journeys with real gaps.
+- A journey marked **◻️** graduates to a real row the moment its surface is routed — J14 (RBAC),
+  J15 (correlation rules), and J17 (manual authorship) are each one route or control away from
+  being real journeys with real gaps.
 - **Coverage is audited at each milestone**, alongside the operator's UX ledger walkthrough
   (AGENTS.md, *Frontend changes carry a design gate*). The matrix is the audit's input.
 - When capabilities move in [`capabilities.md`](./capabilities.md), check whether a journey row
