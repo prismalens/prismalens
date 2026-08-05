@@ -247,6 +247,29 @@ describe("TokenVault.mask", () => {
 		expect(masked.auth.accessToken).toBe(`abcd${"*".repeat(8)}mnop`);
 	});
 
+	it("masks string elements of a sensitive array but leaves a non-sensitive one byte-identical", () => {
+		const scopes = ["repo", "read:org"];
+		const masked = TokenVault.mask({
+			refresh_tokens: ["ghr_abcdefghijklmnop", "ghr_qrstuvwxyz012345"],
+			scopes,
+		}) as { refresh_tokens: string[]; scopes: string[] };
+
+		// A sensitive key whose value is an array of raw tokens must not leak them.
+		expect(masked.refresh_tokens).toEqual([
+			`ghr_${"*".repeat(12)}mnop`,
+			`ghr_${"*".repeat(12)}2345`,
+		]);
+		for (const token of masked.refresh_tokens) {
+			expect(token).not.toContain("abcdefghijkl");
+			expect(token).not.toContain("qrstuvwxyz01");
+		}
+
+		// ...and a non-sensitive array must come back untouched, so nobody
+		// "fixes" the leak above by masking every array.
+		expect(masked.scopes).toEqual(["repo", "read:org"]);
+		expect(masked.scopes).not.toBe(scopes);
+	});
+
 	it("preserves array-valued fields instead of turning them into objects", () => {
 		const masked = TokenVault.mask({
 			scopes: ["repo", "read:org"],

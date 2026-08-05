@@ -496,6 +496,21 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 		).rejects.toThrow(/access_token/);
 	});
 
+	it("throws when a 200 response carries a whitespace-only access token", async () => {
+		const { flow } = makeFlow();
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "   " }));
+
+		await expect(
+			flow.exchangeCodeForTokens(
+				TEMPLATE,
+				"auth-code",
+				oauthState(),
+				"client-abc",
+				"secret-xyz",
+			),
+		).rejects.toThrow(/access_token/);
+	});
+
 	it("throws when the template has no oauth2 config", async () => {
 		const { flow } = makeFlow();
 		const { oauth2: _dropped, ...withoutOauth } = TEMPLATE;

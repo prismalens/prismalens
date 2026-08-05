@@ -137,7 +137,10 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 		// working credential is overwritten with `accessToken: undefined` and the
 		// connection is marked ACTIVE.
 		const newAccessToken = data.access_token;
-		if (typeof newAccessToken !== "string" || newAccessToken.length === 0) {
+		if (
+			typeof newAccessToken !== "string" ||
+			newAccessToken.trim().length === 0
+		) {
 			throw new Error(
 				`Connection ${connection.id} token refresh response has no access_token`,
 			);

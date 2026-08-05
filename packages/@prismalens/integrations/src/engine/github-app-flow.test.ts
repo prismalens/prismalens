@@ -297,6 +297,21 @@ describe("GitHubAppFlow.getInstallationToken", () => {
 			GitHubAppFlow.getInstallationToken("jwt-value", "42"),
 		).rejects.toThrow("GitHub installation token response has no token");
 	});
+
+	it("treats a whitespace-only token as no token at all", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				token: "   ",
+				expires_at: "2026-08-05T12:00:00Z",
+				permissions: {},
+				repository_selection: "all",
+			}),
+		);
+
+		await expect(
+			GitHubAppFlow.getInstallationToken("jwt-value", "42"),
+		).rejects.toThrow("GitHub installation token response has no token");
+	});
 });
 
 describe("GitHubAppFlow installation listing", () => {
