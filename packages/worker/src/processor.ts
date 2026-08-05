@@ -15,10 +15,18 @@
  * dispatch state: the claim, the heartbeat and the reclaim decision all live in the
  * host's JobStore.
  *
- * Phase A note: telemetry endpoints + harness cwd are sourced from
- * INVESTIGATION_DEFAULTS + env as a local-first stopgap; the full `pl.config.yaml`
- * sourcing (materialised by the web Settings UI) lands with the config-UI work.
+ * Phase A note: telemetry endpoints are sourced from INVESTIGATION_DEFAULTS as a
+ * local-first stopgap; the full `pl.config.yaml` sourcing (materialised by the web
+ * Settings UI) lands with the config-UI work. The harness cwd is NO LONGER part of
+ * that stopgap — it resolves per investigation from the incident's Service →
+ * `localCheckoutPath` mapping (#331), with `PRISMALENS_INVESTIGATION_CWD` demoted
+ * to the unmapped escape hatch.
  */
+import {
+	type InvestigationCwdResolution,
+	pickServiceLabel,
+	resolveInvestigationCwd,
+} from "@prismalens/config";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
@@ -242,6 +250,11 @@ async function processJobInternal(
 		sandbox = built.sandbox;
 		const resolved = resolveInvestigation(built.request);
 
+		// #331: record WHICH directory this run read, on the incident timeline, before
+		// the harness starts. An unmapped run is allowed but never silent — reading the
+		// wrong tree produces confident garbage, and the record has to admit it.
+		await recordWorkspace(data, built.checkout);
+
 		await job.updateProgress({
 			percent: 5,
 			message: "Starting investigation...",
@@ -347,6 +360,38 @@ async function processJobInternal(
 				logger.error("Failed to destroy sandbox boundary", e);
 			}
 		}
+	}
+}
+
+/**
+ * Write the resolved investigation workspace to the incident timeline (#331).
+ *
+ * Best-effort: a timeline hiccup must not fail an otherwise-good investigation,
+ * but the worker log always carries the same sentence (emitted in `buildRequest`),
+ * so the resolution is never unrecorded in both places at once.
+ */
+async function recordWorkspace(
+	data: InvestigationJobData,
+	checkout: InvestigationCwdResolution,
+): Promise<void> {
+	try {
+		await api.timeline.create({
+			incidentId: data.incidentId,
+			type: "investigation_started",
+			title: checkout.mapped
+				? "Investigating the mapped local checkout"
+				: "Investigating WITHOUT a mapped local checkout",
+			description: checkout.note,
+			source: "ai_worker",
+			metadata: {
+				investigationId: data.investigationId,
+				cwd: checkout.cwd,
+				cwdSource: checkout.source,
+				mapped: checkout.mapped,
+			},
+		});
+	} catch (e) {
+		logger.error("Failed to record the investigation workspace", e);
 	}
 }
 
@@ -537,7 +582,11 @@ export function workerProbeUrl(): string | undefined {
 export async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
-): Promise<{ request: InvestigationRequest; sandbox?: Sandbox }> {
+): Promise<{
+	request: InvestigationRequest;
+	sandbox?: Sandbox;
+	checkout: InvestigationCwdResolution;
+}> {
 	const llmConfig = await fetchLlmConfig();
 	if (!llmConfig?.provider || !llmConfig?.model) {
 		throw new Error(
@@ -620,21 +669,31 @@ export async function buildRequest(
 		...INVESTIGATION_DEFAULTS.telemetry,
 	});
 
-	// Harness working directory. App mode has NO per-alert repo mapping to resolve
-	// one from, so this is deliberately a single fixed cwd rather than the CLI's
-	// per-alert `resolveRepoPath`:
-	//   - the DB's Service↔Repository link records a REMOTE repo (`fullName`,
-	//     `url`, `defaultBranch`) — there is no local-checkout path column;
-	//   - the worker reads no `prismalens.config.yaml`, which is where the CLI's
-	//     `services[name].repo` → `repos[ref].local_path` chain lives. That layer
-	//     becomes app-materialised under ADR-0014's D11 amendment, built at Phase 5.
-	// So: one explicit env override, else the worker's own cwd. Issue #243 item 6
-	// (per-alert cwd parity with `pl listen`) stays deferred until the app has a
-	// config surface that carries local checkout paths. An empty/whitespace
-	// override reads as unset rather than as "run in nowhere".
-	const cwd = process.env.PRISMALENS_INVESTIGATION_CWD?.trim() || process.cwd();
+	// Harness working directory — resolved PER INVESTIGATION (#331, closing #243
+	// item 6 and #238's per-alert-cwd deletion gate). The incident carries its
+	// Service, the Service carries `localCheckoutPath`, and that path is the
+	// directory this run reads. `PRISMALENS_INVESTIGATION_CWD` survives only as
+	// the unmapped escape hatch — it is no longer the primary mechanism.
+	//
+	// The precedence itself lives in `@prismalens/config` next to the CLI's
+	// `resolveRepoPath`, so `pl listen` and the app cannot drift apart (D11).
+	const mapping = await resolveServiceCheckout(incident, data);
+	const checkout = resolveInvestigationCwd({
+		mappedPath: mapping.localCheckoutPath,
+		serviceName: mapping.serviceName,
+		envOverride: process.env.PRISMALENS_INVESTIGATION_CWD,
+	});
+	// An unmapped run is not a failure, but it must never be silent: a run against
+	// the wrong tree produces confident garbage. Log it here; processJobInternal
+	// writes the same sentence to the incident timeline so the report SAYS it.
+	if (checkout.mapped) {
+		logger.info(checkout.note);
+	} else {
+		logger.warn(checkout.note);
+	}
 
 	return {
+		checkout,
 		request: {
 			context,
 			harness,
@@ -642,7 +701,7 @@ export async function buildRequest(
 			// Phase A — no per-run override, no native passthrough.
 			permissionMode: "read-only",
 			model: llmConfig.model,
-			cwd,
+			cwd: checkout.cwd,
 			synth: {
 				providerId: synthProvider,
 				model: llmConfig.model,
@@ -684,6 +743,68 @@ export async function buildRequest(
  * alerts, adopting `correlatedAlertsContext` from `@prismalens/contracts`.
  * Each alert keeps its own identity; the incident meta rides in `context.incident`.
  */
+/**
+ * Find the Service whose local checkout this investigation should run in (#331).
+ *
+ * Two sources, in order — together they are the app-side equivalent of the CLI's
+ * `resolveRepoPath(alert, config)` chain (#238's per-alert-cwd deletion gate):
+ *
+ *  1. the incident's own Service (correlation copies `serviceId` off the alert,
+ *     so this is already per-incident, not per-process);
+ *  2. failing that, the firing alert's `service`/`namespace`/`job` label looked
+ *     up by exact name — the same label `pickServiceLabel` reads for `pl listen`.
+ *     This covers an incident that never got a `serviceId` but whose alert names
+ *     a service the operator has mapped.
+ *
+ * Both lookups are best-effort: a lookup failure yields an UNMAPPED run that says
+ * so, never a failed job.
+ */
+async function resolveServiceCheckout(
+	incident: Record<string, unknown> | null,
+	data: InvestigationJobData,
+): Promise<{ serviceName?: string; localCheckoutPath?: string | null }> {
+	const incidentService = incident?.service as
+		| { name?: string; localCheckoutPath?: string | null }
+		| null
+		| undefined;
+	if (incidentService?.localCheckoutPath) {
+		return {
+			...(incidentService.name ? { serviceName: incidentService.name } : {}),
+			localCheckoutPath: incidentService.localCheckoutPath,
+		};
+	}
+
+	// The incident's OWN service is authoritative when it has one — the alert label
+	// is the fallback, not an override. Letting a label outrank the incident's
+	// service would let an alert labelled "checkout" borrow that service's tree for
+	// an incident the correlator assigned to "billing": a silent wrong-dir run of
+	// exactly the kind this issue exists to stop.
+	// Same alert source as `assembleInvestigationContext`: the job's seed alerts
+	// first, else the incident's persisted alerts. A job dispatched without inline
+	// alerts still has a service label to resolve from.
+	const alerts = (
+		data.alerts && data.alerts.length > 0
+			? data.alerts
+			: Array.isArray(incident?.alerts)
+				? incident.alerts
+				: []
+	) as Record<string, unknown>[];
+	const label = incidentService?.name ?? pickServiceLabel(alerts[0]);
+	if (!label) return {};
+	try {
+		const { data: matches } = await api.services.list({ search: label });
+		// `search` is a CONTAINS match — an exact name match is the only safe
+		// mapping, or "checkout" would silently borrow "checkout-legacy"'s tree.
+		const exact = matches.find((s) => s.name === label);
+		return {
+			serviceName: label,
+			localCheckoutPath: exact?.localCheckoutPath ?? null,
+		};
+	} catch {
+		return { serviceName: label };
+	}
+}
+
 function assembleInvestigationContext(
 	incident: Record<string, unknown> | null,
 	data: InvestigationJobData,

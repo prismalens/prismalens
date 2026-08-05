@@ -89,6 +89,10 @@ const seededIncidentRow = {
 		tags: null,
 		metadata: null,
 		discoveryMetadata: null,
+		// #331: the seed leaves every service UNMAPPED. Present-and-null is the
+		// point — the column is on the row Prisma returns, so the serializer has to
+		// carry it or `ServiceSchema` rejects the whole incident read.
+		localCheckoutPath: null,
 		createdAt: new Date("2026-08-05T18:33:41.896Z"),
 		updatedAt: new Date("2026-08-05T18:33:41.896Z"),
 	},

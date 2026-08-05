@@ -6,28 +6,12 @@
  * config `repo` value (owner/name) wins; else git origin auto-detect from the
  * working directory; else `undefined`.
  *
- * Uses node:child_process directly (no tinyexec dependency).
+ * The git-origin detection itself lives in `@prismalens/config` alongside the
+ * app's checkout validation (#331) — D11's no-new-divergence rule: the CLI and
+ * the app must agree on what a checkout is and what its slug is, so there is
+ * one implementation and this module delegates to it.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-const REPO_PATTERN =
-	/(?:github\.com|gitlab\.com|bitbucket\.org)[/:](.+?)(?:\.git)?$/;
-
-async function detectRepo(cwd: string): Promise<string | undefined> {
-	try {
-		const { stdout } = await execFileAsync(
-			"git",
-			["remote", "get-url", "origin"],
-			{ cwd },
-		);
-		return stdout.trim().match(REPO_PATTERN)?.[1];
-	} catch {
-		return undefined;
-	}
-}
+import { detectRepoSlug } from "@prismalens/config";
 
 /** Session repo label: an explicit config `repo` (owner/name) wins; else git
  * auto-detect from cwd; else none. */
@@ -35,5 +19,5 @@ export async function resolveRepoSlug(
 	configRepo: string | undefined,
 	cwd: string = process.cwd(),
 ): Promise<string | undefined> {
-	return configRepo ?? (await detectRepo(cwd));
+	return configRepo ?? (await detectRepoSlug(cwd));
 }

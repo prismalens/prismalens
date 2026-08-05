@@ -2,6 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, Logger } from "@nestjs/common";
+import {
+	type CheckoutValidation,
+	validateLocalCheckout,
+} from "@prismalens/config";
 import type { Service, ServiceDependency } from "@prismalens/database";
 import { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -11,7 +15,26 @@ import {
 	UpdateServiceDto,
 } from "./dto/index.js";
 
-export type { Service, ServiceDependency };
+export type { CheckoutValidation, Service, ServiceDependency };
+
+/**
+ * A checkout mapping resolved from a create/update DTO (#331):
+ * - `undefined` — the caller did not touch the mapping, leave it alone;
+ * - `null` — the caller cleared it;
+ * - a string — the NORMALISED absolute path to store.
+ */
+export type ResolvedCheckoutPath = string | null | undefined;
+
+/** Thrown when a caller supplies a checkout path that is not usable (#331). */
+export class InvalidCheckoutPathError extends Error {
+	constructor(
+		message: string,
+		readonly validation: CheckoutValidation,
+	) {
+		super(message);
+		this.name = "InvalidCheckoutPathError";
+	}
+}
 
 export type ServiceWithDependencies = Service & {
 	dependencies: Array<ServiceDependency & { dependency: Service }>;
@@ -25,9 +48,47 @@ export class ServicesService {
 	constructor(private readonly prisma: PrismaService) {}
 
 	/**
+	 * Check a candidate local checkout path (#331) without storing it. Thin
+	 * delegate to the ONE implementation in `@prismalens/config`, which the CLI's
+	 * checkout resolution also runs through (D11 no-new-divergence).
+	 */
+	async validateCheckoutPath(path: string): Promise<CheckoutValidation> {
+		return validateLocalCheckout(path);
+	}
+
+	/**
+	 * Resolve a create/update DTO's `localCheckoutPath` into the value to persist,
+	 * REJECTING a path that would not work at investigation time. This is the
+	 * enforcement point — the `validateCheckoutPath` procedure is only a
+	 * convenience for the UI, so a direct API caller cannot skip the check.
+	 *
+	 * Throws with the validator's operator-facing message; the controller maps it
+	 * to a BAD_REQUEST.
+	 */
+	async resolveCheckoutPath(
+		raw: string | null | undefined,
+	): Promise<ResolvedCheckoutPath> {
+		if (raw === undefined) return undefined;
+		// `null` and `""` both mean "clear the mapping" — an empty string arriving
+		// from a cleared text input must not be stored as a path.
+		if (raw === null || raw.trim() === "") return null;
+		const result = await validateLocalCheckout(raw);
+		if (!result.valid) {
+			throw new InvalidCheckoutPathError(
+				result.message ?? `"${raw}" is not a usable local checkout.`,
+				result,
+			);
+		}
+		return result.path;
+	}
+
+	/**
 	 * Create a new service in the catalog
 	 */
 	async create(dto: CreateServiceDto): Promise<Service> {
+		const localCheckoutPath = await this.resolveCheckoutPath(
+			dto.localCheckoutPath,
+		);
 		const service = await this.prisma.service.create({
 			data: {
 				name: dto.name,
@@ -39,6 +100,7 @@ export class ServicesService {
 				slackChannel: dto.slackChannel,
 				tags: dto.tags ? JSON.stringify(dto.tags) : null,
 				metadata: dto.metadata ? JSON.stringify(dto.metadata) : null,
+				...(localCheckoutPath !== undefined ? { localCheckoutPath } : {}),
 			},
 		});
 
@@ -149,6 +211,17 @@ export class ServicesService {
 			}
 			if (dto.metadata) {
 				updateData.metadata = JSON.stringify(dto.metadata);
+			}
+			// #331 — validated before it is stored, so a path that would fail at
+			// investigation time fails here instead, with a message the operator
+			// can act on. `undefined` leaves an existing mapping untouched.
+			if ("localCheckoutPath" in dto) {
+				const localCheckoutPath = await this.resolveCheckoutPath(
+					dto.localCheckoutPath,
+				);
+				if (localCheckoutPath !== undefined) {
+					updateData.localCheckoutPath = localCheckoutPath;
+				}
 			}
 
 			const service = await this.prisma.service.update({

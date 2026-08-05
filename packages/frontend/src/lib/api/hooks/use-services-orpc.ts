@@ -83,9 +83,26 @@ export function useUpdateService() {
 		...orpc.services.update.mutationOptions(),
 		onSuccess: (service) => {
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
-			queryClient.setQueryData(serviceKeys.detail(service.id), service);
+			// INVALIDATE, don't `setQueryData`: oRPC's `.key()` is a PREFIX key, so a
+			// direct write lands on a phantom cache entry and the detail page keeps
+			// rendering stale data (#331 — the local-checkout card read the old value
+			// after saving). Invalidation matches on the prefix and refetches.
+			queryClient.invalidateQueries({
+				queryKey: serviceKeys.detail(service.id),
+			});
 		},
 	});
+}
+
+/**
+ * Check a candidate local checkout path WITHOUT saving it (#331).
+ *
+ * A mutation rather than a query because it is an explicit operator action —
+ * it shells out to `git` on the server, so it must not run on every keystroke.
+ * Saving re-validates server-side; this only makes the failure visible earlier.
+ */
+export function useValidateCheckoutPath() {
+	return useMutation(orpc.services.validateCheckoutPath.mutationOptions());
 }
 
 /**

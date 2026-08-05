@@ -144,6 +144,7 @@ export {
 	useServiceTopology,
 	useUpdateService,
 	useUpdateServiceDependency,
+	useValidateCheckoutPath,
 } from "./use-services-orpc";
 // Settings hooks
 export {
