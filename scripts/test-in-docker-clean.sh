@@ -57,7 +57,7 @@ echo "Waiting for app to initialize and map routes..."
 FOR_I=0
 READY=0
 while [ $FOR_I -lt 90 ]; do
-  if curl -s http://localhost:3001/health >/dev/null 2>&1; then
+  if curl -s http://127.0.0.1:3001/health >/dev/null 2>&1; then
     echo "App is up and responding on port 3001 after ${FOR_I}s!"
     READY=1
     break
@@ -75,43 +75,43 @@ fi
 
 
 echo "================================================================================"
-echo "=== ASSERTIONS AGAINST SINGLE ORIGIN (http://localhost:3001) ==="
+echo "=== ASSERTIONS AGAINST SINGLE ORIGIN (http://127.0.0.1:3001) ==="
 echo "================================================================================"
 
 echo "--- 1. GET /health ---"
-curl -i -s http://localhost:3001/health
+curl -i -s http://127.0.0.1:3001/health
 
 echo -e "\n--- 2. Static Asset (SPA bundle file) ---"
 STATIC_ASSET=$(ls /usr/local/lib/node_modules/prismalens/dist/public/assets/*.js 2>/dev/null | head -n 1 | xargs -n 1 basename || echo "")
 if [ -n "$STATIC_ASSET" ]; then
   echo "Requesting /assets/$STATIC_ASSET..."
-  curl -i -s "http://localhost:3001/assets/$STATIC_ASSET" | head -n 15
+  curl -i -s "http://127.0.0.1:3001/assets/$STATIC_ASSET" | head -n 15
 else
   echo "No static asset js file found directly, checking dist/public..."
   ls -la /usr/local/lib/node_modules/prismalens/dist/public/
 fi
 
 echo -e "\n--- 3. SPA Fallback on Deep Client Route GET /incidents/1 ---"
-curl -i -s http://localhost:3001/incidents/1 | head -n 25
+curl -i -s http://127.0.0.1:3001/incidents/1 | head -n 25
 
 echo -e "\n--- 4. GET /api/docs ---"
-curl -i -s http://localhost:3001/api/docs | head -n 25
+curl -i -s http://127.0.0.1:3001/api/docs | head -n 25
 
 echo -e "\n--- 5. POST /api/auth/sign-in/email ---"
-SIGNIN_RESP=$(curl -i -s -c /tmp/cookies.txt -X POST http://localhost:3001/api/auth/sign-in/email \
+SIGNIN_RESP=$(curl -i -s -c /tmp/cookies.txt -X POST http://127.0.0.1:3001/api/auth/sign-in/email \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@prismalens.dev","password":"admin123"}')
 echo "$SIGNIN_RESP"
 
 echo -e "\n--- 6. Authenticated /api call (GET /api/incidents) using session ---"
-curl -i -s -b /tmp/cookies.txt http://localhost:3001/api/incidents
+curl -i -s -b /tmp/cookies.txt http://127.0.0.1:3001/api/incidents
 
 echo -e "\n--- 7. Route Shadowing & Webhook Resolution ---"
 echo "7a. Shadowing check: non-existent /api/nonexistent should return 404 API error (not static HTML fallback):"
-curl -i -s http://localhost:3001/api/nonexistent | head -n 20
+curl -i -s http://127.0.0.1:3001/api/nonexistent | head -n 20
 
 echo -e "\n7b. Webhook route POST /api/webhooks/generic:"
-curl -i -s -X POST http://localhost:3001/api/webhooks/generic \
+curl -i -s -X POST http://127.0.0.1:3001/api/webhooks/generic \
   -H "Content-Type: application/json" \
   -d '{"title":"Test Alert","severity":"high","source":"test"}'
 
