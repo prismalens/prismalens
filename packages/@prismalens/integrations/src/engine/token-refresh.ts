@@ -138,7 +138,9 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 		// connection is marked ACTIVE.
 		const newAccessToken = data.access_token;
 		if (typeof newAccessToken !== "string" || newAccessToken.length === 0) {
-			throw new Error("Token refresh response has no access_token");
+			throw new Error(
+				`Connection ${connection.id} token refresh response has no access_token`,
+			);
 		}
 
 		const newRefreshToken = template.oauth2.rotatesRefreshToken
