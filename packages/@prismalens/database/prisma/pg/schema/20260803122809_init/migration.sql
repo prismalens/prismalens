@@ -89,6 +89,9 @@ CREATE TYPE "LicenseType" AS ENUM ('none', 'subscription');
 CREATE TYPE "LicenseTier" AS ENUM ('community', 'enterprise');
 
 -- CreateEnum
+CREATE TYPE "JobStatus" AS ENUM ('pending', 'running', 'succeeded', 'failed', 'cancelled');
+
+-- CreateEnum
 CREATE TYPE "ConnectionStatus" AS ENUM ('ACTIVE', 'TOKEN_EXPIRED', 'REFRESH_FAILED', 'CREDENTIALS_INVALID', 'REVOKED', 'ERROR');
 
 -- CreateEnum
@@ -486,6 +489,30 @@ CREATE TABLE "license_info" (
 );
 
 -- CreateTable
+CREATE TABLE "jobs" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT,
+    "kind" TEXT NOT NULL DEFAULT 'investigation',
+    "investigationId" TEXT NOT NULL,
+    "incidentId" TEXT NOT NULL,
+    "payload" TEXT NOT NULL,
+    "priority" INTEGER NOT NULL DEFAULT 3,
+    "status" "JobStatus" NOT NULL DEFAULT 'pending',
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "maxAttempts" INTEGER NOT NULL DEFAULT 3,
+    "runAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "claimedBy" TEXT,
+    "claimedAt" TIMESTAMP(3),
+    "heartbeatAt" TIMESTAMP(3),
+    "finishedAt" TIMESTAMP(3),
+    "lastError" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "jobs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "user" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -835,6 +862,15 @@ CREATE INDEX "alert_mapping_rules_serviceId_idx" ON "alert_mapping_rules"("servi
 
 -- CreateIndex
 CREATE UNIQUE INDEX "license_info_licenseKey_key" ON "license_info"("licenseKey");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "jobs_investigationId_key" ON "jobs"("investigationId");
+
+-- CreateIndex
+CREATE INDEX "jobs_status_runAt_priority_idx" ON "jobs"("status", "runAt", "priority");
+
+-- CreateIndex
+CREATE INDEX "jobs_status_heartbeatAt_idx" ON "jobs"("status", "heartbeatAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_email_key" ON "user"("email");

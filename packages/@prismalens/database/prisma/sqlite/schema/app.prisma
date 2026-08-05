@@ -607,3 +607,51 @@ model LicenseInfo {
 
   @@map("license_info")
 }
+
+// =============================================================================
+// DISPATCH
+// =============================================================================
+
+/// The JobStore table — the durable claim record behind the in-process dispatch
+/// loop. Dispatch is a seam OUTSIDE the engine: the loop claims a row, forks the
+/// per-run child, heartbeats the claim while the child runs, and marks the row
+/// terminal. A claim whose heartbeat goes stale is RECLAIMED, and reclaim means
+/// RERUN — harness sessions are not resumable, the (branchId, seq) invariant
+/// permits gappy live delivery, and only the durable event record is complete.
+///
+/// Claiming is a conditional UPDATE guarded on `status = 'pending'`, which is
+/// exclusive on every supported backend. The Postgres `SELECT … FOR UPDATE SKIP
+/// LOCKED` claim driver is a later, faster implementation of the same contract.
+model Job {
+  id              String @id @default(uuid())
+  tenantId        String? // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
+  kind            String @default("investigation")
+  /// One live job per investigation — the dedupe key that replaced the queue's job id.
+  investigationId String @unique
+  incidentId      String
+  payload         String // JSON: InvestigationJobData
+  /// 1 critical … 4 low. Ordering only — NOT a fairness key.
+  priority        Int    @default(3)
+  /// pending, running, succeeded, failed, cancelled
+  status          String @default("pending")
+
+  attempts    Int @default(0)
+  maxAttempts Int @default(3)
+
+  /// Earliest time this job may be claimed (retry backoff).
+  runAt       DateTime  @default(now())
+  /// Opaque owner token of the process/loop holding the claim.
+  claimedBy   String?
+  claimedAt   DateTime?
+  /// Last proof-of-life from the claim holder; staleness here triggers reclaim.
+  heartbeatAt DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, runAt, priority])
+  @@index([status, heartbeatAt])
+  @@map("jobs")
+}

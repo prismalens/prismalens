@@ -372,6 +372,28 @@ CREATE TABLE "license_info" (
 );
 
 -- CreateTable
+CREATE TABLE "jobs" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "tenantId" TEXT,
+    "kind" TEXT NOT NULL DEFAULT 'investigation',
+    "investigationId" TEXT NOT NULL,
+    "incidentId" TEXT NOT NULL,
+    "payload" TEXT NOT NULL,
+    "priority" INTEGER NOT NULL DEFAULT 3,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "maxAttempts" INTEGER NOT NULL DEFAULT 3,
+    "runAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "claimedBy" TEXT,
+    "claimedAt" DATETIME,
+    "heartbeatAt" DATETIME,
+    "finishedAt" DATETIME,
+    "lastError" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
 CREATE TABLE "user" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "email" TEXT NOT NULL,
@@ -711,6 +733,15 @@ CREATE INDEX "alert_mapping_rules_serviceId_idx" ON "alert_mapping_rules"("servi
 CREATE UNIQUE INDEX "license_info_licenseKey_key" ON "license_info"("licenseKey");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "jobs_investigationId_key" ON "jobs"("investigationId");
+
+-- CreateIndex
+CREATE INDEX "jobs_status_runAt_priority_idx" ON "jobs"("status", "runAt", "priority");
+
+-- CreateIndex
+CREATE INDEX "jobs_status_heartbeatAt_idx" ON "jobs"("status", "heartbeatAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "user_email_key" ON "user"("email");
 
 -- CreateIndex
@@ -784,3 +815,4 @@ CREATE INDEX "service_suggestions_acceptedDeploymentId_idx" ON "service_suggesti
 
 -- CreateIndex
 CREATE UNIQUE INDEX "service_suggestions_connectionId_repository_subPath_key" ON "service_suggestions"("connectionId", "repository", "subPath");
+
