@@ -54,26 +54,24 @@ APP_PID=$!
 
 echo "Waiting for app to initialize and map routes..."
 FOR_I=0
-while [ $FOR_I -lt 30 ]; do
+READY=0
+while [ $FOR_I -lt 60 ]; do
   if curl -s http://localhost:3001/health >/dev/null 2>&1; then
     echo "App is up and responding on port 3001 after ${FOR_I}s!"
+    READY=1
     break
   fi
   sleep 1
   FOR_I=$((FOR_I + 1))
 done
 
+if [ $READY -eq 0 ]; then
+  echo "ERROR: App failed to respond on port 3001 within 60 seconds!"
+  echo "=== BOOT LOG ON FAILURE ==="
+  cat /tmp/boot.log
+  exit 1
+fi
 
-echo "=== FULL BOOT LOG ==="
-cat /tmp/boot.log
-
-echo "================================================================================"
-echo "=== STEP 6: ROUTE MAPPING ANALYSIS ==="
-echo "================================================================================"
-MAPPED_COUNT=$(grep -c "Mapped {" /tmp/boot.log || true)
-echo "Total Mapped Routes Count: $MAPPED_COUNT"
-AUTH_ROUTE_PRESENT=$(grep -c "Mapped {/api/auth/\*path" /tmp/boot.log || true)
-echo "/api/auth/*path Present Count: $AUTH_ROUTE_PRESENT"
 
 echo "================================================================================"
 echo "=== ASSERTIONS AGAINST SINGLE ORIGIN (http://localhost:3001) ==="
@@ -115,6 +113,14 @@ echo -e "\n7b. Webhook route POST /api/webhooks/generic:"
 curl -i -s -X POST http://localhost:3001/api/webhooks/generic \
   -H "Content-Type: application/json" \
   -d '{"title":"Test Alert","severity":"high","source":"test"}'
+
+echo -e "\n================================================================================"
+echo "=== STEP 6: ROUTE MAPPING ANALYSIS & BOOT LOG ==="
+echo "================================================================================"
+MAPPED_COUNT=$(grep -c "Mapped {" /tmp/boot.log || true)
+echo "Total Mapped Routes Count: $MAPPED_COUNT"
+AUTH_ROUTE_PRESENT=$(grep -c "Mapped {/api/auth/\*path" /tmp/boot.log || true)
+echo "/api/auth/*path Present Count: $AUTH_ROUTE_PRESENT"
 
 echo -e "\n================================================================================"
 echo "=== CONTAINER TEST COMPLETE ==="
