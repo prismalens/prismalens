@@ -30,6 +30,7 @@ import type {
 } from "@prismalens/contracts";
 import type { InvestigationStore } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
+import { internalUrl } from "./internal-url.js";
 
 /** Flush when the buffer reaches this many events. */
 const BATCH_SIZE = 25;
@@ -79,11 +80,11 @@ function createEventPoster(
 				"PRISMALENS_INTERNAL_SECRET not set — durable event record disabled",
 			);
 		}
-		const url = new URL(
-			`/internal/investigations/${investigationId}/events`,
+		const url = internalUrl(
 			apiBaseUrl,
+			`internal/investigations/${investigationId}/events`,
 		);
-		const response = await fetch(url.toString(), {
+		const response = await fetch(url, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

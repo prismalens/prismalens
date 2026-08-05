@@ -3,14 +3,22 @@
 # On every push to main: if unreleased .changeset/*.md files exist, the action
 # opens/updates a "Version Packages" PR (runs `pnpm changeset:version`). When
 # that PR merges, the action publishes the single published package —
-# `prismalens`, the CLI, which bundles the first-party @prismalens/* closure
-# into its tarball (issue #193; the scoped packages are private:true and never
-# published) — via `pnpm changeset:publish` = `pnpm publish -r` (skips private
-# packages) + `changeset tag`, and creates one GitHub Release for its tag.
+# `prismalens`, the CLI, which CARRIES the first-party @prismalens/* closure in
+# its own node_modules as bundleDependencies (issue #237, superseding #193's
+# bundling; the scoped packages are private:true and never published) — via
+# `pnpm changeset:publish` + `changeset tag`, and creates one GitHub Release.
+#
+# `changeset:publish` is `node scripts/pack-cli.mjs --publish`, NOT
+# `pnpm publish -r`. That is deliberate: `pnpm publish` re-packs from the
+# workspace, and pnpm's bundleDependencies handling has historically diverged
+# from npm's — it would not reproduce the tarball the packed-smoke gate
+# verified. The pack script builds the artifact, asserts it, and hands that
+# exact file to `npm publish <tarball>`, so what ships is what was smoked.
 #
 # Publishing authenticates via npm TRUSTED PUBLISHING (OIDC): id-token:write
-# lets pnpm (>=10.13; this repo pins 10.27) exchange the runner's OIDC token
-# for a short-lived npm credential — no npm token secret exists or is needed.
+# lets the npm CLI (>=11.5.1; Node 24 ships 11.6.x) exchange the runner's OIDC
+# token for a short-lived npm credential — no npm token secret exists or is
+# needed.
 # The prismalens package has this repo + workflow registered as a trusted
 # publisher on npmjs.com, and provenance attestations are generated
 # automatically. Requirement: the publishing package must already exist on

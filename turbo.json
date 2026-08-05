@@ -2,6 +2,13 @@
 	"$schema": "https://turbo.build/schema.json",
 	"concurrency": "20",
 	"globalEnv": ["CI"],
+	"globalPassThroughEnv": [
+		"PL_UP_E2E",
+		"PL_UP_PORT",
+		"PL_UP_PREFIX",
+		"PRISMALENS_SMOKE_PORT",
+		"PRISMALENS_TARBALL"
+	],
 	"tasks": {
 		"clean": {
 			"cache": false

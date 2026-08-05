@@ -13,8 +13,17 @@
 /** Global prefix applied to every controller route (see `main.ts`). */
 export const API_GLOBAL_PREFIX = "api";
 
-/** Routes excluded from the global prefix. */
-export const API_GLOBAL_PREFIX_EXCLUDE = ["health", "/"];
+/**
+ * Routes excluded from the global prefix.
+ *
+ * `/` used to be here, which put `AppController`'s service-info JSON at the
+ * site root. Under `pl up` a controller route is registered BEFORE the static
+ * middleware and therefore WINS, so `http://localhost:3001/` returned
+ * `{"name":"PrismaLens API",...}` instead of the dashboard. The root belongs to
+ * the SPA; the service info lives at `/api`, which is where `AppController`'s
+ * own `docs` field always pointed anyway.
+ */
+export const API_GLOBAL_PREFIX_EXCLUDE = ["health"];
 
 /** Webhook routes as declared in the contracts, without the global prefix. */
 export const WEBHOOK_ROUTES = {

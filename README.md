@@ -19,14 +19,33 @@ PrismaLens account, no subscription.
 
 ## Quick start
 
-Requires **Node.js 22+**.
+Requires **Node.js 24+**.
 
 ```bash
-# try it without installing anything
-npx prismalens doctor
-
-# or install it globally
 npm install -g prismalens
+```
+
+One package, one process, no external services. `pl up` runs the API and the
+dashboard on a single port, creates a SQLite database in `~/.prismalens` on
+first run, and applies its own migrations:
+
+```bash
+pl up                 # http://localhost:3001
+pl up --port 8080     # or wherever you like
+```
+
+Open the URL, create the owner account, and the install is working. There is no
+Docker, no Redis and no separate frontend server: the tarball carries the built
+dashboard and the API serves it from the same origin. Use
+`--workspace <dir>` to put the database and secrets somewhere other than
+`~/.prismalens`.
+
+### Or just the CLI
+
+The same binary is a standalone investigator that needs nothing running:
+
+```bash
+npx prismalens doctor
 ```
 
 `doctor` checks that a harness binary and a model credential are in place,
@@ -85,9 +104,17 @@ setup (providers, harnesses, configuration, commands) lives at
 | `packages/@prismalens/integrations` | Integration templates, OAuth2 flows, credential encryption, for the in-development server. |
 | `packages/@prismalens/logger` | Wide-events logging with tail sampling, shared across packages. |
 | `packages/@prismalens/design-tokens` | Shared brand/design tokens for the (in-development) web UI. |
-| `packages/api` | NestJS API server — in development, not part of the current release. |
-| `packages/frontend` | TanStack Start dashboard — in development, not part of the current release. |
-| `packages/worker` | The per-run investigation child the API's dispatch loop forks — in development, not part of the current release. |
+| `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
+| `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |
+| `packages/worker` | The per-run investigation child the API's dispatch loop forks. |
+
+Only `packages/cli` is published, under the name `prismalens`. Everything else
+is `private: true` and travels INSIDE that one tarball as bundled dependencies:
+`scripts/pack-cli.mjs` copies each built package into
+`node_modules/@prismalens/<name>` and GENERATES the third-party dependency
+union those copies resolve against. Read that script's header before changing
+anything about packaging — it carries the reasoning, the installed layout, and
+the two invariants that fail the pack.
 
 ## Development
 
@@ -96,7 +123,9 @@ pnpm install
 
 pnpm build           # turbo build across the workspace
 pnpm test            # turbo test across the workspace
-pnpm --filter @prismalens/frontend test:e2e # Playwright e2e smoke suite (requires ports 3000 and 3001 free)
+pnpm --filter @prismalens/frontend test:e2e # Playwright against the dev stack (needs ports 3000 and 3001 free)
+pnpm pack            # build the published tarball (scripts/pack-cli.mjs)
+sh scripts/packed-smoke.sh packages/cli/dist-pack # install it clean and boot `pl up` against it
 pnpm typecheck       # turbo typecheck across the workspace
 pnpm format-and-lint # biome check
 ```

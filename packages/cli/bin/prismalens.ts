@@ -50,6 +50,7 @@ const main = defineCommand({
 			"PrismaLens investigation engine CLI — drives the two-tier engine (ADR-0008/0010).",
 	},
 	subCommands: {
+		up: lazy("up"),
 		investigate: lazy("investigate"),
 		listen: lazy("listen"),
 		serve: lazy("serve"),

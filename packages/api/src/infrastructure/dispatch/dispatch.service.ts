@@ -34,6 +34,24 @@ import {
 
 export type { InvestigationJobData };
 
+/**
+ * The oRPC base URL the forked child should call back on: this process's own
+ * listen address. A wildcard bind names no dialable host, so the child dials
+ * loopback — it always runs on this machine.
+ */
+function internalApiUrl(config: {
+	PRISMALENS_PROTOCOL?: string;
+	PRISMALENS_HOST?: string;
+	PRISMALENS_PORT?: number;
+}): string {
+	const protocol = config.PRISMALENS_PROTOCOL ?? "http";
+	const host = config.PRISMALENS_HOST ?? "localhost";
+	const dialable =
+		host === "0.0.0.0" || host === "::" || host === "" ? "127.0.0.1" : host;
+	const port = config.PRISMALENS_PORT ?? 3001;
+	return `${protocol}://${dialable}:${port}/api`;
+}
+
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */
 const PRIORITY_ORDER: Record<string, number> = {
 	critical: 1,
@@ -72,6 +90,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				...(config.PRISMALENS_WORKER_ENTRY
 					? { entry: config.PRISMALENS_WORKER_ENTRY }
 					: {}),
+				// The child calls back into THIS process over oRPC. Its own default is
+				// a fixed `http://localhost:5367/api` that nothing ever served, so
+				// under `pl up --port 8080` every run died with `fetch failed` after a
+				// perfectly healthy fork. The forking process is the one that knows
+				// where it listens — so it says so, unless an operator overrode it.
+				env: process.env.PRISMALENS_WORKER_API_URL
+					? {}
+					: { PRISMALENS_WORKER_API_URL: internalApiUrl(config) },
 				log: {
 					warn: (m) => this.logger.warn(m),
 					error: (m) => this.logger.error(m),

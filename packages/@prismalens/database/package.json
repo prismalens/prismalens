@@ -11,6 +11,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./migrate": {
+			"types": "./dist/migrate.d.ts",
+			"import": "./dist/migrate.js"
 		}
 	},
 	"prisma": {
@@ -34,6 +38,7 @@
 		"@prisma/adapter-pg": "^7.9.1",
 		"@prisma/client": "^7.9.1",
 		"@prismalens/config": "workspace:*",
+		"better-sqlite3": "^12.11.1",
 		"dotenv": "catalog:",
 		"pg": "^8.22.0"
 	},

@@ -17,22 +17,33 @@ import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
-import { getLocaleServerFn } from "@/lib/locale";
+import { LOCALE_COOKIE } from "@/lib/locale";
 import * as m from "@/lib/paraglide/messages.js";
 import { LanguageProvider } from "@/lib/providers/language-provider";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
-import { getThemeServerFn } from "@/lib/theme";
+import { DEFAULT_THEME, THEME_COOKIE } from "@/lib/theme";
 import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
 
+/**
+ * Pre-paint theme/locale stamp.
+ *
+ * The app ships as a static SPA (`pl up`, issue #237): the HTML that reaches
+ * the browser is a prerendered shell that knows nothing about this visitor's
+ * cookies, and React only runs once it has parsed. This inline script runs
+ * FIRST and writes `<html class>` and `<html lang>` from the cookie — the whole
+ * job the deleted `getThemeServerFn`/`getLocaleServerFn` were doing. Without
+ * it, every load flashes the default theme before React corrects it.
+ */
+const PRE_PAINT = `(function(){try{
+var g=function(n){var m=document.cookie.match(new RegExp('(^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[2]):null;};
+var e=document.documentElement;
+var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
+e.classList.remove('light','dark');e.classList.add(t);
+var l=g(${JSON.stringify(LOCALE_COOKIE)});if(l)e.lang=l;
+}catch(_){}})();`;
+
 export const Route = createRootRouteWithContext<RouterContext>()({
-	loader: async () => {
-		const [theme, locale] = await Promise.all([
-			getThemeServerFn(),
-			getLocaleServerFn(),
-		]);
-		return { theme, locale };
-	},
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
@@ -45,6 +56,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 			},
 		],
 		links: [{ rel: "stylesheet", href: appCss }],
+		// The head function's `scripts` key is what router-core maps onto the
+		// match's `headScripts`, i.e. this renders INSIDE <head>. A raw <script>
+		// written into the JSX <head> is not an option: TanStack Start renders
+		// the head through `HeadContent` and silently drops anything else there,
+		// which is exactly how the first attempt vanished from the shell.
+		scripts: [{ children: PRE_PAINT }],
 	}),
 	component: RootLayout,
 	errorComponent: RootError,
@@ -52,15 +69,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
-	const { theme, locale } = Route.useLoaderData();
 	return (
-		<html lang={locale} className={theme} suppressHydrationWarning>
+		<html lang="en" className={DEFAULT_THEME} suppressHydrationWarning>
 			<head>
 				<HeadContent />
 			</head>
 			<body className="font-sans">
-				<LanguageProvider locale={locale}>
-					<ThemeProvider theme={theme}>
+				<LanguageProvider>
+					<ThemeProvider>
 						<QueryClientProvider client={queryClient}>
 							<div className="min-h-screen bg-background text-foreground">
 								<Navbar />
