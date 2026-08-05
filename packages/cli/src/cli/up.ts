@@ -33,7 +33,7 @@ export default defineCommand({
 		}
 
 		// Resolve Nest main entry point inside packed artifact or workspace fallback
-		const mainPath = path.resolve(__dirname, "../../api/src/main.js");
+		const mainPath = path.resolve(__dirname, "../../api/main.js");
 		try {
 			await import(mainPath);
 		} catch (err) {

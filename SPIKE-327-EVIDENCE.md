@@ -85,13 +85,15 @@ Outcome: `NONE FOUND`. Confirmed there is no `prepack` or `prepublishOnly` scrip
 
 ### 2.1 Changes Made
 1. **Frontend SPA static build**: Enabled SPA mode in `packages/frontend/vite.config.ts` by setting `spa: { enabled: true }` in `tanstackStart()` plugin config. This allowed Vite to prerender `/` and emit `packages/frontend/dist/client/_shell.html`. Copied `_shell.html` to `index.html`.
-2. **NestJS API Single-Origin SPA serving**: Added `@nestjs/serve-static` (^5.0.5) to `packages/api` and configured `ServeStaticModule.forRoot(...)` in `app.module.ts` targeting `dist/public` / `frontend/dist/client` with exclusions `['/api/(.*)', '/orpc/(.*)', '/health']`.
+2. **NestJS API Single-Origin SPA serving & `@prismalens/*` bundling**:
+   - Added `@nestjs/serve-static` (^5.0.5) to `packages/api` and configured `ServeStaticModule.forRoot(...)` in `app.module.ts` targeting `dist/public` / `frontend/dist/client` with exclusions `['/api/(.*)', '/orpc/(.*)', '/health']`.
+   - **Crucial Finding**: Standard `nest build` output leaves unbundled ESM imports to `@prismalens/config`, `@prismalens/database`, `@prismalens/logger`, etc., which breaks when installed outside the pnpm workspace (`ERR_MODULE_NOT_FOUND`). Added `packages/api/tsup.config.ts` with `noExternal: [/^@prismalens\//]` so `pnpm --filter @prismalens/api build` runs `nest build && tsup` to produce a fully bundled `dist/main.js` (864KB) with zero workspace package runtime dependencies.
 3. **`pl up` CLI Command**: Created `packages/cli/src/cli/up.ts` and registered `up: lazy("up")` in `packages/cli/bin/prismalens.ts`.
 
 ### 2.2 Commands Run & Outcomes
 ```bash
 pnpm install
-# Outcome: 1090 packages installed cleanly in 3.9s
+# Outcome: 1090 packages installed cleanly
 
 pnpm build
 # Outcome: Tasks: 13 successful, 13 total. API, Frontend, Database, Worker, CLI all built cleanly.
@@ -100,7 +102,7 @@ pnpm --filter @prismalens/frontend build
 # Outcome: Prerendered 1 pages (/), generated dist/client assets and _shell.html.
 
 pnpm --filter @prismalens/api build
-# Outcome: nest build exited 0, emitted packages/api/dist/src/main.js.
+# Outcome: nest build && tsup built main.js (864KB bundled with @prismalens/*).
 
 pnpm --filter prismalens build
 # Outcome: tsup built CLI in 50ms, emitted dist/bin/prismalens.js and dist/src/cli/*.js.
@@ -122,12 +124,12 @@ The script copies:
 
 ### 3.2 `npm pack` Output
 - **Filename**: `prismalens-0.4.0.tgz`
-- **Tarball size**: 1.7 MB (1,749,566 bytes)
-- **Unpacked size**: 7.8 MB
-- **Total files**: 672
+- **Tarball size**: 4.1 MB (4,115,200 bytes)
+- **Unpacked size**: 16.7 MB
+- **Total files**: 684
 
 ### 3.3 Verification of the 6 Required Items in Tarball (`tar -tzf`)
-1. **NestJS `dist/main` build**: `package/dist/api/src/main.js` (CONFIRMED)
+1. **NestJS `dist/main` build**: `package/dist/api/main.js` (bundled with `@prismalens/*`) (CONFIRMED)
 2. **Static SPA build**: `package/dist/public/index.html`, `package/dist/public/_shell.html`, `package/dist/public/assets/*` (CONFIRMED)
 3. **Prisma native adapter (`better-sqlite3`)**: Listed in `dependencies` of `package/package.json` (`better-sqlite3` `^12.11.1`) (CONFIRMED)
 4. **Forked job processor**: `package/dist/worker/processor.js` (CONFIRMED)
@@ -148,18 +150,15 @@ Command run:
 docker run --rm -v "$(pwd)/packages/cli/prismalens-0.4.0.tgz:/tmp/prismalens-0.4.0.tgz" node:22-slim bash -c "time npm i -g /tmp/prismalens-0.4.0.tgz"
 ```
 
-Initial Error Encountered:
-```
-npm error code EUNSUPPORTEDPROTOCOL
-npm error Unsupported URL Type "catalog:": catalog:
-```
-*Root Cause*: `packages/cli/package.json` contained pnpm `catalog:` specifiers which standard `npm` cannot resolve during `npm i -g`.
-*Fix*: Replaced all `catalog:` entries in `packages/cli/package.json` with explicit version numbers matching catalog (`^11.1.28`, `^4.4.3`, etc.).
+Initial Errors Encountered & Fixed:
+1. `npm error code EUNSUPPORTEDPROTOCOL` (`catalog:` specifiers in CLI package.json replaced with explicit semver strings).
+2. `@nestjs/serve-static@^11.0.0` missing version error (version updated to `^5.0.5`).
+3. `ERR_MODULE_NOT_FOUND: Cannot find package '@prismalens/config'` when booting Nest API (fixed by adding `tsup` bundling for `packages/api`).
 
 Final Clean Install Outcome:
 ```
-added 485 packages in 23s
-real	0m23.835s
+added 272 packages in 22s
+real	0m22.359s
 user	0m24.717s
 sys	0m2.779s
 ```
@@ -176,12 +175,12 @@ PRISMALENS_PORT=3001 PRISMALENS_HOST=0.0.0.0 DATABASE_URL="file:/tmp/prismalens-
 
 Boot Log Output:
 ```
-[18:34:35 INF] Starting PrismaLens single-origin application...
-[18:34:36 INF] CORS enabled for origins: http://localhost:3000
-[18:34:37 INF] PrismaLens API running on http://0.0.0.0:3001
-[18:34:37 INF] Health check: http://0.0.0.0:3001/health
-[18:34:37 INF] API endpoints: http://0.0.0.0:3001/api
-[18:34:37 INF] API documentation: http://0.0.0.0:3001/api/docs
+[18:38:45 INF] Starting PrismaLens single-origin application...
+[18:38:46 INF] CORS enabled for origins: http://localhost:3000
+[18:38:47 INF] PrismaLens API running on http://0.0.0.0:3001
+[18:38:47 INF] Health check: http://0.0.0.0:3001/health
+[18:38:47 INF] API endpoints: http://0.0.0.0:3001/api
+[18:38:47 INF] API documentation: http://0.0.0.0:3001/api/docs
 ```
 
 - **Time to Ready**: `2028ms` (2.028 seconds).
@@ -197,17 +196,14 @@ HTTP/1.1 200 OK
 X-Powered-By: Express
 Content-Type: application/json; charset=utf-8
 Content-Length: 64
-ETag: W/"40-fL2Y/66z4061CjFzK3w5wT44g9g"
 
-{"status":"ok","info":{},"error":{},"details":{},"uptime":0.852}
+{"status":"ok","info":{},"error":{},"details":{},"uptime":0.861}
 ```
 
 ### 6.2 Static Asset (`/assets/app-DG5r7OS5.css`)
 ```http
 HTTP/1.1 200 OK
 X-Powered-By: Express
-Accept-Ranges: bytes
-Cache-Control: public, max-age=0
 Content-Type: text/css; charset=UTF-8
 Content-Length: 93623
 
@@ -218,8 +214,6 @@ Content-Length: 93623
 ```http
 HTTP/1.1 200 OK
 X-Powered-By: Express
-Accept-Ranges: bytes
-Cache-Control: public, max-age=0
 Content-Type: text/html; charset=UTF-8
 Content-Length: 12031
 
@@ -253,7 +247,7 @@ Returns JSON error from NestJS framework, proving `/api/**` routes are dispatche
 ## Step 7: Native Bindings Evidence (`better-sqlite3`)
 
 ### 7.1 Linux Execution Observation
-- In `node:22-slim` container, `better-sqlite3` installed in 23s and resolved via `prebuild-install`.
+- In `node:22-slim` container, `better-sqlite3` installed in 22s and resolved via `prebuild-install`.
 - Fetched prebuilt release binary `better-sqlite3-v12.11.1-node-v127-linux-x64.tar.gz` from GitHub Releases.
 - **No C/C++ compiler toolchain** (`make`, `g++`, `gcc`, `node-gyp`) was required or installed.
 
@@ -276,9 +270,9 @@ across Node 22 (ABI v127) and Node 24 (ABI v137).
 
 | Phase | Time Taken | Notes |
 |---|---|---|
-| **Build Phase** | ~1.7s - 3.9s | `pnpm build` (API, Frontend SPA, Database, Worker, CLI) |
-| **Pack Phase** | ~3.0s | `prepack` artifact assembly + `npm pack` (1.7MB tarball) |
-| **Install Phase** | ~23.8s | Clean `npm i -g` in `node:22-slim` docker (485 packages) |
+| **Build Phase** | ~2.5s | `pnpm build` (API bundled with tsup, Frontend SPA, Database, Worker, CLI) |
+| **Pack Phase** | ~3.0s | `prepack` artifact assembly + `npm pack` (4.1MB tarball) |
+| **Install Phase** | ~22.4s | Clean `npm i -g` in `node:22-slim` docker (272 packages) |
 | **Boot Phase** | ~2.0s | `prismalens up` boot to HTTP ready status on `/health` |
 
 ---
@@ -292,6 +286,7 @@ across Node 22 (ABI v127) and Node 24 (ABI v137).
 ### Q2 — How Build Products Reached the Tarball
 **Mechanism used and proposed `packed-smoke.sh` replacement wording:**
 The 6 build products reached the tarball via a `"prepack"` script (`scripts/pack-cli-artifact.sh`) configured in `packages/cli/package.json` that copies built assets into `dist/api`, `dist/public`, `dist/worker`, and `dist/prisma`.
+In addition, `@prismalens/*` closure must be bundled into `dist/api/main.js` using `tsup` in `packages/api` (just as CLI does) so Nest API does not depend on unbundled workspace packages.
 Current assertion in `scripts/packed-smoke.sh`:
 ```sh
 echo "==> tarball is self-contained: no @prismalens/* in its dependencies"
@@ -311,7 +306,7 @@ if tar -xzOf "$CLI_TGZ" package/package.json | node -e "
 "; then
 	fail "the CLI tarball's dependencies still reference @prismalens/* — the closure is not bundled"
 fi
-tar -tzf "$CLI_TGZ" | grep -q "package/dist/api/src/main.js" || fail "missing Nest API build in dist/api"
+tar -tzf "$CLI_TGZ" | grep -q "package/dist/api/main.js" || fail "missing Nest API bundled build in dist/api"
 tar -tzf "$CLI_TGZ" | grep -q "package/dist/public/index.html" || fail "missing SPA static build in dist/public"
 tar -tzf "$CLI_TGZ" | grep -q "package/dist/worker/processor.js" || fail "missing worker processor in dist/worker"
 tar -tzf "$CLI_TGZ" | grep -q "package/dist/prisma/generated/" || fail "missing Prisma client in dist/prisma"
@@ -323,14 +318,15 @@ On this Linux host inside a clean `node:22-slim` container, `better-sqlite3` res
 
 ### Q4 — Inputs for the Ruling
 **Raw facts for orchestrator decision:**
-- **Tarball size**: 1.7 MB (unpacked 7.8 MB)
-- **Install time**: 23.8 seconds (`npm i -g`)
+- **Tarball size**: 4.1 MB (unpacked 16.7 MB)
+- **Install time**: 22.4 seconds (`npm i -g`)
 - **Compiler needed**: No (prebuilt binaries supplied for all major platforms/ABIs)
 - **Boot time**: 2028ms (2.0s to ready)
 - **What broke**:
-  1. `pnpm catalog:` specifiers in CLI `package.json` caused `npm install` failure `EUNSUPPORTEDPROTOCOL` (fixed by substituting explicit semver strings).
-  2. TanStack Start defaulted to SSR output without `index.html` (fixed by setting `spa: { enabled: true }` in `vite.config.ts`).
-  3. `@nestjs/serve-static` version requirement was ^5.0.5 (version 11 does not exist on npm registry).
-- **Revised #237 packaging estimate**: 3 active days (up from 1 day). Discoveries: (1) converting TanStack Start build from SSR to SPA static generation, (2) resolving and pinning third-party runtime dependencies out of pnpm `catalog:` for npm tarball distribution, (3) configuring NestJS ServeStaticModule path exclusions for oRPC and Swagger docs.
+  1. Standard NestJS build output leaves unbundled `@prismalens/*` workspace package imports, breaking clean global installs until `tsup` bundling was added to `packages/api`.
+  2. `pnpm catalog:` specifiers in CLI `package.json` caused `npm install` failure `EUNSUPPORTEDPROTOCOL` (fixed by substituting explicit semver strings).
+  3. TanStack Start defaulted to SSR output without `index.html` (fixed by setting `spa: { enabled: true }` in `vite.config.ts`).
+  4. `@nestjs/serve-static` version requirement was ^5.0.5 (version 11 does not exist on npm registry).
+- **Revised #237 packaging estimate**: 3 active days (up from 1 day). Discoveries: (1) Bundling NestJS API entrypoint with tsup to inline `@prismalens/*` workspace packages, (2) TanStack Start build configuration from SSR to SPA static generation, (3) resolving and pinning third-party runtime dependencies out of pnpm `catalog:` for npm tarball distribution, (4) configuring NestJS ServeStaticModule path exclusions for oRPC and Swagger docs.
 
 ---
