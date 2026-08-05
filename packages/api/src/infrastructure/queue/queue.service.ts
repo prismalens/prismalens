@@ -129,6 +129,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			// Initialize Redis subscriber for stream relay
 			this.redisSubscriber = new Redis(redisUrl, {
 				maxRetriesPerRequest: null,
+				retryStrategy: (times) => Math.min(times * 500, 5000),
 			});
 			this.redisSubscriber.on("error", (err) => {
 				this.logger.debug(`Redis subscriber error: ${err.message}`);
@@ -140,6 +141,7 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 			// Publisher for the cancel control channel (CANCEL slice, ADR-0018).
 			this.redisPublisher = new Redis(redisUrl, {
 				maxRetriesPerRequest: null,
+				retryStrategy: (times) => Math.min(times * 500, 5000),
 			});
 			this.redisPublisher.on("error", (err) => {
 				this.logger.debug(`Redis publisher error: ${err.message}`);

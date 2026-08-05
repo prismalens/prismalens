@@ -36,6 +36,7 @@ function buildRedisConnection(): IORedis.Redis | IORedis.Cluster {
 	return new IORedis.Redis({
 		...buildRedisOptions(config),
 		maxRetriesPerRequest: null,
+		retryStrategy: (times) => Math.min(times * 500, 5000),
 	});
 }
 
