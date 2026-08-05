@@ -37,7 +37,7 @@ request by posting a short comment. Nothing is required of you today.
 
 Requirements: **Node >= 22** and **pnpm** (this repo pins pnpm via the
 `packageManager` field; `corepack enable` will select the right version). It is
-a Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ worker, with
+a Turborepo monorepo (NestJS API + TanStack Start UI + a per-run investigation child, with
 Prisma/SQLite).
 
 ```bash

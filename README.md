@@ -87,7 +87,7 @@ setup (providers, harnesses, configuration, commands) lives at
 | `packages/@prismalens/design-tokens` | Shared brand/design tokens for the (in-development) web UI. |
 | `packages/api` | NestJS API server — in development, not part of the current release. |
 | `packages/frontend` | TanStack Start dashboard — in development, not part of the current release. |
-| `packages/worker` | BullMQ queue worker for agent execution — in development, not part of the current release. |
+| `packages/worker` | The per-run investigation child the API's dispatch loop forks — in development, not part of the current release. |
 
 ## Development
 
