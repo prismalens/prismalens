@@ -29,6 +29,9 @@ declare module "@orpc/nest" {
 	}
 }
 
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { ServeStaticModule } from "@nestjs/serve-static";
 import { AuthGuard, AuthModule } from "./core/auth/index.js";
 import { LicenseModule } from "./core/license/license.module.js";
 // Core modules
@@ -36,7 +39,6 @@ import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
 import { SetupModule } from "./core/setup/setup.module.js";
 import { UsersModule } from "./core/users/users.module.js";
-
 // Infrastructure modules
 import { DevSeedModule } from "./infrastructure/dev-seed/dev-seed.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
@@ -59,6 +61,9 @@ import { ServiceDiscoveryModule } from "./modules/service-discovery/service-disc
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create a logger instance for oRPC error handling
 const orpcLogger = new Logger({ context: "oRPC" });
@@ -135,8 +140,13 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		InternalModule,
 		DevSeedModule,
 
-		// Note: Frontend is now served by TanStack Start via Caddy reverse proxy
-		// ServeStaticModule removed - Caddy routes /api/* to this service, /* to frontend
+		// Single-origin static SPA serving
+		ServeStaticModule.forRoot({
+			rootPath:
+				process.env.PRISMALENS_STATIC_DIR ||
+				path.resolve(__dirname, "../../frontend/dist/client"),
+			exclude: ["/api/(.*)", "/orpc/(.*)", "/health"],
+		}),
 
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion

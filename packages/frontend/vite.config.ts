@@ -27,7 +27,11 @@ export default defineConfig({
 	plugins: [
 		// Enables Vite to resolve imports using path aliases
 		tsConfigPaths(),
-		tanstackStart(),
+		tanstackStart({
+			spa: {
+				enabled: true,
+			},
+		}),
 		viteReact(),
 		tailwindcss(),
 		paraglideVitePlugin({
