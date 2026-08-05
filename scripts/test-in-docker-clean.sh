@@ -11,6 +11,8 @@ docker run --rm -i \
   node:22-slim bash -s << 'DOCKER_SCRIPT'
 set -eu
 
+apt-get update -qq && apt-get install -y -qq curl procps >/dev/null
+
 echo "================================================================================"
 echo "=== STEP 4: INSTALLATION IN CLEAN CONTAINER ==="
 echo "================================================================================"
