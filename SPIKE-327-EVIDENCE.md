@@ -324,9 +324,10 @@ On this Linux host inside a clean `node:22-slim` container, `better-sqlite3` res
 - **Boot time**: 2028ms (2.0s to ready)
 - **What broke**:
   1. Standard NestJS build output leaves unbundled `@prismalens/*` workspace package imports, breaking clean global installs until `tsup` bundling was added to `packages/api`.
-  2. `pnpm catalog:` specifiers in CLI `package.json` caused `npm install` failure `EUNSUPPORTEDPROTOCOL` (fixed by substituting explicit semver strings).
-  3. TanStack Start defaulted to SSR output without `index.html` (fixed by setting `spa: { enabled: true }` in `vite.config.ts`).
-  4. `@nestjs/serve-static` version requirement was ^5.0.5 (version 11 does not exist on npm registry).
+  2. Bundling NestJS API into ESM via `tsup`/esbuild exposed CJS dependency issues (`@vercel/oidc` calling `require("path")` resulting in `Error: Dynamic require of "path" is not supported` in ESM), requiring shimmed `createRequire` or target format handling.
+  3. `pnpm catalog:` specifiers in CLI `package.json` caused `npm install` failure `EUNSUPPORTEDPROTOCOL` (fixed by substituting explicit semver strings).
+  4. TanStack Start defaulted to SSR output without `index.html` (fixed by setting `spa: { enabled: true }` in `vite.config.ts`).
+  5. `@nestjs/serve-static` version requirement was ^5.0.5 (version 11 does not exist on npm registry).
 - **Revised #237 packaging estimate**: 3 active days (up from 1 day). Discoveries: (1) Bundling NestJS API entrypoint with tsup to inline `@prismalens/*` workspace packages, (2) TanStack Start build configuration from SSR to SPA static generation, (3) resolving and pinning third-party runtime dependencies out of pnpm `catalog:` for npm tarball distribution, (4) configuring NestJS ServeStaticModule path exclusions for oRPC and Swagger docs.
 
 ---
