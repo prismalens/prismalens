@@ -58,7 +58,12 @@ export class InvestigationStreamController {
 				),
 		});
 
-		const { unsubscribe } = this.streamRelay.subscribe(
+		// `subscribe` REPLAYS buffered events synchronously, so the handler can run
+		// before `subscribe` returns. A `const { unsubscribe }` destructure would be in
+		// its temporal dead zone at that point and throw on the first replayed event
+		// that closed the writer — hence the mutable handle, initialised first.
+		let unsubscribe: () => void = () => {};
+		const subscription = this.streamRelay.subscribe(
 			id,
 			(event) => {
 				writer.send(JSON.stringify(event));
@@ -71,6 +76,9 @@ export class InvestigationStreamController {
 				setTimeout(() => writer.close(), 100);
 			},
 		);
+		unsubscribe = subscription.unsubscribe;
+		// A writer closed during the synchronous replay never got to call the handle.
+		if (writer.isClosed) unsubscribe();
 
 		res.on("close", () => {
 			unsubscribe();

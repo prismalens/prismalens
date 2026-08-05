@@ -92,18 +92,31 @@ export interface JobStore {
 	 */
 	reclaimStale(staleMs: number, now?: Date): Promise<string[]>;
 
-	/** Mark a running job terminal. */
+	/**
+	 * Mark a running job terminal.
+	 *
+	 * Guarded on the claim owner: a holder whose claim was already reclaimed must not
+	 * be able to write a terminal status over the run that replaced it. Returns whether
+	 * the write landed.
+	 */
 	complete(
 		jobId: string,
+		owner: string,
 		status: Extract<JobStatus, "succeeded" | "failed" | "cancelled">,
 		error?: string,
-	): Promise<void>;
+	): Promise<boolean>;
 
 	/**
 	 * Release a claim back to `pending` with a delay, for a retryable failure.
-	 * Returns false when the attempt budget is spent (the job is failed instead).
+	 * Returns false when the attempt budget is spent (the job is failed instead) or
+	 * when this owner no longer holds the claim.
 	 */
-	retryLater(jobId: string, delayMs: number, error: string): Promise<boolean>;
+	retryLater(
+		jobId: string,
+		owner: string,
+		delayMs: number,
+		error: string,
+	): Promise<boolean>;
 
 	/** Look a job up by the investigation it belongs to. */
 	findByInvestigation(investigationId: string): Promise<JobRecord | null>;
@@ -287,11 +300,16 @@ export class PrismaJobStore implements JobStore {
 
 	async complete(
 		jobId: string,
+		owner: string,
 		status: Extract<JobStatus, "succeeded" | "failed" | "cancelled">,
 		error?: string,
-	): Promise<void> {
-		await this.jobs.updateMany({
-			where: { id: jobId },
+	): Promise<boolean> {
+		// `claimedBy: owner` is the load-bearing guard. Without it a holder whose claim
+		// the sweeper already reclaimed could land a terminal write on top of the RERUN
+		// that replaced it — two writers on one investigation, which is the exact failure
+		// the heartbeat's stand-down rule exists to prevent.
+		const { count } = await this.jobs.updateMany({
+			where: { id: jobId, status: "running", claimedBy: owner },
 			data: {
 				status,
 				claimedBy: null,
@@ -299,10 +317,12 @@ export class PrismaJobStore implements JobStore {
 				...(error !== undefined ? { lastError: error } : {}),
 			},
 		});
+		return count === 1;
 	}
 
 	async retryLater(
 		jobId: string,
+		owner: string,
 		delayMs: number,
 		error: string,
 	): Promise<boolean> {
@@ -313,11 +333,14 @@ export class PrismaJobStore implements JobStore {
 		if (!row) return false;
 		const job = toClaimedJob(row);
 		if (job.attempts >= job.maxAttempts) {
-			await this.complete(jobId, "failed", error);
+			await this.complete(jobId, owner, "failed", error);
 			return false;
 		}
-		await this.jobs.updateMany({
-			where: { id: jobId, status: "running" },
+		// Same owner guard as `complete`, and the result is reported honestly: a lost
+		// claim means someone else already owns the rerun, so this caller must not
+		// report that it scheduled one.
+		const { count } = await this.jobs.updateMany({
+			where: { id: jobId, status: "running", claimedBy: owner },
 			data: {
 				status: "pending",
 				claimedBy: null,
@@ -327,7 +350,7 @@ export class PrismaJobStore implements JobStore {
 				lastError: error,
 			},
 		});
-		return true;
+		return count === 1;
 	}
 
 	async findByInvestigation(

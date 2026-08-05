@@ -46,8 +46,14 @@ class StubStore implements JobStore {
 		return ids;
 	}
 
-	async complete(id: string, status: string, error?: string): Promise<void> {
+	async complete(
+		id: string,
+		_owner: string,
+		status: string,
+		error?: string,
+	): Promise<boolean> {
 		this.completed.push({ id, status, ...(error ? { error } : {}) });
+		return true;
 	}
 
 	async retryLater(id: string): Promise<boolean> {

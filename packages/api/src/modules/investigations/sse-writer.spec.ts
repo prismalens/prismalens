@@ -25,10 +25,14 @@ function fakeSocket(acceptUpTo = Number.POSITIVE_INFINITY) {
 		written: string[];
 		drain(): void;
 		ended: boolean;
+		drainListenerCount: number;
 	} = {
 		written,
 		get ended() {
 			return ended;
+		},
+		get drainListenerCount() {
+			return drainListeners.length;
 		},
 		write(chunk: string) {
 			written.push(chunk);
@@ -154,6 +158,21 @@ describe("BoundedSseWriter", () => {
 		expect(writer.isLagged).toBe(true);
 		// One accepted frame plus the terminal lag frame — nothing else was buffered.
 		expect(socket.written).toHaveLength(2);
+	});
+
+	it("keeps exactly one drain listener across many pause/drain cycles", () => {
+		// The writer re-arms its drain listener every time the socket backs up. If it
+		// does not detach the previous registration first, a slow client accrues one
+		// listener per cycle — an unbounded leak hiding behind a bounded queue.
+		const socket = fakeSocket(1);
+		const writer = new BoundedSseWriter(socket, { maxQueued: 10 });
+
+		for (let cycle = 0; cycle < 25; cycle++) {
+			writer.send(`a-${cycle}`);
+			writer.send(`b-${cycle}`);
+			socket.drain();
+			expect(socket.drainListenerCount).toBeLessThanOrEqual(1);
+		}
 	});
 
 	it("ignores sends after close, and close is idempotent", () => {

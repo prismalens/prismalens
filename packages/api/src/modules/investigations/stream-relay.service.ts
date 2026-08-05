@@ -80,6 +80,16 @@ export class StreamRelayService implements OnModuleDestroy {
 	 */
 	attach(investigationId: string): void {
 		if (this.attached.has(investigationId)) return;
+		// Open the buffer eagerly rather than on the first event: a client that connects
+		// between enqueue and the run's first event must see an ACTIVE stream, not an
+		// absent one, and `isActive` keys on the buffer's existence.
+		if (!this.buffers.has(investigationId)) {
+			this.buffers.set(investigationId, {
+				events: [],
+				done: false,
+				createdAt: Date.now(),
+			});
+		}
 		const { unsubscribe } = this.bus.subscribe<RelayMessage>(
 			runEventsTopic(investigationId),
 			(message) => {

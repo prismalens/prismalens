@@ -38,9 +38,25 @@ const logger = createLogger({
 /** Exit code used when the child was started without a usable IPC channel. */
 const EXIT_NO_IPC = 2;
 
-function send(message: ChildMessage): void {
-	// `process.send` exists only when forked with an IPC channel.
-	process.send?.(message);
+/**
+ * Send one message and resolve once it has actually been handed to the channel.
+ *
+ * This is awaited everywhere, and that matters most for the terminal `result`: an
+ * un-awaited send followed by `process.exit` can tear the channel down with the message
+ * still queued. The host would then see a child that exited without reporting, judge it
+ * a crash, and RERUN a job that had already decided its outcome.
+ */
+function send(message: ChildMessage): Promise<void> {
+	return new Promise((resolve) => {
+		// `process.send` exists only when forked with an IPC channel.
+		if (!process.send) return resolve();
+		const flushed = process.send(message, undefined, undefined, () =>
+			resolve(),
+		);
+		// A `false` return means the channel is backed up but the callback still fires;
+		// a throw would have rejected. Nothing else to do here.
+		if (flushed === undefined) resolve();
+	});
 }
 
 /**
@@ -84,22 +100,32 @@ async function main(): Promise<void> {
 		id: start.jobId,
 		name: "investigate",
 		attemptsMade: start.attempt,
-		updateProgress: async ({ percent, message }) => {
-			send({ type: "progress", percent, message });
-		},
+		updateProgress: ({ percent, message }) =>
+			send({ type: "progress", percent, message }),
+	};
+
+	// Whether the run got as far as closing its own stream. It does so on every path
+	// conductRun completes, but not when the run threw first or was skipped as already
+	// cancelled — and an SSE client must never be left waiting on a producer that is gone.
+	let streamClosed = false;
+	const closeStream = async () => {
+		if (streamClosed) return;
+		streamClosed = true;
+		await send({ type: "stream-done" });
 	};
 
 	let result: InvestigationResult;
 	try {
 		result = await processInvestigationJob(job, start.data, {
 			emit: (event) => send({ type: "event", event }),
-			streamDone: () => send({ type: "stream-done" }),
+			streamDone: closeStream,
 			signal: controller.signal,
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		logger.error(`Investigation run ${start.jobId} threw`, error);
-		send({
+		await closeStream();
+		await send({
 			type: "result",
 			outcome: "failed",
 			retryable: isRetryable(error),
@@ -117,12 +143,16 @@ async function main(): Promise<void> {
 		return;
 	}
 
+	// The sticky-cancel skip returns without conducting a run, so the stream never
+	// closed itself.
+	await closeStream();
+
 	const outcome = result.success
 		? "succeeded"
 		: result.errorType === "cancelled"
 			? "cancelled"
 			: "failed";
-	send({
+	await send({
 		type: "result",
 		outcome,
 		// The run RETURNED rather than threw, so it reached a terminal verdict of its
@@ -133,12 +163,23 @@ async function main(): Promise<void> {
 	});
 }
 
+/**
+ * Close the channel and let the process end on its own.
+ *
+ * NOT `process.exit`: every send above is awaited, but a forcible exit would still cut
+ * short anything the runtime has yet to flush, and the host reads a child that exited
+ * without reporting as a crash worth rerunning. Disconnecting drops the last handle
+ * keeping the loop alive, so a well-behaved run exits 0 by simply running out of work —
+ * and a run that leaked a handle is a bug worth seeing rather than papering over.
+ */
+function finish(code: number): void {
+	process.exitCode = code;
+	if (typeof process.disconnect === "function") process.disconnect();
+}
+
 main()
-	.then(() => {
-		// Let the pending IPC sends flush before the event loop is torn down.
-		setImmediate(() => process.exit(0));
-	})
+	.then(() => finish(0))
 	.catch((error) => {
 		logger.error("Investigation child failed fatally", error);
-		setImmediate(() => process.exit(1));
+		finish(1);
 	});

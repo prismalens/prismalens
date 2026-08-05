@@ -61,4 +61,39 @@ export const dispatchSchema = z.object({
 		),
 });
 
+/**
+ * The heartbeat must be strictly faster than the staleness cutoff, or a healthy run
+ * reclaims ITSELF: the sweeper would judge every live claim dead before its holder got
+ * a chance to refresh it, and the job would rerun forever under a working process.
+ * Caught at boot rather than as a mystifying reclaim loop in production.
+ */
+export function assertDispatchIntervals<
+	T extends {
+		PRISMALENS_DISPATCH_HEARTBEAT_INTERVAL_MS: number;
+		PRISMALENS_DISPATCH_STALE_CLAIM_MS: number;
+	},
+>(
+	config: T,
+	ctx: {
+		addIssue: (issue: {
+			code: "custom";
+			message: string;
+			path: string[];
+		}) => void;
+	},
+): void {
+	if (
+		config.PRISMALENS_DISPATCH_HEARTBEAT_INTERVAL_MS >=
+		config.PRISMALENS_DISPATCH_STALE_CLAIM_MS
+	) {
+		ctx.addIssue({
+			code: "custom",
+			message:
+				`PRISMALENS_DISPATCH_HEARTBEAT_INTERVAL_MS (${config.PRISMALENS_DISPATCH_HEARTBEAT_INTERVAL_MS}) must be strictly less than ` +
+				`PRISMALENS_DISPATCH_STALE_CLAIM_MS (${config.PRISMALENS_DISPATCH_STALE_CLAIM_MS}) — otherwise a healthy run reclaims itself and reruns forever.`,
+			path: ["PRISMALENS_DISPATCH_HEARTBEAT_INTERVAL_MS"],
+		});
+	}
+}
+
 export type DispatchConfig = z.infer<typeof dispatchSchema>;

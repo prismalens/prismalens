@@ -211,7 +211,7 @@ describe("PrismaJobStore", () => {
 			await store.claim("owner", 1);
 			// A retryable failure pushes the job out by a backoff; it must stay unclaimable
 			// until that window passes, or a failing job would spin.
-			await store.retryLater(id, 60_000, "transient");
+			await store.retryLater(id, "owner", 60_000, "transient");
 
 			expect(await store.claim("owner", 5)).toEqual([]);
 		});
@@ -305,7 +305,7 @@ describe("PrismaJobStore", () => {
 			const id = await store.enqueue(job(1, { maxAttempts: 1 }));
 			await store.claim("owner-a", 1);
 
-			expect(await store.retryLater(id, 1_000, "boom")).toBe(false);
+			expect(await store.retryLater(id, "owner-a", 1_000, "boom")).toBe(false);
 			expect(delegate.rows[0].status).toBe("failed");
 		});
 
@@ -313,10 +313,40 @@ describe("PrismaJobStore", () => {
 			const id = await store.enqueue(job(1));
 			await store.claim("owner-a", 1);
 
-			await store.complete(id, "succeeded");
+			expect(await store.complete(id, "owner-a", "succeeded")).toBe(true);
 
 			expect(delegate.rows[0].status).toBe("succeeded");
 			expect(delegate.rows[0].claimedBy).toBeNull();
+		});
+	});
+
+	describe("the owner guard on terminal writes", () => {
+		it("refuses a terminal write from a holder whose claim was reclaimed", async () => {
+			const id = await store.enqueue(job(1));
+			await store.claim("owner-a", 1, at(0));
+			await store.reclaimStale(30_000, at(120_000));
+			// The rerun is now owned by B.
+			await store.claim("owner-b", 1, at(200_000));
+
+			// A finishes late and tries to settle the job it no longer holds.
+			expect(await store.complete(id, "owner-a", "succeeded")).toBe(false);
+
+			// B's run is untouched — no double writer on one investigation.
+			expect(delegate.rows[0].status).toBe("running");
+			expect(delegate.rows[0].claimedBy).toBe("owner-b");
+		});
+
+		it("refuses a retry from a holder whose claim was reclaimed", async () => {
+			const id = await store.enqueue(job(1, { maxAttempts: 5 }));
+			await store.claim("owner-a", 1, at(0));
+			await store.reclaimStale(30_000, at(120_000));
+			await store.claim("owner-b", 1, at(200_000));
+
+			expect(await store.retryLater(id, "owner-a", 1_000, "late failure")).toBe(
+				false,
+			);
+			expect(delegate.rows[0].status).toBe("running");
+			expect(delegate.rows[0].claimedBy).toBe("owner-b");
 		});
 	});
 });

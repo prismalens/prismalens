@@ -51,7 +51,11 @@ export class BoundedSseWriter {
 	private closed = false;
 	private lagged = false;
 
+	// Detach BEFORE flushing. `flush` re-arms the listener whenever the socket backs up
+	// again, so without this the same handler accumulates one registration per
+	// pause/drain cycle — a slow client would collect thousands over a long run.
 	private readonly onDrain = () => {
+		this.socket.off("drain", this.onDrain);
 		this.draining = false;
 		this.flush();
 	};

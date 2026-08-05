@@ -248,25 +248,51 @@ export function retainedEvent(
 	event: CanonicalEvent,
 	retainedBytes: number,
 ): { event: CanonicalEvent; bytes: number } {
-	if (event.kind !== "tool_result") {
-		return { event, bytes: approximateBytes(event) };
-	}
-	const preview = event.result.preview ?? "";
 	const overBudget = retainedBytes >= RETAINED_TRANSCRIPT_BYTES;
 	const cap = overBudget ? 0 : RETAINED_PREVIEW_CAP;
-	if (preview.length <= cap) {
-		return { event, bytes: approximateBytes(event) };
+
+	// Every text-bearing kind is budgeted, not just tool_result: a runaway `agent_step`
+	// or a pathological `error` message costs exactly the same memory, and capping one
+	// while leaving the others unbounded is a cap in name only.
+	if (event.kind === "tool_result") {
+		const preview = event.result.preview ?? "";
+		if (preview.length <= cap) return { event, bytes: approximateBytes(event) };
+		const trimmed: CanonicalEvent = {
+			...event,
+			result: { ...event.result, preview: trim(preview, cap, overBudget) },
+		};
+		return { event: trimmed, bytes: approximateBytes(trimmed) };
 	}
-	const trimmed: CanonicalEvent = {
-		...event,
-		result: {
-			...event.result,
-			preview: overBudget
-				? "…[dropped: transcript budget exhausted]"
-				: `${preview.slice(0, cap)}\n…[truncated]`,
-		},
-	};
-	return { event: trimmed, bytes: approximateBytes(trimmed) };
+
+	if (event.kind === "agent_step") {
+		if (event.text.length <= cap)
+			return { event, bytes: approximateBytes(event) };
+		const trimmed: CanonicalEvent = {
+			...event,
+			text: trim(event.text, cap, overBudget),
+		};
+		return { event: trimmed, bytes: approximateBytes(trimmed) };
+	}
+
+	if (event.kind === "error") {
+		if (event.message.length <= cap) {
+			return { event, bytes: approximateBytes(event) };
+		}
+		const trimmed: CanonicalEvent = {
+			...event,
+			message: trim(event.message, cap, overBudget),
+		};
+		return { event: trimmed, bytes: approximateBytes(trimmed) };
+	}
+
+	return { event, bytes: approximateBytes(event) };
+}
+
+/** Cut to the cap, or replace outright once the whole budget is spent. */
+function trim(text: string, cap: number, overBudget: boolean): string {
+	return overBudget
+		? "…[dropped: transcript budget exhausted]"
+		: `${text.slice(0, cap)}\n…[truncated]`;
 }
 
 /** Cheap size proxy — the transcript-relevant text, not an exact heap measurement. */

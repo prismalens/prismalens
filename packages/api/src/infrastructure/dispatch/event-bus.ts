@@ -39,7 +39,11 @@ export type RelayMessage =
 	| { kind: "done" };
 
 export interface EventBus {
-	publish<T>(topic: string, message: T): number;
+	publish<T>(
+		topic: string,
+		message: T,
+		onError?: (error: unknown) => void,
+	): number;
 	subscribe<T>(
 		topic: string,
 		handler: EventBusHandler<T>,
@@ -67,13 +71,28 @@ export function runCancelTopic(investigationId: string): string {
 export class InProcessEventBus implements EventBus {
 	private readonly topics = new Map<string, Set<EventBusHandler<never>>>();
 
-	publish<T>(topic: string, message: T): number {
+	publish<T>(
+		topic: string,
+		message: T,
+		onError?: (error: unknown) => void,
+	): number {
 		const handlers = this.topics.get(topic);
 		if (!handlers || handlers.size === 0) return 0;
 		// Snapshot: a handler may unsubscribe itself while we are delivering.
 		let delivered = 0;
 		for (const handler of [...handlers]) {
-			(handler as EventBusHandler<T>)(message);
+			// Each subscriber gets its own error boundary. One throwing SSE writer must
+			// not stop delivery to the others, and must never propagate into the
+			// publisher — a run emitting an event, or a controller requesting a cancel,
+			// is not the right place to surface a subscriber's bug.
+			try {
+				(handler as EventBusHandler<T>)(message);
+			} catch (error) {
+				onError?.(error);
+			}
+			// Counted per ATTEMPTED delivery, including a thrower: the cancel path's
+			// contract is "did anyone receive this", and a subscriber that received the
+			// message and then threw did receive it.
 			delivered++;
 		}
 		return delivered;

@@ -38,6 +38,7 @@
 
 import { z } from "zod";
 import {
+	assertDispatchIntervals,
 	databaseSchema,
 	deploymentSchema,
 	dispatchSchema,
@@ -124,6 +125,7 @@ export function getConfig(): GlobalConfig {
 
 		const result = baseConfigSchema
 			.omit({ PRISMALENS_DB_URL: true })
+			.superRefine(assertDispatchIntervals)
 			.safeParse(process.env);
 
 		if (!result.success) {

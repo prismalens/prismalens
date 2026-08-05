@@ -15,7 +15,11 @@ import { type ChildProcess, fork } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import type { ChildMessage, HostMessage } from "@prismalens/worker/protocol";
+import type {
+	ChildMessage,
+	HostMessage,
+	StartMessage,
+} from "@prismalens/worker/protocol";
 import type { JobRunner, RunningJob, RunOutcome } from "./dispatcher.js";
 import type { ClaimedJob } from "./job-store.js";
 
@@ -23,6 +27,9 @@ const require = createRequire(import.meta.url);
 
 /** Grace period between asking a child to stop and killing it. */
 const CANCEL_GRACE_MS = 15_000;
+
+/** How long a child may take to exit AFTER reporting its terminal result. */
+const EXIT_GRACE_MS = 30_000;
 
 export interface ForkRunnerOptions {
 	/** Explicit entrypoint. Empty/absent resolves `@prismalens/worker`. */
@@ -67,6 +74,19 @@ export function createForkRunner(options: ForkRunnerOptions = {}): JobRunner {
 	const { entry, needsTsLoader } = resolveChildEntry(options.entry);
 
 	return (job: ClaimedJob, sink): RunningJob => {
+		// Parse BEFORE forking. A malformed payload is a permanent fault, and throwing
+		// after the fork would leak a child the dispatcher never learns about.
+		let payload: unknown;
+		try {
+			payload = JSON.parse(job.payload);
+		} catch (error) {
+			throw new Error(
+				`Job ${job.id} has an unparseable payload: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+
 		const child: ChildProcess = fork(entry, [], {
 			stdio: ["ignore", "inherit", "inherit", "ipc"],
 			env: { ...process.env, ...options.env },
@@ -77,12 +97,14 @@ export function createForkRunner(options: ForkRunnerOptions = {}): JobRunner {
 		let cancelRequested = false;
 		let reported: RunOutcome | null = null;
 		let killTimer: NodeJS.Timeout | null = null;
+		let exitTimer: NodeJS.Timeout | null = null;
 
 		const done = new Promise<RunOutcome>((resolve) => {
 			const finish = (outcome: RunOutcome) => {
 				if (settled) return;
 				settled = true;
 				if (killTimer) clearTimeout(killTimer);
+				if (exitTimer) clearTimeout(exitTimer);
 				resolve(outcome);
 			};
 
@@ -105,6 +127,20 @@ export function createForkRunner(options: ForkRunnerOptions = {}): JobRunner {
 							retryable: message.retryable,
 							...(message.error ? { error: message.error } : {}),
 						};
+						// But do not wait forever for it. A child that reported and then
+						// failed to exit — a leaked handle, a wedged teardown — would
+						// otherwise hold its claim alive indefinitely, heartbeating a job
+						// that is already decided. Bound the wait, then stop asking.
+						if (!exitTimer) {
+							exitTimer = setTimeout(() => {
+								if (settled) return;
+								options.log?.warn(
+									`Investigation child for job ${job.id} reported its result but did not exit; killing it`,
+								);
+								child.kill("SIGKILL");
+							}, EXIT_GRACE_MS);
+							exitTimer.unref?.();
+						}
 						break;
 				}
 			});
@@ -150,9 +186,18 @@ export function createForkRunner(options: ForkRunnerOptions = {}): JobRunner {
 			// there are N-1 completed attempts behind it. The child clears the previous
 			// attempt's durable events when that is non-zero.
 			attempt: Math.max(0, job.attempts - 1),
-			data: JSON.parse(job.payload),
+			data: payload as StartMessage["data"],
 		};
-		child.send(start);
+		// A failed `send` means the child will never receive its work, so it must not be
+		// left running. Killing it drives the `exit` handler, which settles `done` as a
+		// retryable failure — the right verdict for a transport fault.
+		child.send(start, (error) => {
+			if (!error) return;
+			options.log?.error(
+				`Could not hand job ${job.id} to its child: ${error.message}`,
+			);
+			child.kill("SIGKILL");
+		});
 
 		return {
 			done,

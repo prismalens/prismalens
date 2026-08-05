@@ -194,7 +194,11 @@ export class Dispatcher {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.log.error(`Failed to start job ${job.id}`, error);
-			void this.store.complete(job.id, "failed", message);
+			void this.store
+				.complete(job.id, this.owner, "failed", message)
+				.catch((e) =>
+					this.log.error(`Failed to record job ${job.id} as failed`, e),
+				);
 			return;
 		}
 
@@ -232,6 +236,7 @@ export class Dispatcher {
 				if (outcome.outcome === "failed" && outcome.retryable) {
 					const willRetry = await this.store.retryLater(
 						job.id,
+						this.owner,
 						this.options.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS,
 						outcome.error ?? "run failed",
 					);
@@ -239,10 +244,21 @@ export class Dispatcher {
 						this.log.warn(`Job ${job.id} failed; it will rerun`);
 						return;
 					}
-					// Attempts exhausted — retryLater already recorded the failure.
+					// Either the attempts are spent (retryLater recorded the failure) or the
+					// claim was lost, in which case whoever holds it now owns the outcome.
 					return;
 				}
-				await this.store.complete(job.id, outcome.outcome, outcome.error);
+				const settled = await this.store.complete(
+					job.id,
+					this.owner,
+					outcome.outcome,
+					outcome.error,
+				);
+				if (!settled) {
+					this.log.warn(
+						`Job ${job.id} finished but its claim was already reclaimed; the terminal write was refused`,
+					);
+				}
 			})
 			.catch((error) => this.log.error(`Settling job ${job.id} failed`, error))
 			.finally(() => {
@@ -254,6 +270,10 @@ export class Dispatcher {
 				setImmediate(() => void this.tick());
 			});
 
-		void running.done.then((outcome) => this.options.onSettled?.(job, outcome));
+		void running.done
+			.then((outcome) => this.options.onSettled?.(job, outcome))
+			.catch((error) =>
+				this.log.error(`onSettled for job ${job.id} failed`, error),
+			);
 	}
 }
