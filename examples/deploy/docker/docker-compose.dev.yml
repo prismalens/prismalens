@@ -66,6 +66,10 @@ services:
       - NODE_ENV=development
       - PRISMALENS_PORT=3001
       - PRISMALENS_HOST=0.0.0.0
+      # Hostnames this container may be reached by. Caddy forwards the browser's
+      # original Host (localhost here); the other containers reach it as `api`.
+      # Anything else is rejected — see packages/api/README.md.
+      - PRISMALENS_ALLOWED_HOSTS=localhost,api
       - PRISMALENS_REDIS_HOST=redis
       - PRISMALENS_INTERNAL_SECRET=${PRISMALENS_INTERNAL_SECRET}
       - DATABASE_URL=${DATABASE_URL:-file:./prismalens.db}
