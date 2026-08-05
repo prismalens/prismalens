@@ -106,9 +106,15 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 					},
 				},
 			});
+			this.investigationQueue.on("error", (err) => {
+				this.logger.debug(`Investigation queue error: ${err.message}`);
+			});
 
 			this.queueEvents = new QueueEvents("investigation", {
 				connection: this.connection,
+			});
+			this.queueEvents.on("error", (err) => {
+				this.logger.debug(`Queue events error: ${err.message}`);
 			});
 
 			// Log queue events
