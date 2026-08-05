@@ -46,6 +46,7 @@ echo "=== STEP 5: BOOTING PRISMALENS UP ==="
 echo "================================================================================"
 export PRISMALENS_WORKSPACE_DIR=/tmp/prismalens-container-workspace
 export PRISMALENS_PORT=3001
+export PRISMALENS_HOST=0.0.0.0
 export NODE_ENV=development
 
 mkdir -p "$PRISMALENS_WORKSPACE_DIR"
