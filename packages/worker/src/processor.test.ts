@@ -10,20 +10,6 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `processor.ts` opens a real ioredis connection at module load (the canonical
-// event publisher) — stub it so importing the module for this pure-function test
-// stays hermetic (no network).
-vi.mock("ioredis", () => ({
-	// Vitest 4 requires a constructable implementation for `new Redis(...)`;
-	// an arrow function is not a constructor, so use a `function`.
-	Redis: vi.fn(function MockRedis() {
-		return {
-			publish: vi.fn(),
-			quit: vi.fn(),
-		};
-	}),
-}));
-
 // `buildRequest` reads the incident over oRPC; stub the client so the request
 // construction is exercised without a live API (a rejection is a caught no-incident
 // path in the processor, which would silently weaken the assertion).
@@ -65,8 +51,13 @@ describe("buildHarnessEnv (worker-provider-hardwiring)", () => {
 		});
 	});
 
-	it("anthropic: does NOT leak the anthropic key into OPENAI_API_KEY", () => {
-		expect(buildHarnessEnv("anthropic", API_KEY, BASE_URL)).toEqual({});
+	it("anthropic: sends ANTHROPIC_API_KEY only — never OPENAI_API_KEY", () => {
+		// The claude-code harness reads its credential from ANTHROPIC_API_KEY; a plain
+		// BYO key previously had no route in at all. Leaking it into OPENAI_API_KEY would
+		// hand a harness a secret it cannot use.
+		expect(buildHarnessEnv("anthropic", API_KEY, BASE_URL)).toEqual({
+			ANTHROPIC_API_KEY: API_KEY,
+		});
 	});
 
 	it("google: does NOT leak the google key into OPENAI_API_KEY", () => {
@@ -399,17 +390,24 @@ describe("buildRequest harness cwd (app mode has no per-alert repo mapping)", ()
 
 describe("processInvestigationJob schema validation", () => {
 	it("malformed job payload -> processor throws, not silent degradation", async () => {
-		const malformedJob = {
+		const job = {
 			id: "job-malformed",
 			name: "investigation",
-			data: {
-				// Missing required incidentId and investigationId
-				priority: "invalid-priority",
-			},
+			attemptsMade: 0,
+			updateProgress: vi.fn(async () => {}),
+		};
+		const malformedData = {
+			// Missing required incidentId and investigationId
+			priority: "invalid-priority",
 		};
 
 		await expect(
-			processInvestigationJob(malformedJob as any),
+			// biome-ignore lint/suspicious/noExplicitAny: the point is an invalid payload.
+			processInvestigationJob(job, malformedData as any, {
+				emit: vi.fn(),
+				streamDone: vi.fn(),
+				signal: new AbortController().signal,
+			}),
 		).rejects.toThrow();
 	});
 

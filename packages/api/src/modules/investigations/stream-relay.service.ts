@@ -2,8 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import { EventEmitter } from "node:events";
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Inject, Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import {
+	EVENT_BUS,
+	type EventBus,
+	type RelayMessage,
+	runEventsTopic,
+} from "../../infrastructure/dispatch/event-bus.js";
 
 /** Ring buffer size per investigation */
 const BUFFER_SIZE = 50;
@@ -26,11 +32,13 @@ interface StreamBuffer {
 /**
  * In-memory event relay for investigation SSE streams.
  *
- * Single source for SSE events in both execution modes:
- * - Regular mode: QueueService feeds events directly
- * - Queue mode: Redis pub/sub subscriber feeds events
+ * The single source of SSE events. Events arrive on the run's EventBus topic — the
+ * in-process replacement for the `investigation:events:{id}` Redis channel — and are
+ * fanned out to live subscribers plus a ring buffer (last N events) for late joiners.
  *
- * Maintains a ring buffer (last N events) per investigation for late-joining clients.
+ * The ring buffer bounds REPLAY. It says nothing about write pressure on a slow
+ * subscriber's socket; that is {@link ../sse-writer.js BoundedSseWriter}'s job, and the
+ * two must not be confused for one another.
  */
 @Injectable()
 export class StreamRelayService implements OnModuleDestroy {
@@ -39,8 +47,10 @@ export class StreamRelayService implements OnModuleDestroy {
 	private readonly buffers = new Map<string, StreamBuffer>();
 	private readonly cleanupTimers = new Map<string, NodeJS.Timeout>();
 	private readonly sweepInterval: NodeJS.Timeout;
+	/** Live EventBus subscriptions, one per attached run. */
+	private readonly attached = new Map<string, () => void>();
 
-	constructor() {
+	constructor(@Inject(EVENT_BUS) private readonly bus: EventBus) {
 		// Intentionally unlimited — each SSE client adds 2 listeners
 		this.emitter.setMaxListeners(0);
 
@@ -53,12 +63,41 @@ export class StreamRelayService implements OnModuleDestroy {
 
 	onModuleDestroy() {
 		clearInterval(this.sweepInterval);
+		for (const detach of this.attached.values()) detach();
+		this.attached.clear();
 		this.emitter.removeAllListeners();
 		for (const timer of this.cleanupTimers.values()) {
 			clearTimeout(timer);
 		}
 		this.cleanupTimers.clear();
 		this.buffers.clear();
+	}
+
+	/**
+	 * Start relaying one run's EventBus topic into this relay. Called when the job is
+	 * enqueued, so the buffer exists before the run's first event and before any client
+	 * connects. Idempotent — a second attach for the same run is a no-op.
+	 */
+	attach(investigationId: string): void {
+		if (this.attached.has(investigationId)) return;
+		const { unsubscribe } = this.bus.subscribe<RelayMessage>(
+			runEventsTopic(investigationId),
+			(message) => {
+				if (message.kind === "done") {
+					this.complete(investigationId);
+					this.detach(investigationId);
+					return;
+				}
+				this.emit(investigationId, message.event);
+			},
+		);
+		this.attached.set(investigationId, unsubscribe);
+	}
+
+	/** Stop relaying a run's topic. */
+	detach(investigationId: string): void {
+		this.attached.get(investigationId)?.();
+		this.attached.delete(investigationId);
 	}
 
 	/**
@@ -177,6 +216,7 @@ export class StreamRelayService implements OnModuleDestroy {
 			if (!buffer.done && now - buffer.createdAt > MAX_ACTIVE_BUFFER_AGE_MS) {
 				this.logger.warn(`Cleaning up stale buffer for investigation ${id}`);
 				this.complete(id);
+				this.detach(id);
 			}
 		}
 	}

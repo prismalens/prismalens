@@ -7,9 +7,13 @@
  * Drives the two-tier engine (`@prismalens/engine`) instead of the retired
  * LangGraph `@prismalens/agents`: resolve the engine inputs from the job + LLM
  * settings (shell-first, ADR-0005 — connectors come in Phase D), then
- * `conductRun` (ADR-0018) with a Redis SINK that publishes the canonical stream for
- * the API to relay (→ SSE → UI), and a DB STORE that folds the lifecycle
+ * `conductRun` (ADR-0018) with an IPC SINK that hands the canonical stream to the
+ * host for relay (→ EventBus → SSE → UI), and a DB STORE that folds the lifecycle
  * (status/timeline/result) via `api.investigations.writeResult`.
+ *
+ * This module runs inside the per-run child process the host forks. It owns no
+ * dispatch state: the claim, the heartbeat and the reclaim decision all live in the
+ * host's JobStore.
  *
  * Phase A note: telemetry endpoints + harness cwd are sourced from
  * INVESTIGATION_DEFAULTS + env as a local-first stopgap; the full `pl.config.yaml`
@@ -19,6 +23,7 @@ import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import {
+	type CanonicalEvent,
 	correlatedAlertsContext,
 	type FiringAlert,
 	type IncidentContext,
@@ -40,19 +45,35 @@ import {
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
-import { type SandboxedJob, UnrecoverableError } from "bullmq";
-import { Redis } from "ioredis";
-import { redisUrl, config as workerConfig } from "./config.js";
+import { config as workerConfig } from "./config.js";
 import { createDbInvestigationStore } from "./db-investigation-store.js";
 import { api } from "./orpc-client.js";
+import { UnrecoverableJobError } from "./protocol.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
 
 const logger = new Logger({ context: "InvestigationProcessor" });
 
-// Redis publisher for streaming canonical events to the API relay.
-const redisPublisher = new Redis(redisUrl, {
-	maxRetriesPerRequest: null,
-});
+/**
+ * What the run needs from its host: an identity for logging, the attempt number (a
+ * rerun after a reclaim must clear the previous attempt's durable events), and the
+ * channels back out. Deliberately structural — the host owns the transport, this
+ * module owns the run.
+ */
+export interface JobContext {
+	id: string;
+	name: string;
+	/** Completed attempts before this one. 0 on a first run, ≥1 on a rerun. */
+	attemptsMade: number;
+	updateProgress(progress: { percent: number; message: string }): Promise<void>;
+}
+
+/** The run's outward channels: the canonical event sink and its terminal sentinel. */
+export interface JobIo {
+	emit(event: CanonicalEvent): void | Promise<void>;
+	streamDone(): void | Promise<void>;
+	/** Fires when the host requests cancellation. */
+	signal: AbortSignal;
+}
 
 /**
  * Fetch LLM configuration from the API (active provider, model, api-key creds).
@@ -100,11 +121,12 @@ async function fetchLlmConfig(): Promise<{
 
 /**
  * Clear the durable canonical event record for an investigation (ADR-0018 B.4) before a
- * BullMQ RETRY. Attempt 2+ would otherwise collide with attempt 1's rows on
- * `(investigationId, branchId, seq)` and be dropped as duplicates (P2002), leaving the
- * record showing the FAILED attempt's events. Same X-Internal-Secret pattern as the
- * bulk-append/LLM-config fetch. Throws on a missing secret or non-2xx so the caller can
- * log it (best-effort — a clear failure must not block the retry).
+ * RERUN — either a retry after a failure or a reclaim of an abandoned claim. Attempt 2+
+ * would otherwise collide with attempt 1's rows on `(investigationId, branchId, seq)`
+ * and be dropped as duplicates (P2002), leaving the record showing the FAILED attempt's
+ * events. Same X-Internal-Secret pattern as the bulk-append/LLM-config fetch. Throws on
+ * a missing secret or non-2xx so the caller can log it (best-effort — a clear failure
+ * must not block the rerun).
  */
 async function clearDurableEvents(investigationId: string): Promise<void> {
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
@@ -133,15 +155,17 @@ async function clearDurableEvents(investigationId: string): Promise<void> {
 }
 
 /**
- * Process an investigation job from the queue.
+ * Process one investigation job. Called once per forked child.
  */
 export default async function processInvestigationJob(
-	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
+	job: JobContext,
+	rawData: InvestigationJobData,
+	io: JobIo,
 ): Promise<InvestigationResult> {
-	const data = InvestigationJobDataSchema.parse(job.data);
+	const data = InvestigationJobDataSchema.parse(rawData);
 	return runWithWideEvent(
 		`job-${job.id}`,
-		async () => processJobInternal(job, data),
+		async () => processJobInternal(job, data, io),
 		{
 			context: {
 				job_id: job.id,
@@ -154,8 +178,9 @@ export default async function processInvestigationJob(
 }
 
 async function processJobInternal(
-	job: SandboxedJob<InvestigationJobData, InvestigationResult>,
+	job: JobContext,
 	rawPayload: InvestigationJobData,
+	io: JobIo,
 ): Promise<InvestigationResult> {
 	const data = InvestigationJobDataSchema.parse(rawPayload);
 	logger.info(
@@ -189,30 +214,18 @@ async function processJobInternal(
 	// its teardown in the finally below. Especially load-bearing for `e2b`: a leaked
 	// remote VM keeps costing until its timeout.
 	let sandbox: Sandbox | undefined;
-	// Cooperative cancellation (CANCEL slice, ADR-0018): a DEDICATED Redis subscriber
-	// listens on this job's cancel channel; a message aborts the run's AbortSignal, which
-	// conductRun threads into the engine (stop consuming the merged stream → cascade the
-	// child kill + run-owned sandbox teardown). The subscription is torn down in the
-	// finally. A subscriber connection cannot also publish, hence a connection of its own.
-	const abortController = new AbortController();
-	const cancelChannel = `investigation:cancel:${data.investigationId}`;
-	const cancelSubscriber = new Redis(redisUrl, { maxRetriesPerRequest: null });
+	// Cooperative cancellation (CANCEL slice, ADR-0018): the host owns the cancel
+	// channel and forwards a request as an abort on `io.signal`, which conductRun
+	// threads into the engine (stop consuming the merged stream → cascade the child kill
+	// + run-owned sandbox teardown). Nothing here subscribes to anything.
+	const abortSignal = io.signal;
 	try {
-		cancelSubscriber.on("message", (channel: string) => {
-			if (channel === cancelChannel) {
-				logger.info(
-					`Cancel requested for investigation ${data.investigationId}`,
-				);
-				abortController.abort();
-			}
-		});
-		await cancelSubscriber.subscribe(cancelChannel);
-
-		// BullMQ RETRY (attempt 2+): the prior attempt left a stale durable event record
-		// whose rows would collide with this attempt's on (investigationId, branchId, seq)
-		// and be swallowed as duplicates — so the record would show the FAILED attempt's
-		// events. Clear it so each attempt owns a fresh record. Best-effort: a clear
-		// failure logs and proceeds (never blocks the retry).
+		// RERUN (attempt 2+ — a retry, or a reclaim of an abandoned claim): the prior
+		// attempt left a stale durable event record whose rows would collide with this
+		// attempt's on (investigationId, branchId, seq) and be swallowed as duplicates —
+		// so the record would show the FAILED attempt's events. Clear it so each attempt
+		// owns a fresh record. Best-effort: a clear failure logs and proceeds (never
+		// blocks the rerun).
 		if (job.attemptsMade > 0) {
 			try {
 				await clearDurableEvents(data.investigationId);
@@ -235,13 +248,13 @@ async function processJobInternal(
 		});
 
 		// 3. Conduct: drive the harness once through the shared primitive
-		// (ADR-0018), fanning the canonical stream to Redis (live/ephemeral) and
-		// folding the lifecycle through the DB store (durable — status/timeline/
-		// result). conductRun owns create → append → finish|fail; it never throws
-		// on a failed branch (see the outer catch for unexpected transport errors).
-		const channel = `investigation:events:${data.investigationId}`;
+		// (ADR-0018), fanning the canonical stream to the host over IPC (live/
+		// ephemeral) and folding the lifecycle through the DB store (durable —
+		// status/timeline/result). conductRun owns create → append → finish|fail; it
+		// never throws on a failed branch (see the outer catch for unexpected
+		// transport errors).
 		const sink: InvestigationSink = async (event) => {
-			await redisPublisher.publish(channel, JSON.stringify(event));
+			await io.emit(event);
 		};
 		const store = createDbInvestigationStore(api, {
 			investigationId: data.investigationId,
@@ -257,24 +270,24 @@ async function processJobInternal(
 				synth: resolved.synth,
 				fidelity: resolved.fidelity,
 				runId,
-				signal: abortController.signal,
+				signal: abortSignal,
 			},
 			{ sink, store },
 		);
 		// Terminal sentinel for the API relay.
-		await redisPublisher.publish(channel, JSON.stringify(["__done__", {}]));
+		await io.streamDone();
 
-		// 4a-cancel. Cancelled by request (a Redis cancel message flipped the signal):
-		// conductRun left the store untouched, so the worker owns the terminal write —
+		// 4a-cancel. Cancelled by request (the host's cancel flipped the signal):
+		// conductRun left the store untouched, so this run owns the terminal write —
 		// persist status "cancelled" + a timeline entry, then RETURN a cancelled result.
-		// Never throw: a throw would let BullMQ retry a user-cancelled run.
+		// Never throw: a throw would let the host rerun a user-cancelled investigation.
 		if (outcome.failureKind === "cancelled") {
 			logger.info(`Job ${job.id} cancelled`);
 			try {
 				await persistCancelled(data);
 			} catch (e) {
 				// Swallow, never rethrow: the outer catch would overwrite the run as
-				// "failed" and BullMQ would retry a user-cancelled investigation. The
+				// "failed" and the host would rerun a user-cancelled investigation. The
 				// record stays "running" until the user's next cancel click takes the
 				// API's zero-receiver fallback write.
 				logger.error("Failed to persist cancelled status", e);
@@ -327,14 +340,6 @@ async function processJobInternal(
 		}
 		throw error;
 	} finally {
-		// Tear down the per-job cancel subscription (CANCEL slice) — always, so a leaked
-		// subscriber connection cannot outlive the job.
-		try {
-			cancelSubscriber.removeAllListeners();
-			await cancelSubscriber.quit();
-		} catch (e) {
-			logger.error("Failed to close cancel subscriber", e);
-		}
 		if (sandbox) {
 			try {
 				await sandbox.destroy();
@@ -367,7 +372,7 @@ async function persistCancelled(data: InvestigationJobData): Promise<void> {
 	});
 }
 
-/** A cancelled job result — returned (not thrown) so BullMQ marks the job done, no retry. */
+/** A cancelled job result — returned (not thrown) so the host marks the job done, no rerun. */
 function cancelledResult(data: InvestigationJobData): InvestigationResult {
 	return {
 		success: false,
@@ -406,6 +411,12 @@ export function buildHarnessEnv(
 	return {
 		...(speaksOpenAiProtocol(synthProvider) ? { OPENAI_API_KEY: apiKey } : {}),
 		...(isOpenAiCompat ? { OPENAI_BASE_URL: baseURL } : {}),
+		// The claude-code harness reads `ANTHROPIC_API_KEY` from its own process env.
+		// Subscription auth already had a per-run route in (an isolated 0600
+		// CLAUDE_CONFIG_DIR); a plain API key had none, so a BYO-key anthropic setup
+		// reached the harness unauthenticated. Gated on the provider for the same reason
+		// OPENAI_API_KEY is: handing a harness a secret it cannot use mis-wires it.
+		...(synthProvider === "anthropic" ? { ANTHROPIC_API_KEY: apiKey } : {}),
 	};
 }
 
@@ -445,10 +456,10 @@ export function harnessTakesSandbox(
 	const takesSandbox = HARNESS_REGISTRY[harness]?.transport === "acp";
 	const demandsEnforcedBoundary = mode === "srt" || mode === "e2b";
 	if (!takesSandbox && demandsEnforcedBoundary) {
-		// UnrecoverableError: a config contradiction cannot succeed on retry — fail
-		// the job once instead of burning the BullMQ attempt budget (the name
-		// survives the sandboxed-processor error serialization).
-		throw new UnrecoverableError(
+		// UnrecoverableJobError: a config contradiction cannot succeed on a rerun — fail
+		// the job once instead of burning the attempt budget. The child reports it to the
+		// host as `retryable: false`.
+		throw new UnrecoverableJobError(
 			`Harness "${harness}" cannot run inside an enforced sandbox (${mode}) yet — it ` +
 				`is not spawned as a child process. Set PRISMALENS_SANDBOX=auto or process ` +
 				`(no enforced boundary), or use an ACP harness (deepagents).`,
@@ -755,13 +766,3 @@ function failureResult(
 		error,
 	};
 }
-
-/** Graceful shutdown — close the Redis publisher. */
-async function closeProcessor(): Promise<void> {
-	await redisPublisher.quit();
-}
-
-process.on("SIGTERM", async () => {
-	await closeProcessor();
-	process.exit(0);
-});
