@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	type MiddlewareConsumer,
 	Module,
@@ -9,6 +11,7 @@ import {
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, REQUEST } from "@nestjs/core";
 import { EventEmitterModule } from "@nestjs/event-emitter";
+import { ServeStaticModule } from "@nestjs/serve-static";
 import { ThrottlerModule } from "@nestjs/throttler";
 // oRPC imports
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
@@ -59,6 +62,9 @@ import { ServiceDiscoveryModule } from "./modules/service-discovery/service-disc
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create a logger instance for oRPC error handling
 const orpcLogger = new Logger({ context: "oRPC" });
@@ -135,8 +141,13 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		InternalModule,
 		DevSeedModule,
 
-		// Note: Frontend is now served by TanStack Start via Caddy reverse proxy
-		// ServeStaticModule removed - Caddy routes /api/* to this service, /* to frontend
+		// Single-origin static SPA serving
+		ServeStaticModule.forRoot({
+			rootPath:
+				process.env.PRISMALENS_STATIC_DIR ||
+				path.resolve(__dirname, "../public"),
+			exclude: ["/api/(.*)", "/orpc/(.*)", "/health"],
+		}),
 
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion

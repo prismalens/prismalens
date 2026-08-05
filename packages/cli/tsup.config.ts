@@ -33,5 +33,5 @@ export default defineConfig({
 	dts: false,
 	sourcemap: false,
 	removeNodeProtocol: false,
-	noExternal: [/^@prismalens\//],
+	external: [/^@prismalens\//],
 });
