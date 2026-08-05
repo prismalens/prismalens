@@ -96,65 +96,6 @@ export class OAuth2Flow {
 		return { url: `${authUrl}?${urlParams.toString()}`, state };
 	}
 
-	async handleCallback(
-		code: string,
-		stateToken: string,
-		getClientCredentials: (
-			integrationId: string,
-		) => Promise<{ clientId: string; clientSecret: string }>,
-	): Promise<{
-		tokenResult: TokenResult;
-		oauthState: OAuthStateData;
-	}> {
-		const oauthState = await this.deps.getOAuthState(stateToken);
-		if (!oauthState) {
-			throw new Error("Invalid OAuth state — possible CSRF attack");
-		}
-		if (oauthState.expiresAt < new Date()) {
-			await this.deps.deleteOAuthState(stateToken);
-			throw new Error("OAuth state expired");
-		}
-		await this.deps.deleteOAuthState(stateToken);
-
-		const { clientId, clientSecret } = await getClientCredentials(
-			oauthState.integrationId,
-		);
-
-		return {
-			tokenResult: await this.exchangeCode(
-				code,
-				oauthState,
-				clientId,
-				clientSecret,
-			),
-			oauthState,
-		};
-	}
-
-	private async exchangeCode(
-		code: string,
-		oauthState: OAuthStateData,
-		clientId: string,
-		clientSecret: string,
-	): Promise<TokenResult> {
-		// The template is looked up by the caller — we receive it indirectly
-		// For now, we do a generic token exchange. Template-specific params
-		// are handled by the NestJS adapter layer.
-		const tokenBody: Record<string, string> = {
-			grant_type: "authorization_code",
-			code,
-			redirect_uri: oauthState.callbackUrl,
-			client_id: clientId,
-			client_secret: clientSecret,
-		};
-
-		if (oauthState.codeVerifier) {
-			tokenBody.code_verifier = oauthState.codeVerifier;
-		}
-
-		return { tokenBody } as unknown as TokenResult;
-	}
-
 	/**
 	 * Full token exchange with a known template.
 	 */

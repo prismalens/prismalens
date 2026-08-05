@@ -3,10 +3,13 @@
 
 /**
  * OAuth2 authorization-code flow (#253): authorization-URL construction with
- * PKCE, DB-backed state (CSRF token, single use, expiry) and the token exchange
+ * PKCE, the CSRF state token written to the store, and the token exchange
  * itself. The exchange is the credential-minting step — a non-2xx, an OAuth
  * error body or a malformed provider response must raise, never produce a
  * half-populated credential. Hermetic — fetch stubbed, state store in-memory.
+ *
+ * State *consumption* is not covered here: it lives in the caller
+ * (packages/api's OAuthService.handleCallback), not in this package.
  */
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,18 +48,18 @@ function templateWith(oauth2: Partial<NonNullable<AuthTemplate["oauth2"]>>) {
 /** In-memory stand-in for the DB-backed OAuth state store. */
 class MemoryStateStore implements OAuth2StoreDeps {
 	readonly states = new Map<string, OAuthStateData>();
-	readonly deleted: string[] = [];
 
 	async saveOAuthState(data: OAuthStateData): Promise<void> {
 		this.states.set(data.state, data);
 	}
 
+	// Required by OAuth2StoreDeps — the api implements the same contract and
+	// consumes state itself; OAuth2Flow only ever writes it.
 	async getOAuthState(stateToken: string): Promise<OAuthStateData | null> {
 		return this.states.get(stateToken) ?? null;
 	}
 
 	async deleteOAuthState(stateToken: string): Promise<void> {
-		this.deleted.push(stateToken);
 		this.states.delete(stateToken);
 	}
 }
@@ -241,74 +244,6 @@ describe("OAuth2Flow.startAuthorization", () => {
 				template: withoutOauth as AuthTemplate,
 			}),
 		).rejects.toThrow("Template 'acme' does not have oauth2 config");
-	});
-});
-
-describe("OAuth2Flow.handleCallback state validation", () => {
-	it("rejects an unknown state token as a possible CSRF attack", async () => {
-		const { flow } = makeFlow();
-
-		await expect(
-			flow.handleCallback("code", "never-issued", async () => ({
-				clientId: "c",
-				clientSecret: "s",
-			})),
-		).rejects.toThrow("Invalid OAuth state — possible CSRF attack");
-	});
-
-	it("rejects and clears an expired state", async () => {
-		const { flow, store } = makeFlow();
-		await store.saveOAuthState(
-			oauthState({ expiresAt: new Date(Date.now() - 1000) }),
-		);
-
-		await expect(
-			flow.handleCallback("code", "state-token", async () => ({
-				clientId: "c",
-				clientSecret: "s",
-			})),
-		).rejects.toThrow("OAuth state expired");
-		expect(store.deleted).toEqual(["state-token"]);
-		expect(store.states.has("state-token")).toBe(false);
-	});
-
-	it("consumes the state so a replayed callback fails", async () => {
-		const { flow, store } = makeFlow();
-		await store.saveOAuthState(oauthState());
-		const getCredentials = vi.fn(async () => ({
-			clientId: "c",
-			clientSecret: "s",
-		}));
-
-		await flow.handleCallback("code", "state-token", getCredentials);
-		expect(store.states.has("state-token")).toBe(false);
-		expect(getCredentials).toHaveBeenCalledWith("int_1");
-
-		await expect(
-			flow.handleCallback("code", "state-token", getCredentials),
-		).rejects.toThrow("Invalid OAuth state — possible CSRF attack");
-	});
-
-	// TODO(#253): OAuth2Flow.exchangeCode is a stub — it returns the request body
-	// cast to TokenResult (`{ tokenBody } as unknown as TokenResult`), so
-	// handleCallback resolves with a credential whose accessToken is undefined.
-	// No caller uses it today (packages/api's oauth.service.ts calls
-	// exchangeCodeForTokens directly), but it is exported from the package index
-	// and any new caller silently stores an empty credential. Fixing it means
-	// threading the AuthTemplate into handleCallback — a signature change, not a
-	// test-PR-sized fix. Unskip once the API is repaired or the method removed.
-	it.skip("handleCallback returns a usable TokenResult", async () => {
-		const { flow, store } = makeFlow();
-		await store.saveOAuthState(oauthState());
-
-		const { tokenResult } = await flow.handleCallback(
-			"code",
-			"state-token",
-			async () => ({ clientId: "c", clientSecret: "s" }),
-		);
-
-		expect(typeof tokenResult.accessToken).toBe("string");
-		expect(tokenResult.accessToken.length).toBeGreaterThan(0);
 	});
 });
 
