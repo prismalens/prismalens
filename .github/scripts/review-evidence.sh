@@ -314,8 +314,10 @@ evaluate_pr () { # evaluate_pr <number>
   # mode this gate exists to catch.
   #
   # Reading it (and the Actions run below) needs `actions: read` on the caller's
-  # token. Absent that, the read fails, branch D stays inert, and the gate keeps
-  # behaving exactly as it did before this branch existed.
+  # token; .github/workflows/review-evidence.yml grants it. If some other caller
+  # does not, the read fails, branch D stays inert, and the gate keeps behaving
+  # exactly as it did before this branch existed — safe, but silent, which is
+  # why the permission ships alongside the branch rather than at flip time.
   local gate
   gate=$(gh api "repos/$REPO/actions/variables/CLAUDE_REVIEW_GATE" --jq '.value' 2>/dev/null) || gate=""
   if [ "$gate" = "authoritative" ]; then

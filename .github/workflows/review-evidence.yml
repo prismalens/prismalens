@@ -46,6 +46,19 @@ permissions:
   contents: read
   pull-requests: read
   statuses: write
+  # Branch D reads the Actions API — the repo variable CLAUDE_REVIEW_GATE, and
+  # the workflow run a Claude marker cites — because the marker's `run:<id>` is
+  # a claim in comment text, and what makes it evidence is the run itself having
+  # completed successfully against this head. Read-only; it grants no ability to
+  # start, cancel, or rerun anything.
+  #
+  # It is granted HERE rather than at flip time on purpose. Without it the API
+  # read fails, branch D falls through, and the gate keeps behaving exactly as
+  # it did before — which is safe, but silent: flipping CLAUDE_REVIEW_GATE to
+  # `authoritative` would appear to arm the branch while it never fires. A gate
+  # whose default is "quietly does nothing" is the failure class this whole
+  # script exists to prevent, so the permission ships with the branch.
+  actions: read
 
 concurrency:
   # Serialise per PR so two events cannot race to publish conflicting statuses.
