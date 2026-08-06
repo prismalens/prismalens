@@ -80,6 +80,52 @@ export const AlertWithRelationsSchema = AlertSchema.extend({
 });
 
 // =============================================================================
+// SUPPRESSION ATTRIBUTION
+// =============================================================================
+
+/**
+ * The enabled correlation rule that is currently holding a suppressed alert down.
+ *
+ * Derived from the live rule set on every read — never stored on the alert. That
+ * is deliberate: the rule is the source of truth, so the moment an operator
+ * disables the rule or amends its match criteria the alert stops reporting a
+ * blocker and `POST /alerts/{id}/correlate` starts working. A persisted copy
+ * would go stale and claim a suppression that no rule still enforces.
+ */
+export const SuppressingRuleSchema = z.object({
+	ruleId: z.string(),
+	ruleName: z.string(),
+});
+
+/**
+ * Payload carried on the `CONFLICT` (409) that `POST /alerts/{id}/correlate`
+ * raises while an enabled `suppress` rule still matches the alert. Exported so a
+ * client can `parse` the error data instead of casting it.
+ *
+ * Naming the rule is the whole point of the refusal, so `ruleId`/`ruleName` are
+ * required: an operator told only "this is suppressed" is back at the dead end.
+ * Attribution is guaranteed because rule-based suppression is the only thing that
+ * raises this error, and it always knows which rule fired.
+ */
+export const SuppressedByRuleConflictSchema = z.object({
+	alertId: z.string(),
+	ruleId: z.string(),
+	ruleName: z.string(),
+});
+
+/**
+ * Single-alert read model: `AlertWithRelations` plus the derived answer to
+ * "why can't this alert be correlated right now, and what would unblock it".
+ */
+export const AlertDetailSchema = AlertWithRelationsSchema.extend({
+	/**
+	 * Non-null only while the alert is `suppressed` AND an enabled `suppress`
+	 * rule still matches it. Null means nothing blocks re-correlation.
+	 */
+	suppressedBy: SuppressingRuleSchema.nullable(),
+});
+
+// =============================================================================
 // ALERT QUERY SCHEMAS
 // =============================================================================
 
@@ -133,6 +179,11 @@ export type Alert = z.infer<typeof AlertSchema>;
 export type CreateAlertInput = z.infer<typeof CreateAlertSchema>;
 export type UpdateAlertInput = z.infer<typeof UpdateAlertSchema>;
 export type AlertWithRelations = z.infer<typeof AlertWithRelationsSchema>;
+export type SuppressingRule = z.infer<typeof SuppressingRuleSchema>;
+export type SuppressedByRuleConflict = z.infer<
+	typeof SuppressedByRuleConflictSchema
+>;
+export type AlertDetail = z.infer<typeof AlertDetailSchema>;
 export type AlertQuery = z.infer<typeof AlertQuerySchema>;
 export type AlertCorrelationResponse = z.infer<
 	typeof AlertCorrelationResponseSchema
