@@ -57,6 +57,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      # `gh issue view` hits the issues API, which `contents`/`pull-requests` do
+      # not cover. Without it the originating issue silently reads as empty and
+      # the reviewer loses the spec it is supposed to check the diff against —
+      # the one input a line-level diff reviewer structurally cannot have.
+      issues: read
     steps:
       - name: Resolve PR head SHA
         id: pr
@@ -71,12 +76,19 @@ jobs:
           # this exact commit, so a push mid-review cannot silently retarget the
           # review at code nobody looked at.
           pr=$(gh pr view "$PR" --repo "$REPO" \
-                 --json headRefOid,body,closingIssuesReferences,state)
+                 --json headRefOid,baseRefName,body,closingIssuesReferences,state)
           sha=$(jq -r '.headRefOid' <<<"$pr")
           state=$(jq -r '.state' <<<"$pr")
+          # The PR's OWN base, not the repo default. A PR targeting a release or
+          # stacked branch diffed against main would show every commit that
+          # branch is ahead by, and the reviewer would spend its findings on
+          # other people's already-merged work.
+          base_ref=$(jq -r '.baseRefName' <<<"$pr")
           [ -n "$sha" ] && [ "$sha" != "null" ] || { echo "cannot resolve head SHA" >&2; exit 1; }
+          [ -n "$base_ref" ] && [ "$base_ref" != "null" ] || { echo "cannot resolve base ref" >&2; exit 1; }
           [ "$state" = "OPEN" ] || { echo "PR #$PR is $state — nothing to review" >&2; exit 1; }
           echo "head_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
           jq -r '.body // ""' <<<"$pr" > /tmp/pr-body.md
           # The originating issue carries the spec the diff is supposed to satisfy —
           # the one thing a line-level diff reviewer structurally cannot see.
@@ -88,9 +100,15 @@ jobs:
           fi
           : > /tmp/issue-body.md
           if [ -n "$issue" ]; then
+            # Non-fatal: a PR body can name a number that is not an issue at all
+            # (a PR, a deleted issue, a bare "#2" in prose), and that should not
+            # fail the review. But it is reported — a silent empty issue body
+            # looks identical to a genuinely undocumented change, and the
+            # reviewer would grade the diff against nothing without saying so.
             gh issue view "$issue" --repo "$REPO" --json title,body \
-              --jq '"# Issue #'"$issue"': \(.title)\n\n\(.body // "")' > /tmp/issue-body.md 2>/dev/null \
-              || : > /tmp/issue-body.md
+              --jq '"# Issue #'"$issue"': \(.title)\n\n\(.body // "")' > /tmp/issue-body.md \
+              || { echo "WARNING: could not read issue #$issue — reviewing without spec context" >&2
+                   : > /tmp/issue-body.md; }
           fi
           echo "Reviewing #$PR at ${sha:0:8} (issue: ${issue:-none})"
 
@@ -115,7 +133,7 @@ jobs:
 
       - name: Assemble review input
         env:
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_BRANCH: ${{ steps.pr.outputs.base_ref }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
@@ -184,24 +202,39 @@ jobs:
             exit 1
           fi
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-          npm install -g @anthropic-ai/claude-code >/dev/null
-          # Read-only tool set. The reviewer has no Write, no Edit, no Bash: it
-          # cannot modify the tree it is reviewing, and it cannot reach the
-          # GitHub API to post anything under its own steam. Posting is the next
-          # step's job, with a body this step merely produced.
+          # Pinned. A floating install lets a future CLI release rename a flag
+          # under us; pinning keeps the flag spellings below true of the version
+          # that actually runs. Drift then fails loudly at install/parse time,
+          # which skips `marker` and leaves no evidence — safe, but a dead review
+          # lane is still worth not shipping.
+          npm install -g @anthropic-ai/claude-code@2.1.223 >/dev/null
+          # Read-only tool set, allowlisted AND denylisted. The allowlist is the
+          # policy; the denylist is there because an allowlist only holds while
+          # the flag parses, and a renamed or dropped `--allowed-tools` would
+          # silently widen the reviewer's reach. Naming the dangerous tools
+          # explicitly fails closed instead. The reviewer has no Bash, no Write,
+          # no Edit: it cannot modify the tree it is reviewing, and it cannot
+          # reach the GitHub API to post anything under its own steam. Posting is
+          # the next step's job, with a body this step merely produced.
+          #
           # Prompt arrives on stdin, not argv: a large diff would otherwise blow
           # past ARG_MAX and the job would fail on prompt size rather than on
           # anything about the review.
           claude -p \
             --model "$CLAUDE_MODEL" \
             --allowed-tools "Read,Glob,Grep" \
+            --disallowed-tools "Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch,Task" \
             --output-format text \
             < /tmp/review-prompt.md > /tmp/review-raw.md
           echo "finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           count=$(grep -oE '^FINDINGS_COUNT: *[0-9]+' /tmp/review-raw.md | tail -n1 | grep -oE '[0-9]+' || echo 0)
           echo "findings_count=${count:-0}" >> "$GITHUB_OUTPUT"
           echo "model=$CLAUDE_MODEL" >> "$GITHUB_OUTPUT"
-          grep -v '^FINDINGS_COUNT:' /tmp/review-raw.md > /tmp/review-body.md
+          # `|| true`: grep -v exits 1 when it filters everything out, and under
+          # `set -e` that would kill the step before the emptiness check below
+          # could report the real problem — a review whose entire output was the
+          # FINDINGS_COUNT trailer.
+          grep -v '^FINDINGS_COUNT:' /tmp/review-raw.md > /tmp/review-body.md || true
           [ -s /tmp/review-body.md ] || { echo "ERROR: review produced no output" >&2; exit 1; }
 
       - name: Post findings as a PR review
@@ -215,7 +248,14 @@ jobs:
           set -euo pipefail
           {
             printf '## Claude review (`%s`) at `%s`\n\n' "$MODEL" "${HEAD_SHA:0:8}"
-            cat /tmp/review-body.md
+            # Defence in depth: neutralise anything marker-shaped in the model's
+            # own output. Branch D reads ISSUE comments and this is a REVIEW, and
+            # the cited run could not verify anyway (it is still in progress at
+            # this point), so an injected marker does not reach the gate today.
+            # But "does not reach it today" depends on two facts that live in
+            # other files; the reviewer emitting the string at all is the thing
+            # worth making impossible here.
+            sed 's/<!--[[:space:]]*claude-review:/<!-- claude-review(neutralised):/g' /tmp/review-body.md
             printf '\n\n<sub>Run: %s/%s/actions/runs/%s</sub>\n' \
               "$GITHUB_SERVER_URL" "$REPO" "$GITHUB_RUN_ID"
           } > /tmp/review-post.md

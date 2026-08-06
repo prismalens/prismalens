@@ -307,34 +307,42 @@ evaluate_pr () { # evaluate_pr <number>
   # once the lane has been observed working end to end.
   #
   # ABSENT MUST MEAN INERT. The default is not "on": a variable that is missing,
-  # unreadable, or holding any other value skips this branch entirely and falls
+  # empty, or holding any other value skips this branch entirely and falls
   # through to the failure below. If a missing variable granted authority, then
-  # deleting it — or losing read access to it — would silently turn a gate
-  # branch on rather than off, which is the wrong direction for every failure
-  # mode this gate exists to catch.
+  # deleting it would silently turn a gate branch on rather than off, which is
+  # the wrong direction for every failure mode this gate exists to catch.
   #
-  # Reading it (and the Actions run below) needs `actions: read` on the caller's
-  # token; .github/workflows/review-evidence.yml grants it. If some other caller
-  # does not, the read fails, branch D stays inert, and the gate keeps behaving
-  # exactly as it did before this branch existed — safe, but silent, which is
-  # why the permission ships alongside the branch rather than at flip time.
-  local gate
-  gate=$(gh api "repos/$REPO/actions/variables/CLAUDE_REVIEW_GATE" --jq '.value' 2>/dev/null) || gate=""
+  # It arrives through the ENVIRONMENT, not the API. The obvious implementation —
+  # `gh api repos/$REPO/actions/variables/CLAUDE_REVIEW_GATE` — cannot work from
+  # the workflow that calls this script: reading Actions variables needs a
+  # `variables` permission, and `permissions:` in a workflow has no such key to
+  # grant GITHUB_TOKEN. That call would 403 forever, and because an unreadable
+  # variable is (correctly) treated as inert, branch D would have been silently
+  # dead the moment the operator flipped the switch. Caught by CodeRabbit CLI
+  # review before merge. .github/workflows/review-evidence.yml now maps
+  # `vars.CLAUDE_REVIEW_GATE` into the environment instead, which the runner
+  # resolves with no token permission at all.
+  local gate="${CLAUDE_REVIEW_GATE:-}"
   if [ "$gate" = "authoritative" ]; then
     # Newest allowlisted comment carrying the prefix immediately followed by the
-    # CURRENT head SHA, with its claimed run id extracted. A marker with no
-    # `run:<id>` yields nothing here rather than erroring — a malformed marker is
-    # not evidence, and it is not an API failure either.
+    # CURRENT head SHA, with its claimed run id extracted.
+    #
+    # The extraction happens INSIDE the array, not on `.[-1]` afterwards, so the
+    # answer is the newest marker that actually parses rather than the newest
+    # marker full stop. Otherwise one malformed comment from the trusted author —
+    # a truncated body, an edit that dropped the run id — would mask a valid
+    # marker sitting right behind it and turn a reviewed PR red. `try ... catch
+    # empty` keeps a malformed body a non-answer rather than a jq error, so it
+    # never gets mistaken for the API failing.
     local claude_run_id
     claude_run_id=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
           ($authors | split(" ")) as $allowed
           | [ .[]
               | select(.user.login as $u | $allowed | index($u))
               | select(.body | contains($pre + " " + $sha))
+              | try (.body | capture("run:(?<id>[0-9]+)") | .id) catch empty
             ]
-          | if length > 0
-            then (.[-1].body | capture("run:(?<id>[0-9]+)") | .id)
-            else empty end' \
+          | if length > 0 then .[-1] else empty end' \
         --arg sha "$sha" --arg pre "$CLAUDE_MARKER_PREFIX" --arg authors "$CLAUDE_MARKER_AUTHORS")
     q_rc=$?
     if [ $q_rc -eq 2 ]; then
@@ -357,7 +365,10 @@ evaluate_pr () { # evaluate_pr <number>
       #   workflow path — closes citing an unrelated green run on this repo.
       #
       # The endswith is anchored on `/` so `not-claude-review.yml` cannot pass as
-      # `claude-review.yml`; a plain suffix test would accept it.
+      # `claude-review.yml`; a plain suffix test would accept it. `.path` is also
+      # split at `@` first: a run reached through a called/reusable workflow
+      # reports `owner/repo/.github/workflows/x.yml@refs/heads/main`, and the ref
+      # suffix would make an otherwise-correct path fail to match.
       #
       # The runs endpoint is scoped to $REPO, so a run id from someone's fork
       # simply 404s here — a fetch failure is treated as no evidence, never as a
@@ -368,7 +379,7 @@ evaluate_pr () { # evaluate_pr <number>
             if (.status == "completed"
                 and .conclusion == "success"
                 and .head_sha == $sha
-                and (.path // "" | endswith("/" + $wf)))
+                and ((.path // "" | split("@")[0]) | endswith("/" + $wf)))
             then "ok" else "" end' <<<"$run_json" 2>/dev/null)
 
       if [ "$verified" = "ok" ]; then
