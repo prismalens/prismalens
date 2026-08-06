@@ -71,6 +71,14 @@ jobs:
           PR: ${{ inputs.pr_number }}
         run: |
           set -euo pipefail
+          # A dispatch input is free text. Everything downstream treats it as a
+          # number — the API path, the artifact name, the concurrency group, the
+          # `tonumber` in review-complete.json — so reject anything that is not a
+          # plain positive integer here, before it reaches any of them.
+          case "$PR" in
+            ''|*[!0-9]*) echo "ERROR: pr_number must be a positive integer, got '$PR'" >&2; exit 1 ;;
+            0*)          echo "ERROR: pr_number must not be zero-padded, got '$PR'" >&2; exit 1 ;;
+          esac
           # Resolve ONCE, here, and pass the SHA forward. Everything downstream —
           # the checkout, the diff, the evidence file, the marker — is keyed to
           # this exact commit, so a push mid-review cannot silently retarget the
@@ -137,10 +145,18 @@ jobs:
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -euo pipefail
-          # `fetch-depth: 0` above already brings every branch down, so this is a
-          # fallback rather than the normal path.
-          git rev-parse --verify "refs/remotes/origin/$BASE_BRANCH" >/dev/null 2>&1 \
-            || git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          # `fetch-depth: 0` above fetches every branch, including the base, even
+          # though `ref` is a raw commit SHA — so the ref is expected to be here
+          # already. If it is not, FAIL rather than re-fetching: `persist-
+          # credentials: false` left no usable credential behind (deliberately —
+          # the reviewer reads this tree), so a retry would be unauthenticated
+          # and would die anyway on a private repo, just with a worse message.
+          # A loud failure here says which assumption broke.
+          git rev-parse --verify "refs/remotes/origin/$BASE_BRANCH" >/dev/null 2>&1 || {
+            echo "ERROR: refs/remotes/origin/$BASE_BRANCH missing after a full-depth checkout." >&2
+            echo "Cannot compute a merge-base, so the diff would be wrong. Not guessing." >&2
+            exit 1
+          }
           base=$(git merge-base "refs/remotes/origin/$BASE_BRANCH" "$HEAD_SHA")
           # Three-dot: the changes the PR introduces, not the base branch's own
           # movement since the branch point. Reviewing the two-dot diff would
@@ -223,7 +239,7 @@ jobs:
           claude -p \
             --model "$CLAUDE_MODEL" \
             --allowed-tools "Read,Glob,Grep" \
-            --disallowed-tools "Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch,Task" \
+            --disallowed-tools "Bash,Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task" \
             --output-format text \
             < /tmp/review-prompt.md > /tmp/review-raw.md
           echo "finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
