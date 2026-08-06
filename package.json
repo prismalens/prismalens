@@ -39,7 +39,7 @@
 		"@types/node": "catalog:",
 		"publint": "^0.3.22",
 		"tsx": "catalog:",
-		"turbo": "^2.10.7",
+		"turbo": "^2.10.8",
 		"typescript": "catalog:"
 	},
 	"packageManager": "pnpm@10.27.0",
