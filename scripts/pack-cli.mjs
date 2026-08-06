@@ -750,10 +750,11 @@ run(
 	STAGING,
 );
 
-const tarball = join(
-	OUT_DIR,
-	readdirSync(OUT_DIR).find((f) => f.endsWith(".tgz")),
-);
+const packed = readdirSync(OUT_DIR).find((f) => f.endsWith(".tgz"));
+if (!packed) {
+	fail(`npm pack produced no tarball in ${OUT_DIR}`);
+}
+const tarball = join(OUT_DIR, packed);
 const entries = assertTarball(tarball, copied);
 const bytes = statSync(tarball).size;
 

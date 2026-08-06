@@ -49,7 +49,10 @@ function internalApiUrl(config: {
 	const dialable =
 		host === "0.0.0.0" || host === "::" || host === "" ? "127.0.0.1" : host;
 	const port = config.PRISMALENS_PORT ?? 3001;
-	return `${protocol}://${dialable}:${port}/api`;
+	// A literal IPv6 address needs brackets before the port, or the whole
+	// authority parses as one host and the child dials nothing.
+	const authority = dialable.includes(":") ? `[${dialable}]` : dialable;
+	return `${protocol}://${authority}:${port}/api`;
 }
 
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */

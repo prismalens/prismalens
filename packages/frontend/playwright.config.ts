@@ -62,7 +62,7 @@ export default defineConfig({
 	webServer: PL_UP
 		? [
 				{
-					command: `node ${join(repoRoot, "scripts/pl-up-e2e.mjs")}`,
+					command: `node "${join(repoRoot, "scripts/pl-up-e2e.mjs")}"`,
 					url: `http://localhost:${PL_UP_PORT}/health`,
 					env: { ...process.env, PL_UP_PORT },
 					reuseExistingServer: false,

@@ -26,7 +26,14 @@ export function readCookie(name: string): string | null {
 	if (typeof document === "undefined") return null;
 	for (const part of document.cookie.split(";")) {
 		const [key, ...rest] = part.trim().split("=");
-		if (key === name) return decodeURIComponent(rest.join("="));
+		if (key !== name) continue;
+		try {
+			return decodeURIComponent(rest.join("="));
+		} catch {
+			// A malformed percent-encoding is someone else's cookie bug; falling
+			// back to the default beats throwing during first render.
+			return null;
+		}
 	}
 	return null;
 }

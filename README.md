@@ -116,6 +116,32 @@ union those copies resolve against. Read that script's header before changing
 anything about packaging — it carries the reasoning, the installed layout, and
 the two invariants that fail the pack.
 
+What that actually produces:
+
+```console
+$ node scripts/pack-cli.mjs
+==> copy closure (9): @prismalens/api, @prismalens/auth, @prismalens/config,
+    @prismalens/contracts, @prismalens/database, @prismalens/engine,
+    @prismalens/integrations, @prismalens/logger, @prismalens/worker
+==> generated dependency union: 41 third-party packages
+==> import scan: every bare specifier resolves
+==> packages/cli/dist-pack/prismalens-0.4.0.tgz  1.25 MB, 536 entries
+    bundleDependencies survived; no workspace:/catalog: strings
+
+$ tar -tzf packages/cli/dist-pack/prismalens-0.4.0.tgz
+package/dist/bin/prismalens.js                       # the pl / prismalens bin
+package/node_modules/@prismalens/api/dist/src/main.js # NestJS, imported by pl up
+package/node_modules/@prismalens/api/public/index.html          # the dashboard
+package/node_modules/@prismalens/worker/dist/index.js  # forked per investigation
+package/node_modules/@prismalens/database/prisma/sqlite/schema/20260803122809_init/migration.sql
+package/node_modules/@prismalens/engine/package.json
+...                                                          # 536 entries total
+```
+
+The 9 copied packages are `bundleDependencies`; the 41 third-party packages are
+ordinary `dependencies` that npm installs beside them — which is exactly where
+the copied packages' imports resolve, because Node resolution walks upward.
+
 ## Development
 
 ```bash

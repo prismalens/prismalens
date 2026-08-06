@@ -75,9 +75,12 @@ export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 		// own. After #339 this branch only fires when an operator sets a wildcard
 		// bind deliberately, which is exactly when it is still needed.
 		const boundHost = host === "0.0.0.0" || host === "::" ? "localhost" : host;
+		// A literal IPv6 address must be bracketed before a port is appended, or
+		// `http://::1:3001` parses as a host of `::1:3001` with no port at all.
+		const authority = boundHost.includes(":") ? `[${boundHost}]` : boundHost;
 		const publicUrl =
 			this.configService.get<string>("PRISMALENS_PUBLIC_URL") ??
-			`${protocol}://${boundHost}:${port}`;
+			`${protocol}://${authority}:${port}`;
 
 		const secret = this.configService.get<string>("PRISMALENS_AUTH_SECRET");
 		if (!secret) {

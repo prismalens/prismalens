@@ -327,6 +327,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 			// service name. That line can ONLY come from a process that forked,
 			// resolved its entrypoint and imported its whole dependency closure.
 			let forked = false;
+			let diagnosed = false;
 			for (let i = 0; i < 120 && !forked; i++) {
 				await sleep(1000);
 				const log = fs.readFileSync(bootLog, "utf8");
@@ -339,11 +340,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 					log.includes("LLM not configured");
 				if (/Cannot locate the investigation child entrypoint/.test(log)) {
 					bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+					diagnosed = true;
 					break;
 				}
 				if (/ERR_MODULE_NOT_FOUND/.test(log)) {
 					const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
 					bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
+					diagnosed = true;
 					break;
 				}
 				// A ROUND TRIP, not just a fork: the child calls back into this same
@@ -351,12 +354,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 				// which is exactly what a fixed default does under `pl up --port N`.
 				if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
 					bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+					diagnosed = true;
 					break;
 				}
 			}
-			forked
-				? ok("forked-worker round trip", "child forked, called the API back, reported over IPC")
-				: bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
+			if (forked) {
+				ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
+			} else if (!diagnosed) {
+				// Only when nothing more specific already fired — a diagnosed
+				// failure plus a generic timeout reads as two bugs, not one.
+				bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
+			}
 		}
 	}
 
