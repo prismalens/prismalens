@@ -14,8 +14,9 @@
  * first-run.
  *
  * Env:
- *   PRISMALENS_TARBALL  use this tarball instead of packing one (CI reuses the
- *                       artifact the packed-smoke gate already verified)
+ *   PRISMALENS_TARBALL   use this exact tarball instead of packing one (CI reuses
+ *                        the artifact the packed-smoke gate already verified)
+ *   PL_UP_REUSE_TARBALL  "1" to reuse whatever is already in dist-pack
  *   PL_UP_PORT          port to serve on (default 3100)
  *   PL_UP_PREFIX        install prefix (default a fresh mkdtemp)
  */
@@ -38,8 +39,15 @@ const PORT = process.env.PL_UP_PORT ?? "3100";
 function tarball() {
 	if (process.env.PRISMALENS_TARBALL) return process.env.PRISMALENS_TARBALL;
 	const out = join(ROOT, "packages", "cli", "dist-pack");
-	if (!existsSync(out) || !readdirSync(out).some((f) => f.endsWith(".tgz"))) {
-		console.log("[pl-up-e2e] no tarball yet — packing");
+	// Pack by DEFAULT. Reusing a stale tarball would silently test yesterday's
+	// artifact and report it as today's — the exact failure mode this harness
+	// exists to catch. Reuse is an explicit opt-in.
+	const reuse =
+		process.env.PL_UP_REUSE_TARBALL === "1" &&
+		existsSync(out) &&
+		readdirSync(out).some((f) => f.endsWith(".tgz"));
+	if (!reuse) {
+		console.log("[pl-up-e2e] packing the tarball under test");
 		execFileSync("node", [join(ROOT, "scripts", "pack-cli.mjs")], {
 			cwd: ROOT,
 			stdio: "inherit",
@@ -74,11 +82,21 @@ execFileSync(
 );
 
 const bin = join(prefix, "node_modules", ".bin", "pl");
-if (!existsSync(bin)) throw new Error(`pl bin not linked at ${bin}`);
+if (!existsSync(bin)) {
+	if (!process.env.PL_UP_PREFIX)
+		rmSync(prefix, { recursive: true, force: true });
+	throw new Error(`pl bin not linked at ${bin}`);
+}
 
 console.log(
 	`[pl-up-e2e] pl up on http://localhost:${PORT} (workspace ${workspace})`,
 );
+// Deliberately NOT `detached`. `pl up` forks an investigation child per run, so
+// the children must be reachable by one kill — and they are, because this
+// wrapper is itself the group leader that Playwright spawns and then GROUP-kills
+// on teardown. Putting `pl up` in its own group instead makes Playwright's kill
+// miss it: the tests pass, the orphan keeps the port, and the run hangs at
+// teardown until the outer timeout fires (observed as exit 124).
 const child = spawn(bin, ["up"], {
 	stdio: "inherit",
 	env: {
@@ -90,11 +108,24 @@ const child = spawn(bin, ["up"], {
 	},
 });
 
+let cleaned = false;
 const cleanup = () => {
-	child.kill("SIGKILL");
+	if (cleaned) return;
+	cleaned = true;
+	try {
+		child.kill("SIGKILL");
+	} catch {
+		// already gone
+	}
 	if (!process.env.PL_UP_PREFIX)
 		rmSync(prefix, { recursive: true, force: true });
 };
+child.on("error", (error) => {
+	console.error(`[pl-up-e2e] failed to start ${bin}: ${error.message}`);
+	cleanup();
+	process.exit(1);
+});
+process.on("exit", cleanup);
 process.on("SIGINT", () => {
 	cleanup();
 	process.exit(130);
@@ -103,4 +134,7 @@ process.on("SIGTERM", () => {
 	cleanup();
 	process.exit(143);
 });
-child.on("exit", (code) => process.exit(code ?? 1));
+child.on("exit", (code) => {
+	cleanup();
+	process.exit(code ?? 1);
+});

@@ -19,6 +19,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { LOCALE_COOKIE } from "@/lib/locale";
 import * as m from "@/lib/paraglide/messages.js";
+import { locales } from "@/lib/paraglide/runtime.js";
 import { LanguageProvider } from "@/lib/providers/language-provider";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, THEME_COOKIE } from "@/lib/theme";
@@ -40,7 +41,7 @@ var g=function(n){var m=document.cookie.match(new RegExp('(^|; )'+n+'=([^;]*)'))
 var e=document.documentElement;
 var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
-var l=g(${JSON.stringify(LOCALE_COOKIE)});if(l)e.lang=l;
+var l=g(${JSON.stringify(LOCALE_COOKIE)});if(l&&${JSON.stringify(locales)}.indexOf(l)>-1)e.lang=l;
 }catch(_){}})();`;
 
 export const Route = createRootRouteWithContext<RouterContext>()({

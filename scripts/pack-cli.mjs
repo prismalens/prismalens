@@ -485,16 +485,19 @@ function assertTarball(tarball, copiedNames) {
 			"the tarball has no SPA entry at node_modules/@prismalens/api/public/index.html",
 		);
 	}
-	if (
-		!has((e) =>
-			/node_modules\/@prismalens\/database\/prisma\/.*\/migration\.sql$/.test(
-				e,
-			),
-		)
-	) {
-		fail(
-			"the tarball carries no migration SQL — `pl up` cannot create a database",
+	// Both staged layouts, asserted separately: this branch's runner reads the
+	// source layout, #335's reads the dist one, and a silent loss of either is a
+	// database that never gets created in a stranger's install.
+	for (const layout of ["prisma", "dist/prisma"]) {
+		const re = new RegExp(
+			`node_modules/@prismalens/database/${layout}/.*/migration\\.sql$`,
 		);
+		if (!has((e) => re.test(e))) {
+			fail(
+				`the tarball carries no migration SQL under ${layout}/ — ` +
+					"`pl up` cannot create a database",
+			);
+		}
 	}
 	if (
 		!has((e) => e === "package/node_modules/@prismalens/api/dist/src/main.js")
@@ -609,11 +612,19 @@ for (const name of copied) {
 		// Migration SQL + schema, applied at first boot through the
 		// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
 		// closure and must never be invoked at user runtime.
+		//
+		// Staged at BOTH `prisma/<flavour>/schema` (the source layout, which is
+		// what this branch's `migrate.ts` resolves) and `dist/prisma/<flavour>/
+		// schema` (what #335's migration runner expects its own
+		// `scripts/copy-migrations.mjs` to have staged). A bundler inlines a
+		// runner's JS but will never copy its SQL, so whichever runner survives
+		// the merge, the SQL is already in the tarball at the path it looks in.
+		// Copying it twice costs ~30 KB and removes a guaranteed post-merge break.
 		for (const flavour of ["sqlite", "pg"]) {
 			const from = join(dir, "prisma", flavour, "schema");
-			if (existsSync(from)) {
-				copyTree(from, join(target, "prisma", flavour, "schema"));
-			}
+			if (!existsSync(from)) continue;
+			copyTree(from, join(target, "prisma", flavour, "schema"));
+			copyTree(from, join(target, "dist", "prisma", flavour, "schema"));
 		}
 		// Prisma 7's `prisma-client` generator emits TypeScript, which tsc
 		// compiles into dist/prisma/generated. Any NON-TypeScript asset it
@@ -630,6 +641,7 @@ for (const name of copied) {
 				const rel = relative(generated, file);
 				const dest = join(stagedGenerated, rel);
 				if (!existsSync(dest)) {
+					mkdirSync(dirname(dest), { recursive: true });
 					cpSync(file, dest);
 					console.log(`    carried Prisma runtime asset: ${rel}`);
 				}

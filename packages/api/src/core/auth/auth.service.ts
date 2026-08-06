@@ -68,7 +68,12 @@ export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 		const host = this.configService.get<string>("PRISMALENS_HOST", "localhost");
 		const port = this.configService.get<number>("PRISMALENS_PORT", 3001);
 		// A wildcard bind names no origin a browser could send; the reachable name
-		// for the machine itself is localhost.
+		// for the machine itself is localhost. NB this DERIVES an origin from the
+		// bind — it does not choose the bind. #339 (PR #353) changes the schema
+		// default from `0.0.0.0` to `127.0.0.1` and adds a non-loopback warning;
+		// the two are complementary, and this branch adds no bind warning of its
+		// own. After #339 this branch only fires when an operator sets a wildcard
+		// bind deliberately, which is exactly when it is still needed.
 		const boundHost = host === "0.0.0.0" || host === "::" ? "localhost" : host;
 		const publicUrl =
 			this.configService.get<string>("PRISMALENS_PUBLIC_URL") ??

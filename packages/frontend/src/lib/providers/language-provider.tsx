@@ -9,7 +9,7 @@
  * Integrates with Paraglide JS for type-safe translations.
  */
 
-import { createContext, type ReactNode, use, useState } from "react";
+import { createContext, type ReactNode, use, useEffect, useState } from "react";
 import { getLocale } from "@/lib/locale";
 import {
 	type Locale,
@@ -34,11 +34,16 @@ interface LanguageProviderProps {
 export function LanguageProvider({ children }: LanguageProviderProps) {
 	const [locale, setLocaleState] = useState<Locale>(() => getLocale());
 
+	// Mirrors theme-provider: the prerendered shell carries a fixed `lang`, the
+	// pre-paint script corrects it, and this keeps the two in step afterwards.
+	useEffect(() => {
+		document.documentElement.lang = locale;
+	}, [locale]);
+
 	function setLocale(newLocale: Locale) {
 		// Paraglide writes the cookie and re-points its message runtime.
 		setParaglideLocale(newLocale, { reload: false });
 		setLocaleState(newLocale);
-		document.documentElement.lang = newLocale;
 	}
 
 	return (

@@ -35,18 +35,18 @@ test("first run: a fresh artifact serves the SPA and walks setup to a signed-in 
 	await expect(page.locator("html")).toHaveAttribute("class", /dark|light/);
 
 	// A brand-new workspace has no owner, so the app must land on setup.
-	await page.waitForURL(/\/setup|\/auth\/login/, { timeout: 30_000 });
+	// Unconditionally /setup — the workspace is created empty by the harness, so
+	// landing on login instead means the artifact carried state it should not.
+	await page.waitForURL(/\/setup/, { timeout: 30_000 });
 
-	if (page.url().includes("/setup")) {
-		await page.locator("#name").fill(OWNER.name);
-		await page.locator("#email").fill(OWNER.email);
-		await page.locator("#password").fill(OWNER.password);
-		await page.locator("#confirmPassword").fill(OWNER.password);
-		await page
-			.getByRole("button", { name: /create|continue|finish|sign up/i })
-			.click();
-		await page.waitForURL(/\/auth\/login|:\d+\/$/, { timeout: 30_000 });
-	}
+	await page.locator("#name").fill(OWNER.name);
+	await page.locator("#email").fill(OWNER.email);
+	await page.locator("#password").fill(OWNER.password);
+	await page.locator("#confirmPassword").fill(OWNER.password);
+	await page
+		.getByRole("button", { name: /create|continue|finish|sign up/i })
+		.click();
+	await page.waitForURL(/\/auth\/login|:\d+\/$/, { timeout: 30_000 });
 
 	// Sign in through the form, deliberately, even when the wizard already
 	// dropped us on the dashboard. Creating the owner leaves the client-side

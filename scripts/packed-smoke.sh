@@ -147,14 +147,29 @@ mkdir -p "$UP_DIR"
 UP_LOG="$UP_DIR/up.log"
 PORT=${PRISMALENS_SMOKE_PORT:-3931}
 
+# `pl up` FORKS a child per investigation, and this smoke starts one. Killing
+# only the parent orphans it, which then holds the port and the scratch dir. So
+# run the whole thing in its own process group and kill the group.
+if command -v setsid >/dev/null 2>&1; then
+	SETSID=setsid
+else
+	SETSID=
+fi
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_HOST=127.0.0.1 \
 PRISMALENS_PORT="$PORT" \
 NODE_ENV=production \
-	"$BIN/pl" up > "$UP_LOG" 2>&1 &
+	$SETSID "$BIN/pl" up > "$UP_LOG" 2>&1 &
 UP_PID=$!
+stop_up() {
+	if [ -n "$SETSID" ]; then
+		kill -TERM "-$UP_PID" 2>/dev/null || true
+		kill -9 "-$UP_PID" 2>/dev/null || true
+	fi
+	kill -9 "$UP_PID" 2>/dev/null || true
+}
 # shellcheck disable=SC2064
-trap "kill -9 $UP_PID 2>/dev/null || true; rm -rf '$SCRATCH'" EXIT
+trap "stop_up; rm -rf '$SCRATCH'" EXIT
 
 i=0
 while [ "$i" -lt 120 ]; do
@@ -352,6 +367,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 });
 PROBE
 
-kill -9 "$UP_PID" 2>/dev/null || true
+stop_up
 
 echo "SMOKE OK (node $(node --version))"

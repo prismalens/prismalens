@@ -15,9 +15,25 @@
  * bookkeeping — it writes the same `_prisma_migrations` ledger that
  * `prisma migrate deploy` writes, so a developer who later points the CLI at
  * the same database does not see already-applied migrations as pending. It has
- * no `--create-only`, no drift detection, no rollback. Issue #335 is building a
- * general migration runner; when that lands, replace this function's body and
- * leave the call site in `pl up` alone.
+ * no `--create-only`, no drift detection, no rollback.
+ *
+ * OVERLAP WITH #335 — READ BEFORE MERGING EITHER.
+ * #335 (PR #354) ships a real migration runner at `@prismalens/database/migrator`
+ * and calls it from `packages/api/src/main.ts` before `NestFactory.create`. It is
+ * NOT in this branch's base (`feat/236-jobstore-seam`), so this file could not
+ * consume it — but the two DO duplicate once both land: the API would migrate
+ * itself and `pl up` would migrate again first. The second run is a harmless
+ * no-op (this is idempotent, and both write the same `_prisma_migrations`
+ * ledger), so nothing breaks; it is still one runner too many.
+ *
+ * Resolution, whichever merges second: delete this file and the
+ * `applyMigrations` call in `packages/cli/src/cli/up.ts`, and keep #335's runner.
+ * `pl up` needs no migration code of its own once the API self-migrates. What
+ * `pl up` DOES still need is the SQL in the tarball — a bundler inlines a
+ * runner's JS but never copies its `.sql`, so `scripts/pack-cli.mjs` stages the
+ * migration SQL at BOTH `prisma/<flavour>/schema` (what this file reads) and
+ * `dist/prisma/<flavour>/schema` (what #335's runner reads) and asserts both.
+ * That staging must survive the deletion.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -33,6 +49,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * `<pkg>/prisma/sqlite/schema/<timestamp>_<name>/migration.sql`.
  */
 export function migrationsDir(): string {
+	// Compiled: `<pkg>/dist/migrate.js` -> `<pkg>/prisma/...`.
+	// Source (tsx, tests): `<pkg>/migrate.ts` -> `<pkg>/prisma/...`.
+	// Both layouts are real, so try both rather than assuming the build.
+	for (const base of [join(HERE, ".."), HERE]) {
+		const candidate = join(base, "prisma", "sqlite", "schema");
+		if (existsSync(candidate)) return candidate;
+	}
 	return join(HERE, "..", "prisma", "sqlite", "schema");
 }
 
