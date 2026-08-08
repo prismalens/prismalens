@@ -108,6 +108,9 @@ To work on the CLI specifically, see
 
 - Site: [prismalens.io](https://prismalens.io)
 - Docs: [docs.prismalens.io](https://docs.prismalens.io)
+- [Alert correlation & suppression](docs/alert-correlation.md) — the waterfall,
+  rule actions, and how to un-suppress an alert
+- [Capability catalog](docs/capabilities.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [VERSIONING.md](VERSIONING.md)
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)

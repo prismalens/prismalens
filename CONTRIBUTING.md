@@ -64,6 +64,25 @@ The dev login is `admin@prismalens.dev` / `admin123`. On first boot against an e
 
 Auto-seeding only runs when `NODE_ENV=development`. To force the same seed outside development — e.g. in e2e tests or CI, where the API runs against an empty database with `NODE_ENV` unset or set to something else — set `PRISMALENS_SEED_DEMO=1`. It is an explicit opt-in: the flag is never set implicitly, and seeding still only happens once, against an empty database.
 
+### Browser e2e tier
+
+The Playwright suite runs in CI as its own workflow (`.github/workflows/e2e.yml`, chromium-only) on
+every pull request and on pushes to `main`. It is **not a required check yet** — it is promoted to
+required when the last 20 `main`-branch runs are green *and* none of them consumed a Playwright
+retry, and once the storm-intake spec has landed. The rationale, the promotion trigger, and the
+journey-by-journey coverage matrix live in
+[`docs/ui-flows-and-e2e-strategy.md`](docs/ui-flows-and-e2e-strategy.md).
+
+Two things to know before running it locally:
+
+- The harness binds ports **3000 and 3001** with `reuseExistingServer: false`, so **stop `pnpm dev`
+  first** — it will not share a running dev stack.
+- On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
+  re-running blind.
+
+Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
+updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
+
 ## Making a change
 
 1. **Branch** off `main`: `git checkout -b fix/short-description main`.

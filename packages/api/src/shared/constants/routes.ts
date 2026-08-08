@@ -26,5 +26,8 @@ export const WEBHOOK_ROUTES = {
 /** Express-5 wildcard matching every webhook route, without the global prefix. */
 export const WEBHOOK_ROUTE_WILDCARD = "webhooks/*path";
 
+/** Runtime path prefix shared by every webhook route, i.e. what `request.path` starts with. */
+export const WEBHOOK_RUNTIME_PATH_PREFIX = `/${API_GLOBAL_PREFIX}/webhooks/`;
+
 /** Runtime path of the Render webhook, i.e. what `request.path` reports. */
 export const RENDER_WEBHOOK_PATH = `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.render}`;
