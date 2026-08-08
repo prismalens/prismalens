@@ -309,13 +309,17 @@ function processTable() {
 	try {
 		if (WIN) {
 			// `wmic` is gone from current Windows images; CIM is the supported path.
+			// The script deliberately contains NO double quotes: Node escapes them
+			// as \" on the command line, and powershell.exe's handling of that is
+			// famously unreliable. `-join ' '` needs only single quotes, which pass
+			// through untouched.
 			out = execFileSync(
 				"powershell.exe",
 				[
 					"-NoProfile",
 					"-NonInteractive",
 					"-Command",
-					'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }',
+					"Get-CimInstance Win32_Process | ForEach-Object { ($_.ProcessId, $_.ParentProcessId) -join ' ' }",
 				],
 				{ encoding: "utf8", windowsHide: true },
 			);
