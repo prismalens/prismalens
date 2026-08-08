@@ -81,11 +81,21 @@ export class TokenVault {
 
 		const masked: Record<string, unknown> = {};
 		for (const [key, value] of Object.entries(credentials)) {
-			if (
-				typeof value === "string" &&
-				sensitiveFields.some((f) => key.toLowerCase().includes(f))
-			) {
+			// Normalize separators so snake_case/kebab-case field names
+			// (api_key, access-token) match the same way camelCase does.
+			const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+			const isSensitive = sensitiveFields.some((f) =>
+				normalizedKey.includes(f),
+			);
+
+			if (typeof value === "string" && isSensitive) {
 				masked[key] = maskString(value);
+			} else if (Array.isArray(value)) {
+				// Preserve array shape — recursing into an array as a record turns
+				// ["repo", "read:org"] into { "0": "repo", "1": "read:org" }. The
+				// elements of a sensitive field (refresh_tokens: ["ghr_…"]) are
+				// themselves secrets and must be masked.
+				masked[key] = value.map((item) => maskArrayItem(item, isSensitive));
 			} else if (typeof value === "object" && value !== null) {
 				masked[key] = TokenVault.mask(value as Record<string, unknown>);
 			} else {
@@ -94,6 +104,24 @@ export class TokenVault {
 		}
 		return masked;
 	}
+}
+
+/**
+ * Mask one element of an array-valued credential field.
+ * `sensitive` is the verdict for the CONTAINING key — array elements carry no
+ * key of their own, so a string element is a secret exactly when its field is.
+ */
+function maskArrayItem(item: unknown, sensitive: boolean): unknown {
+	if (typeof item === "string") {
+		return sensitive ? maskString(item) : item;
+	}
+	if (Array.isArray(item)) {
+		return item.map((nested) => maskArrayItem(nested, sensitive));
+	}
+	if (typeof item === "object" && item !== null) {
+		return TokenVault.mask(item as Record<string, unknown>);
+	}
+	return item;
 }
 
 function maskString(value: string): string {

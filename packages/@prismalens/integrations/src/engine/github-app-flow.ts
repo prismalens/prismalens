@@ -108,6 +108,12 @@ async function getInstallationToken(
 		repository_selection: string;
 	};
 
+	// A 2xx with no token is not a success — never hand back a credential
+	// whose token is undefined.
+	if (typeof data.token !== "string" || data.token.trim().length === 0) {
+		throw new Error("GitHub installation token response has no token");
+	}
+
 	return {
 		token: data.token,
 		expiresAt: new Date(data.expires_at),
