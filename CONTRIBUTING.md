@@ -139,13 +139,37 @@ It never partially applies. Each of these leaves the database exactly as found:
 | `MigrationError.code` | What happened | What to do |
 |---|---|---|
 | `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
-| `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only |
+| `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
 | `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore the newest `prismalens.db.bak-*`, or reconcile with the Prisma CLI |
 | `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore the newest `prismalens.db.bak-*` sitting next to the database |
 | `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
 
 Before applying anything to a database that already holds data, the runner takes
 an online backup to `prismalens.db.bak-<epoch-ms>` next to it.
+
+### Recovering a database that drifted
+
+`checksum-mismatch` is the one failure a released build can inflict on a database
+that did nothing wrong: the `init` migration was edited in place three times
+(#350, #352, #357) before this rule existed, so any database created before those
+landed records a checksum no current build ships. Deleting the file "fixes" it and
+destroys the operator's incident and investigation history. It is repairable in
+place instead, and the runner's error message spells the repair out.
+
+The ledger is the runner's only source of truth, so re-pointing the checksum alone
+makes the error disappear **and leaves the schema wrong** — the DDL the edit added
+is still missing. Do both, in one transaction:
+
+1. Build a reference database from the current release:
+   `PRISMALENS_WORKSPACE_DIR=$(mktemp -d) pl up`.
+2. Diff its schema against yours and apply whatever DDL is missing.
+3. In the same transaction, re-point the ledger to the shipped checksum (the error
+   message prints the exact `UPDATE`, with the checksum already filled in).
+
+For the pre-#357 drift specifically, the missing DDL is the `jobs` table with its
+three indexes and `services.localCheckoutPath`. A database repaired this way is
+schema-identical to a fresh one — only the ordinal position of the added column
+differs, which Prisma does not depend on.
 
 PostgreSQL (the server placement) is out of the runner's scope and keeps using
 `prisma migrate deploy` — a server deploy has the CLI.

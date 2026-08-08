@@ -12,10 +12,6 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./migrate": {
-			"types": "./dist/migrate.d.ts",
-			"import": "./dist/migrate.js"
-		},
 		"./migrator": {
 			"types": "./dist/src/migrator/index.d.ts",
 			"import": "./dist/src/migrator/index.js"

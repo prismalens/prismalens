@@ -69,7 +69,7 @@
  *       |   +-- worker/dist/index.js ......... forked once per investigation
  *       |   +-- database/
  *       |   |   +-- dist/prisma/generated/ ... Prisma 7 generated client
- *       |   |   +-- prisma/sqlite/schema/ .... migration SQL, applied at boot
+ *       |   |   +-- dist/prisma/sqlite/schema/ migration SQL, applied at boot
  *       |   +-- engine|config|contracts|auth|logger|integrations|design-tokens
  *       |
  *       +-- ai/ zod/ pino/ @nestjs/* @prisma/* better-sqlite3/ ...
@@ -485,19 +485,20 @@ function assertTarball(tarball, copiedNames) {
 			"the tarball has no SPA entry at node_modules/@prismalens/api/public/index.html",
 		);
 	}
-	// Both staged layouts, asserted separately: this branch's runner reads the
-	// source layout, #335's reads the dist one, and a silent loss of either is a
-	// database that never gets created in a stranger's install.
-	for (const layout of ["prisma", "dist/prisma"]) {
-		const re = new RegExp(
-			`node_modules/@prismalens/database/${layout}/.*/migration\\.sql$`,
+	// The migration runner reads `dist/prisma/<flavour>/schema` and nothing else.
+	// A silent loss of it is a database that never gets created in a stranger's
+	// install — a failure that only ever reproduces off our machines.
+	if (
+		!has((e) =>
+			/node_modules\/@prismalens\/database\/dist\/prisma\/.*\/migration\.sql$/.test(
+				e,
+			),
+		)
+	) {
+		fail(
+			"the tarball carries no migration SQL under dist/prisma/ — " +
+				"`pl up` cannot create a database",
 		);
-		if (!has((e) => re.test(e))) {
-			fail(
-				`the tarball carries no migration SQL under ${layout}/ — ` +
-					"`pl up` cannot create a database",
-			);
-		}
 	}
 	if (
 		!has((e) => e === "package/node_modules/@prismalens/api/dist/src/main.js")
@@ -613,17 +614,20 @@ for (const name of copied) {
 		// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
 		// closure and must never be invoked at user runtime.
 		//
-		// Staged at BOTH `prisma/<flavour>/schema` (the source layout, which is
-		// what this branch's `migrate.ts` resolves) and `dist/prisma/<flavour>/
-		// schema` (what #335's migration runner expects its own
-		// `scripts/copy-migrations.mjs` to have staged). A bundler inlines a
-		// runner's JS but will never copy its SQL, so whichever runner survives
-		// the merge, the SQL is already in the tarball at the path it looks in.
-		// Copying it twice costs ~30 KB and removes a guaranteed post-merge break.
+		// Staged at `dist/prisma/<flavour>/schema` — the first candidate
+		// `src/migrator/migration-source.ts` resolves from its own compiled
+		// location (`dist/src/migrator/` -> `../..`), and the layout
+		// `scripts/copy-migrations.mjs` produces at build time. Restaged here
+		// rather than trusted from the dist copy because tsc emits only JS: a
+		// build that skipped copy-migrations would otherwise pack a tarball with
+		// no SQL in it and fail on a stranger's machine, not on ours.
+		//
+		// This used to be staged at the source layout (`prisma/<flavour>/schema`)
+		// as well, to serve #357's interim `migrate.ts`. That runner is gone
+		// (#335 deduplication) and nothing reads the source layout at runtime.
 		for (const flavour of ["sqlite", "pg"]) {
 			const from = join(dir, "prisma", flavour, "schema");
 			if (!existsSync(from)) continue;
-			copyTree(from, join(target, "prisma", flavour, "schema"));
 			copyTree(from, join(target, "dist", "prisma", flavour, "schema"));
 		}
 		// Prisma 7's `prisma-client` generator emits TypeScript, which tsc

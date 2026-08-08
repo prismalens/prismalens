@@ -25,10 +25,17 @@ const SCRATCH_ROOT = join(PACKAGE_DIR, ".tmp-migrator-tests");
  * The one migration this repo ships, and the checksum a real
  * `prisma migrate deploy` recorded for it. Pinned so a change to the shipped
  * SQL is caught here rather than on a user's machine.
+ *
+ * Updated once, when this branch rebased onto the last of the in-place `init`
+ * edits (#350/#352/#357). Those were legal because they predate this PR — it is
+ * this PR that makes editing `init` illegal. From here on, a diff on this line
+ * means someone edited a shipped migration and every existing database will
+ * hard-stop with `checksum-mismatch`; the fix is to revert the SQL, not to
+ * re-pin this constant.
  */
 const SHIPPED_INIT = "20260803122809_init";
 const SHIPPED_INIT_CHECKSUM =
-	"a84e9ba7b1a98555e67f8e08e9f93e6f72b99aca6dd88debaeebe4affb467d8f";
+	"0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76";
 
 /** Prisma's own `_prisma_migrations` DDL, as SQLite stores it in sqlite_master. */
 const PRISMA_LEDGER_DDL = `CREATE TABLE "_prisma_migrations" (
@@ -340,6 +347,41 @@ describe("runMigrations — refuses incompatible histories", () => {
 			code: "checksum-mismatch",
 		});
 		expect(readLedger(file)).toEqual(before);
+	});
+
+	it("tells the operator how to recover, and never to delete the database", async () => {
+		const file = dbFile();
+		const migrationsDir = lineage([BASE]);
+		await runMigrations({ databaseFile: file, migrationsDir });
+		const recorded = readLedger(file)[0].checksum;
+
+		writeFileSync(
+			join(migrationsDir, BASE, "migration.sql"),
+			`${FIXTURE_SQL[BASE]}-- edited\n`,
+		);
+		const expected = sha256OfFile(join(migrationsDir, BASE, "migration.sql"));
+
+		const error = await runMigrations({ databaseFile: file, migrationsDir }).then(
+			() => {
+				throw new Error("expected runMigrations to reject");
+			},
+			(e: unknown) => e as MigrationError,
+		);
+		expect(error.code).toBe("checksum-mismatch");
+
+		// Both checksums, so the operator can identify the drift without tooling.
+		expect(error.message).toContain(recorded);
+		expect(error.message).toContain(expected);
+		// The in-place repair, spelled out as runnable SQL.
+		expect(error.message).toContain(
+			`UPDATE "_prisma_migrations" SET checksum = '${expected}' WHERE migration_name = '${BASE}';`,
+		);
+		// …and the caveat that makes that SQL safe to hand out: re-pointing the
+		// ledger alone hides the error and leaves the schema wrong.
+		expect(error.message).toMatch(/WITHOUT applying the missing DDL/);
+		// Deleting the database is an operator's obvious guess and would destroy
+		// real incident history. The message must actively steer away from it.
+		expect(error.message).toMatch(/DO NOT delete the database/);
 	});
 
 	it("hard-stops when a previous run left a migration unfinished", async () => {

@@ -20,3 +20,10 @@ Migration history is **append-only from here on**. The development-phase rule
 that said to squash `init` and delete `prismalens.db` is removed from the repo's
 own instructions: following it once an installed database exists in the wild is
 data loss.
+
+**Upgrading an existing database:** `init` was edited in place three times before
+this rule existed, so a database created before those changes will stop with
+`checksum-mismatch` on first boot of this version. It is repairable in place —
+**do not delete the database.** The error message prints both checksums and the
+exact `UPDATE` to run; `CONTRIBUTING.md` → *Recovering a database that drifted*
+walks the whole procedure, including the DDL that must be applied alongside it.

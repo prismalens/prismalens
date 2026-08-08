@@ -212,14 +212,41 @@ function assertHistoryIsCompatible(
 		.filter(
 			(row) => shippedByName.get(row.migration_name)?.checksum !== row.checksum,
 		)
-		.map((row) => row.migration_name)
-		.sort();
+		.sort((a, b) => a.migration_name.localeCompare(b.migration_name));
 	if (drifted.length > 0) {
+		// Say what to DO, not just what is wrong. The naive reading of "drift" is
+		// "delete the database and start over", and on this product that means
+		// throwing away an operator's incident and investigation history. Deletion
+		// is never the first resort: the ledger is repairable in place, so the
+		// message names that path and shows the exact checksums needed to take it.
+		const detail = drifted
+			.map(
+				(row) =>
+					`  ${row.migration_name}\n` +
+					`    recorded in the database: ${row.checksum}\n` +
+					`    shipped by this build:    ${shippedByName.get(row.migration_name)?.checksum}`,
+			)
+			.join("\n");
 		throw new MigrationError(
 			"checksum-mismatch",
-			`The migration SQL shipped with this build differs from what was applied to ${databaseFile} ` +
-				`(${drifted.join(", ")}). Nothing was applied. Migration history is append-only from R1 onward — ` +
-				`an edited or squashed migration cannot be reconciled with an existing database.`,
+			`The migration SQL shipped with this build differs from what was applied to ${databaseFile}. ` +
+				`Nothing was applied — the database is exactly as it was.\n\n${detail}\n\n` +
+				`Migration history is append-only, so this means a shipped migration was edited after it had ` +
+				`already been applied somewhere. DO NOT delete the database; it still holds your data.\n\n` +
+				`To recover:\n` +
+				`  1. If you are a contributor who edited the migration, restore the original SQL — that is the fix.\n` +
+				`  2. Otherwise the edit shipped in a release. Your schema may be missing whatever the edit added, ` +
+				`so compare it against a fresh database (\`PRISMALENS_WORKSPACE_DIR=$(mktemp -d) pl up\`), apply the ` +
+				`missing DDL, and re-point the ledger — in ONE transaction:\n` +
+				drifted
+					.map(
+						(row) =>
+							`       UPDATE "${MIGRATIONS_TABLE}" SET checksum = '${shippedByName.get(row.migration_name)?.checksum}' WHERE migration_name = '${row.migration_name}';`,
+					)
+					.join("\n") +
+				`\n     Re-pointing the ledger WITHOUT applying the missing DDL will silence this error and leave ` +
+				`the schema broken — the runner trusts the ledger.\n` +
+				`  3. If you would rather start clean, keep the old file and point PRISMALENS_WORKSPACE_DIR somewhere new.`,
 		);
 	}
 
