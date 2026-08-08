@@ -143,6 +143,50 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await shot("incidents-empty-state");
 	});
 
+	/**
+	 * The investigate gate, asserted without touching global state. Stubbing the
+	 * settings response rather than clearing `activeProvider` keeps this
+	 * independent of whatever the other tests have configured — and of whether
+	 * this is a first run or a Playwright retry against the same database.
+	 */
+	test("offers no way to investigate while no AI provider is configured", async ({
+		page,
+	}) => {
+		await page.route("**/api/settings/llm/config", async (route) => {
+			if (route.request().method() === "GET") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ activeProvider: null, providers: {} }),
+				});
+				return;
+			}
+			await route.fallback();
+		});
+
+		const created = await page.request.post("/api/incidents", {
+			data: { title: `Gate check ${Date.now()}` },
+		});
+		expect(created.ok()).toBeTruthy();
+		const incident: { id: string } = await created.json();
+
+		await page.goto(`/incidents/${incident.id}`);
+		await page.getByRole("tab", { name: "Investigation" }).click();
+
+		// Both affordances for the same procedure must agree that it is blocked.
+		await expect(page.getByTestId("start-investigation")).toBeDisabled();
+		await expect(
+			page
+				.getByText(
+					"Configure an AI provider in Settings to enable investigations",
+				)
+				.first(),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Investigate", exact: true }),
+		).toBeDisabled();
+	});
+
 	test("cannot submit an incident with no title", async ({ page }) => {
 		await page.goto("/incidents");
 		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({

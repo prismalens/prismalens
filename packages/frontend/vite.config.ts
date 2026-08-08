@@ -8,11 +8,29 @@ import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
+/**
+ * Overridable so an e2e run (or a second worktree) can take a free port instead
+ * of fighting the dev stack for 3000. Default is unchanged.
+ *
+ * Validated rather than coerced: `Number("")` and `Number("nope")` would hand
+ * Vite `0`/`NaN`, and it would then bind a RANDOM port and carry on. Every
+ * later failure would point at the wrong thing.
+ */
+function resolveDevPort(): number {
+	const raw = process.env.PRISMALENS_FRONTEND_PORT;
+	if (raw === undefined || raw === "") return 3000;
+	const port = Number(raw);
+	if (!Number.isInteger(port) || port < 1 || port > 65535) {
+		throw new Error(
+			`PRISMALENS_FRONTEND_PORT must be an integer between 1 and 65535, got "${raw}"`,
+		);
+	}
+	return port;
+}
+
 export default defineConfig({
 	server: {
-		// Overridable so an e2e run (or a second worktree) can take a free port
-		// instead of fighting the dev stack for 3000. Default is unchanged.
-		port: Number(process.env.PRISMALENS_FRONTEND_PORT ?? 3000),
+		port: resolveDevPort(),
 		proxy: {
 			// Proxy API calls to backend in development
 			"/api": {
