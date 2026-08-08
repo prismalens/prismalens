@@ -454,7 +454,15 @@ const cleanup = () => {
 			/* already gone */
 		}
 	}
-	rmSync(scratch, { recursive: true, force: true });
+	// Never let housekeeping decide the exit code. This runs inside the `exit`
+	// handler, and on Windows an open SQLite/log handle makes rmSync throw
+	// EBUSY — which would turn an all-green run red for no reason at all. The
+	// runner discards its temp dir anyway.
+	try {
+		rmSync(scratch, { recursive: true, force: true });
+	} catch (error) {
+		console.warn(`    (could not remove ${scratch}: ${error.message})`);
+	}
 };
 process.on("exit", cleanup);
 for (const signal of ["SIGINT", "SIGTERM"]) {
