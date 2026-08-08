@@ -1,7 +1,7 @@
 # Build / typecheck / test / lint for every PR and every push to a trunk.
 #
-# This is a pnpm + Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ
-# worker + shared @prismalens/* packages). The jobs mirror the commands a
+# This is a pnpm + Turborepo monorepo (NestJS API + TanStack Start UI + a per-run
+# investigation child + shared @prismalens/* packages). The jobs mirror the commands a
 # contributor runs locally (see CONTRIBUTING.md).
 #
 # Task ordering (Prisma generate -> config build -> package builds -> typecheck)
@@ -124,13 +124,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build closure
-        run: pnpm --filter prismalens... build
-
       - name: Pack tarball
+        # `pnpm pack` cannot produce this artifact: the published package carries
+        # the first-party closure as bundleDependencies, and pnpm's handling of
+        # those has historically diverged from npm's. The pack script builds
+        # everything, generates the dependency union, and asserts the tarball —
+        # and it is the SAME script the publish job runs (issue #237).
         run: |
           mkdir -p /tmp/tarballs
-          (cd packages/cli && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
+          node scripts/pack-cli.mjs --out /tmp/tarballs
           ls -l /tmp/tarballs
 
       - uses: actions/upload-artifact@v7
@@ -146,7 +148,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ["node:22-slim", "node:24-slim"]
+        # node:22 is gone: the published package declares `engines.node >=24`
+        # because @prismalens/api and @prismalens/database (both now INSIDE the
+        # tarball) require it. `npm install --engine-strict` would refuse on 22,
+        # which is the intended behaviour, not a cell worth running.
+        image: ["node:24-slim"]
     container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v7

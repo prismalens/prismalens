@@ -126,7 +126,6 @@ export {
 // Service discovery hooks
 export {
 	serviceDiscoveryKeys,
-	useAcceptBulkSuggestions,
 	useAcceptSuggestion,
 	useIgnoreSuggestion,
 	useRejectSuggestion,
@@ -145,6 +144,7 @@ export {
 	useServiceTopology,
 	useUpdateService,
 	useUpdateServiceDependency,
+	useValidateCheckoutPath,
 } from "./use-services-orpc";
 // Settings hooks
 export {

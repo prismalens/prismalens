@@ -58,8 +58,10 @@
 		"zod": "catalog:"
 	},
 	"devDependencies": {
+		"@prismalens/api": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
+		"@prismalens/database": "workspace:*",
 		"@prismalens/engine": "workspace:*",
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "^4.1.10",

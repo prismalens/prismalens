@@ -312,6 +312,10 @@ const HARNESS_RUNNERS: Partial<Record<HarnessId, HarnessRunnerBuilder>> = {
 		claudeCodeHarness({
 			cwd,
 			...(model ? { model } : {}),
+			// BYO-key: the harness env (e.g. ANTHROPIC_API_KEY) reaches the claude-code
+			// child's own environment. Previously only the deepagents path consumed this,
+			// so an anthropic API key had no route into the harness at all.
+			...(opts.harnessEnv ? { env: opts.harnessEnv } : {}),
 			...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
 			...(opts.native ? { native: opts.native } : {}),
 			...(opts.sandbox ? { sandbox: opts.sandbox } : {}),

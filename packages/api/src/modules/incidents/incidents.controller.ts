@@ -13,7 +13,7 @@ import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
@@ -24,7 +24,7 @@ export class IncidentsController {
 	constructor(
 		private readonly incidentsService: IncidentsService,
 		private readonly investigationsService: InvestigationsService,
-		private readonly queueService: QueueService,
+		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
 	) {}
 
@@ -147,16 +147,16 @@ export class IncidentsController {
 						incidentId: input.id,
 					});
 
-					// Fetch integrations and extract connectionIds for the queue payload.
-					// Only connectionIds go to Redis — worker fetches credentials on-demand.
+					// Fetch integrations and extract connectionIds for the job payload.
+					// Only connectionIds are persisted — the run fetches credentials on-demand.
 					const integrations =
 						await this.integrationsService.getIntegrationsForService(
 							incident.serviceId ?? undefined,
 						);
 					const connectionIds = integrations.map((i) => i.connectionId);
 
-					// Queue the investigation job
-					const jobId = await this.queueService.addInvestigationJob({
+					// Enqueue the investigation job
+					const jobId = await this.dispatchService.addInvestigationJob({
 						incidentId: input.id,
 						investigationId: investigation.id,
 						priority: this.mapPriorityToJobPriority(incident.priority),
@@ -264,11 +264,19 @@ export class IncidentsController {
 	}
 
 	private serializeAlert(alert: PrismaAlert | Record<string, any>): Alert {
+		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
+		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns
+		// must stay out of the API response. oRPC output validation strips unknowns,
+		// but defense-in-depth applies.
 		return {
-			...alert,
+			id: alert.id,
+			dedupKey: alert.dedupKey,
 			fingerprint: alert.fingerprint ?? null,
 			externalId: alert.externalId ?? null,
+			title: alert.title,
 			description: alert.description ?? null,
+			severity: alert.severity,
+			status: alert.status,
 			source: alert.source ?? null,
 			sourceUrl: alert.sourceUrl ?? null,
 			serviceId: alert.serviceId ?? null,
@@ -284,6 +292,7 @@ export class IncidentsController {
 					? JSON.parse(alert.labels)
 					: alert.labels
 				: null,
+			occurrenceCount: alert.occurrenceCount,
 			triggeredAt:
 				alert.triggeredAt instanceof Date
 					? alert.triggeredAt.toISOString()

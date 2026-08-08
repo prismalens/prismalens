@@ -115,7 +115,9 @@ Four families, all hard-capped by schema (`schemas/context-pack.ts`):
 
 **No numeric score anywhere** (ADR-0002): ordering *is* the rank, and `matchedOn` carries the
 honest "why". Every string field is sanitised at the render seam and emitted inside one fenced
-DATA-ONLY block, so no value can close the fence and speak as the operator (#207).
+DATA-ONLY block, so no value can close the fence and speak as the operator (#207). The pack is
+one of several fenced regions: the engine README's *Untrusted text: the DATA-ONLY fence* section
+carries the complete, closed list of every untrusted surface in a Tier-1 prompt (#229).
 
 Related report fields: `Evidence.origin` distinguishes a host-assembled fact from a tool
 observation, and `InvestigationReport.flaggedContent` carries any injection attempt the run

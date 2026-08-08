@@ -2,39 +2,31 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Locale Server Functions
+ * Locale persistence — the Paraglide cookie, read on the CLIENT.
  *
- * Cookie-based locale management for TanStack Start.
- * Integrates with Paraglide JS for type-safe translations.
+ * The `createServerFn` pair that used to live here is DELETED, not ported. See
+ * the note in `./theme.ts`: `pl up` serves a static SPA from the NestJS API, so
+ * there is no TanStack Start server for a server function to run on.
+ *
+ * Paraglide's own runtime writes this cookie in `setLocale`; this module only
+ * needs to READ it — for the first render, and for the inline pre-paint script
+ * in `__root.tsx` that sets <html lang>.
  */
 
-import { createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie } from "@tanstack/react-start/server";
 import {
 	baseLocale,
-	cookieMaxAge,
 	cookieName,
 	type Locale,
 	locales,
 } from "@/lib/paraglide/runtime.js";
+import { readCookie } from "./theme";
 
 export type { Locale };
+export const LOCALE_COOKIE = cookieName;
 
-export const getLocaleServerFn = createServerFn().handler(async () => {
-	const cookieLocale = getCookie(cookieName);
-	if (cookieLocale && locales.includes(cookieLocale as Locale)) {
-		return cookieLocale as Locale;
-	}
-	return baseLocale;
-});
-
-export const setLocaleServerFn = createServerFn({ method: "POST" })
-	.inputValidator((d: Locale) => d)
-	.handler(async ({ data }) => {
-		if (locales.includes(data)) {
-			setCookie(cookieName, data, {
-				path: "/",
-				maxAge: cookieMaxAge,
-			});
-		}
-	});
+export function getLocale(): Locale {
+	const value = readCookie(cookieName);
+	return value && (locales as readonly string[]).includes(value)
+		? (value as Locale)
+		: baseLocale;
+}

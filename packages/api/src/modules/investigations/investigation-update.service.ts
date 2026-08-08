@@ -195,8 +195,8 @@ export class InvestigationUpdateService {
 			`Queuing partial update for investigation ${investigation.id}`,
 		);
 
-		// TODO: Use BullMQ to schedule partial update job
-		// await this.queueService.addJob('partial-investigation-update', {
+		// TODO: enqueue a partial-update job on the JobStore
+		// await this.dispatchService.addInvestigationJob({
 		//   investigationId: investigation.id,
 		//   incidentId: event.incidentId,
 		//   triggerAlertId: event.alertId,

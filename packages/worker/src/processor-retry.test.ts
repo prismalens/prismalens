@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Hermetic test for the worker's RETRY fresh-record path (ADR-0018 B.4): on a BullMQ
- * retry (attemptsMade > 0) the processor must clear the prior attempt's durable event
- * record via the internal clear-events endpoint BEFORE conducting the run, so attempt 2's
- * events don't collide with attempt 1's (P2002-swallowed duplicates). On the first
- * attempt (attemptsMade === 0) it must NOT clear. Every seam is mocked (ioredis / engine /
- * orpc api / fetch), per the processor-cancel.test.ts pattern — no network, no LLM.
+ * Hermetic test for the RERUN fresh-record path (ADR-0018 B.4): on a rerun — a retry
+ * after a failure, or the rerun a reclaimed claim produces (attemptsMade > 0) — the
+ * processor must clear the prior attempt's durable event record via the internal
+ * clear-events endpoint BEFORE conducting the run, so attempt 2's events don't collide
+ * with attempt 1's (P2002-swallowed duplicates). On the first attempt (attemptsMade ===
+ * 0) it must NOT clear. Every seam is mocked (engine / orpc api / fetch), per the
+ * processor-cancel.test.ts pattern — no network, no LLM.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,19 +21,6 @@ const mocks = vi.hoisted(() => {
 	const conductRun = vi.fn();
 	return { api, conductRun };
 });
-
-vi.mock("ioredis", () => ({
-	Redis: vi.fn(function MockRedis() {
-		const inst = {
-			publish: vi.fn(async () => 0),
-			quit: vi.fn(async () => "OK"),
-			removeAllListeners: vi.fn(),
-			on: vi.fn(() => inst),
-			subscribe: vi.fn(async () => {}),
-		};
-		return inst;
-	}),
-}));
 
 vi.mock("./orpc-client.js", () => ({ api: mocks.api }));
 
@@ -73,7 +61,7 @@ vi.mock("@prismalens/logger/standalone", () => ({
 
 process.env.PRISMALENS_INTERNAL_SECRET = "test-secret";
 
-const fetchMock = vi.fn(async (url: string | URL) => {
+const fetchMock = vi.fn(async (url: string | URL, _init?: RequestInit) => {
 	if (String(url).includes("/events/clear")) {
 		return { ok: true, json: async () => ({ deleted: 3 }) } as Response;
 	}
@@ -94,18 +82,26 @@ const { default: processInvestigationJob } = await import("./processor.js");
 
 function makeJob(attemptsMade: number) {
 	return {
-		id: "investigation-inv-1",
+		id: "job-inv-1",
 		name: "investigate",
 		attemptsMade,
-		data: {
-			investigationId: "inv-1",
-			incidentId: "inc-1",
-			alerts: [],
-			priority: "normal",
-		},
 		updateProgress: vi.fn(async () => {}),
-		// biome-ignore lint/suspicious/noExplicitAny: minimal SandboxedJob stand-in.
-	} as any;
+	};
+}
+
+const DATA = {
+	investigationId: "inv-1",
+	incidentId: "inc-1",
+	alerts: [],
+	priority: "normal" as const,
+};
+
+function makeIo() {
+	return {
+		emit: vi.fn(),
+		streamDone: vi.fn(),
+		signal: new AbortController().signal,
+	};
 }
 
 function clearCalls() {
@@ -127,8 +123,8 @@ describe("processor RETRY fresh-record path (ADR-0018 B.4)", () => {
 		});
 	});
 
-	it("attemptsMade > 0: clears the durable record before conducting the run", async () => {
-		await processInvestigationJob(makeJob(1));
+	it("attemptsMade > 0 (a rerun): clears the durable record before conducting the run", async () => {
+		await processInvestigationJob(makeJob(1), DATA, makeIo());
 
 		expect(clearCalls()).toHaveLength(1);
 		const [, init] = clearCalls()[0];
@@ -140,7 +136,7 @@ describe("processor RETRY fresh-record path (ADR-0018 B.4)", () => {
 	});
 
 	it("attemptsMade === 0 (first attempt): does NOT clear", async () => {
-		await processInvestigationJob(makeJob(0));
+		await processInvestigationJob(makeJob(0), DATA, makeIo());
 
 		expect(clearCalls()).toHaveLength(0);
 		expect(mocks.conductRun).toHaveBeenCalledTimes(1);

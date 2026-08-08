@@ -193,6 +193,26 @@ export class CorrelationService {
 		return result;
 	}
 
+	/**
+	 * Which enabled rule, if any, currently holds this alert down?
+	 *
+	 * Read-only and derived from the live rule set on every call — the answer is
+	 * never written onto the alert. That is what keeps "suppressed by rule X"
+	 * honest: disable rule X or amend its match criteria and this returns `null`
+	 * on the very next read, at which point `POST /alerts/:id/correlate` runs the
+	 * full waterfall instead of refusing. A persisted `suppressedByRuleId` would
+	 * keep naming a rule that no longer suppresses anything.
+	 *
+	 * Delegates to {@link testCorrelation} rather than re-walking the rule list,
+	 * so rule precedence stays defined in exactly one place.
+	 */
+	async findSuppressingRule(alert: Alert): Promise<CorrelationRule | null> {
+		const prediction = await this.testCorrelation(
+			alert as unknown as Record<string, unknown>,
+		);
+		return prediction.action === "suppress" ? prediction.matchedRule : null;
+	}
+
 	private async runCorrelation(alert: Alert): Promise<CorrelationResult> {
 		const currentAlert = alert.incidentId
 			? alert
@@ -216,40 +236,48 @@ export class CorrelationService {
 			}
 		}
 
+		// Everything below evaluates `currentAlert`, never the caller's `alert`.
+		// The caller's copy can be stale — most importantly its `status`, which the
+		// suppress branch of matchToIncidentByRules reads to keep re-suppression a
+		// zero-write no-op (ADR-0028 §2). Reading a stale "triggered" there would
+		// write `status: "suppressed"` onto a row that already says so.
+
 		// 1. First try rule-based correlation
-		const ruleResult = await this.matchToIncidentByRules(alert);
+		const ruleResult = await this.matchToIncidentByRules(currentAlert);
 		if (ruleResult.matched || ruleResult.suppressed) {
 			return ruleResult;
 		}
 
 		// 2. Try fingerprint-based correlation
-		const fingerprintResult = await this.matchToIncidentByFingerprint(alert);
+		const fingerprintResult =
+			await this.matchToIncidentByFingerprint(currentAlert);
 		if (fingerprintResult.matched) {
 			return fingerprintResult;
 		}
 
 		// 3. Try time-window based correlation (same service, similar time)
-		const timeWindowResult = await this.matchToIncidentByTimeWindow(alert);
+		const timeWindowResult =
+			await this.matchToIncidentByTimeWindow(currentAlert);
 		if (timeWindowResult.matched) {
 			return timeWindowResult;
 		}
 
 		// 4. No match - create new incident
 		const incident = await this.incidentsService.create({
-			title: alert.title,
-			description: alert.description ?? undefined,
-			severity: alert.severity as
+			title: currentAlert.title,
+			description: currentAlert.description ?? undefined,
+			severity: currentAlert.severity as
 				| "critical"
 				| "high"
 				| "medium"
 				| "low"
 				| "info",
-			serviceId: alert.serviceId ?? undefined,
+			serviceId: currentAlert.serviceId ?? undefined,
 			correlationReason: "New alert - no matching incident found",
 		});
 
 		// Link alert to incident
-		await this.incidentsService.addAlert(incident.id, alert.id);
+		await this.incidentsService.addAlert(incident.id, currentAlert.id);
 
 		return {
 			matched: true,

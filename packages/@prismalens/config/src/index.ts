@@ -38,17 +38,17 @@
 
 import { z } from "zod";
 import {
+	assertDispatchIntervals,
 	databaseSchema,
 	deploymentSchema,
+	dispatchSchema,
 	globalSchema,
 	langsmithSchema,
 	llmEnvSchema,
 	loggingSchema,
-	queueSchema,
 	skillsSchema,
 	workerSchema,
 } from "./env/index.js";
-import { redisSchema } from "./env/queue.js";
 import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
 import {
@@ -57,22 +57,30 @@ import {
 	getOrCreateEncryptionKey,
 	getOrCreateInternalSecret,
 } from "./utils/encryption-key.js";
-import { buildRedisOptions, buildRedisUrl } from "./utils/redis-url.js";
 import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
-export type { RedisConnectionOptions } from "./utils/redis-url.js";
-export { pickServiceLabel, resolveRepoPath } from "./utils/repo.js";
+export type {
+	CheckoutRejection,
+	CheckoutValidation,
+	InvestigationCwdResolution,
+	InvestigationCwdSource,
+} from "./utils/repo.js";
+export {
+	detectRepoSlug,
+	normalizeCheckoutPath,
+	pickServiceLabel,
+	resolveInvestigationCwd,
+	resolveRepoPath,
+	validateLocalCheckout,
+} from "./utils/repo.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
 // Re-export app data utilities
 // Re-export encryption key and secret utilities
-// Re-export Redis utilities
 export {
-	buildRedisOptions,
-	buildRedisUrl,
 	ensureAppDataDir,
 	generateEncryptionKey,
 	getAppDataDir,
@@ -88,7 +96,7 @@ export {
 const baseConfigSchema = globalSchema
 	.merge(deploymentSchema)
 	.merge(databaseSchema)
-	.merge(queueSchema)
+	.merge(dispatchSchema)
 	.merge(loggingSchema)
 	.merge(llmEnvSchema)
 	.merge(skillsSchema)
@@ -130,6 +138,7 @@ export function getConfig(): GlobalConfig {
 
 		const result = baseConfigSchema
 			.omit({ PRISMALENS_DB_URL: true })
+			.superRefine(assertDispatchIntervals)
 			.safeParse(process.env);
 
 		if (!result.success) {
@@ -167,20 +176,20 @@ export function resetConfig(): void {
 }
 
 // =============================================================================
-// WORKER CONFIGURATION
+// INVESTIGATION CHILD CONFIGURATION
 // =============================================================================
-// Separate config getter for the worker process.
-// Validates only Redis + worker schemas (not the full API config).
+// Separate config getter for the per-run investigation child process.
+// Validates only the child's own env vars (not the full API config).
 // =============================================================================
 
-const workerConfigSchema = redisSchema.merge(workerSchema);
+const workerConfigSchema = workerSchema;
 export type WorkerEnvironmentVariables = z.infer<typeof workerConfigSchema>;
 
 let _workerConfig: WorkerEnvironmentVariables | null = null;
 
 /**
- * Get validated worker configuration.
- * Validates Redis + worker env vars only (not the full API schema).
+ * Get validated investigation-child configuration.
+ * Validates the child's own env vars only (not the full API schema).
  *
  * @throws {Error} If validation fails with details about invalid/missing vars
  */

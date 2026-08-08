@@ -8,6 +8,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AlertCorrelationResponseSchema,
+	AlertDetailSchema,
 	AlertQuerySchema,
 	AlertSchema,
 	AlertStatsSchema,
@@ -81,6 +82,11 @@ export const alertsContract = {
 	/**
 	 * Get a single alert by ID
 	 * GET /alerts/:id
+	 *
+	 * Carries `suppressedBy` — the enabled correlation rule currently holding a
+	 * suppressed alert down, or `null` when nothing blocks re-correlation. Read
+	 * it before offering a re-correlate control: while it is non-null,
+	 * `POST /alerts/{id}/correlate` will refuse.
 	 */
 	get: oc
 		.route({
@@ -90,7 +96,7 @@ export const alertsContract = {
 			tags: ["alerts"],
 		})
 		.input(IdParamSchema)
-		.output(AlertWithRelationsSchema),
+		.output(AlertDetailSchema),
 
 	/**
 	 * Update an alert
@@ -137,6 +143,16 @@ export const alertsContract = {
 	/**
 	 * Correlate an alert to an incident
 	 * POST /alerts/:id/correlate
+	 *
+	 * This is also the un-suppression path (ADR-0028 §4): re-running the waterfall
+	 * on a suppressed alert is how an operator gets it back onto an incident.
+	 *
+	 * Refuses with `CONFLICT` (409) when an enabled `suppress` rule still matches
+	 * the alert, rather than silently re-suppressing and answering 200 with no
+	 * incident. The error data is described by `SuppressedByRuleConflictSchema` —
+	 * parse it to name the rule and act on it. The rule is never bypassed — the
+	 * only way through is to disable it or amend its match criteria via
+	 * `PATCH /correlation/rules/{id}`, after which this call succeeds.
 	 */
 	correlate: oc
 		.route({

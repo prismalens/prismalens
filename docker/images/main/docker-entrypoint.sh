@@ -20,9 +20,8 @@ echo "  - Host: ${HOST:-0.0.0.0}"
 echo "  - Node Environment: ${NODE_ENV:-production}"
 
 if [ -n "$REDIS_URL" ]; then
-  echo "  - Redis: Connected"
-else
-  echo "  - Redis: Not configured (queue disabled)"
+  echo "  - WARNING: REDIS_URL is set but ignored — this app needs no broker."
+  echo "             Investigation dispatch is in-process over the job table."
 fi
 
 # Execute the main command

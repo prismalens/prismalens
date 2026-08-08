@@ -16,10 +16,11 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
+import { toFiringAlert } from "@prismalens/contracts";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { SettingsService } from "../../core/settings/settings.service.js";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import {
 	ALERT_CORRELATED_EVENT,
@@ -107,7 +108,7 @@ export class InvestigationTriggerService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly settingsService: SettingsService,
-		private readonly queueService: QueueService,
+		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
@@ -331,16 +332,15 @@ export class InvestigationTriggerService {
 		incident: Incident,
 		delayMs: number,
 	): Promise<void> {
-		// TODO: Use BullMQ to schedule the job when worker is available
+		// TODO: enqueue a delayed job (the JobStore's `runAt` already carries the delay)
 		// For now, log the intent
 		this.logger.debug(
 			`Would schedule trigger check for incident ${incident.number} in ${delayMs}ms`,
 		);
 
-		// In a real implementation, this would:
-		// await this.queueService.addDelayedJob('check-investigation-trigger', {
-		//   incidentId: incident.id,
-		// }, { delay: delayMs });
+		// In a real implementation, this would enqueue a job whose `runAt` is
+		// `now + delayMs` — the JobStore already carries scheduled-time claiming, so
+		// this needs a job kind, not new machinery.
 	}
 
 	/**
@@ -362,7 +362,7 @@ export class InvestigationTriggerService {
 
 		let jobId: string | null;
 		try {
-			// Resolve connectionIds for the worker (only ids go to Redis; worker fetches creds on-demand).
+			// Resolve connectionIds for the run (only ids go in the job payload; the run fetches creds on-demand).
 			// Without a serviceId we can't scope integrations to this incident's service,
 			// so send no connectionIds rather than every active integration.
 			const connectionIds = incident.serviceId
@@ -373,7 +373,14 @@ export class InvestigationTriggerService {
 					).map((i) => i.connectionId)
 				: [];
 
-			jobId = await this.queueService.addInvestigationJob({
+			// Fetch the incident's alerts so the job payload matches the manual
+			// trigger path (follow-up 4a, issue #302 — no silent divergence).
+			const incidentAlerts = await this.prisma.alert.findMany({
+				where: { incidentId: incident.id },
+				orderBy: { triggeredAt: "desc" },
+			});
+
+			jobId = await this.dispatchService.addInvestigationJob({
 				incidentId: incident.id,
 				investigationId: investigation.id,
 				priority: this.mapSeverityToPriority(incident.severity),
@@ -384,6 +391,10 @@ export class InvestigationTriggerService {
 					serviceName: incident.service?.name,
 				},
 				connectionIds,
+				alerts:
+					incidentAlerts.length > 0
+						? incidentAlerts.map((a) => toFiringAlert(a))
+						: undefined,
 			});
 		} catch (error) {
 			// AC: no dangling pending rows — @OnEvent swallows listener errors, so a throw

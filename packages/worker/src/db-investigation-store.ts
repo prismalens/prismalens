@@ -10,7 +10,8 @@
  * BATCHED (≥25 events, or 1s after the first buffered event — whichever comes first)
  * to the API's internal bulk-append endpoint, giving every run a durable server-side
  * event record (the gap the retired AgentExecution rows left). The live SSE path is
- * untouched — that still rides the Redis sink (see the conductor's SINK port).
+ * untouched — that still rides the IPC sink to the host's EventBus (see the
+ * conductor's SINK port).
  *
  * Durability is BEST-EFFORT and must NEVER fail the run (mirrors the overlay's
  * fire-and-forget posture): a flush failure logs, DROPS the batch, and counts the
@@ -29,6 +30,7 @@ import type {
 } from "@prismalens/contracts";
 import type { InvestigationStore } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
+import { internalUrl } from "./internal-url.js";
 
 /** Flush when the buffer reaches this many events. */
 const BATCH_SIZE = 25;
@@ -78,11 +80,11 @@ function createEventPoster(
 				"PRISMALENS_INTERNAL_SECRET not set — durable event record disabled",
 			);
 		}
-		const url = new URL(
-			`/internal/investigations/${investigationId}/events`,
+		const url = internalUrl(
 			apiBaseUrl,
+			`internal/investigations/${investigationId}/events`,
 		);
-		const response = await fetch(url.toString(), {
+		const response = await fetch(url, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

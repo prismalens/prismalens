@@ -1,14 +1,28 @@
 # Capability catalog — what you can do today
 
 This is the honest map of PrismaLens functionality as **complete user journeys**, not code
-features. A capability is *done* when a user can perform every listed step end-to-end on a
-released artifact, with a demonstrable proof. Each in-progress capability is tracked by a
-GitHub issue labeled [`capability`](https://github.com/prismalens/prismalens/labels/capability)
-that holds its journey definition, proof requirement, and child tickets.
+features. A capability is *done* when a user can perform every listed step end-to-end **on the
+current build of its own surface**, with a demonstrable proof. Each in-progress capability is
+tracked by a GitHub issue labeled
+[`capability`](https://github.com/prismalens/prismalens/labels/capability) that holds its journey
+definition, proof requirement, and child tickets.
+
+> **"Complete" is scoped to the surface, not to the release train.** Per the
+> [README](../README.md), v0.4.0 is a CLI-first launch: the `prismalens` CLI is the released
+> artifact, while the self-hosted server in this monorepo (web UI, webhook intake, team features)
+> is still in development and not shipped. So ✅ on an **app UI** row means *this journey works
+> end-to-end on trunk* — not *it is available in a release you can install*. Only C4 (CLI) is ✅ in
+> both senses today. Note also that "works on trunk" is a weaker claim than it looks: per
+> [`ui-flows-and-e2e-strategy.md`](./ui-flows-and-e2e-strategy.md), no app journey is yet verified
+> end-to-end by an automated test, so the app-UI statuses rest on manual demonstration alone.
 
 PrismaLens has two independent front doors onto the same investigation engine — the **app**
 (API + worker + web UI) and the **CLI** (local-first, `~/.prismalens` as its record). Every
 capability names its surface; "works" on one says nothing about the other.
+
+For the app surfaces, [`ui-flows-and-e2e-strategy.md`](./ui-flows-and-e2e-strategy.md) maps these
+capabilities onto the concrete routes users take through them, and records which journeys are
+covered by an e2e spec and which are not.
 
 | # | Capability | Surface | Status | Tracking |
 |---|---|---|---|---|
@@ -32,6 +46,76 @@ half lives behind the commercial module boundary (ADR-0023), so C13's definition
 is: shell renders inert states correctly, the capability-flag/module seam is verified, and no
 execution path exists without a verified module.
 
+## Which code an investigation reads — the local checkout mapping
+
+Cuts across **C1**, **C6** and **C11**. A service's *linked repositories* are remote
+(`org/repo` on a forge); nothing clones them. What decides which code an investigation
+actually reads is the service's **local checkout** — an absolute path on the machine
+running the worker, set at **Service detail → Repositories → Local checkout**.
+
+### Resolution order
+
+Resolved once per investigation, from the incident that triggered it:
+
+```
+                incident
+                    │
+                    ├─ has a Service? ───no───┐
+                    │  yes                    │
+                    ▼                         ▼
+        Service.localCheckoutPath     first alert's `service` /
+                    │                 `namespace` / `job` label,
+                    │                 looked up by EXACT service name
+                    │                         │
+                    └────────────┬────────────┘
+                                 ▼
+                        set and non-blank?
+                    ┌──────yes───┴───no───────┐
+                    ▼                         ▼
+      ╔═════════════════════════╗   PRISMALENS_INVESTIGATION_CWD set?
+      ║  cwd = that checkout    ║   ┌──────yes──┴──no──────┐
+      ║  MAPPED                 ║   ▼                      ▼
+      ╚═════════════════════════╝  cwd = that value    cwd = the worker's
+                                   UNMAPPED             own directory
+                                                        UNMAPPED
+```
+
+`PRISMALENS_INVESTIGATION_CWD` is no longer the primary mechanism — it is the escape
+hatch for a service nobody has mapped yet. Both unmapped branches still run, but neither
+is silent: the worker logs the fallback and writes it to the incident timeline.
+
+### Worked example
+
+Two services, one mapped and one not, each hit by an alert:
+
+| | `api-gateway` | `billing` |
+|---|---|---|
+| `Service.localCheckoutPath` | `/home/dev/code/api-gateway` | *(unset)* |
+| `PRISMALENS_INVESTIGATION_CWD` | *(unset)* | *(unset)* |
+| Harness `cwd` | `/home/dev/code/api-gateway` | the worker's own directory |
+| Timeline entry | Investigating the mapped local checkout | Investigating **WITHOUT** a mapped local checkout |
+
+The `billing` incident's timeline entry reads:
+
+```
+Ran UNMAPPED in /opt/prismalens — service "billing" has no local checkout mapped;
+fell back to the worker's own working directory. Findings may not describe the code
+that alerted.
+```
+
+### Configuring it
+
+1. **Services → (a service) → Repositories → Local checkout**.
+2. Enter an absolute path (a `~` prefix is expanded; a package inside a monorepo is fine).
+3. *Check* validates it server-side before you save — a path that does not exist, is a
+   file, or is not inside a git work tree is refused with the reason. Saving re-runs the
+   same check, so a direct API call cannot store a broken path either.
+4. **Symlinks are resolved**, and the resolved path is what gets stored — so the field can
+   read back as the real directory rather than the link you typed. That is deliberate: it
+   names the directory the investigation actually runs in, and two services pointing at one
+   tree through different symlinks stay one mapping instead of two.
+5. *Clear mapping* returns the service to the unmapped warning.
+
 ## Complete today
 
 ### C1 — Service catalog & discovery
@@ -41,6 +125,9 @@ execution path exists without a verified module.
 3. **Services → Discovery**: run discovery, then accept/reject/ignore each suggestion.
 4. **Service detail**: link repositories and deployments, manage dependencies — the topology
    view reflects them.
+5. **Service detail → Repositories → Local checkout**: point the service at its checkout on
+   this machine — see [the local checkout mapping](#which-code-an-investigation-reads--the-local-checkout-mapping)
+   for what happens when it is left unset.
 
 ### C2 — Integrations, connections & system settings
 

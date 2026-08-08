@@ -13,18 +13,13 @@ import { formatDistanceToNow } from "date-fns";
 import { Bell } from "lucide-react";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export interface CorrelatedAlertsProps {
 	alerts: AlertWithRelations[];
-	onAcknowledge?: (alertId: string) => void;
 }
 
-export function CorrelatedAlerts({
-	alerts,
-	onAcknowledge,
-}: CorrelatedAlertsProps) {
+export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 	if (alerts.length === 0) {
 		return (
 			<Card>
@@ -86,17 +81,6 @@ export function CorrelatedAlerts({
 										})}
 									</span>
 									{alert.source && <span>Source: {alert.source}</span>}
-								</div>
-								<div className="flex items-center gap-2">
-									{alert.status === "triggered" && onAcknowledge && (
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={() => onAcknowledge(alert.id)}
-										>
-											Acknowledge
-										</Button>
-									)}
 								</div>
 							</div>
 						</CardContent>

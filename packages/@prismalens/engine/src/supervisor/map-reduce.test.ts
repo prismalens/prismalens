@@ -107,7 +107,10 @@ function toolResult(branchId: string, seq: number): CanonicalEvent {
 	};
 }
 
-const MERGE_MARKER = "=== PER-BRANCH REPORTS ===";
+// #229 retired the spoofable `=== … ===` markers: the BRANCH_REPORTS fence is now the
+// boundary, and its closing sentinel is a string no untrusted value can emit, so it is
+// a strictly stronger discriminant for "this is the merge call" than the old marker.
+const MERGE_MARKER = "<<<END BRANCH_REPORTS>>>";
 
 /**
  * Stub ReportModel: returns per-branch reports in call order for synthesis prompts,
@@ -174,10 +177,13 @@ describe("reduce — map-reduce (ADR-0016 decision 2)", () => {
 		// Each branch's map transcript names ITS OWN focus alert as the firing alert
 		// (ADR-0016 decision 2) — labelling b1's evidence with alerts[0] would defeat
 		// per-alert fan-out (review blocker, 2026-07-05).
-		expect(prompts[0]).toContain("FIRING ALERT: A");
-		expect(prompts[0]).toContain("related alerts: B");
-		expect(prompts[1]).toContain("FIRING ALERT: B");
-		expect(prompts[1]).toContain("related alerts: A");
+		// Since #229 the alert header is rendered by `renderAlertPayload` inside the
+		// ALERT_PAYLOAD fence, so the focus alert is the fenced `name:` field and the
+		// siblings are the fenced related list — same property, fenced shape.
+		expect(prompts[0]).toContain("name:        A");
+		expect(prompts[0]).toContain("- B (severity=critical)");
+		expect(prompts[1]).toContain("name:        B");
+		expect(prompts[1]).toContain("- A (severity=critical)");
 		// The merge call is fed BOTH per-branch reports (so it can dedupe/unite).
 		expect(prompts[2]).toContain(MERGE_MARKER);
 		expect(prompts[2]).toContain("branch-A summary");

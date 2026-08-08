@@ -37,7 +37,7 @@ request by posting a short comment. Nothing is required of you today.
 
 Requirements: **Node >= 22** and **pnpm** (this repo pins pnpm via the
 `packageManager` field; `corepack enable` will select the right version). It is
-a Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ worker, with
+a Turborepo monorepo (NestJS API + TanStack Start UI + a per-run investigation child, with
 Prisma/SQLite).
 
 ```bash
@@ -63,6 +63,25 @@ pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 The dev login is `admin@prismalens.dev` / `admin123`. On first boot against an empty database, the owner account and demo data (~60 alerts, incidents, investigations) are provisioned automatically.
 
 Auto-seeding only runs when `NODE_ENV=development`. To force the same seed outside development — e.g. in e2e tests or CI, where the API runs against an empty database with `NODE_ENV` unset or set to something else — set `PRISMALENS_SEED_DEMO=1`. It is an explicit opt-in: the flag is never set implicitly, and seeding still only happens once, against an empty database.
+
+### Browser e2e tier
+
+The Playwright suite runs in CI as its own workflow (`.github/workflows/e2e.yml`, chromium-only) on
+every pull request and on pushes to `main`. It is **not a required check yet** — it is promoted to
+required when the last 20 `main`-branch runs are green *and* none of them consumed a Playwright
+retry, and once the storm-intake spec has landed. The rationale, the promotion trigger, and the
+journey-by-journey coverage matrix live in
+[`docs/ui-flows-and-e2e-strategy.md`](docs/ui-flows-and-e2e-strategy.md).
+
+Two things to know before running it locally:
+
+- The harness binds ports **3000 and 3001** with `reuseExistingServer: false`, so **stop `pnpm dev`
+  first** — it will not share a running dev stack.
+- On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
+  re-running blind.
+
+Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
+updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
 ## Making a change
 
@@ -129,23 +148,29 @@ with a changeset naming **`prismalens`** — never a `@prismalens/*` package (se
 pending changesets, the release workflow opens/updates a **"chore: version
 packages" PR** (`pnpm changeset:version`); merging that PR publishes the bumped
 `prismalens` package to npm with provenance (`pnpm changeset:publish` =
-`pnpm publish -r`, which skips private packages, then `changeset tag`) and
-creates a GitHub Release for its tag. The version PR is opened with the
+`node scripts/pack-cli.mjs --publish`, then `changeset tag`) and creates a
+GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
+carries the first-party closure as bundled dependencies, and `pnpm pack`
+produces zero bundled entries — an artifact `pl up` cannot boot. The pack script
+builds it, asserts it, and hands that exact file to `npm publish`, so what ships
+is what the packed smoke verified. The version PR is opened with the
 `RELEASE_PAT` repo secret (fine-grained PAT, Contents + Pull requests read/write
 — the PR must come from a user so CI triggers on it). npm publishing uses
 **trusted publishing** (OIDC): `prismalens` registers this repo's `release.yml`
-as a trusted publisher on npmjs.com, pnpm exchanges the workflow's OIDC token
-for a short-lived credential, and provenance is attested automatically — there
+as a trusted publisher on npmjs.com, the npm CLI exchanges the workflow's OIDC
+token for a short-lived credential, and provenance is attested automatically — there
 is no npm token secret to rotate or leak.
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
-pnpm publint` → `pnpm changeset:publish` → `git push --follow-tags`.
+pnpm publint` → `pnpm pack && sh scripts/packed-smoke.sh packages/cli/dist-pack`
+→ `pnpm changeset:publish` → `git push --follow-tags`.
 
-Everything else in `packages/` stays `private: true` — `@prismalens/logger` and
-`@prismalens/database` are internal, and the app-side packages
-(`@prismalens/api`, `@prismalens/frontend`, `@prismalens/worker`) are excluded
-from Changesets entirely — they deploy, they don't publish.
+Everything else in `packages/` stays `private: true` and is never published on
+its own — but since #237 the app-side packages (`@prismalens/api`,
+`@prismalens/worker`) and the shared libraries travel INSIDE the `prismalens`
+tarball as bundled dependencies, which is what makes `pl up` a single install.
+They are still excluded from Changesets: one published package, one version.
 
 ## Reporting bugs and requesting features
 

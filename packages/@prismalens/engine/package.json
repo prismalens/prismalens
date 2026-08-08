@@ -55,6 +55,15 @@
 		"ai": "catalog:",
 		"zod": "catalog:"
 	},
+	"//peerDependencies": "`e2b` is the cloud `enforced` sandbox provider (ADR-0020). src/sandbox/e2b.ts resolves it lazily through createRequire and refuses with an actionable message when it is absent, so it must NOT be a hard dependency — but it must be DECLARED, or the packaging import scan (scripts/pack-cli.mjs) cannot tell a deliberate optional apart from a missed hoist.",
+	"peerDependencies": {
+		"e2b": "*"
+	},
+	"peerDependenciesMeta": {
+		"e2b": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"tsx": "catalog:",

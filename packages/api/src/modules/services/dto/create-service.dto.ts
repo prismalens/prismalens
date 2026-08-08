@@ -61,4 +61,13 @@ export class CreateServiceDto {
 	@IsOptional()
 	@IsObject()
 	metadata?: Record<string, unknown>;
+
+	/**
+	 * Absolute path to this service's checkout on the machine running the worker
+	 * (#331) — the working directory its investigations run in. Validated before
+	 * it is stored; `null` clears the mapping.
+	 */
+	@IsOptional()
+	@IsString()
+	localCheckoutPath?: string | null;
 }
