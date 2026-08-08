@@ -106,25 +106,57 @@ jobs:
           jq -r '.body // ""' <<<"$pr" > /tmp/pr-body.md
           # The originating issue carries the spec the diff is supposed to satisfy —
           # the one thing a line-level diff reviewer structurally cannot see.
-          # `closingIssuesReferences` is the linked-issue relation; fall back to the
-          # first `#\d+` in the body for PRs that name the issue in prose only.
+          #
+          # RESOLVE THE REPOSITORY, NOT JUST THE NUMBER. `closingIssuesReferences`
+          # can name an issue in a DIFFERENT repository, and the reference carries
+          # its own `repository` for exactly that reason. Passing the number to
+          # `--repo $REPO` regardless would fetch whichever local issue happens to
+          # hold that number — not an empty result, but a real issue body for the
+          # wrong spec. The reviewer would then grade conformance against
+          # requirements this PR never had and report them as confident findings.
+          # A wrong spec is worse than no spec, because no spec is visible.
           issue=$(jq -r '.closingIssuesReferences[0].number // ""' <<<"$pr")
+          issue_repo=$(jq -r '
+            .closingIssuesReferences[0]
+            | if . == null or .repository == null then ""
+              else "\(.repository.owner.login)/\(.repository.name)" end' <<<"$pr")
           if [ -z "$issue" ]; then
+            # Prose fallback for PRs that name the issue in text only, deliberately
+            # NOT widened to `owner/repo#12`. A PR body is attacker-controlled on a
+            # public repo, so honouring a qualified reference there would let anyone
+            # pull an arbitrary repository's issue text into the reviewer's context.
+            # The linked-issue relation above is not attacker-controlled in the same
+            # way, which is why cross-repo resolution is allowed to come from there
+            # and only from there. A bare `#12` means THIS repo — what GitHub's own
+            # rendering means by it.
             issue=$(grep -oE '#[0-9]+' /tmp/pr-body.md | head -n1 | tr -d '#' || true)
+            issue_repo="$REPO"
           fi
-          : > /tmp/issue-body.md
+          if [ -n "$issue" ] && [ -z "$issue_repo" ]; then issue_repo="$REPO"; fi
+          # The absence of a spec is itself information the reviewer needs, so it
+          # is stated IN the review input rather than only in the job log. An empty
+          # issue section reads identically to a genuinely undocumented change, and
+          # the reviewer would grade the diff against nothing without ever knowing
+          # that is what it was doing.
           if [ -n "$issue" ]; then
             # Non-fatal: a PR body can name a number that is not an issue at all
-            # (a PR, a deleted issue, a bare "#2" in prose), and that should not
-            # fail the review. But it is reported — a silent empty issue body
-            # looks identical to a genuinely undocumented change, and the
-            # reviewer would grade the diff against nothing without saying so.
-            gh issue view "$issue" --repo "$REPO" --json title,body \
-              --jq '"# Issue #'"$issue"': \(.title)\n\n\(.body // "")' > /tmp/issue-body.md \
-              || { echo "WARNING: could not read issue #$issue — reviewing without spec context" >&2
-                   : > /tmp/issue-body.md; }
+            # (a PR, a deleted issue, a bare "#2" in prose), and a cross-repo
+            # reference can point somewhere GITHUB_TOKEN cannot read — this token
+            # is scoped to this repository. Neither should fail the review; both
+            # must be said out loud.
+            if gh issue view "$issue" --repo "$issue_repo" --json title,body > /tmp/issue.json 2>/dev/null; then
+              { printf '# %s#%s: %s\n\n' "$issue_repo" "$issue" "$(jq -r '.title' /tmp/issue.json)"
+                jq -r '.body // ""' /tmp/issue.json
+              } > /tmp/issue-body.md
+            else
+              echo "WARNING: could not read $issue_repo#$issue — reviewing without spec context" >&2
+              printf 'NOTE: the originating issue %s#%s could not be read — it may not exist, or may not be visible to this job.\nNo spec is available. Judge the diff on its own terms; do not infer requirements.\n' \
+                "$issue_repo" "$issue" > /tmp/issue-body.md
+            fi
+          else
+            printf 'NOTE: this pull request references no originating issue. No spec is available.\nJudge the diff on its own terms; do not infer requirements.\n' > /tmp/issue-body.md
           fi
-          echo "Reviewing #$PR at ${sha:0:8} (issue: ${issue:-none})"
+          echo "Reviewing #$PR at ${sha:0:8} (issue: ${issue:+$issue_repo#}${issue:-none})"
 
       # The deliberate red case. It runs AFTER resolution so the drill exercises
       # the same path a real failure would, and BEFORE anything is posted — the
@@ -231,6 +263,16 @@ jobs:
           # that actually runs. Drift then fails loudly at install/parse time,
           # which skips `marker` and leaves no evidence — safe, but a dead review
           # lane is still worth not shipping.
+          #
+          # BOTH FACTS BELOW WERE VERIFIED AGAINST THE LIVE CLI — do not "correct"
+          # them on a review report claiming otherwise (one already has):
+          #   2.1.223 is published. `npm view @anthropic-ai/claude-code versions`
+          #     lists it, and the line continues past 2.1.226.
+          #   `--allowed-tools` and `--disallowed-tools` are real spellings.
+          #     `claude --help` on this exact version prints
+          #     `--allowedTools, --allowed-tools` and
+          #     `--disallowedTools, --disallowed-tools` — camelCase and kebab-case
+          #     are accepted aliases of one flag, not one right and one wrong.
           npm install -g @anthropic-ai/claude-code@2.1.223 >/dev/null
           # Read-only tool set, allowlisted AND denylisted. The allowlist is the
           # policy; the denylist is there because an allowlist only holds while
@@ -262,6 +304,30 @@ jobs:
           #     explicitly (a CI runner has no user settings, so this is "none");
           #   --strict-mcp-config with no --mcp-config means no MCP servers at
           #     all, ignoring any .mcp.json the PR ships.
+          #
+          # FOURTH LAYER: the read tools are scoped to the checkout, and the
+          # permission mode is what makes that scoping bite.
+          #
+          # `--allowed-tools "Read,Glob,Grep"` grants those tools with NO path
+          # restriction, so the reviewer could read any absolute path on the
+          # runner — /etc/*, a mounted credential file, /proc/self/environ — from
+          # a job holding `pull-requests: write`. Same class as the `.claude/`
+          # config hijack the three layers above close: a reviewer with more
+          # reach than reviewing a diff requires.
+          #
+          # Two changes are needed together, and BOTH were verified empirically
+          # against the pinned CLI before being written here:
+          #   the rules carry a path — `Read(<workspace>/**)` — which is the
+          #     documented per-tool specifier form (`claude --help`: 'Bash(git *)
+          #     Edit');
+          #   `--permission-mode dontAsk` makes an unmatched call a DENIAL. This
+          #     is the load-bearing half. In `-p` mode the default behaviour
+          #     auto-approves read-only tools, so path-scoped rules ALONE change
+          #     nothing — measured: with the scoped rules and the default mode,
+          #     `/etc/hostname` still read successfully; adding `dontAsk` turned
+          #     the same read into DENIED while in-workspace Read, Glob and Grep
+          #     all kept working. Removing `dontAsk` silently restores the full
+          #     filesystem reach without any flag looking wrong.
           mkdir -p /tmp/claude-cwd
           cd /tmp/claude-cwd
           claude -p \
@@ -269,7 +335,8 @@ jobs:
             --add-dir "$GITHUB_WORKSPACE" \
             --setting-sources user \
             --strict-mcp-config \
-            --allowed-tools "Read,Glob,Grep" \
+            --permission-mode dontAsk \
+            --allowed-tools "Read($GITHUB_WORKSPACE/**),Glob($GITHUB_WORKSPACE/**),Grep($GITHUB_WORKSPACE/**)" \
             --disallowed-tools "Bash,Write,Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task" \
             --output-format text \
             < /tmp/review-prompt.md > /tmp/review-raw.md
