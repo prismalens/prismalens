@@ -37,6 +37,7 @@ import {
 	Clock,
 	Eye,
 	FileText,
+	Plus,
 	Search,
 } from "lucide-react";
 import { useState } from "react";
@@ -72,6 +73,8 @@ export interface IncidentDataTableProps {
 	isLoading?: boolean;
 	onAcknowledge?: (id: string) => void;
 	onInvestigate?: (id: string) => void;
+	/** When provided, the empty state offers a way out of it. */
+	onCreate?: () => void;
 }
 
 const priorityColors: Record<string, string> = {
@@ -338,6 +341,7 @@ export function IncidentDataTable({
 	isLoading,
 	onAcknowledge,
 	onInvestigate,
+	onCreate,
 }: IncidentDataTableProps) {
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: "triggeredAt", desc: true },
@@ -369,12 +373,26 @@ export function IncidentDataTable({
 
 	if (incidents.length === 0) {
 		return (
-			<div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+			<div
+				className="flex flex-col items-center justify-center py-12 text-muted-foreground"
+				data-testid="incidents-empty-state"
+			>
 				<FileText className="h-12 w-12 mb-4 opacity-50" />
 				<p className="text-lg font-medium">No incidents found</p>
 				<p className="text-sm">
-					Incidents will appear here when alerts are correlated
+					Incidents appear here when alerts are correlated
+					{onCreate ? " — or create one by hand to try it out" : ""}
 				</p>
+				{onCreate && (
+					<Button
+						className="mt-4"
+						onClick={onCreate}
+						data-testid="incidents-empty-create"
+					>
+						<Plus className="h-4 w-4 mr-2" />
+						Create Incident
+					</Button>
+				)}
 			</div>
 		);
 	}

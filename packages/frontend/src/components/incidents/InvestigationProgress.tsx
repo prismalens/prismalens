@@ -27,6 +27,13 @@ export interface InvestigationProgressProps {
 	investigations: InvestigationRef[];
 	onStartInvestigation?: () => void;
 	isStarting?: boolean;
+	/**
+	 * Mirrors the header's investigate gate. Both affordances start the same
+	 * procedure, so an unconfigured AI provider must disable both — offering a
+	 * live button here while the header's is greyed out is a lie about state.
+	 */
+	startDisabled?: boolean;
+	startDisabledReason?: string;
 }
 
 const statusConfig: Record<
@@ -74,6 +81,8 @@ export function InvestigationProgress({
 	investigations,
 	onStartInvestigation,
 	isStarting,
+	startDisabled,
+	startDisabledReason,
 }: InvestigationProgressProps) {
 	const hasRunningInvestigation = investigations.some(
 		(inv) => inv.status === "running",
@@ -89,19 +98,30 @@ export function InvestigationProgress({
 						Start an AI-powered investigation to analyze this incident
 					</p>
 					{onStartInvestigation && (
-						<Button onClick={onStartInvestigation} disabled={isStarting}>
-							{isStarting ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Starting...
-								</>
-							) : (
-								<>
-									<Brain className="h-4 w-4 mr-2" />
-									Start Investigation
-								</>
+						<>
+							<Button
+								onClick={onStartInvestigation}
+								disabled={isStarting || startDisabled}
+								data-testid="start-investigation"
+							>
+								{isStarting ? (
+									<>
+										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										Starting...
+									</>
+								) : (
+									<>
+										<Brain className="h-4 w-4 mr-2" />
+										Start Investigation
+									</>
+								)}
+							</Button>
+							{startDisabled && startDisabledReason && (
+								<p className="text-xs text-muted-foreground mt-3">
+									{startDisabledReason}
+								</p>
 							)}
-						</Button>
+						</>
 					)}
 				</CardContent>
 			</Card>

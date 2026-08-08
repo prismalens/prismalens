@@ -35,7 +35,7 @@ covered by an e2e spec and which are not.
 | C7 | Storm handling — alert flood → one grouped investigation | app UI | 🟨 In progress | [#293](https://github.com/prismalens/prismalens/issues/293) |
 | C8 | Rule management that tells the truth | app UI | 🟨 In progress | [#294](https://github.com/prismalens/prismalens/issues/294) |
 | C9 | Run observability & spend | app UI | 🟨 In progress | [#295](https://github.com/prismalens/prismalens/issues/295) |
-| C10 | Manual authorship (demo without an alert source) | app UI | 🟨 In progress | [#296](https://github.com/prismalens/prismalens/issues/296) |
+| C10 | Manual authorship (demo without an alert source) | app UI | 🟦 Near-complete | [#296](https://github.com/prismalens/prismalens/issues/296) |
 | C11 | `pl up` — one command, whole app | CLI → app UI | 🟨 In progress | [#297](https://github.com/prismalens/prismalens/issues/297) |
 | C12 | Team operations | app UI | 🟨 In progress | [#298](https://github.com/prismalens/prismalens/issues/298) |
 | C13 | Approve → execute (act phase) | app UI | ⬜ OSS-bounded | [#299](https://github.com/prismalens/prismalens/issues/299) |
@@ -115,6 +115,47 @@ that alerted.
    names the directory the investigation actually runs in, and two services pointing at one
    tree through different symlinks stay one mapping instead of two.
 5. *Clear mapping* returns the service to the unmapped warning.
+
+## Manual authorship — demoing without an alert source
+
+**C10.** A fresh install has no Alertmanager pointed at it, so the correlation path that
+normally produces incidents never fires. Manual authorship is the way in: author an incident
+by hand and investigate it, using the same procedures the automation uses.
+
+### The journey
+
+1. **Incidents → Create Incident** (also offered from the empty state when there are no
+   incidents at all). Title is the only required field; severity defaults to *medium* and
+   priority to *p3*.
+2. Optionally pick a **Service**. This is what decides which code the investigation reads —
+   see [the local checkout mapping](#which-code-an-investigation-reads--the-local-checkout-mapping).
+   With no service, the run is UNMAPPED and its findings may not describe your code.
+3. Submitting lands you on the new incident's detail page — `INC-<n>`, status *triggered*,
+   **Alerts (0)**.
+4. **Incident detail → Investigation → Start Investigation** runs the ordinary
+   investigation path on it. It requires an AI provider (**Settings → AI Provider**); until
+   one is set, both Start Investigation and the header's Investigate button are disabled and
+   say why.
+
+### Worked example — what each step produces
+
+| Step | You do | The system records |
+|---|---|---|
+| 1 | *Create Incident*, title `Checkout latency spike after 14:00 UTC` | `INC-7`, status `triggered`, `alertCount: 0`, a timeline entry *Incident created* |
+| 2 | Service = `api-gateway` (mapped to `/home/dev/code/api-gateway`) | `serviceId` set on the incident |
+| 3 | — | Detail page shows `INC-7`, **Alerts (0)**, no correlation reason |
+| 4 | *Start Investigation* | Status → `investigating`, an investigation row, a queued job whose `cwd` is `/home/dev/code/api-gateway` |
+
+A hand-authored incident is an ordinary incident: it acknowledges, investigates, resolves,
+and takes a postmortem exactly like a correlated one. What it does **not** have is alerts or
+a correlation reason, and no screen pretends otherwise.
+
+### Deliberately not built
+
+Manual **alert** creation and manual **correlation** are out of scope
+([#286](https://github.com/prismalens/prismalens/issues/286)). The demo journey does not need
+them — an incident is the unit an investigation runs on — and hand-authored alerts stitched
+into an incident would fake a correlation the engine never performed.
 
 ## Complete today
 
