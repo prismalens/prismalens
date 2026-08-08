@@ -35,6 +35,12 @@ CLA assistant does. Deletion was the minimum fix, not the aggressive one.
 `pull_request_target`, pins its checkout to the default branch, and reads the GitHub
 API only. Read the header comment in that file before changing its trigger.
 
+`claude-review.yml` is the case most likely to be misread. It produces review
+evidence, but it holds neither `statuses: write` nor `checks: write` — it posts a
+marker *comment*, and `review-evidence.yml` decides whether that comment counts.
+Producing evidence and publishing a required check are two different privileges, and
+only the second one is dangerous. Keep them separate.
+
 ## Rule for new enforcement
 
 **New enforcement is a step in an existing workflow, never a new file.** Every new
@@ -65,5 +71,6 @@ merge.
 | `governance.yml` | dispatch | syncs `.github/governance.json` to repo settings |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `review-admit.yml` | dispatch | applies the `review-ready` admission label (spends the scarce online review) |
+| `claude-review.yml` | dispatch | runs a Claude review and posts the marker `review-evidence` branch D reads |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |
 | `review-evidence.yml` | PR/review/comment/schedule/dispatch | publishes the `review-evidence` status |
