@@ -326,6 +326,60 @@ describe("SqliteSessionManager", () => {
 		expect(g.lateAlerts).toEqual([]);
 	});
 
+	it("15b. #231: appendGroupAlert performs NO deduplication — the store records every delivery", async () => {
+		// PINNED AS-IS. The only dedup in the listen path lives in the in-memory
+		// grouping layer (grouping.ts `activeAlerts`); the store is a dumb append.
+		// There is no unique constraint on (group_id, payload) and no upsert, so a
+		// flapping alert re-paged N times leaves N byte-identical late rows.
+		// Consequence: `group_alerts` row count is a delivery count, never a
+		// distinct-alert count. See #397.
+		const runId = "grp-run-15b";
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k",
+			formedBy: "window",
+			alerts: [{ fingerprint: "f1" }],
+			lateAlerts: [],
+		});
+
+		const repage = { fingerprint: "f1", labels: { alertname: "A" } };
+		for (let i = 0; i < 3; i++) {
+			await sessions.appendGroupAlert(runId, repage);
+		}
+
+		const g = await readGroup(baseDir, runId);
+		expect(g.alerts).toEqual([{ fingerprint: "f1" }]);
+		expect(g.lateAlerts).toEqual([repage, repage, repage]);
+	});
+
+	it("15c. #231: writeGroupRecord after appendGroupAlert ERASES the appended late alerts", async () => {
+		// PINNED AS-IS, and load-bearing: writeGroupRecord DELETEs every
+		// group_alerts row for the run before re-inserting. The listen path is
+		// safe today only because it writes the record exactly once, at window
+		// close, before any append can happen. Any future overlay/re-form path
+		// that re-writes the record would silently lose the re-page history.
+		const runId = "grp-run-15c";
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k",
+			formedBy: "window",
+			alerts: [{ fingerprint: "f1" }],
+			lateAlerts: [],
+		});
+		await sessions.appendGroupAlert(runId, { fingerprint: "late-1" });
+		expect((await readGroup(baseDir, runId)).lateAlerts).toEqual([
+			{ fingerprint: "late-1" },
+		]);
+
+		await sessions.writeGroupRecord(runId, {
+			groupKey: "k",
+			formedBy: "overlay",
+			alerts: [{ fingerprint: "f1" }],
+			lateAlerts: [],
+		});
+
+		const g = await readGroup(baseDir, runId);
+		expect(g.lateAlerts).toEqual([]);
+	});
+
 	it("16. R5b-5: months-old session record re-renders schema-valid with defaults backfilled and no data loss (ADR-0026)", async () => {
 		const { DatabaseSync } = await import("node:sqlite");
 		const { mkdirSync } = await import("node:fs");

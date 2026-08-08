@@ -4,10 +4,19 @@ How PrismaLens decides whether an incoming alert becomes an incident, gets attac
 existing one, or is held down by a rule — and what an operator does about a suppressed alert
 they want back.
 
+This page covers **rules and incidents**. For what counts as the same alert in the first
+place — the dedup keys, the windows, and what happens when an alert flaps — see
+[Alert deduplication, grouping & flap behaviour](./alert-dedup-and-grouping.md). Note in
+particular that "suppressed" on this page means *a rule said so*; the CLI's `pl listen` path
+uses the same word for something else entirely.
+
 ## What happens to an alert
 
 Every alert that arrives (`POST /alerts`) walks a four-tier waterfall. The first tier that
-produces an answer wins; the rest never run.
+produces an answer wins; the rest never run. The alert reaches the waterfall only if
+deduplication did not fold it onto an existing row — which, for an alert that has already been
+resolved once, it silently does
+([#398](https://github.com/prismalens/prismalens/issues/398)).
 
 | Tier | What it checks | Outcome |
 |---|---|---|

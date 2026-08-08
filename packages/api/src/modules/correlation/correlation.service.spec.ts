@@ -453,4 +453,203 @@ describe("CorrelationService", () => {
 			expect(mockPrisma.alert.findFirst).not.toHaveBeenCalled();
 		});
 	});
+
+	/**
+	 * #231 — what governs app-side grouping, PINNED AS-IS.
+	 *
+	 * The waterfall's windows and match predicates were [UNVERIFIED] in the
+	 * architecture review. These tests state them exactly. Several pin behaviour
+	 * that is wrong; each names the follow-up issue. Do not relax an assertion
+	 * to make a behaviour change pass. Prose + tables:
+	 * docs/alert-dedup-and-grouping.md.
+	 */
+	describe("#231 grouping windows and boundaries", () => {
+		const NOW = new Date("2026-08-08T12:00:00.000Z");
+		const SIXTY_MIN_AGO = new Date("2026-08-08T11:00:00.000Z");
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+			vi.setSystemTime(NOW);
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("bounds tier-2 fingerprint correlation at a hardcoded 60 minutes, and only against alerts already on an incident", async () => {
+			// The 60 minutes is a literal in matchToIncidentByFingerprint — no
+			// config key, no rule field, nothing an operator can tune.
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([]);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce({
+				id: "alert-peer",
+				incident: { id: "inc-7", number: 7 },
+			});
+
+			const alert = {
+				id: "alert-1",
+				fingerprint: "fp-1",
+				severity: "high",
+				serviceId: null,
+				incidentId: null,
+				status: "triggered",
+			} as unknown as Alert;
+
+			const result = await service.correlateAlert(alert);
+
+			expect(mockPrisma.alert.findFirst).toHaveBeenCalledWith({
+				where: {
+					fingerprint: "fp-1",
+					id: { not: "alert-1" },
+					incidentId: { not: null },
+					triggeredAt: { gte: SIXTY_MIN_AGO },
+				},
+				include: { incident: true },
+				orderBy: { triggeredAt: "desc" },
+			});
+			expect(result.reason).toBe("Matched by fingerprint similarity");
+			expect(mockIncidentsService.addAlert).toHaveBeenCalledWith(
+				"inc-7",
+				"alert-1",
+			);
+		});
+
+		it("skips tier 2 entirely when the alert has no fingerprint, rather than falling back to labels", async () => {
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([]);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce(null);
+			mockIncidentsService.create.mockResolvedValueOnce({
+				id: "inc-new",
+				number: 1,
+			});
+
+			const alert = {
+				id: "alert-1",
+				fingerprint: null,
+				severity: "high",
+				serviceId: "svc-1",
+				title: "HighLatency",
+				incidentId: null,
+				status: "triggered",
+			} as unknown as Alert;
+
+			await service.correlateAlert(alert);
+
+			expect(mockPrisma.alert.findFirst).not.toHaveBeenCalled();
+		});
+
+		it("lets a serviceless alert join the newest open incident of ANY service in tier 3", async () => {
+			// WRONG-BUT-PINNED (#399). The service predicate is spread
+			// conditionally — `...(alert.serviceId && { serviceId })` — so an
+			// alert with no service produces a query with no service filter and
+			// gets attached to an unrelated team's incident.
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([]);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce(null);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce({
+				id: "inc-unrelated",
+				number: 42,
+				serviceId: "some-other-service",
+			});
+
+			const alert = {
+				id: "alert-1",
+				fingerprint: "fp-1",
+				severity: "high",
+				serviceId: null,
+				incidentId: null,
+				status: "triggered",
+			} as unknown as Alert;
+
+			const result = await service.correlateAlert(alert);
+
+			expect(mockPrisma.incident.findFirst).toHaveBeenCalledWith({
+				where: {
+					status: { notIn: ["resolved", "closed"] },
+					triggeredAt: { gte: SIXTY_MIN_AGO },
+				},
+				orderBy: { triggeredAt: "desc" },
+			});
+			expect(result.reason).toBe("Matched by time window correlation");
+			expect(mockIncidentsService.addAlert).toHaveBeenCalledWith(
+				"inc-unrelated",
+				"alert-1",
+			);
+		});
+
+		it("picks a tier-1 rule's incident on service+window alone, ignoring the matchCriteria that selected the rule", async () => {
+			// WRONG-BUT-PINNED (#399). findMatchingIncident never re-applies the
+			// rule's criteria to the candidate incident. A rule matched on
+			// `severity: ["critical"]` attaches the alert to whatever open
+			// incident the service has, however unrelated.
+			const rule = {
+				id: "rule-1",
+				name: "Critical DB Rule",
+				action: "correlate",
+				priority: 10,
+				timeWindowMinutes: 15,
+				matchCriteria: JSON.stringify({ match: { severity: ["critical"] } }),
+			};
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce({
+				id: "inc-3",
+				number: 3,
+			});
+			mockPrisma.incident.update.mockResolvedValueOnce({ id: "inc-3" });
+
+			const alert = {
+				id: "alert-1",
+				severity: "critical",
+				serviceId: "svc-1",
+				incidentId: null,
+				status: "triggered",
+			} as unknown as Alert;
+
+			const result = await service.correlateAlert(alert);
+
+			// The rule's own timeWindowMinutes DOES govern the window (15, not 60),
+			// but severity is nowhere in the predicate.
+			expect(mockPrisma.incident.findFirst).toHaveBeenCalledWith({
+				where: {
+					status: { notIn: ["resolved", "closed"] },
+					triggeredAt: { gte: new Date("2026-08-08T11:45:00.000Z") },
+					serviceId: "svc-1",
+				},
+				orderBy: { triggeredAt: "desc" },
+			});
+			expect(result.reason).toBe("Matched by rule: Critical DB Rule");
+		});
+
+		it("has NO flap suppression: a resolved alert on its hundredth occurrence still walks the waterfall and opens a new incident", async () => {
+			// Correlation reads neither `occurrenceCount` nor `lastOccurrence` nor
+			// any repeat history. "Suppression" here means one thing only: an
+			// enabled rule with action `suppress`. Nothing throttles a flapper.
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([]);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce(null);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce(null);
+			mockIncidentsService.create.mockResolvedValueOnce({
+				id: "inc-new",
+				number: 101,
+			});
+
+			const alert = {
+				id: "alert-flapper",
+				fingerprint: "fp-flap",
+				title: "HighLatency",
+				description: "flapping",
+				severity: "high",
+				serviceId: "svc-1",
+				incidentId: null,
+				status: "resolved",
+				occurrenceCount: 100,
+			} as unknown as Alert;
+
+			const result = await service.correlateAlert(alert);
+
+			expect(mockIncidentsService.create).toHaveBeenCalledTimes(1);
+			expect(result).toMatchObject({
+				matched: true,
+				incidentId: "inc-new",
+				incidentNumber: 101,
+				isNewIncident: true,
+				reason: "Created new incident",
+			});
+		});
+	});
 });

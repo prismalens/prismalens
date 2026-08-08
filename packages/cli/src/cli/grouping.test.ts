@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GroupRecord, SessionManager } from "../core/session.js";
-import { createGroupingLayer } from "./grouping.js";
+import { createGroupingLayer, deriveDedupeKey } from "./grouping.js";
 
 describe("Grouping layer", () => {
 	beforeEach(() => {
@@ -370,5 +370,285 @@ describe("deriveGroupKey", () => {
 		const { deriveGroupKey } = await import("./grouping.js");
 		const key = deriveGroupKey({}, {});
 		expect(key).toBe("default");
+	});
+});
+
+/**
+ * #231 — dedup / flap-suppression semantics, PINNED AS-IS.
+ *
+ * These tests document what the CLI grouping path does today. Several of them
+ * pin behaviour that is arguably wrong; each such case says so and points at
+ * the follow-up issue. Do not "fix" the behaviour by editing these assertions —
+ * change the code and the assertion together, deliberately.
+ *
+ * See docs/alert-dedup-and-grouping.md for the prose + tables.
+ */
+describe("#231 dedup identity: deriveDedupeKey", () => {
+	it("collapses a re-fire onto the same key when a fingerprint is present, even though startsAt moved", () => {
+		// Alertmanager stamps `fingerprint` on every alert, so this — not the
+		// startsAt-sensitive fallback — is the branch that runs in production.
+		const first = {
+			fingerprint: "fp-1",
+			labels: { alertname: "HighLatency", service: "web" },
+			startsAt: "2026-01-01T00:00:00Z",
+		};
+		const reFire = {
+			fingerprint: "fp-1",
+			labels: { alertname: "HighLatency", service: "web" },
+			startsAt: "2026-01-01T00:10:00Z",
+		};
+
+		expect(deriveDedupeKey(reFire)).toBe(deriveDedupeKey(first));
+	});
+
+	it("ignores labels entirely when a fingerprint is present", () => {
+		// The fingerprint short-circuit means two alerts with nothing else in
+		// common are the same alert as far as suppression is concerned.
+		const web = {
+			fingerprint: "fp-shared",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+		const database = {
+			fingerprint: "fp-shared",
+			labels: { alertname: "DiskFull", service: "database" },
+		};
+
+		expect(deriveDedupeKey(database)).toBe(deriveDedupeKey(web));
+	});
+
+	it("splits an UNfingerprinted re-fire into a new key the moment startsAt moves", () => {
+		// The fallback key is `alertname + sha256(labels) + startsAt`, so a
+		// sender that omits `fingerprint` gets no cross-episode dedup at all.
+		const first = {
+			labels: { alertname: "HighLatency", service: "web" },
+			startsAt: "2026-01-01T00:00:00Z",
+		};
+		const reFire = {
+			labels: { alertname: "HighLatency", service: "web" },
+			startsAt: "2026-01-01T00:10:00Z",
+		};
+
+		expect(deriveDedupeKey(reFire)).not.toBe(deriveDedupeKey(first));
+	});
+
+	it("keeps an UNfingerprinted alert on one key while startsAt holds still", () => {
+		const first = {
+			labels: { service: "web", alertname: "HighLatency" },
+			startsAt: "2026-01-01T00:00:00Z",
+		};
+		const repeat = {
+			// Same labels, declared in a different order — label order must not
+			// change identity (the key sorts label names before hashing).
+			labels: { alertname: "HighLatency", service: "web" },
+			startsAt: "2026-01-01T00:00:00Z",
+		};
+
+		expect(deriveDedupeKey(repeat)).toBe(deriveDedupeKey(first));
+	});
+});
+
+describe("#231 dedup/flap semantics of the grouping layer", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.useRealTimers();
+	});
+
+	/** A grouping layer whose investigation blocks until the returned gate is opened. */
+	function runningRig() {
+		const logs: string[] = [];
+		const records = new Map<string, GroupRecord>();
+		const lateAlerts = new Map<string, Record<string, unknown>[]>();
+		const appendCalls: string[] = [];
+
+		const sessions = {
+			writeGroupRecord: async (runId: string, rec: GroupRecord) => {
+				records.set(runId, rec);
+			},
+			appendGroupAlert: async (
+				runId: string,
+				alert: Record<string, unknown>,
+			) => {
+				appendCalls.push(runId);
+				const existing = lateAlerts.get(runId) ?? [];
+				existing.push(alert);
+				lateAlerts.set(runId, existing);
+			},
+		} as unknown as SessionManager;
+
+		const runs: { runId: string; alerts: Record<string, unknown>[] }[] = [];
+		let openGate!: () => void;
+		const gate = new Promise<void>((r) => {
+			openGate = r;
+		});
+
+		const grouping = createGroupingLayer({
+			windowMs: 60000,
+			sessions,
+			runInvestigation: vi.fn(
+				async (runId: string, alerts: Record<string, unknown>[]) => {
+					runs.push({ runId, alerts });
+					await gate;
+				},
+			),
+			log: (msg) => logs.push(msg),
+		});
+
+		return {
+			grouping,
+			runs,
+			logs,
+			records,
+			lateAlerts,
+			appendCalls,
+			openGate,
+		};
+	}
+
+	it("does NOT flap-suppress: every re-page of an in-flight fingerprint appends another late alert, without bound", async () => {
+		// WRONG-BUT-PINNED (#397). There is no repeat-count cap, no cooldown and
+		// no per-run ceiling: an alert re-paged by Alertmanager's repeat_interval
+		// for the duration of a long investigation writes one group_alerts row
+		// per delivery. Suppression here means "do not dispatch a second
+		// investigation" — it has never meant "do not record".
+		const { grouping, runs, lateAlerts, appendCalls, openGate } = runningRig();
+		const alert = {
+			fingerprint: "fp-flap",
+			status: "firing",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+
+		grouping.admit([alert], {});
+		await vi.advanceTimersByTimeAsync(60000);
+		expect(runs.length).toBe(1);
+
+		for (let i = 0; i < 5; i++) {
+			grouping.admit([{ ...alert, startsAt: `2026-01-01T00:0${i}:00Z` }], {});
+		}
+		await vi.advanceTimersByTimeAsync(0);
+
+		// One investigation, five recorded re-pages — one per delivery.
+		expect(runs.length).toBe(1);
+		expect(appendCalls).toEqual(Array(5).fill(runs[0].runId));
+		expect(lateAlerts.get(runs[0].runId)?.length).toBe(5);
+
+		openGate();
+		await vi.runAllTimersAsync();
+	});
+
+	it("suppresses ACROSS group keys: a same-fingerprint alert in a different group is recorded on the FIRST group's run", async () => {
+		// WRONG-BUT-PINNED (#397). The in-flight fingerprint registry is global,
+		// not scoped to a group. An alert whose groupKey says "database" is
+		// filed under the run investigating "web" purely because the sender
+		// reused a fingerprint, and it never opens a window of its own.
+		const { grouping, runs, lateAlerts, openGate } = runningRig();
+		const shared = {
+			fingerprint: "fp-shared",
+			status: "firing",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+
+		grouping.admit([shared], { groupKey: "group-web" });
+		await vi.advanceTimersByTimeAsync(60000);
+		expect(runs.length).toBe(1);
+		expect(grouping.pendingGroups()).toBe(1);
+
+		grouping.admit([shared], { groupKey: "group-database" });
+		await vi.advanceTimersByTimeAsync(0);
+
+		// No second window, no second investigation — filed under group-web's run.
+		expect(grouping.pendingGroups()).toBe(1);
+		expect(runs.length).toBe(1);
+		expect(lateAlerts.get(runs[0].runId)).toEqual([shared]);
+		expect(grouping.newGroupCount([shared], { groupKey: "group-database" })).toBe(
+			1,
+		);
+
+		openGate();
+		await vi.runAllTimersAsync();
+	});
+
+	it("drops a window-phase duplicate silently: no formative alert, no late alert, no log line", async () => {
+		// Asymmetry worth knowing: the SAME duplicate is recorded as a late alert
+		// once the group is running (test above) but leaves no trace at all while
+		// the group is still buffering. Nothing counts how many were dropped.
+		const { grouping, runs, records, lateAlerts, logs, openGate } =
+			runningRig();
+		const alert = {
+			fingerprint: "fp-dup",
+			status: "firing",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+
+		grouping.admit([alert], {});
+		grouping.admit([alert], {});
+		grouping.admit([alert], {});
+		await vi.advanceTimersByTimeAsync(60000);
+
+		expect(runs.length).toBe(1);
+		expect(runs[0].alerts).toEqual([alert]);
+		expect(records.get(runs[0].runId)?.alerts).toEqual([alert]);
+		expect(lateAlerts.get(runs[0].runId)).toBeUndefined();
+		expect(logs).toEqual([]);
+
+		openGate();
+		await vi.runAllTimersAsync();
+	});
+
+	it("writes the formative group record with an EMPTY lateAlerts list — late arrivals only ever reach the store via appendGroupAlert", async () => {
+		const { grouping, runs, records, openGate } = runningRig();
+		const first = {
+			fingerprint: "fp-a",
+			status: "firing",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+		const late = {
+			fingerprint: "fp-b",
+			status: "firing",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+
+		grouping.admit([first], {});
+		await vi.advanceTimersByTimeAsync(60000);
+		grouping.admit([late], {});
+		await vi.advanceTimersByTimeAsync(0);
+
+		const rec = records.get(runs[0].runId);
+		expect(rec?.formedBy).toBe("window");
+		expect(rec?.alerts).toEqual([first]);
+		// The record is written once, at window close; `lateAlerts` on it is dead
+		// weight in this path. A re-write of the record would erase the appended
+		// rows (writeGroupRecord DELETEs group_alerts first).
+		expect(rec?.lateAlerts).toEqual([]);
+
+		openGate();
+		await vi.runAllTimersAsync();
+	});
+
+	it("re-arms after the run completes: the very next delivery of the same fingerprint dispatches a NEW investigation", async () => {
+		// This is the whole of the "flap window": the in-flight registry, and
+		// nothing else. Once a run ends there is no cooldown — an alert that
+		// flaps on a cycle longer than its investigation gets one investigation
+		// per cycle, for ever.
+		const { grouping, runs, openGate } = runningRig();
+		const alert = {
+			fingerprint: "fp-cycle",
+			status: "firing",
+			labels: { alertname: "HighLatency", service: "web" },
+		};
+
+		grouping.admit([alert], {});
+		await vi.advanceTimersByTimeAsync(60000);
+		openGate();
+		await vi.runAllTimersAsync();
+		expect(runs.length).toBe(1);
+
+		grouping.admit([alert], {});
+		await vi.advanceTimersByTimeAsync(60000);
+
+		expect(runs.length).toBe(2);
+		expect(runs[1].runId).not.toBe(runs[0].runId);
 	});
 });

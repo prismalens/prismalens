@@ -126,6 +126,122 @@ describe("AlertsService (BDD)", () => {
 		});
 	});
 
+	/**
+	 * #231 — dedup / flap-suppression semantics on the app side, PINNED AS-IS.
+	 *
+	 * `AlertsService.create` is the app's only deduplication point. Everything
+	 * below documents what it does today, including the parts that are wrong.
+	 * Do not relax an assertion to make a behaviour change pass — change the
+	 * code and the assertion together. Prose + tables:
+	 * docs/alert-dedup-and-grouping.md.
+	 */
+	describe("#231 dedup semantics", () => {
+		const dedupDto: CreateAlertDto = {
+			source: "prometheus",
+			title: "HighLatency",
+			severity: Severity.high,
+		};
+
+		it("keys dedup on exactly source+title+severity+serviceId — description, labels and tags do not participate", () => {
+			const withOneBody = service.generateDedupKey({
+				...dedupDto,
+				description: "p99 latency 4200ms on node-1",
+				labels: { node: "node-1" },
+				tags: ["latency"],
+			});
+			const withAnotherBody = service.generateDedupKey({
+				...dedupDto,
+				description: "p99 latency 90ms on node-99",
+				labels: { node: "node-99" },
+				tags: ["unrelated"],
+			});
+
+			// Two alerts about different nodes carrying different numbers collapse
+			// into one row. The body of the alert is invisible to dedup.
+			expect(withAnotherBody).toBe(withOneBody);
+		});
+
+		it("splits into a SECOND alert row the moment a flapping alert changes severity", () => {
+			// A flap that escalates medium -> critical is not the same alert to
+			// this key, so it creates a new row with occurrenceCount 1 instead of
+			// incrementing the existing one.
+			const medium = service.generateDedupKey({
+				...dedupDto,
+				severity: Severity.medium,
+			});
+			const critical = service.generateDedupKey({
+				...dedupDto,
+				severity: Severity.critical,
+			});
+
+			expect(critical).not.toBe(medium);
+		});
+
+		it("has NO dedup time window — the lookup is keyed on dedupKey alone, with no recency bound", async () => {
+			// WRONG-BUT-PINNED (#398). `dedupKey` is a unique column and the
+			// lookup carries no `triggeredAt`/`lastOccurrence` predicate, so an
+			// alert that recurs a year later folds onto the original row rather
+			// than being treated as a fresh occurrence worth investigating.
+			mockPrismaService.alert.findUnique.mockResolvedValue(null);
+			mockPrismaService.alert.create.mockResolvedValue(AlertFactory.create());
+
+			await service.create(dedupDto);
+
+			expect(mockPrismaService.alert.findUnique).toHaveBeenCalledWith({
+				where: { dedupKey: service.generateDedupKey(dedupDto) },
+			});
+		});
+
+		it("does NOT revive a resolved alert it dedups onto: status and triggeredAt are left alone", async () => {
+			// WRONG-BUT-PINNED (#398). This is the app-side flap hole. A resolved
+			// alert that fires again only gets occurrenceCount++ and a new
+			// lastOccurrence — it stays `resolved`, so it is invisible to
+			// `findUncorrelated` (which filters status: "triggered") and no new
+			// incident is ever raised for the second episode.
+			const resolved = AlertFactory.create({
+				id: "alert-resolved",
+				status: "resolved",
+				occurrenceCount: 7,
+				incidentId: null,
+			});
+			mockPrismaService.alert.findUnique.mockResolvedValue(resolved);
+			mockPrismaService.alert.update.mockResolvedValue({
+				...resolved,
+				occurrenceCount: 8,
+			});
+
+			const result = await service.create(dedupDto);
+
+			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
+			// Exact shape, not objectContaining: adding a `status` reset here has
+			// to break this test, which is the whole point of pinning it.
+			expect(mockPrismaService.alert.update).toHaveBeenCalledWith({
+				where: { id: "alert-resolved" },
+				data: {
+					occurrenceCount: { increment: 1 },
+					lastOccurrence: expect.any(Date) as unknown as Date,
+					updatedAt: expect.any(Date) as unknown as Date,
+				},
+			});
+			expect(result.status).toBe("resolved");
+		});
+
+		it("does not refresh triggeredAt on a deduped occurrence, so correlation's 60-minute windows keep measuring the FIRST sighting", async () => {
+			// Downstream consequence of the update shape above: every correlation
+			// tier bounds on `triggeredAt`, which dedup never moves.
+			const existing = AlertFactory.create({ id: "alert-1" });
+			mockPrismaService.alert.findUnique.mockResolvedValue(existing);
+			mockPrismaService.alert.update.mockResolvedValue(existing);
+
+			await service.create(dedupDto);
+
+			const updateArg = mockPrismaService.alert.update.mock
+				.calls[0][0] as unknown as { data: Record<string, unknown> };
+			expect(updateArg.data).not.toHaveProperty("triggeredAt");
+			expect(updateArg.data).not.toHaveProperty("status");
+		});
+	});
+
 	describe("findById", () => {
 		it("should return alert when found", async () => {
 			const alertId = "alert-123";

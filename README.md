@@ -206,6 +206,8 @@ To work on the CLI specifically, see
 - Docs: [docs.prismalens.io](https://docs.prismalens.io)
 - [Alert correlation & suppression](docs/alert-correlation.md) — the waterfall,
   rule actions, and how to un-suppress an alert
+- [Alert deduplication, grouping & flap behaviour](docs/alert-dedup-and-grouping.md) —
+  what counts as the same alert on each path, and where the CLI and the app disagree
 - [Capability catalog](docs/capabilities.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [VERSIONING.md](VERSIONING.md)

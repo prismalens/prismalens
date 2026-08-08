@@ -164,6 +164,12 @@ configured `listen.token`).
 
 Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
 
+Repeat deliveries of an alert that is already in flight are suppressed from dispatching a
+second investigation, but are still recorded against the running one; there is no flap
+cooldown, and all of this state is in memory and lost on restart. The exact rules — the
+grouping key, the dedupe key, and what happens at each boundary — are in
+[Alert deduplication, grouping & flap behaviour](../../docs/alert-dedup-and-grouping.md).
+
 ### `investigate`
 
 Run a manual, ad-hoc, or one-off root-cause investigation directly from the CLI. Seeds an investigation from a firing alert, rents a Tier-2 harness, streams the
