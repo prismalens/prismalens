@@ -46,6 +46,17 @@ permissions:
   contents: read
   pull-requests: read
   statuses: write
+  # Branch D fetches the workflow run a Claude marker cites, because the marker's
+  # `run:<id>` is a claim in comment text and what makes it evidence is the run
+  # itself having completed successfully against this head. Read-only; it grants
+  # no ability to start, cancel, or rerun anything.
+  #
+  # It is granted HERE rather than at flip time on purpose. Without it the fetch
+  # fails, branch D falls through, and the gate behaves exactly as it did before
+  # — safe, but silent: flipping CLAUDE_REVIEW_GATE to `authoritative` would
+  # appear to arm the branch while it never fires. A gate whose default is
+  # "quietly does nothing" is the failure class this script exists to prevent.
+  actions: read
 
 concurrency:
   # Serialise per PR so two events cannot race to publish conflicting statuses.
@@ -79,6 +90,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          # Branch D's arming switch. It comes through `vars` rather than the
+          # Actions variables REST endpoint because GITHUB_TOKEN cannot be
+          # granted read access to variables — `permissions:` has no key for it,
+          # so the API call would 403 forever and the branch would stay silently
+          # dead. `vars` is resolved by the runner and needs no permission.
+          #
+          # Unset resolves to the empty string, which the script treats as
+          # inert. Only the exact value `authoritative` arms branch D.
+          CLAUDE_REVIEW_GATE: ${{ vars.CLAUDE_REVIEW_GATE }}
           EVENT: ${{ github.event_name }}
           PR_FROM_EVENT: ${{ github.event.pull_request.number || github.event.issue.number }}
           PR_FROM_INPUT: ${{ inputs.pr }}
