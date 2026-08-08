@@ -18,7 +18,7 @@ import { createSessionManager, type GroupRecord } from "./session.js";
 /** Read a group's row + its alerts back out of the raw db (not on the interface). */
 async function readGroup(baseDir: string, runId: string) {
 	const { DatabaseSync } = await import("node:sqlite");
-	const db = new DatabaseSync(join(baseDir, "prismalens.db"));
+	const db = new DatabaseSync(join(baseDir, "prismalens-cli.db"));
 	try {
 		const group = db.prepare("SELECT * FROM groups WHERE id = ?").get(runId) as
 			| { group_key: string | null; formed_by: string }
@@ -169,7 +169,7 @@ describe("SqliteSessionManager", () => {
 
 		// Verify the `groups` row directly — not on the SessionManager interface.
 		const { DatabaseSync } = await import("node:sqlite");
-		const db = new DatabaseSync(join(baseDir, "prismalens.db"));
+		const db = new DatabaseSync(join(baseDir, "prismalens-cli.db"));
 		try {
 			const row = db.prepare("SELECT * FROM groups WHERE id = ?").get(runId) as
 				| { formed_by: string }
@@ -332,7 +332,7 @@ describe("SqliteSessionManager", () => {
 
 		const oldBaseDir = join(baseDir, "old-db-test");
 		mkdirSync(oldBaseDir, { recursive: true });
-		const oldDbPath = join(oldBaseDir, "prismalens.db");
+		const oldDbPath = join(oldBaseDir, "prismalens-cli.db");
 		const rawDb = new DatabaseSync(oldDbPath);
 
 		const oldRunId = "old-run-2025-08";

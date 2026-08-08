@@ -6,7 +6,8 @@
  * retired pl orchestrator's session-manager.
  *
  * Layout under `<workspace.dir>` (default ~/.prismalens):
- *   prismalens.db                      - sqlite store for all run metadata
+ *   prismalens-cli.db                  - sqlite store for all run metadata
+ *                                        (separate from the app's prismalens.db — #355)
  *   runs/<runId>/                      - per-run workspace dir
  */
 import { homedir } from "node:os";

@@ -258,6 +258,8 @@ Durable record for every run:
 
 ```
 ~/.prismalens/
+  prismalens-cli.db              # CLI session store (runs, events, reports)
+  prismalens.db                  # the app database (`pl up`) — the CLI never writes here
   sessions.json                  # run index (runId -> SessionRecord)
   runs/<runId>/session.json      # per-run metadata mirror
   runs/<runId>/events.jsonl      # canonical event stream (one JSON per line)
