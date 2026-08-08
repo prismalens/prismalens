@@ -19,9 +19,10 @@ Alongside the DCO, a one-time **Contributor License Agreement** ([CLA.md](CLA.md
 will apply. It exists purely for IP hygiene — it keeps the Project's copyright in
 one clean place, as is standard for open-core projects (Grafana, Sentry) — and it
 does not change the license: your contributions remain licensed to everyone under
-Apache-2.0, inbound = outbound. It is **not in force yet**; when contributions
-open, a bot will ask each new contributor to sign once on their first pull
-request by posting a short comment. Nothing is required of you today.
+Apache-2.0, inbound = outbound. It is **not in force yet**: no CLA check runs on
+pull requests while outside code contributions remain closed, and the signing
+mechanism will be introduced at the same time they open, not before. Nothing is
+required of you until then.
 
 ## Ground rules
 

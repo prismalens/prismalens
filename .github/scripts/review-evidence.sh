@@ -64,11 +64,11 @@ REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot]}"
 # this branch .github/workflows/dependabot-auto-merge.yml would be permanently
 # blocked by a gate that can never go green.
 #
-# PRISMALENS: deliberately NOT widened to the CLA allowlist
-# (.github/workflows/cla.yml lists `renovate[bot]` and `claude` too). Renovate is
-# not installed on this repo, and `claude` is an agent account that writes real
-# code — exactly what this gate exists to hold. An exemption that is not needed
-# is just a hole.
+# PRISMALENS: deliberately NOT widened. The now-deleted .github/workflows/cla.yml
+# carried a broader allowlist (it also listed `renovate[bot]` and `claude`), and
+# that list is not a model for this one. Renovate is not installed on this repo,
+# and `claude` is an agent account that writes real code — exactly what this gate
+# exists to hold. An exemption that is not needed is just a hole.
 BOT_AUTHORS="${BOT_AUTHORS:-dependabot[bot] github-actions[bot]}"
 
 # Machine-generated PRs that are NOT bot-authored.
