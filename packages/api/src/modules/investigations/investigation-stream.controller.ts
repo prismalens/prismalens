@@ -3,44 +3,86 @@
 
 import {
 	Controller,
-	type MessageEvent,
+	Get,
+	Logger,
 	Param,
 	ParseUUIDPipe,
-	Sse,
+	Res,
 	UseGuards,
 } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
-import { Observable } from "rxjs";
+import type { Response } from "express";
+import { BoundedSseWriter } from "./sse-writer.js";
+// biome-ignore lint/style/useImportType: Nest's DI needs the runtime class reference.
 import { StreamRelayService } from "./stream-relay.service.js";
 
 /**
  * SSE endpoint for real-time investigation stream events.
  *
- * Forwards the canonical investigation event stream (CanonicalEvent) as JSON via
- * SSE, then a final { type: "done" } marker. Raw NestJS controller (not oRPC,
- * since SSE doesn't fit RPC).
+ * Forwards the canonical investigation event stream (CanonicalEvent) as JSON via SSE,
+ * then a final `{ type: "done" }` marker.
+ *
+ * Written against the raw response rather than Nest's `@Sse()` on purpose: `@Sse()` wraps
+ * an Observable and gives the handler no access to `res.write`'s return value, so there
+ * is no way to notice a client that stopped draining. Every frame goes through
+ * {@link BoundedSseWriter}, which does. The wire format is byte-identical to what
+ * `@Sse()` produced for a `{ data }` message (`data: <json>\n\n`), so clients are
+ * unaffected.
  */
-@Controller("api/investigations")
+// `api` is already the global prefix (main.ts `setGlobalPrefix`), so this must NOT
+// repeat it. It did, which mapped the route at `/api/api/investigations/:id/stream`
+// while the only client calls `/api/investigations/:id/stream` — the live stream has
+// been a 404 since the prefix was introduced. Verified against a running server.
+@Controller("investigations")
 @UseGuards(ThrottlerGuard)
 export class InvestigationStreamController {
+	private readonly logger = new Logger(InvestigationStreamController.name);
+
 	constructor(private readonly streamRelay: StreamRelayService) {}
 
-	@Sse(":id/stream")
-	stream(@Param("id", ParseUUIDPipe) id: string): Observable<MessageEvent> {
-		return new Observable((subscriber) => {
-			const { unsubscribe } = this.streamRelay.subscribe(
-				id,
-				(event) => {
-					subscriber.next({ data: JSON.stringify(event) });
-				},
-				() => {
-					// Final marker so the client knows the stream ended cleanly.
-					subscriber.next({ data: JSON.stringify({ type: "done" }) });
-					setTimeout(() => subscriber.complete(), 100);
-				},
-			);
+	@Get(":id/stream")
+	stream(@Param("id", ParseUUIDPipe) id: string, @Res() res: Response): void {
+		res.writeHead(200, {
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache, no-transform",
+			Connection: "keep-alive",
+			// Tell any intermediary not to buffer the stream into uselessness.
+			"X-Accel-Buffering": "no",
+		});
+		res.flushHeaders?.();
 
-			return () => unsubscribe();
+		const writer = new BoundedSseWriter(res, {
+			onLag: () =>
+				this.logger.warn(
+					`Dropped a lagging SSE subscriber for investigation ${id} — it must resync from the durable event record`,
+				),
+		});
+
+		// `subscribe` REPLAYS buffered events synchronously, so the handler can run
+		// before `subscribe` returns. A `const { unsubscribe }` destructure would be in
+		// its temporal dead zone at that point and throw on the first replayed event
+		// that closed the writer — hence the mutable handle, initialised first.
+		let unsubscribe: () => void = () => {};
+		const subscription = this.streamRelay.subscribe(
+			id,
+			(event) => {
+				writer.send(JSON.stringify(event));
+				// A dropped subscriber has no reason to keep a relay subscription open.
+				if (writer.isClosed) unsubscribe();
+			},
+			() => {
+				// Final marker so the client knows the stream ended cleanly.
+				writer.send(JSON.stringify({ type: "done" }));
+				setTimeout(() => writer.close(), 100);
+			},
+		);
+		unsubscribe = subscription.unsubscribe;
+		// A writer closed during the synchronous replay never got to call the handle.
+		if (writer.isClosed) unsubscribe();
+
+		res.on("close", () => {
+			unsubscribe();
+			writer.close();
 		});
 	}
 }

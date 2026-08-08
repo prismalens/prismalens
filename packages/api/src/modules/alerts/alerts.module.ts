@@ -9,7 +9,7 @@ import { AlertsService } from "./alerts.service.js";
 @Module({
 	imports: [
 		forwardRef(() => CorrelationModule),
-		// QueueModule is @Global, no need to import - QueueService is available globally
+		// DispatchModule is @Global, no need to import - DispatchService is available globally
 	],
 	controllers: [AlertsController],
 	providers: [AlertsService],

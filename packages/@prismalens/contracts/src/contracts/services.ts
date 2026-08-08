@@ -8,6 +8,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AddDependencySchema,
+	CheckoutPathValidationSchema,
 	CreateServiceSchema,
 	IdParamSchema,
 	ServiceDependencySchema,
@@ -18,6 +19,7 @@ import {
 	TopologyEdgeSchema,
 	UpdateDependencySchema,
 	UpdateServiceSchema,
+	ValidateCheckoutPathSchema,
 } from "../schemas/index.js";
 
 export const servicesContract = {
@@ -90,6 +92,26 @@ export const servicesContract = {
 		})
 		.input(IdParamSchema)
 		.output(z.void()),
+
+	/**
+	 * Check a candidate local checkout path WITHOUT storing it (#331).
+	 *
+	 * Lets the configuration surface tell the operator "that directory is not a
+	 * git checkout" while they are typing, instead of three minutes into an
+	 * investigation that read the wrong tree. `create`/`update` run the same
+	 * check server-side, so this is a convenience, never the enforcement point.
+	 *
+	 * POST /services/validate-checkout-path
+	 */
+	validateCheckoutPath: oc
+		.route({
+			method: "POST",
+			path: "/services/validate-checkout-path",
+			summary: "Validate a local checkout path for a service",
+			tags: ["services"],
+		})
+		.input(ValidateCheckoutPathSchema)
+		.output(CheckoutPathValidationSchema),
 
 	/**
 	 * Add a dependency to a service

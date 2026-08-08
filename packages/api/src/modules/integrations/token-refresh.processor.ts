@@ -2,13 +2,24 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Proactive token refresh processor.
- * BullMQ repeatable job that refreshes tokens expiring within 10 minutes.
- * Generic — handles all auth modes (OAuth2, GitHub App, etc.).
+ * Proactive token refresh.
+ *
+ * Refreshes tokens expiring within 10 minutes. Generic — handles all auth modes (OAuth2,
+ * GitHub App, etc.).
+ *
+ * This used to be a BullMQ repeatable job, which meant a broker had to be running before
+ * OAuth connections could stay alive. It is a fixed-interval sweep over a table in the
+ * application's own database; it never needed one. Scheduling it in-process is not a
+ * downgrade — it removes an external dependency from a path that has no distributed
+ * requirement. Overlap is prevented by a re-entrancy guard rather than a queue lock, and
+ * a missed cycle is harmless: the next one picks up whatever is still expiring.
  */
-import { InjectQueue, Processor, WorkerHost } from "@nestjs/bullmq";
-import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
-import type { Job, Queue } from "bullmq";
+import {
+	Injectable,
+	Logger,
+	type OnModuleDestroy,
+	type OnModuleInit,
+} from "@nestjs/common";
 // Constructor-injected — Nest's reflection-based DI needs the runtime class
 // reference from a value import to populate emitDecoratorMetadata. `import
 // type` here breaks boot with UnknownDependenciesException.
@@ -17,8 +28,8 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 // biome-ignore lint/style/useImportType: same as PrismaService above
 import { IntegrationsService } from "./integrations.service.js";
 
-export const TOKEN_REFRESH_QUEUE = "token-refresh";
-const JOB_NAME = "refresh-expiring-tokens";
+/** How often the refresh sweep runs */
+export const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 /** Refresh tokens expiring within this window */
 const EXPIRY_BUFFER_MS = 10 * 60 * 1000;
@@ -30,30 +41,54 @@ const MAX_CONSECUTIVE_ERRORS = 3;
 const BATCH_SIZE = 100;
 
 @Injectable()
-@Processor(TOKEN_REFRESH_QUEUE)
-export class TokenRefreshProcessor extends WorkerHost implements OnModuleInit {
+export class TokenRefreshProcessor implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(TokenRefreshProcessor.name);
+	private timer: NodeJS.Timeout | null = null;
+	private running = false;
 
 	constructor(
-		@InjectQueue(TOKEN_REFRESH_QUEUE) private readonly queue: Queue,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
-	) {
-		super();
+	) {}
+
+	onModuleInit() {
+		this.timer = setInterval(() => {
+			void this.runSweep();
+		}, REFRESH_INTERVAL_MS);
+		// A background sweep must never be the reason the process stays alive.
+		this.timer.unref?.();
+		this.logger.log("Token refresh sweep registered (every 15 min)");
 	}
 
-	async onModuleInit() {
-		await this.queue.upsertJobScheduler(
-			"token-refresh-scheduler",
-			{ every: 15 * 60 * 1000 },
-			{ name: JOB_NAME },
-		);
-		this.logger.log("Token refresh cron registered (every 15 min)");
+	onModuleDestroy() {
+		if (this.timer) clearInterval(this.timer);
+		this.timer = null;
 	}
 
-	async process(job: Job): Promise<void> {
-		if (job.name !== JOB_NAME) return;
+	/**
+	 * One refresh cycle. Re-entrancy guarded: a sweep that outlives its interval must not
+	 * have a second copy of itself racing it over the same connections.
+	 */
+	async runSweep(): Promise<void> {
+		if (this.running) {
+			this.logger.debug("Token refresh sweep already in progress — skipping");
+			return;
+		}
+		this.running = true;
+		try {
+			await this.process();
+		} catch (error) {
+			this.logger.error(
+				`Token refresh sweep failed: ${
+					error instanceof Error ? error.message : "Unknown"
+				}`,
+			);
+		} finally {
+			this.running = false;
+		}
+	}
 
+	async process(): Promise<void> {
 		this.logger.debug("Starting proactive token refresh scan");
 
 		const cutoff = new Date(Date.now() + EXPIRY_BUFFER_MS);

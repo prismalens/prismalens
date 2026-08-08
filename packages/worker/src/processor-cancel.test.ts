@@ -2,28 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Hermetic test for the worker's CANCEL path (CANCEL slice, ADR-0018): a Redis message
- * on `investigation:cancel:<id>` must flip the run's AbortSignal, and the cancelled
- * outcome must persist status "cancelled" + a timeline entry and RETURN a result (never
- * throw — a throw would let BullMQ retry a user-cancelled run). Every seam is mocked
- * (ioredis / engine / orpc api / llm-config fetch), per the processor.test.ts pattern —
- * no network, no LLM, no real queue.
+ * Hermetic test for the run's CANCEL path (CANCEL slice, ADR-0018): the host's cancel
+ * arrives as an abort on the injected signal, and the cancelled outcome must persist
+ * status "cancelled" + a timeline entry and RETURN a result (never throw — a throw would
+ * let the host rerun a user-cancelled investigation). Every seam is mocked (engine /
+ * orpc api / llm-config fetch), per the processor.test.ts pattern — no network, no LLM,
+ * no dispatch loop.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const CANCELLED_MESSAGE = "investigation cancelled by request";
 
 const mocks = vi.hoisted(() => {
-	interface MockRedis {
-		publish: ReturnType<typeof vi.fn>;
-		quit: ReturnType<typeof vi.fn>;
-		removeAllListeners: ReturnType<typeof vi.fn>;
-		on: ReturnType<typeof vi.fn>;
-		subscribe: ReturnType<typeof vi.fn>;
-		__channels: Set<string>;
-		__emit: (channel: string, message: string) => void;
-	}
-	const redisInstances: MockRedis[] = [];
 	const api = {
 		investigations: {
 			updateStatus: vi.fn(async () => ({})),
@@ -33,33 +23,8 @@ const mocks = vi.hoisted(() => {
 		incidents: { get: vi.fn(async () => ({ id: "inc-1", title: "Boom" })) },
 	};
 	const conductRun = vi.fn();
-	return { redisInstances, api, conductRun };
+	return { api, conductRun };
 });
-
-vi.mock("ioredis", () => ({
-	Redis: vi.fn(function MockRedis() {
-		const handlers: Array<(ch: string, msg: string) => void> = [];
-		const channels = new Set<string>();
-		const inst = {
-			publish: vi.fn(async () => 0),
-			quit: vi.fn(async () => "OK"),
-			removeAllListeners: vi.fn(),
-			on: vi.fn((event: string, cb: (ch: string, msg: string) => void) => {
-				if (event === "message") handlers.push(cb);
-				return inst;
-			}),
-			subscribe: vi.fn(async (ch: string) => {
-				channels.add(ch);
-			}),
-			__channels: channels,
-			__emit: (ch: string, msg: string) => {
-				if (channels.has(ch)) for (const h of handlers) h(ch, msg);
-			},
-		};
-		mocks.redisInstances.push(inst);
-		return inst;
-	}),
-}));
 
 vi.mock("./orpc-client.js", () => ({ api: mocks.api }));
 
@@ -118,14 +83,31 @@ vi.stubGlobal(
 
 const { default: processInvestigationJob } = await import("./processor.js");
 
-function makeJob(investigationId: string, incidentId: string) {
+function makeJob(investigationId: string) {
 	return {
-		id: `investigation-${investigationId}`,
+		id: `job-${investigationId}`,
 		name: "investigate",
-		data: { investigationId, incidentId, alerts: [], priority: "normal" },
+		attemptsMade: 0,
 		updateProgress: vi.fn(async () => {}),
-		// biome-ignore lint/suspicious/noExplicitAny: minimal SandboxedJob stand-in.
-	} as any;
+	};
+}
+
+function makeData(investigationId: string, incidentId: string) {
+	return {
+		investigationId,
+		incidentId,
+		alerts: [],
+		priority: "normal" as const,
+	};
+}
+
+/** The host side of the run's IPC channel, reduced to what the processor consumes. */
+function makeIo(signal: AbortSignal) {
+	return {
+		emit: vi.fn(),
+		streamDone: vi.fn(),
+		signal,
+	};
 }
 
 describe("processor CANCEL path (ADR-0018)", () => {
@@ -138,11 +120,10 @@ describe("processor CANCEL path (ADR-0018)", () => {
 			status: "running",
 		});
 		mocks.api.timeline.create.mockClear();
-		mocks.redisInstances.length = 0;
 		mocks.conductRun.mockReset();
 	});
 
-	it("a cancel message flips the signal → persists status 'cancelled' + timeline, returns (no throw)", async () => {
+	it("the host's cancel flips the signal → persists status 'cancelled' + timeline, returns (no throw)", async () => {
 		// conductRun blocks until the run's signal aborts, then resolves the cancelled
 		// outcome — exactly the engine contract the worker relies on.
 		let sawSignal: AbortSignal | undefined;
@@ -164,29 +145,26 @@ describe("processor CANCEL path (ADR-0018)", () => {
 			},
 		);
 
-		const job = makeJob("inv-1", "inc-1");
-		const cancelChannel = "investigation:cancel:inv-1";
-		const done = processInvestigationJob(job);
+		const controller = new AbortController();
+		const io = makeIo(controller.signal);
+		const done = processInvestigationJob(
+			makeJob("inv-1"),
+			makeData("inv-1", "inc-1"),
+			io,
+		);
 
-		// Wait until the run is in-flight (conductRun awaiting) and the cancel subscriber
-		// is up, then deliver the cancel message on the dedicated channel.
+		// Wait until the run is in-flight (conductRun awaiting), then deliver the cancel
+		// exactly as the host's IPC handler would.
 		await vi.waitFor(() => {
 			expect(mocks.conductRun).toHaveBeenCalled();
-			const sub = mocks.redisInstances.find((i) =>
-				i.__channels.has(cancelChannel),
-			);
-			expect(sub).toBeDefined();
 		});
-		const sub = mocks.redisInstances.find((i) =>
-			i.__channels.has(cancelChannel),
-		);
-		sub?.__emit(cancelChannel, "cancel");
+		controller.abort();
 
 		const result = await done;
 
 		// The signal the engine received actually aborted.
 		expect(sawSignal?.aborted).toBe(true);
-		// Terminal "cancelled" status write is owned by the worker (conductRun left the
+		// Terminal "cancelled" status write is owned by the run (conductRun left the
 		// store untouched).
 		expect(mocks.api.investigations.updateStatus).toHaveBeenCalledWith(
 			expect.objectContaining({ id: "inv-1", status: "cancelled" }),
@@ -194,12 +172,13 @@ describe("processor CANCEL path (ADR-0018)", () => {
 		expect(mocks.api.timeline.create).toHaveBeenCalledWith(
 			expect.objectContaining({ title: "Investigation cancelled" }),
 		);
-		// Returned (not thrown), distinguishably cancelled — BullMQ marks it done, no retry.
+		// Returned (not thrown), distinguishably cancelled — the host settles it, no rerun.
+		expect(io.streamDone).toHaveBeenCalled();
 		expect(result.success).toBe(false);
 		expect(result.errorType).toBe("cancelled");
 	});
 
-	it("a persistCancelled failure is swallowed — the job still returns cancelled (no BullMQ retry)", async () => {
+	it("a persistCancelled failure is swallowed — the job still returns cancelled (no rerun)", async () => {
 		mocks.conductRun.mockResolvedValue({
 			runId: "inv-1",
 			report: null,
@@ -212,7 +191,11 @@ describe("processor CANCEL path (ADR-0018)", () => {
 			new Error("502 upstream"),
 		);
 
-		const result = await processInvestigationJob(makeJob("inv-1", "inc-1"));
+		const result = await processInvestigationJob(
+			makeJob("inv-1"),
+			makeData("inv-1", "inc-1"),
+			makeIo(new AbortController().signal),
+		);
 
 		expect(result.success).toBe(false);
 		expect(result.errorType).toBe("cancelled");
@@ -224,7 +207,11 @@ describe("processor CANCEL path (ADR-0018)", () => {
 			status: "cancelled",
 		});
 
-		const result = await processInvestigationJob(makeJob("inv-1", "inc-1"));
+		const result = await processInvestigationJob(
+			makeJob("inv-1"),
+			makeData("inv-1", "inc-1"),
+			makeIo(new AbortController().signal),
+		);
 
 		expect(mocks.conductRun).not.toHaveBeenCalled();
 		expect(result.success).toBe(false);

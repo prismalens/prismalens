@@ -13,7 +13,7 @@ import { IncidentsService } from "./incidents.service.js";
 		forwardRef(() => InvestigationsModule),
 		forwardRef(() => TimelineModule),
 		IntegrationsModule,
-		// QueueModule is @Global, no need to import - QueueService is available globally
+		// DispatchModule is @Global, no need to import - DispatchService is available globally
 	],
 	controllers: [IncidentsController],
 	providers: [IncidentsService],

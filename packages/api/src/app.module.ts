@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+	type DynamicModule,
 	type MiddlewareConsumer,
 	Module,
 	type NestModule,
@@ -9,6 +13,7 @@ import {
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD, REQUEST } from "@nestjs/core";
 import { EventEmitterModule } from "@nestjs/event-emitter";
+import { ServeStaticModule } from "@nestjs/serve-static";
 import { ThrottlerModule } from "@nestjs/throttler";
 // oRPC imports
 import { ORPCError, ORPCModule, onError } from "@orpc/nest";
@@ -21,6 +26,35 @@ import { AppController } from "./app.controller.js";
 import { WebhookCorsMiddleware } from "./middlewares/webhook-cors.middleware.js";
 import { WebhookRawBodyMiddleware } from "./middlewares/webhook-raw-body.middleware.js";
 import { WEBHOOK_ROUTE_WILDCARD } from "./shared/constants/routes.js";
+
+/**
+ * Where the built SPA lives. `pl up` sets PRISMALENS_STATIC_DIR explicitly; the
+ * fallback is the packaged layout, `<@prismalens/api>/public`, reached from the
+ * compiled `dist/src/app.module.js`.
+ */
+function staticRoot(): string {
+	if (process.env.PRISMALENS_STATIC_DIR)
+		return process.env.PRISMALENS_STATIC_DIR;
+	return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "public");
+}
+
+/**
+ * Everything is behind the `api` global prefix except `health` and `/`, so the
+ * exclusion list below covers the docs (`/api/docs`) and the webhook receivers
+ * (`/api/webhooks/*`) by construction. They are named anyway: a future route
+ * that escapes the prefix must not silently start returning index.html, and
+ * `scripts/packed-smoke.sh` asserts each one.
+ */
+function staticModule(): DynamicModule[] {
+	const rootPath = staticRoot();
+	if (!existsSync(rootPath)) return [];
+	return [
+		ServeStaticModule.forRoot({
+			rootPath,
+			exclude: ["/api", "/api/*path", "/orpc/*path", "/health"],
+		}),
+	];
+}
 
 // Extend oRPC global context for type safety
 declare module "@orpc/nest" {
@@ -39,9 +73,9 @@ import { UsersModule } from "./core/users/users.module.js";
 
 // Infrastructure modules
 import { DevSeedModule } from "./infrastructure/dev-seed/dev-seed.module.js";
+import { DispatchModule } from "./infrastructure/dispatch/dispatch.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
 import { InternalModule } from "./infrastructure/internal/internal.module.js";
-import { QueueModule } from "./infrastructure/queue/queue.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
@@ -131,12 +165,16 @@ const orpcLogger = new Logger({ context: "oRPC" });
 
 		// Infrastructure
 		HealthModule,
-		QueueModule.forRoot(),
+		DispatchModule,
 		InternalModule,
 		DevSeedModule,
 
-		// Note: Frontend is now served by TanStack Start via Caddy reverse proxy
-		// ServeStaticModule removed - Caddy routes /api/* to this service, /* to frontend
+		// Single-origin SPA serving (issue #237). `pl up` runs ONE process on ONE
+		// port, so the API also serves the built frontend — there is no Caddy and
+		// no TanStack Start server in that shape. Registered only when the static
+		// build is actually present, so the repo dev stack (frontend on :3000 with
+		// its own Vite server) is unaffected.
+		...staticModule(),
 
 		// Feature modules (incident-centric architecture)
 		EventsModule, // Raw event ingestion

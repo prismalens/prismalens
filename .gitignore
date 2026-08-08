@@ -37,6 +37,8 @@ pnpm-debug.log*
 coverage/
 .coverage
 htmlcov/
+# scratch SQLite databases written by the migration-runner tests
+.tmp-migrator-tests/
 
 # Turbo
 .turbo/
@@ -85,3 +87,8 @@ packages/@prismalens/engine/eval/results/
 # Auth & Logging
 *.pem
 application.log
+
+# Packaging artifacts (scripts/pack-cli.mjs)
+packages/cli/dist-pack/
+packages/cli/.pack-staging/
+*.tgz

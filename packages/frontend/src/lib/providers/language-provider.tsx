@@ -2,15 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Language Provider for TanStack Start
+ * Language Provider.
  *
- * Server-side locale management using cookies for SSR.
+ * Client-side only. Paraglide's runtime owns the locale cookie, so the server
+ * function that used to double-write it is gone — see `@/lib/locale` for why.
  * Integrates with Paraglide JS for type-safe translations.
  */
 
-import { useRouter } from "@tanstack/react-router";
-import { createContext, type ReactNode, use } from "react";
-import { setLocaleServerFn } from "@/lib/locale";
+import { createContext, type ReactNode, use, useEffect, useState } from "react";
+import { getLocale } from "@/lib/locale";
 import {
 	type Locale,
 	locales,
@@ -29,17 +29,21 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(
 
 interface LanguageProviderProps {
 	children: ReactNode;
-	locale: Locale;
 }
 
-export function LanguageProvider({ children, locale }: LanguageProviderProps) {
-	const router = useRouter();
+export function LanguageProvider({ children }: LanguageProviderProps) {
+	const [locale, setLocaleState] = useState<Locale>(() => getLocale());
+
+	// Mirrors theme-provider: the prerendered shell carries a fixed `lang`, the
+	// pre-paint script corrects it, and this keeps the two in step afterwards.
+	useEffect(() => {
+		document.documentElement.lang = locale;
+	}, [locale]);
 
 	function setLocale(newLocale: Locale) {
-		// Set locale in Paraglide runtime (updates cookie on client)
+		// Paraglide writes the cookie and re-points its message runtime.
 		setParaglideLocale(newLocale, { reload: false });
-		// Also update server cookie and invalidate router
-		setLocaleServerFn({ data: newLocale }).then(() => router.invalidate());
+		setLocaleState(newLocale);
 	}
 
 	return (

@@ -9,7 +9,6 @@ import {
 	AlertTriangle,
 	ArrowRight,
 	Lightbulb,
-	MapPin,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiStatusCheck } from "@/components/ApiStatusCheck";
@@ -401,19 +400,6 @@ function CommandCenter() {
 								<PriorityBadge priority={rec.priority} />
 							</div>
 						))}
-					</NeedsAttentionCard>
-
-					{/* Alert Mapping Issues (placeholder - would need API support) */}
-					<NeedsAttentionCard
-						title="Alert Mapping Issues"
-						count={0}
-						icon={<MapPin className="h-5 w-5 text-muted-foreground" />}
-						loading={false}
-						emptyText="No mapping issues detected"
-						viewAllHref="/alerts?tab=mapping-issues"
-						viewAllText="Configure Mappings"
-					>
-						{/* Would show mapping issues here */}
 					</NeedsAttentionCard>
 				</div>
 			</div>

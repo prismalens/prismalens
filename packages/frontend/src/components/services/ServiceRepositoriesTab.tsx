@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUnlinkRepository } from "@/lib/api/hooks";
 import { LinkRepositoryDialog } from "./LinkRepositoryDialog";
+import { ServiceLocalCheckoutCard } from "./ServiceLocalCheckoutCard";
 
 interface ServiceRepositoriesTabProps {
 	serviceId: string;
@@ -25,7 +26,24 @@ export function ServiceRepositoriesTab({
 	const linkedRepoIds = repos.map((sr) => sr.repositoryId);
 
 	return (
-		<div className="space-y-4">
+		<div className="space-y-6">
+			{/*
+			 * The local checkout leads this tab (#331): the linked repositories below
+			 * are REMOTE (org/repo on a forge) and nothing reads them at investigation
+			 * time — the checkout path is the one that decides which code a run sees.
+			 */}
+			{/*
+			 * Keyed by service: the card seeds its input from the stored path on
+			 * mount, so without a remount, switching services would show the previous
+			 * service's checkout in this one's field. The key is stable within a
+			 * service, so a background refetch never clobbers what the user typed.
+			 */}
+			<ServiceLocalCheckoutCard
+				key={serviceId}
+				serviceId={serviceId}
+				localCheckoutPath={service.localCheckoutPath}
+			/>
+
 			<div className="flex items-center justify-between">
 				<h3 className="text-sm font-medium">
 					Linked Repositories ({repos.length})

@@ -15,6 +15,127 @@ the API asserts the database contains at most one organization and **refuses to 
 finds more. If startup aborts with the single-tenant error, reduce the database to a single
 organization (remove the extras and their memberships) and restart.
 
+## Network exposure and the Host/Origin allowlist
+
+The API serves the SPA and the API from one origin (ADR-0029), so its network posture is
+the whole app's network posture. Three things control it, and they compose in this order.
+
+**1. What it binds to — `PRISMALENS_HOST`, default `127.0.0.1`.** Loopback: reachable only
+from the machine it runs on. A non-loopback bind (`0.0.0.0`, a LAN address) is a supported
+opt-in and puts the app on the network; the server logs a warning at startup when you take
+it, because a default-open bind is how comparable local-first tools ended up
+internet-exposed at scale.
+
+**2. What hostnames it answers to — `PRISMALENS_ALLOWED_HOSTS`, default: loopback only.**
+Every request's `Host` header — and its `Origin` header, when it has one — must name an
+allowlisted hostname, or it is rejected with `403`. This is the DNS-rebinding defence: a
+page on `attacker.example` whose DNS has been rebound to `127.0.0.1` is *same-origin* to
+the browser, so no CORS check runs on it, but it still sends `Host: attacker.example`.
+Without this check that page could drive the `@Public()` routes — login, session, and
+during the pre-setup window, owner creation.
+
+The effective allowlist is:
+
+| Source | Always present? |
+| --- | --- |
+| `localhost` | yes — the local operator is the `pl up` user |
+| any **IP literal** (`192.168.1.5`, `::1`) | yes — DNS rebinding cannot make a browser send a raw IP as `Host`, so allowing them is free of rebinding risk and makes a LAN bind work unconfigured |
+| `PRISMALENS_ALLOWED_HOSTS` entries (comma-separated) | when set |
+| the hostname of `PRISMALENS_PUBLIC_URL` | when set |
+| `PRISMALENS_DOMAIN` | when set |
+| the hostnames of `PRISMALENS_CORS_ORIGIN` | when set — an origin you granted CORS to must survive this check, or the grant would be `403`'d before CORS ever ran |
+
+Matching is on **hostname only** — the port is ignored, because DNS controls names and not
+ports, and ignoring it keeps `--port` overrides and the dev Vite proxy working with no
+configuration. Subdomains are *not* implied: `app.example.com` does not admit
+`evil.app.example.com`. Setting `PRISMALENS_ALLOWED_HOSTS=*` disables the check entirely
+and logs a warning — reach for a hostname list first.
+
+The opaque `Origin: null` — what a sandboxed iframe or a `file://` page sends — is rejected
+like any other non-allowlisted origin. Nothing legitimate in a single-origin app produces it.
+
+Webhook routes are exempt from the **`Origin`** half of the check while
+`PRISMALENS_CORS_WEBHOOK_OPEN` is on, since they are deliberately callable from
+browser-based testing tools and authenticate with signatures rather than cookies. Their
+`Host` is still checked.
+
+**3. Cross-origin access — `PRISMALENS_CORS_ORIGIN`, default: off.** Under single-origin
+serving the browser never makes a cross-origin call to these routes (in dev the Vite server
+proxies `/api` rather than fetching it), so no CORS grant is issued unless you ask for one.
+`PRISMALENS_CORS_ORIGIN="*"` is refused at boot — a wildcard with credentials is a
+vulnerability, not a configuration.
+
+### Worked example
+
+Verified against a locally booted API (`PRISMALENS_PORT=4099`, nothing else configured):
+
+```console
+$ # 1. The unconfigured default: loopback answers, with the hardening headers.
+$ curl -sS -i -H 'Host: localhost:4099' http://127.0.0.1:4099/health
+HTTP/1.1 200 OK
+Content-Security-Policy: default-src 'self';base-uri 'self';font-src 'self' data:;
+  form-action 'self';frame-ancestors 'none';img-src 'self' data: blob:;object-src 'none';
+  script-src 'self' 'unsafe-inline';script-src-attr 'none';style-src 'self' 'unsafe-inline';
+  connect-src 'self';worker-src 'self' blob:;manifest-src 'self';frame-src 'none'
+Cross-Origin-Opener-Policy: same-origin
+Referrer-Policy: no-referrer
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+
+$ # 2. A LAN IP works without configuration — rebinding can't produce a raw-IP Host.
+$ curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: 192.168.1.5:4099' \
+    http://127.0.0.1:4099/health
+200
+
+$ # 3. A rebound hostname is refused, including on the pre-setup route.
+$ curl -sS -H 'Host: rebound.attacker.test' http://127.0.0.1:4099/api/setup
+{"statusCode":403,"error":"Forbidden","message":"Blocked request: Host header
+ \"rebound.attacker.test\" is not allowlisted. If this hostname is how you reach
+ PrismaLens, add it to PRISMALENS_ALLOWED_HOSTS (comma-separated)."}
+
+$ # 4. An acceptable Host does not rescue a hostile Origin.
+$ curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: localhost:4099' \
+    -H 'Origin: https://evil.example' http://127.0.0.1:4099/health
+403
+```
+
+And the same server booted for a LAN, with one hostname configured:
+
+```console
+$ PRISMALENS_HOST=0.0.0.0 PRISMALENS_ALLOWED_HOSTS=prismalens.internal node dist/src/main.js
+... "level":"warn","context":"Bootstrap","msg":"Binding to 0.0.0.0 — PrismaLens is
+    reachable from the network, not just this machine. Make sure it sits behind a trusted
+    network boundary, and list the hostnames you reach it by in PRISMALENS_ALLOWED_HOSTS."
+... "level":"info","context":"Bootstrap","msg":"CORS disabled (single-origin serving).
+    Set PRISMALENS_CORS_ORIGIN to allow a specific external origin."
+
+$ curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: prismalens.internal' \
+    http://127.0.0.1:4100/health
+200
+$ curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: localhost:4100' \
+    http://127.0.0.1:4100/health   # loopback is never dropped
+200
+```
+
+### Security headers
+
+`helmet` runs ahead of the allowlist so its headers land on rejections too. Two CSP
+relaxations are deliberate and documented in `src/middlewares/helmet.middleware.ts`:
+
+- **`script-src 'unsafe-inline'`** (and `style-src`) — TanStack's `<Scripts />` emits inline
+  hydration scripts and the theme pre-paint script is inline by design. A nonce is not
+  available: Nest serves the SPA as *static files*, so there is no per-request template pass
+  to stamp one into.
+- **no `upgrade-insecure-requests`** — helmet adds it by default; on the plain-HTTP
+  localhost origin `pl up` serves, it rewrites same-origin subresource requests to `https://`
+  and the page fails to load.
+
+Everything else is `'self'`: no external origin can supply script, style, font, image or
+connection target. Framing is refused twice over — `frame-ancestors 'none'` plus
+`X-Frame-Options: DENY`, overriding helmet's `SAMEORIGIN` default so browsers that only
+honour the legacy header agree with the CSP. HSTS is emitted only when this process
+terminates TLS itself (`PRISMALENS_PROTOCOL=https`).
+
 ## Webhook intake
 
 PrismaLens provides endpoints to receive incoming alert and deployment webhooks:

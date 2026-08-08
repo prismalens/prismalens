@@ -214,6 +214,96 @@ export interface InvestigationResult {
 }
 
 /**
+ * Per-`tool_result` preview budget for the RETAINED copy of an event.
+ *
+ * Matches the transcript builder's own preview cap, so nothing that would have survived
+ * into the transcript is lost — this only stops the retained copy from holding megabytes
+ * of command output that the transcript was always going to truncate anyway.
+ */
+export const RETAINED_PREVIEW_CAP = 1200;
+
+/**
+ * Total transcript-bytes budget for the retained stream.
+ *
+ * The Tier-1 loop now shares the API's forked child rather than a dedicated worker slot,
+ * so its peak memory is no longer somebody else's problem. Sized well above the
+ * transcript cap the reduce step actually consumes: past this point additional
+ * `tool_result` previews cannot influence the transcript, so retaining their bytes buys
+ * nothing and risks the process.
+ */
+export const RETAINED_TRANSCRIPT_BYTES = 120_000;
+
+/**
+ * Cap what the retained event costs, WITHOUT dropping the event.
+ *
+ * Dropping events is not available: `collected.length` is the seq the terminal events are
+ * numbered from, and the durable record's `(branchId, seq)` identity depends on it. So
+ * every event is retained — only the heavy payload (a `tool_result` preview) is trimmed,
+ * and only once the retained stream has already exceeded what the transcript can consume.
+ *
+ * The YIELDED event is never touched. Full-fidelity events still reach the sink and the
+ * durable store; this trims only the in-memory copy the synthesis step reads.
+ */
+export function retainedEvent(
+	event: CanonicalEvent,
+	retainedBytes: number,
+): { event: CanonicalEvent; bytes: number } {
+	const overBudget = retainedBytes >= RETAINED_TRANSCRIPT_BYTES;
+	const cap = overBudget ? 0 : RETAINED_PREVIEW_CAP;
+
+	// Every text-bearing kind is budgeted, not just tool_result: a runaway `agent_step`
+	// or a pathological `error` message costs exactly the same memory, and capping one
+	// while leaving the others unbounded is a cap in name only.
+	if (event.kind === "tool_result") {
+		const preview = event.result.preview ?? "";
+		if (preview.length <= cap) return { event, bytes: approximateBytes(event) };
+		const trimmed: CanonicalEvent = {
+			...event,
+			result: { ...event.result, preview: trim(preview, cap, overBudget) },
+		};
+		return { event: trimmed, bytes: approximateBytes(trimmed) };
+	}
+
+	if (event.kind === "agent_step") {
+		if (event.text.length <= cap)
+			return { event, bytes: approximateBytes(event) };
+		const trimmed: CanonicalEvent = {
+			...event,
+			text: trim(event.text, cap, overBudget),
+		};
+		return { event: trimmed, bytes: approximateBytes(trimmed) };
+	}
+
+	if (event.kind === "error") {
+		if (event.message.length <= cap) {
+			return { event, bytes: approximateBytes(event) };
+		}
+		const trimmed: CanonicalEvent = {
+			...event,
+			message: trim(event.message, cap, overBudget),
+		};
+		return { event: trimmed, bytes: approximateBytes(trimmed) };
+	}
+
+	return { event, bytes: approximateBytes(event) };
+}
+
+/** Cut to the cap, or replace outright once the whole budget is spent. */
+function trim(text: string, cap: number, overBudget: boolean): string {
+	return overBudget
+		? "…[dropped: transcript budget exhausted]"
+		: `${text.slice(0, cap)}\n…[truncated]`;
+}
+
+/** Cheap size proxy — the transcript-relevant text, not an exact heap measurement. */
+function approximateBytes(event: CanonicalEvent): number {
+	if (event.kind === "tool_result") return (event.result.preview ?? "").length;
+	if (event.kind === "agent_step") return event.text.length;
+	if (event.kind === "error") return event.message.length;
+	return 0;
+}
+
+/**
  * Streaming Tier-1 supervisor primitive (ADR-0010): drive the rented harness and
  * yield the canonical stream live, then emit the synthesized report as the terminal
  * `report` event. The UI consumes events as they arrive instead of waiting for the
@@ -235,6 +325,10 @@ export async function* investigateIncidentStream(
 		maxBranches !== undefined ? { maxBranches } : {},
 	);
 	const collected: CanonicalEvent[] = [];
+	// Bytes of transcript-relevant text retained so far. Once this passes the budget,
+	// further tool_result previews are retained as markers — they could not have reached
+	// the transcript anyway, and this loop no longer runs in a process of its own.
+	let retainedBytes = 0;
 	// Iterate the merged stream MANUALLY (not `for await`) so an AbortSignal can
 	// interrupt a step parked on a slow branch (CANCEL, ADR-0018): a `for await` would
 	// only observe the abort at the next event boundary, so a wedged harness would never
@@ -256,7 +350,11 @@ export async function* investigateIncidentStream(
 				drained = true;
 				break;
 			}
-			collected.push(step.value);
+			const retained = retainedEvent(step.value, retainedBytes);
+			retainedBytes += retained.bytes;
+			collected.push(retained.event);
+			// The consumer gets the UNTRIMMED event: the sink and the durable store are
+			// the complete record, and only the in-memory synthesis copy is budgeted.
 			yield step.value;
 		}
 	} finally {

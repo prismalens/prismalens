@@ -8,7 +8,7 @@
 #
 # Two modes, chosen by the `mode` job from the triggering event:
 #   - tarball  (pull_request touching packages/** or this workflow, and push
-#     to main): build + `pnpm pack`, cold-install the tarballs into a clean
+#     to main): build + `node scripts/pack-cli.mjs`, cold-install the tarballs into a clean
 #     dir, drive the installed bin. Fast feedback on every PR.
 #   - registry (workflow_dispatch, and `release: published` for the
 #     unscoped `prismalens` package tag): `npm install prismalens@<version>`
@@ -114,13 +114,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build closure
-        run: pnpm --filter prismalens... build
-
       - name: Pack tarball
+        # `pnpm pack` cannot produce this artifact: the published package carries
+        # the first-party closure as bundleDependencies, and pnpm's handling of
+        # those has historically diverged from npm's. The pack script builds
+        # everything, generates the dependency union, and asserts the tarball —
+        # and it is the SAME script the publish job runs (issue #237).
         run: |
           mkdir -p /tmp/tarballs
-          (cd packages/cli && pnpm pack --out /tmp/tarballs/%s-%v.tgz)
+          node scripts/pack-cli.mjs --out /tmp/tarballs
           ls -l /tmp/tarballs
 
       - uses: actions/upload-artifact@v7

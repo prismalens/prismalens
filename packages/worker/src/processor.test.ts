@@ -10,25 +10,35 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `processor.ts` opens a real ioredis connection at module load (the canonical
-// event publisher) — stub it so importing the module for this pure-function test
-// stays hermetic (no network).
-vi.mock("ioredis", () => ({
-	// Vitest 4 requires a constructable implementation for `new Redis(...)`;
-	// an arrow function is not a constructor, so use a `function`.
-	Redis: vi.fn(function MockRedis() {
-		return {
-			publish: vi.fn(),
-			quit: vi.fn(),
-		};
-	}),
+// `buildRequest` reads the incident (and, for the #331 checkout mapping, the
+// service catalog) over oRPC; stub the client so request construction is
+// exercised without a live API (a rejection is a caught no-incident path in the
+// processor, which would silently weaken the assertion).
+//
+// The stub is mutable via `apiState` so a test can say "this incident's service
+// has THIS checkout mapped" and then assert the request carries it.
+const apiState = vi.hoisted(() => ({
+	incident: { title: "Checkout 5xx" } as Record<string, unknown>,
+	services: [] as Array<{ name: string; localCheckoutPath: string | null }>,
 }));
 
-// `buildRequest` reads the incident over oRPC; stub the client so the request
-// construction is exercised without a live API (a rejection is a caught no-incident
-// path in the processor, which would silently weaken the assertion).
 vi.mock("./orpc-client.js", () => ({
-	api: { incidents: { get: vi.fn(async () => ({ title: "Checkout 5xx" })) } },
+	api: {
+		incidents: { get: vi.fn(async () => apiState.incident) },
+		services: {
+			list: vi.fn(async ({ search }: { search?: string }) => ({
+				data: apiState.services.filter((s) =>
+					search ? s.name.includes(search) : true,
+				),
+				total: apiState.services.length,
+			})),
+		},
+		// The #302 follow-up asserts the failure-persisting catch writes a terminal
+		// status when the schema parse itself throws, so the status writer has to be
+		// stubbed alongside the timeline writer.
+		investigations: { updateStatus: vi.fn(async () => ({})) },
+		timeline: { create: vi.fn(async () => ({})) },
+	},
 }));
 
 const {
@@ -65,8 +75,13 @@ describe("buildHarnessEnv (worker-provider-hardwiring)", () => {
 		});
 	});
 
-	it("anthropic: does NOT leak the anthropic key into OPENAI_API_KEY", () => {
-		expect(buildHarnessEnv("anthropic", API_KEY, BASE_URL)).toEqual({});
+	it("anthropic: sends ANTHROPIC_API_KEY only — never OPENAI_API_KEY", () => {
+		// The claude-code harness reads its credential from ANTHROPIC_API_KEY; a plain
+		// BYO key previously had no route in at all. Leaking it into OPENAI_API_KEY would
+		// hand a harness a secret it cannot use.
+		expect(buildHarnessEnv("anthropic", API_KEY, BASE_URL)).toEqual({
+			ANTHROPIC_API_KEY: API_KEY,
+		});
 	});
 
 	it("google: does NOT leak the google key into OPENAI_API_KEY", () => {
@@ -214,7 +229,7 @@ describe("buildRequest settings isolation (ADR-0020 server placement)", () => {
 			{
 				incidentId: "inc-2",
 				investigationId: "inv-2",
-				alerts: [{ alertname: "HighLatency", severity: "critical" }],
+				alerts: [{ alertname: "HighLatency", severity: "critical", labels: {}, annotations: {}, startsAt: null }],
 			},
 			"run-2",
 		);
@@ -253,9 +268,9 @@ describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 				incidentId: "inc-storm-1",
 				investigationId: "inv-storm-1",
 				alerts: [
-					{ alertname: "HighCPU", severity: "critical", labels: { service: "checkout" } },
-					{ alertname: "MemoryLeak", severity: "high", labels: { service: "checkout" } },
-					{ alertname: "LatencySpike", severity: "medium", labels: { service: "checkout" } },
+					{ alertname: "HighCPU", severity: "critical", labels: { service: "checkout" }, annotations: {}, startsAt: null },
+					{ alertname: "MemoryLeak", severity: "high", labels: { service: "checkout" }, annotations: {}, startsAt: null },
+					{ alertname: "LatencySpike", severity: "medium", labels: { service: "checkout" }, annotations: {}, startsAt: null },
 				],
 			},
 			"run-storm-1",
@@ -325,17 +340,18 @@ describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 });
 
 /**
- * Issue #243 item 6 (per-alert cwd parity with `pl listen`) is DEFERRED, not
- * implemented: app mode has no source for a service→local-checkout mapping (the
- * DB records remote repos only, and the worker reads no `prismalens.config.yaml`
- * — that layer arrives with ADR-0014's D11 amendment at Phase 5). These lock the
- * honest behaviour in so a future config surface has to change a test to change
- * the contract, rather than a dead call silently pretending to resolve.
+ * #331 — the harness working directory is resolved PER INVESTIGATION from the
+ * incident's Service → `localCheckoutPath` mapping, closing #243 item 6 and
+ * #238's per-alert-cwd deletion gate. These assert the whole precedence chain
+ * ON THE RESOLVED REQUEST: mapping > PRISMALENS_INVESTIGATION_CWD > worker cwd,
+ * plus the honesty requirement that an unmapped run says so.
  */
-describe("buildRequest harness cwd (app mode has no per-alert repo mapping)", () => {
+describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
+		apiState.incident = { title: "Checkout 5xx" };
+		apiState.services = [];
 	});
 
 	function armWorkerEnv(): void {
@@ -356,60 +372,176 @@ describe("buildRequest harness cwd (app mode has no per-alert repo mapping)", ()
 		);
 	}
 
-	it("falls back to the worker's own cwd — service labels do NOT steer it", async () => {
+	// `annotations` and `startsAt` are REQUIRED on `FiringAlert`, not optional —
+	// they are spelled out here because this branch drops the worker tsconfig's
+	// test exclusion (#302 follow-up 3), so these literals are now type-checked.
+	const CHECKOUT_ALERT = {
+		alertname: "HighCPU",
+		severity: "critical",
+		labels: { service: "checkout" },
+		annotations: {},
+		startsAt: null,
+	};
+
+	it("THE POINT OF #331: the investigation runs in the service's mapped checkout", async () => {
 		armWorkerEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
-		const { request } = await buildRequest(
+		apiState.incident = {
+			title: "Checkout 5xx",
+			service: { name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+		};
+		const { request, checkout } = await buildRequest(
 			{
 				incidentId: "inc-cwd-1",
 				investigationId: "inv-cwd-1",
-				alerts: [
-					{
-						alertname: "HighCPU",
-						severity: "critical",
-						labels: { service: "checkout" },
-					},
-				],
+				alerts: [CHECKOUT_ALERT],
 			},
 			"run-cwd-1",
 		);
-		expect(request.cwd).toBe(process.cwd());
+		expect(request.cwd).toBe("/home/dev/code/checkout");
+		expect(checkout.source).toBe("service-mapping");
+		expect(checkout.mapped).toBe(true);
 	});
 
-	it("honours the one explicit override, PRISMALENS_INVESTIGATION_CWD", async () => {
+	it("the mapping BEATS PRISMALENS_INVESTIGATION_CWD (the env var is no longer primary)", async () => {
 		armWorkerEnv();
-		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", "/srv/checkouts/checkout");
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", "/srv/legacy-global");
+		apiState.incident = {
+			title: "Checkout 5xx",
+			service: { name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+		};
 		const { request } = await buildRequest(
 			{
 				incidentId: "inc-cwd-2",
 				investigationId: "inv-cwd-2",
-				alerts: [
-					{
-						alertname: "HighCPU",
-						severity: "critical",
-						labels: { service: "checkout" },
-					},
-				],
+				alerts: [CHECKOUT_ALERT],
 			},
 			"run-cwd-2",
 		);
+		expect(request.cwd).toBe("/home/dev/code/checkout");
+	});
+
+	it("per-alert parity: an incident with no service resolves via the alert's service label", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
+		apiState.incident = { title: "Checkout 5xx" };
+		apiState.services = [
+			{ name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+		];
+		const { request, checkout } = await buildRequest(
+			{
+				incidentId: "inc-cwd-3",
+				investigationId: "inv-cwd-3",
+				alerts: [CHECKOUT_ALERT],
+			},
+			"run-cwd-3",
+		);
+		expect(request.cwd).toBe("/home/dev/code/checkout");
+		expect(checkout.mapped).toBe(true);
+	});
+
+	it("the incident's own service outranks a disagreeing alert label", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
+		// The correlator assigned this incident to "billing"; the alert is labelled
+		// "checkout". Borrowing checkout's tree would be a silent wrong-dir run.
+		apiState.incident = {
+			title: "Billing 5xx",
+			service: { name: "billing", localCheckoutPath: null },
+		};
+		apiState.services = [
+			{ name: "billing", localCheckoutPath: null },
+			{ name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+		];
+		const { request, checkout } = await buildRequest(
+			{
+				incidentId: "inc-cwd-7",
+				investigationId: "inv-cwd-7",
+				alerts: [CHECKOUT_ALERT],
+			},
+			"run-cwd-7",
+		);
+		expect(request.cwd).toBe(process.cwd());
+		expect(checkout.mapped).toBe(false);
+		expect(checkout.note).toContain("billing");
+	});
+
+	it("a CONTAINS match on another service must not lend its checkout", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
+		apiState.incident = { title: "Checkout 5xx" };
+		// `list({ search })` is a contains match — "checkout-legacy" contains
+		// "checkout", and borrowing its tree would silently investigate the wrong code.
+		apiState.services = [
+			{ name: "checkout-legacy", localCheckoutPath: "/home/dev/code/legacy" },
+		];
+		const { request, checkout } = await buildRequest(
+			{
+				incidentId: "inc-cwd-4",
+				investigationId: "inv-cwd-4",
+				alerts: [CHECKOUT_ALERT],
+			},
+			"run-cwd-4",
+		);
+		expect(request.cwd).toBe(process.cwd());
+		expect(checkout.mapped).toBe(false);
+	});
+
+	it("unmapped: falls back to PRISMALENS_INVESTIGATION_CWD and SAYS it ran unmapped", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", "/srv/checkouts/checkout");
+		const { request, checkout } = await buildRequest(
+			{
+				incidentId: "inc-cwd-5",
+				investigationId: "inv-cwd-5",
+				alerts: [CHECKOUT_ALERT],
+			},
+			"run-cwd-5",
+		);
 		expect(request.cwd).toBe("/srv/checkouts/checkout");
+		expect(checkout.source).toBe("env-override");
+		expect(checkout.mapped).toBe(false);
+		expect(checkout.note).toContain("UNMAPPED");
+	});
+
+	it("unmapped with no override: the worker's own cwd, still labelled unmapped", async () => {
+		armWorkerEnv();
+		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
+		const { request, checkout } = await buildRequest(
+			{
+				incidentId: "inc-cwd-6",
+				investigationId: "inv-cwd-6",
+				alerts: [CHECKOUT_ALERT],
+			},
+			"run-cwd-6",
+		);
+		expect(request.cwd).toBe(process.cwd());
+		expect(checkout.source).toBe("worker-cwd");
+		expect(checkout.mapped).toBe(false);
+		expect(checkout.note).toContain("UNMAPPED");
 	});
 });
 
 describe("processInvestigationJob schema validation", () => {
 	it("malformed job payload -> processor throws, not silent degradation", async () => {
-		const malformedJob = {
+		const job = {
 			id: "job-malformed",
 			name: "investigation",
-			data: {
-				// Missing required incidentId and investigationId
-				priority: "invalid-priority",
-			},
+			attemptsMade: 0,
+			updateProgress: vi.fn(async () => {}),
+		};
+		const malformedData = {
+			// Missing required incidentId and investigationId
+			priority: "invalid-priority",
 		};
 
 		await expect(
-			processInvestigationJob(malformedJob as any),
+			// biome-ignore lint/suspicious/noExplicitAny: the point is an invalid payload.
+			processInvestigationJob(job, malformedData as any, {
+				emit: vi.fn(),
+				streamDone: vi.fn(),
+				signal: new AbortController().signal,
+			}),
 		).rejects.toThrow();
 	});
 
@@ -424,6 +556,55 @@ describe("processInvestigationJob schema validation", () => {
 		expect(() =>
 			InvestigationJobDataSchema.parse(validJobWithoutAlerts),
 		).not.toThrow();
+	});
+
+	// Follow-up 4, issue #302: the schema parse lives INSIDE the failure-persisting
+	// try/catch. A payload that carries usable identifiers but fails validation must
+	// still leave a terminal "failed" investigation row and a timeline entry — never a
+	// row dangling at "pending" because the parse threw past the handler. Post-#350 the
+	// payload arrives over IPC from the host's dispatch loop rather than off a BullMQ
+	// job, so the identifiers are read from the `rawData` argument; the behaviour under
+	// test is unchanged.
+	it("parse failure still persists a failed status and timeline entry from the raw identifiers", async () => {
+		const { api } = await import("./orpc-client.js");
+		const updateStatus = vi.mocked(api.investigations.updateStatus);
+		const timelineCreate = vi.mocked(api.timeline.create);
+		updateStatus.mockClear();
+		timelineCreate.mockClear();
+
+		const job = {
+			id: "job-parse-fail",
+			name: "investigation",
+			attemptsMade: 0,
+			updateProgress: vi.fn(async () => {}),
+		};
+		const malformedDataWithIds = {
+			investigationId: "inv-parse-fail",
+			incidentId: "inc-parse-fail",
+			priority: "invalid-priority",
+		};
+
+		await expect(
+			processInvestigationJob(job, malformedDataWithIds as never, {
+				emit: vi.fn(),
+				streamDone: vi.fn(),
+				signal: new AbortController().signal,
+			}),
+		).rejects.toThrow();
+
+		expect(updateStatus).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "inv-parse-fail",
+				status: "failed",
+			}),
+		);
+		expect(timelineCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				incidentId: "inc-parse-fail",
+				type: "investigation_completed",
+				title: "AI Investigation Failed",
+			}),
+		);
 	});
 });
 

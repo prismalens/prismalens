@@ -49,7 +49,9 @@ invoked.
 
 ## Install
 
-Requires Node.js >= 22.
+Requires Node.js >= 24. The published tarball carries the API, the built
+dashboard and the forked investigation child alongside the CLI, and both
+`@prismalens/api` and `@prismalens/database` require 24.
 
 ```bash
 # one-off, nothing installed globally
@@ -98,6 +100,7 @@ binary and an LLM credential are present.
 ```
 prismalens <command> [flags]      # alias: pl
 
+  up            Run the whole app as one process: API + dashboard on one port, SQLite, no external services.
   listen        Start the token-authed HTTP listener for reactive Alertmanager webhooks (always-on entry point).
   investigate   Run a manual or one-off root-cause investigation of a firing alert.
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
@@ -107,6 +110,45 @@ prismalens <command> [flags]      # alias: pl
   report        Render a stored run by ID.
   auth          Manage stored BYO-key credentials for providers.
 ```
+
+### `up`
+
+Run PrismaLens as a single process. The API serves the built dashboard from the
+same origin, the SQLite database is created in the workspace directory on first
+run, and the shipped migrations are applied there and then — nothing external to
+install, and no `prisma` CLI at runtime.
+
+`pl up` has no migration step of its own: it starts the API inside this same
+process, and the API applies pending migrations before NestJS boots. The SQL it
+applies travels in the published tarball at
+`node_modules/@prismalens/database/dist/prisma/sqlite/schema/`, staged and
+asserted by `scripts/pack-cli.mjs` — a tarball without it cannot create a
+database. Migration history is append-only: a database whose recorded history
+does not match what this release ships stops the boot with an explanation
+instead of being altered.
+
+```bash
+pl up                              # http://localhost:3001
+pl up --port 8080                  # serve somewhere else
+pl up --host 0.0.0.0 --port 8080   # expose it on the network
+pl up --workspace ./pl-data        # keep the database out of ~/.prismalens
+```
+
+| Flag | Env fallback | Default |
+| --- | --- | --- |
+| `--port` | `PRISMALENS_PORT` | `3001` |
+| `--host` | `PRISMALENS_HOST` | `localhost` |
+| `--workspace` | `PRISMALENS_WORKSPACE_DIR` | `~/.prismalens` |
+
+`PRISMALENS_STATIC_DIR` overrides where the dashboard is served from; it
+defaults to the copy inside the installed package and is only worth setting when
+you are serving a custom build.
+
+The workspace directory holds the SQLite database and the generated secrets, and
+it is the ONLY knob for their location — `DATABASE_URL` is ignored.
+
+Open the printed URL, create the owner account, and the install is working.
+`pl up` runs in the foreground; Ctrl-C stops it.
 
 ### `listen`
 
