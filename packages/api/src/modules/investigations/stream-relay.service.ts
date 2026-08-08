@@ -75,21 +75,32 @@ export class StreamRelayService implements OnModuleDestroy {
 
 	/**
 	 * Start relaying one run's EventBus topic into this relay. Called when the job is
-	 * enqueued, so the buffer exists before the run's first event and before any client
-	 * connects. Idempotent — a second attach for the same run is a no-op.
+	 * enqueued and again when it is claimed, so the buffer exists before the run's first
+	 * event and before any client connects. Idempotent WHILE attached — a second attach
+	 * for a run already relaying is a no-op.
+	 *
+	 * Once detached, though, a further attach is a NEW run attempt on the same
+	 * investigation id (a retry), and it must start from a clean buffer: see below.
 	 */
 	attach(investigationId: string): void {
 		if (this.attached.has(investigationId)) return;
+
+		// A previous attempt's buffer must NOT be carried into this one. It is `done`,
+		// its events belong to the old attempt, and its TTL cleanup is already ticking.
+		// Reusing it makes `isActive` report a live run as finished, replays the old
+		// attempt's events plus an immediate `done` to every client that connects during
+		// this one, and lets the old cleanup timer delete this attempt's buffer mid-run.
+		// Resetting unconditionally also re-bases `createdAt`, so the stale sweep ages
+		// this attempt from its own start rather than the previous one's.
+		this.clearCleanupTimer(investigationId);
 		// Open the buffer eagerly rather than on the first event: a client that connects
 		// between enqueue and the run's first event must see an ACTIVE stream, not an
 		// absent one, and `isActive` keys on the buffer's existence.
-		if (!this.buffers.has(investigationId)) {
-			this.buffers.set(investigationId, {
-				events: [],
-				done: false,
-				createdAt: Date.now(),
-			});
-		}
+		this.buffers.set(investigationId, {
+			events: [],
+			done: false,
+			createdAt: Date.now(),
+		});
 		const { unsubscribe } = this.bus.subscribe<RelayMessage>(
 			runEventsTopic(investigationId),
 			(message) => {
@@ -108,6 +119,17 @@ export class StreamRelayService implements OnModuleDestroy {
 	detach(investigationId: string): void {
 		this.attached.get(investigationId)?.();
 		this.attached.delete(investigationId);
+	}
+
+	/**
+	 * Cancel a pending buffer-cleanup timer, if any. Every scheduler of that timer goes
+	 * through here first, so the map never holds a handle that nobody can clear.
+	 */
+	private clearCleanupTimer(investigationId: string): void {
+		const timer = this.cleanupTimers.get(investigationId);
+		if (timer === undefined) return;
+		clearTimeout(timer);
+		this.cleanupTimers.delete(investigationId);
 	}
 
 	/**
@@ -143,7 +165,11 @@ export class StreamRelayService implements OnModuleDestroy {
 		this.emitter.emit(`done:${investigationId}`);
 		this.logger.debug(`Stream completed for investigation ${investigationId}`);
 
-		// Schedule buffer cleanup
+		// Schedule buffer cleanup. Clear any timer already pending for this id first —
+		// `complete` is reachable twice for one attempt (the run's own `done` racing the
+		// stale sweep), and overwriting the map entry would strand the earlier handle
+		// with nothing left able to clear it.
+		this.clearCleanupTimer(investigationId);
 		const timer = setTimeout(() => {
 			this.buffers.delete(investigationId);
 			this.cleanupTimers.delete(investigationId);
