@@ -16,7 +16,13 @@ export { repositoriesContract } from "./repositories.js";
 export { serviceDiscoveryContract } from "./service-discovery.js";
 export { servicesContract } from "./services.js";
 export { settingsContract } from "./settings.js";
-export { type SetupStep, setupContract } from "./setup.js";
+export {
+	SETUP_STEP_ORDER,
+	type SetupStatus,
+	type SetupStep,
+	SetupStepEnum,
+	setupContract,
+} from "./setup.js";
 export { timelineContract } from "./timeline.js";
 export { webhooksContract } from "./webhooks.js";
 
