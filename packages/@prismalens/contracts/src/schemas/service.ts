@@ -31,6 +31,12 @@ export const ServiceSchema = z.object({
 	slackChannel: z.string().nullable(),
 	tags: z.array(z.string()).nullable(),
 	metadata: z.record(z.string(), z.unknown()).nullable(),
+	/**
+	 * Absolute path to this service's checkout on the machine running the worker
+	 * (#331) — the working directory an investigation runs in. `null` means the
+	 * service is UNMAPPED and its investigations say so in the run report.
+	 */
+	localCheckoutPath: z.string().nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -45,6 +51,11 @@ export const CreateServiceSchema = z.object({
 	slackChannel: z.string().optional(),
 	tags: z.array(z.string()).optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
+	/**
+	 * Local checkout to investigate in. Validated server-side before it is
+	 * stored; `null` or an empty string clears the mapping.
+	 */
+	localCheckoutPath: z.string().nullable().optional(),
 });
 
 export const UpdateServiceSchema = CreateServiceSchema.partial();
@@ -82,6 +93,38 @@ export const AddDependencySchema = z.object({
 export const UpdateDependencySchema = z.object({
 	dependencyType: DependencyTypeSchema.optional(),
 	criticality: DependencyCriticalitySchema.optional(),
+});
+
+// =============================================================================
+// LOCAL CHECKOUT MAPPING (#331)
+// =============================================================================
+
+/** Why a candidate checkout path was refused — mirrors `@prismalens/config`. */
+export const CheckoutRejectionSchema = z.enum([
+	"empty",
+	"not_absolute",
+	"not_found",
+	"not_a_directory",
+	"not_a_git_repo",
+]);
+
+export const ValidateCheckoutPathSchema = z.object({
+	path: z.string(),
+});
+
+export const CheckoutPathValidationSchema = z.object({
+	valid: z.boolean(),
+	/** The normalised absolute path — what a subsequent update should store. */
+	path: z.string(),
+	reason: CheckoutRejectionSchema.optional(),
+	/** Operator-facing sentence; safe to render verbatim. */
+	message: z.string().optional(),
+	/** Root of the enclosing git work tree (present only when `valid`). */
+	repoRoot: z.string().optional(),
+	/** `owner/name` from the origin remote, when detectable. */
+	repoSlug: z.string().optional(),
+	/** True when `path` is a package inside a larger work tree. */
+	isSubdirectory: z.boolean().optional(),
 });
 
 // =============================================================================
@@ -145,6 +188,13 @@ export type ServiceInvestigationConfig = z.infer<
 	typeof ServiceInvestigationConfigSchema
 >;
 export type TopologyEdge = z.infer<typeof TopologyEdgeSchema>;
+export type CheckoutRejection = z.infer<typeof CheckoutRejectionSchema>;
+export type ValidateCheckoutPathInput = z.infer<
+	typeof ValidateCheckoutPathSchema
+>;
+export type CheckoutPathValidation = z.infer<
+	typeof CheckoutPathValidationSchema
+>;
 export type ServiceRepositoryNested = z.infer<
 	typeof ServiceRepositoryNestedSchema
 >;

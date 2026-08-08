@@ -15,8 +15,9 @@ setup("authenticate as owner", async ({ page }) => {
 	await page.locator("#password").fill("admin123");
 	await page.getByRole("button", { name: "Sign in" }).click();
 
-	// Wait for successful login navigation to /
-	await expect(page).toHaveURL("http://localhost:3000/");
+	// Wait for successful login navigation to / — baseURL-relative, so the suite
+	// still runs when 3000 is taken and the harness is pointed at another port.
+	await expect(page).toHaveURL("/");
 	await expect(page.getByText("Services", { exact: true })).toBeVisible();
 
 	await page.context().storageState({ path: authFile });

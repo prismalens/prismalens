@@ -17,11 +17,23 @@ import type {
 	UpdateServiceDto,
 } from "./dto/index.js";
 import {
+	InvalidCheckoutPathError,
 	type Service as PrismaService,
 	type ServiceDependency as PrismaServiceDependency,
 	ServicesService,
 	type ServiceWithDependencies,
 } from "./services.service.js";
+
+/**
+ * A refused checkout path (#331) is a caller mistake, not a server fault —
+ * surface the validator's sentence so the UI can render it verbatim.
+ */
+function rethrowAsBadRequest(error: unknown): never {
+	if (error instanceof InvalidCheckoutPathError) {
+		throw new ORPCError("BAD_REQUEST", { message: error.message });
+	}
+	throw error;
+}
 
 @Controller()
 export class ServicesController {
@@ -40,10 +52,17 @@ export class ServicesController {
 					});
 				}
 
-				const service = await this.servicesService.create(
-					input as CreateServiceDto,
-				);
+				const service = await this.servicesService
+					.create(input as CreateServiceDto)
+					.catch(rethrowAsBadRequest);
 				return this.serializeService(service);
+			}),
+
+			// POST /services/validate-checkout-path - Check a local checkout (#331)
+			validateCheckoutPath: implement(
+				servicesContract.validateCheckoutPath,
+			).handler(async ({ input }) => {
+				return this.servicesService.validateCheckoutPath(input.path);
 			}),
 
 			// GET /services - List all services
@@ -76,10 +95,9 @@ export class ServicesController {
 			// PATCH /services/:id - Update a service
 			update: implement(servicesContract.update).handler(async ({ input }) => {
 				const { id, ...updateData } = input;
-				const service = await this.servicesService.update(
-					id,
-					updateData as UpdateServiceDto,
-				);
+				const service = await this.servicesService
+					.update(id, updateData as UpdateServiceDto)
+					.catch(rethrowAsBadRequest);
 				if (!service) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Service ${id} not found`,

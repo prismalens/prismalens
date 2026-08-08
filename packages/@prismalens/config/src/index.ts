@@ -61,7 +61,20 @@ import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
-export { pickServiceLabel, resolveRepoPath } from "./utils/repo.js";
+export type {
+	CheckoutRejection,
+	CheckoutValidation,
+	InvestigationCwdResolution,
+	InvestigationCwdSource,
+} from "./utils/repo.js";
+export {
+	detectRepoSlug,
+	normalizeCheckoutPath,
+	pickServiceLabel,
+	resolveInvestigationCwd,
+	resolveRepoPath,
+	validateLocalCheckout,
+} from "./utils/repo.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";

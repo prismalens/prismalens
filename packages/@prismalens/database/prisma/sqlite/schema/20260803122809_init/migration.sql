@@ -12,6 +12,7 @@ CREATE TABLE "services" (
     "tags" TEXT,
     "metadata" TEXT,
     "discoveryMetadata" TEXT,
+    "localCheckoutPath" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );

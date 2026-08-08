@@ -324,6 +324,12 @@ model Service {
   metadata          String? // JSON object for custom fields: {"oncall": "team-a", "runbook": "..."}
   discoveryMetadata String? // JSON object — populated during service discovery
 
+  /// Absolute path to this service's checkout on the machine running the worker (#331).
+  /// This is the working directory an investigation runs in. Unset means the run is
+  /// UNMAPPED and its report says so. Validated server-side: exists, is a directory,
+  /// is inside a git work tree.
+  localCheckoutPath String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
