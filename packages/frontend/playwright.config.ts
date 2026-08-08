@@ -38,8 +38,23 @@ const repoRoot = resolve(__dirname, "../..");
  */
 const PL_UP = process.env.PL_UP_E2E === "1";
 const PL_UP_PORT = process.env.PL_UP_PORT ?? "3100";
-const FRONTEND_PORT = process.env.PRISMALENS_FRONTEND_PORT ?? "3000";
-const API_PORT = process.env.PRISMALENS_PORT ?? "3001";
+
+// Validated, not coerced: a junk value would otherwise reach Vite as NaN, which
+// makes it bind a random port and every later failure point at the wrong thing.
+function resolvePort(name: string, fallback: string): string {
+	const raw = process.env[name];
+	if (raw === undefined || raw === "") return fallback;
+	const port = Number(raw);
+	if (!Number.isInteger(port) || port < 1 || port > 65535) {
+		throw new Error(
+			`${name} must be an integer between 1 and 65535, got "${raw}"`,
+		);
+	}
+	return String(port);
+}
+
+const FRONTEND_PORT = resolvePort("PRISMALENS_FRONTEND_PORT", "3000");
+const API_PORT = resolvePort("PRISMALENS_PORT", "3001");
 
 const workspaceDir = mkdtempSync(join(tmpdir(), "prismalens-e2e-"));
 const env = {

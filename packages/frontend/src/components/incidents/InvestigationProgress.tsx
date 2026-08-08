@@ -136,24 +136,32 @@ export function InvestigationProgress({
 					{investigations.length !== 1 ? "s" : ""}
 				</div>
 				{onStartInvestigation && !hasRunningInvestigation && (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={onStartInvestigation}
-						disabled={isStarting}
-					>
-						{isStarting ? (
-							<>
-								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-								Starting...
-							</>
-						) : (
-							<>
-								<Brain className="h-4 w-4 mr-2" />
-								New Investigation
-							</>
+					<div className="flex flex-col items-end gap-1">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onStartInvestigation}
+							disabled={isStarting || startDisabled}
+							data-testid="new-investigation"
+						>
+							{isStarting ? (
+								<>
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									Starting...
+								</>
+							) : (
+								<>
+									<Brain className="h-4 w-4 mr-2" />
+									New Investigation
+								</>
+							)}
+						</Button>
+						{startDisabled && startDisabledReason && (
+							<p className="text-xs text-muted-foreground">
+								{startDisabledReason}
+							</p>
 						)}
-					</Button>
+					</div>
 				)}
 			</div>
 

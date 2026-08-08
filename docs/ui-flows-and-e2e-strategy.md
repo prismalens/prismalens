@@ -268,7 +268,9 @@ assert that **no execution path exists without a verified module**, not that app
 - **Coverage**: `manual-authorship.spec.ts` drives the whole path — it fills the dialog, asserts
   the route lands on the new incident, asserts the incident has no alerts, and starts an
   investigation from it, asserting the app routes to the investigation. It also asserts the
-  dialog cannot submit a blank title.
+  dialog cannot submit a blank title, and that with no AI provider *both* investigate
+  affordances are disabled and state the reason (stubbed at the settings response, so the
+  assertion does not depend on global provider state).
 
 Scope note: manual **alert** creation and manual **correlation** were deliberately left unbuilt
 (#286). `alerts.create` and `incidents.addAlert` still have no UI caller, and that is intentional
@@ -292,9 +294,18 @@ transition that does not stick, or a regression in any of the five stream-panel 
 
 Two further structural facts about the harness:
 
-- **It binds ports 3000 and 3001 with `reuseExistingServer: false`**, so it cannot run alongside a
-  dev stack. Every contributor and every agent must stop `pnpm dev` to run e2e locally. See the
-  follow-up in [Cost and follow-ups](#cost-and-follow-ups).
+- **It binds a frontend and an API port with `reuseExistingServer: false`**, so it cannot share
+  them with a running dev stack. Since #286 those ports are overridable — the defaults are still
+  3000 and 3001, but `PRISMALENS_FRONTEND_PORT` and `PRISMALENS_PORT` move both the servers and
+  the `baseURL`, so a run no longer has to take down `pnpm dev`:
+
+  ```bash
+  PRISMALENS_FRONTEND_PORT=3200 PRISMALENS_PORT=3201 \
+    pnpm --filter @prismalens/frontend exec playwright test
+  ```
+
+  `PRISMALENS_FRONTEND_URL` moves with the frontend port automatically; it has to, or Better
+  Auth rejects every sign-in from the new origin as `Invalid origin`.
 - **It boots the dev topology, not the shipped one.** Two web servers (TanStack dev server on
   3000, Nest API on 3001). #237 ships `pl up` as a *single process serving the SPA and the API on
   one port*. Nothing in the current harness exercises that topology, so today's green e2e run says
@@ -475,8 +486,8 @@ deletion lands. All three artifacts green on `main` — that is the gate.
 
 ### Cost and follow-ups
 
-Nine specs at roughly 40–80 lines each is the steady state proposed here. The suite currently runs
-5 tests in ~36 s locally; nine specs with write paths lands around 2–3 minutes, which is well
+Ten specs at roughly 40–80 lines each is the steady state proposed here. The suite currently runs
+13 tests in ~58 s locally; ten specs with write paths lands around 2–3 minutes, which is well
 inside the CI budget and does not slow the existing gate.
 
 The recurring cost is **selector maintenance, not spec authoring**. The merged specs select by role
@@ -486,12 +497,8 @@ size — `data-testid` everywhere is its own tax — but it means the honest bud
 per frontend PR*, which is exactly what AGENTS.md already requires. No new standing cost is being
 proposed here.
 
-Two follow-ups worth filing, neither blocking:
+One follow-up worth filing, not blocking:
 
-- **Configurable ports.** `reuseExistingServer: false` on hard-coded 3000/3001 means running e2e
-  takes down the dev stack. With multiple agents working in parallel worktrees against one machine,
-  this is a real friction tax and an accident waiting to happen. Reading the ports from env
-  (defaulting to today's values) is a small change with a large quality-of-life return.
 - **Firefox and WebKit projects.** Flagged as a deliberate follow-up in `playwright.config.ts`.
   Low priority for a single-tenant tool whose operators choose their own browser; revisit only if a
   rendering bug is ever reported that chromium did not catch.

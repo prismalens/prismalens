@@ -242,6 +242,7 @@ export function CreateIncidentDialog({
 							<p
 								className="text-sm text-destructive"
 								data-testid="create-incident-error"
+								role="alert"
 							>
 								{error}
 							</p>
