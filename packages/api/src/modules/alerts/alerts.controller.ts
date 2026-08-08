@@ -4,7 +4,12 @@
 import { Controller, forwardRef, Inject } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { alertsContract } from "@prismalens/contracts";
-import type { Alert, AlertWithRelations } from "@prismalens/contracts/schemas";
+import type {
+	Alert,
+	AlertDetail,
+	AlertWithRelations,
+	SuppressedByRuleConflict,
+} from "@prismalens/contracts/schemas";
 import type { Alert as PrismaAlert } from "@prismalens/database";
 import { CorrelationService } from "../correlation/correlation.service.js";
 import { AlertsService } from "./alerts.service.js";
@@ -90,7 +95,10 @@ export class AlertsController {
 						message: `Alert ${input.id} not found`,
 					});
 				}
-				return this.serializeAlertWithRelations(alert);
+				return {
+					...this.serializeAlertWithRelations(alert),
+					suppressedBy: await this.resolveSuppressedBy(alert),
+				} as AlertDetail;
 			}),
 
 			// PATCH /alerts/:id - Update an alert
@@ -154,6 +162,42 @@ export class AlertsController {
 					}
 
 					const result = await this.correlationService.correlateAlert(alert);
+
+					// The waterfall ran and a rule suppressed the alert. Answering 200
+					// with no incident here is the dead end from #312: the caller asked
+					// to correlate, nothing correlated, and nothing said why. Refuse
+					// loudly and name the rule instead. We do not offer a bypass — the
+					// rule is the source of truth, so "suppressed by rule X" is still
+					// true after this call. The way out is to disable the rule or amend
+					// its match criteria (PATCH /correlation/rules/:id) and try again.
+					if (result.suppressed) {
+						// Rule-based suppression always names its rule, so this is the
+						// path every real refusal takes.
+						if (result.ruleId && result.ruleName) {
+							throw new ORPCError("CONFLICT", {
+								message:
+									`Alert ${input.id} cannot be correlated: correlation rule ` +
+									`"${result.ruleName}" (${result.ruleId}) is enabled and suppresses it. ` +
+									`Disable that rule or amend its match criteria via ` +
+									`PATCH /correlation/rules/${result.ruleId}, then correlate again.`,
+								data: {
+									alertId: input.id,
+									ruleId: result.ruleId,
+									ruleName: result.ruleName,
+								} satisfies SuppressedByRuleConflict,
+							});
+						}
+
+						// Attribution missing. Still refuse: returning the 200-with-no-
+						// incident response here would restore exactly the dead end this
+						// endpoint exists to close.
+						throw new ORPCError("CONFLICT", {
+							message:
+								`Alert ${input.id} cannot be correlated: an enabled ` +
+								`correlation rule suppresses it.`,
+						});
+					}
+
 					const updatedAlert = await this.alertsService.findById(input.id);
 
 					return {
@@ -177,6 +221,25 @@ export class AlertsController {
 				// Return void for DELETE
 			}),
 		};
+	}
+
+	/**
+	 * Answer "which enabled rule is holding this alert down right now?" for a
+	 * single-alert read.
+	 *
+	 * Only suppressed alerts can be blocked, so anything else short-circuits
+	 * without touching the rule set. The answer is derived, never stored — see
+	 * CorrelationService.findSuppressingRule.
+	 */
+	private async resolveSuppressedBy(
+		alert: PrismaAlert,
+	): Promise<AlertDetail["suppressedBy"]> {
+		if (alert.status !== "suppressed") {
+			return null;
+		}
+
+		const rule = await this.correlationService.findSuppressingRule(alert);
+		return rule ? { ruleId: rule.id, ruleName: rule.name } : null;
 	}
 
 	/**
