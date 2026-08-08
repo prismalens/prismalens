@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import type { Alert, Incident } from "@prismalens/database";
+import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
@@ -10,9 +10,15 @@ import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 
 export type { Incident };
 
+// Must mirror what the `findById`/`findByNumber`/`findAll` queries below
+// actually return. `service` is joined with `service: true` (the whole row —
+// the contract's `ServiceSchema` requires `type`, `tier`, `metadata`,
+// `createdAt` and `updatedAt`, so a narrower type here misdescribes the
+// payload), and every investigation `select` block lists `completedAt`
+// alongside `createdAt`.
 export type IncidentWithRelations = Incident & {
 	alerts: Alert[];
-	service?: { id: string; name: string; displayName: string | null } | null;
+	service?: Service | null;
 	investigations?: Array<{
 		id: string;
 		status: string;
@@ -20,6 +26,7 @@ export type IncidentWithRelations = Incident & {
 		rootCause: string | null;
 		rootCauseCategory: string | null;
 		createdAt: Date;
+		completedAt: Date | null;
 	}>;
 	postmortem?: {
 		summary: string | null;

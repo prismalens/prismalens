@@ -11,8 +11,11 @@ export const globalSchema = z.object({
 	// API Internal Binding
 	PRISMALENS_HOST: z.coerce
 		.string()
-		.default("0.0.0.0")
-		.describe("API server bind address"),
+		.default("127.0.0.1")
+		.describe(
+			"API server bind address. Defaults to loopback: a non-loopback bind " +
+				"(e.g. 0.0.0.0) exposes the app to the network and is an explicit opt-in.",
+		),
 	PRISMALENS_PORT: z.coerce
 		.number()
 		.default(3001)
@@ -80,6 +83,16 @@ export const globalSchema = z.object({
 		.optional()
 		.describe(
 			"Allowed CORS origins for API (comma-separated). Defaults to PRISMALENS_PUBLIC_URL + localhost:3000",
+		),
+	PRISMALENS_ALLOWED_HOSTS: z
+		.string()
+		.optional()
+		.describe(
+			"Hostnames this server may be reached by (comma-separated). Requests whose " +
+				"Host/Origin names anything else are rejected with 403 — the DNS-rebinding " +
+				"defence. Loopback names and IP literals are always allowed; " +
+				"PRISMALENS_PUBLIC_URL and PRISMALENS_DOMAIN are added automatically. " +
+				'Set to "*" to disable the check entirely (not recommended).',
 		),
 	PRISMALENS_CORS_WEBHOOK_OPEN: z.coerce
 		.boolean()

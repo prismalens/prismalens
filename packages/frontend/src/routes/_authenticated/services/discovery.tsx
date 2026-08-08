@@ -24,7 +24,6 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import {
-	useAcceptBulkSuggestions,
 	useConnections,
 	useIgnoreSuggestion,
 	useRejectSuggestion,
@@ -93,7 +92,6 @@ function DiscoveryPage() {
 	const triggerDiscovery = useTriggerDiscovery();
 	const rejectSuggestion = useRejectSuggestion();
 	const ignoreSuggestion = useIgnoreSuggestion();
-	const _bulkAccept = useAcceptBulkSuggestions();
 
 	const handleRunDiscovery = async (connectionIds: string[]) => {
 		setShowRunDialog(false);

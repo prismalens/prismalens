@@ -115,22 +115,3 @@ export function useIgnoreSuggestion() {
 		},
 	});
 }
-
-/**
- * Accept multiple suggestions at once
- */
-export function useAcceptBulkSuggestions() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.serviceDiscovery.acceptBulkSuggestions.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: serviceDiscoveryKeys.suggestions.all(),
-			});
-			queryClient.invalidateQueries({
-				queryKey: serviceKeys.lists(),
-			});
-		},
-	});
-}
