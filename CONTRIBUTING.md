@@ -83,6 +83,171 @@ Two things to know before running it locally:
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
+## Database migrations
+
+**Migration history is append-only.** Never delete, edit, rename, or squash a
+migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, and
+never tell anyone to delete `prismalens.db`. Installed copies of PrismaLens
+record each migration's checksum; an edited history is unreconcilable with a
+database that already exists, and the runner refuses rather than guessing.
+
+(This replaces an earlier development-phase rule that said to squash the `init`
+migration and delete the database. It was safe only while every database in the
+world belonged to a contributor — see issue #335.)
+
+### The lifecycle, end to end
+
+SQLite app-data databases are migrated **by the app itself, at boot**, not by the
+Prisma CLI: `pl up` runs on a machine with no `pnpm`, no `prisma` binary, and no
+schema source. Four stages, and what carries each:
+
+| Stage | Who does it | Where it lives | How to see it |
+|---|---|---|---|
+| **Author** | you, once per schema change | `packages/@prismalens/database/prisma/sqlite/schema/<timestamp>_<name>/migration.sql` (+ the `pg` twin) | `pnpm db:migrate` |
+| **Ship** | `pnpm build` | `dist/prisma/<flavour>/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
+| **Detect** | the runner, on every app start | shipped migrations minus the rows in `_prisma_migrations` | `pnpm db:init` prints what it will apply |
+| **Apply + record** | the runner, in one `BEGIN IMMEDIATE` transaction | the SQL runs and its `_prisma_migrations` row is written **in the same transaction** — there is no half-applied state to repair | `pnpm exec prisma migrate status` agrees with it |
+
+The runner writes `_prisma_migrations` byte-for-byte the way Prisma does
+(identical DDL, sha256-of-the-file checksum, `applied_steps_count = 1`), so a
+database it created stays legible to the Prisma CLI:
+
+```
+$ pnpm db:init
+🔍 Checking database state...
+   Database type: sqlite
+   Migrations path: prisma/sqlite/schema
+   Database file: /home/you/.prismalens/prismalens.db
+   Database exists: false
+   Applying migration 20260803122809_init…
+   Applied 1 migration(s): 20260803122809_init.
+🔄 Applied: 20260803122809_init
+✅ Database initialization complete
+
+$ pnpm db:init                      # again — nothing pending
+   Database is up to date (1 migration(s) applied).
+✅ All migrations are up to date
+
+$ pnpm exec prisma migrate status --config prisma.config.ts
+Database schema is up to date!
+```
+
+### When the runner refuses
+
+It never partially applies. Each of these leaves the database exactly as found:
+
+| `MigrationError.code` | What happened | What to do |
+|---|---|---|
+| `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
+| `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
+| `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore a *validated* `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI |
+| `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below) |
+| `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
+
+Before applying anything to a database that already holds data, the runner takes
+an online backup to `prismalens.db.bak-<epoch-ms>` next to it.
+
+**"Restore the backup" means restore a *validated* one — not simply the newest.**
+The newest backup may be the one taken immediately before the run that produced
+the broken state. Check each candidate, newest first, and use the first whose
+history is an ordered prefix of the shipped migrations with no unfinished rows:
+
+```console
+$ sqlite3 <candidate>.bak-<epoch-ms> \
+    "SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations
+      ORDER BY migration_name;"
+```
+
+Reject it if any `finished_at` is NULL while `rolled_back_at` is NULL (that is the
+`incomplete-migration` state again), or if the names are not a leading subsequence
+of the migration directories this build ships. Only then copy it over
+`prismalens.db` and start the app.
+
+### Recovering a database that drifted
+
+`checksum-mismatch` is the one failure a released build can inflict on a database
+that did nothing wrong: the `init` migration was edited in place three times
+(#350, #352, #357) before this rule existed, so any database created before those
+landed records a checksum no current build ships. Deleting the file "fixes" it and
+destroys the operator's incident and investigation history. It is repairable in
+place instead, and the runner's error message spells the repair out.
+
+The ledger is the runner's only source of truth, so re-pointing the checksum alone
+makes the error disappear **and leaves the schema wrong** — the DDL the edit added
+is still missing. Apply the DDL and re-point the ledger in ONE transaction.
+
+**Step 0 — take a copy you can roll back to.** Everything below is reversible only
+because of this. Stop the app first, then:
+
+```console
+$ cp ~/.prismalens/prismalens.db ~/.prismalens/prismalens.db.pre-repair
+```
+
+To roll back at any point: `mv ~/.prismalens/prismalens.db.pre-repair ~/.prismalens/prismalens.db`.
+
+**Step 1 — find what your schema is missing.** Build a reference database from the
+release you are moving to and compare table lists:
+
+```console
+$ export REF=$(mktemp -d)
+$ PRISMALENS_WORKSPACE_DIR=$REF pl up      # ctrl-c once it says it is listening
+$ sqlite3 $REF/prismalens.db  ".tables" | tr -s ' ' '\n' | sort > /tmp/want.txt
+$ sqlite3 ~/.prismalens/prismalens.db ".tables" | tr -s ' ' '\n' | sort > /tmp/have.txt
+$ comm -23 /tmp/want.txt /tmp/have.txt     # tables you are missing
+$ sqlite3 $REF/prismalens.db ".schema <table>"   # the CREATE statements to copy
+```
+
+Compare columns per table the same way with `PRAGMA table_info(<table>);`.
+
+**Step 2 — apply the DDL and re-point the ledger, atomically.** The SQL below is
+written for exactly one drift: the one #350/#352/#357 introduced, which is the
+only one in the wild today. **Before running it, confirm step 1's diff shows
+nothing but** the missing `jobs` table, its three indexes, and
+`services.localCheckoutPath`. If the diff shows anything else, or a migration
+other than `20260803122809_init` is named in the error, stop — this recipe does
+not describe your drift, and you need the actual delta for your case.
+
+The checksum to write is the one the error message printed as *"shipped by this
+build"*; for the `20260803122809_init` drift it is
+`0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76`. Confirm it
+matches your error before running this — a checksum copied from documentation is
+only correct for the release it was written against.
+
+```sql
+BEGIN;
+ALTER TABLE "services" ADD COLUMN "localCheckoutPath" TEXT;
+-- paste the exact CREATE TABLE "jobs" (…) from step 1's `.schema jobs`
+CREATE UNIQUE INDEX "jobs_investigationId_key" ON "jobs"("investigationId");
+CREATE INDEX "jobs_status_runAt_priority_idx" ON "jobs"("status", "runAt", "priority");
+CREATE INDEX "jobs_status_heartbeatAt_idx" ON "jobs"("status", "heartbeatAt");
+
+UPDATE "_prisma_migrations"
+   SET checksum = '0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76'
+ WHERE migration_name = '20260803122809_init';
+
+-- Must print 1. Anything else means the ledger is not what this recipe assumes:
+-- ROLLBACK instead of COMMIT.
+SELECT changes();
+COMMIT;
+```
+
+**Step 3 — validate.** The ledger must match the shipped SQL, and the app must boot:
+
+```console
+$ sqlite3 ~/.prismalens/prismalens.db \
+    "SELECT migration_name, checksum FROM _prisma_migrations;"
+$ pl up      # expect "Database is up to date (1 migration(s) applied)."
+```
+
+If `pl up` still refuses, roll back with the copy from step 0 and open an issue
+with the error text — do not delete the database.
+
+A database repaired this way is schema-identical to a fresh one; only the ordinal
+position of an `ALTER TABLE`-added column differs, which Prisma does not depend on.
+
+PostgreSQL (the server placement) is out of the runner's scope and keeps using
+`prisma migrate deploy` — a server deploy has the CLI.
+
 ## Making a change
 
 1. **Branch** off `main`: `git checkout -b fix/short-description main`.

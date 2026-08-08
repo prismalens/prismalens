@@ -106,25 +106,15 @@ export default defineCommand({
 		const workspaceDir = getAppDataDir();
 		mkdirSync(workspaceDir, { recursive: true });
 
-		// Apply the shipped migration SQL through the better-sqlite3 driver. The
-		// `prisma` CLI is NOT in this package's dependency closure and must never
-		// be invoked at user runtime.
-		const dbFile = join(workspaceDir, "prismalens.db");
-		const fresh = !existsSync(dbFile);
-		const { applyMigrations } = (await import(
-			"@prismalens/database/migrate"
-		)) as {
-			applyMigrations: (
-				file: string,
-			) => Promise<{ applied: string[]; alreadyApplied: string[] }>;
-		};
-		const migrated = await applyMigrations(dbFile);
-		if (migrated.applied.length > 0) {
-			consola.info(
-				`${fresh ? "Created" : "Migrated"} ${dbFile} (${migrated.applied.join(", ")})`,
-			);
-		}
-
+		// NO migration code here. The API bootstrap runs the shipped migration
+		// runner (`@prismalens/database/migrator`) before Nest starts, and `pl up`
+		// boots the API by importing it below — in THIS process, so that runner
+		// covers this path too. `pl up` migrating first would be a second,
+		// redundant pass over the same ledger (issue #335).
+		//
+		// What `pl up` still depends on is the migration SQL being present in the
+		// tarball: `scripts/pack-cli.mjs` stages it at
+		// `@prismalens/database/dist/prisma/<flavour>/schema` and asserts it.
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Dashboard: ${app.staticDir}`);
 
