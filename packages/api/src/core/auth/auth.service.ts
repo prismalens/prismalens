@@ -99,6 +99,20 @@ export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 		// and the very next page load was signed out again. Over https this is
 		// unchanged and still on.
 		const secureCookies = publicUrl.startsWith("https://");
+		// NODE_ENV no longer decides `Secure` — the resolved origin's scheme does.
+		// That makes PRISMALENS_PUBLIC_URL (or PRISMALENS_PROTOCOL) load-bearing for
+		// cookie security in any deployment that terminates TLS in front of this
+		// process: set NODE_ENV=production but leave those unset, and the session
+		// cookie silently loses `Secure`. Warn rather than fail closed — a local
+		// NODE_ENV=production run over plain HTTP (e.g. `pl up`) is legitimate.
+		if (
+			!secureCookies &&
+			this.configService.get<string>("NODE_ENV") === "production"
+		) {
+			this.logger.warn(
+				"NODE_ENV=production but the resolved origin is not https, so session cookies will be issued without the Secure attribute. If this deployment terminates TLS in front of the API, set PRISMALENS_PUBLIC_URL (or PRISMALENS_PROTOCOL=https).",
+			);
+		}
 
 		// Build trusted origins list — in the dev stack the browser talks to Vite
 		// on another port and only reaches the API through its proxy.
