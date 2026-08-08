@@ -149,6 +149,12 @@ export function createForkRunner(options: ForkRunnerOptions = {}): JobRunner {
 				options.log?.error(
 					`Investigation child for job ${job.id} errored: ${error.message}`,
 				);
+				// A child that already reported its verdict owns it. Channel faults after
+				// that point — a broken pipe while the child tears down — must never rewrite
+				// a success as a retryable failure and rerun a finished investigation. The
+				// exit handler settles with the reported outcome, and `exitTimer` bounds how
+				// long that may take.
+				if (reported) return;
 				finish({
 					outcome: "failed",
 					retryable: true,
@@ -204,7 +210,21 @@ export function createForkRunner(options: ForkRunnerOptions = {}): JobRunner {
 			cancel: () => {
 				if (settled || cancelRequested) return;
 				cancelRequested = true;
-				child.send({ type: "cancel" } satisfies HostMessage);
+				// The child disconnects its IPC channel the moment it has reported its
+				// result, and settlement is deliberately withheld until it exits — so a
+				// cancel pressed as a run finishes lands on a closed channel. A bare `send`
+				// there makes Node emit `error` on the child, which used to settle an
+				// already-succeeded run as a retryable failure and rerun it. Skip the send
+				// when the channel is gone, and take the failure through a callback (which
+				// suppresses the `error` event) when it dies mid-send.
+				if (child.connected) {
+					child.send({ type: "cancel" } satisfies HostMessage, (error) => {
+						if (!error) return;
+						options.log?.warn(
+							`Could not deliver the cancel for job ${job.id}: ${error.message}`,
+						);
+					});
+				}
 				// A harness parked in a syscall may never observe the abort. Give the
 				// cooperative path a grace window, then stop asking.
 				killTimer = setTimeout(() => {

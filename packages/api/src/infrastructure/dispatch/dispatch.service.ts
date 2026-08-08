@@ -185,6 +185,29 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		}
 	}
 
+	/**
+	 * Cancel the job row of a run nobody holds, after {@link requestCancel} found zero
+	 * receivers on every attempt. Without this the row stays `running`, goes stale, and
+	 * `reclaimStale` returns it to `pending` — rerunning an investigation the user
+	 * cancelled. Returns whether a running row was cancelled.
+	 */
+	async cancelOrphanedRun(investigationId: string): Promise<boolean> {
+		try {
+			const cancelled = await this.store.cancelOrphanedRun(investigationId);
+			if (cancelled) {
+				this.logger.log(
+					`Cancelled the orphaned investigation job for ${investigationId}`,
+				);
+			}
+			return cancelled;
+		} catch (error) {
+			this.logger.warn(
+				`Could not cancel the orphaned job for ${investigationId}: ${(error as Error).message}`,
+			);
+			return false;
+		}
+	}
+
 	/** Status of the job behind an investigation, or null when there is none. */
 	async getJobStatus(investigationId: string): Promise<{
 		id: string;

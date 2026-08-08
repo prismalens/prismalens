@@ -222,6 +222,12 @@ export class InvestigationsController {
 						receivers = await this.dispatchService.requestCancel(input.id);
 					}
 					if (receivers === 0) {
+						// Nobody holds the run, so the job row is orphaned too. Cancel it
+						// before writing the investigation record: `reclaimStale` selects on
+						// `status: "running"` alone, so a row left running here goes stale,
+						// returns to `pending`, and reruns the investigation the user just
+						// cancelled — overwriting its terminal state.
+						await this.dispatchService.cancelOrphanedRun(input.id);
 						const cancelled = await this.investigationsService.cancelPending(
 							input.id,
 							investigation.incidentId,

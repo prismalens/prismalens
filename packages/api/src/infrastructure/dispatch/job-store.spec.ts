@@ -355,6 +355,26 @@ describe("PrismaJobStore", () => {
 			expect(delegate.rows[0].status).toBe("running");
 		});
 
+		it("cancelOrphanedRun cancels a claimed job whose holder is gone, and the sweeper leaves it alone", async () => {
+			await store.enqueue(job(1));
+			await store.claim("owner-a", 1, at(0));
+
+			expect(await store.cancelOrphanedRun("inv-1")).toBe(true);
+			expect(delegate.rows[0].status).toBe("cancelled");
+
+			// The whole point: reclaimStale selects `status: "running"`, so a row left
+			// running would be returned to `pending` and rerun after a user cancel.
+			expect(await store.reclaimStale(1_000, at(60_000))).toEqual([]);
+			expect(delegate.rows[0].status).toBe("cancelled");
+		});
+
+		it("cancelOrphanedRun leaves an unclaimed job alone", async () => {
+			await store.enqueue(job(1));
+
+			expect(await store.cancelOrphanedRun("inv-1")).toBe(false);
+			expect(delegate.rows[0].status).toBe("pending");
+		});
+
 		it("retryLater fails the job when the attempt budget is spent", async () => {
 			const id = await store.enqueue(job(1, { maxAttempts: 1 }));
 			const [claimed] = await store.claim("owner-a", 1);

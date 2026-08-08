@@ -155,6 +155,23 @@ export interface JobStore {
 	 * requesting cancellation of the live run.
 	 */
 	cancelIfPending(investigationId: string): Promise<boolean>;
+
+	/**
+	 * Cancel a job whose row still says `running` but whose holder is provably gone —
+	 * the cancel publish found zero receivers across every grace retry, so no live run
+	 * will ever write the terminal state.
+	 *
+	 * Deliberately NOT guarded on a claim token: the caller has established there is no
+	 * holder to name. Leaving the row `running` is the bug this closes — `reclaimStale`
+	 * only ever selects `status: "running"`, so an abandoned row would go back to
+	 * `pending` and rerun an investigation the user explicitly cancelled. Writing
+	 * `cancelled` both records the intent and drops the row out of the sweeper's reach,
+	 * and the claim-token guard on {@link JobStore.complete} means a holder that somehow
+	 * resurfaces cannot write over it.
+	 *
+	 * Returns whether a running row was cancelled.
+	 */
+	cancelOrphanedRun(investigationId: string): Promise<boolean>;
 }
 
 /** The Prisma delegate surface this store needs. Structural, so tests can fake it. */
@@ -403,6 +420,19 @@ export class PrismaJobStore implements JobStore {
 				claimedBy: null,
 				finishedAt: new Date(),
 				lastError: "Cancelled before it was claimed",
+			},
+		});
+		return count === 1;
+	}
+
+	async cancelOrphanedRun(investigationId: string): Promise<boolean> {
+		const { count } = await this.jobs.updateMany({
+			where: { investigationId, status: "running" },
+			data: {
+				status: "cancelled",
+				claimedBy: null,
+				finishedAt: new Date(),
+				lastError: "Cancelled while no run held the claim",
 			},
 		});
 		return count === 1;

@@ -97,6 +97,10 @@ class StubStore implements JobStore {
 	async cancelIfPending(): Promise<boolean> {
 		return false;
 	}
+
+	async cancelOrphanedRun(): Promise<boolean> {
+		return false;
+	}
 }
 
 function job(n: number): JobFields {

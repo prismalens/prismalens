@@ -19,10 +19,17 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 
 # Copy package.json files for workspace packages
+# `packages/worker` is the per-run investigation child the API forks. A missing
+# workspace directory does NOT fail `--frozen-lockfile`: pnpm links the dependency
+# anyway and leaves a dangling symlink, so the break shows up at runtime as
+# `require.resolve("@prismalens/worker")` throwing and no investigation ever starting.
 COPY packages/api/package.json packages/api/
+COPY packages/worker/package.json packages/worker/
 COPY packages/@prismalens/config/package.json packages/@prismalens/config/
 COPY packages/@prismalens/contracts/package.json packages/@prismalens/contracts/
 COPY packages/@prismalens/database/package.json packages/@prismalens/database/
+COPY packages/@prismalens/engine/package.json packages/@prismalens/engine/
+COPY packages/@prismalens/logger/package.json packages/@prismalens/logger/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -83,7 +90,75 @@ WORKDIR /app/packages/@prismalens/database
 RUN pnpm build
 
 # ============================================
-# Stage 5: Build API
+# Stage 5: Build Logger Package
+# ============================================
+FROM node:20-alpine AS logger-builder
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/@prismalens/logger/node_modules ./packages/@prismalens/logger/node_modules
+COPY --from=config-builder /app/packages/@prismalens/config/dist ./packages/@prismalens/config/dist
+
+COPY packages/@prismalens/logger packages/@prismalens/logger
+COPY packages/@prismalens/config/package.json packages/@prismalens/config/
+COPY package.json pnpm-workspace.yaml tsconfig.json ./
+
+WORKDIR /app/packages/@prismalens/logger
+RUN pnpm build
+
+# ============================================
+# Stage 6: Build Engine Package
+# ============================================
+FROM node:20-alpine AS engine-builder
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/@prismalens/engine/node_modules ./packages/@prismalens/engine/node_modules
+COPY --from=config-builder /app/packages/@prismalens/config/dist ./packages/@prismalens/config/dist
+COPY --from=contracts-builder /app/packages/@prismalens/contracts/dist ./packages/@prismalens/contracts/dist
+
+COPY packages/@prismalens/engine packages/@prismalens/engine
+COPY packages/@prismalens/config/package.json packages/@prismalens/config/
+COPY packages/@prismalens/contracts/package.json packages/@prismalens/contracts/
+COPY package.json pnpm-workspace.yaml tsconfig.json ./
+
+WORKDIR /app/packages/@prismalens/engine
+RUN pnpm build
+
+# ============================================
+# Stage 7: Build Worker Package
+# ============================================
+# The per-run investigation child. The API does not import it as a library — it
+# forks `dist/index.js` — so the built package has to be present in the runtime
+# image or `resolveChildEntry` throws and no investigation can start.
+FROM node:20-alpine AS worker-builder
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/worker/node_modules ./packages/worker/node_modules
+COPY --from=config-builder /app/packages/@prismalens/config/dist ./packages/@prismalens/config/dist
+COPY --from=contracts-builder /app/packages/@prismalens/contracts/dist ./packages/@prismalens/contracts/dist
+COPY --from=engine-builder /app/packages/@prismalens/engine/dist ./packages/@prismalens/engine/dist
+COPY --from=logger-builder /app/packages/@prismalens/logger/dist ./packages/@prismalens/logger/dist
+
+COPY packages/worker packages/worker
+COPY packages/@prismalens/config/package.json packages/@prismalens/config/
+COPY packages/@prismalens/contracts/package.json packages/@prismalens/contracts/
+COPY packages/@prismalens/engine/package.json packages/@prismalens/engine/
+COPY packages/@prismalens/logger/package.json packages/@prismalens/logger/
+COPY package.json pnpm-workspace.yaml tsconfig.json ./
+
+WORKDIR /app/packages/worker
+RUN pnpm build
+
+# ============================================
+# Stage 8: Build API
 # ============================================
 FROM node:20-alpine AS api-builder
 WORKDIR /app
@@ -95,19 +170,25 @@ COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
 COPY --from=config-builder /app/packages/@prismalens/config/dist ./packages/@prismalens/config/dist
 COPY --from=contracts-builder /app/packages/@prismalens/contracts/dist ./packages/@prismalens/contracts/dist
 COPY --from=database-builder /app/packages/@prismalens/database/dist ./packages/@prismalens/database/dist
+COPY --from=logger-builder /app/packages/@prismalens/logger/dist ./packages/@prismalens/logger/dist
+COPY --from=engine-builder /app/packages/@prismalens/engine/dist ./packages/@prismalens/engine/dist
+COPY --from=worker-builder /app/packages/worker/dist ./packages/worker/dist
 
 # Copy source
 COPY packages/api packages/api
 COPY packages/@prismalens/config/package.json packages/@prismalens/config/
 COPY packages/@prismalens/contracts/package.json packages/@prismalens/contracts/
 COPY packages/@prismalens/database/package.json packages/@prismalens/database/
+COPY packages/@prismalens/logger/package.json packages/@prismalens/logger/
+COPY packages/@prismalens/engine/package.json packages/@prismalens/engine/
+COPY packages/worker/package.json packages/worker/
 COPY package.json pnpm-workspace.yaml tsconfig.json ./
 
 WORKDIR /app/packages/api
 RUN pnpm build
 
 # ============================================
-# Stage 6: Production Runtime
+# Stage 9: Production Runtime
 # ============================================
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -125,9 +206,17 @@ COPY --from=contracts-builder /app/packages/@prismalens/contracts/dist ./package
 COPY --from=contracts-builder /app/packages/@prismalens/contracts/package.json ./packages/@prismalens/contracts/
 COPY --from=database-builder /app/packages/@prismalens/database/dist ./packages/@prismalens/database/dist
 COPY --from=database-builder /app/packages/@prismalens/database/package.json ./packages/@prismalens/database/
+COPY --from=logger-builder /app/packages/@prismalens/logger/dist ./packages/@prismalens/logger/dist
+COPY --from=logger-builder /app/packages/@prismalens/logger/package.json ./packages/@prismalens/logger/
+COPY --from=engine-builder /app/packages/@prismalens/engine/dist ./packages/@prismalens/engine/dist
+COPY --from=engine-builder /app/packages/@prismalens/engine/package.json ./packages/@prismalens/engine/
+COPY --from=worker-builder /app/packages/worker/dist ./packages/worker/dist
+COPY --from=worker-builder /app/packages/worker/package.json ./packages/worker/
 
 # Copy node_modules for production
 COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
+# The forked child resolves its own dependencies from its own node_modules.
+COPY --from=deps /app/packages/worker/node_modules ./packages/worker/node_modules
 
 # Environment - API runs on internal port 3001 (Caddy exposes 5367)
 ENV NODE_ENV=production
@@ -157,14 +246,14 @@ ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "packages/api/dist/main.js"]
 
 # ============================================
-# Stage 7: Production Runtime (Enterprise)
+# Stage 10: Production Runtime (Enterprise)
 # ============================================
 FROM runner AS enterprise
 
 ENV PRISMALENS_EDITION=ENTERPRISE
 
 # ============================================
-# Stage 8: Development (for docker-compose.dev.yml)
+# Stage 11: Development (for docker-compose.dev.yml)
 # ============================================
 FROM node:20-alpine AS dev
 WORKDIR /app
@@ -174,12 +263,19 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 # Copy dependencies
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
+# The forked child is a separate process and resolves from its own node_modules.
+COPY --from=deps /app/packages/worker/node_modules ./packages/worker/node_modules
 
-# Copy source files
+# Copy source files. The worker is shipped unbuilt here on purpose: with no
+# `dist`, `resolveChildEntry` falls back to `src/index.ts` and forks it under the
+# tsx loader, which is the dev loop this stage exists for.
 COPY packages/api packages/api
+COPY packages/worker packages/worker
 COPY packages/@prismalens/config packages/@prismalens/config
 COPY packages/@prismalens/contracts packages/@prismalens/contracts
 COPY packages/@prismalens/database packages/@prismalens/database
+COPY packages/@prismalens/engine packages/@prismalens/engine
+COPY packages/@prismalens/logger packages/@prismalens/logger
 COPY package.json pnpm-workspace.yaml tsconfig.json ./
 
 WORKDIR /app/packages/api
