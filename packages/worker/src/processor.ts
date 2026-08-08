@@ -55,6 +55,7 @@ import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { config as workerConfig } from "./config.js";
 import { createDbInvestigationStore } from "./db-investigation-store.js";
+import { internalUrl } from "./internal-url.js";
 import { api } from "./orpc-client.js";
 import { UnrecoverableJobError } from "./protocol.js";
 import type { InvestigationJobData, InvestigationResult } from "./types.js";
@@ -100,12 +101,12 @@ async function fetchLlmConfig(): Promise<{
 		);
 	}
 
-	const url = new URL(
-		"/internal/settings/llm-credentials",
+	const url = internalUrl(
 		workerConfig.PRISMALENS_WORKER_API_URL,
+		"internal/settings/llm-credentials",
 	);
 
-	const response = await fetch(url.toString(), {
+	const response = await fetch(url, {
 		headers: {
 			"X-Internal-Secret": internalSecret,
 			"User-Agent": "prismalens-worker/0.1.0",
@@ -143,11 +144,11 @@ async function clearDurableEvents(investigationId: string): Promise<void> {
 		// flush), so there is nothing to clear.
 		return;
 	}
-	const url = new URL(
-		`/internal/investigations/${investigationId}/events/clear`,
+	const url = internalUrl(
 		workerConfig.PRISMALENS_WORKER_API_URL,
+		`internal/investigations/${investigationId}/events/clear`,
 	);
-	const response = await fetch(url.toString(), {
+	const response = await fetch(url, {
 		method: "POST",
 		headers: {
 			"X-Internal-Secret": internalSecret,

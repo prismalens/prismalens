@@ -27,7 +27,15 @@ export default defineConfig({
 	plugins: [
 		// Enables Vite to resolve imports using path aliases
 		tsConfigPaths(),
-		tanstackStart(),
+		// SPA mode is what makes `pl up` possible (issue #237). Without it
+		// TanStack Start emits SSR output — a server bundle and NO index.html —
+		// and the single-process shape has no frontend server to run that bundle.
+		// `prerender.outputPath` overrides the default `/_shell`: the artifact's
+		// SPA entry has to be `index.html`, because that is the only name
+		// express.static serves for a directory request.
+		tanstackStart({
+			spa: { enabled: true, prerender: { outputPath: "/index.html" } },
+		}),
 		viteReact(),
 		tailwindcss(),
 		paraglideVitePlugin({

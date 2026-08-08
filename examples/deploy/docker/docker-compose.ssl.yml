@@ -48,6 +48,10 @@ services:
       - NODE_ENV=production
       - PRISMALENS_PORT=3001
       - PRISMALENS_HOST=0.0.0.0
+      # Caddy terminates TLS in front of this container, so the browser-facing
+      # origin is https — say so, or `secureCookies` resolves false and the
+      # session cookie ships without `Secure`.
+      - PRISMALENS_PUBLIC_URL=https://${DOMAIN:-localhost}
       # Hostnames this container may be reached by. Caddy forwards the browser's
       # original Host (your domain); the other containers reach it as `api`.
       # Anything else is rejected — see packages/api/README.md.

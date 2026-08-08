@@ -148,23 +148,29 @@ with a changeset naming **`prismalens`** — never a `@prismalens/*` package (se
 pending changesets, the release workflow opens/updates a **"chore: version
 packages" PR** (`pnpm changeset:version`); merging that PR publishes the bumped
 `prismalens` package to npm with provenance (`pnpm changeset:publish` =
-`pnpm publish -r`, which skips private packages, then `changeset tag`) and
-creates a GitHub Release for its tag. The version PR is opened with the
+`node scripts/pack-cli.mjs --publish`, then `changeset tag`) and creates a
+GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
+carries the first-party closure as bundled dependencies, and `pnpm pack`
+produces zero bundled entries — an artifact `pl up` cannot boot. The pack script
+builds it, asserts it, and hands that exact file to `npm publish`, so what ships
+is what the packed smoke verified. The version PR is opened with the
 `RELEASE_PAT` repo secret (fine-grained PAT, Contents + Pull requests read/write
 — the PR must come from a user so CI triggers on it). npm publishing uses
 **trusted publishing** (OIDC): `prismalens` registers this repo's `release.yml`
-as a trusted publisher on npmjs.com, pnpm exchanges the workflow's OIDC token
-for a short-lived credential, and provenance is attested automatically — there
+as a trusted publisher on npmjs.com, the npm CLI exchanges the workflow's OIDC
+token for a short-lived credential, and provenance is attested automatically — there
 is no npm token secret to rotate or leak.
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
-pnpm publint` → `pnpm changeset:publish` → `git push --follow-tags`.
+pnpm publint` → `pnpm pack && sh scripts/packed-smoke.sh packages/cli/dist-pack`
+→ `pnpm changeset:publish` → `git push --follow-tags`.
 
-Everything else in `packages/` stays `private: true` — `@prismalens/logger` and
-`@prismalens/database` are internal, and the app-side packages
-(`@prismalens/api`, `@prismalens/frontend`, `@prismalens/worker`) are excluded
-from Changesets entirely — they deploy, they don't publish.
+Everything else in `packages/` stays `private: true` and is never published on
+its own — but since #237 the app-side packages (`@prismalens/api`,
+`@prismalens/worker`) and the shared libraries travel INSIDE the `prismalens`
+tarball as bundled dependencies, which is what makes `pl up` a single install.
+They are still excluded from Changesets: one published package, one version.
 
 ## Reporting bugs and requesting features
 
