@@ -31,8 +31,10 @@ const RUN_ID = "11111111-1111-4111-8111-111111111111";
 const BUFFER_SIZE = 50;
 /** Buffer TTL after a stream completes. Mirrors BUFFER_TTL_MS. */
 const BUFFER_TTL_MS = 60_000;
-/** Age at which an unfinished buffer is swept. Mirrors MAX_ACTIVE_BUFFER_AGE_MS. */
+/** Age at which an unfinished buffer is swept. Mirrors MAX_IDLE_BUFFER_MS. */
 const MAX_ACTIVE_BUFFER_AGE_MS = 600_000;
+/** Deferral on a `done` with no live stream behind it. Mirrors TERMINAL_DONE_DELAY_MS. */
+const TERMINAL_DONE_DELAY_MS = 50;
 /** Sweep tick. Mirrors SWEEP_INTERVAL_MS. */
 const SWEEP_INTERVAL_MS = 60_000;
 
@@ -173,6 +175,59 @@ describe("StreamRelayService", () => {
 			expect(relay.isActive(ID)).toBe(true);
 			expect(collect().events).toEqual(["orphan"]);
 		});
+
+		it("delivers EVERY live event to a late joiner, not just the ones past the replay count", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			publish("a2", 1);
+
+			// Joins with two events already buffered, so replayCount was 2.
+			const sub = collect();
+			publish("a3", 2);
+			publish("a4", 3);
+
+			// The old positional guard suppressed exactly as many live events as it had
+			// replayed, on the theory that an event could arrive DURING the replay. It
+			// cannot: the replay loop is synchronous. So it never dropped a duplicate,
+			// it dropped a3 and a4 — the first genuinely new events this client saw.
+			expect(sub.events).toEqual(["a1", "a2", "a3", "a4"]);
+			expect(sub.onDone).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("a topic with no live stream behind it", () => {
+		it("closes a subscriber for an id the relay has never heard of", () => {
+			const sub = collect("never-relayed");
+
+			expect(sub.events).toEqual([]);
+			vi.advanceTimersByTime(TERMINAL_DONE_DELAY_MS);
+			expect(sub.onDone).toHaveBeenCalledOnce();
+		});
+
+		it("closes a subscriber that arrives after the finished buffer was TTL-swept", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			publishDone();
+
+			// Past the TTL: the buffer is gone, and buffer-absent used to be read as
+			// "assume live" — a 200 SSE stream with no frames and no done, forever.
+			vi.advanceTimersByTime(BUFFER_TTL_MS);
+
+			const sub = collect();
+
+			expect(sub.events).toEqual([]);
+			vi.advanceTimersByTime(TERMINAL_DONE_DELAY_MS);
+			expect(sub.onDone).toHaveBeenCalledOnce();
+		});
+
+		it("cancels the deferred done when the client disconnects first", () => {
+			const sub = collect("never-relayed");
+
+			sub.unsubscribe();
+			vi.advanceTimersByTime(TERMINAL_DONE_DELAY_MS * 10);
+
+			expect(sub.onDone).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("re-attach — a second run attempt on the same investigation id", () => {
@@ -301,6 +356,41 @@ describe("StreamRelayService", () => {
 			vi.advanceTimersByTime(SWEEP_INTERVAL_MS * 2);
 
 			expect(relay.isActive(ID)).toBe(true);
+		});
+
+		it("never truncates a run that keeps emitting past the idle threshold", () => {
+			relay.attach(ID);
+			const sub = collect();
+
+			// Twenty minutes of steady output — double the threshold. The sweep used to
+			// key on the buffer's total AGE, so it completed and detached this run at
+			// minute ten while the child was still working, and nothing re-attaches.
+			const ticks = (MAX_ACTIVE_BUFFER_AGE_MS / SWEEP_INTERVAL_MS) * 2;
+			for (let i = 0; i < ticks; i++) {
+				vi.advanceTimersByTime(SWEEP_INTERVAL_MS);
+				publish(`e${i}`, i);
+			}
+
+			expect(sub.events).toHaveLength(ticks);
+			expect(sub.onDone).not.toHaveBeenCalled();
+			expect(relay.isActive(ID)).toBe(true);
+			// Still relaying, so the run's remaining events still have a subscriber.
+			expect(bus.subscriberCount(runEventsTopic(ID))).toBe(1);
+		});
+
+		it("sweeps a run that has gone silent for longer than the idle threshold", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			const sub = collect();
+
+			// Emits for a while, then wedges.
+			vi.advanceTimersByTime(MAX_ACTIVE_BUFFER_AGE_MS / 2);
+			publish("a2", 1);
+			vi.advanceTimersByTime(MAX_ACTIVE_BUFFER_AGE_MS + SWEEP_INTERVAL_MS);
+
+			expect(sub.onDone).toHaveBeenCalledOnce();
+			expect(relay.isActive(ID)).toBe(false);
+			expect(bus.subscriberCount(runEventsTopic(ID))).toBe(0);
 		});
 	});
 
