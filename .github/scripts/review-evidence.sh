@@ -183,6 +183,19 @@ CARRY_FORWARD="${CARRY_FORWARD:-1}"
 # nearly always the newest one or none.
 CARRY_FORWARD_MAX_CANDIDATES="${CARRY_FORWARD_MAX_CANDIDATES:-5}"
 
+# An empty or non-numeric limit does not merely mis-size the budget — it removes
+# it. The `-gt` test that enforces the cap exits 2 on a non-integer, and this
+# script runs without `set -e`, so `&& break` never fires and the loop walks every
+# candidate at up to two compare calls each. A bound that silently stops bounding
+# is the failure shape this whole script exists to refuse, so an unusable limit
+# disables carry-forward rather than uncapping it.
+case "$CARRY_FORWARD_MAX_CANDIDATES" in
+  ''|*[!0-9]*|0)
+    echo "WARNING: CARRY_FORWARD_MAX_CANDIDATES='$CARRY_FORWARD_MAX_CANDIDATES' is not a positive integer — carry-forward disabled" >&2
+    CARRY_FORWARD=0
+    ;;
+esac
+
 # ---------------------------------------------------------------------------
 
 in_list () { # in_list <needle> <space-separated haystack>
