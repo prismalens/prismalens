@@ -34,9 +34,25 @@ pl up                 # http://localhost:3001
 pl up --port 8080     # or wherever you like
 ```
 
-Open the URL, create the owner account, and the install is working. There is no
-Docker, no Redis and no separate frontend server: the tarball carries the built
-dashboard and the API serves it from the same origin. Use
+Open the URL and a four-step setup wizard walks you the rest of the way:
+
+| Step | What it asks for | Skippable? |
+|---|---|---|
+| 1. Account | Owner email and password | No — it is the only thing that gates the app |
+| 2. AI provider | A provider and model, plus an API key if that provider needs one. The key is encrypted (AES-256-GCM) into this instance's database — never written to a file | Yes |
+| 3. Code location | An absolute path to a git checkout on this machine, mapped to a service. This is the directory investigations actually read | Yes |
+| 4. First incident | A hand-off into authoring your first incident, or connecting a monitoring tool | Yes |
+
+**The wizard is resumable, and keeps no progress of its own.** Each step's
+"done" is derived on the server from durable state — a user row, a stored
+credential, a service with a checkout path, an incident row — so a reload, a
+sign-in, or coming back tomorrow lands you on the first thing that is genuinely
+still missing. See
+[Setup wizard — the resume rule](docs/capabilities.md#setup-wizard--the-resume-rule)
+for the worked transcript.
+
+There is no Docker, no Redis and no separate frontend server: the tarball
+carries the built dashboard and the API serves it from the same origin. Use
 `--workspace <dir>` to put the database and secrets somewhere other than
 `~/.prismalens`.
 

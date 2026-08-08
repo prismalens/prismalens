@@ -46,6 +46,84 @@ half lives behind the commercial module boundary (ADR-0023), so C13's definition
 is: shell renders inert states correctly, the capability-flag/module seam is verified, and no
 execution path exists without a verified module.
 
+## Setup wizard — the resume rule
+
+Cuts across **C10** and **C11**. The first thing a new install shows is a four-step
+wizard at `/setup`: **account → AI provider → code location → first incident**. Only the
+account step gates the app; the rest are on-ramp, and the empty screens on the dashboard,
+incidents and alerts pages link back to whichever one is still outstanding.
+
+**The wizard keeps no progress of its own.** `GET /setup/status` derives every step from
+durable state, and returns the first incomplete one as `currentStep`. There is no
+`SETUP_PROGRESS` row that can disagree with reality, which is what makes a reload, a
+sign-in bounce, or a different browser resume in the right place.
+
+| Step | Derived from | Contract field |
+|---|---|---|
+| `account` | a user row with an admin role exists | `steps.owner` |
+| `ai_provider` | any provider has a key in the vault or the environment, or a keyless provider (Ollama, custom) is active with a model | `steps.aiProvider` |
+| `code_location` | any `Service` has a non-null `localCheckoutPath` | `steps.codeLocation` |
+| `first_incident` | any `Incident` exists | `steps.firstIncident` |
+
+`setupComplete` deliberately means **only** "an owner exists". It is the auth gate that
+`/_authenticated` reads, so widening it to the later steps would lock an operator who
+never configures a provider out of the whole app.
+
+### Worked transcript
+
+One install, four `curl`s taken at four points in the journey. Nothing but the underlying
+state changes between them.
+
+```console
+# 1. Fresh workspace — pl up has migrated an empty database, nobody has signed up.
+$ curl -s localhost:3001/api/setup/status | jq -c
+{"setupComplete":false,
+ "steps":{"owner":false,"aiProvider":false,"codeLocation":false,"firstIncident":false},
+ "currentStep":"account"}
+
+# 2. Owner created in the wizard. The app is now reachable — but the wizard is not done,
+#    and a reload of /setup resumes on the provider step rather than falling through to /.
+$ curl -s localhost:3001/api/setup/status | jq -c
+{"setupComplete":true,
+ "steps":{"owner":true,"aiProvider":false,"codeLocation":false,"firstIncident":false},
+ "currentStep":"ai_provider"}
+
+# 3. Provider step SKIPPED, checkout mapped. Skipping records nothing, so the first
+#    incomplete step is still the provider — while code_location now reads as done and
+#    its circle in the progress bar is ticked.
+$ curl -s localhost:3001/api/setup/status | jq -c
+{"setupComplete":true,
+ "steps":{"owner":true,"aiProvider":false,"codeLocation":true,"firstIncident":false},
+ "currentStep":"ai_provider"}
+
+# 4. Key saved (encrypted into the Setting table) and a first incident authored.
+$ curl -s localhost:3001/api/setup/status | jq -c
+{"setupComplete":true,
+ "steps":{"owner":true,"aiProvider":true,"codeLocation":true,"firstIncident":true},
+ "currentStep":"complete"}
+```
+
+Line 3 is the one worth reading twice: **"Skip for now" is a per-sitting choice, not a
+stored one.** Returning to `/setup` always offers the first thing that is genuinely
+missing. Leaving for good is a separate action — *Skip setup* at the foot of the wizard —
+and nothing drags you back: `/setup` is only entered automatically when no owner exists.
+
+### Where the API key goes
+
+The provider step is a composition over **Settings → AI Provider**, not a second
+implementation of it, and the app has exactly one credential path:
+
+```
+wizard  →  POST /settings/llm/credentials
+        →  LlmSettingsService.saveLlmCredential()
+        →  CredentialsService.encryptToBase64()
+        →  TokenVault (AES-256-GCM, PRISMALENS_ENCRYPTION_KEY)
+        →  Setting row  LLM_CREDENTIALS_ENCRYPTED
+```
+
+The CLI's own `~/.prismalens/auth.json` is a **separate** store belonging to the
+standalone investigator. The wizard never reads or writes it.
+
 ## Which code an investigation reads — the local checkout mapping
 
 Cuts across **C1**, **C6** and **C11**. A service's *linked repositories* are remote

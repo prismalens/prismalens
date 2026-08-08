@@ -88,7 +88,9 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 				<div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
 					<Shield className="h-8 w-8 text-primary" />
 				</div>
-				<CardTitle>Welcome to PrismaLens</CardTitle>
+				<CardTitle>
+					<h2>Welcome to PrismaLens</h2>
+				</CardTitle>
 				<CardDescription>
 					Create your administrator account to get started
 				</CardDescription>

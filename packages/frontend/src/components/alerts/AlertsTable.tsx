@@ -6,6 +6,7 @@ import type { AlertWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { Bell, CheckCircle, ExternalLink, Eye } from "lucide-react";
+import { SetupNextStepHint } from "@/components/setup";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,10 @@ function AlertsEmptyState() {
 			icon={Bell}
 			title="No alerts found"
 			description="Alerts will appear here when received from your monitoring tools"
+			// Without this the screen is a dead end on a fresh instance: it names a
+			// source of alerts the operator has not connected, and offers no way to
+			// connect one (#332).
+			actions={<SetupNextStepHint />}
 		/>
 	);
 }
