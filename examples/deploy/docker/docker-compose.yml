@@ -31,22 +31,6 @@ services:
     networks:
       - prismalens
 
-  # Redis — required for BullMQ job queue
-  redis:
-    image: redis:7-alpine
-    expose:
-      - "6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - prismalens
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   # NestJS API backend
   api:
     build:
@@ -62,36 +46,16 @@ services:
       # original Host (localhost here); the other containers reach it as `api`.
       # Anything else is rejected — see packages/api/README.md.
       - PRISMALENS_ALLOWED_HOSTS=localhost,api
-      - PRISMALENS_REDIS_HOST=redis
       - PRISMALENS_INTERNAL_SECRET=${PRISMALENS_INTERNAL_SECRET}
       - DATABASE_URL=${DATABASE_URL:-file:./prismalens.db}
     volumes:
       - prismalens_data:/app/data
-    depends_on:
-      redis:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - prismalens
 
-  # BullMQ worker — processes investigation jobs
-  worker:
-    build:
-      context: .
-      dockerfile: docker/images/worker/Dockerfile
-    environment:
-      - NODE_ENV=production
-      - PRISMALENS_REDIS_HOST=redis
-      - PRISMALENS_WORKER_API_URL=http://api:3001/api
-      - PRISMALENS_INTERNAL_SECRET=${PRISMALENS_INTERNAL_SECRET}
-    depends_on:
-      redis:
-        condition: service_healthy
-      api:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - prismalens
+  # No worker service and no broker: the API process runs the dispatch loop over a
+  # SQLite/Postgres job table and forks ONE short-lived child per investigation.
 
 networks:
   prismalens:
@@ -99,4 +63,3 @@ networks:
 
 volumes:
   prismalens_data:
-  redis_data:

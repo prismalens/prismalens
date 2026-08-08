@@ -10,7 +10,8 @@
  * BATCHED (≥25 events, or 1s after the first buffered event — whichever comes first)
  * to the API's internal bulk-append endpoint, giving every run a durable server-side
  * event record (the gap the retired AgentExecution rows left). The live SSE path is
- * untouched — that still rides the Redis sink (see the conductor's SINK port).
+ * untouched — that still rides the IPC sink to the host's EventBus (see the
+ * conductor's SINK port).
  *
  * Durability is BEST-EFFORT and must NEVER fail the run (mirrors the overlay's
  * fire-and-forget posture): a flush failure logs, DROPS the batch, and counts the

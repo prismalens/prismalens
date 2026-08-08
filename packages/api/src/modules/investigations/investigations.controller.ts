@@ -22,10 +22,10 @@ import type {
 	Recommendation,
 	ToolExecution,
 } from "@prismalens/database";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { AgentExecutionDto } from "../../infrastructure/internal/dto/agent-execution.dto.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
@@ -52,7 +52,7 @@ const CANCEL_PUBLISH_RETRY_MS = 250;
 export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,
-		private readonly queueService: QueueService,
+		private readonly dispatchService: DispatchService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -107,8 +107,7 @@ export class InvestigationsController {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
-					const jobId = `investigation-${input.id}`;
-					const jobStatus = await this.queueService.getJobStatus(jobId);
+					const jobStatus = await this.dispatchService.getJobStatus(input.id);
 
 					if (!investigation) {
 						throw new ORPCError("NOT_FOUND", {
@@ -120,11 +119,13 @@ export class InvestigationsController {
 						investigation: this.serializeInvestigation(investigation),
 						job: jobStatus
 							? {
-									id: jobId,
+									id: jobStatus.id,
 									state: jobStatus.status,
-									progress: jobStatus.progress ?? null,
-									attemptsMade: 0,
-									failedReason: null,
+									// The JobStore records attempts and outcomes, not a progress
+									// percentage — the durable event record is the progress surface.
+									progress: null,
+									attemptsMade: jobStatus.attempts,
+									failedReason: jobStatus.error,
 								}
 							: null,
 					};
@@ -171,18 +172,19 @@ export class InvestigationsController {
 
 			// POST /investigations/:id/cancel - Request cancellation of a run.
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
-			//   - RUNNING: publish to the Redis cancel channel. A subscribed worker
-			//     aborts the run, tears down the harness/sandbox, and owns the terminal
-			//     "cancelled" write. Redis pub/sub has no retention, so the publish is
-			//     only a cancel if someone RECEIVED it — zero receivers after the grace
-			//     retries means no worker has the run (crashed worker, stuck record,
-			//     Redis down) and nobody else will ever write the terminal state, so the
-			//     API writes it here. A worker that somehow still finishes later is
-			//     blocked by the cancelled-is-sticky rule in the status writers.
-			//   - PENDING (queued): no worker is subscribed yet — remove the queued job
-			//     directly and write the terminal "cancelled" record HERE. If removal
-			//     fails (a worker grabbed it in the race), fall through to the publish
-			//     path; the grace retries cover the worker's lock→subscribe window.
+			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
+			//     that holds the claim forwards it to the run's child, which aborts, tears
+			//     down the harness/sandbox, and owns the terminal "cancelled" write. The
+			//     bus has no retention, so the publish is only a cancel if someone RECEIVED
+			//     it — zero receivers after the grace retries means nobody holds the run
+			//     (a crashed child, a stuck record) and nobody else will ever write the
+			//     terminal state, so the API writes it here. A run that somehow still
+			//     finishes later is blocked by the cancelled-is-sticky rule in the status
+			//     writers.
+			//   - PENDING (unclaimed): nothing is subscribed yet — cancel the job row
+			//     directly and write the terminal "cancelled" record HERE. If the row was
+			//     already claimed (a dispatcher won the race), fall through to the publish
+			//     path; the grace retries cover the claim→subscribe window.
 			cancel: implement(investigationsContract.cancel).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
@@ -201,34 +203,41 @@ export class InvestigationsController {
 						});
 					}
 					if (investigation.status === "pending") {
-						const jobId = `investigation-${input.id}`;
-						const removed = await this.queueService.removeJob(jobId);
-						if (removed) {
+						const cancelledJob = await this.dispatchService.cancelPendingJob(
+							input.id,
+						);
+						if (cancelledJob) {
 							const cancelled = await this.investigationsService.cancelPending(
 								input.id,
 								investigation.incidentId,
 							);
 							return this.serializeInvestigation(cancelled ?? investigation);
 						}
-						// Lost the race — a worker started the job. Fall through to publish
-						// so that worker owns the terminal write.
+						// Lost the race — a dispatcher claimed the job. Fall through to publish
+						// so the run that holds it owns the terminal write.
 					}
-					let receivers = await this.queueService.publishCancel(input.id);
+					let receivers = await this.dispatchService.requestCancel(input.id);
 					for (let attempt = 0; receivers === 0 && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
-						receivers = await this.queueService.publishCancel(input.id);
+						receivers = await this.dispatchService.requestCancel(input.id);
 					}
 					if (receivers === 0) {
+						// Nobody holds the run, so the job row is orphaned too. Cancel it
+						// before writing the investigation record: `reclaimStale` selects on
+						// `status: "running"` alone, so a row left running here goes stale,
+						// returns to `pending`, and reruns the investigation the user just
+						// cancelled — overwriting its terminal state.
+						await this.dispatchService.cancelOrphanedRun(input.id);
 						const cancelled = await this.investigationsService.cancelPending(
 							input.id,
 							investigation.incidentId,
-							"The investigation was cancelled; no worker held the run.",
+							"The investigation was cancelled; no run held it.",
 						);
 						return this.serializeInvestigation(cancelled ?? investigation);
 					}
-					// A worker heard the cancel; return the still-running investigation
-					// unchanged — the terminal "cancelled" state arrives via the worker +
-					// the SSE stream's terminal event (the UI refetches on completion).
+					// The run heard the cancel; return the still-running investigation
+					// unchanged — the terminal "cancelled" state arrives from the run + the
+					// SSE stream's terminal event (the UI refetches on completion).
 					return this.serializeInvestigation(investigation);
 				},
 			),

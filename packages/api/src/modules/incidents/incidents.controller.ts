@@ -13,7 +13,7 @@ import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
-import { QueueService } from "../../infrastructure/queue/queue.service.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
@@ -24,7 +24,7 @@ export class IncidentsController {
 	constructor(
 		private readonly incidentsService: IncidentsService,
 		private readonly investigationsService: InvestigationsService,
-		private readonly queueService: QueueService,
+		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
 	) {}
 
@@ -147,16 +147,16 @@ export class IncidentsController {
 						incidentId: input.id,
 					});
 
-					// Fetch integrations and extract connectionIds for the queue payload.
-					// Only connectionIds go to Redis — worker fetches credentials on-demand.
+					// Fetch integrations and extract connectionIds for the job payload.
+					// Only connectionIds are persisted — the run fetches credentials on-demand.
 					const integrations =
 						await this.integrationsService.getIntegrationsForService(
 							incident.serviceId ?? undefined,
 						);
 					const connectionIds = integrations.map((i) => i.connectionId);
 
-					// Queue the investigation job
-					const jobId = await this.queueService.addInvestigationJob({
+					// Enqueue the investigation job
+					const jobId = await this.dispatchService.addInvestigationJob({
 						incidentId: input.id,
 						investigationId: investigation.id,
 						priority: this.mapPriorityToJobPriority(incident.priority),

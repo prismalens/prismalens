@@ -64,7 +64,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 			create: vi.fn().mockResolvedValue({ id: "inv-123" }),
 		};
 
-		const queueService = {
+		const dispatchService = {
 			addInvestigationJob: vi.fn().mockResolvedValue("job-123"),
 		};
 
@@ -75,7 +75,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 		const controller = new IncidentsController(
 			incidentsService as any,
 			investigationsService as any,
-			queueService as any,
+			dispatchService as any,
 			integrationsService as any,
 		);
 
@@ -96,12 +96,12 @@ describe("IncidentsController - storm path alert serialization", () => {
 			component: "db",
 		});
 
-		// Test investigate endpoint passes alerts to queue
+		// Test investigate endpoint passes alerts into the job payload
 		await handlers.investigate({
 			input: { id: "123e4567-e89b-12d3-a456-426614174000" },
 		});
 
-		expect(queueService.addInvestigationJob).toHaveBeenCalledWith(
+		expect(dispatchService.addInvestigationJob).toHaveBeenCalledWith(
 			expect.objectContaining({
 				incidentId: "123e4567-e89b-12d3-a456-426614174000",
 				investigationId: "inv-123",

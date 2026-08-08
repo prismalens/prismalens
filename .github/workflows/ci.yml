@@ -1,7 +1,7 @@
 # Build / typecheck / test / lint for every PR and every push to a trunk.
 #
-# This is a pnpm + Turborepo monorepo (NestJS API + TanStack Start UI + a BullMQ
-# worker + shared @prismalens/* packages). The jobs mirror the commands a
+# This is a pnpm + Turborepo monorepo (NestJS API + TanStack Start UI + a per-run
+# investigation child + shared @prismalens/* packages). The jobs mirror the commands a
 # contributor runs locally (see CONTRIBUTING.md).
 #
 # Task ordering (Prisma generate -> config build -> package builds -> typecheck)

@@ -87,8 +87,8 @@ export class InternalInvestigationsController {
 	}
 
 	/**
-	 * Clear the durable canonical event record (ADR-0018 B.4). Called by the worker at
-	 * the START of a BullMQ RETRY so each attempt owns a FRESH record — attempt 2's
+	 * Clear the durable canonical event record (ADR-0018 B.4). Called by the run at
+	 * the START of a RERUN so each attempt owns a FRESH record — attempt 2's
 	 * events would otherwise collide with attempt 1's on `(investigationId, branchId,
 	 * seq)` and be swallowed as duplicates (P2002), leaving the record showing the failed
 	 * attempt's events for a run that later completes. Idempotent (deleting zero rows is

@@ -100,6 +100,16 @@ export interface ClaudeCodeConfig {
 	limits?: SandboxLimits;
 	/** If true, stops host settings/hooks/plugins/MCP servers from leaking into the rented harness. */
 	isolateSettings?: boolean;
+	/**
+	 * Per-run environment for the harness child (ADR-0006 BYO-key).
+	 *
+	 * The claude-code CLI reads its credential from `ANTHROPIC_API_KEY` in its own
+	 * process env. Subscription auth already had a per-run route in (the isolated 0600
+	 * `CLAUDE_CONFIG_DIR` below); a plain API key had none, so a BYO-key run reached the
+	 * harness unauthenticated. Threaded through the sandbox spawn so the value is scoped
+	 * to this child and never assigned to the host's `process.env`.
+	 */
+	env?: Record<string, string | undefined>;
 }
 
 // The read-only floor is the registry SSOT (ADR-0017 Amendment 2) — the SAME array
@@ -162,7 +172,17 @@ export async function* runClaudeCodeBranch(
 				spawnClaudeCodeProcess: sandboxSpawnClaudeCodeProcess(sandbox, {
 					cwd: config.cwd,
 					...(config.limits ? { limits: config.limits } : {}),
-					...(configDir ? { env: { CLAUDE_CONFIG_DIR: configDir } } : {}),
+					// The per-run credential env and the isolated config dir ride the SAME
+					// `opts.env`. `CLAUDE_CONFIG_DIR` is spread last: the isolation boundary
+					// this run resolved is not overridable by a caller-supplied env.
+					...(config.env || configDir
+						? {
+								env: {
+									...(config.env ?? {}),
+									...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
+								},
+							}
+						: {}),
 				}),
 			},
 		});
