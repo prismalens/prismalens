@@ -33,6 +33,7 @@ describe("InvestigationTriggerService", () => {
 		},
 		alert: {
 			findUnique: vi.fn(),
+			findMany: vi.fn(),
 			count: vi.fn(),
 		},
 		incident: {
@@ -205,10 +206,26 @@ describe("InvestigationTriggerService", () => {
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([
 				{ connectionId: "c1" },
 			]);
+			// Auto-trigger path (follow-up 4a, issue #302): the incident's alerts must
+			// be fetched and threaded through as `FiringAlert`s, matching the manual
+			// trigger path (incidents.controller.ts `investigate`) instead of silently
+			// relying on the worker's DB fallback.
+			mockPrisma.alert.findMany.mockResolvedValue([
+				{
+					title: "High CPU",
+					severity: "critical",
+					labels: JSON.stringify({ service: "checkout" }),
+					description: "CPU pegged at 100%",
+					triggeredAt: new Date("2026-08-01T00:00:00.000Z"),
+				},
+			]);
 			mockDispatchService.addInvestigationJob.mockResolvedValue("job-1");
 
 			await service.triggerInvestigation(incident, decision);
 
+			expect(mockPrisma.alert.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({ where: { incidentId: "inc-1" } }),
+			);
 			expect(mockPrisma.investigation.create).toHaveBeenCalled();
 			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -216,15 +233,38 @@ describe("InvestigationTriggerService", () => {
 					investigationId: "inv-1",
 					priority: "critical",
 					connectionIds: ["c1"],
+					alerts: [
+						expect.objectContaining({
+							alertname: "High CPU",
+							severity: "critical",
+							labels: { service: "checkout" },
+							annotations: { summary: "CPU pegged at 100%" },
+							startsAt: "2026-08-01T00:00:00.000Z",
+						}),
+					],
 				}),
 			);
 			expect(mockPrisma.investigation.update).not.toHaveBeenCalled();
 			expect(mockTimelineService.create).not.toHaveBeenCalled();
 		});
 
+		it("should omit alerts when the incident has none (matches manual-path shape)", async () => {
+			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
+			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
+			mockPrisma.alert.findMany.mockResolvedValue([]);
+			mockDispatchService.addInvestigationJob.mockResolvedValue("job-1");
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
+				expect.objectContaining({ alerts: undefined }),
+			);
+		});
+
 		it("should handle enqueue failure", async () => {
 			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
+			mockPrisma.alert.findMany.mockResolvedValue([]);
 			mockDispatchService.addInvestigationJob.mockResolvedValue(null);
 
 			await service.triggerInvestigation(incident, decision);

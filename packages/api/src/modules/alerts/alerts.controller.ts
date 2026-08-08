@@ -247,15 +247,26 @@ export class AlertsController {
 	 * Converts Date objects to ISO strings
 	 */
 	private serializeAlert(alert: PrismaAlert): Alert {
+		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
+		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns
+		// must stay out of the API response (follow-up 4b, issue #302).
 		return {
-			...alert,
+			id: alert.id,
+			dedupKey: alert.dedupKey,
 			fingerprint: alert.fingerprint ?? null,
 			externalId: alert.externalId ?? null,
+			title: alert.title,
+			description: alert.description ?? null,
+			severity: alert.severity,
+			status: alert.status,
 			source: alert.source ?? null,
 			sourceUrl: alert.sourceUrl ?? null,
+			serviceId: alert.serviceId ?? null,
+			incidentId: alert.incidentId ?? null,
 			rawPayload: alert.rawPayload ?? null,
 			tags: alert.tags ? JSON.parse(alert.tags) : null,
 			labels: alert.labels ? JSON.parse(alert.labels) : null,
+			occurrenceCount: alert.occurrenceCount,
 			triggeredAt: alert.triggeredAt?.toISOString(),
 			acknowledgedAt: alert.acknowledgedAt?.toISOString() ?? null,
 			resolvedAt: alert.resolvedAt?.toISOString() ?? null,

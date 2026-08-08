@@ -33,6 +33,10 @@ vi.mock("./orpc-client.js", () => ({
 				total: apiState.services.length,
 			})),
 		},
+		// The #302 follow-up asserts the failure-persisting catch writes a terminal
+		// status when the schema parse itself throws, so the status writer has to be
+		// stubbed alongside the timeline writer.
+		investigations: { updateStatus: vi.fn(async () => ({})) },
 		timeline: { create: vi.fn(async () => ({})) },
 	},
 }));
@@ -225,7 +229,7 @@ describe("buildRequest settings isolation (ADR-0020 server placement)", () => {
 			{
 				incidentId: "inc-2",
 				investigationId: "inv-2",
-				alerts: [{ alertname: "HighLatency", severity: "critical" }],
+				alerts: [{ alertname: "HighLatency", severity: "critical", labels: {}, annotations: {}, startsAt: null }],
 			},
 			"run-2",
 		);
@@ -264,9 +268,9 @@ describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 				incidentId: "inc-storm-1",
 				investigationId: "inv-storm-1",
 				alerts: [
-					{ alertname: "HighCPU", severity: "critical", labels: { service: "checkout" } },
-					{ alertname: "MemoryLeak", severity: "high", labels: { service: "checkout" } },
-					{ alertname: "LatencySpike", severity: "medium", labels: { service: "checkout" } },
+					{ alertname: "HighCPU", severity: "critical", labels: { service: "checkout" }, annotations: {}, startsAt: null },
+					{ alertname: "MemoryLeak", severity: "high", labels: { service: "checkout" }, annotations: {}, startsAt: null },
+					{ alertname: "LatencySpike", severity: "medium", labels: { service: "checkout" }, annotations: {}, startsAt: null },
 				],
 			},
 			"run-storm-1",
@@ -368,10 +372,15 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 		);
 	}
 
+	// `annotations` and `startsAt` are REQUIRED on `FiringAlert`, not optional —
+	// they are spelled out here because this branch drops the worker tsconfig's
+	// test exclusion (#302 follow-up 3), so these literals are now type-checked.
 	const CHECKOUT_ALERT = {
 		alertname: "HighCPU",
 		severity: "critical",
 		labels: { service: "checkout" },
+		annotations: {},
+		startsAt: null,
 	};
 
 	it("THE POINT OF #331: the investigation runs in the service's mapped checkout", async () => {
@@ -547,6 +556,55 @@ describe("processInvestigationJob schema validation", () => {
 		expect(() =>
 			InvestigationJobDataSchema.parse(validJobWithoutAlerts),
 		).not.toThrow();
+	});
+
+	// Follow-up 4, issue #302: the schema parse lives INSIDE the failure-persisting
+	// try/catch. A payload that carries usable identifiers but fails validation must
+	// still leave a terminal "failed" investigation row and a timeline entry — never a
+	// row dangling at "pending" because the parse threw past the handler. Post-#350 the
+	// payload arrives over IPC from the host's dispatch loop rather than off a BullMQ
+	// job, so the identifiers are read from the `rawData` argument; the behaviour under
+	// test is unchanged.
+	it("parse failure still persists a failed status and timeline entry from the raw identifiers", async () => {
+		const { api } = await import("./orpc-client.js");
+		const updateStatus = vi.mocked(api.investigations.updateStatus);
+		const timelineCreate = vi.mocked(api.timeline.create);
+		updateStatus.mockClear();
+		timelineCreate.mockClear();
+
+		const job = {
+			id: "job-parse-fail",
+			name: "investigation",
+			attemptsMade: 0,
+			updateProgress: vi.fn(async () => {}),
+		};
+		const malformedDataWithIds = {
+			investigationId: "inv-parse-fail",
+			incidentId: "inc-parse-fail",
+			priority: "invalid-priority",
+		};
+
+		await expect(
+			processInvestigationJob(job, malformedDataWithIds as never, {
+				emit: vi.fn(),
+				streamDone: vi.fn(),
+				signal: new AbortController().signal,
+			}),
+		).rejects.toThrow();
+
+		expect(updateStatus).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: "inv-parse-fail",
+				status: "failed",
+			}),
+		);
+		expect(timelineCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				incidentId: "inc-parse-fail",
+				type: "investigation_completed",
+				title: "AI Investigation Failed",
+			}),
+		);
 	});
 });
 

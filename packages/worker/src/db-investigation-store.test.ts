@@ -77,6 +77,22 @@ function makeStore(
 	return { store, api };
 }
 
+/**
+ * `InvestigationStore.flush` is optional on the interface (some adapters don't
+ * buffer), but `createDbInvestigationStore` always provides it. Rather than
+ * asserting that away with `!`, verify it as part of the test's arrangement
+ * and hand back a narrowed, correctly-typed reference — a `!` here would
+ * silence the checker instead of establishing the fact.
+ */
+function flushOf(store: ReturnType<typeof createDbInvestigationStore>) {
+	if (!store.flush) {
+		throw new Error(
+			"createDbInvestigationStore's store must provide flush() — got none",
+		);
+	}
+	return store.flush;
+}
+
 describe("createDbInvestigationStore — batched durable append", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
@@ -170,7 +186,7 @@ describe("createDbInvestigationStore — batched durable append", () => {
 		// No size/timer trigger yet — the tail is still buffered.
 		expect(appendEvents).not.toHaveBeenCalled();
 
-		await store.flush();
+		await flushOf(store)();
 
 		expect(appendEvents).toHaveBeenCalledTimes(1);
 		expect(appendEvents.mock.calls[0][0]).toHaveLength(2);
@@ -184,7 +200,7 @@ describe("createDbInvestigationStore — batched durable append", () => {
 		await store.append(evt(1));
 		// flush() takes the whole buffer and cancels the pending timer; the later timer
 		// fire finds an empty buffer and is a no-op.
-		await store.flush();
+		await flushOf(store)();
 		await vi.advanceTimersByTimeAsync(FLUSH_INTERVAL_MS);
 
 		expect(appendEvents).toHaveBeenCalledTimes(1);
@@ -195,7 +211,7 @@ describe("createDbInvestigationStore — batched durable append", () => {
 		const appendEvents = vi.fn().mockResolvedValue(undefined);
 		const { store } = makeStore(appendEvents);
 
-		await store.flush();
+		await flushOf(store)();
 
 		expect(appendEvents).not.toHaveBeenCalled();
 	});

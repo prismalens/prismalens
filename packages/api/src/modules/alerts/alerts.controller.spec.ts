@@ -207,4 +207,37 @@ describe("AlertsController", () => {
 			expect(mockCorrelationService.findSuppressingRule).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("serializeAlert whitelist (#302 follow-up 4b)", () => {
+		// serializeAlert used to spread the raw Prisma row, which put `tenantId`
+		// (ADR-0011 §6's dormant multi-tenancy hedge) on the alert-detail response.
+		// Whitelisting must keep it — and any other internal column — out even if the
+		// procedure's `.output(...)` validation is ever loosened or bypassed.
+		it("never leaks tenantId (or other non-contract columns) on GET /alerts/:id", async () => {
+			const alert = alertRow({
+				status: "triggered",
+				title: "High CPU",
+				severity: "critical",
+				// Internal-only columns that must never reach the API response.
+				tenantId: "tenant-secret-123",
+				internalNotes: "do-not-leak",
+			});
+			mockAlertsService.findById.mockResolvedValue(alert);
+
+			const handlers = getHandlers();
+			const result = await handlers.get({ input: { id: alert.id } } as any);
+
+			expect(result).not.toHaveProperty("tenantId");
+			expect(result).not.toHaveProperty("internalNotes");
+			// Sanity: the whitelist still carries every contract-required field.
+			expect(result).toMatchObject({
+				id: alert.id,
+				dedupKey: "dedup-1",
+				title: "High CPU",
+				severity: "critical",
+				status: "triggered",
+				occurrenceCount: 1,
+			});
+		});
+	});
 });

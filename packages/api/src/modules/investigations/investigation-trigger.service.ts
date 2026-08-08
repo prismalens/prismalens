@@ -16,6 +16,7 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
+import { toFiringAlert } from "@prismalens/contracts";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { SettingsService } from "../../core/settings/settings.service.js";
@@ -372,6 +373,13 @@ export class InvestigationTriggerService {
 					).map((i) => i.connectionId)
 				: [];
 
+			// Fetch the incident's alerts so the job payload matches the manual
+			// trigger path (follow-up 4a, issue #302 — no silent divergence).
+			const incidentAlerts = await this.prisma.alert.findMany({
+				where: { incidentId: incident.id },
+				orderBy: { triggeredAt: "desc" },
+			});
+
 			jobId = await this.dispatchService.addInvestigationJob({
 				incidentId: incident.id,
 				investigationId: investigation.id,
@@ -383,6 +391,10 @@ export class InvestigationTriggerService {
 					serviceName: incident.service?.name,
 				},
 				connectionIds,
+				alerts:
+					incidentAlerts.length > 0
+						? incidentAlerts.map((a) => toFiringAlert(a))
+						: undefined,
 			});
 		} catch (error) {
 			// AC: no dangling pending rows — @OnEvent swallows listener errors, so a throw

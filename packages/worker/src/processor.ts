@@ -170,16 +170,25 @@ export default async function processInvestigationJob(
 	rawData: InvestigationJobData,
 	io: JobIo,
 ): Promise<InvestigationResult> {
-	const data = InvestigationJobDataSchema.parse(rawData);
+	// Read the identifiers straight off the unvalidated payload for the
+	// observability context. Parsing HERE would throw before the
+	// failure-persisting try/catch in processJobInternal could run, so a
+	// malformed payload would leave a dangling "pending" investigation row
+	// (follow-up 2, issue #302). The declared type is the host's promise about
+	// what it put on the `start` message, not a runtime guarantee — the read is
+	// defensive on purpose.
+	const unvalidated = rawData as Partial<InvestigationJobData> | undefined;
+	const rawInvestigationId = unvalidated?.investigationId;
+	const rawIncidentId = unvalidated?.incidentId;
 	return runWithWideEvent(
 		`job-${job.id}`,
-		async () => processJobInternal(job, data, io),
+		async () => processJobInternal(job, rawData, io),
 		{
 			context: {
 				job_id: job.id,
 				job_name: job.name,
-				investigation_id: data.investigationId,
-				incident_id: data.incidentId,
+				investigation_id: rawInvestigationId,
+				incident_id: rawIncidentId,
 			},
 		},
 	);
@@ -190,32 +199,12 @@ async function processJobInternal(
 	rawPayload: InvestigationJobData,
 	io: JobIo,
 ): Promise<InvestigationResult> {
-	const data = InvestigationJobDataSchema.parse(rawPayload);
-	logger.info(
-		`Processing job ${job.id} for investigation ${data.investigationId}`,
-	);
-	enrichContext({
-		context: {
-			alert_count: data.alerts?.length ?? 0,
-			priority: data.priority,
-		},
-	});
-
-	// Cancelled is sticky (CANCEL slice): a stalled-job retry, or a job whose cancel
-	// the API already fallback-wrote, must not rerun the investigation. Best-effort —
-	// on an API hiccup the run proceeds, and the API's status writers still refuse
-	// any terminal overwrite of "cancelled".
-	try {
-		const current = await api.investigations.get({ id: data.investigationId });
-		if (current?.status === "cancelled") {
-			logger.info(
-				`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
-			);
-			return cancelledResult(data);
-		}
-	} catch (e) {
-		logger.warn("Could not check investigation status before run", e);
-	}
+	// Extract raw identifiers so the catch block can persist a "failed" status
+	// even when the parse itself is what throws (follow-up 2: no dangling
+	// "pending" investigation rows).
+	const unvalidated = rawPayload as Partial<InvestigationJobData> | undefined;
+	const rawInvestigationId = unvalidated?.investigationId;
+	const rawIncidentId = unvalidated?.incidentId;
 
 	// The isolation boundary (ADR-0020) is CALLER-OWNED — the acp-client will not
 	// destroy a caller-supplied sandbox (it may span branches, B.2), so the worker owns
@@ -228,6 +217,38 @@ async function processJobInternal(
 	// + run-owned sandbox teardown). Nothing here subscribes to anything.
 	const abortSignal = io.signal;
 	try {
+		// Schema parse is inside the try/catch so that a validation failure marks
+		// the investigation row "failed" instead of leaving it dangling as "pending"
+		// (follow-up 2, issue #302).
+		const data = InvestigationJobDataSchema.parse(rawPayload);
+		logger.info(
+			`Processing job ${job.id} for investigation ${data.investigationId}`,
+		);
+		enrichContext({
+			context: {
+				alert_count: data.alerts?.length ?? 0,
+				priority: data.priority,
+			},
+		});
+
+		// Cancelled is sticky (CANCEL slice): a stalled-job retry, or a job whose cancel
+		// the API already fallback-wrote, must not rerun the investigation. Best-effort —
+		// on an API hiccup the run proceeds, and the API's status writers still refuse
+		// any terminal overwrite of "cancelled".
+		try {
+			const current = await api.investigations.get({
+				id: data.investigationId,
+			});
+			if (current?.status === "cancelled") {
+				logger.info(
+					`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
+				);
+				return cancelledResult(data);
+			}
+		} catch (e) {
+			logger.warn("Could not check investigation status before run", e);
+		}
+
 		// RERUN (attempt 2+ — a retry, or a reclaim of an abandoned claim): the prior
 		// attempt left a stale durable event record whose rows would collide with this
 		// attempt's on (investigationId, branchId, seq) and be swallowed as duplicates —
@@ -331,25 +352,31 @@ async function processJobInternal(
 	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`Job failed: ${errorMessage}`, error);
-		try {
-			await api.investigations.updateStatus({
-				id: data.investigationId,
-				status: "failed",
-				error: errorMessage,
-			});
-			await api.timeline.create({
-				incidentId: data.incidentId,
-				type: "investigation_completed",
-				title: "AI Investigation Failed",
-				description: errorMessage,
-				source: "ai_worker",
-				metadata: {
-					investigationId: data.investigationId,
+		// Use raw identifiers so this block can persist the failure even when the
+		// schema parse itself was what threw.
+		if (rawInvestigationId) {
+			try {
+				await api.investigations.updateStatus({
+					id: rawInvestigationId,
+					status: "failed",
 					error: errorMessage,
-				},
-			});
-		} catch (e) {
-			logger.error("Failed to update failure status", e);
+				});
+				if (rawIncidentId) {
+					await api.timeline.create({
+						incidentId: rawIncidentId,
+						type: "investigation_completed",
+						title: "AI Investigation Failed",
+						description: errorMessage,
+						source: "ai_worker",
+						metadata: {
+							investigationId: rawInvestigationId,
+							error: errorMessage,
+						},
+					});
+				}
+			} catch (e) {
+				logger.error("Failed to update failure status", e);
+			}
 		}
 		throw error;
 	} finally {
