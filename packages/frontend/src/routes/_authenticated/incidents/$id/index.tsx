@@ -197,6 +197,12 @@ function IncidentDetailPage() {
 						investigations={incident.investigations || []}
 						onStartInvestigation={handleInvestigate}
 						isStarting={investigateMutation.isPending}
+						startDisabled={!isLlmConfigured}
+						startDisabledReason={
+							!isLlmConfigured
+								? "Configure an AI provider in Settings to enable investigations"
+								: undefined
+						}
 					/>
 				</TabsContent>
 

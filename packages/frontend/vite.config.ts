@@ -10,7 +10,9 @@ import tsConfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
 	server: {
-		port: 3000,
+		// Overridable so an e2e run (or a second worktree) can take a free port
+		// instead of fighting the dev stack for 3000. Default is unchanged.
+		port: Number(process.env.PRISMALENS_FRONTEND_PORT ?? 3000),
 		proxy: {
 			// Proxy API calls to backend in development
 			"/api": {

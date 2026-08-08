@@ -27,15 +27,33 @@ const repoRoot = resolve(__dirname, "../..");
  *
  *   pnpm --filter @prismalens/frontend exec playwright test   # dev stack
  *   PL_UP_E2E=1 pnpm --filter @prismalens/frontend exec playwright test
+ *
+ * The dev-stack ports are overridable. `reuseExistingServer: false` on
+ * hard-coded ports means an e2e run takes down whatever already holds 3000 or
+ * 3001 — a real hazard with several worktrees on one machine. Defaults are
+ * unchanged, so CI and the documented command above are unaffected:
+ *
+ *   PRISMALENS_FRONTEND_PORT=3200 PRISMALENS_PORT=3201 \
+ *     pnpm --filter @prismalens/frontend exec playwright test
  */
 const PL_UP = process.env.PL_UP_E2E === "1";
 const PL_UP_PORT = process.env.PL_UP_PORT ?? "3100";
+const FRONTEND_PORT = process.env.PRISMALENS_FRONTEND_PORT ?? "3000";
+const API_PORT = process.env.PRISMALENS_PORT ?? "3001";
 
 const workspaceDir = mkdtempSync(join(tmpdir(), "prismalens-e2e-"));
 const env = {
 	...process.env,
 	PRISMALENS_WORKSPACE_DIR: workspaceDir,
 	PRISMALENS_SEED_DEMO: "1",
+	// Both servers read these: the API binds PRISMALENS_PORT, and Vite both
+	// binds PRISMALENS_FRONTEND_PORT and proxies /api to PRISMALENS_PORT.
+	PRISMALENS_PORT: API_PORT,
+	PRISMALENS_FRONTEND_PORT: FRONTEND_PORT,
+	// Better Auth rejects a sign-in from an origin it does not trust, and the
+	// browser's origin here is Vite's. Moving the port without this yields
+	// "Invalid origin" on every login.
+	PRISMALENS_FRONTEND_URL: `http://localhost:${FRONTEND_PORT}`,
 };
 
 if (!PL_UP) {
@@ -47,7 +65,7 @@ if (!PL_UP) {
 
 const baseURL = PL_UP
 	? `http://localhost:${PL_UP_PORT}`
-	: "http://localhost:3000";
+	: `http://localhost:${FRONTEND_PORT}`;
 
 export default defineConfig({
 	testDir: "./e2e",
@@ -74,14 +92,14 @@ export default defineConfig({
 		: [
 				{
 					command: "pnpm --filter @prismalens/api start",
-					url: "http://localhost:3001/health",
+					url: `http://localhost:${API_PORT}/health`,
 					env,
 					reuseExistingServer: false,
 					timeout: 60_000,
 				},
 				{
 					command: "pnpm --filter @prismalens/frontend dev",
-					url: "http://localhost:3000",
+					url: `http://localhost:${FRONTEND_PORT}`,
 					env,
 					reuseExistingServer: false,
 					timeout: 60_000,
