@@ -71,6 +71,24 @@ interface StreamBuffer {
  * | **ACTIVE**   | buffer present, `done` false | buffer replay, every live event, then `done`|
  * | **FINISHED** | buffer present, `done` true  | buffer replay, then `done`                  |
  *
+ * One id's whole lifecycle, as the relay sees it:
+ *
+ * ```text
+ *  t+0s   attach("inv-1")                 UNKNOWN  -> ACTIVE   (buffer opened, empty)
+ *  t+2s   bus: {kind:"event", e1}         ACTIVE             buffer [e1]
+ *  t+3s   subscribe("inv-1")              ACTIVE             replay e1, then live
+ *  t+4s   bus: {kind:"event", e2}         ACTIVE             that subscriber gets e2
+ *  t+9s   bus: {kind:"done"}              ACTIVE   -> FINISHED  `done` to subscribers,
+ *                                                              detach, TTL armed
+ *  t+20s  subscribe("inv-1")              FINISHED           replay [e1,e2], then `done`
+ *  t+69s  TTL fires                       FINISHED -> UNKNOWN  buffer deleted
+ *  t+70s  subscribe("inv-1")              UNKNOWN            no frames, then `done`
+ * ```
+ *
+ * The `done` at t+70s is the fix for #370: that subscribe used to return a live
+ * subscription on a topic nothing was publishing to, and the client hung on a frameless
+ * 200 until it gave up.
+ *
  * The load-bearing rule is that **buffer-absent is a state, not a gap**. It used to mean
  * "assume live": `subscribe` skipped its replay block and handed back a subscription on
  * an emitter that would never fire for that id, so a client connecting after the
