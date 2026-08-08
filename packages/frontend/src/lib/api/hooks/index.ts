@@ -166,7 +166,7 @@ export {
 	useUpdateLlmSettings,
 } from "./use-settings-orpc";
 // Setup hooks
-export { useCreateOwner } from "./use-setup-orpc";
+export { setupKeys, useCreateOwner, useSetupStatus } from "./use-setup-orpc";
 // Timeline hooks
 export {
 	timelineKeys,
