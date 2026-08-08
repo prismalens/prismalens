@@ -38,8 +38,8 @@ can be migrated before anything opens it.
 | Prisma parity | Identical `_prisma_migrations` DDL, sha256-of-file checksum, `applied_steps_count = 1`. `prisma migrate status` agrees with a database this runner created. |
 | PostgreSQL | Skipped (`skipped-non-sqlite`). Server placements have the Prisma CLI and use `prisma migrate deploy`. |
 
-Migration history is **append-only** — see `CONTRIBUTING.md` → *Database
-migrations*.
+Migration history is **append-only** — see
+[Database migrations](../../../CONTRIBUTING.md#database-migrations).
 
 ## Demo Data Seeding
 

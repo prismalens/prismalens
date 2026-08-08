@@ -485,18 +485,20 @@ function assertTarball(tarball, copiedNames) {
 			"the tarball has no SPA entry at node_modules/@prismalens/api/public/index.html",
 		);
 	}
-	// The migration runner reads `dist/prisma/<flavour>/schema` and nothing else.
-	// A silent loss of it is a database that never gets created in a stranger's
-	// install — a failure that only ever reproduces off our machines.
+	// The migration runner reads `dist/prisma/<flavour>/schema` and nothing else,
+	// and `pl up` is always the SQLITE placement — so assert that lineage by name.
+	// A flavour-agnostic pattern would be satisfied by the `pg` copy alone, which
+	// `pl up` never reads: the tarball would pass here and then fail to create a
+	// database on a stranger's machine.
 	if (
 		!has((e) =>
-			/node_modules\/@prismalens\/database\/dist\/prisma\/.*\/migration\.sql$/.test(
+			/node_modules\/@prismalens\/database\/dist\/prisma\/sqlite\/schema\/[^/]+\/migration\.sql$/.test(
 				e,
 			),
 		)
 	) {
 		fail(
-			"the tarball carries no migration SQL under dist/prisma/ — " +
+			"the tarball carries no migration SQL under dist/prisma/sqlite/schema/ — " +
 				"`pl up` cannot create a database",
 		);
 	}

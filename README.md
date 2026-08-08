@@ -79,8 +79,10 @@ From v0.5.0 — the release that adds the local app (`pl up`) and its database �
 that guarantee has a mechanism behind it. Starting the app applies any pending
 database migrations **in place**, and before it writes to a database that already
 holds data it takes a backup alongside it as `prismalens.db.bak-<timestamp>`.
-Migration history is append-only, so a newer release always knows how to advance
-an older database:
+Migration history is append-only, so a newer release can advance an older
+database whenever the history that database recorded matches the migrations the
+release ships. If that history has drifted or is incomplete, `pl up` stops and
+tells you how to reconcile it — it does not guess, and it does not write:
 
 ```console
 $ pl up

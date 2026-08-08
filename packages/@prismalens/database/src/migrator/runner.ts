@@ -189,7 +189,7 @@ function assertHistoryIsCompatible(
 			"incomplete-migration",
 			`The database at ${databaseFile} has migrations that were started but never finished: ` +
 				`${incomplete.map((r) => r.migration_name).join(", ")}. ` +
-				`Nothing was applied. Restore the most recent prismalens.db.bak-* file next to it, or resolve the migration with the Prisma CLI.`,
+				`Nothing was applied. Restore the most recent ${databaseFile}.bak-* file, or resolve the migration with the Prisma CLI.`,
 		);
 	}
 
@@ -264,7 +264,7 @@ function assertHistoryIsCompatible(
 			`The migrations recorded in ${databaseFile} are not an ordered prefix of the migrations this build ships: ` +
 				`recorded [${appliedNames.join(", ")}], expected [${expectedPrefix.join(", ")}]. ` +
 				`Nothing was applied. A gap or a duplicate row means the history was edited outside this runner; ` +
-				`restore the most recent prismalens.db.bak-* file next to it, or reconcile with the Prisma CLI.`,
+				`restore the most recent ${databaseFile}.bak-* file, or reconcile with the Prisma CLI.`,
 		);
 	}
 }
@@ -378,12 +378,6 @@ export async function runMigrations(
 		);
 	}
 
-	// A database that exists with real content is one we must back up before
-	// writing; a zero-byte file is what `new Database()` leaves behind and
-	// carries nothing worth preserving.
-	const hadExistingData =
-		existsSync(databaseFile) && statSync(databaseFile).size > 0;
-
 	mkdirSync(dirname(databaseFile), { recursive: true });
 	const db = new Database(databaseFile);
 
@@ -442,7 +436,14 @@ export async function runMigrations(
 			const lockedPending = shipped.filter((m) => !lockedApplied.has(m.name));
 
 			if (lockedPending.length > 0) {
-				// Still nothing written at this point — the lock holds no data yet.
+				// Sample "does this database hold data?" HERE, under the write lock,
+				// not before opening it. A competing process may have populated it in
+				// between, and a stale "it was empty" reading would skip the backup on
+				// a database that now has data in it. A zero-byte file is what
+				// `new Database()` leaves behind and carries nothing worth preserving.
+				const hadExistingData =
+					existsSync(databaseFile) && statSync(databaseFile).size > 0;
+				// Still nothing written by US at this point — the lock holds no data yet.
 				if (hadExistingData) {
 					backupFile = await backupDatabase(databaseFile);
 					log(`Backed up ${databaseFile} to ${backupFile} before migrating.`);

@@ -103,7 +103,7 @@ schema source. Four stages, and what carries each:
 
 | Stage | Who does it | Where it lives | How to see it |
 |---|---|---|---|
-| **Author** | you, once per schema change | `prisma/sqlite/schema/<timestamp>_<name>/migration.sql` (+ the `pg` twin) | `pnpm db:migrate` |
+| **Author** | you, once per schema change | `packages/@prismalens/database/prisma/sqlite/schema/<timestamp>_<name>/migration.sql` (+ the `pg` twin) | `pnpm db:migrate` |
 | **Ship** | `pnpm build` | `dist/prisma/<flavour>/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
 | **Detect** | the runner, on every app start | shipped migrations minus the rows in `_prisma_migrations` | `pnpm db:init` prints what it will apply |
 | **Apply + record** | the runner, in one `BEGIN IMMEDIATE` transaction | the SQL runs and its `_prisma_migrations` row is written **in the same transaction** — there is no half-applied state to repair | `pnpm exec prisma migrate status` agrees with it |
@@ -158,18 +158,61 @@ place instead, and the runner's error message spells the repair out.
 
 The ledger is the runner's only source of truth, so re-pointing the checksum alone
 makes the error disappear **and leaves the schema wrong** — the DDL the edit added
-is still missing. Do both, in one transaction:
+is still missing. Apply the DDL and re-point the ledger in ONE transaction.
 
-1. Build a reference database from the current release:
-   `PRISMALENS_WORKSPACE_DIR=$(mktemp -d) pl up`.
-2. Diff its schema against yours and apply whatever DDL is missing.
-3. In the same transaction, re-point the ledger to the shipped checksum (the error
-   message prints the exact `UPDATE`, with the checksum already filled in).
+**Step 0 — take a copy you can roll back to.** Everything below is reversible only
+because of this. Stop the app first, then:
 
-For the pre-#357 drift specifically, the missing DDL is the `jobs` table with its
-three indexes and `services.localCheckoutPath`. A database repaired this way is
-schema-identical to a fresh one — only the ordinal position of the added column
-differs, which Prisma does not depend on.
+```console
+$ cp ~/.prismalens/prismalens.db ~/.prismalens/prismalens.db.pre-repair
+```
+
+To roll back at any point: `mv ~/.prismalens/prismalens.db.pre-repair ~/.prismalens/prismalens.db`.
+
+**Step 1 — find what your schema is missing.** Build a reference database from the
+release you are moving to and compare table lists:
+
+```console
+$ export REF=$(mktemp -d)
+$ PRISMALENS_WORKSPACE_DIR=$REF pl up      # ctrl-c once it says it is listening
+$ sqlite3 $REF/prismalens.db  ".tables" | tr -s ' ' '\n' | sort > /tmp/want.txt
+$ sqlite3 ~/.prismalens/prismalens.db ".tables" | tr -s ' ' '\n' | sort > /tmp/have.txt
+$ comm -23 /tmp/want.txt /tmp/have.txt     # tables you are missing
+$ sqlite3 $REF/prismalens.db ".schema <table>"   # the CREATE statements to copy
+```
+
+Compare columns per table the same way with `PRAGMA table_info(<table>);`.
+
+**Step 2 — apply the DDL and re-point the ledger, atomically.** For the specific
+drift introduced by #350/#352/#357 (the only one in the wild today), that is the
+`jobs` table with its three indexes plus `services.localCheckoutPath`:
+
+```sql
+BEGIN;
+ALTER TABLE "services" ADD COLUMN "localCheckoutPath" TEXT;
+-- paste the exact CREATE TABLE "jobs" (…) from step 1's `.schema jobs`
+CREATE UNIQUE INDEX "jobs_investigationId_key" ON "jobs"("investigationId");
+CREATE INDEX "jobs_status_runAt_priority_idx" ON "jobs"("status", "runAt", "priority");
+CREATE INDEX "jobs_status_heartbeatAt_idx" ON "jobs"("status", "heartbeatAt");
+UPDATE "_prisma_migrations"
+   SET checksum = '<the checksum the error message printed>'
+ WHERE migration_name = '20260803122809_init';
+COMMIT;
+```
+
+**Step 3 — validate.** The ledger must match the shipped SQL, and the app must boot:
+
+```console
+$ sqlite3 ~/.prismalens/prismalens.db \
+    "SELECT migration_name, checksum FROM _prisma_migrations;"
+$ pl up      # expect "Database is up to date (1 migration(s) applied)."
+```
+
+If `pl up` still refuses, roll back with the copy from step 0 and open an issue
+with the error text — do not delete the database.
+
+A database repaired this way is schema-identical to a fresh one; only the ordinal
+position of an `ALTER TABLE`-added column differs, which Prisma does not depend on.
 
 PostgreSQL (the server placement) is out of the runner's scope and keeps using
 `prisma migrate deploy` — a server deploy has the CLI.
