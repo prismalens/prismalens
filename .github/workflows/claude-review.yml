@@ -43,14 +43,20 @@ on:
         default: false
 
 concurrency:
-  # Serialise per PR: two reviews of the same PR would race to upload the same
-  # artifact name and could leave the marker pointing at the wrong run.
+  # Serialise per PR: the artifact name is scoped to the head SHA, so two
+  # dispatches against the SAME head would still race to upload the same name
+  # and could leave the marker pointing at the wrong run.
   group: claude-review-${{ inputs.pr_number }}
   cancel-in-progress: false
 
 jobs:
   review:
     runs-on: ubuntu-latest
+    # Published so `marker` can name the same artifact, and so the SHA it
+    # verifies against comes from the job that actually resolved it rather than
+    # from a second lookup that could disagree.
+    outputs:
+      head_sha: ${{ steps.pr.outputs.head_sha }}
     # `pull-requests: write` is the ONLY write this job gets — enough to post the
     # findings review, not enough to touch a commit status or check. Even a fully
     # subverted reviewer cannot mark the gate green from here.
@@ -305,9 +311,30 @@ jobs:
           # here would fail the step and leave no evidence — correct, but for the
           # wrong reason. Truncate, and say so in the body so nobody reads a cut
           # review as a complete one.
+          #
+          # Cut on a CHARACTER boundary, not a byte one. A plain `head -c` can
+          # slice a multi-byte UTF-8 sequence in half — a box-drawing character
+          # in a quoted code block, an em dash, a non-Latin identifier — and the
+          # trailing partial byte makes the JSON payload invalid, so the API
+          # rejects the whole review with the same 422 the truncation exists to
+          # avoid. `iconv -c` re-decodes and drops exactly that partial sequence.
+          #
+          # The threshold stays a BYTE count deliberately: bytes >= characters,
+          # so measuring in bytes can only truncate earlier than GitHub requires,
+          # never later. Erring short is free; erring long is a failed step.
           limit=65536
           if [ "$(wc -c < /tmp/review-post.md)" -gt "$limit" ]; then
-            head -c $((limit - 200)) /tmp/review-post.md > /tmp/review-post.trunc
+            #
+            # `|| true` is required, not sloppy: iconv exits non-zero on
+            # "incomplete character at end of buffer" — which is precisely the
+            # partial sequence we asked it to drop, and it has already written
+            # the good prefix to stdout by then. Under `pipefail` that status
+            # would kill the step. The emptiness check below is what actually
+            # catches iconv genuinely failing.
+            head -c $((limit - 200)) /tmp/review-post.md \
+              | iconv -c -f UTF-8 -t UTF-8 > /tmp/review-post.trunc || true
+            [ -s /tmp/review-post.trunc ] \
+              || { echo "ERROR: truncation produced no output" >&2; exit 1; }
             printf '\n\n---\n**Truncated** at GitHub'"'"'s %s-character review limit. Full output: %s/%s/actions/runs/%s\n' \
               "$limit" "$GITHUB_SERVER_URL" "$REPO" "$GITHUB_RUN_ID" >> /tmp/review-post.trunc
             mv /tmp/review-post.trunc /tmp/review-post.md
@@ -350,9 +377,19 @@ jobs:
               findings_count: ($findings_count | tonumber)}' > review-complete.json
           cat review-complete.json
 
+      # The NAME carries the head SHA, and that is load-bearing, not cosmetic.
+      #
+      # review-evidence.sh branch D has to bind a cited run to the commit it
+      # reviewed. It cannot use the run's own `head_sha`: this workflow is
+      # dispatch-only, and a dispatch run reports the ref it was dispatched from
+      # (`main`), never the PR head. The artifact name is the one field this job
+      # writes itself, from the SHA it resolved and checked out — so it is
+      # written by the review, not asserted by whoever dispatched it. Renaming
+      # this, or dropping the SHA suffix, silently unbinds the gate: keep it in
+      # step with the expected name branch D reconstructs.
       - uses: actions/upload-artifact@v7
         with:
-          name: review-complete-${{ inputs.pr_number }}
+          name: review-complete-${{ inputs.pr_number }}-${{ steps.pr.outputs.head_sha }}
           path: review-complete.json
           if-no-files-found: error
           retention-days: 7
@@ -373,7 +410,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: review-complete-${{ inputs.pr_number }}
+          name: review-complete-${{ inputs.pr_number }}-${{ needs.review.outputs.head_sha }}
 
       - name: Verify evidence still describes the current head
         id: verify

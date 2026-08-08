@@ -214,8 +214,43 @@ api_query () { # api_query <path> <jq filter> [jq args...]
   jq -r "$@" "$filter" <<<"$body" 2>/dev/null || return 2
 }
 
+# Fetch ONE JSON object, distinguishing FOUR outcomes rather than three: found,
+# genuinely absent, and could-not-tell.
+#
+# api_query above folds every gh failure into rc 2 because its callers ask LIST
+# endpoints, where a 404 means the PR itself is gone and there is no useful
+# distinction to draw. Branch D asks single-object endpoints where 404 is a real
+# answer — the cited run id does not exist in this repo — while a 5xx, a
+# secondary rate limit, or a token missing `actions: read` are not answers at
+# all. Collapsing those into "no evidence" is how branch D would end up the one
+# branch publishing a confident negative it never computed, which is precisely
+# the failure class this whole script exists to prevent.
+#   rc 0 = fetched      (JSON body on stdout)
+#   rc 1 = 404          (the object genuinely does not exist)
+#   rc 2 = could not determine
+#
+# `-i` is what makes the split possible at all: gh exits 1 for EVERY HTTP error
+# alike, so the status code has to be read out of the response itself. A
+# transport-level failure (DNS, TLS, unauthenticated gh) prints no status line,
+# which falls into the catch-all below and correctly yields rc 2.
+api_object () { # api_object <path>
+  local path="$1" raw code body
+  raw=$(gh api -i "$path" 2>/dev/null)
+  code=$(sed -n '1s#^HTTP/[0-9.]\{1,\} \([0-9]\{3\}\).*#\1#p' <<<"$raw")
+  case "$code" in
+    2*)  ;;
+    404) return 1 ;;
+    *)   return 2 ;;
+  esac
+  # Headers end at the first blank line; tolerate CRLF line endings.
+  body=$(awk 'BEGIN{h=1} h && /^\r?$/ {h=0; next} !h' <<<"$raw")
+  # A 2xx whose body will not parse is not an answer either.
+  jq -e . <<<"$body" >/dev/null 2>&1 || return 2
+  printf '%s\n' "$body"
+}
+
 evaluate_pr () { # evaluate_pr <number>
-  local n="$1" pr sha author state draft head_ref head_repo title
+  local n="$1" pr pr_number sha author state draft head_ref head_repo title
 
   # A fetch failure is not "nothing to do" — it means we cannot evaluate, and the
   # caller must learn about it through the exit code rather than see a clean run.
@@ -224,6 +259,11 @@ evaluate_pr () { # evaluate_pr <number>
 
   sha=$(jq -r '.head.sha'      <<<"$pr")
   author=$(jq -r '.user.login' <<<"$pr")
+  # The CANONICAL number as GitHub reports it, not the argument as typed. Branch
+  # D reconstructs an artifact name the workflow built from its own validated
+  # input, so `344` and `0344` must not produce two different expected names —
+  # the argument round-trips through the API and comes back normalised.
+  pr_number=$(jq -r '.number'  <<<"$pr")
   state=$(jq -r '.state'       <<<"$pr")
   draft=$(jq -r '.draft'       <<<"$pr")
   head_ref=$(jq -r '.head.ref' <<<"$pr")
@@ -356,13 +396,12 @@ evaluate_pr () { # evaluate_pr <number>
       # it evidence is that run 123 actually exists, actually succeeded, and
       # actually ran the review workflow against this exact commit.
       #
-      # Four conditions, ALL required:
+      # Three conditions on the run itself, ALL required:
       #   status=completed + conclusion=success — a cancelled or failed run means
       #     the marker job was skipped by `needs`, so a marker alongside one is a
       #     forgery, not a race;
-      #   head_sha == the PR's current head — closes replaying an old run's id
-      #     under a new SHA;
       #   workflow path — closes citing an unrelated green run on this repo.
+      # Plus a fourth, below: the run must carry an artifact naming this head.
       #
       # The endswith is anchored on `/` so `not-claude-review.yml` cannot pass as
       # `claude-review.yml`; a plain suffix test would accept it. `.path` is also
@@ -371,16 +410,71 @@ evaluate_pr () { # evaluate_pr <number>
       # suffix would make an otherwise-correct path fail to match.
       #
       # The runs endpoint is scoped to $REPO, so a run id from someone's fork
-      # simply 404s here — a fetch failure is treated as no evidence, never as a
-      # reason to publish success.
-      local run_json verified=""
-      run_json=$(gh api "repos/$REPO/actions/runs/$claude_run_id" 2>/dev/null) && \
-        verified=$(jq -r --arg sha "$sha" --arg wf "$CLAUDE_REVIEW_WORKFLOW" '
+      # simply 404s here — genuinely absent, so it falls through to `failure`.
+      # Any OTHER fetch failure — a 5xx, a rate limit, a token without
+      # `actions: read` — publishes `error` instead, the same discipline branches
+      # A and C already follow. See api_object for why the two must not collapse.
+      local run_json verified="" obj_rc
+      run_json=$(api_object "repos/$REPO/actions/runs/$claude_run_id"); obj_rc=$?
+      if [ $obj_rc -eq 2 ]; then
+        publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
+        return 1
+      fi
+      if [ $obj_rc -eq 0 ]; then
+        verified=$(jq -r --arg wf "$CLAUDE_REVIEW_WORKFLOW" '
             if (.status == "completed"
                 and .conclusion == "success"
-                and .head_sha == $sha
                 and ((.path // "" | split("@")[0]) | endswith("/" + $wf)))
             then "ok" else "" end' <<<"$run_json" 2>/dev/null)
+      fi
+
+      # BINDING THE RUN TO THIS HEAD.
+      #
+      # This used to compare the run's `.head_sha` to the PR head, and could
+      # never match: claude-review.yml is `workflow_dispatch`-only, and a
+      # dispatch run reports the ref it was dispatched FROM — `main`, carrying
+      # main's tip as `head_sha` — not the PR head it was told to review.
+      # Verified against this repo's Actions API: every dispatch run reads
+      # head_branch=main. So the condition failed on every genuinely reviewed PR
+      # and branch D fell through to `failure` — a gate branch that could only
+      # ever say no.
+      #
+      # The binding now comes from the artifact NAME. claude-review.yml's
+      # `review` job uploads `review-complete-<pr>-<full head sha>`, where that
+      # SHA is the commit it resolved and checked out. The name is written by the
+      # workflow from inside the reviewed run, not asserted by whoever dispatched
+      # it: an operator chooses which PR to dispatch, but cannot choose what the
+      # review job records having reviewed. Replaying an old run's id under a new
+      # head therefore stops matching — the property the `.head_sha` comparison
+      # was reaching for, expressed against a field that dispatch actually sets.
+      #
+      # The name alone carries the binding, so nothing is downloaded.
+      #
+      # EXPIRY IS NOT A HOLE, AND MUST NOT BE "FIXED". Artifacts expire (this
+      # workflow sets retention-days: 7; GitHub's own default is 90). An expired
+      # artifact must not read as valid evidence, and it does not: expiry drops
+      # it from this listing, so the check falls through to `failure` and the PR
+      # needs a fresh review. Do not later cache names or accept `expired: true`
+      # entries to "make old PRs pass" — an expired artifact records that a
+      # review once happened, not that one still stands for this head.
+      if [ "$verified" = "ok" ]; then
+        local arts_json want_artifact
+        want_artifact="review-complete-$pr_number-$sha"
+        verified=""
+        arts_json=$(api_object "repos/$REPO/actions/runs/$claude_run_id/artifacts?per_page=100")
+        obj_rc=$?
+        if [ $obj_rc -eq 2 ]; then
+          publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
+          return 1
+        fi
+        if [ $obj_rc -eq 0 ]; then
+          verified=$(jq -r --arg want "$want_artifact" '
+              if ([ .artifacts[]?
+                    | select(.name == $want)
+                    | select(.expired != true) ] | length) > 0
+              then "ok" else "" end' <<<"$arts_json" 2>/dev/null)
+        fi
+      fi
 
       if [ "$verified" = "ok" ]; then
         publish "$sha" success "Claude review evidence from run $claude_run_id at ${sha:0:8}"
