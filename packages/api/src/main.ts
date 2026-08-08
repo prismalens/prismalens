@@ -6,6 +6,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config/dist/index.js";
 import { NestFactory } from "@nestjs/core";
 import { getConfig } from "@prismalens/config";
+import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { AppModule } from "./app.module.js";
 import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
@@ -42,6 +43,44 @@ async function bootstrap() {
 	}
 
 	const logger = new Logger({ context: "Bootstrap" });
+
+	/**
+	 * MIGRATE BEFORE ANYTHING OPENS THE DATABASE.
+	 *
+	 * `pl up` boots this process on an end user's machine, where there is no
+	 * `prisma` CLI and no schema source — so the migration SQL travels inside
+	 * the package and is applied programmatically (issue #335). A current
+	 * database is a no-op; an incompatible one is a hard stop with instructions
+	 * rather than a partial apply.
+	 *
+	 * The database type comes from the VALIDATED config, not raw `process.env`:
+	 * a Postgres deploy has the Prisma CLI and keeps `prisma migrate deploy`, and
+	 * an unsupported value must fail validation above rather than fall through to
+	 * a silent skip here.
+	 */
+	try {
+		const migration = await runMigrations({
+			dbType: getConfig().PRISMALENS_DB_TYPE,
+			log: (message) => logger.info(message),
+		});
+		if (migration.status === "applied") {
+			logger.info(
+				`Database migrated: ${migration.applied.join(", ")}${
+					migration.backupFile ? ` (backup: ${migration.backupFile})` : ""
+				}`,
+			);
+		}
+	} catch (error) {
+		if (error instanceof MigrationError) {
+			logger.error(`Database migration refused [${error.code}]`);
+			logger.error(error.message);
+		} else {
+			logger.error(
+				`Database migration failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+		process.exit(1);
+	}
 
 	// Create an initial context to read config before creating the full app (optional pattern)
 	// or just use process.env here if we want to bootstrap create method options.

@@ -7,8 +7,22 @@ You should be critical of users ideas. Not eveything the is asked to be done sho
 This is a project that is still in development phase
 * No deperecation/legacy/dead code needed
 * Clean upgrade/update/change only
-* No new DB migrations required, clear existing and recreate init migration. Post recreation, delete prismalens.db
 * DEV user - admin@prismalens.dev/admin123
+
+## DB migrations are append-only (the squash-`init` rule is retired — #335)
+The old rule here was *"no new DB migrations required — clear existing and recreate the
+init migration, then delete prismalens.db"*. **That rule is gone.** It was correct while the
+only database in the world was a contributor's, and it becomes data loss the moment `pl up`
+creates a database on a stranger's machine.
+
+* **Never** delete, edit, rename, or squash a migration under
+  `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`.
+  Their checksums are recorded in every existing database; the shipped runner hard-stops
+  (`checksum-mismatch`) rather than reconciling an edited history.
+* A schema change means a **new additive migration**: `pnpm db:migrate` (`prisma migrate dev`).
+* **Never** tell anyone to delete `prismalens.db`. `pnpm db:init` applies pending migrations
+  in place, over the same runner an end user's `pl up` runs.
+* See `CONTRIBUTING.md` → *Database migrations* for the lifecycle and the failure table.
 
 ## Package installation
 When adding new packages, always prefer addition/installation via the package manager over adding the package details to package.json file directly.

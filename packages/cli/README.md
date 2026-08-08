@@ -118,6 +118,15 @@ same origin, the SQLite database is created in the workspace directory on first
 run, and the shipped migrations are applied there and then — nothing external to
 install, and no `prisma` CLI at runtime.
 
+`pl up` has no migration step of its own: it starts the API inside this same
+process, and the API applies pending migrations before NestJS boots. The SQL it
+applies travels in the published tarball at
+`node_modules/@prismalens/database/dist/prisma/sqlite/schema/`, staged and
+asserted by `scripts/pack-cli.mjs` — a tarball without it cannot create a
+database. Migration history is append-only: a database whose recorded history
+does not match what this release ships stops the boot with an explanation
+instead of being altered.
+
 ```bash
 pl up                              # http://localhost:3001
 pl up --port 8080                  # serve somewhere else
