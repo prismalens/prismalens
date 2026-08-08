@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 export { AgentNode, type AgentNodeData } from "./AgentNode";
-export { ApprovalGate, type ApprovalGateProps } from "./ApprovalGate";
 export {
 	CanvasExportMenu,
 	type CanvasExportMenuProps,

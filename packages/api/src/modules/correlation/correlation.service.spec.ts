@@ -210,6 +210,42 @@ describe("CorrelationService", () => {
 			expect(result.matched).toBe(false);
 		});
 
+		it("should evaluate the re-read row, not the caller's stale copy, in the suppress guard", async () => {
+			// #312: runCorrelation re-reads the alert but used to hand the caller's
+			// copy to matchToIncidentByRules. A caller holding a stale "triggered"
+			// snapshot of an already-suppressed row therefore drove a redundant
+			// write, breaking ADR-0028 §2's zero-write no-op.
+			const rule = {
+				id: "rule-1",
+				name: "Info Suppress Rule",
+				action: "suppress",
+				priority: 10,
+				timeWindowMinutes: 60,
+				matchCriteria: JSON.stringify({ match: { severity: ["info"] } }),
+			};
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([rule]);
+
+			const staleAlert = {
+				id: "alert-1",
+				severity: "info",
+				incidentId: null,
+				status: "triggered",
+			} as Alert;
+			// The row itself is already suppressed.
+			mockPrisma.alert.findUnique.mockResolvedValueOnce({
+				...staleAlert,
+				status: "suppressed",
+			});
+
+			const result = await service.correlateAlert(staleAlert);
+
+			expect(mockPrisma.alert.findUnique).toHaveBeenCalledWith({
+				where: { id: "alert-1" },
+			});
+			expect(mockPrisma.alert.update).not.toHaveBeenCalled();
+			expect(result.suppressed).toBe(true);
+		});
+
 		it("should make re-suppression a zero-write no-op", async () => {
 			const rule = {
 				id: "rule-1",
@@ -240,6 +276,67 @@ describe("CorrelationService", () => {
 				ruleName: "Info Suppress Rule",
 				isNewIncident: false,
 			});
+		});
+	});
+
+	describe("findSuppressingRule", () => {
+		const suppressRule = {
+			id: "rule-1",
+			name: "Info Suppress Rule",
+			action: "suppress",
+			priority: 10,
+			timeWindowMinutes: 60,
+			matchCriteria: JSON.stringify({ match: { severity: ["info"] } }),
+		};
+
+		const suppressedAlert = {
+			id: "alert-1",
+			title: "Disk usage nominal",
+			severity: "info",
+			incidentId: null,
+			status: "suppressed",
+		} as Alert;
+
+		it("should name the enabled rule that currently blocks the alert", async () => {
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([suppressRule]);
+
+			const rule = await service.findSuppressingRule(suppressedAlert);
+
+			expect(rule).toEqual(suppressRule);
+		});
+
+		it("should return null once the suppressing rule is disabled", async () => {
+			// findAllRules({ enabled: true }) no longer returns the rule.
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([]);
+			mockPrisma.alert.findFirst.mockResolvedValueOnce(null);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce(null);
+
+			const rule = await service.findSuppressingRule(suppressedAlert);
+
+			expect(rule).toBeNull();
+		});
+
+		it("should return null when a higher-precedence correlate rule wins first", async () => {
+			const correlateRule = {
+				id: "rule-0",
+				name: "Info Correlate Rule",
+				action: "correlate",
+				priority: 5,
+				timeWindowMinutes: 60,
+				matchCriteria: JSON.stringify({ match: { severity: ["info"] } }),
+			};
+			mockPrisma.correlationRule.findMany.mockResolvedValueOnce([
+				correlateRule,
+				suppressRule,
+			]);
+			mockPrisma.incident.findFirst.mockResolvedValueOnce({
+				id: "inc-1",
+				number: 1,
+			});
+
+			const rule = await service.findSuppressingRule(suppressedAlert);
+
+			expect(rule).toBeNull();
 		});
 	});
 

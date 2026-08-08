@@ -126,7 +126,6 @@ export {
 // Service discovery hooks
 export {
 	serviceDiscoveryKeys,
-	useAcceptBulkSuggestions,
 	useAcceptSuggestion,
 	useIgnoreSuggestion,
 	useRejectSuggestion,

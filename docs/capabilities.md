@@ -1,14 +1,28 @@
 # Capability catalog — what you can do today
 
 This is the honest map of PrismaLens functionality as **complete user journeys**, not code
-features. A capability is *done* when a user can perform every listed step end-to-end on a
-released artifact, with a demonstrable proof. Each in-progress capability is tracked by a
-GitHub issue labeled [`capability`](https://github.com/prismalens/prismalens/labels/capability)
-that holds its journey definition, proof requirement, and child tickets.
+features. A capability is *done* when a user can perform every listed step end-to-end **on the
+current build of its own surface**, with a demonstrable proof. Each in-progress capability is
+tracked by a GitHub issue labeled
+[`capability`](https://github.com/prismalens/prismalens/labels/capability) that holds its journey
+definition, proof requirement, and child tickets.
+
+> **"Complete" is scoped to the surface, not to the release train.** Per the
+> [README](../README.md), v0.4.0 is a CLI-first launch: the `prismalens` CLI is the released
+> artifact, while the self-hosted server in this monorepo (web UI, webhook intake, team features)
+> is still in development and not shipped. So ✅ on an **app UI** row means *this journey works
+> end-to-end on trunk* — not *it is available in a release you can install*. Only C4 (CLI) is ✅ in
+> both senses today. Note also that "works on trunk" is a weaker claim than it looks: per
+> [`ui-flows-and-e2e-strategy.md`](./ui-flows-and-e2e-strategy.md), no app journey is yet verified
+> end-to-end by an automated test, so the app-UI statuses rest on manual demonstration alone.
 
 PrismaLens has two independent front doors onto the same investigation engine — the **app**
 (API + worker + web UI) and the **CLI** (local-first, `~/.prismalens` as its record). Every
 capability names its surface; "works" on one says nothing about the other.
+
+For the app surfaces, [`ui-flows-and-e2e-strategy.md`](./ui-flows-and-e2e-strategy.md) maps these
+capabilities onto the concrete routes users take through them, and records which journeys are
+covered by an e2e spec and which are not.
 
 | # | Capability | Surface | Status | Tracking |
 |---|---|---|---|---|
