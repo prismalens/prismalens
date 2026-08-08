@@ -525,4 +525,41 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 			),
 		).rejects.toThrow("Template 'acme' has no oauth2 config");
 	});
+
+	// Asymmetry, pinned deliberately rather than fixed here (#391).
+	//
+	// startAuthorization interpolates authorizationUrl against connectionConfig
+	// (see "interpolates the authorization URL from the connection config"), but
+	// exchangeCodeForTokens interpolates tokenUrl against an EMPTY context:
+	//   oauth2-flow.ts -> interpolate(template.oauth2.tokenUrl, {})
+	// and interpolate() THROWS on a key it cannot resolve. So a tenant-templated
+	// template authorizes fine — the user completes the provider consent screen —
+	// and then the callback throws. Half-working, not silently wrong.
+	//
+	// This test locks in the current, throwing behaviour so the asymmetry is
+	// documented and a regression is visible. Making tokenUrl interpolate for
+	// real is a behaviour change (the decrypted connectionConfig has to be
+	// threaded from the state row into the exchange) and belongs with the other
+	// escalations from this PR, not inside a test-only change. Tracked in #391 —
+	// update this test as part of that fix rather than deleting it.
+	it("throws on a templated tokenUrl — tokenUrl is NOT interpolated from the connection config, unlike authorizationUrl", async () => {
+		const { flow } = makeFlow();
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
+
+		await expect(
+			flow.exchangeCodeForTokens(
+				templateWith({
+					authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+					tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+				}),
+				"auth-code",
+				oauthState(),
+				"client-abc",
+				"secret-xyz",
+			),
+		).rejects.toThrow("Interpolation failed: {{subdomain}} not found in context");
+
+		// The provider is never contacted: it fails before the round-trip.
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 });

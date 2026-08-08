@@ -7,6 +7,42 @@
  * getValidToken() calls with Promise.all — N callers must collapse to ONE
  * provider round-trip and ONE stored credential, with no lost update and no
  * caller left holding a stale token. Hermetic — fetch stubbed, vault in-memory.
+ *
+ * SCOPE — what these race tests do NOT cover (#385):
+ * They exercise TokenRefresher only, which is the path that already takes the
+ * per-connection lock. There is a SECOND refresh path — OAuthService.refreshToken
+ * in packages/api, reachable over HTTP via oauth.controller.ts — that takes no
+ * lock at all. Run concurrently with the cron it replays the refresh token, and
+ * providers implementing refresh-token reuse detection revoke the whole token
+ * family. A green run here is NOT evidence that the cross-path race is safe.
+ * That race cannot be covered until #385 routes both paths through one lock (or
+ * deletes the unlocked one): a test asserting a single provider call across both
+ * paths fails against today's code by design.
+ *
+ * The two paths, and where the covered box ends:
+ *
+ *   ┌─ COVERED HERE ────────────────────────────────┐
+ *   │ cron tick                                     │
+ *   │   └─> TokenRefresher.getValidToken(connId)    │
+ *   │         └─> [per-connection lock] ── held ──┐ │
+ *   │               N concurrent callers collapse │ │
+ *   │               to ONE provider round-trip    │ │
+ *   └─────────────────────────────────────────────┼─┘
+ *                                                 │
+ *     HTTP POST .../refresh                       │  same connId,
+ *       └─> oauth.controller.ts                   │  same refresh token
+ *             └─> OAuthService.refreshToken()     │
+ *                   └─> (no lock at all) ─────────┤
+ *                                                 v
+ *                                      provider sees the SAME
+ *                                      refresh token used twice
+ *                                                 │
+ *                                                 v
+ *                              reuse detection => REVOKE TOKEN FAMILY
+ *                              (integration loses credentials; user
+ *                               must re-authorise from scratch)
+ *
+ * Everything outside the COVERED box is #385's, not this file's.
  */
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -621,7 +657,10 @@ describe("TokenRefresher — GitHub App refresh strategy", () => {
 	});
 });
 
-describe("TokenRefresher — concurrent refresh (the #253 race falsifier)", () => {
+// Scope: concurrency WITHIN the locked TokenRefresher path only. The cross-path
+// race against the unlocked OAuthService.refreshToken is uncovered and owned by
+// #385 — see the file header. A green run here does not cover it.
+describe("TokenRefresher — concurrent refresh within the locked cron path (#253; cross-path race with the unlocked HTTP path NOT covered — #385)", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
