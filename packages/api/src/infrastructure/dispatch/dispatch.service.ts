@@ -17,7 +17,7 @@ import {
 	OnApplicationShutdown,
 	OnModuleInit,
 } from "@nestjs/common";
-import { getConfig } from "@prismalens/config";
+import { assertDispatchTopology, getConfig } from "@prismalens/config";
 import type { InvestigationJobData } from "@prismalens/contracts";
 // biome-ignore lint/style/useImportType: Nest's DI needs the runtime class reference.
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -97,12 +97,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	onModuleInit(): void {
-		if (!this.enabled) {
-			this.logger.log(
-				"Dispatch loop disabled (PRISMALENS_DISPATCH_ENABLED=false) — this process serves the API only",
-			);
-			return;
-		}
+		// Boot refuses an API process that does not run the loop. The EventBus is
+		// in-process only, so such a process cannot stream a run or cancel one, and it
+		// would go on to write terminal states over runs that are still executing
+		// elsewhere. See `assertDispatchTopology` for why this is fatal and not a warning.
+		assertDispatchTopology({ PRISMALENS_DISPATCH_ENABLED: this.enabled });
 		this.dispatcher.start();
 		this.logger.log(
 			`Dispatch loop started, concurrency cap ${getConfig().PRISMALENS_DISPATCH_CONCURRENCY}, owner ${this.dispatcher.ownerToken}`,

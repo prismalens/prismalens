@@ -18,6 +18,14 @@
  *   2. claim at most `cap − inFlight` jobs,
  *   3. start each claimed job, heartbeating its claim for as long as it runs.
  *
+ * **One attempt at a time, per job, per loop.** Every write about a claim is guarded on
+ * the per-attempt claim token the store minted (`ClaimedJob.claimToken`), never on this
+ * loop's owner string — so a run whose job was reclaimed and re-claimed learns it was
+ * displaced on its next heartbeat, even when the loop that displaced it is this one. And
+ * if this loop is handed a job it is already running, the displaced attempt is killed and
+ * silenced BEFORE the new one starts, rather than being overwritten in `inFlight` and
+ * left executing with no handle to kill it by.
+ *
  * Nest is deliberately absent from this file: the loop is plain TypeScript over injected
  * collaborators so its concurrency and reclaim behaviour can be tested directly.
  */
@@ -83,9 +91,24 @@ const NOOP_LOG = {
 	error: () => {},
 };
 
+/**
+ * One attempt at a job, as this loop holds it.
+ *
+ * `live` goes false the moment the attempt is displaced by a newer claim on the same job.
+ * A displaced attempt's child may take a while to actually die, and until it does its
+ * sink must not speak for the job — its events, and above all its terminal `done`, would
+ * otherwise land on the relay topic of the attempt that replaced it and truncate its
+ * stream.
+ */
+interface InFlightAttempt {
+	readonly run: RunningJob;
+	readonly claimToken: string;
+	live: boolean;
+}
+
 export class Dispatcher {
 	private readonly owner: string;
-	private readonly inFlight = new Map<string, RunningJob>();
+	private readonly inFlight = new Map<string, InFlightAttempt>();
 	private readonly log: NonNullable<DispatcherOptions["log"]>;
 	private pollTimer: NodeJS.Timeout | null = null;
 	private ticking = false;
@@ -130,7 +153,9 @@ export class Dispatcher {
 		// Kill in-flight children rather than waiting them out. Their claims stop
 		// heartbeating, go stale, and are reclaimed — which is exactly the deploy-coupling
 		// story this contract exists to make true.
-		for (const run of this.inFlight.values()) run.kill();
+		// These attempts are still the current holders of their jobs, so they are killed
+		// but NOT silenced: their `done` is the frame that closes their SSE streams.
+		for (const attempt of this.inFlight.values()) attempt.run.kill();
 		this.inFlight.clear();
 	}
 
@@ -175,14 +200,39 @@ export class Dispatcher {
 	}
 
 	private startJob(job: ClaimedJob): void {
+		// Being handed a job this loop is already running means our own claim went stale
+		// — heartbeats failing for longer than `staleClaimMs` while the child was alive —
+		// and this same tick swept it and re-claimed it. The row now belongs to the new
+		// claim token, so the older attempt has already lost the claim: it is killed here
+		// rather than left to discover that on its next heartbeat, and it is silenced so
+		// its dying `done` cannot truncate the replacement's stream. Overwriting it in
+		// `inFlight` instead would leave a child running that nothing could ever kill.
+		const displaced = this.inFlight.get(job.id);
+		if (displaced) {
+			displaced.live = false;
+			this.inFlight.delete(job.id);
+			this.log.warn(
+				`Job ${job.id} was re-claimed as ${job.claimToken} while this loop was still running ${displaced.claimToken}; killing the displaced run`,
+			);
+			displaced.run.kill();
+		}
+
 		this.options.onClaim?.(job);
 
 		const eventsTopic = runEventsTopic(job.investigationId);
+		// Assigned before any sink callback can fire: the runner is invoked below, and
+		// nothing it does synchronously can outrun this closure's own initialisation.
+		let attempt: InFlightAttempt | undefined;
+		const speaksForTheJob = () => attempt === undefined || attempt.live;
 		const sink: RunSink = {
-			onEvent: (event) =>
-				this.bus.publish<RelayMessage>(eventsTopic, { kind: "event", event }),
-			onStreamDone: () =>
-				this.bus.publish<RelayMessage>(eventsTopic, { kind: "done" }),
+			onEvent: (event) => {
+				if (!speaksForTheJob()) return;
+				this.bus.publish<RelayMessage>(eventsTopic, { kind: "event", event });
+			},
+			onStreamDone: () => {
+				if (!speaksForTheJob()) return;
+				this.bus.publish<RelayMessage>(eventsTopic, { kind: "done" });
+			},
 			onProgress: () => {
 				// Progress is advisory; the durable record is what the UI reads back.
 			},
@@ -195,14 +245,15 @@ export class Dispatcher {
 			const message = error instanceof Error ? error.message : String(error);
 			this.log.error(`Failed to start job ${job.id}`, error);
 			void this.store
-				.complete(job.id, this.owner, "failed", message)
+				.complete(job.id, job.claimToken, "failed", message)
 				.catch((e) =>
 					this.log.error(`Failed to record job ${job.id} as failed`, e),
 				);
 			return;
 		}
 
-		this.inFlight.set(job.id, running);
+		attempt = { run: running, claimToken: job.claimToken, live: true };
+		this.inFlight.set(job.id, attempt);
 
 		// Cancel is out-of-band: the API publishes on the run's cancel topic and this
 		// subscription forwards it to the child. The subscriber count IS the answer to
@@ -214,7 +265,10 @@ export class Dispatcher {
 
 		const heartbeat = setInterval(() => {
 			void this.store
-				.heartbeat(job.id, this.owner)
+				// Guarded on THIS attempt's token, not on the loop's owner string — that is
+				// what makes a `false` here mean "you were displaced" even when the loop
+				// that displaced you is this one.
+				.heartbeat(job.id, job.claimToken)
 				.then((held) => {
 					if (held) return;
 					// The claim is gone — the sweeper judged it dead and someone else may
@@ -223,6 +277,7 @@ export class Dispatcher {
 					this.log.warn(
 						`Lost the claim on job ${job.id}; killing the run to avoid a double writer`,
 					);
+					if (attempt) attempt.live = false;
 					running.kill();
 				})
 				.catch((error) =>
@@ -236,7 +291,7 @@ export class Dispatcher {
 				if (outcome.outcome === "failed" && outcome.retryable) {
 					const willRetry = await this.store.retryLater(
 						job.id,
-						this.owner,
+						job.claimToken,
 						this.options.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS,
 						outcome.error ?? "run failed",
 					);
@@ -250,7 +305,7 @@ export class Dispatcher {
 				}
 				const settled = await this.store.complete(
 					job.id,
-					this.owner,
+					job.claimToken,
 					outcome.outcome,
 					outcome.error,
 				);
@@ -264,7 +319,11 @@ export class Dispatcher {
 			.finally(() => {
 				clearInterval(heartbeat);
 				cancelSub.unsubscribe();
-				this.inFlight.delete(job.id);
+				// Only if this attempt is still the one on record. A displaced attempt
+				// settles after its replacement has taken the slot, and an unconditional
+				// delete here would evict the LIVE run — leaving it unkillable by `stop()`
+				// and undercounting the concurrency cap from then on.
+				if (this.inFlight.get(job.id) === attempt) this.inFlight.delete(job.id);
 				// A freed slot is worth claiming into immediately rather than at the next
 				// interval — but not from inside this callback's stack.
 				setImmediate(() => void this.tick());
