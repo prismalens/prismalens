@@ -6,22 +6,17 @@
  * the packed tarball installed into a throwaway prefix — one process, one port,
  * an empty workspace.
  *
- * They are ordered and serial on purpose: the first-run journey creates the
- * owner account the read journey signs in with, which is exactly the sequence a
- * new user walks after `npm i -g prismalens && pl up`.
+ * They are serial, and they assert nothing about whether an owner exists: the
+ * first-run journey — walking the wizard to a signed-in dashboard — lives in
+ * `setup-first-run.spec.ts` (#358), which is the only file here that creates an
+ * account. That keeps the two files order-independent.
  */
 
 import { expect, test } from "@playwright/test";
 
-const OWNER = {
-	email: "owner@prismalens.test",
-	password: "pl-up-e2e-password",
-	name: "PL Up Owner",
-};
-
 test.describe.configure({ mode: "serial" });
 
-test("first run: a fresh artifact serves the SPA and walks setup to a signed-in dashboard", async ({
+test("first run: a fresh artifact serves the SPA from the same origin as its API", async ({
 	page,
 }) => {
 	// Single-origin: the SPA and the API answer on the SAME port. In the dev
@@ -34,40 +29,12 @@ test("first run: a fresh artifact serves the SPA and walks setup to a signed-in 
 	// A prerendered shell hydrating into the router — no SSR, no server functions.
 	await expect(page.locator("html")).toHaveAttribute("class", /dark|light/);
 
-	// A brand-new workspace has no owner, so the app must land on setup.
-	// Unconditionally /setup — the workspace is created empty by the harness, so
-	// landing on login instead means the artifact carried state it should not.
-	await page.waitForURL(/\/setup/, { timeout: 30_000 });
-
-	await page.locator("#name").fill(OWNER.name);
-	await page.locator("#email").fill(OWNER.email);
-	await page.locator("#password").fill(OWNER.password);
-	await page.locator("#confirmPassword").fill(OWNER.password);
-	await page
-		.getByRole("button", { name: /create|continue|finish|sign up/i })
-		.click();
-	await page.waitForURL(/\/auth\/login|:\d+\/$/, { timeout: 30_000 });
-
-	// Sign in through the form, deliberately, even when the wizard already
-	// dropped us on the dashboard. Creating the owner leaves the client-side
-	// query cache primed but writes NO session cookie, so a reload would bounce
-	// straight back to login — see the note in the PR. The cookie round trip is
-	// the thing worth asserting here.
-	await page.goto("/auth/login");
-	await page.locator("#email").fill(OWNER.email);
-	await page.locator("#password").fill(OWNER.password);
-	await page.getByRole("button", { name: "Sign in" }).click();
-	await expect(page).toHaveURL(/:\d+\/$/, { timeout: 30_000 });
-	await expect(page.getByRole("navigation").first()).toBeVisible();
-
-	// A HARD navigation: the guard re-runs from scratch and has to satisfy
-	// itself from the session cookie alone. This is what caught `Secure` cookies
-	// being set on a plain-http `pl up`.
-	await page.goto("/incidents");
-	await expect(
-		page.getByRole("heading", { name: /incident/i }).first(),
-	).toBeVisible({ timeout: 30_000 });
-	await page.screenshot({ path: "e2e/pl-up/screenshots/dashboard-default.png", fullPage: true });
+	// The root is guarded, so the artifact must resolve that guard in the browser
+	// and land on a public entry point — the wizard while the instance is empty,
+	// the login form once an owner exists. Either proves the bundle loaded and
+	// reached the API on this same origin; a blank page proves it did not.
+	await page.waitForURL(/\/setup|\/auth\/login/, { timeout: 30_000 });
+	await expect(page.locator("body")).not.toBeEmpty();
 });
 
 test("read journey: a deep client route is served by the SPA fallback, and its data comes from the same origin", async ({

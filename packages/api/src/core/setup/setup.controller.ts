@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller, UseGuards } from "@nestjs/common";
+import { Controller, Logger, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { type SetupStep, setupContract } from "@prismalens/contracts";
+import { AuthService } from "../auth/auth.service.js";
 import { Public } from "../auth/public.decorator.js";
+import { applySetCookieHeaders } from "../auth/session-cookies.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { UsersService } from "../users/users.service.js";
 
@@ -17,8 +19,11 @@ import { UsersService } from "../users/users.service.js";
 @UseGuards(ThrottlerGuard)
 @Controller()
 export class SetupController {
+	private readonly logger = new Logger(SetupController.name);
+
 	constructor(
 		private readonly usersService: UsersService,
+		private readonly authService: AuthService,
 		readonly _prisma: PrismaService,
 	) {}
 
@@ -39,13 +44,42 @@ export class SetupController {
 
 			// POST /setup
 			createOwner: implement(setupContract.createOwner).handler(
-				async ({ input }) => {
+				async ({ input, context }) => {
 					try {
 						const user = await this.usersService.setupOwner({
 							email: input.email,
 							password: input.password,
 							name: input.name,
 						});
+
+						// Finishing the wizard has to leave the browser signed in
+						// (#358). `setupOwner` runs Better Auth server-side, so the
+						// Set-Cookie it produces goes nowhere — the response the client
+						// gets is plain JSON, and the first reload bounced the
+						// brand-new owner to the login screen. Ask for a real session
+						// through the same route the login form posts to and put its
+						// cookies on this response.
+						//
+						// A failure here is not worth losing the account over: the
+						// owner exists and can sign in by hand, which is strictly the
+						// old behaviour. Warn and carry on rather than 500 after a
+						// successful write.
+						try {
+							const headers = await this.authService.createSessionCookies({
+								email: input.email,
+								password: input.password,
+							});
+							applySetCookieHeaders(headers, context.request.res);
+						} catch (sessionError) {
+							this.logger.warn(
+								`Owner account created but the setup session could not be established (${
+									sessionError instanceof Error
+										? sessionError.message
+										: String(sessionError)
+								}). Sign in from the login page to continue.`,
+							);
+						}
+
 						return {
 							user: {
 								id: user.id,
