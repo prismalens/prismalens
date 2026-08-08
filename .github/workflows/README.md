@@ -24,13 +24,6 @@ required checks are matched **by context name with no integration pin**: any
 workflow that can post a status named `review-evidence` satisfies the gate, and
 GitHub will not distinguish it from the real evaluator.
 
-`cla.yml` used to be a second gate-writer, and was deleted for exactly this reason
-(#301). It combined `statuses: write` with a `pull_request_target` trigger to enforce
-a CLA that `CONTRIBUTING.md` states is not in force — so its token could have
-published `CI gate`, `Validate PR title` and `review-evidence` alike. The privilege
-could not be reduced while keeping the workflow, because posting statuses *is* what a
-CLA assistant does. Deletion was the minimum fix, not the aggressive one.
-
 `review-evidence.yml` earns its privilege by never executing PR content: it runs on
 `pull_request_target`, pins its checkout to the default branch, and reads the GitHub
 API only. Read the header comment in that file before changing its trigger.
@@ -49,9 +42,10 @@ and the count is already past what one person tracks. If a rule needs enforcing,
 a step to the workflow that already owns that surface — `ci.yml` for anything gating
 code, `review-evidence.yml` for anything gating review.
 
-Adding `statuses: write` or `checks: write` to any workflow other than
-`review-evidence.yml` re-opens the hole `cla.yml` was deleted to close. Don't,
-without a decision recorded on #301.
+**Never add `statuses: write` or `checks: write` to any workflow other than
+`review-evidence.yml`** without a decision recorded on #301. A second status-writer
+can publish every required check by name, so it holds the whole gate whatever its
+stated job is.
 
 ## Full inventory
 
