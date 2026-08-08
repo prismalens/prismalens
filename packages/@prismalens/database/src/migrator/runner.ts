@@ -37,7 +37,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import Database from "better-sqlite3";
@@ -421,6 +421,10 @@ export async function runMigrations(
 		await beginImmediate(db, databaseFile);
 		let backupFile: string | null = null;
 		const applied: string[] = [];
+		// Hoisted out of the try: when we lose the race, the ledger read UNDER the
+		// lock is the truthful answer to "what is applied?" — the pre-lock read is
+		// already stale by definition, since a competitor committed after it.
+		let lockedAlreadyApplied: string[] = alreadyApplied;
 		try {
 			// Re-read the ledger now that the write lock is held: a competing
 			// process may have applied everything between our read and this point.
@@ -428,21 +432,28 @@ export async function runMigrations(
 			// must not interleave our older migrations behind its newer ones.
 			const lockedLedger = readLedger(db);
 			assertHistoryIsCompatible(lockedLedger, shipped, databaseFile);
-			const lockedApplied = new Set(
-				lockedLedger
-					.filter((row) => row.rolled_back_at === null)
-					.map((row) => row.migration_name),
-			);
+			lockedAlreadyApplied = lockedLedger
+				.filter((row) => row.rolled_back_at === null)
+				.map((row) => row.migration_name);
+			const lockedApplied = new Set(lockedAlreadyApplied);
 			const lockedPending = shipped.filter((m) => !lockedApplied.has(m.name));
 
 			if (lockedPending.length > 0) {
 				// Sample "does this database hold data?" HERE, under the write lock,
-				// not before opening it. A competing process may have populated it in
+				// not before opening it: a competing process may have populated it in
 				// between, and a stale "it was empty" reading would skip the backup on
-				// a database that now has data in it. A zero-byte file is what
-				// `new Database()` leaves behind and carries nothing worth preserving.
+				// a database that now has data in it.
+				//
+				// Ask the DATABASE, not the filesystem. Under WAL the main file can
+				// still be zero bytes while every committed page sits in the `-wal`
+				// sidecar, so a `statSync().size > 0` test reports a populated
+				// database as empty and silently skips the backup.
 				const hadExistingData =
-					existsSync(databaseFile) && statSync(databaseFile).size > 0;
+					db
+						.prepare(
+							`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1`,
+						)
+						.get() !== undefined;
 				// Still nothing written by US at this point — the lock holds no data yet.
 				if (hadExistingData) {
 					backupFile = await backupDatabase(databaseFile);
@@ -474,7 +485,7 @@ export async function runMigrations(
 				databaseFile,
 				migrationsDir,
 				applied: [],
-				alreadyApplied,
+				alreadyApplied: lockedAlreadyApplied,
 				backupFile,
 			};
 		}

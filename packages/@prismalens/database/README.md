@@ -31,7 +31,7 @@ can be migrated before anything opens it.
 
 | Concern | How it is handled |
 |---|---|
-| Finding the SQL in a packed install | `dist/` mirrors the package root (`rootDir: "."`), so `dist/src/migrator/…` resolves `../../prisma/<flavour>/schema` to `dist/prisma/<flavour>/schema`. `scripts/copy-migrations.mjs` stages the SQL there at build time. Override with `PRISMALENS_MIGRATIONS_DIR`. |
+| Finding the SQL in a packed install | `dist/` mirrors the package root (`rootDir: "."`), so `dist/src/migrator/…` resolves `../../prisma/<flavour>/schema` to `dist/prisma/<flavour>/schema`. `scripts/copy-migrations.mjs` stages the SQL there at build time. Resolution order, highest first: the `migrationsDir` option to `runMigrations`, then `PRISMALENS_MIGRATIONS_DIR`, then the first existing candidate path. |
 | Idempotency | `_prisma_migrations` is the ledger: pending = shipped minus recorded. A second run is a read-only no-op. |
 | Concurrency | One `BEGIN IMMEDIATE` transaction per run, ledger re-read **after** the lock is held. A losing process waits out `busy_timeout`, retries, and applies nothing. |
 | Crash mid-apply | SQLite DDL is transactional, and the ledger row is written in the same transaction — the whole pass rolls back together. |

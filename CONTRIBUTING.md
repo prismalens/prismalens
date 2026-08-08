@@ -140,12 +140,28 @@ It never partially applies. Each of these leaves the database exactly as found:
 |---|---|---|
 | `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
 | `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
-| `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore the newest `prismalens.db.bak-*`, or reconcile with the Prisma CLI |
-| `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore the newest `prismalens.db.bak-*` sitting next to the database |
+| `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore a *validated* `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI |
+| `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below) |
 | `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
 
 Before applying anything to a database that already holds data, the runner takes
 an online backup to `prismalens.db.bak-<epoch-ms>` next to it.
+
+**"Restore the backup" means restore a *validated* one — not simply the newest.**
+The newest backup may be the one taken immediately before the run that produced
+the broken state. Check each candidate, newest first, and use the first whose
+history is an ordered prefix of the shipped migrations with no unfinished rows:
+
+```console
+$ sqlite3 <candidate>.bak-<epoch-ms> \
+    "SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations
+      ORDER BY migration_name;"
+```
+
+Reject it if any `finished_at` is NULL while `rolled_back_at` is NULL (that is the
+`incomplete-migration` state again), or if the names are not a leading subsequence
+of the migration directories this build ships. Only then copy it over
+`prismalens.db` and start the app.
 
 ### Recovering a database that drifted
 
@@ -183,9 +199,19 @@ $ sqlite3 $REF/prismalens.db ".schema <table>"   # the CREATE statements to copy
 
 Compare columns per table the same way with `PRAGMA table_info(<table>);`.
 
-**Step 2 — apply the DDL and re-point the ledger, atomically.** For the specific
-drift introduced by #350/#352/#357 (the only one in the wild today), that is the
-`jobs` table with its three indexes plus `services.localCheckoutPath`:
+**Step 2 — apply the DDL and re-point the ledger, atomically.** The SQL below is
+written for exactly one drift: the one #350/#352/#357 introduced, which is the
+only one in the wild today. **Before running it, confirm step 1's diff shows
+nothing but** the missing `jobs` table, its three indexes, and
+`services.localCheckoutPath`. If the diff shows anything else, or a migration
+other than `20260803122809_init` is named in the error, stop — this recipe does
+not describe your drift, and you need the actual delta for your case.
+
+The checksum to write is the one the error message printed as *"shipped by this
+build"*; for the `20260803122809_init` drift it is
+`0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76`. Confirm it
+matches your error before running this — a checksum copied from documentation is
+only correct for the release it was written against.
 
 ```sql
 BEGIN;
@@ -194,9 +220,14 @@ ALTER TABLE "services" ADD COLUMN "localCheckoutPath" TEXT;
 CREATE UNIQUE INDEX "jobs_investigationId_key" ON "jobs"("investigationId");
 CREATE INDEX "jobs_status_runAt_priority_idx" ON "jobs"("status", "runAt", "priority");
 CREATE INDEX "jobs_status_heartbeatAt_idx" ON "jobs"("status", "heartbeatAt");
+
 UPDATE "_prisma_migrations"
-   SET checksum = '<the checksum the error message printed>'
+   SET checksum = '0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76'
  WHERE migration_name = '20260803122809_init';
+
+-- Must print 1. Anything else means the ledger is not what this recipe assumes:
+-- ROLLBACK instead of COMMIT.
+SELECT changes();
 COMMIT;
 ```
 
