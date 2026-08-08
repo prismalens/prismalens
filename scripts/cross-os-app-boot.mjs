@@ -368,18 +368,32 @@ const isAlive = (pid) => {
 };
 
 /**
- * Every pid ever seen under `pl up`. POLLED CONTINUOUSLY rather than read once
- * at teardown: the investigation child reaches its terminal verdict in a couple
- * of seconds, so a single snapshot taken after the HTTP assertions would find
- * an empty set and leave the orphan check unable to fail. `ps` is cheap;
- * PowerShell's CIM query is not, so Windows samples an order slower.
+ * Every pid ever seen under `pl up`. POLLED rather than read once at teardown:
+ * the investigation child reaches its terminal verdict in a couple of seconds,
+ * so a single snapshot taken afterwards would find an empty set and leave the
+ * orphan check unable to fail.
+ *
+ * Polling is confined to the fork phase, and starts only once the investigation
+ * has been requested. `processTable` uses execFileSync, which BLOCKS the event
+ * loop — on Windows each PowerShell CIM query costs hundreds of milliseconds,
+ * and a sampler running through the HTTP section would be measuring the
+ * assertions' own latency. Nothing forks before the fork phase, so sampling
+ * earlier would only cost time to observe nothing.
  */
 const seenDescendants = new Set();
 const sample = () => {
 	for (const pid of descendantsOf(child.pid)) seenDescendants.add(pid);
 };
-const sampler = setInterval(sample, WIN ? 500 : 200);
-sampler.unref();
+let sampler = null;
+const startSampling = () => {
+	if (sampler) return;
+	sampler = setInterval(sample, WIN ? 750 : 200);
+	sampler.unref();
+};
+const stopSampling = () => {
+	if (sampler) clearInterval(sampler);
+	sampler = null;
+};
 
 // ---------------------------------------------------------------------------
 // Teardown
@@ -391,7 +405,7 @@ async function stopApp() {
 	stopped = true;
 	// Stop sampling BEFORE the kill: a snapshot that races the teardown would
 	// record pids that were already exiting and report them as leaks.
-	clearInterval(sampler);
+	stopSampling();
 	let graceful = null;
 
 	if (WIN) {
@@ -429,7 +443,7 @@ let cleanedUp = false;
 const cleanup = () => {
 	if (cleanedUp) return;
 	cleanedUp = true;
-	clearInterval(sampler);
+	stopSampling();
 	// Best-effort, synchronous: this runs on the abnormal paths too.
 	if (WIN) {
 		try {
@@ -689,48 +703,67 @@ if (!cookie) {
 			`status ${created.status}: ${createdBody.slice(0, 200)}`,
 		);
 	} else {
-		const started = await json(
-			`/api/incidents/${JSON.parse(createdBody).id}/investigate`,
-			{ method: "POST", headers: { cookie }, body: "{}" },
-		);
-		if (!started.ok) {
+		// Parse defensively. A 2xx whose body is not the expected shape — a proxy
+		// page, a changed contract — would otherwise throw out of top-level await
+		// and take the teardown, orphan, port and failure-summary assertions with
+		// it, turning a specific regression into an unhandled rejection.
+		let incidentId = null;
+		try {
+			incidentId = JSON.parse(createdBody).id ?? null;
+		} catch {
+			incidentId = null;
+		}
+		if (!incidentId) {
 			bad(
-				"POST /api/incidents/:id/investigate",
-				`status ${started.status}: ${(await started.text()).slice(0, 200)}`,
+				"POST /api/incidents",
+				`2xx with no usable id in the body: ${createdBody.slice(0, 200)}`,
 			);
 		} else {
-			// The log marker is the race-free signal — the child can live for only a
-			// couple of seconds, so a process-table poll alone would be flaky. The
-			// poll still runs, because its job is to RECORD pids for the orphan
-			// assertion, not to decide whether the fork happened.
-			let diagnosed = false;
-			for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
-				await sleep(1000);
-				sample();
-				const log = readLog();
-				forked = log.includes('"context":"InvestigationRun"');
-				if (/Cannot locate the investigation child entrypoint/.test(log)) {
-					bad(
-						"fork",
-						"the worker entrypoint did not resolve inside the install",
-					);
-					diagnosed = true;
-				} else if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-					const line = log
-						.split("\n")
-						.find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-					bad("fork", `the child could not resolve a dependency: ${line}`);
-					diagnosed = true;
-				}
-			}
-			if (forked) {
-				ok(
-					"investigation child forked",
-					`${seenDescendants.size} pid(s) observed`,
+			startSampling();
+			const started = await json(`/api/incidents/${incidentId}/investigate`, {
+				method: "POST",
+				headers: { cookie },
+				body: "{}",
+			});
+			if (!started.ok) {
+				bad(
+					"POST /api/incidents/:id/investigate",
+					`status ${started.status}: ${(await started.text()).slice(0, 200)}`,
 				);
-			} else if (!diagnosed) {
-				dumpLog();
-				bad("fork", `no investigation child within ${FORK_TIMEOUT_S}s`);
+			} else {
+				// The log marker is the race-free signal — the child can live for only a
+				// couple of seconds, so a process-table poll alone would be flaky. The
+				// poll still runs, because its job is to RECORD pids for the orphan
+				// assertion, not to decide whether the fork happened.
+				let diagnosed = false;
+				for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
+					await sleep(1000);
+					sample();
+					const log = readLog();
+					forked = log.includes('"context":"InvestigationRun"');
+					if (/Cannot locate the investigation child entrypoint/.test(log)) {
+						bad(
+							"fork",
+							"the worker entrypoint did not resolve inside the install",
+						);
+						diagnosed = true;
+					} else if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+						const line = log
+							.split("\n")
+							.find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+						bad("fork", `the child could not resolve a dependency: ${line}`);
+						diagnosed = true;
+					}
+				}
+				if (forked) {
+					ok(
+						"investigation child forked",
+						`${seenDescendants.size} pid(s) observed`,
+					);
+				} else if (!diagnosed) {
+					dumpLog();
+					bad("fork", `no investigation child within ${FORK_TIMEOUT_S}s`);
+				}
 			}
 		}
 	}
