@@ -16,12 +16,11 @@
 #   B1  bot-authored PR                      (CI gate applies separately)
 #   B2  generated release PR                 (same-repo AND branch AND title)
 #   A   formal review by an allowlisted bot  (CodeRabbit, online lane)
-#   C   CLI review marker comment            (claude-kit cr-evidence.sh)
 #   D   Claude review marker + its run       (.github/workflows/claude-code-review.yml)
 # Anything else is `failure`. A branch that cannot answer publishes `error`
 # rather than guessing — "could not determine" is never collapsed into "no".
 #
-# A, C and D all accept a patch-identical earlier commit; see CARRY_FORWARD.
+# A and D both accept a patch-identical earlier commit; see CARRY_FORWARD.
 #
 # `claude[bot]` is NOT in REVIEWER_LOGINS and must not be added — that login is
 # shared with the `@claude` mention lane, so branch A cannot tell a review of the
@@ -117,18 +116,13 @@ BOT_AUTHORS="${BOT_AUTHORS:-dependabot[bot] github-actions[bot]}"
 GENERATED_PR_BRANCH_RE="${GENERATED_PR_BRANCH_RE:-^changeset-release/}"
 GENERATED_PR_TITLE_RE="${GENERATED_PR_TITLE_RE:-^chore: version packages$}"
 
-# Marker left by a local CodeRabbit CLI review.
+# Paths where a Claude review alone is not enough — see the file itself for why.
 #
-# Written by claude-kit's `cr-evidence.sh`, which `cr-preview.sh` calls after a
-# successful CLI review (Sumit1993/claude-kit#6). Keyed to the head SHA, so
-# evidence vouches for one commit and not for the PR: push again and it stops
-# matching, and this gate goes red until the branch is re-previewed.
-# Format:  <!-- cr-cli-review: <full head sha> -->
-CLI_MARKER_PREFIX="${CLI_MARKER_PREFIX:-<!-- cr-cli-review:}"
-
-# Comment authors whose CLI marker is trusted. An unauthenticated "evidence"
-# comment from an arbitrary account must not satisfy the gate.
-CLI_MARKER_AUTHORS="${CLI_MARKER_AUTHORS:-Sumit1993}"
+# Read from the DEFAULT BRANCH checkout, like everything else this script trusts.
+# A PR cannot widen or narrow its own risk classification by editing the list on
+# its branch; changing the policy takes a merge, and this file is inside
+# `.github/**`, so changing it is itself high-risk.
+HIGH_RISK_PATHS_FILE="${HIGH_RISK_PATHS_FILE:-.github/high-risk-paths.txt}"
 
 # Marker left by a Claude review run in GitHub Actions.
 #
@@ -216,6 +210,31 @@ case "$CARRY_FORWARD_MAX_CANDIDATES" in
 esac
 
 # ---------------------------------------------------------------------------
+
+# Does this PR touch a high-risk path?
+#
+# Returns 0 (yes) when any changed file matches any glob, and — deliberately —
+# also when the answer cannot be determined: an unreadable list or an API failure
+# means the PR is treated as high risk, which requires MORE evidence rather than
+# less. Every other branch of this gate fails closed; so does this.
+#
+# `**` matches across `/` here, which is what the globs assume: bash pattern
+# matching inside `[[ ]]` does not treat `/` specially.
+touches_high_risk () { # touches_high_risk <pr number>
+  local n="$1" files pat f
+  [ -r "$HIGH_RISK_PATHS_FILE" ] || { echo "    high-risk list unreadable — treating as high risk" >&2; return 0; }
+  files=$(gh api --paginate "repos/$REPO/pulls/$n/files?per_page=100" --jq '.[].filename' 2>/dev/null) \
+    || { echo "    cannot list changed files — treating as high risk" >&2; return 0; }
+  while IFS= read -r pat; do
+    case "$pat" in ''|\#*) continue ;; esac
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      # shellcheck disable=SC2053  # RHS is a glob on purpose
+      [[ "$f" == $pat ]] && { echo "    high-risk: $f matches $pat" >&2; return 0; }
+    done <<<"$files"
+  done < "$HIGH_RISK_PATHS_FILE"
+  return 1
+}
 
 in_list () { # in_list <needle> <space-separated haystack>
   local needle="$1" hay="$2" item
@@ -481,6 +500,16 @@ evaluate_pr () { # evaluate_pr <number>
     return $?
   fi
 
+  # INDEPENDENCE RULE. On a high-risk path, `coderabbitai[bot]` evidence is
+  # required specifically: branch A can green the PR, branch D cannot.
+  #
+  # Enforced HERE rather than by the admission label, because a label can be
+  # removed and a PR-branch workflow can be tampered with, while this script runs
+  # from the default branch. review-admit.yml's path filter is the convenience
+  # half; this is the half that holds.
+  local high_risk=0
+  if touches_high_risk "$n"; then high_risk=1; fi
+
   # --- branch A: a formal review AT THE CURRENT HEAD -----------------------
   # `commit_id` is the commit the review was actually made against, so this is
   # exact: a review of an earlier commit does not satisfy a later head.
@@ -549,45 +578,6 @@ evaluate_pr () { # evaluate_pr <number>
     return $?
   fi
 
-  # --- branch C: CLI review marker for this head ---------------------------
-  # The SHA is now READ OUT of the marker instead of being substituted into the
-  # match, so the same comment can be tested for patch identity. The capture is
-  # anchored on the prefix and requires a full 40-hex SHA, so a marker naming a
-  # short or malformed SHA is a non-answer rather than a loose match.
-  #
-  # The trailing `[^0-9a-f]` is an END-OF-TOKEN ANCHOR, and it is not cosmetic.
-  # Without it `{40}` matches the FIRST forty hex characters of a longer token,
-  # so a marker naming a 41-character string yields a truncated 40-character SHA
-  # that first_valid_evidence would then treat as a candidate. Requiring a
-  # non-hex character after the SHA makes an over-long token a non-match instead.
-  # ` -->` supplies that character in the real format.
-  local markers marker_author
-  markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
-        ($authors | split(" ")) as $allowed
-        | [ .[]
-            | select(.user.login as $u | $allowed | index($u))
-            | . as $c
-            | try ( $c.body
-                    | capture($pre + " (?<s>[0-9a-f]{40})[^0-9a-f]")
-                    | "\(.s) \($c.user.login)" ) catch empty
-          ] | reverse | .[]' \
-      --arg pre "$CLI_MARKER_PREFIX" --arg authors "$CLI_MARKER_AUTHORS")
-  q_rc=$?
-  if [ $q_rc -eq 2 ]; then
-    publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
-    return 1
-  fi
-  if [ -n "$markers" ] \
-     && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$markers"); then
-    ev_sha="${hit%% *}"; marker_author="${hit#* }"
-    if [ "$ev_sha" = "$sha" ]; then
-      publish "$sha" success "CLI review evidence from $marker_author at ${sha:0:8}"
-    else
-      publish "$sha" success "CLI review from $marker_author at ${ev_sha:0:8}; patch unchanged at ${sha:0:8}"
-    fi
-    return $?
-  fi
-
   # --- branch D: Claude review evidence for this head ----------------------
   #
   # WHAT THIS TRUSTS, AND WHY IT IS NOT THE ARTIFACT
@@ -623,6 +613,11 @@ evaluate_pr () { # evaluate_pr <number>
   # the run is verified against that same SHA, so a patch-identical earlier commit
   # carries exactly as branches A and C do — the run still describes the commit it
   # reviewed, and patch identity is what makes that commit speak for this head.
+  if [ "$high_risk" = "1" ]; then
+    echo "    high-risk path: a Claude review alone does not satisfy this gate" >&2
+    no_evidence_reason="high-risk path — needs coderabbitai[bot] review, not Claude alone"
+  fi
+
   local claude_markers claude_hit
   claude_markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
         ($authors | split(" ")) as $allowed
@@ -639,7 +634,7 @@ evaluate_pr () { # evaluate_pr <number>
     return 1
   fi
 
-  if [ -n "$claude_markers" ] \
+  if [ "$high_risk" != "1" ] && [ -n "$claude_markers" ] \
      && claude_hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$claude_markers"); then
     local mk_sha mk_run run_json obj_rc verified=""
     mk_sha="${claude_hit%% *}"; mk_run="${claude_hit#* }"

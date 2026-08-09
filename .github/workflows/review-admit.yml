@@ -27,6 +27,27 @@
 name: Admit PR to review
 
 on:
+  # AUTOMATIC ADMISSION on the high-risk paths.
+  #
+  # `.github/high-risk-paths.txt` is the policy; this trigger is one half of its
+  # enforcement and deliberately the weaker half. A label can be removed, and a
+  # `paths:` filter only fires on files the event reports — so the publisher
+  # re-derives the match from the default branch and holds the gate red
+  # independently. If these two ever disagree, the publisher wins.
+  #
+  # The globs are duplicated here because `paths:` cannot read a file. Keep them
+  # in step with high-risk-paths.txt; drift makes admission miss, not the gate.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - '.github/**'
+      - 'packages/@prismalens/*/src/**/crypto/**'
+      - 'packages/@prismalens/*/src/**/credential*/**'
+      - 'packages/@prismalens/*/src/**/*secret*'
+      - 'packages/@prismalens/engine/src/**'
+      - 'packages/@prismalens/contracts/src/**'
+      - 'packages/@prismalens/database/prisma/**'
+
   workflow_dispatch:
     inputs:
       pr:
@@ -48,9 +69,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR: ${{ inputs.pr }}
-          LABEL: ${{ inputs.label }}
+          # `inputs.*` is empty on the `pull_request` trigger and the event payload
+          # is empty on dispatch, so each supplies what the other cannot.
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
+          LABEL: ${{ inputs.label || 'review-ready' }}
         run: |
+          set -euo pipefail
+          # Idempotent: `synchronize` fires on every push to a matched PR, and
+          # re-adding a label the PR already carries is a no-op that still emits a
+          # webhook. Checking first keeps the timeline readable.
+          if gh pr view "$PR" --repo "$REPO" --json labels \
+               --jq '.labels[].name' | grep -qx "$LABEL"; then
+            echo "#$PR already carries '$LABEL' — nothing to do."
+            exit 0
+          fi
           gh pr edit "$PR" --repo "$REPO" --add-label "$LABEL"
           echo "Applied '$LABEL' to #$PR using GITHUB_TOKEN."
           echo
