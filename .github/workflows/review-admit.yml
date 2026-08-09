@@ -104,8 +104,14 @@ jobs:
             # a file renamed OUT of a high-risk path must still count.
             files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
                       --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null)
+            count=$(printf '%s\n' "$files" | grep -c . )
             if [ -z "$files" ]; then
               echo "::warning::Could not enumerate files for #$PR — admitting rather than guessing."
+            elif [ "$count" -ge 3000 ]; then
+              # The files endpoint caps at 3000 entries and `--paginate` stops
+              # there, so the list is truncated and a high-risk file could sit in
+              # the tail. Same rule the publisher applies: unknowable is high risk.
+              echo "::warning::#$PR has $count changed files — at the API cap, so the list cannot be trusted; admitting."
             else
               if printf '%s\n' "$files" \
                    | python3 .github/scripts/high-risk-match.py .github/high-risk-paths.txt; then

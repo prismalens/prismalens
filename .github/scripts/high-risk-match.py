@@ -68,7 +68,13 @@ def main() -> int:
                 for line in fh
                 if line.strip() and not line.lstrip().startswith("#")
             ]
-        files = [line.strip() for line in sys.stdin if line.strip()]
+        # ONLY LINE ENDINGS COME OFF A PATH. `.strip()` here removed leading and
+        # trailing whitespace, which is CONTENT in a filename: a file literally
+        # named `secret ` stopped matching `secret?`, and the script reported not
+        # high risk. Patterns above are different — that file is policy we author,
+        # where surrounding whitespace is noise rather than meaning.
+        files = [line.rstrip("\n\r") for line in sys.stdin]
+        files = [f for f in files if f]
     except Exception as exc:  # unreadable list, malformed glob, undecodable input
         print(f"    glob matching failed ({exc}) — treating as high risk", file=sys.stderr)
         return 1
