@@ -10,6 +10,12 @@ the dangerous subset is small. This file names that subset. Tracked in #301
 Three checks are required on `main` by ruleset `18441175`. Nothing else blocks a
 merge, however red it looks:
 
+The ruleset is the authority, and it is edited directly through the GitHub API
+(`gh api repos/prismalens/prismalens/rulesets/18441175`). There is deliberately no
+in-tree file that declares it: a declarative copy with nothing to reconcile it
+cannot be kept current, and a stale one reads as authority. This table, and the
+live ruleset, are what to trust.
+
 | Required check | Published by | Kind |
 | --- | --- | --- |
 | `CI gate` | `ci.yml` → job `ci-gate` | check run |
@@ -62,7 +68,6 @@ merge.
 | `audit.yml` | schedule, dispatch | dependency/security audit |
 | `release.yml` | `push` | changesets release and publish |
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
-| `governance.yml` | dispatch | syncs `.github/governance.json` to repo settings |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `review-admit.yml` | dispatch | applies the `review-ready` admission label (spends the scarce online review) |
 | `claude-review.yml` | dispatch | runs a Claude review and posts the marker `review-evidence` branch D reads |
