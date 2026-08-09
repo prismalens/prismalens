@@ -162,6 +162,8 @@ jobs:
           HEAD_SHA: ${{ needs.review.outputs.head_sha }}
           STARTED_AT: ${{ needs.review.outputs.started_at }}
           RUN_ID: ${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SELF: .github/workflows/claude-code-review.yml
         run: |
           set -euo pipefail
 
@@ -209,9 +211,44 @@ jobs:
             "${HEAD_SHA:0:8}" "$reviews" "$inline" "$STARTED_AT"
 
           if [ "$total" -eq 0 ]; then
-            echo "::error::The review job succeeded but claude[bot] posted nothing at ${HEAD_SHA:0:8}." \
-                 "No marker will be minted and review-evidence stays red." \
-                 "This is almost always a stale --allowed-tools list — see the comment on that input."
+            # WHY THIS ASKS WHO EDITED THE WORKFLOW BEFORE BLAMING THE TOOL LIST.
+            # `claude-code-action` refuses to run at all when this file differs
+            # from the copy on the default branch — "Workflow validation failed"
+            # — and it reports that skip as SUCCESS, so the symptom here is
+            # identical to a reviewer that ran and posted nothing. The two have
+            # completely different fixes, and the message used to assert the
+            # wrong one unconditionally, which cost a real investigation.
+            #
+            # That validation is a control, not an obstacle: without it a PR
+            # could rewrite the reviewing workflow and have its own version run
+            # with the app token. The standing consequence is that this lane can
+            # never review a PR that edits this file. The gate already absorbs
+            # that — `.github/**` is on the high-risk list, so such a PR needs
+            # `coderabbitai[bot]` and branch D could not have greened it anyway.
+            #
+            # Blob SHAs, not content: the API hands them over without fetching
+            # either file. A failed lookup leaves `differs` empty and falls
+            # through to the generic message rather than guessing.
+            differs=""
+            head_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$HEAD_SHA" --jq .sha 2>/dev/null) || head_blob=""
+            base_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$DEFAULT_BRANCH" --jq .sha 2>/dev/null) || base_blob=""
+            if [ -n "$head_blob" ] && [ -n "$base_blob" ] && [ "$head_blob" != "$base_blob" ]; then
+              differs=yes
+            fi
+
+            if [ -n "$differs" ]; then
+              echo "::error::claude[bot] posted nothing at ${HEAD_SHA:0:8} because this PR edits $SELF," \
+                   "so claude-code-action skipped itself on workflow validation (it requires this file to match" \
+                   "$DEFAULT_BRANCH) and reported success without running." \
+                   "This is expected on a PR that changes the review workflow, and it resolves once the PR merges." \
+                   "Such a PR touches .github/** and therefore needs a coderabbitai[bot] review regardless —" \
+                   "branch D cannot satisfy the gate for it."
+            else
+              echo "::error::The review job succeeded but claude[bot] posted nothing at ${HEAD_SHA:0:8}." \
+                   "No marker will be minted and review-evidence stays red." \
+                   "This file matches $DEFAULT_BRANCH, so workflow validation is not the cause;" \
+                   "the usual one is a stale --allowed-tools list — see the comment on that input."
+            fi
             exit 1
           fi
 
