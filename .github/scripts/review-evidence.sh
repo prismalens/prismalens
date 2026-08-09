@@ -124,6 +124,7 @@ GENERATED_PR_TITLE_RE="${GENERATED_PR_TITLE_RE:-^chore: version packages$}"
 # its branch; changing the policy takes a merge, and this file is inside
 # `.github/**`, so changing it is itself high-risk.
 HIGH_RISK_PATHS_FILE="${HIGH_RISK_PATHS_FILE:-.github/high-risk-paths.txt}"
+HIGH_RISK_MATCHER="${HIGH_RISK_MATCHER:-.github/scripts/high-risk-match.py}"
 
 # Marker left by a Claude review run in GitHub Actions.
 #
@@ -222,19 +223,29 @@ esac
 # `**` matches across `/` here, which is what the globs assume: bash pattern
 # matching inside `[[ ]]` does not treat `/` specially.
 touches_high_risk () { # touches_high_risk <pr number>
-  local n="$1" files pat f
+  local n="$1" files count
   [ -r "$HIGH_RISK_PATHS_FILE" ] || { echo "    high-risk list unreadable — treating as high risk" >&2; return 0; }
+  [ -r "$HIGH_RISK_MATCHER" ] || { echo "    glob matcher missing — treating as high risk" >&2; return 0; }
+  command -v python3 >/dev/null 2>&1 \
+    || { echo "    python3 unavailable — treating as high risk" >&2; return 0; }
+
   files=$(gh api --paginate "repos/$REPO/pulls/$n/files?per_page=100" --jq '.[].filename' 2>/dev/null) \
     || { echo "    cannot list changed files — treating as high risk" >&2; return 0; }
-  while IFS= read -r pat; do
-    case "$pat" in ''|\#*) continue ;; esac
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      # shellcheck disable=SC2053  # RHS is a glob on purpose
-      [[ "$f" == $pat ]] && { echo "    high-risk: $f matches $pat" >&2; return 0; }
-    done <<<"$files"
-  done < "$HIGH_RISK_PATHS_FILE"
-  return 1
+
+  # The files endpoint caps at 3000 entries however many pages are requested, so
+  # a PR larger than that has an unknowable file list — and unknowable means high
+  # risk. Without this, a big enough PR could hide a gate change in the tail.
+  count=$(printf '%s\n' "$files" | grep -c . )
+  if [ "$count" -ge 3000 ]; then
+    echo "    $count changed files — at the API cap, so the list cannot be trusted; treating as high risk" >&2
+    return 0
+  fi
+
+  # Matching is delegated because bash has no `**`. See high-risk-match.py for
+  # the measured failure this replaces. Exit 1 there means high risk, which is
+  # also every one of its error paths.
+  printf '%s\n' "$files" | python3 "$HIGH_RISK_MATCHER" "$HIGH_RISK_PATHS_FILE" && return 1
+  return 0
 }
 
 in_list () { # in_list <needle> <space-separated haystack>

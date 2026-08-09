@@ -37,7 +37,20 @@ on:
   #
   # The globs are duplicated here because `paths:` cannot read a file. Keep them
   # in step with high-risk-paths.txt; drift makes admission miss, not the gate.
-  pull_request:
+  # `pull_request_target`, NOT `pull_request`, and the distinction is load-bearing.
+  #
+  # A fork-origin `pull_request` run gets a READ-ONLY `GITHUB_TOKEN`, so
+  # `gh pr edit --add-label` fails — meaning fork PRs on high-risk paths would
+  # never be admitted, and the one class of contribution most deserving an
+  # independent review would silently not get one. `pull_request_target` runs in
+  # the base repository's context with a writable token.
+  #
+  # That trigger is dangerous when a workflow executes PR content. This one never
+  # does: there is no checkout, no build, no script from the branch. It reads a PR
+  # number from the event and calls the labels API. Keep it that way — if this
+  # workflow ever needs to run anything from the head, it must be split so the
+  # part that runs code holds no write.
+  pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - '.github/**'
