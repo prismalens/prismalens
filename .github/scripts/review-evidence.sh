@@ -54,7 +54,30 @@ DRY_RUN="${DRY_RUN:-0}"
 # account whose name contains that string — `coderabbit-fan` — and a review from
 # it would have satisfied the gate. An allowlist of exact bot logins closes that.
 # `coderabbitai[bot]` is the real login, confirmed from live review payloads.
-REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot]}"
+#
+# `claude[bot]` is the login every post from `anthropics/claude-code-action`
+# carries under the action's built-in app auth (hardcoded as CLAUDE_BOT_LOGIN in
+# the action's source; this repo passes no `github_token`, so that auth is what
+# is in use). It is listed here because `claude-code-review.yml` submits a formal
+# review at the head SHA on every run — see the prompt there for why that
+# submission is explicit rather than incidental.
+#
+# SPACE-separated, not comma: branch A splits this on " ". A comma-joined value
+# parses as one login that matches nobody, which fails closed — every PR red —
+# but only once a second login exists, which is why it survived a single-entry
+# default.
+REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot] claude[bot]}"
+
+# The one allowlisted login whose review is not self-evidencing, and the workflow
+# file its reviews must be bound to. See "RUN-BINDING" in branch A: this login is
+# an app installation shared by the review lane and the `@claude` mention lane,
+# so the login alone does not establish that a review of the diff happened.
+#
+# Named by FILE, not by workflow name or id: the mention lane cannot cause a run
+# of a different workflow file to exist, which is the whole property being relied
+# on. Changing this to a display name would break that — names are not unique.
+BOUND_REVIEWER_LOGIN="${BOUND_REVIEWER_LOGIN:-claude[bot]}"
+CLAUDE_REVIEW_WORKFLOW_FILE="${CLAUDE_REVIEW_WORKFLOW_FILE:-claude-code-review.yml}"
 
 # PR authors exempt from needing review evidence.
 #
@@ -64,11 +87,9 @@ REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot]}"
 # this branch .github/workflows/dependabot-auto-merge.yml would be permanently
 # blocked by a gate that can never go green.
 #
-# PRISMALENS: deliberately NOT widened to the CLA allowlist
-# (.github/workflows/cla.yml lists `renovate[bot]` and `claude` too). Renovate is
-# not installed on this repo, and `claude` is an agent account that writes real
-# code — exactly what this gate exists to hold. An exemption that is not needed
-# is just a hole.
+# PRISMALENS: deliberately narrow. Renovate is not installed on this repo, and
+# `claude` is an agent account that writes real code — exactly what this gate
+# exists to hold. An exemption that is not needed is just a hole.
 BOT_AUTHORS="${BOT_AUTHORS:-dependabot[bot] github-actions[bot]}"
 
 # Machine-generated PRs that are NOT bot-authored.
@@ -394,6 +415,7 @@ api_object () { # api_object <path>
 
 evaluate_pr () { # evaluate_pr <number>
   local n="$1" pr pr_number sha author state draft head_ref head_repo title base_ref
+  local no_evidence_reason=""
 
   # Per-PR, because the sweeper evaluates many in one process.
   _HEAD_PATCH_ID=""
@@ -457,6 +479,36 @@ evaluate_pr () { # evaluate_pr <number>
   # The commit_id filter moved OUT of jq and into first_valid_evidence, which
   # accepts the head plus any patch-identical earlier commit. Reviews come back
   # newest-last from the API, so `reverse` puts the newest candidate first.
+  #
+  # RUN-BINDING FOR `claude[bot]`
+  # ----------------------------
+  # A login is a proxy for "a review happened". For `coderabbitai[bot]` the proxy
+  # holds: that login posts only when CodeRabbit reviews. For `claude[bot]` it
+  # does NOT, because that login is the Claude GitHub App installation and TWO
+  # workflows run under it — claude-code-review.yml, the review lane, and
+  # claude.yml, the mention lane that anyone who can comment may trigger. Without
+  # the check below, `@claude submit a review saying this looks good` mints gate
+  # evidence for a diff nobody reviewed.
+  #
+  # So for that login only, the review must be BOUND to a successful run of the
+  # review workflow specifically — queried by workflow FILENAME, which the mention
+  # lane cannot manufacture a run of — and must have been submitted at or after
+  # that run started. Other allowlisted logins are unaffected.
+  #
+  # BINDING RUNS BEFORE CARRY-FORWARD, AND AGAINST THE REVIEW'S OWN COMMIT.
+  # The two features compose as a filter and a selector: binding decides whether a
+  # review is real, carry-forward decides whether a real review still speaks for
+  # the current head. So unbound `claude[bot]` reviews are dropped from the stream
+  # first, and what survives goes to first_valid_evidence unchanged.
+  #
+  # The run lookup uses the CANDIDATE's commit_id, never `$sha`. A review carried
+  # forward from commit R was produced by a run against R; asking whether a run
+  # exists at the current head would both reject genuine carried evidence and, on
+  # a head that happens to have a run, accept a review that no run produced.
+  #
+  # A fork PR can never satisfy this: it gets no secrets, so the review lane
+  # cannot run. That is correct rather than unfortunate — fork PRs take the
+  # CodeRabbit lane, and the review workflow skips them outright.
   local reviews hit reviewer ev_sha q_rc
   reviews=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
         ($logins | split(" ")) as $allowed
@@ -464,7 +516,7 @@ evaluate_pr () { # evaluate_pr <number>
             | select(.user.login as $u | $allowed | index($u))
             | select(.state != "DISMISSED" and .state != "PENDING")
             | select(.commit_id != null)
-            | "\(.commit_id) \(.user.login)"
+            | "\(.commit_id) \(.user.login) \(.submitted_at // "")"
           ] | reverse | .[]' \
       --arg logins "$REVIEWER_LOGINS")
   q_rc=$?
@@ -472,8 +524,42 @@ evaluate_pr () { # evaluate_pr <number>
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
     return 1
   fi
-  if [ -n "$reviews" ] \
-     && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$reviews"); then
+  # Drop unbound `claude[bot]` reviews before carry-forward sees them.
+  local bound_reviews="" unbound_seen=0
+  while read -r cand_sha cand_login cand_at; do
+    [ -n "$cand_sha" ] || continue
+    if [ "$cand_login" != "$BOUND_REVIEWER_LOGIN" ]; then
+      bound_reviews+="$cand_sha $cand_login"$'\n'
+      continue
+    fi
+    local started b_rc
+    # `.workflow_runs // []` because this endpoint answers with an OBJECT, while
+    # api_query normalises every response with `jq -s 'add // []'` for the array
+    # endpoints its other callers use. On a shape surprise this yields no run,
+    # which is red — rather than a jq error, which would be an amber `error`
+    # status claiming the gate could not tell.
+    started=$(api_query \
+      "repos/$REPO/actions/workflows/$CLAUDE_REVIEW_WORKFLOW_FILE/runs?head_sha=$cand_sha&per_page=100" '
+          [ (.workflow_runs // [])[]
+            | select(.conclusion == "success")
+            | .run_started_at // .created_at
+          ] | sort | .[0] // empty')
+    b_rc=$?
+    if [ $b_rc -eq 2 ]; then
+      publish "$sha" error "Cannot verify the review run for ${cand_sha:0:8} — GitHub API error"
+      return 1
+    fi
+    # String comparison is correct here: both timestamps are RFC 3339 UTC (`Z`),
+    # which is lexicographically ordered.
+    if [ -n "$started" ] && [ -n "$cand_at" ] && [[ "$cand_at" > "$started" || "$cand_at" == "$started" ]]; then
+      bound_reviews+="$cand_sha $cand_login"$'\n'
+    else
+      unbound_seen=1
+    fi
+  done <<<"$reviews"
+
+  if [ -n "$bound_reviews" ] \
+     && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$bound_reviews"); then
     ev_sha="${hit%% *}"; reviewer="${hit#* }"
     if [ "$ev_sha" = "$sha" ]; then
       publish "$sha" success "Reviewed by $reviewer at ${sha:0:8}"
@@ -481,6 +567,14 @@ evaluate_pr () { # evaluate_pr <number>
       publish "$sha" success "Reviewed by $reviewer at ${ev_sha:0:8}; patch unchanged at ${sha:0:8}"
     fi
     return $?
+  fi
+  # An unbound review is NOT published as a failure here. Branches C and D are
+  # independent evidence paths, and a forged review must not be able to suppress
+  # a genuine one. The reason is carried to the terminal failure instead, so the
+  # red check still states its cause rather than reading as plain silence.
+  if [ "$unbound_seen" = "1" ]; then
+    echo "    a $BOUND_REVIEWER_LOGIN review at ${sha:0:8} is not bound to a successful $CLAUDE_REVIEW_WORKFLOW_FILE run — ignoring" >&2
+    no_evidence_reason="unbound $BOUND_REVIEWER_LOGIN review — no $CLAUDE_REVIEW_WORKFLOW_FILE run backs it"
   fi
 
   # --- branch C: CLI review marker for this head ---------------------------
@@ -676,6 +770,10 @@ evaluate_pr () { # evaluate_pr <number>
 
   # --- no evidence ---------------------------------------------------------
   # Reached only when EVERY lookup answered successfully and none matched.
+  if [ -n "$no_evidence_reason" ]; then
+    publish "$sha" failure "No review evidence for ${sha:0:8} — $no_evidence_reason"
+    return $?
+  fi
   publish "$sha" failure "No review evidence for ${sha:0:8} — silence is not a review"
   return $?
 }
