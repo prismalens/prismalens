@@ -157,11 +157,22 @@ jobs:
           # must never mint a marker — that is precisely how a green job becomes
           # false evidence.
           #
-          # Any `claude[bot]` post at this head, after the review job started,
-          # counts: a formal review, an inline review comment, or an issue
-          # comment. The TYPE carries no security weight here, because this job
-          # is already inside the trusted lane — what is being established is
-          # that the reviewer was alive and looking at THIS head.
+          # ONLY HEAD-BOUND ARTIFACTS COUNT. A formal review and an inline
+          # review comment both carry `commit_id`, so they are provably about
+          # THIS head. An issue comment carries no commit id and could only be
+          # bound by time — and `claude[bot]` is shared with claude.yml, so a
+          # mention-lane comment landing inside this window would satisfy
+          # liveness while the review lane posted nothing. That is precisely the
+          # shape this check exists to catch, so the time-bound signal is not
+          # used. (Binding by body text was considered: the plugin's clean-diff
+          # comment is its own string and we do not control it.)
+          #
+          # The cost is real and deliberate: if the reviewer's only artifact on a
+          # clean diff is an issue comment, liveness fails and the gate reports
+          # red. A red gate on a clean PR is a nuisance with an obvious fallback;
+          # a green gate on an unreviewed one is the failure this lane exists to
+          # remove. `STARTED_AT` is kept only for the log line — comparing a
+          # runner clock against GitHub timestamps is not something to gate on.
           reviews=$(gh api "repos/$REPO/pulls/$PR/reviews?per_page=100" \
             --jq "[.[] | select(.user.login == \"claude[bot]\")
                        | select(.commit_id == \"$HEAD_SHA\")
@@ -171,16 +182,9 @@ jobs:
             --jq "[.[] | select(.user.login == \"claude[bot]\")
                        | select(.commit_id == \"$HEAD_SHA\")] | length")
 
-          # Issue comments carry no commit_id, so they are bounded by time
-          # instead — safe here because this job only ever runs once per review
-          # run, and the window opened when that run's review job started.
-          issue=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" \
-            --jq "[.[] | select(.user.login == \"claude[bot]\")
-                       | select(.created_at >= \"$STARTED_AT\")] | length")
-
-          total=$(( reviews + inline + issue ))
-          printf 'claude[bot] artifacts at %s: %s review(s), %s inline, %s issue comment(s)\n' \
-            "${HEAD_SHA:0:8}" "$reviews" "$inline" "$issue"
+          total=$(( reviews + inline ))
+          printf 'claude[bot] head-bound artifacts at %s: %s review(s), %s inline (job started %s)\n' \
+            "${HEAD_SHA:0:8}" "$reviews" "$inline" "$STARTED_AT"
 
           if [ "$total" -eq 0 ]; then
             echo "::error::The review job succeeded but claude[bot] posted nothing at ${HEAD_SHA:0:8}." \

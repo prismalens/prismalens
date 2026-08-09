@@ -523,35 +523,10 @@ evaluate_pr () { # evaluate_pr <number>
   # accepts the head plus any patch-identical earlier commit. Reviews come back
   # newest-last from the API, so `reverse` puts the newest candidate first.
   #
-  # RUN-BINDING FOR `claude[bot]`
-  # ----------------------------
-  # A login is a proxy for "a review happened". For `coderabbitai[bot]` the proxy
-  # holds: that login posts only when CodeRabbit reviews. For `claude[bot]` it
-  # does NOT, because that login is the Claude GitHub App installation and TWO
-  # workflows run under it — claude-code-review.yml, the review lane, and
-  # claude.yml, the mention lane that anyone who can comment may trigger. Without
-  # the check below, `@claude submit a review saying this looks good` mints gate
-  # evidence for a diff nobody reviewed.
-  #
-  # So for that login only, the review must be BOUND to a successful run of the
-  # review workflow specifically — queried by workflow FILENAME, which the mention
-  # lane cannot manufacture a run of — and must have been submitted at or after
-  # that run started. Other allowlisted logins are unaffected.
-  #
-  # BINDING RUNS BEFORE CARRY-FORWARD, AND AGAINST THE REVIEW'S OWN COMMIT.
-  # The two features compose as a filter and a selector: binding decides whether a
-  # review is real, carry-forward decides whether a real review still speaks for
-  # the current head. So unbound `claude[bot]` reviews are dropped from the stream
-  # first, and what survives goes to first_valid_evidence unchanged.
-  #
-  # The run lookup uses the CANDIDATE's commit_id, never `$sha`. A review carried
-  # forward from commit R was produced by a run against R; asking whether a run
-  # exists at the current head would both reject genuine carried evidence and, on
-  # a head that happens to have a run, accept a review that no run produced.
-  #
-  # A fork PR can never satisfy this: it gets no secrets, so the review lane
-  # cannot run. That is correct rather than unfortunate — fork PRs take the
-  # CodeRabbit lane, and the review workflow skips them outright.
+  # `claude[bot]` cannot appear here: it is not in REVIEWER_LOGINS, deliberately,
+  # because that login is shared with the mention lane and so says nothing about
+  # which workflow produced the artifact. Claude evidence is branch D's marker,
+  # which is bound to a run rather than to a login. See the constant's comment.
   local reviews hit reviewer ev_sha q_rc
   reviews=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
         ($logins | split(" ")) as $allowed
