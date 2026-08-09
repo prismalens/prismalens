@@ -366,9 +366,14 @@ evaluate_pr () { # evaluate_pr <number>
     fi
     # Runs of the review workflow at this SHA that actually succeeded.
     local started b_rc
+    # `.workflow_runs // []` because this endpoint answers with an OBJECT, while
+    # api_query normalises every response with `jq -s 'add // []'` for the array
+    # endpoints its other callers use. On a shape surprise this yields no run,
+    # which is red — rather than a jq error, which would be an amber `error`
+    # status claiming the gate could not tell.
     started=$(api_query \
       "repos/$REPO/actions/workflows/$CLAUDE_REVIEW_WORKFLOW_FILE/runs?head_sha=$sha&per_page=100" '
-          [ .workflow_runs[]
+          [ (.workflow_runs // [])[]
             | select(.conclusion == "success")
             | .run_started_at // .created_at
           ] | sort | .[0] // empty')
