@@ -82,9 +82,23 @@ jobs:
             where `<verdict>` is one paragraph — the number of findings and their
             severity, or an explicit statement that the diff is clean. Do this even
             when you have already posted inline comments, and do it exactly once.
-          # `gh pr review` is the submission step above. The rest of the toolset the
-          # plugin needs is granted by the plugin itself.
-          claude_args: '--allowed-tools "Bash(gh pr review:*)"'
+          # GRANT THE EXTRA TOOL VIA `settings`, NEVER VIA `--allowed-tools`.
+          #
+          # `claude_args: --allowed-tools` REPLACES the tool set; it does not extend
+          # it. Passing `--allowed-tools "Bash(gh pr review:*)"` here left the
+          # reviewer with that one tool and nothing else — no Read, no Grep, no
+          # `gh pr diff` — so it spent eleven turns unable to see the diff, posted
+          # nothing, and still exited `success`. Observed on #400 at `e1e5eb2`:
+          # `"allowedTools": ["Bash(gh pr review:*)"]`, `permission_denials_count: 1`,
+          # a green job and no review. `settings.permissions.allow` ADDS to the
+          # defaults, which is what was wanted.
+          #
+          # The gate caught it: with no review posted, `review-evidence` stayed red
+          # rather than vouching for a review that never ran. Keep it that way — if
+          # this lane ever looks broken, the correct response is to fix the lane,
+          # never to relax the check that reported it.
+          settings: |
+            {"permissions":{"allow":["Bash(gh pr review:*)"]}}
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
