@@ -118,17 +118,31 @@ jobs:
           # nothing posted, `conclusion: success`. Tag mode works out of the box
           # only because it builds its own list; agent mode has no default.
           #
-          # Derived from `tagModeTools` in `src/modes/tag/index.ts` at the resolved
-          # @v1 ref `6b082c4`, plus what the code-review plugin needs to read a
-          # diff and post a summary. `Bash(gh pr review:*)` is deliberately ABSENT:
-          # the gate reads the marker this workflow mints, not a review object, so
-          # the reviewer never needs to submit one.
+          # THE LIST IS THE PLUGIN'S OWN DECLARATION, PLUS `Task`.
+          #
+          # `plugins/code-review/commands/code-review.md` in anthropics/claude-code
+          # declares `allowed-tools:` in its frontmatter — but agent mode does not
+          # merge it, so it has to be restated here. Copy it from there when the
+          # plugin changes, not from `tagModeTools`, which is a different lane's
+          # list and does not include what a review needs.
+          #
+          # `Task` is the entry that is easy to miss and fatal to omit: that
+          # command is SUBAGENT-BASED. Its first step launches a haiku agent, then
+          # a sonnet agent to summarise, then four agents in parallel to review.
+          # Without `Task` the reviewer is denied at its first step and gives up —
+          # observed on #401 at `6dcb987f`: 4 turns, 1 permission denial, $0.17,
+          # nothing posted, `conclusion: success`, and the marker job correctly
+          # refused to mint.
+          #
+          # `Bash(gh pr review:*)` is deliberately ABSENT: the gate reads the
+          # marker this workflow mints, not a review object, so the reviewer never
+          # needs to submit one.
           #
           # If this list goes stale the lane posts nothing and `marker` fails —
           # loud and red, never a silent pass. Re-derive it, do not relax the gate.
           claude_args: >-
             --allowed-tools
-            "Read,Grep,Glob,LS,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment"
+            "Task,Read,Grep,Glob,LS,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment"
 
   marker:
     needs: review
@@ -148,6 +162,8 @@ jobs:
           HEAD_SHA: ${{ needs.review.outputs.head_sha }}
           STARTED_AT: ${{ needs.review.outputs.started_at }}
           RUN_ID: ${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SELF: .github/workflows/claude-code-review.yml
         run: |
           set -euo pipefail
 
@@ -157,35 +173,82 @@ jobs:
           # must never mint a marker — that is precisely how a green job becomes
           # false evidence.
           #
-          # Any `claude[bot]` post at this head, after the review job started,
-          # counts: a formal review, an inline review comment, or an issue
-          # comment. The TYPE carries no security weight here, because this job
-          # is already inside the trusted lane — what is being established is
-          # that the reviewer was alive and looking at THIS head.
-          reviews=$(gh api "repos/$REPO/pulls/$PR/reviews?per_page=100" \
+          # ONLY HEAD-BOUND ARTIFACTS COUNT. A formal review and an inline
+          # review comment both carry `commit_id`, so they are provably about
+          # THIS head. An issue comment carries no commit id and could only be
+          # bound by time — and `claude[bot]` is shared with claude.yml, so a
+          # mention-lane comment landing inside this window would satisfy
+          # liveness while the review lane posted nothing. That is precisely the
+          # shape this check exists to catch, so the time-bound signal is not
+          # used. (Binding by body text was considered: the plugin's clean-diff
+          # comment is its own string and we do not control it.)
+          #
+          # The cost is real and deliberate: if the reviewer's only artifact on a
+          # clean diff is an issue comment, liveness fails and the gate reports
+          # red. A red gate on a clean PR is a nuisance with an obvious fallback;
+          # a green gate on an unreviewed one is the failure this lane exists to
+          # remove. `STARTED_AT` is kept only for the log line — comparing a
+          # runner clock against GitHub timestamps is not something to gate on.
+          # `--paginate` emits one result PER PAGE, so a bare `| length` yields a
+          # number per page and the arithmetic below would break on any PR with
+          # more than 100 reviews or comments. Sum the pages. `|| echo 0` keeps a
+          # transport failure from producing an empty string, which would also
+          # break the arithmetic — and zero is the safe value, because zero
+          # artifacts means no marker is minted.
+          reviews=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews?per_page=100" \
             --jq "[.[] | select(.user.login == \"claude[bot]\")
                        | select(.commit_id == \"$HEAD_SHA\")
-                       | select(.state != \"PENDING\")] | length")
+                       | select(.state != \"PENDING\")] | length" \
+            | awk '{s+=$1} END{print s+0}') || reviews=0
 
-          inline=$(gh api "repos/$REPO/pulls/$PR/comments?per_page=100" \
+          inline=$(gh api --paginate "repos/$REPO/pulls/$PR/comments?per_page=100" \
             --jq "[.[] | select(.user.login == \"claude[bot]\")
-                       | select(.commit_id == \"$HEAD_SHA\")] | length")
+                       | select(.commit_id == \"$HEAD_SHA\")] | length" \
+            | awk '{s+=$1} END{print s+0}') || inline=0
 
-          # Issue comments carry no commit_id, so they are bounded by time
-          # instead — safe here because this job only ever runs once per review
-          # run, and the window opened when that run's review job started.
-          issue=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" \
-            --jq "[.[] | select(.user.login == \"claude[bot]\")
-                       | select(.created_at >= \"$STARTED_AT\")] | length")
-
-          total=$(( reviews + inline + issue ))
-          printf 'claude[bot] artifacts at %s: %s review(s), %s inline, %s issue comment(s)\n' \
-            "${HEAD_SHA:0:8}" "$reviews" "$inline" "$issue"
+          total=$(( reviews + inline ))
+          printf 'claude[bot] head-bound artifacts at %s: %s review(s), %s inline (job started %s)\n' \
+            "${HEAD_SHA:0:8}" "$reviews" "$inline" "$STARTED_AT"
 
           if [ "$total" -eq 0 ]; then
-            echo "::error::The review job succeeded but claude[bot] posted nothing at ${HEAD_SHA:0:8}." \
-                 "No marker will be minted and review-evidence stays red." \
-                 "This is almost always a stale --allowed-tools list — see the comment on that input."
+            # WHY THIS ASKS WHO EDITED THE WORKFLOW BEFORE BLAMING THE TOOL LIST.
+            # `claude-code-action` refuses to run at all when this file differs
+            # from the copy on the default branch — "Workflow validation failed"
+            # — and it reports that skip as SUCCESS, so the symptom here is
+            # identical to a reviewer that ran and posted nothing. The two have
+            # completely different fixes, and the message used to assert the
+            # wrong one unconditionally, which cost a real investigation.
+            #
+            # That validation is a control, not an obstacle: without it a PR
+            # could rewrite the reviewing workflow and have its own version run
+            # with the app token. The standing consequence is that this lane can
+            # never review a PR that edits this file. The gate already absorbs
+            # that — `.github/**` is on the high-risk list, so such a PR needs
+            # `coderabbitai[bot]` and branch D could not have greened it anyway.
+            #
+            # Blob SHAs, not content: the API hands them over without fetching
+            # either file. A failed lookup leaves `differs` empty and falls
+            # through to the generic message rather than guessing.
+            differs=""
+            head_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$HEAD_SHA" --jq .sha 2>/dev/null) || head_blob=""
+            base_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$DEFAULT_BRANCH" --jq .sha 2>/dev/null) || base_blob=""
+            if [ -n "$head_blob" ] && [ -n "$base_blob" ] && [ "$head_blob" != "$base_blob" ]; then
+              differs=yes
+            fi
+
+            if [ -n "$differs" ]; then
+              echo "::error::claude[bot] posted nothing at ${HEAD_SHA:0:8} because this PR edits $SELF," \
+                   "so claude-code-action skipped itself on workflow validation (it requires this file to match" \
+                   "$DEFAULT_BRANCH) and reported success without running." \
+                   "This is expected on a PR that changes the review workflow, and it resolves once the PR merges." \
+                   "Such a PR touches .github/** and therefore needs a coderabbitai[bot] review regardless —" \
+                   "branch D cannot satisfy the gate for it."
+            else
+              echo "::error::The review job succeeded but claude[bot] posted nothing at ${HEAD_SHA:0:8}." \
+                   "No marker will be minted and review-evidence stays red." \
+                   "This file matches $DEFAULT_BRANCH, so workflow validation is not the cause;" \
+                   "the usual one is a stale --allowed-tools list — see the comment on that input."
+            fi
             exit 1
           fi
 

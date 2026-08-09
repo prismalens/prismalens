@@ -3,34 +3,42 @@ language: en-US
 reviews:
   profile: chill
   auto_review:
-    # CLI-FIRST LANE. Online review is opt-in, not automatic.
+    # ONLINE REVIEW IS ADMITTED, NOT AUTOMATIC.
     #
-    # This repo is on CodeRabbit's OSS tier: 1-10 PR reviews per developer per
-    # hour, scaling with project popularity — a young repo sits near the bottom.
-    # The limit is per DEVELOPER, not per repo, so this repo, `mage-memory` and
-    # `sreforge` all draw one counter. Measured over 180 merged PRs: 7.5/day,
-    # worst hour 8 opens, and at 1 review/hr 61% of PRs arrived with the counter
-    # already empty. Reviewing everything automatically means the reviews land
-    # where they happen to fall, not where they are worth spending.
+    # Every PR is reviewed by Claude Code in GitHub Actions
+    # (.github/workflows/claude-code-review.yml), which is subscription-billed
+    # and not scarce. This counter is scarce: it is per DEVELOPER, not per repo,
+    # so this repo, `sreforge` and `mage-memory` all draw one pool, and a
+    # successful review costs roughly a 40-minute cooldown across all three.
+    # Measured over 180 merged PRs: 7.5/day, worst hour 8 opens, and at 1
+    # review/hr 61% of PRs arrived with the counter already empty. Reviewing
+    # everything automatically spends it where PRs happen to fall rather than
+    # where a second opinion is worth having.
     #
-    # So: the CodeRabbit CLI (a separate, much larger counter) reviews every push
-    # via the kit's pre-push gate, and this scarce online counter is no longer
-    # spent automatically — only on PRs explicitly labelled `review-ready`.
+    # So it is spent in exactly two cases, and `labels` below is what implements
+    # the first:
     #
-    # SCOPE, precisely: `labels` gates AUTOMATIC review only. Manual triggers —
-    # `@coderabbitai review` and `@coderabbitai full review` — run regardless of
-    # these settings and still spend the online counter, labelled or not. That is
-    # deliberate and wanted: it is the escape hatch for re-requesting a review
-    # after `auto_pause_after_reviewed_commits` stops incremental ones. But it
-    # means this is a DEFAULT, not a hard cap. The cap is discipline, plus the
-    # fact that a manual trigger is an explicit act rather than a side effect of
-    # opening a PR — which is exactly the 61%-empty-counter problem above.
+    #   1. The PR touches a path listed in .github/high-risk-paths.txt — the gate
+    #      itself, credential and crypto handling, the engine core, and contract
+    #      or schema surfaces. `review-admit.yml` applies
+    #      `review-ready` automatically on a path match, and
+    #      .github/scripts/review-evidence.sh keeps those PRs RED until
+    #      `coderabbitai[bot]` evidence exists — a Claude review alone does not
+    #      satisfy them. The publisher is the half that holds; the label is
+    #      convenience.
+    #   2. The Claude lane is down — `@coderabbitai review`, by hand.
+    #
+    # SCOPE, precisely: `labels` gates AUTOMATIC review only. Manual triggers run
+    # regardless of these settings and still spend the counter. That is wanted —
+    # it is the escape hatch for case 2 and for re-requesting after
+    # `auto_pause_after_reviewed_commits` stops incremental reviews.
     #
     # This is NOT a reduction in review. `review-evidence` is a required check
-    # (ruleset 18441175): a PR with neither a CodeRabbit review nor a CLI review
-    # marker at its head SHA cannot merge. Removing automatic review without that
-    # gate in place would have made "unreviewed" the silent default — which is
-    # why the gate shipped first, in #322.
+    # (ruleset 18441175): a PR cannot merge without evidence for its current
+    # head, or evidence from an earlier commit that `CARRY_FORWARD` has shown to
+    # be patch-identical to it.
+    # Removing automatic review without that gate would have made "unreviewed"
+    # the silent default — which is why the gate shipped first, in #322.
     #
     # No dry run exists for this setting: CodeRabbit applies base-branch config
     # only for open-source repos, so it takes effect the moment it lands on main.

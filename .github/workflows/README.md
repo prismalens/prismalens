@@ -34,11 +34,18 @@ GitHub will not distinguish it from the real evaluator.
 `pull_request_target`, pins its checkout to the default branch, and reads the GitHub
 API only. Read the header comment in that file before changing its trigger.
 
-`claude-review.yml` is the case most likely to be misread. It produces review
-evidence, but it holds neither `statuses: write` nor `checks: write` — it posts a
-marker *comment*, and `review-evidence.yml` decides whether that comment counts.
+`claude-code-review.yml` is the case most likely to be misread. It produces review
+evidence, but it holds neither `statuses: write` nor `checks: write` — its `marker`
+job posts a *comment*, and `review-evidence.yml` decides whether that comment counts.
 Producing evidence and publishing a required check are two different privileges, and
 only the second one is dangerous. Keep them separate.
+
+That file carries a second split for the same reason, one level down. Its `review`
+job runs the model on a **read-only** token; its `marker` job holds the only write,
+runs no model, and reads nothing from the PR but its head SHA. So a prompt injected
+into a reviewed diff reaches a job that cannot post anything the gate trusts. The
+`marker` job additionally refuses to mint unless the reviewer demonstrably posted at
+that head — a job succeeding is not evidence that it did anything.
 
 ## Rule for new enforcement
 
@@ -69,7 +76,39 @@ merge.
 | `release.yml` | `push` | changesets release and publish |
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
-| `review-admit.yml` | dispatch | applies the `review-ready` admission label (spends the scarce online review) |
-| `claude-review.yml` | dispatch | runs a Claude review and posts the marker `review-evidence` branch D reads |
+| `claude-code-review.yml` | `pull_request` | reviews every **same-repository** PR, then mints the marker `review-evidence` branch D reads; skips forks, which get no secrets |
+| `claude.yml` | `@claude` mentions | labour tool; **never** mints evidence |
+| `review-admit.yml` | `pull_request_target`, dispatch | runs on every PR update, asks the matcher whether a high-risk path is touched, and applies `review-ready` if so — admitting the scarce online review |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |
-| `review-evidence.yml` | PR/review/comment/schedule/dispatch | publishes the `review-evidence` status |
+| `review-evidence.yml` | PR/review/comment/dispatch | publishes the `review-evidence` status |
+
+## How `review-evidence` goes green
+
+Four branches, each keyed to the current head SHA (or a patch-identical earlier
+commit — see `CARRY_FORWARD` in the script):
+
+| | Evidence |
+| --- | --- |
+| **B1** | the PR is bot-authored (Dependabot); `CI gate` applies separately |
+| **B2** | the PR is a generated release PR — same-repo **and** branch **and** title |
+| **A** | a formal review by `coderabbitai[bot]` |
+| **D** | a marker from `claude-code-review.yml`'s `marker` job, validated by looking up the run it cites |
+
+**`claude[bot]` is not an allowlisted reviewer, and must not become one.** That
+login is an app installation shared by `claude-code-review.yml` and `claude.yml`,
+so a post carrying it does not establish which workflow produced it — anyone who
+can comment `@claude` could otherwise mint evidence. Branch D exists precisely to
+close that: the marker is authored by `github-actions[bot]` from a job that runs
+no model, and the publisher re-derives the run's workflow file, head SHA and
+conclusion rather than trusting the marker's text.
+
+**On high-risk paths (`.github/high-risk-paths.txt`), branch D is not enough.**
+Those PRs need `coderabbitai[bot]` evidence specifically — an independent
+reviewer sharing no model, prompt or failure mode with the lane under review.
+`review-admit.yml` labels them automatically; the publisher enforces it, because
+a label can be removed and a PR-branch workflow can be tampered with while the
+publisher runs from the default branch.
+
+**A green job is never evidence.** Three separate times on the #301 track a
+review job reported success having posted nothing at all. Only a posted artifact,
+and for Claude only a marker backed by its run, counts.

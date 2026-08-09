@@ -1,0 +1,36 @@
+# Paths where a Claude review alone does not satisfy `review-evidence`.
+#
+# A PR touching any of these needs evidence from `coderabbitai[bot]` — a second,
+# independent reviewer that shares no model, no prompt, and no failure modes with
+# the lane under review. Two things follow from that and neither is optional:
+#
+#   * `.github/workflows/review-admit.yml` auto-applies `review-ready` on a match,
+#     so admission is not something an agent has to remember;
+#   * `.github/scripts/review-evidence.sh` keeps a matched PR RED until that
+#     evidence exists, because a label can be skipped and a PR-branch workflow can
+#     be tampered with, while the publisher runs from the default branch.
+#
+# Chosen from where the independent lane has actually earned its keep: every
+# CodeRabbit catch on the #301 track landed in `.github/**`, including two the
+# adjudicating model had ruled acceptable.
+#
+# Blank lines and `#` comments are ignored. One glob per line, matched against
+# each changed path. `**` matches across directory separators.
+#
+# ADDING a path is cheap and safe. REMOVING one means asserting that an
+# independent review is no longer worth its cost there — say why in the PR.
+
+# The gate itself, and everything that can publish or influence a required check.
+.github/**
+
+# Credential and crypto handling.
+packages/@prismalens/*/src/**/crypto/**
+packages/@prismalens/*/src/**/credential*/**
+packages/@prismalens/*/src/**/*secret*
+
+# The engine core: what an investigation is allowed to do.
+packages/@prismalens/engine/src/**
+
+# Contracts and schema — anything a consumer or a stored row depends on.
+packages/@prismalens/contracts/src/**
+packages/@prismalens/database/prisma/**

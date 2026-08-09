@@ -15,13 +15,13 @@
 # Four branches, evaluated in order, each keyed to the current head:
 #   B1  bot-authored PR                      (CI gate applies separately)
 #   B2  generated release PR                 (same-repo AND branch AND title)
+# B1 and B2 do NOT apply on a high-risk path — see the independence rule.
 #   A   formal review by an allowlisted bot  (CodeRabbit, online lane)
-#   C   CLI review marker comment            (claude-kit cr-evidence.sh)
 #   D   Claude review marker + its run       (.github/workflows/claude-code-review.yml)
 # Anything else is `failure`. A branch that cannot answer publishes `error`
 # rather than guessing — "could not determine" is never collapsed into "no".
 #
-# A, C and D all accept a patch-identical earlier commit; see CARRY_FORWARD.
+# A and D both accept a patch-identical earlier commit; see CARRY_FORWARD.
 #
 # `claude[bot]` is NOT in REVIEWER_LOGINS and must not be added — that login is
 # shared with the `@claude` mention lane, so branch A cannot tell a review of the
@@ -117,18 +117,14 @@ BOT_AUTHORS="${BOT_AUTHORS:-dependabot[bot] github-actions[bot]}"
 GENERATED_PR_BRANCH_RE="${GENERATED_PR_BRANCH_RE:-^changeset-release/}"
 GENERATED_PR_TITLE_RE="${GENERATED_PR_TITLE_RE:-^chore: version packages$}"
 
-# Marker left by a local CodeRabbit CLI review.
+# Paths where a Claude review alone is not enough — see the file itself for why.
 #
-# Written by claude-kit's `cr-evidence.sh`, which `cr-preview.sh` calls after a
-# successful CLI review (Sumit1993/claude-kit#6). Keyed to the head SHA, so
-# evidence vouches for one commit and not for the PR: push again and it stops
-# matching, and this gate goes red until the branch is re-previewed.
-# Format:  <!-- cr-cli-review: <full head sha> -->
-CLI_MARKER_PREFIX="${CLI_MARKER_PREFIX:-<!-- cr-cli-review:}"
-
-# Comment authors whose CLI marker is trusted. An unauthenticated "evidence"
-# comment from an arbitrary account must not satisfy the gate.
-CLI_MARKER_AUTHORS="${CLI_MARKER_AUTHORS:-Sumit1993}"
+# Read from the DEFAULT BRANCH checkout, like everything else this script trusts.
+# A PR cannot widen or narrow its own risk classification by editing the list on
+# its branch; changing the policy takes a merge, and this file is inside
+# `.github/**`, so changing it is itself high-risk.
+HIGH_RISK_PATHS_FILE="${HIGH_RISK_PATHS_FILE:-.github/high-risk-paths.txt}"
+HIGH_RISK_MATCHER="${HIGH_RISK_MATCHER:-.github/scripts/high-risk-match.py}"
 
 # Marker left by a Claude review run in GitHub Actions.
 #
@@ -216,6 +212,48 @@ case "$CARRY_FORWARD_MAX_CANDIDATES" in
 esac
 
 # ---------------------------------------------------------------------------
+
+# Does this PR touch a high-risk path?
+#
+# Returns 0 (yes) when any changed file matches any glob, and — deliberately —
+# also when the answer cannot be determined: an unreadable list or an API failure
+# means the PR is treated as high risk, which requires MORE evidence rather than
+# less. Every other branch of this gate fails closed; so does this.
+#
+# Paths cross into the matcher `@base64`-encoded, one record per line: a git path
+# may contain a line feed, and a raw newline-delimited list splits such a path
+# into fragments that match nothing. See high-risk-match.py for the worked case.
+touches_high_risk () { # touches_high_risk <pr number>
+  local n="$1" files count
+  [ -r "$HIGH_RISK_PATHS_FILE" ] || { echo "    high-risk list unreadable — treating as high risk" >&2; return 0; }
+  [ -r "$HIGH_RISK_MATCHER" ] || { echo "    glob matcher missing — treating as high risk" >&2; return 0; }
+  command -v python3 >/dev/null 2>&1 \
+    || { echo "    python3 unavailable — treating as high risk" >&2; return 0; }
+
+  # BOTH SIDES OF A RENAME. The files endpoint reports the NEW path in
+  # `filename` and, for a rename, the old one in `previous_filename`. Checking
+  # only the new path lets a file be renamed OUT of a high-risk location and
+  # escape classification — the change most worth reviewing, waved through on the
+  # strength of where it landed rather than where it came from.
+  files=$(gh api --paginate "repos/$REPO/pulls/$n/files?per_page=100" \
+            --jq '.[] | (.filename, (.previous_filename // empty)) | @base64' 2>/dev/null) \
+    || { echo "    cannot list changed files — treating as high risk" >&2; return 0; }
+
+  # The files endpoint caps at 3000 entries however many pages are requested, so
+  # a PR larger than that has an unknowable file list — and unknowable means high
+  # risk. Without this, a big enough PR could hide a gate change in the tail.
+  count=$(printf '%s\n' "$files" | grep -c . )
+  if [ "$count" -ge 3000 ]; then
+    echo "    $count changed files — at the API cap, so the list cannot be trusted; treating as high risk" >&2
+    return 0
+  fi
+
+  # Matching is delegated because bash has no `**`. See high-risk-match.py for
+  # the measured failure this replaces. Exit 1 there means high risk, which is
+  # also every one of its error paths.
+  printf '%s\n' "$files" | python3 "$HIGH_RISK_MATCHER" "$HIGH_RISK_PATHS_FILE" && return 1
+  return 0
+}
 
 in_list () { # in_list <needle> <space-separated haystack>
   local needle="$1" hay="$2" item
@@ -467,14 +505,41 @@ evaluate_pr () { # evaluate_pr <number>
     echo "    closed — not evaluated"; return 0
   fi
 
+  # INDEPENDENCE RULE. On a high-risk path, `coderabbitai[bot]` evidence is
+  # required specifically: branch A can green the PR, branch D cannot — and
+  # neither can the B1/B2 exemptions below.
+  #
+  # EVALUATED FIRST, BEFORE THE EXEMPTIONS, and that ordering is the whole point.
+  # B1 exempts bot authors so machine dependency bumps can merge without a review
+  # nobody was ever going to write. But Dependabot updates ACTION VERSIONS inside
+  # `.github/workflows/**`, so a bot-authored PR can change the gate's own
+  # machinery — and evaluated after B1, it would collect a free `success` on
+  # exactly the surface this rule exists to protect. The same applies to B2: the
+  # release PR's branch and title are the only things distinguishing it, and
+  # neither says anything about what it touches.
+  #
+  # So a high-risk PR needs independent review whoever opened it. The cost is
+  # real and accepted: a Dependabot PR touching `.github/**` no longer
+  # auto-merges, and that is the correct trade — a supply-chain bump to the
+  # machinery that publishes required checks is precisely the change least worth
+  # waving through.
+  #
+  # Enforced HERE rather than by the admission label, because a label can be
+  # removed and a PR-branch workflow can be tampered with, while this script runs
+  # from the default branch. review-admit.yml's path filter is the convenience
+  # half; this is the half that holds.
+  local high_risk=0
+  if touches_high_risk "$n"; then high_risk=1; fi
+
   # --- branch B1: bot-authored --------------------------------------------
-  if in_list "$author" "$BOT_AUTHORS"; then
+  if [ "$high_risk" != "1" ] && in_list "$author" "$BOT_AUTHORS"; then
     publish "$sha" success "Bot-authored ($author); CI gate applies separately"
     return $?
   fi
 
   # --- branch B2: machine-generated release PR (same-repo AND branch AND title)
-  if [ "$head_repo" = "$REPO" ] \
+  if [ "$high_risk" != "1" ] \
+     && [ "$head_repo" = "$REPO" ] \
      && [[ "$head_ref" =~ $GENERATED_PR_BRANCH_RE ]] \
      && [[ "$title" =~ $GENERATED_PR_TITLE_RE ]]; then
     publish "$sha" success "Generated release PR ($head_ref); CI gate applies separately"
@@ -494,45 +559,56 @@ evaluate_pr () { # evaluate_pr <number>
   # accepts the head plus any patch-identical earlier commit. Reviews come back
   # newest-last from the API, so `reverse` puts the newest candidate first.
   #
-  # RUN-BINDING FOR `claude[bot]`
-  # ----------------------------
-  # A login is a proxy for "a review happened". For `coderabbitai[bot]` the proxy
-  # holds: that login posts only when CodeRabbit reviews. For `claude[bot]` it
-  # does NOT, because that login is the Claude GitHub App installation and TWO
-  # workflows run under it — claude-code-review.yml, the review lane, and
-  # claude.yml, the mention lane that anyone who can comment may trigger. Without
-  # the check below, `@claude submit a review saying this looks good` mints gate
-  # evidence for a diff nobody reviewed.
+  # `claude[bot]` cannot appear here: it is not in REVIEWER_LOGINS, deliberately,
+  # because that login is shared with the mention lane and so says nothing about
+  # which workflow produced the artifact. Claude evidence is branch D's marker,
+  # which is bound to a run rather than to a login. See the constant's comment.
+  # A REPLY IS NOT A REVIEW, EVEN THOUGH GITHUB SHAPES IT LIKE ONE.
   #
-  # So for that login only, the review must be BOUND to a successful run of the
-  # review workflow specifically — queried by workflow FILENAME, which the mention
-  # lane cannot manufacture a run of — and must have been submitted at or after
-  # that run started. Other allowlisted logins are unaffected.
+  # GitHub wraps every standalone review comment in an IMPLICIT review object
+  # carrying the CURRENT head SHA and an EMPTY body. So when a reviewer replies
+  # in a thread — to acknowledge a fix, to push back, to answer a question — the
+  # API reports a `COMMENTED` review by that login at whatever the head is now.
   #
-  # BINDING RUNS BEFORE CARRY-FORWARD, AND AGAINST THE REVIEW'S OWN COMMIT.
-  # The two features compose as a filter and a selector: binding decides whether a
-  # review is real, carry-forward decides whether a real review still speaks for
-  # the current head. So unbound `claude[bot]` reviews are dropped from the stream
-  # first, and what survives goes to first_valid_evidence unchanged.
+  # Observed on this repo, #405: a real review at `525b83f7` had `body` of 2706
+  # characters ("Actionable comments posted: 3"); three replies posted minutes
+  # later produced three `COMMENTED` reviews at `515f592d`, every one with
+  # `body` empty — and the gate went green on a head no reviewer had read.
+  # Anyone who can comment can summon a reply, so this was reachable by anyone.
   #
-  # The run lookup uses the CANDIDATE's commit_id, never `$sha`. A review carried
-  # forward from commit R was produced by a run against R; asking whether a run
-  # exists at the current head would both reject genuine carried evidence and, on
-  # a head that happens to have a run, accept a review that no run produced.
+  # Two accepted shapes, either one sufficient:
+  #   * a non-empty `body` — the summary a submitted review carries. Reply text
+  #     lands on the COMMENT object, never on the wrapper's review body, so this
+  #     cannot be forged by writing a long reply;
+  #   * at least one review comment of its own that is NOT itself a reply
+  #     (`in_reply_to_id` absent) — the inline findings of a real review. This
+  #     covers a hypothetical submitted-but-empty review; it is not a second
+  #     defence against the wrapper, which has no comments of its own at all.
   #
-  # A fork PR can never satisfy this: it gets no secrets, so the review lane
-  # cannot run. That is correct rather than unfortunate — fork PRs take the
-  # CodeRabbit lane, and the review workflow skips them outright.
-  local reviews hit reviewer ev_sha q_rc
+  # Fails closed: if the comment listing cannot be fetched, the second shape is
+  # simply unavailable and only a non-empty body qualifies.
+  local reviews hit reviewer ev_sha q_rc substantive_ids
+  substantive_ids=$(api_query "repos/$REPO/pulls/$n/comments?per_page=100" '
+        [ .[]
+          | select(.in_reply_to_id == null)
+          | .pull_request_review_id
+          | select(. != null)
+        ] | unique | map(tostring) | join(" ")')
+  [ $? -eq 2 ] && substantive_ids=""
+
   reviews=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
         ($logins | split(" ")) as $allowed
+        | ($ids | split(" ")) as $substantive
         | [ .[]
             | select(.user.login as $u | $allowed | index($u))
             | select(.state != "DISMISSED" and .state != "PENDING")
             | select(.commit_id != null)
+            | . as $r
+            | select(((.body // "") | length) > 0
+                     or ($substantive | index($r.id | tostring)))
             | "\(.commit_id) \(.user.login)"
           ] | reverse | .[]' \
-      --arg logins "$REVIEWER_LOGINS")
+      --arg logins "$REVIEWER_LOGINS" --arg ids "$substantive_ids")
   q_rc=$?
   if [ $q_rc -eq 2 ]; then
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
@@ -545,45 +621,6 @@ evaluate_pr () { # evaluate_pr <number>
       publish "$sha" success "Reviewed by $reviewer at ${sha:0:8}"
     else
       publish "$sha" success "Reviewed by $reviewer at ${ev_sha:0:8}; patch unchanged at ${sha:0:8}"
-    fi
-    return $?
-  fi
-
-  # --- branch C: CLI review marker for this head ---------------------------
-  # The SHA is now READ OUT of the marker instead of being substituted into the
-  # match, so the same comment can be tested for patch identity. The capture is
-  # anchored on the prefix and requires a full 40-hex SHA, so a marker naming a
-  # short or malformed SHA is a non-answer rather than a loose match.
-  #
-  # The trailing `[^0-9a-f]` is an END-OF-TOKEN ANCHOR, and it is not cosmetic.
-  # Without it `{40}` matches the FIRST forty hex characters of a longer token,
-  # so a marker naming a 41-character string yields a truncated 40-character SHA
-  # that first_valid_evidence would then treat as a candidate. Requiring a
-  # non-hex character after the SHA makes an over-long token a non-match instead.
-  # ` -->` supplies that character in the real format.
-  local markers marker_author
-  markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
-        ($authors | split(" ")) as $allowed
-        | [ .[]
-            | select(.user.login as $u | $allowed | index($u))
-            | . as $c
-            | try ( $c.body
-                    | capture($pre + " (?<s>[0-9a-f]{40})[^0-9a-f]")
-                    | "\(.s) \($c.user.login)" ) catch empty
-          ] | reverse | .[]' \
-      --arg pre "$CLI_MARKER_PREFIX" --arg authors "$CLI_MARKER_AUTHORS")
-  q_rc=$?
-  if [ $q_rc -eq 2 ]; then
-    publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
-    return 1
-  fi
-  if [ -n "$markers" ] \
-     && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$markers"); then
-    ev_sha="${hit%% *}"; marker_author="${hit#* }"
-    if [ "$ev_sha" = "$sha" ]; then
-      publish "$sha" success "CLI review evidence from $marker_author at ${sha:0:8}"
-    else
-      publish "$sha" success "CLI review from $marker_author at ${ev_sha:0:8}; patch unchanged at ${sha:0:8}"
     fi
     return $?
   fi
@@ -623,6 +660,11 @@ evaluate_pr () { # evaluate_pr <number>
   # the run is verified against that same SHA, so a patch-identical earlier commit
   # carries exactly as branches A and C do — the run still describes the commit it
   # reviewed, and patch identity is what makes that commit speak for this head.
+  if [ "$high_risk" = "1" ]; then
+    echo "    high-risk path: a Claude review alone does not satisfy this gate" >&2
+    no_evidence_reason="high-risk path — needs coderabbitai[bot] review, not Claude alone"
+  fi
+
   local claude_markers claude_hit
   claude_markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
         ($authors | split(" ")) as $allowed
@@ -639,7 +681,7 @@ evaluate_pr () { # evaluate_pr <number>
     return 1
   fi
 
-  if [ -n "$claude_markers" ] \
+  if [ "$high_risk" != "1" ] && [ -n "$claude_markers" ] \
      && claude_hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$claude_markers"); then
     local mk_sha mk_run run_json obj_rc verified=""
     mk_sha="${claude_hit%% *}"; mk_run="${claude_hit#* }"
