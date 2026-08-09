@@ -35,14 +35,26 @@ class TestProducerTransport(unittest.TestCase):
         expr_sh = extract_jq_expr(REVIEW_EVIDENCE_PATH)
         expr_yml = extract_jq_expr(REVIEW_ADMIT_PATH)
 
-        if expr_sh is None:
-            self.skipTest(
-                f"Could not locate --jq expression containing previous_filename in {REVIEW_EVIDENCE_PATH.name}"
-            )
-        if expr_yml is None:
-            self.skipTest(
-                f"Could not locate --jq expression containing previous_filename in {REVIEW_ADMIT_PATH.name}"
-            )
+        # A MISSING EXPRESSION IS THE FAILURE, NOT A REASON TO SKIP. This test
+        # exists to catch a producer that stops emitting `previous_filename` or
+        # `@base64` — and a producer that stopped emitting them is exactly when
+        # the regex finds nothing. Skipping there would pass in the one case the
+        # test is for, silently restoring the rename-escape and line-feed-split
+        # bypasses. Same defect class as test_defect4 in the sibling module: a
+        # test that cannot fail. (`jq` being absent is different — that is the
+        # environment, not the code, and stays a skip on the round-trip test.)
+        self.assertIsNotNone(
+            expr_sh,
+            f"No --jq expression containing previous_filename found in "
+            f"{REVIEW_EVIDENCE_PATH.name}. Either the producer changed shape or "
+            f"it stopped emitting both sides of a rename.",
+        )
+        self.assertIsNotNone(
+            expr_yml,
+            f"No --jq expression containing previous_filename found in "
+            f"{REVIEW_ADMIT_PATH.name}. Either the producer changed shape or "
+            f"it stopped emitting both sides of a rename.",
+        )
 
         self.assertIn(
             "@base64",
@@ -66,8 +78,12 @@ class TestProducerTransport(unittest.TestCase):
     def test_jq_roundtrip_transport(self) -> None:
         """Round-trip test: Pipe canned JSON pull-request file list through producer jq expression into matcher."""
         expr = extract_jq_expr(REVIEW_EVIDENCE_PATH)
-        if expr is None:
-            self.skipTest("Cannot run round-trip test without extracted jq expression")
+        # Assert rather than skip, for the reason given in the test above.
+        self.assertIsNotNone(
+            expr,
+            f"No --jq expression containing previous_filename found in "
+            f"{REVIEW_EVIDENCE_PATH.name}; the round-trip cannot be verified.",
+        )
 
         # Canned GitHub PR files endpoint JSON response
         newline_filename = "packages/@prismalens/foo/src/a\nb/crypto/key.ts"

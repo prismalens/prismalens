@@ -248,6 +248,19 @@ touches_high_risk () { # touches_high_risk <pr number>
     return 0
   fi
 
+  # AN EMPTY LIST IS A NON-ANSWER, NOT A CLEAN PR. `gh api` exits 0 whenever the
+  # request succeeded, so the guard above catches only transport failure. Every
+  # other way the list can come back empty — a jq filter that stops producing
+  # records, a change in the response shape, a token whose scope returns no
+  # entries — left `count` at 0, handed the matcher empty stdin, and got "not
+  # high risk" back. `review-admit.yml` already admits on an empty list; the
+  # publisher, which is the half that actually holds the gate, did not. The two
+  # disagreed in the direction that skips review, and on the authoritative side.
+  if [ "$count" -eq 0 ]; then
+    echo "    changed-file list came back empty — treating as high risk" >&2
+    return 0
+  fi
+
   # Matching is delegated because bash has no `**`. See high-risk-match.py for
   # the measured failure this replaces. Exit 1 there means high risk, which is
   # also every one of its error paths.
