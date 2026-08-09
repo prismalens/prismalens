@@ -180,13 +180,24 @@ gh pr list --repo prismalens/prismalens --label ux-review --state merged \
 Both commands cap at `--limit 100`; raise it if a milestone ever spans more frontend PRs than
 that, because `gh` silently returns the first page rather than telling you it truncated.
 
-Read the walkthroughs back to back, in one pass, without opening each PR:
+Read the walkthroughs back to back, in one pass, without opening each PR. The `awk` pass
+tracks fenced code so a PR that merely *quotes* the template (this section, a spec, a
+follow-up) is not mistaken for one that fills it in:
 
 ```bash
-for n in $(gh pr list --repo prismalens/prismalens --label ux-review --state all \
-             --limit 100 --json number -q '.[].number' | sort -n); do
-  gh pr view --repo prismalens/prismalens "$n" --json number,title,body -q \
-    '"\n\n=== PR #\(.number) — \(.title) ===\n" + (((.body // "") | split("## UX review") | .[1]) // "(!) no ## UX review section")'
+nums=$(gh pr list --repo prismalens/prismalens --label ux-review --state all \
+         --limit 100 --json number -q '.[].number' | sort -n) || { echo 'gh pr list failed' >&2; nums=; }
+for n in $nums; do
+  meta=$(gh pr view --repo prismalens/prismalens "$n" --json number,title \
+           -q '"=== PR #\(.number) — \(.title) ==="') || { echo "gh pr view failed on #$n" >&2; break; }
+  printf '\n\n%s\n' "$meta"
+  gh pr view --repo prismalens/prismalens "$n" --json body -q '.body // ""' |
+    awk '/^```/          { fence = !fence; next }
+         fence           { next }
+         found && /^## / { exit }
+         /^## UX review/ { found = 1 }
+         found           { print }
+         END             { if (!found) print "(!) no ## UX review section" }'
 done
 ```
 
@@ -198,14 +209,21 @@ every query above — is the one real weakness of a query-based walk, and until 
 caught by an audit rather than by CI. Run this over the same window before signing off:
 
 ```bash
-for n in $(gh pr list --repo prismalens/prismalens --state merged --search 'merged:>=2026-08-09' \
-             --limit 100 --json number -q '.[].number'); do
-  gh pr diff --repo prismalens/prismalens "$n" --name-only | grep -q '^packages/frontend/' || continue
+nums=$(gh pr list --repo prismalens/prismalens --state merged --search 'merged:>=2026-08-09' \
+         --limit 100 --json number -q '.[].number') || { echo 'gh pr list failed' >&2; nums=; }
+for n in $nums; do
+  files=$(gh pr diff --repo prismalens/prismalens "$n" --name-only) \
+    || { echo "AUDIT INCOMPLETE — gh pr diff failed on #$n; re-run before signing off" >&2; break; }
+  grep -q '^packages/frontend/' <<<"$files" || continue
   gh pr view --repo prismalens/prismalens "$n" --json number,title,labels -q \
     'select([.labels[].name] | index("ux-review") | not)
-     | "(!) UNLABELLED frontend PR #\(.number) — \(.title)"'
+     | "(!) UNLABELLED frontend PR #\(.number) — \(.title)"' \
+    || { echo "AUDIT INCOMPLETE — gh pr view failed on #$n" >&2; break; }
 done
 ```
+
+A `gh` failure aborts the audit loudly rather than skipping a PR: a silently skipped PR looks
+identical to a compliant one.
 
 Anything it prints gets `gh pr edit <n> --add-label ux-review` and a `## UX review` section
 added to its body before the walk continues.
