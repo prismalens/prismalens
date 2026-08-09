@@ -17,13 +17,15 @@
 #   B2  generated release PR                 (same-repo AND branch AND title)
 #   A   formal review by an allowlisted bot  (CodeRabbit, online lane)
 #   C   CLI review marker comment            (claude-kit cr-evidence.sh)
-#   D   Claude review run in GitHub Actions  (.github/workflows/claude-review.yml)
+#   D   Claude review marker + its run       (.github/workflows/claude-code-review.yml)
 # Anything else is `failure`. A branch that cannot answer publishes `error`
 # rather than guessing — "could not determine" is never collapsed into "no".
 #
-# Branch D is additionally gated on the repo variable CLAUDE_REVIEW_GATE and is
-# inert unless it reads exactly `authoritative`; see the branch for why absent
-# must mean off.
+# A, C and D all accept a patch-identical earlier commit; see CARRY_FORWARD.
+#
+# `claude[bot]` is NOT in REVIEWER_LOGINS and must not be added — that login is
+# shared with the `@claude` mention lane, so branch A cannot tell a review of the
+# diff from a post anyone could summon. Claude evidence goes through D.
 #
 # Ported from Sumit1993/mage-memory, where it has run since 2026-08-02. The
 # repo-specific deltas are marked `PRISMALENS:` below. Tracked in #301.
@@ -55,29 +57,21 @@ DRY_RUN="${DRY_RUN:-0}"
 # it would have satisfied the gate. An allowlist of exact bot logins closes that.
 # `coderabbitai[bot]` is the real login, confirmed from live review payloads.
 #
-# `claude[bot]` is the login every post from `anthropics/claude-code-action`
-# carries under the action's built-in app auth (hardcoded as CLAUDE_BOT_LOGIN in
-# the action's source; this repo passes no `github_token`, so that auth is what
-# is in use). It is listed here because `claude-code-review.yml` submits a formal
-# review at the head SHA on every run — see the prompt there for why that
-# submission is explicit rather than incidental.
-#
 # SPACE-separated, not comma: branch A splits this on " ". A comma-joined value
 # parses as one login that matches nobody, which fails closed — every PR red —
 # but only once a second login exists, which is why it survived a single-entry
 # default.
-REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot] claude[bot]}"
-
-# The one allowlisted login whose review is not self-evidencing, and the workflow
-# file its reviews must be bound to. See "RUN-BINDING" in branch A: this login is
-# an app installation shared by the review lane and the `@claude` mention lane,
-# so the login alone does not establish that a review of the diff happened.
 #
-# Named by FILE, not by workflow name or id: the mention lane cannot cause a run
-# of a different workflow file to exist, which is the whole property being relied
-# on. Changing this to a display name would break that — names are not unique.
-BOUND_REVIEWER_LOGIN="${BOUND_REVIEWER_LOGIN:-claude[bot]}"
-CLAUDE_REVIEW_WORKFLOW_FILE="${CLAUDE_REVIEW_WORKFLOW_FILE:-claude-code-review.yml}"
+# `claude[bot]` is DELIBERATELY ABSENT, and must not be added. It is an app
+# installation shared by claude-code-review.yml and claude.yml, the mention lane
+# anyone who can comment may trigger — so the login does not establish who
+# produced the artifact. Claude evidence arrives through branch D's marker
+# instead, which is authored by a job the reviewing agent holds no credential to
+# impersonate. An earlier design allowlisted the login here and tried to bind it
+# by timestamp against a successful run; that made a successful run a reusable
+# authorization token, because a run that succeeds while posting nothing leaves
+# the authorization unspent for a mention-lane post to redeem. See branch D.
+REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot]}"
 
 # PR authors exempt from needing review evidence.
 #
@@ -138,10 +132,11 @@ CLI_MARKER_AUTHORS="${CLI_MARKER_AUTHORS:-Sumit1993}"
 
 # Marker left by a Claude review run in GitHub Actions.
 #
-# Written by the `marker` job of .github/workflows/claude-review.yml, which is
-# gated behind `needs: review` so it cannot run unless the reviewing job
-# succeeded. Keyed to the head SHA for the same reason as the CLI marker above:
-# evidence vouches for one commit, not for the PR.
+# Written by the `marker` job of .github/workflows/claude-code-review.yml, which
+# is gated behind `needs: review` so it cannot run unless the reviewing job
+# succeeded, and which additionally refuses to mint a marker unless a
+# `claude[bot]` post actually exists at that head. Keyed to the head SHA for the
+# same reason as the CLI marker above: evidence vouches for one commit, not the PR.
 # Format:  <!-- claude-review: <full head sha> run:<run id> -->
 CLAUDE_MARKER_PREFIX="${CLAUDE_MARKER_PREFIX:-<!-- claude-review:}"
 
@@ -160,7 +155,10 @@ CLAUDE_MARKER_AUTHORS="${CLAUDE_MARKER_AUTHORS:-github-actions[bot]}"
 # The marker names a run id; this is what that run has to BE. Without it, any
 # successful run of any workflow on this repo at the right SHA — a doc build, a
 # lint job — would satisfy branch D once its id appeared in a comment.
-CLAUDE_REVIEW_WORKFLOW="${CLAUDE_REVIEW_WORKFLOW:-claude-review.yml}"
+# Named by FILE, never by workflow name or id: the mention lane cannot cause a
+# run of a different workflow file to exist, and that is the whole property being
+# relied on. Names are not unique; paths are.
+CLAUDE_REVIEW_WORKFLOW_FILE="${CLAUDE_REVIEW_WORKFLOW_FILE:-claude-code-review.yml}"
 
 # Carry evidence forward across a branch update that did not change the patch.
 #
@@ -303,6 +301,22 @@ first_valid_evidence () { # first_valid_evidence <head> <base_ref> <head_repo> <
     cand="${line%% *}"
     case "$seen" in *" $cand "*) continue ;; esac
     seen="$seen$cand "
+
+    # THE EXACT HEAD IS TESTED BEFORE THE BUDGET, ALWAYS.
+    #
+    # The candidate cap bounds carry-forward's compare-API calls; it has no
+    # business bounding the exact-SHA match, which costs nothing and is the
+    # behaviour that predates carry-forward entirely. Applying the cap first
+    # meant that with carry-forward disabled — `CARRY_FORWARD=0`, or an invalid
+    # limit — a genuine review AT the head could be skipped once enough other
+    # candidates had been seen. Fail-closed, but it broke the one property this
+    # feature promised: that it can only ever ADD greens the old code would not
+    # have published, never withhold one it would have.
+    if [ "$cand" = "$head" ]; then
+      printf '%s\n' "$line"
+      return 0
+    fi
+
     seen_count=$((seen_count + 1))
     [ "$seen_count" -gt "$CARRY_FORWARD_MAX_CANDIDATES" ] && break
     if evidence_sha_ok "$head" "$cand" "$base" "$hrepo"; then
@@ -516,7 +530,7 @@ evaluate_pr () { # evaluate_pr <number>
             | select(.user.login as $u | $allowed | index($u))
             | select(.state != "DISMISSED" and .state != "PENDING")
             | select(.commit_id != null)
-            | "\(.commit_id) \(.user.login) \(.submitted_at // "")"
+            | "\(.commit_id) \(.user.login)"
           ] | reverse | .[]' \
       --arg logins "$REVIEWER_LOGINS")
   q_rc=$?
@@ -524,42 +538,8 @@ evaluate_pr () { # evaluate_pr <number>
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
     return 1
   fi
-  # Drop unbound `claude[bot]` reviews before carry-forward sees them.
-  local bound_reviews="" unbound_seen=0
-  while read -r cand_sha cand_login cand_at; do
-    [ -n "$cand_sha" ] || continue
-    if [ "$cand_login" != "$BOUND_REVIEWER_LOGIN" ]; then
-      bound_reviews+="$cand_sha $cand_login"$'\n'
-      continue
-    fi
-    local started b_rc
-    # `.workflow_runs // []` because this endpoint answers with an OBJECT, while
-    # api_query normalises every response with `jq -s 'add // []'` for the array
-    # endpoints its other callers use. On a shape surprise this yields no run,
-    # which is red — rather than a jq error, which would be an amber `error`
-    # status claiming the gate could not tell.
-    started=$(api_query \
-      "repos/$REPO/actions/workflows/$CLAUDE_REVIEW_WORKFLOW_FILE/runs?head_sha=$cand_sha&per_page=100" '
-          [ (.workflow_runs // [])[]
-            | select(.conclusion == "success")
-            | .run_started_at // .created_at
-          ] | sort | .[0] // empty')
-    b_rc=$?
-    if [ $b_rc -eq 2 ]; then
-      publish "$sha" error "Cannot verify the review run for ${cand_sha:0:8} — GitHub API error"
-      return 1
-    fi
-    # String comparison is correct here: both timestamps are RFC 3339 UTC (`Z`),
-    # which is lexicographically ordered.
-    if [ -n "$started" ] && [ -n "$cand_at" ] && [[ "$cand_at" > "$started" || "$cand_at" == "$started" ]]; then
-      bound_reviews+="$cand_sha $cand_login"$'\n'
-    else
-      unbound_seen=1
-    fi
-  done <<<"$reviews"
-
-  if [ -n "$bound_reviews" ] \
-     && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$bound_reviews"); then
+  if [ -n "$reviews" ] \
+     && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$reviews"); then
     ev_sha="${hit%% *}"; reviewer="${hit#* }"
     if [ "$ev_sha" = "$sha" ]; then
       publish "$sha" success "Reviewed by $reviewer at ${sha:0:8}"
@@ -568,20 +548,19 @@ evaluate_pr () { # evaluate_pr <number>
     fi
     return $?
   fi
-  # An unbound review is NOT published as a failure here. Branches C and D are
-  # independent evidence paths, and a forged review must not be able to suppress
-  # a genuine one. The reason is carried to the terminal failure instead, so the
-  # red check still states its cause rather than reading as plain silence.
-  if [ "$unbound_seen" = "1" ]; then
-    echo "    a $BOUND_REVIEWER_LOGIN review at ${sha:0:8} is not bound to a successful $CLAUDE_REVIEW_WORKFLOW_FILE run — ignoring" >&2
-    no_evidence_reason="unbound $BOUND_REVIEWER_LOGIN review — no $CLAUDE_REVIEW_WORKFLOW_FILE run backs it"
-  fi
 
   # --- branch C: CLI review marker for this head ---------------------------
   # The SHA is now READ OUT of the marker instead of being substituted into the
   # match, so the same comment can be tested for patch identity. The capture is
   # anchored on the prefix and requires a full 40-hex SHA, so a marker naming a
   # short or malformed SHA is a non-answer rather than a loose match.
+  #
+  # The trailing `[^0-9a-f]` is an END-OF-TOKEN ANCHOR, and it is not cosmetic.
+  # Without it `{40}` matches the FIRST forty hex characters of a longer token,
+  # so a marker naming a 41-character string yields a truncated 40-character SHA
+  # that first_valid_evidence would then treat as a candidate. Requiring a
+  # non-hex character after the SHA makes an over-long token a non-match instead.
+  # ` -->` supplies that character in the real format.
   local markers marker_author
   markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
         ($authors | split(" ")) as $allowed
@@ -589,7 +568,7 @@ evaluate_pr () { # evaluate_pr <number>
             | select(.user.login as $u | $allowed | index($u))
             | . as $c
             | try ( $c.body
-                    | capture($pre + " (?<s>[0-9a-f]{40})")
+                    | capture($pre + " (?<s>[0-9a-f]{40})[^0-9a-f]")
                     | "\(.s) \($c.user.login)" ) catch empty
           ] | reverse | .[]' \
       --arg pre "$CLI_MARKER_PREFIX" --arg authors "$CLI_MARKER_AUTHORS")
@@ -611,161 +590,96 @@ evaluate_pr () { # evaluate_pr <number>
 
   # --- branch D: Claude review evidence for this head ----------------------
   #
-  # Gated on the repo variable CLAUDE_REVIEW_GATE. The variable is created by
-  # hand, starts at `shadow`, and only the operator flips it to `authoritative`
-  # once the lane has been observed working end to end.
+  # WHAT THIS TRUSTS, AND WHY IT IS NOT THE ARTIFACT
+  # -----------------------------------------------
+  # `claude[bot]` is an app installation shared by claude-code-review.yml and
+  # claude.yml, the mention lane anyone who can comment may trigger. So a post by
+  # that login says nothing about which workflow produced it, and it is
+  # deliberately absent from REVIEWER_LOGINS.
   #
-  # ABSENT MUST MEAN INERT. The default is not "on": a variable that is missing,
-  # empty, or holding any other value skips this branch entirely and falls
-  # through to the failure below. If a missing variable granted authority, then
-  # deleting it would silently turn a gate branch on rather than off, which is
-  # the wrong direction for every failure mode this gate exists to catch.
+  # What this branch trusts instead is a marker authored by `github-actions[bot]`
+  # from the `marker` job of claude-code-review.yml — a job that runs no model,
+  # reads nothing from the PR but its head SHA, and only runs at all when the
+  # review job succeeded AND a `claude[bot]` post exists at that head. The
+  # reviewing agent holds no credential that can author `github-actions[bot]`.
   #
-  # It arrives through the ENVIRONMENT, not the API. The obvious implementation —
-  # `gh api repos/$REPO/actions/variables/CLAUDE_REVIEW_GATE` — cannot work from
-  # the workflow that calls this script: reading Actions variables needs a
-  # `variables` permission, and `permissions:` in a workflow has no such key to
-  # grant GITHUB_TOKEN. That call would 403 forever, and because an unreadable
-  # variable is (correctly) treated as inert, branch D would have been silently
-  # dead the moment the operator flipped the switch. Caught by CodeRabbit CLI
-  # review before merge. .github/workflows/review-evidence.yml now maps
-  # `vars.CLAUDE_REVIEW_GATE` into the environment instead, which the runner
-  # resolves with no token permission at all.
-  # DELIBERATELY NOT CARRIED FORWARD. Branches A and C accept a patch-identical
-  # earlier commit; this one does not, and stays an exact head match.
+  # The marker's TEXT is not the evidence. `run:<id>` is a claim; what makes it
+  # evidence is that the run exists, ran THIS workflow file, ran against the SHA
+  # the marker names, and succeeded. All four are re-derived below from the run
+  # id, so a marker that lies about any of them verifies as absent.
   #
-  # Its evidence is not just a marker — it is a marker plus a run whose ARTIFACT is
-  # named for the head it reviewed. Carrying the marker forward would mean either
-  # verifying the run against the older SHA the artifact names (so the check no
-  # longer says anything about the current head) or relaxing the artifact match
-  # (which is the check). Neither is worth doing to a branch that is inert today:
-  # CLAUDE_REVIEW_GATE is `shadow`, and if the official claude-code-action posts a
-  # formal review under a stable bot login, this branch is deleted in favour of one
-  # more entry in REVIEWER_LOGINS — where branch A's carry-forward already applies.
-  # Revisit only if branch D becomes the primary lane. See #301.
-  local gate="${CLAUDE_REVIEW_GATE:-}"
-  if [ "$gate" = "authoritative" ]; then
-    # Newest allowlisted comment carrying the prefix immediately followed by the
-    # CURRENT head SHA, with its claimed run id extracted.
-    #
-    # The extraction happens INSIDE the array, not on `.[-1]` afterwards, so the
-    # answer is the newest marker that actually parses rather than the newest
-    # marker full stop. Otherwise one malformed comment from the trusted author —
-    # a truncated body, an edit that dropped the run id — would mask a valid
-    # marker sitting right behind it and turn a reviewed PR red. `try ... catch
-    # empty` keeps a malformed body a non-answer rather than a jq error, so it
-    # never gets mistaken for the API failing.
-    local claude_run_id
-    claude_run_id=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
-          ($authors | split(" ")) as $allowed
-          | [ .[]
-              | select(.user.login as $u | $allowed | index($u))
-              | select(.body | contains($pre + " " + $sha))
-              | try (.body | capture("run:(?<id>[0-9]+)") | .id) catch empty
-            ]
-          | if length > 0 then .[-1] else empty end' \
-        --arg sha "$sha" --arg pre "$CLAUDE_MARKER_PREFIX" --arg authors "$CLAUDE_MARKER_AUTHORS")
-    q_rc=$?
-    if [ $q_rc -eq 2 ]; then
-      publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
+  # NO TIMESTAMPS ANYWHERE. The design this replaces bound a `claude[bot]` review
+  # to a successful run by comparing submission time against run start. That made
+  # a successful run a REUSABLE AUTHORIZATION TOKEN: a run that succeeds while
+  # posting nothing — the routine failure mode of a stale tool list, observed
+  # twice on 2026-08-09 — leaves an authorization unspent for any later
+  # mention-lane post to redeem. Binding to a run *identifier* minted by a job the
+  # agent cannot impersonate removes the token entirely.
+  #
+  # CARRIED FORWARD, unlike the marker design that preceded it. The old branch D
+  # verified a run against an artifact NAMED for the reviewed head, so carrying it
+  # forward meant either checking the run against a SHA the artifact no longer
+  # described or relaxing the artifact match. This marker names its own SHA and
+  # the run is verified against that same SHA, so a patch-identical earlier commit
+  # carries exactly as branches A and C do — the run still describes the commit it
+  # reviewed, and patch identity is what makes that commit speak for this head.
+  local claude_markers claude_hit
+  claude_markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
+        ($authors | split(" ")) as $allowed
+        | [ .[]
+            | select(.user.login as $u | $allowed | index($u))
+            | .body
+            | try (capture($pre + " (?<s>[0-9a-f]{40}) run:(?<id>[0-9]+)[^0-9]")
+                   | "\(.s) \(.id)") catch empty
+          ] | reverse | .[]' \
+      --arg pre "$CLAUDE_MARKER_PREFIX" --arg authors "$CLAUDE_MARKER_AUTHORS")
+  q_rc=$?
+  if [ $q_rc -eq 2 ]; then
+    publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
+    return 1
+  fi
+
+  if [ -n "$claude_markers" ] \
+     && claude_hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$claude_markers"); then
+    local mk_sha mk_run run_json obj_rc verified=""
+    mk_sha="${claude_hit%% *}"; mk_run="${claude_hit#* }"
+
+    # The runs endpoint is scoped to $REPO, so a run id from a fork simply 404s —
+    # genuinely absent, which falls through to `failure`. Any OTHER fetch failure
+    # — a 5xx, a rate limit, a token without `actions: read` — publishes `error`
+    # instead. The two must not collapse: see api_object.
+    run_json=$(api_object "repos/$REPO/actions/runs/$mk_run"); obj_rc=$?
+    if [ $obj_rc -eq 2 ]; then
+      publish "$sha" error "Cannot verify the review run for ${sha:0:8} — GitHub API error"
       return 1
     fi
-
-    if [ -n "$claude_run_id" ]; then
-      # The comment's own claim is NOT the evidence — the run is. A comment body
-      # is just text, so `run:123` is an assertion by whoever wrote it; what makes
-      # it evidence is that run 123 actually exists, actually succeeded, and
-      # actually ran the review workflow against this exact commit.
-      #
-      # Three conditions on the run itself, ALL required:
-      #   status=completed + conclusion=success — a cancelled or failed run means
-      #     the marker job was skipped by `needs`, so a marker alongside one is a
-      #     forgery, not a race;
-      #   workflow path — closes citing an unrelated green run on this repo.
-      # Plus a fourth, below: the run must carry an artifact naming this head.
-      #
-      # The endswith is anchored on `/` so `not-claude-review.yml` cannot pass as
-      # `claude-review.yml`; a plain suffix test would accept it. `.path` is also
-      # split at `@` first: a run reached through a called/reusable workflow
+    if [ $obj_rc -eq 0 ]; then
+      # The endswith is anchored on `/` so `not-claude-code-review.yml` cannot
+      # pass as `claude-code-review.yml`; a plain suffix test would accept it.
+      # `.path` is split at `@` first: a run reached through a reusable workflow
       # reports `owner/repo/.github/workflows/x.yml@refs/heads/main`, and the ref
       # suffix would make an otherwise-correct path fail to match.
-      #
-      # The runs endpoint is scoped to $REPO, so a run id from someone's fork
-      # simply 404s here — genuinely absent, so it falls through to `failure`.
-      # Any OTHER fetch failure — a 5xx, a rate limit, a token without
-      # `actions: read` — publishes `error` instead, the same discipline branches
-      # A and C already follow. See api_object for why the two must not collapse.
-      local run_json verified="" obj_rc
-      run_json=$(api_object "repos/$REPO/actions/runs/$claude_run_id"); obj_rc=$?
-      if [ $obj_rc -eq 2 ]; then
-        publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
-        return 1
-      fi
-      if [ $obj_rc -eq 0 ]; then
-        verified=$(jq -r --arg wf "$CLAUDE_REVIEW_WORKFLOW" '
-            if (.status == "completed"
-                and .conclusion == "success"
-                and ((.path // "" | split("@")[0]) | endswith("/" + $wf)))
-            then "ok" else "" end' <<<"$run_json" 2>/dev/null)
-      fi
-
-      # BINDING THE RUN TO THIS HEAD.
-      #
-      # This used to compare the run's `.head_sha` to the PR head, and could
-      # never match: claude-review.yml is `workflow_dispatch`-only, and a
-      # dispatch run reports the ref it was dispatched FROM — `main`, carrying
-      # main's tip as `head_sha` — not the PR head it was told to review.
-      # Verified against this repo's Actions API: every dispatch run reads
-      # head_branch=main. So the condition failed on every genuinely reviewed PR
-      # and branch D fell through to `failure` — a gate branch that could only
-      # ever say no.
-      #
-      # The binding now comes from the artifact NAME. claude-review.yml's
-      # `review` job uploads `review-complete-<pr>-<full head sha>`, where that
-      # SHA is the commit it resolved and checked out. The name is written by the
-      # workflow from inside the reviewed run, not asserted by whoever dispatched
-      # it: an operator chooses which PR to dispatch, but cannot choose what the
-      # review job records having reviewed. Replaying an old run's id under a new
-      # head therefore stops matching — the property the `.head_sha` comparison
-      # was reaching for, expressed against a field that dispatch actually sets.
-      #
-      # The name alone carries the binding, so nothing is downloaded.
-      #
-      # EXPIRY IS NOT A HOLE, AND MUST NOT BE "FIXED". Artifacts expire (this
-      # workflow sets retention-days: 7; GitHub's own default is 90). An expired
-      # artifact must not read as valid evidence, and it does not: expiry drops
-      # it from this listing, so the check falls through to `failure` and the PR
-      # needs a fresh review. Do not later cache names or accept `expired: true`
-      # entries to "make old PRs pass" — an expired artifact records that a
-      # review once happened, not that one still stands for this head.
-      if [ "$verified" = "ok" ]; then
-        local arts_json want_artifact
-        want_artifact="review-complete-$pr_number-$sha"
-        verified=""
-        arts_json=$(api_object "repos/$REPO/actions/runs/$claude_run_id/artifacts?per_page=100")
-        obj_rc=$?
-        if [ $obj_rc -eq 2 ]; then
-          publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
-          return 1
-        fi
-        if [ $obj_rc -eq 0 ]; then
-          verified=$(jq -r --arg want "$want_artifact" '
-              if ([ .artifacts[]?
-                    | select(.name == $want)
-                    | select(.expired != true) ] | length) > 0
-              then "ok" else "" end' <<<"$arts_json" 2>/dev/null)
-        fi
-      fi
-
-      if [ "$verified" = "ok" ]; then
-        publish "$sha" success "Claude review evidence from run $claude_run_id at ${sha:0:8}"
-        return $?
-      fi
-      # Marker present but the run does not back it up. Deliberately NOT an
-      # `error`: we determined the answer, and the answer is that there is no
-      # evidence. Fall through to the failure branch.
-      echo "    claude marker cites run $claude_run_id, which does not verify — ignoring" >&2
+      verified=$(jq -r --arg wf "$CLAUDE_REVIEW_WORKFLOW_FILE" --arg s "$mk_sha" '
+          if (.status == "completed")
+             and (.conclusion == "success")
+             and (.head_sha == $s)
+             and ((.path // "") | split("@")[0] | endswith("/" + $wf))
+          then "ok" else "" end' <<<"$run_json" 2>/dev/null)
     fi
+
+    if [ "$verified" = "ok" ]; then
+      if [ "$mk_sha" = "$sha" ]; then
+        publish "$sha" success "Claude review evidence from run $mk_run at ${sha:0:8}"
+      else
+        publish "$sha" success "Claude review from run $mk_run at ${mk_sha:0:8}; patch unchanged at ${sha:0:8}"
+      fi
+      return $?
+    fi
+    # Marker present but the run does not back it up. Deliberately NOT an
+    # `error`: we determined the answer, and the answer is that there is no
+    # evidence. Fall through, carrying the reason so the red states its cause.
+    echo "    claude marker cites run $mk_run, which does not verify — ignoring" >&2
+    no_evidence_reason="claude marker cites run $mk_run, which does not verify"
   fi
 
   # --- no evidence ---------------------------------------------------------
