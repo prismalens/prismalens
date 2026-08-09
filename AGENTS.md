@@ -47,12 +47,13 @@ Where a named surface explains three or more interacting parts (a resolution ord
 Every PR touching `packages/frontend` — regardless of which agent or session produces it:
 
 1. **Design validation before merge, and the screenshots go on the PR.** Capture the changed
-   surface from the running dev stack in every relevant state (default + dark +
-   empty/error) and pass a design review against the frontend-design standards. Commit the
-   PNGs and render them in the PR body — capturing them locally is no longer enough. A
-   frontend PR with no screenshots visible on the PR and no recorded verdict does not merge.
-   (Mechanical enforcement is planned as a `design-evidence` status — #304 — deferred until
-   #301's gate pattern is promoted here.)
+   surface from the running dev stack in `default` and `dark`, plus `empty` and `error`
+   for each of those states the surface can actually reach — a surface with both needs both
+   shots. Pass a design review against the frontend-design standards. Commit the PNGs and
+   render them in the PR body — capturing them locally is no longer enough. A frontend PR
+   with no screenshots visible on the PR and no recorded verdict does not merge. (Mechanical
+   enforcement is planned as a `design-evidence` status — #304 — deferred until #301's gate
+   pattern is promoted here.)
 2. **A `## UX review` section in the PR body, and the `ux-review` label on the PR.** Written
    to the template below: what changed and why (issue/ADR link), where to click, what to
    verify per state, judgment calls made, and the screenshot set. The operator walks these
@@ -89,6 +90,13 @@ Committed files, not drag-and-drop PR attachments: an agent driving `gh` cannot 
 attachment (that is a browser-only gesture), attachment bytes live only in GitHub's CDN with
 no link to the commit that produced them, and a committed PNG diffs visibly when the surface
 changes.
+
+**This repository is public and a committed PNG is permanent** — a later `git rm` does not
+remove it from history. Shoot only synthetic state: the seeded dev fixtures, or a fresh
+`pl up` workspace. Never a screenshot containing an API key, a token, a real incident or
+alert payload, a customer or colleague's name, a real email address, a repository path
+outside the checkout, or anything else you would not paste into a public issue. Look at every
+PNG before `git add`, and redact or re-shoot rather than commit-and-fix.
 
 Embed each one in the PR body with a **commit-pinned** raw URL — the repo is public, so these
 render inline:
@@ -135,7 +143,11 @@ taken. "None" is a valid answer; omitting the field is not.
 |---|---|
 | Default | ![default](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-default.png) |
 | Dark | ![dark](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-dark.png) |
-| Empty / error | ![empty](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-empty.png) |
+| Empty | ![empty](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-empty.png) |
+| Error | ![error](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-error.png) |
+
+<!-- Drop the Empty / Error rows the surface genuinely cannot reach, and say which and why
+     under Judgment calls. Do not drop one because you did not get round to it. -->
 ````
 
 Apply the label when opening the PR:
@@ -165,18 +177,38 @@ gh pr list --repo prismalens/prismalens --label ux-review --state merged \
   --search 'merged:>=2026-08-09' --limit 100 --json number,title,url
 ```
 
+Both commands cap at `--limit 100`; raise it if a milestone ever spans more frontend PRs than
+that, because `gh` silently returns the first page rather than telling you it truncated.
+
 Read the walkthroughs back to back, in one pass, without opening each PR:
 
 ```bash
 for n in $(gh pr list --repo prismalens/prismalens --label ux-review --state all \
              --limit 100 --json number -q '.[].number' | sort -n); do
-  gh pr view "$n" --json number,title,body -q \
-    '"\n\n=== PR #\(.number) — \(.title) ===\n" + ((.body | split("## UX review")[1]) // "(!) no ## UX review section")'
+  gh pr view --repo prismalens/prismalens "$n" --json number,title,body -q \
+    '"\n\n=== PR #\(.number) — \(.title) ===\n" + (((.body // "") | split("## UX review") | .[1]) // "(!) no ## UX review section")'
 done
 ```
 
 A PR carrying the `ux-review` label with no `## UX review` section is a gate failure — that
 loop prints it as `(!)` so it cannot hide.
+
+The inverse failure — a frontend PR that was never labelled, and is therefore invisible to
+every query above — is the one real weakness of a query-based walk, and until #304 lands it is
+caught by an audit rather than by CI. Run this over the same window before signing off:
+
+```bash
+for n in $(gh pr list --repo prismalens/prismalens --state merged --search 'merged:>=2026-08-09' \
+             --limit 100 --json number -q '.[].number'); do
+  gh pr diff --repo prismalens/prismalens "$n" --name-only | grep -q '^packages/frontend/' || continue
+  gh pr view --repo prismalens/prismalens "$n" --json number,title,labels -q \
+    'select([.labels[].name] | index("ux-review") | not)
+     | "(!) UNLABELLED frontend PR #\(.number) — \(.title)"'
+done
+```
+
+Anything it prints gets `gh pr edit <n> --add-label ux-review` and a `## UX review` section
+added to its body before the walk continues.
 
 Sign-off is a comment on the PR (`gh pr comment <n> --body 'UX sign-off: …'`), so the verdict
 stays attached to the change it judges.
