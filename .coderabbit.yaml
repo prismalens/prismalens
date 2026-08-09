@@ -53,6 +53,14 @@ reviews:
     ignore_title_keywords:
       - "WIP"
       - "Version Packages" # changesets release PR — generated churn, reviewed for zero value
+  # On a clean diff under `profile: chill`, CodeRabbit posts only an acknowledgement
+  # comment ("Full review finished") with no review object — nothing for
+  # review-evidence.sh to find on high-risk paths, where a Claude review alone is
+  # disallowed by design (#409/#410 both stuck this way). This makes CodeRabbit
+  # submit a formal review verdict instead: REQUEST_CHANGES when it has findings,
+  # APPROVE when there is nothing to resolve. Either way that's a real review
+  # object carrying commit_id at the head, which the gate can consume.
+  request_changes_workflow: true
   # Not a rate-limit lever (the limit counts reviews, not files) — this keeps PRs under
   # the OSS files-per-review cap of 50-150 and off generated noise.
   path_filters:
