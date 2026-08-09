@@ -6,7 +6,7 @@
 /**
  * Investigation Canvas Component
  *
- * Visualizes the LangGraph agent execution flow dynamically from AgentExecution data
+ * Visualizes the agent execution flow dynamically from AgentExecution data
  * or live CanonicalEvent stream.
  * Renders START → agent nodes → END based on actual database records or live events.
  */
@@ -19,7 +19,9 @@ import ReactFlow, {
 	type Node,
 	ReactFlowProvider,
 	useEdgesState,
+	useNodesInitialized,
 	useNodesState,
+	useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -96,6 +98,24 @@ function InvestigationCanvasInner({
 		setEdges(initialEdges);
 	}, [initialNodes, initialEdges, setNodes, setEdges]);
 
+	// `fitView` runs once, at mount. That was enough when the graph arrived
+	// complete; a live stream appends nodes afterwards, so the newest node —
+	// precisely the one being watched — drifts out of the viewport and the
+	// operator has to pan to follow their own investigation. Re-fit as the
+	// graph grows, and only on the streaming path so the completed-run render
+	// keeps its single mount-time fit.
+	// `nodesInitialized` is the signal that the newly appended nodes have been
+	// measured; fitting before that fits to zero-sized nodes and does nothing.
+	const { fitView } = useReactFlow();
+	const nodesInitialized = useNodesInitialized();
+	const nodeCount = nodes.length;
+	useEffect(() => {
+		if (streamEvents === undefined || nodeCount === 0 || !nodesInitialized) {
+			return;
+		}
+		fitView({ padding: isMini ? 0.1 : 0.2, duration: 200 });
+	}, [nodeCount, nodesInitialized, streamEvents, fitView, isMini]);
+
 	// Handle node click to show details
 	const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
 		// Only show details for agent nodes (not start/end)
@@ -127,6 +147,7 @@ function InvestigationCanvasInner({
 
 	return (
 		<div
+			data-testid="investigation-canvas"
 			className={`relative w-full bg-zinc-100 dark:bg-zinc-800 rounded-lg ${
 				isMini ? "h-[200px]" : "h-[500px]"
 			}`}
@@ -153,7 +174,10 @@ function InvestigationCanvasInner({
 			)}
 
 			{showConnecting ? (
-				<div className="flex flex-col items-center justify-center h-full gap-2 text-sm text-muted-foreground">
+				<div
+					data-testid="canvas-stream-connecting"
+					className="flex flex-col items-center justify-center h-full gap-2 text-sm text-muted-foreground"
+				>
 					<Loader2 className="h-5 w-5 animate-spin text-blue-500" />
 					<span>Connecting to stream...</span>
 				</div>

@@ -120,7 +120,7 @@ const KNOWN_AGENT_OVERRIDES: Record<string, Partial<AgentStyle>> = {
 	detective: { displayName: "Detective", icon: AlertCircle },
 	surgeon: { displayName: "Surgeon", icon: Stethoscope },
 
-	// Graph nodes (LangGraph workflow nodes)
+	// Graph nodes (agent workflow nodes)
 	validateAlerts: { displayName: "Validate Alerts", icon: CheckCircle },
 	runCommander: { displayName: "Run Commander", icon: Brain },
 	writeToApi: { displayName: "Save Results", icon: Database },
