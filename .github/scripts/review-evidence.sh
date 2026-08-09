@@ -229,7 +229,13 @@ touches_high_risk () { # touches_high_risk <pr number>
   command -v python3 >/dev/null 2>&1 \
     || { echo "    python3 unavailable — treating as high risk" >&2; return 0; }
 
-  files=$(gh api --paginate "repos/$REPO/pulls/$n/files?per_page=100" --jq '.[].filename' 2>/dev/null) \
+  # BOTH SIDES OF A RENAME. The files endpoint reports the NEW path in
+  # `filename` and, for a rename, the old one in `previous_filename`. Checking
+  # only the new path lets a file be renamed OUT of a high-risk location and
+  # escape classification — the change most worth reviewing, waved through on the
+  # strength of where it landed rather than where it came from.
+  files=$(gh api --paginate "repos/$REPO/pulls/$n/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null) \
     || { echo "    cannot list changed files — treating as high risk" >&2; return 0; }
 
   # The files endpoint caps at 3000 entries however many pages are requested, so

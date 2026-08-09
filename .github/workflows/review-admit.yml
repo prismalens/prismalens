@@ -46,20 +46,18 @@ on:
   # the base repository's context with a writable token.
   #
   # That trigger is dangerous when a workflow executes PR content. This one never
-  # does: there is no checkout, no build, no script from the branch. It reads a PR
-  # number from the event and calls the labels API. Keep it that way — if this
-  # workflow ever needs to run anything from the head, it must be split so the
-  # part that runs code holds no write.
+  # does: it checks out the BASE ref only, to read the path list and the matcher,
+  # and never builds or runs anything from the head. Keep it that way.
+  #
+  # NO `paths:` FILTER. An earlier version duplicated the globs here, because
+  # `paths:` cannot read a file — which meant two lists that had to be kept in
+  # step by hand, and a `paths:` filter matches only what the event reports, so a
+  # rename out of a listed path would not fire it. Instead this runs on every PR
+  # update and asks the SAME matcher the publisher uses, over the same list. One
+  # definition, one behaviour, and drift becomes impossible rather than merely
+  # discouraged.
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
-    paths:
-      - '.github/**'
-      - 'packages/@prismalens/*/src/**/crypto/**'
-      - 'packages/@prismalens/*/src/**/credential*/**'
-      - 'packages/@prismalens/*/src/**/*secret*'
-      - 'packages/@prismalens/engine/src/**'
-      - 'packages/@prismalens/contracts/src/**'
-      - 'packages/@prismalens/database/prisma/**'
 
   workflow_dispatch:
     inputs:
@@ -78,28 +76,57 @@ jobs:
   admit:
     runs-on: ubuntu-latest
     steps:
-      - name: Apply admission label
+      # BASE ref only — never the PR head. This is what makes `pull_request_target`
+      # safe here: the checkout brings in the repository's own path list and
+      # matcher, not anything the contributor wrote.
+      - name: Check out the base ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Admit the PR if it touches a high-risk path
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          # `inputs.*` is empty on the `pull_request` trigger and the event payload
-          # is empty on dispatch, so each supplies what the other cannot.
           PR: ${{ inputs.pr || github.event.pull_request.number }}
           LABEL: ${{ inputs.label || 'review-ready' }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+
+          # A manual dispatch is an explicit operator decision and skips the path
+          # test entirely — that is the valve for admitting something the list
+          # does not cover.
+          if [ "$MANUAL" != "true" ]; then
+            # BOTH SIDES OF A RENAME, for the same reason the publisher does it:
+            # a file renamed OUT of a high-risk path must still count.
+            files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
+                      --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null)
+            if [ -z "$files" ]; then
+              echo "::warning::Could not enumerate files for #$PR — admitting rather than guessing."
+            else
+              if printf '%s\n' "$files" \
+                   | python3 .github/scripts/high-risk-match.py .github/high-risk-paths.txt; then
+                echo "#$PR touches no high-risk path — not admitting."
+                exit 0
+              fi
+            fi
+          fi
+
           # Idempotent: `synchronize` fires on every push to a matched PR, and
-          # re-adding a label the PR already carries is a no-op that still emits a
+          # re-adding a label it already carries is a no-op that still emits a
           # webhook. Checking first keeps the timeline readable.
           if gh pr view "$PR" --repo "$REPO" --json labels \
                --jq '.labels[].name' | grep -qx "$LABEL"; then
             echo "#$PR already carries '$LABEL' — nothing to do."
             exit 0
           fi
+
           gh pr edit "$PR" --repo "$REPO" --add-label "$LABEL"
           echo "Applied '$LABEL' to #$PR using GITHUB_TOKEN."
           echo
           echo "If CodeRabbit does not start a review within ~5 minutes, check"
           echo "first whether #$PR is bot-AUTHORED — those are skipped by"
           echo "platform default and admission on them is a no-op by design."
-          echo "Record anything unexpected on #301."

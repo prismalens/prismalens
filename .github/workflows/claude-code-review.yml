@@ -187,14 +187,22 @@ jobs:
           # a green gate on an unreviewed one is the failure this lane exists to
           # remove. `STARTED_AT` is kept only for the log line — comparing a
           # runner clock against GitHub timestamps is not something to gate on.
-          reviews=$(gh api "repos/$REPO/pulls/$PR/reviews?per_page=100" \
+          # `--paginate` emits one result PER PAGE, so a bare `| length` yields a
+          # number per page and the arithmetic below would break on any PR with
+          # more than 100 reviews or comments. Sum the pages. `|| echo 0` keeps a
+          # transport failure from producing an empty string, which would also
+          # break the arithmetic — and zero is the safe value, because zero
+          # artifacts means no marker is minted.
+          reviews=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews?per_page=100" \
             --jq "[.[] | select(.user.login == \"claude[bot]\")
                        | select(.commit_id == \"$HEAD_SHA\")
-                       | select(.state != \"PENDING\")] | length")
+                       | select(.state != \"PENDING\")] | length" \
+            | awk '{s+=$1} END{print s+0}') || reviews=0
 
-          inline=$(gh api "repos/$REPO/pulls/$PR/comments?per_page=100" \
+          inline=$(gh api --paginate "repos/$REPO/pulls/$PR/comments?per_page=100" \
             --jq "[.[] | select(.user.login == \"claude[bot]\")
-                       | select(.commit_id == \"$HEAD_SHA\")] | length")
+                       | select(.commit_id == \"$HEAD_SHA\")] | length" \
+            | awk '{s+=$1} END{print s+0}') || inline=0
 
           total=$(( reviews + inline ))
           printf 'claude[bot] head-bound artifacts at %s: %s review(s), %s inline (job started %s)\n' \
