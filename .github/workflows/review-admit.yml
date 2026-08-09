@@ -35,8 +35,6 @@ on:
   # re-derives the match from the default branch and holds the gate red
   # independently. If these two ever disagree, the publisher wins.
   #
-  # The globs are duplicated here because `paths:` cannot read a file. Keep them
-  # in step with high-risk-paths.txt; drift makes admission miss, not the gate.
   # `pull_request_target`, NOT `pull_request`, and the distinction is load-bearing.
   #
   # A fork-origin `pull_request` run gets a READ-ONLY `GITHUB_TOKEN`, so
