@@ -9,9 +9,10 @@
 # and `pnpm test` each self-order from a clean checkout — no manual prerequisite
 # steps needed here. Lint (Biome) only reads source, so it needs neither.
 #
-# Only the aggregating `CI gate` job below is wired as a REQUIRED status check in
-# .github/governance.json. It fails unless every job it `needs` succeeded, so the
-# individual jobs are enforced through it rather than being required one by one.
+# Only the aggregating `CI gate` job below is wired as a REQUIRED status check —
+# see .github/workflows/README.md for the full list and who publishes each. It
+# fails unless every job it `needs` succeeded, so the individual jobs are enforced
+# through it rather than being required one by one.
 name: CI
 
 on:
