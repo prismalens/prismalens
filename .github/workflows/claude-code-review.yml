@@ -118,17 +118,31 @@ jobs:
           # nothing posted, `conclusion: success`. Tag mode works out of the box
           # only because it builds its own list; agent mode has no default.
           #
-          # Derived from `tagModeTools` in `src/modes/tag/index.ts` at the resolved
-          # @v1 ref `6b082c4`, plus what the code-review plugin needs to read a
-          # diff and post a summary. `Bash(gh pr review:*)` is deliberately ABSENT:
-          # the gate reads the marker this workflow mints, not a review object, so
-          # the reviewer never needs to submit one.
+          # THE LIST IS THE PLUGIN'S OWN DECLARATION, PLUS `Task`.
+          #
+          # `plugins/code-review/commands/code-review.md` in anthropics/claude-code
+          # declares `allowed-tools:` in its frontmatter — but agent mode does not
+          # merge it, so it has to be restated here. Copy it from there when the
+          # plugin changes, not from `tagModeTools`, which is a different lane's
+          # list and does not include what a review needs.
+          #
+          # `Task` is the entry that is easy to miss and fatal to omit: that
+          # command is SUBAGENT-BASED. Its first step launches a haiku agent, then
+          # a sonnet agent to summarise, then four agents in parallel to review.
+          # Without `Task` the reviewer is denied at its first step and gives up —
+          # observed on #401 at `6dcb987f`: 4 turns, 1 permission denial, $0.17,
+          # nothing posted, `conclusion: success`, and the marker job correctly
+          # refused to mint.
+          #
+          # `Bash(gh pr review:*)` is deliberately ABSENT: the gate reads the
+          # marker this workflow mints, not a review object, so the reviewer never
+          # needs to submit one.
           #
           # If this list goes stale the lane posts nothing and `marker` fails —
           # loud and red, never a silent pass. Re-derive it, do not relax the gate.
           claude_args: >-
             --allowed-tools
-            "Read,Grep,Glob,LS,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment"
+            "Task,Read,Grep,Glob,LS,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment"
 
   marker:
     needs: review
