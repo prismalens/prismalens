@@ -89,3 +89,23 @@ reviews:
     - path: "packages/frontend/src/**"
       instructions: >-
         Repo invariant: ordered-evidence epistemics — no numeric confidence scores anywhere in UI copy.
+# `chat` governs comment-chat commands (@coderabbitai ...), which is a separate
+# surface from the `reviews` block above. It defaults to allow_non_org_members:
+# true, so on a public repo any GitHub user who can comment could otherwise
+# issue commands — see https://docs.coderabbit.ai/guides/commands and
+# https://docs.coderabbit.ai/reference/review-commands. Two commands matter here:
+#
+#   - `@coderabbitai resolve` resolves review threads. Ruleset 18441175 sets
+#     required_review_thread_resolution: true, so resolving threads removes a
+#     merge blocker — reachable today by an outside commenter on someone else's
+#     PR.
+#   - `@coderabbitai approve` submits an approving review, but per the commands
+#     doc only does so when reviews.request_changes_workflow is enabled, which
+#     #411 turned on above.
+#
+# Restricting to org members is a mitigation, not a fix: a PR author who is an
+# org member can still issue both commands on their own PR. That gap is why an
+# `APPROVE` summoned via chat must never be treated as merge authorization on
+# its own — see review-evidence.sh and ruleset 18441175.
+chat:
+  allow_non_org_members: false
