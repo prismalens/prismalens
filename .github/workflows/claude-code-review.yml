@@ -58,7 +58,27 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # The second sentence is what makes this lane evidence-grade, and it is
+          # not optional. The code-review plugin's only posting tools are
+          # `gh pr comment` and the inline-comment MCP server. Findings therefore
+          # arrive as inline review comments (which GitHub wraps in an implicit
+          # `COMMENTED` review), but a PR the reviewer finds *clean* gets a plain
+          # issue comment and no review object at all — so the exact case the gate
+          # must go green on would leave nothing for `review-evidence.sh` to read.
+          # Submitting the review explicitly means every completed review, clean or
+          # not, is a formal review by `claude[bot]` at the head SHA.
+          prompt: |
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            When the review is complete, you MUST record the verdict as a formal pull
+            request review, whether or not you found anything:
+            `gh pr review ${{ github.event.pull_request.number }} --comment --body "<verdict>"`
+            where `<verdict>` is one paragraph — the number of findings and their
+            severity, or an explicit statement that the diff is clean. Do this even
+            when you have already posted inline comments, and do it exactly once.
+          # `gh pr review` is the submission step above. The rest of the toolset the
+          # plugin needs is granted by the plugin itself.
+          claude_args: '--allowed-tools "Bash(gh pr review:*)"'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 

@@ -54,7 +54,19 @@ DRY_RUN="${DRY_RUN:-0}"
 # account whose name contains that string — `coderabbit-fan` — and a review from
 # it would have satisfied the gate. An allowlist of exact bot logins closes that.
 # `coderabbitai[bot]` is the real login, confirmed from live review payloads.
-REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot]}"
+#
+# `claude[bot]` is the login every post from `anthropics/claude-code-action`
+# carries under the action's built-in app auth (hardcoded as CLAUDE_BOT_LOGIN in
+# the action's source; this repo passes no `github_token`, so that auth is what
+# is in use). It is listed here because `claude-code-review.yml` submits a formal
+# review at the head SHA on every run — see the prompt there for why that
+# submission is explicit rather than incidental.
+#
+# SPACE-separated, not comma: branch A splits this on " ". A comma-joined value
+# parses as one login that matches nobody, which fails closed — every PR red —
+# but only once a second login exists, which is why it survived a single-entry
+# default.
+REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot] claude[bot]}"
 
 # PR authors exempt from needing review evidence.
 #
