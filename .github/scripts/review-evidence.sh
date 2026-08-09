@@ -15,6 +15,7 @@
 # Four branches, evaluated in order, each keyed to the current head:
 #   B1  bot-authored PR                      (CI gate applies separately)
 #   B2  generated release PR                 (same-repo AND branch AND title)
+# B1 and B2 do NOT apply on a high-risk path — see the independence rule.
 #   A   formal review by an allowlisted bot  (CodeRabbit, online lane)
 #   D   Claude review marker + its run       (.github/workflows/claude-code-review.yml)
 # Anything else is `failure`. A branch that cannot answer publishes `error`
@@ -486,22 +487,24 @@ evaluate_pr () { # evaluate_pr <number>
     echo "    closed — not evaluated"; return 0
   fi
 
-  # --- branch B1: bot-authored --------------------------------------------
-  if in_list "$author" "$BOT_AUTHORS"; then
-    publish "$sha" success "Bot-authored ($author); CI gate applies separately"
-    return $?
-  fi
-
-  # --- branch B2: machine-generated release PR (same-repo AND branch AND title)
-  if [ "$head_repo" = "$REPO" ] \
-     && [[ "$head_ref" =~ $GENERATED_PR_BRANCH_RE ]] \
-     && [[ "$title" =~ $GENERATED_PR_TITLE_RE ]]; then
-    publish "$sha" success "Generated release PR ($head_ref); CI gate applies separately"
-    return $?
-  fi
-
   # INDEPENDENCE RULE. On a high-risk path, `coderabbitai[bot]` evidence is
-  # required specifically: branch A can green the PR, branch D cannot.
+  # required specifically: branch A can green the PR, branch D cannot — and
+  # neither can the B1/B2 exemptions below.
+  #
+  # EVALUATED FIRST, BEFORE THE EXEMPTIONS, and that ordering is the whole point.
+  # B1 exempts bot authors so machine dependency bumps can merge without a review
+  # nobody was ever going to write. But Dependabot updates ACTION VERSIONS inside
+  # `.github/workflows/**`, so a bot-authored PR can change the gate's own
+  # machinery — and evaluated after B1, it would collect a free `success` on
+  # exactly the surface this rule exists to protect. The same applies to B2: the
+  # release PR's branch and title are the only things distinguishing it, and
+  # neither says anything about what it touches.
+  #
+  # So a high-risk PR needs independent review whoever opened it. The cost is
+  # real and accepted: a Dependabot PR touching `.github/**` no longer
+  # auto-merges, and that is the correct trade — a supply-chain bump to the
+  # machinery that publishes required checks is precisely the change least worth
+  # waving through.
   #
   # Enforced HERE rather than by the admission label, because a label can be
   # removed and a PR-branch workflow can be tampered with, while this script runs
@@ -509,6 +512,21 @@ evaluate_pr () { # evaluate_pr <number>
   # half; this is the half that holds.
   local high_risk=0
   if touches_high_risk "$n"; then high_risk=1; fi
+
+  # --- branch B1: bot-authored --------------------------------------------
+  if [ "$high_risk" != "1" ] && in_list "$author" "$BOT_AUTHORS"; then
+    publish "$sha" success "Bot-authored ($author); CI gate applies separately"
+    return $?
+  fi
+
+  # --- branch B2: machine-generated release PR (same-repo AND branch AND title)
+  if [ "$high_risk" != "1" ] \
+     && [ "$head_repo" = "$REPO" ] \
+     && [[ "$head_ref" =~ $GENERATED_PR_BRANCH_RE ]] \
+     && [[ "$title" =~ $GENERATED_PR_TITLE_RE ]]; then
+    publish "$sha" success "Generated release PR ($head_ref); CI gate applies separately"
+    return $?
+  fi
 
   # --- branch A: a formal review AT THE CURRENT HEAD -----------------------
   # `commit_id` is the commit the review was actually made against, so this is

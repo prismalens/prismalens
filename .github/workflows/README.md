@@ -71,7 +71,7 @@ merge.
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `governance.yml` | dispatch | syncs `.github/governance.json` to repo settings |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
-| `claude-code-review.yml` | `pull_request` | reviews every PR, then mints the marker `review-evidence` branch D reads |
+| `claude-code-review.yml` | `pull_request` | reviews every **same-repository** PR, then mints the marker `review-evidence` branch D reads; skips forks, which get no secrets |
 | `claude.yml` | `@claude` mentions | labour tool; **never** mints evidence |
 | `review-admit.yml` | `pull_request` on high-risk paths, dispatch | applies `review-ready`, admitting the scarce online review |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |

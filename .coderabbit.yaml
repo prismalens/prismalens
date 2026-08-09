@@ -18,7 +18,9 @@ reviews:
     # So it is spent in exactly two cases, and `labels` below is what implements
     # the first:
     #
-    #   1. The PR touches .github/high-risk-paths.txt. `review-admit.yml` applies
+    #   1. The PR touches a path listed in .github/high-risk-paths.txt — the gate
+    #      itself, credential and crypto handling, the engine core, and contract
+    #      or schema surfaces. `review-admit.yml` applies
     #      `review-ready` automatically on a path match, and
     #      .github/scripts/review-evidence.sh keeps those PRs RED until
     #      `coderabbitai[bot]` evidence exists — a Claude review alone does not
