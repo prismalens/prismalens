@@ -102,7 +102,10 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # `--comment` is required: the plugin's step 7 no-ops its entire
+          # posting path ("if --comment was NOT provided, stop here") without
+          # it, so the reviewer runs a full review and posts nothing.
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
           # THE TOOL LIST IS LOAD-BEARING. Supplying `prompt:` puts the action in
           # AGENT mode, and in agent mode `src/modes/agent/index.ts` resolves the
           # tool list ONLY from `claude_args` — `settings` is not read for this.
