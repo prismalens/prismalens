@@ -231,7 +231,7 @@ async function freePort() {
 	});
 }
 
-/** Resolves when nothing is listening on `port`, rejects if the bind fails. */
+/** Resolves true when nothing is listening on `port`, false when the bind fails. */
 async function portIsFree(port) {
 	return await new Promise((resolve) => {
 		const server = createServer();
