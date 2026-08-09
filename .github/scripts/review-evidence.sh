@@ -43,7 +43,7 @@ DRY_RUN="${DRY_RUN:-0}"
 # ---------------------------------------------------------------------------
 # Policy constants.
 #
-# These live here, not in .github/governance.json or .coderabbit.yaml: the gate
+# These live here, not in .coderabbit.yaml: the gate
 # must not have to parse another tool's config format to learn its own policy,
 # and a schema shared across repos is an API commitment that has not been earned
 # yet (#301 — this is the second consumer; the reusable-workflow extraction is
