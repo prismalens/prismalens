@@ -12,6 +12,7 @@
  * (packages/api's OAuthService.handleCallback), not in this package.
  */
 import { createHash } from "node:crypto";
+import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthTemplate, OAuthStateData } from "../types.js";
 import { OAuth2Flow, type OAuth2StoreDeps } from "./oauth2-flow.js";
@@ -429,10 +430,10 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 
 	it("throws on a non-2xx provider response instead of returning a credential", async () => {
 		const { flow } = makeFlow();
-		fetchMock.mockResolvedValue(
-			new Response("bad code", { status: 400 }),
-		);
+		fetchMock.mockResolvedValue(new Response("bad code", { status: 400 }));
 
+		// Status-level diagnostics only — the body ("bad code") is not read and
+		// never reaches the message. See #347 F1 and the leak suite below.
 		await expect(
 			flow.exchangeCodeForTokens(
 				TEMPLATE,
@@ -441,10 +442,12 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 				"client-abc",
 				"secret-xyz",
 			),
-		).rejects.toThrow("Token exchange failed (400): bad code");
+		).rejects.toThrow(
+			"OAuth token exchange failed for provider 'acme' (HTTP 400 Bad Request)",
+		);
 	});
 
-	it("throws when the provider returns a 200 with an OAuth error body", async () => {
+	it("throws when the provider returns a 200 with an OAuth error body, naming only the registered error code", async () => {
 		const { flow } = makeFlow();
 		fetchMock.mockResolvedValue(
 			jsonResponse({
@@ -453,6 +456,30 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 			}),
 		);
 
+		const error = await flow
+			.exchangeCodeForTokens(
+				TEMPLATE,
+				"auth-code",
+				oauthState(),
+				"client-abc",
+				"secret-xyz",
+			)
+			.catch((e: unknown) => e as Error);
+
+		// The registered code survives (it is the diagnostic); the provider's
+		// free-text description does not.
+		expect(error.message).toBe(
+			"OAuth token exchange failed for provider 'acme': provider returned error 'invalid_grant' in a 200 response",
+		);
+		expect(error.message).not.toContain("code already used");
+	});
+
+	it("reports an unregistered OAuth error code as unrecognized rather than echoing it", async () => {
+		const { flow } = makeFlow();
+		fetchMock.mockResolvedValue(
+			jsonResponse({ error: "ghp_totally_not_an_error_code" }),
+		);
+
 		await expect(
 			flow.exchangeCodeForTokens(
 				TEMPLATE,
@@ -461,13 +488,17 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 				"client-abc",
 				"secret-xyz",
 			),
-		).rejects.toThrow("OAuth error: code already used");
+		).rejects.toThrow(
+			"provider returned error 'unrecognized_error_code' in a 200 response",
+		);
 	});
 
-	it("throws on a malformed (non-JSON) provider response", async () => {
+	it("throws on a malformed (non-JSON) provider response without quoting it", async () => {
 		const { flow } = makeFlow();
 		fetchMock.mockResolvedValue(new Response("<html>502</html>", { status: 200 }));
 
+		// Not the raw SyntaxError: JSON.parse quotes the offending input, which
+		// is the provider's body.
 		await expect(
 			flow.exchangeCodeForTokens(
 				TEMPLATE,
@@ -476,7 +507,9 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 				"client-abc",
 				"secret-xyz",
 			),
-		).rejects.toThrow(SyntaxError);
+		).rejects.toThrow(
+			"OAuth token exchange failed for provider 'acme': provider returned a 200 response that is not valid JSON",
+		);
 	});
 
 	it("throws when a 200 response carries no access token (half-populated credential)", async () => {
@@ -561,5 +594,156 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 
 		// The provider is never contacted: it fails before the round-trip.
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+// #347 F1 — the token exchange is the one call that carries the authorization
+// code and the client secret, and a token endpoint routinely echoes what it
+// was sent back in its error body. The OAuth callback handler logs the caught
+// error (oauth.controller.ts), so anything the error carries is written to
+// disk. These tests fail against the pre-fix code, which interpolated the full
+// response body into the message.
+describe("OAuth2Flow.exchangeCodeForTokens — provider payloads never reach the error", () => {
+	const SENTINEL = "sk-SENTINEL-DO-NOT-LOG";
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	/** Every string a logger or crash reporter could pull out of a thrown error. */
+	function errorSurfaces(error: unknown): Record<string, string> {
+		const err = error as Error;
+		return {
+			message: err.message,
+			string: String(err),
+			stack: err.stack ?? "",
+			json: JSON.stringify(err),
+			jsonAllProps: JSON.stringify(err, Object.getOwnPropertyNames(err)),
+			inspect: inspect(err, { depth: null }),
+		};
+	}
+
+	function expectNoSentinel(error: unknown): Error {
+		for (const [surface, text] of Object.entries(errorSurfaces(error))) {
+			expect(text, `sentinel leaked via error ${surface}`).not.toContain(
+				SENTINEL,
+			);
+			// Not even a recognisable fragment of it.
+			expect(text, `sentinel fragment leaked via error ${surface}`).not.toMatch(
+				/SENTINEL/i,
+			);
+		}
+		return error as Error;
+	}
+
+	async function exchangeAndCatch(): Promise<unknown> {
+		const { flow } = makeFlow();
+		return flow
+			.exchangeCodeForTokens(
+				TEMPLATE,
+				"auth-code",
+				oauthState({ codeVerifier: "verifier-123" }),
+				"client-abc",
+				"secret-xyz",
+			)
+			.then(
+				() => {
+					throw new Error("expected exchangeCodeForTokens to reject");
+				},
+				(e: unknown) => e,
+			);
+	}
+
+	it("keeps a secret in a non-2xx response body out of the thrown error", async () => {
+		fetchMock.mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					error: "invalid_grant",
+					error_description: `token was ${SENTINEL}`,
+					access_token: SENTINEL,
+				}),
+				{ status: 400 },
+			),
+		);
+
+		const error = expectNoSentinel(await exchangeAndCatch());
+
+		// Still useful: which operation, which provider, which HTTP status.
+		expect(error.message).toBe(
+			"OAuth token exchange failed for provider 'acme' (HTTP 400 Bad Request)",
+		);
+	});
+
+	it("keeps a secret in a 200 OAuth-error body out of the thrown error", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				error: SENTINEL,
+				error_description: `refresh token ${SENTINEL} is invalid`,
+			}),
+		);
+
+		const error = expectNoSentinel(await exchangeAndCatch());
+
+		expect(error.message).toBe(
+			"OAuth token exchange failed for provider 'acme': provider returned error 'unrecognized_error_code' in a 200 response",
+		);
+	});
+
+	it("keeps a secret in the HTTP reason phrase out of the thrown error", async () => {
+		// `statusText` is provider-controlled text on the status line, so the
+		// reason phrase is looked up from the status code rather than echoed.
+		fetchMock.mockResolvedValue(
+			new Response("{}", { status: 403, statusText: SENTINEL }),
+		);
+
+		const error = expectNoSentinel(await exchangeAndCatch());
+
+		expect(error.message).toBe(
+			"OAuth token exchange failed for provider 'acme' (HTTP 403 Forbidden)",
+		);
+	});
+
+	it("keeps a secret in a malformed 2xx body out of the JSON parse failure", async () => {
+		// A truncated token response is the realistic case: the parse error
+		// quotes the input, and the input is the token.
+		fetchMock.mockResolvedValue(
+			new Response(`{"access_token":"${SENTINEL}"`, {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+
+		const error = expectNoSentinel(await exchangeAndCatch());
+
+		expect(error.message).toBe(
+			"OAuth token exchange failed for provider 'acme': provider returned a 200 response that is not valid JSON",
+		);
+	});
+
+	it("does not even read the body of a non-2xx response", async () => {
+		const response = new Response(SENTINEL, { status: 500 });
+		fetchMock.mockResolvedValue(response);
+
+		expectNoSentinel(await exchangeAndCatch());
+		expect(response.bodyUsed).toBe(false);
+	});
+
+	it("keeps our own request credentials out of the thrown error", async () => {
+		fetchMock.mockResolvedValue(new Response("{}", { status: 401 }));
+
+		const error = (await exchangeAndCatch()) as Error;
+		const surfaces = Object.values(errorSurfaces(error)).join("\n");
+
+		for (const secret of ["secret-xyz", "auth-code", "verifier-123"]) {
+			expect(surfaces, `request credential '${secret}' leaked`).not.toContain(
+				secret,
+			);
+		}
 	});
 });

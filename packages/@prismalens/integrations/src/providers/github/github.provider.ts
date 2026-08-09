@@ -13,6 +13,7 @@ import type {
 	GitOrganization,
 	GitRepository,
 } from "@prismalens/config/integrations";
+import { providerHttpError } from "../../engine/provider-http-error.js";
 import type { GitProvider, GitProviderContext } from "../git.interface.js";
 import type { AuthenticatedRequestFn } from "../types.js";
 
@@ -56,8 +57,12 @@ interface GitHubUser {
 
 async function json<T>(response: Response): Promise<T> {
 	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`GitHub API error: ${response.status} - ${errorText}`);
+		// Never the response body — see provider-http-error.ts (#347 F1).
+		throw providerHttpError({
+			operation: "GitHub API request",
+			provider: "github",
+			response,
+		});
 	}
 	return response.json() as Promise<T>;
 }
