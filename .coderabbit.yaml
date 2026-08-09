@@ -34,7 +34,9 @@ reviews:
     # `auto_pause_after_reviewed_commits` stops incremental reviews.
     #
     # This is NOT a reduction in review. `review-evidence` is a required check
-    # (ruleset 18441175): a PR with no evidence at its head SHA cannot merge.
+    # (ruleset 18441175): a PR cannot merge without evidence for its current
+    # head, or evidence from an earlier commit that `CARRY_FORWARD` has shown to
+    # be patch-identical to it.
     # Removing automatic review without that gate would have made "unreviewed"
     # the silent default — which is why the gate shipped first, in #322.
     #

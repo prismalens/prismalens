@@ -102,8 +102,12 @@ jobs:
           if [ "$MANUAL" != "true" ]; then
             # BOTH SIDES OF A RENAME, for the same reason the publisher does it:
             # a file renamed OUT of a high-risk path must still count.
+            #
+            # `@base64` because a git path may contain a line feed, which as raw
+            # text would split one path into two fragments that match nothing.
+            # The publisher encodes identically; the matcher decodes.
             files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
-                      --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null)
+                      --jq '.[] | (.filename, (.previous_filename // empty)) | @base64' 2>/dev/null)
             count=$(printf '%s\n' "$files" | grep -c . )
             if [ -z "$files" ]; then
               echo "::warning::Could not enumerate files for #$PR — admitting rather than guessing."

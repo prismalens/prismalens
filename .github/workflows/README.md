@@ -78,7 +78,7 @@ merge.
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | reviews every **same-repository** PR, then mints the marker `review-evidence` branch D reads; skips forks, which get no secrets |
 | `claude.yml` | `@claude` mentions | labour tool; **never** mints evidence |
-| `review-admit.yml` | `pull_request` on high-risk paths, dispatch | applies `review-ready`, admitting the scarce online review |
+| `review-admit.yml` | `pull_request_target`, dispatch | runs on every PR update, asks the matcher whether a high-risk path is touched, and applies `review-ready` if so — admitting the scarce online review |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |
 | `review-evidence.yml` | PR/review/comment/dispatch | publishes the `review-evidence` status |
 

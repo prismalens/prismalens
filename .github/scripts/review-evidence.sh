@@ -220,8 +220,9 @@ esac
 # means the PR is treated as high risk, which requires MORE evidence rather than
 # less. Every other branch of this gate fails closed; so does this.
 #
-# `**` matches across `/` here, which is what the globs assume: bash pattern
-# matching inside `[[ ]]` does not treat `/` specially.
+# Paths cross into the matcher `@base64`-encoded, one record per line: a git path
+# may contain a line feed, and a raw newline-delimited list splits such a path
+# into fragments that match nothing. See high-risk-match.py for the worked case.
 touches_high_risk () { # touches_high_risk <pr number>
   local n="$1" files count
   [ -r "$HIGH_RISK_PATHS_FILE" ] || { echo "    high-risk list unreadable — treating as high risk" >&2; return 0; }
@@ -235,7 +236,7 @@ touches_high_risk () { # touches_high_risk <pr number>
   # escape classification — the change most worth reviewing, waved through on the
   # strength of where it landed rather than where it came from.
   files=$(gh api --paginate "repos/$REPO/pulls/$n/files?per_page=100" \
-            --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null) \
+            --jq '.[] | (.filename, (.previous_filename // empty)) | @base64' 2>/dev/null) \
     || { echo "    cannot list changed files — treating as high risk" >&2; return 0; }
 
   # The files endpoint caps at 3000 entries however many pages are requested, so

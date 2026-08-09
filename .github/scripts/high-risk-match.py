@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """Decide whether any changed file matches a high-risk glob.
 
-    high-risk-match.py <glob-file>   # changed paths on stdin, one per line
+    high-risk-match.py <glob-file>   # base64 paths on stdin, one per line
 
 Exit 1 = high risk (a file matched, OR the question could not be answered).
 Exit 0 = not high risk.
+
+WHY THE PATHS ARRIVE BASE64-ENCODED
+-----------------------------------
+A git path may contain a line feed. Fed as raw newline-delimited text, such a
+path arrives here as two records, and NEITHER fragment matches the glob the
+whole path matches: `packages/@prismalens/foo/src/a<LF>credential/key` splits
+into `packages/@prismalens/foo/src/a` and `credential/key`, so a credential file
+is classified as not high risk and skips the independence requirement. The
+delimiter has to be one the payload cannot contain, so both producers
+(`review-evidence.sh` and `review-admit.yml`) emit `@base64` records and this
+script decodes them. A record that will not decode is treated as high risk.
 
 The exit codes are deliberately this way round: `review-evidence.sh` treats a
 non-zero exit as "needs independent review", so every failure mode here asks for
@@ -20,6 +31,8 @@ repo: `packages/@prismalens/foo/src/crypto/key.ts` did not match
 deeper did. A credential file sitting directly under `src/` therefore skipped the
 independence requirement — the file that most needs it.
 """
+import base64
+import binascii
 import re
 import sys
 
@@ -57,6 +70,19 @@ def translate(glob: str) -> re.Pattern:
     return re.compile(r"\A" + "".join(out) + r"\Z")
 
 
+def decode_path(record: str) -> str:
+    """One `@base64` record back to the path it encodes.
+
+    Raises on anything that is not a well-formed record. The caller turns that
+    into "high risk", so a producer that ever emits raw paths fails loudly here
+    instead of quietly classifying them as harmless.
+    """
+    try:
+        return base64.b64decode(record, validate=True).decode("utf-8")
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(f"undecodable path record {record!r}: {exc}") from exc
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: high-risk-match.py <glob-file>  (paths on stdin)", file=sys.stderr)
@@ -68,14 +94,15 @@ def main() -> int:
                 for line in fh
                 if line.strip() and not line.lstrip().startswith("#")
             ]
-        # ONLY LINE ENDINGS COME OFF A PATH. `.strip()` here removed leading and
-        # trailing whitespace, which is CONTENT in a filename: a file literally
-        # named `secret ` stopped matching `secret?`, and the script reported not
-        # high risk. Patterns above are different — that file is policy we author,
-        # where surrounding whitespace is noise rather than meaning.
-        files = [line.rstrip("\n\r") for line in sys.stdin]
-        files = [f for f in files if f]
-    except Exception as exc:  # unreadable list, malformed glob, undecodable input
+        # WHITESPACE IS CONTENT IN A FILENAME. An earlier version read raw paths
+        # and `.strip()`ped them, so a file literally named `secret ` stopped
+        # matching `secret?` and the script reported not high risk. Stripping is
+        # safe here only because it applies to the ENCODED record, whose alphabet
+        # excludes whitespace; the path inside it comes back byte-exact. Patterns
+        # above are different — that file is policy we author, where surrounding
+        # whitespace is noise rather than meaning.
+        files = [decode_path(rec) for rec in (line.strip() for line in sys.stdin) if rec]
+    except Exception as exc:  # unreadable list, malformed glob, undecodable record
         print(f"    glob matching failed ({exc}) — treating as high risk", file=sys.stderr)
         return 1
 

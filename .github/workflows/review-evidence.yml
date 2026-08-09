@@ -30,8 +30,10 @@ on:
   pull_request_review:
     types: [submitted, dismissed]
   issue_comment:
-    # `deleted` matters: removing the Claude marker comment must put the gate
-    # back to red rather than leaving a stale success standing.
+    # `deleted` matters: removing the Claude marker comment must re-evaluate the
+    # gate rather than leave a success standing on evidence that is gone. The
+    # result is not necessarily red — a `coderabbitai[bot]` review satisfying
+    # branch A holds on its own — but it is recomputed without branch D.
     types: [created, edited, deleted]
   workflow_dispatch:
     inputs:
