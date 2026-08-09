@@ -42,26 +42,147 @@ Every implementation spec handed to a coding agent must name a **Docs surfaces**
 
 Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
 
-## Frontend changes carry a design gate, a UX-ledger entry, and an e2e spec
+## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 
 Every PR touching `packages/frontend` — regardless of which agent or session produces it:
 
-1. **Design validation before merge.** Capture screenshots of the changed surface from the
-   running dev stack (default + dark + empty/error states) and pass a design review against
-   the frontend-design standards. A frontend PR with no captured screenshots and no recorded
-   verdict does not merge. (Mechanical enforcement is planned as a `design-evidence` status —
-   #304 — deferred until #301's gate pattern is promoted here.)
-2. **UX review ledger entry.** Append a section to the operator's UX review ledger
-   (`~/ai-context/prismalens-ux-ledger.html`): what changed and why (issue/ADR), where to
-   click, what to verify per state, and any judgment calls made. The operator walks the
-   ledger as a milestone sign-off requirement. **UX-shape changes** (new page, navigation
-   change, new interaction model) are flagged to the operator immediately, not batched.
+1. **Design validation before merge, and the screenshots go on the PR.** Capture the changed
+   surface from the running dev stack in every relevant state (default + dark +
+   empty/error) and pass a design review against the frontend-design standards. Commit the
+   PNGs and render them in the PR body — capturing them locally is no longer enough. A
+   frontend PR with no screenshots visible on the PR and no recorded verdict does not merge.
+   (Mechanical enforcement is planned as a `design-evidence` status — #304 — deferred until
+   #301's gate pattern is promoted here.)
+2. **A `## UX review` section in the PR body, and the `ux-review` label on the PR.** Written
+   to the template below: what changed and why (issue/ADR link), where to click, what to
+   verify per state, judgment calls made, and the screenshot set. The operator walks these
+   sections as a milestone sign-off requirement (query below). **UX-shape changes** — a new
+   page, a navigation change, a new interaction model — are flagged to the operator
+   immediately, out of band, not batched into the milestone walk.
 3. **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303).
    Until the harness lands, the PR body must name the intended spec so coverage debt stays
-   visible. Coverage is audited at each milestone alongside the ledger walkthrough.
+   visible. Coverage is audited at each milestone alongside the UX review walkthrough.
 
 An implementation spec for frontend work that omits these deliverables is incomplete — do
 not start implementation until they are added.
+
+> Superseded 2026-08-09: requirement 2 used to be "append an entry to
+> `~/ai-context/prismalens-ux-ledger.html`". That file is **frozen** — it keeps its history,
+> takes no new entries, and nothing is migrated out of it. New evidence lives on the PR.
+
+### Where the screenshots live
+
+**Commit them to the repo**, next to the spec that exercises the surface:
+
+```
+packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png
+```
+
+`<suite>` is the Playwright directory the change is covered by (`journeys/`, `pl-up/`, …) and
+`<state>` is one of `default`, `dark`, `empty`, `error`. This matches what the frontend PRs
+already do (`packages/frontend/e2e/pl-up/screenshots/` on `main`; #396 and #393 add their own
+under `e2e/**/screenshots/`). Generate them from the spec (`await page.screenshot(...)`)
+rather than by hand wherever the spec already reaches that state, so a re-run reproduces the
+evidence.
+
+Committed files, not drag-and-drop PR attachments: an agent driving `gh` cannot upload an
+attachment (that is a browser-only gesture), attachment bytes live only in GitHub's CDN with
+no link to the commit that produced them, and a committed PNG diffs visibly when the surface
+changes.
+
+Embed each one in the PR body with a **commit-pinned** raw URL — the repo is public, so these
+render inline:
+
+```
+![Incidents — dark](https://raw.githubusercontent.com/prismalens/prismalens/<head-sha>/packages/frontend/e2e/journeys/screenshots/incidents-dark.png)
+```
+
+Use the head SHA (`git rev-parse HEAD` after the final push), never the branch name: the
+branch is deleted on merge and every branch-pinned image 404s afterwards.
+
+### The `## UX review` template
+
+Copy this into the PR body and fill it in. The heading text is load-bearing — the milestone
+walkthrough greps for it.
+
+````markdown
+## UX review
+
+**UX shape:** none | new page | navigation change | new interaction model
+<!-- Anything other than `none`: ping the operator now, don't wait for the milestone walk. -->
+
+**What changed & why.** One short paragraph. Link the issue and any ADR: Closes #NNN, ADR-00NN.
+
+**Where to click.**
+1. `pnpm dev`, open http://localhost:3000/incidents
+2. …
+
+Include how to reach the required data state if a normal dev DB will not have it (seed
+command, `pl up` against an empty workspace dir, fixture, …).
+
+**What to verify, per state.**
+- [ ] Default — …
+- [ ] Dark — …
+- [ ] Empty — …
+- [ ] Error — …
+
+**Judgment calls.** Decisions taken that the operator may want to veto, and why they were
+taken. "None" is a valid answer; omitting the field is not.
+
+**Screenshots.** Design gate: PASS | FAIL
+
+| State | |
+|---|---|
+| Default | ![default](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-default.png) |
+| Dark | ![dark](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-dark.png) |
+| Empty / error | ![empty](https://raw.githubusercontent.com/prismalens/prismalens/<sha>/packages/frontend/e2e/<suite>/screenshots/<surface>-empty.png) |
+````
+
+Apply the label when opening the PR:
+
+```bash
+gh pr create --title '…' --body-file <body.md> --label ux-review
+```
+
+If the PR already exists: `gh pr edit <number> --add-label ux-review`.
+
+### How the operator walks a milestone
+
+The label plus the fixed heading is what replaces the single ledger file. List everything
+awaiting a walk:
+
+```bash
+gh pr list --repo prismalens/prismalens --label ux-review --state all --limit 100 \
+  --json number,title,url,state,mergedAt \
+  --template '{{range .}}#{{.number}}  {{.state}}  {{.title}}{{"\n"}}   {{.url}}{{"\n"}}{{end}}'
+```
+
+Scope it to one milestone window by merge date — the equivalent of "everything since the last
+sign-off":
+
+```bash
+gh pr list --repo prismalens/prismalens --label ux-review --state merged \
+  --search 'merged:>=2026-08-09' --limit 100 --json number,title,url
+```
+
+Read the walkthroughs back to back, in one pass, without opening each PR:
+
+```bash
+for n in $(gh pr list --repo prismalens/prismalens --label ux-review --state all \
+             --limit 100 --json number -q '.[].number' | sort -n); do
+  gh pr view "$n" --json number,title,body -q \
+    '"\n\n=== PR #\(.number) — \(.title) ===\n" + ((.body | split("## UX review")[1]) // "(!) no ## UX review section")'
+done
+```
+
+A PR carrying the `ux-review` label with no `## UX review` section is a gate failure — that
+loop prints it as `(!)` so it cannot hide.
+
+Sign-off is a comment on the PR (`gh pr comment <n> --body 'UX sign-off: …'`), so the verdict
+stays attached to the change it judges.
+
+History before 2026-08-09 lives in the frozen ledger at
+`~/ai-context/prismalens-ux-ledger.html` (local to the operator's machine, not in git).
 
 ## Implementation specs must declare a capability tier
 
