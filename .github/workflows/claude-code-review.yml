@@ -32,12 +32,15 @@ concurrency:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
+    # Fork PRs get no repository secrets, so CLAUDE_CODE_OAUTH_TOKEN would be
+    # empty and this job would fail — a red job on every outside contribution,
+    # which reads as "the contributor broke something". Skip cleanly instead.
+    #
+    # Fork PRs take the CodeRabbit lane (`@coderabbitai review`, or admission on
+    # a high-risk path). `pull_request_target` is deliberately NOT used to work
+    # around this: it pairs repository secrets with an attacker-controlled ref,
+    # which is the exact combination this repo removed with cla.yml.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,6 +53,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          # The agent runs in this workspace. Left on, checkout leaves a usable
+          # credential in .git/config for the whole job.
+          persist-credentials: false
 
       - name: Run Claude Code Review
         id: claude-review
