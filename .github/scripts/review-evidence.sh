@@ -545,16 +545,52 @@ evaluate_pr () { # evaluate_pr <number>
   # because that login is shared with the mention lane and so says nothing about
   # which workflow produced the artifact. Claude evidence is branch D's marker,
   # which is bound to a run rather than to a login. See the constant's comment.
-  local reviews hit reviewer ev_sha q_rc
+  # A REPLY IS NOT A REVIEW, EVEN THOUGH GITHUB SHAPES IT LIKE ONE.
+  #
+  # GitHub wraps every standalone review comment in an IMPLICIT review object
+  # carrying the CURRENT head SHA and an EMPTY body. So when a reviewer replies
+  # in a thread — to acknowledge a fix, to push back, to answer a question — the
+  # API reports a `COMMENTED` review by that login at whatever the head is now.
+  #
+  # Observed on this repo, #405: a real review at `525b83f7` had `body` of 2706
+  # characters ("Actionable comments posted: 3"); three replies posted minutes
+  # later produced three `COMMENTED` reviews at `515f592d`, every one with
+  # `body` empty — and the gate went green on a head no reviewer had read.
+  # Anyone who can comment can summon a reply, so this was reachable by anyone.
+  #
+  # Two accepted shapes, either one sufficient:
+  #   * a non-empty `body` — the summary a submitted review carries. Reply text
+  #     lands on the COMMENT object, never on the wrapper's review body, so this
+  #     cannot be forged by writing a long reply;
+  #   * at least one review comment of its own that is NOT itself a reply
+  #     (`in_reply_to_id` absent) — the inline findings of a real review. This
+  #     covers a hypothetical submitted-but-empty review; it is not a second
+  #     defence against the wrapper, which has no comments of its own at all.
+  #
+  # Fails closed: if the comment listing cannot be fetched, the second shape is
+  # simply unavailable and only a non-empty body qualifies.
+  local reviews hit reviewer ev_sha q_rc substantive_ids
+  substantive_ids=$(api_query "repos/$REPO/pulls/$n/comments?per_page=100" '
+        [ .[]
+          | select(.in_reply_to_id == null)
+          | .pull_request_review_id
+          | select(. != null)
+        ] | unique | map(tostring) | join(" ")')
+  [ $? -eq 2 ] && substantive_ids=""
+
   reviews=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
         ($logins | split(" ")) as $allowed
+        | ($ids | split(" ")) as $substantive
         | [ .[]
             | select(.user.login as $u | $allowed | index($u))
             | select(.state != "DISMISSED" and .state != "PENDING")
             | select(.commit_id != null)
+            | . as $r
+            | select(((.body // "") | length) > 0
+                     or ($substantive | index($r.id | tostring)))
             | "\(.commit_id) \(.user.login)"
           ] | reverse | .[]' \
-      --arg logins "$REVIEWER_LOGINS")
+      --arg logins "$REVIEWER_LOGINS" --arg ids "$substantive_ids")
   q_rc=$?
   if [ $q_rc -eq 2 ]; then
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
