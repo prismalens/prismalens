@@ -195,22 +195,10 @@ jobs:
       - name: SPDX header check
         run: pnpm spdx:check
 
-  # Regression tests for merge-gate scripts. These scripts have had five fail-open
-  # defects and no test harness, letting unreviewed code merge.
-  # Pure Python and Bash scripts — zero repo dependencies (no Node, no pnpm).
-  gate-scripts:
-    name: Gate scripts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Run Python unit tests
-        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
-
-      - name: Syntax check shell scripts
-        run: |
-          bash -n .github/scripts/review-evidence.sh
-          bash -n .github/scripts/review-evidence-carryforward-replay.sh
+  # The `gate-scripts` job that stood here tested `.github/scripts/` — the
+  # merge-gate publisher, the high-risk path matcher, and their producer-transport
+  # guards. All of it was deleted with the `review-evidence` gate in #415, so the
+  # directory is gone and there is nothing left for this job to run.
 
   # The single aggregating required status check. The branch ruleset requires
   # THIS context instead of enumerating every job above, so adding, renaming, or
@@ -227,7 +215,7 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
-    needs: [build, changesets, test, pack, packed-smoke, lint, gate-scripts]
+    needs: [build, changesets, test, pack, packed-smoke, lint]
     if: always()
     steps:
       - name: Assert every required job succeeded
