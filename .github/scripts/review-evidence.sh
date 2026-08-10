@@ -3,12 +3,32 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# CodeRabbit is not a required check on this repo, and its own rate-limit check
+# This gate proves LIVENESS: that the assigned reviewer ran to completion on this
+# head. It does NOT prove the reviewer had anything to say, and it must not try.
+#
+# It used to try, and that was the bug. Branch A required a review object
+# carrying substantive content, and branch D required a head-bound `claude[bot]`
+# post — and #413 proved both unsatisfiable for a CORRECT pull request. A
+# reviewer emits a substantive artifact only when it has findings, so a clean
+# diff produced nothing the gate could consume. Ten PRs were blocked by that,
+# including #409 and #410, the gate's own repairs — which made the hole
+# self-sealing: the fix for the gate could not pass the gate.
+#
+# CodeRabbit is not a required check on this repo, and its own rate-limit status
 # "passes by design so it never blocks merging on protected branches". So a PR
-# that was never reviewed is indistinguishable, at the merge gate, from one that
-# was reviewed and found clean. This status makes that distinction, and it is
-# keyed to the CURRENT head SHA so a review of an earlier commit does not vouch
-# for later pushes.
+# nobody looked at is still indistinguishable, at the merge gate, from one that
+# was looked at — unless something makes that distinction. That is this status,
+# and only that.
+#
+# OBJECTIONS ARE NOT THIS GATE'S JOB, and never were a good fit for it. Both
+# reviewers are advisory by design (Claude Code Review's docs: findings "don't
+# approve or block your PR, so existing review workflows stay intact"), and
+# GitHub's `required_review_thread_resolution` — already `true` on ruleset
+# 18441175 — is the native mechanism for blocking on an unresolved objection.
+# What that native mechanism cannot do is notice that nobody looked at all: on
+# 2026-08-09 EVERY `claude-code-review.yml` run concluded `failure`, and under
+# thread resolution alone all ten blocked PRs were silently eligible to merge
+# unread. This gate keeps exactly that one property and nothing else.
 #
 # WHAT COUNTS AS EVIDENCE
 # -----------------------
@@ -16,12 +36,18 @@
 #   B1  bot-authored PR                      (CI gate applies separately)
 #   B2  generated release PR                 (same-repo AND branch AND title)
 # B1 and B2 do NOT apply on a high-risk path — see the independence rule.
-#   A   formal review by an allowlisted bot  (CodeRabbit, online lane)
+#   A   a submitted VERDICT by an allowlisted bot  (CodeRabbit, online lane)
 #   D   Claude review marker + its run       (.github/workflows/claude-code-review.yml)
 # Anything else is `failure`. A branch that cannot answer publishes `error`
 # rather than guessing — "could not determine" is never collapsed into "no".
 #
-# A and D both accept a patch-identical earlier commit; see CARRY_FORWARD.
+# NEITHER BRANCH REQUIRES FINDINGS. An `APPROVED` review with an empty body is a
+# pass: it is a reviewer reporting that it read this diff and had nothing to
+# raise. A Claude run that reviewed and posted "no issues" is a pass. Refusing
+# those is the defect being removed here, not a safeguard being kept.
+#
+# A accepts a patch-identical earlier commit; D deliberately does not. See
+# CARRY_FORWARD.
 #
 # `claude[bot]` is NOT in REVIEWER_LOGINS and must not be added — that login is
 # shared with the `@claude` mention lane, so branch A cannot tell a review of the
@@ -130,9 +156,10 @@ HIGH_RISK_MATCHER="${HIGH_RISK_MATCHER:-.github/scripts/high-risk-match.py}"
 #
 # Written by the `marker` job of .github/workflows/claude-code-review.yml, which
 # is gated behind `needs: review` so it cannot run unless the reviewing job
-# succeeded, and which additionally refuses to mint a marker unless a
-# `claude[bot]` post actually exists at that head. Keyed to the head SHA for the
-# same reason as the CLI marker above: evidence vouches for one commit, not the PR.
+# succeeded, and which additionally refuses to mint a marker unless
+# `claude-code-action` reported a `conclusion` — the output it can only set after
+# the agent actually executed, and never sets on the workflow-validation skip.
+# Keyed to the head SHA: evidence vouches for one commit, not for the PR.
 # Format:  <!-- claude-review: <full head sha> run:<run id> -->
 CLAUDE_MARKER_PREFIX="${CLAUDE_MARKER_PREFIX:-<!-- claude-review:}"
 
@@ -157,6 +184,19 @@ CLAUDE_MARKER_AUTHORS="${CLAUDE_MARKER_AUTHORS:-github-actions[bot]}"
 CLAUDE_REVIEW_WORKFLOW_FILE="${CLAUDE_REVIEW_WORKFLOW_FILE:-claude-code-review.yml}"
 
 # Carry evidence forward across a branch update that did not change the patch.
+#
+# BRANCH A ONLY. Branch D does not carry forward, and the asymmetry is economic
+# rather than a difference in what the two lanes prove.
+#
+#   * The Claude lane re-runs itself on every `synchronize`, on a
+#     subscription-billed token. A rebase costs it nothing, so a fresh marker at
+#     the new head always arrives on its own within minutes — carry-forward
+#     would only substitute stale bookkeeping for a signal that is free.
+#   * CodeRabbit's counter is ORG-WIDE, roughly one review per 40 minutes, and
+#     shared across three repositories. `strict_required_status_checks_policy`
+#     rebases high-risk PRs repeatedly (the BEHIND cascade), so without
+#     carry-forward every rebase of a high-risk PR spends a scarce review to
+#     re-derive an answer that cannot have changed.
 #
 # THE PROBLEM. `strict_required_status_checks_policy` is on, so every merge to the
 # trunk puts every other open PR BEHIND, and updating a branch changes its head
@@ -559,69 +599,67 @@ evaluate_pr () { # evaluate_pr <number>
     return $?
   fi
 
-  # --- branch A: a formal review AT THE CURRENT HEAD -----------------------
+  # --- branch A: a submitted VERDICT at the current head -------------------
   # `commit_id` is the commit the review was actually made against, so this is
-  # exact: a review of an earlier commit does not satisfy a later head.
+  # exact: a review of an earlier commit does not satisfy a later head, except
+  # through carry-forward, which requires the patch to be identical.
   #
-  # DISMISSED is excluded because dismissal is the explicit act of withdrawing a
-  # review — treating a withdrawn review as evidence would let the gate vouch for
-  # a verdict its author retracted. PENDING is an unsubmitted draft and is not a
-  # verdict at all. Both are `state` values that survive on the review object, so
-  # neither is filtered out by the commit_id match.
-  # The commit_id filter moved OUT of jq and into first_valid_evidence, which
-  # accepts the head plus any patch-identical earlier commit. Reviews come back
-  # newest-last from the API, so `reverse` puts the newest candidate first.
+  # The commit_id filter lives in first_valid_evidence, which accepts the head
+  # plus any patch-identical earlier commit. Reviews come back newest-last from
+  # the API, so `reverse` puts the newest candidate first.
   #
   # `claude[bot]` cannot appear here: it is not in REVIEWER_LOGINS, deliberately,
   # because that login is shared with the mention lane and so says nothing about
   # which workflow produced the artifact. Claude evidence is branch D's marker,
   # which is bound to a run rather than to a login. See the constant's comment.
-  # A REPLY IS NOT A REVIEW, EVEN THOUGH GITHUB SHAPES IT LIKE ONE.
   #
-  # GitHub wraps every standalone review comment in an IMPLICIT review object
-  # carrying the CURRENT head SHA and an EMPTY body. So when a reviewer replies
-  # in a thread — to acknowledge a fix, to push back, to answer a question — the
-  # API reports a `COMMENTED` review by that login at whatever the head is now.
+  # LIVENESS IS A VERDICT, NOT A FINDING — AND A REPLY IS NEITHER.
   #
-  # Observed on this repo, #405: a real review at `525b83f7` had `body` of 2706
-  # characters ("Actionable comments posted: 3"); three replies posted minutes
-  # later produced three `COMMENTED` reviews at `515f592d`, every one with
-  # `body` empty — and the gate went green on a head no reviewer had read.
-  # Anyone who can comment can summon a reply, so this was reachable by anyone.
+  # What this asks is only "did CodeRabbit finish a review of this commit". It no
+  # longer asks what the review said, because asking that is what #413 proved
+  # unsatisfiable: under `request_changes_workflow: true` (.coderabbit.yaml, from
+  # #411) a clean diff yields a real `APPROVED` review object whose `body` is
+  # EMPTY and which carries no inline comments, and the content test rejected it.
+  # Verified live on #409 @ `8b65f564`: one review, `APPROVED`, body 0 chars.
   #
-  # Two accepted shapes, either one sufficient:
-  #   * a non-empty `body` — the summary a submitted review carries. Reply text
-  #     lands on the COMMENT object, never on the wrapper's review body, so this
-  #     cannot be forged by writing a long reply;
-  #   * at least one review comment of its own that is NOT itself a reply
-  #     (`in_reply_to_id` absent) — the inline findings of a real review. This
-  #     covers a hypothetical submitted-but-empty review; it is not a second
-  #     defence against the wrapper, which has no comments of its own at all.
+  # So the filter is on `state`, and only two states qualify:
+  #   * APPROVED          — read it, nothing to raise
+  #   * CHANGES_REQUESTED — read it, has objections
+  # Both are formal verdicts that CodeRabbit submits only at the end of a review
+  # pass. Neither says anything about volume of findings, which is the point.
   #
-  # Fails closed: if the comment listing cannot be fetched, the second shape is
-  # simply unavailable and only a non-empty body qualifies.
-  local reviews hit reviewer ev_sha q_rc substantive_ids
-  substantive_ids=$(api_query "repos/$REPO/pulls/$n/comments?per_page=100" '
-        [ .[]
-          | select(.in_reply_to_id == null)
-          | .pull_request_review_id
-          | select(. != null)
-        ] | unique | map(tostring) | join(" ")')
-  [ $? -eq 2 ] && substantive_ids=""
-
+  # COMMENTED IS EXCLUDED, and that exclusion is load-bearing rather than
+  # tidiness. GitHub wraps every standalone review comment in an IMPLICIT review
+  # object carrying the CURRENT head SHA, state `COMMENTED`, and an EMPTY body.
+  # So a reviewer replying in a thread — acknowledging a fix, pushing back —
+  # produces a `COMMENTED` review at whatever the head is now, about a commit it
+  # never read. Observed on this repo, #405: a real review at `525b83f7`, then
+  # three replies minutes later producing three `COMMENTED` reviews at
+  # `515f592d`, and the gate went green on a head no reviewer had looked at.
+  # Anyone who can comment can summon a reply, so it was reachable by anyone.
+  # The old defence was the content test that #413 broke; the state test replaces
+  # it without reintroducing a content requirement.
+  #
+  # DISMISSED and PENDING are excluded by construction rather than by name:
+  # dismissal rewrites `state` to `DISMISSED`, and an unsubmitted draft is
+  # `PENDING`, so neither can match the two states above.
+  #
+  # RESIDUAL, STATED RATHER THAN HIDDEN: `@coderabbitai approve` submits an
+  # APPROVED review, and CodeRabbit's only ACL is `chat.allow_non_org_members`
+  # (default `true`). On a public repo without a `chat:` block, a commenter can
+  # therefore summon a verdict this branch accepts. #412 closes that by setting
+  # the flag; it is a prerequisite for trusting this branch on high-risk paths,
+  # not an optional hardening.
+  local reviews hit reviewer ev_sha q_rc
   reviews=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
         ($logins | split(" ")) as $allowed
-        | ($ids | split(" ")) as $substantive
         | [ .[]
             | select(.user.login as $u | $allowed | index($u))
-            | select(.state != "DISMISSED" and .state != "PENDING")
+            | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED")
             | select(.commit_id != null)
-            | . as $r
-            | select(((.body // "") | length) > 0
-                     or ($substantive | index($r.id | tostring)))
             | "\(.commit_id) \(.user.login)"
           ] | reverse | .[]' \
-      --arg logins "$REVIEWER_LOGINS" --arg ids "$substantive_ids")
+      --arg logins "$REVIEWER_LOGINS")
   q_rc=$?
   if [ $q_rc -eq 2 ]; then
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
@@ -638,7 +676,7 @@ evaluate_pr () { # evaluate_pr <number>
     return $?
   fi
 
-  # --- branch D: Claude review evidence for this head ----------------------
+  # --- branch D: Claude-lane liveness at this head -------------------------
   #
   # WHAT THIS TRUSTS, AND WHY IT IS NOT THE ARTIFACT
   # -----------------------------------------------
@@ -650,8 +688,20 @@ evaluate_pr () { # evaluate_pr <number>
   # What this branch trusts instead is a marker authored by `github-actions[bot]`
   # from the `marker` job of claude-code-review.yml — a job that runs no model,
   # reads nothing from the PR but its head SHA, and only runs at all when the
-  # review job succeeded AND a `claude[bot]` post exists at that head. The
+  # review job succeeded AND `claude-code-action` reported a `conclusion`. The
   # reviewing agent holds no credential that can author `github-actions[bot]`.
+  #
+  # WHY THE MARKER SURVIVED THE MOVE TO LIVENESS. The obvious simplification —
+  # "a successful run of claude-code-review.yml at this head IS the liveness
+  # signal, so drop the marker" — fails open on this repo. `claude-code-action`
+  # refuses to run when the PR head's copy of the workflow differs from the
+  # default branch ("Workflow validation failed"), and on that path
+  # `src/entrypoints/run.ts` returns early having set only
+  # `skipped_due_to_workflow_validation_mismatch`; the step exits 0 and the job
+  # reports SUCCESS with nothing reviewed. So "the run concluded success" does not
+  # imply "the reviewer looked". The marker job is the only thing that
+  # distinguishes them, because it refuses to mint unless the action produced a
+  # `conclusion` — an output run.ts can only set after the agent executed.
   #
   # The marker's TEXT is not the evidence. `run:<id>` is a claim; what makes it
   # evidence is that the run exists, ran THIS workflow file, ran against the SHA
@@ -666,19 +716,17 @@ evaluate_pr () { # evaluate_pr <number>
   # mention-lane post to redeem. Binding to a run *identifier* minted by a job the
   # agent cannot impersonate removes the token entirely.
   #
-  # CARRIED FORWARD, unlike the marker design that preceded it. The old branch D
-  # verified a run against an artifact NAMED for the reviewed head, so carrying it
-  # forward meant either checking the run against a SHA the artifact no longer
-  # described or relaxing the artifact match. This marker names its own SHA and
-  # the run is verified against that same SHA, so a patch-identical earlier commit
-  # carries exactly as branches A and C do — the run still describes the commit it
-  # reviewed, and patch identity is what makes that commit speak for this head.
+  # NOT CARRIED FORWARD, deliberately, unlike branch A. This lane re-runs on every
+  # `synchronize` on a subscription-billed token, so a fresh marker at the new
+  # head is free and arrives within minutes; carry-forward would buy nothing and
+  # would widen what a marker vouches for. Branch A keeps it because CodeRabbit's
+  # counter is scarce and org-wide. See CARRY_FORWARD.
   if [ "$high_risk" = "1" ]; then
     echo "    high-risk path: a Claude review alone does not satisfy this gate" >&2
     no_evidence_reason="high-risk path — needs coderabbitai[bot] review, not Claude alone"
   fi
 
-  local claude_markers claude_hit
+  local claude_markers
   claude_markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
         ($authors | split(" ")) as $allowed
         | [ .[]
@@ -686,18 +734,21 @@ evaluate_pr () { # evaluate_pr <number>
             | .body
             | try (capture($pre + " (?<s>[0-9a-f]{40}) run:(?<id>[0-9]+)[^0-9]")
                    | "\(.s) \(.id)") catch empty
-          ] | reverse | .[]' \
-      --arg pre "$CLAUDE_MARKER_PREFIX" --arg authors "$CLAUDE_MARKER_AUTHORS")
+            | select(startswith($head + " "))
+          ] | reverse | .[0] // empty' \
+      --arg pre "$CLAUDE_MARKER_PREFIX" --arg authors "$CLAUDE_MARKER_AUTHORS" \
+      --arg head "$sha")
   q_rc=$?
   if [ $q_rc -eq 2 ]; then
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
     return 1
   fi
 
-  if [ "$high_risk" != "1" ] && [ -n "$claude_markers" ] \
-     && claude_hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$claude_markers"); then
-    local mk_sha mk_run run_json obj_rc verified=""
-    mk_sha="${claude_hit%% *}"; mk_run="${claude_hit#* }"
+  if [ "$high_risk" != "1" ] && [ -n "$claude_markers" ]; then
+    local mk_run run_json obj_rc verified=""
+    # The exact-head filter is in the jq above, so the marker's SHA is the head by
+    # construction and only the run id is still needed here.
+    mk_run="${claude_markers#* }"
 
     # The runs endpoint is scoped to $REPO, so a run id from a fork simply 404s —
     # genuinely absent, which falls through to `failure`. Any OTHER fetch failure
@@ -714,7 +765,11 @@ evaluate_pr () { # evaluate_pr <number>
       # `.path` is split at `@` first: a run reached through a reusable workflow
       # reports `owner/repo/.github/workflows/x.yml@refs/heads/main`, and the ref
       # suffix would make an otherwise-correct path fail to match.
-      verified=$(jq -r --arg wf "$CLAUDE_REVIEW_WORKFLOW_FILE" --arg s "$mk_sha" '
+      #
+      # `conclusion == "success"` is also what excludes a drift-skipped run
+      # end-to-end: the marker job fails on that path, which makes the RUN's
+      # conclusion `failure` even though the review job succeeded.
+      verified=$(jq -r --arg wf "$CLAUDE_REVIEW_WORKFLOW_FILE" --arg s "$sha" '
           if (.status == "completed")
              and (.conclusion == "success")
              and (.head_sha == $s)
@@ -723,11 +778,7 @@ evaluate_pr () { # evaluate_pr <number>
     fi
 
     if [ "$verified" = "ok" ]; then
-      if [ "$mk_sha" = "$sha" ]; then
-        publish "$sha" success "Claude review evidence from run $mk_run at ${sha:0:8}"
-      else
-        publish "$sha" success "Claude review from run $mk_run at ${mk_sha:0:8}; patch unchanged at ${sha:0:8}"
-      fi
+      publish "$sha" success "Claude review lane ran to completion in run $mk_run at ${sha:0:8}"
       return $?
     fi
     # Marker present but the run does not back it up. Deliberately NOT an
