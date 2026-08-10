@@ -258,13 +258,24 @@ jobs:
             # `coderabbitai[bot]` and branch D could not have greened it anyway.
             #
             # Blob SHAs, not content: the API hands them over without fetching
-            # either file. A failed lookup leaves `differs` empty and falls
-            # through to the generic message rather than guessing.
+            # either file.
+            #
+            # `differs` ALONE CANNOT CARRY THIS, and that is the whole reason
+            # `compared` exists. An empty `differs` means one of two opposite
+            # things: the blobs matched, or a lookup failed and nothing was
+            # compared. Reporting "this file matches $DEFAULT_BRANCH" in the
+            # second case is an assertion this job did not compute — the same
+            # class of guess that cost the investigation recorded above, which is
+            # why it is worth a second variable rather than a shorter condition.
             differs=""
+            compared=""
             head_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$HEAD_SHA" --jq .sha 2>/dev/null) || head_blob=""
             base_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$DEFAULT_BRANCH" --jq .sha 2>/dev/null) || base_blob=""
-            if [ -n "$head_blob" ] && [ -n "$base_blob" ] && [ "$head_blob" != "$base_blob" ]; then
-              differs=yes
+            if [ -n "$head_blob" ] && [ -n "$base_blob" ]; then
+              compared=yes
+              if [ "$head_blob" != "$base_blob" ]; then
+                differs=yes
+              fi
             fi
 
             if [ -n "$differs" ]; then
@@ -274,11 +285,16 @@ jobs:
                    "This is expected on a PR that changes the review workflow, and it resolves once the PR merges." \
                    "Such a PR touches .github/** and therefore needs a coderabbitai[bot] review regardless —" \
                    "branch D cannot satisfy the gate for it."
-            elif [ -z "$CONCLUSION" ]; then
+            elif [ -z "$CONCLUSION" ] && [ -n "$compared" ]; then
               echo "::error::claude-code-action reported no conclusion at ${HEAD_SHA:0:8}, so the agent never ran." \
                    "No marker will be minted and review-evidence stays red." \
                    "This file matches $DEFAULT_BRANCH, so workflow validation is not the cause —" \
                    "read the review job log before changing anything here."
+            elif [ -z "$CONCLUSION" ]; then
+              echo "::error::claude-code-action reported no conclusion at ${HEAD_SHA:0:8}, so the agent never ran." \
+                   "No marker will be minted and review-evidence stays red." \
+                   "Could NOT compare this file against $DEFAULT_BRANCH (blob lookup failed), so workflow" \
+                   "validation is not ruled out — check whether this PR edits $SELF, then read the review job log."
             else
               echo "::error::The reviewer ran at ${HEAD_SHA:0:8} and concluded '$CONCLUSION', not success." \
                    "No marker will be minted and review-evidence stays red." \

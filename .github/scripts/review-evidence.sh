@@ -99,6 +99,47 @@ DRY_RUN="${DRY_RUN:-0}"
 # the authorization unspent for a mention-lane post to redeem. See branch D.
 REVIEWER_LOGINS="${REVIEWER_LOGINS:-coderabbitai[bot]}"
 
+# The fingerprint of CodeRabbit's WALKTHROUGH comment — the artifact a review
+# PASS leaves behind, whether or not it found anything.
+#
+# This exists to qualify `APPROVED` in branch A, and the reason is an asymmetry
+# between the two states that branch accepts. `CHANGES_REQUESTED` can only come
+# out of a review that ran and had objections; nothing can summon one into
+# existence. `APPROVED` can: `@coderabbitai approve` is a chat command that
+# submits an APPROVED review WITHOUT reviewing anything. #412 sets
+# `chat.allow_non_org_members: false`, which closes the outsider half of that,
+# but it cannot close the author half — a maintainer IS an org member. So on a
+# high-risk path a maintainer could satisfy the independent-review requirement on
+# their own `.github/**` change with a one-line comment, which is exactly the
+# property high-risk gating exists to provide.
+#
+# So `APPROVED` is corroborated: it counts only on a PR that also carries this
+# marker, i.e. one CodeRabbit has actually processed at some point. See branch A.
+#
+# WHY THE FINGERPRINT IS THE WALKTHROUGH AND NOT "SUBSTANTIVE CONTENT". The
+# obvious corroboration — require a non-empty review body or a non-reply inline
+# comment somewhere on the PR — is the #413 bug wearing a different hat. Those
+# artifacts appear only when the reviewer HAS FINDINGS, so requiring one asks a
+# correct PR to prove itself wrong. Verified against the shape that motivated
+# #413 — #409, a `.github/**` (high-risk) PR whose ONLY CodeRabbit evidence was
+# `APPROVED` with `body` 0 chars and ZERO inline comments, alongside a 7056-char
+# walkthrough. Under a content test that PR is unmergeable forever; under this
+# marker it passes, and a bare summoned `approve` on an unreviewed PR does not.
+# Surveyed across 14 PRs on this repo: every PR CodeRabbit processed carries
+# exactly one of these, and every PR it never touched carries none.
+#
+# STATED, NOT HIDDEN: `@coderabbitai summary` also refreshes this comment, so
+# this raises the cost of forging branch A from "one comment" to "two comments,
+# one of which makes CodeRabbit read the diff and leaves a public artifact saying
+# so". It does not reduce that cost to zero, and no API-visible signal does —
+# every CodeRabbit artifact is reachable by someone who can comment. What it
+# removes is the ability to mint the gate's evidence out of nothing.
+#
+# Substring of an HTML comment CodeRabbit embeds, so it is invisible in the
+# rendered body and cannot be typed by a human into a comment that would pass:
+# the AUTHOR is checked against REVIEWER_LOGINS as well.
+CODERABBIT_REVIEW_PASS_MARKER="${CODERABBIT_REVIEW_PASS_MARKER:-summarize by coderabbit.ai}"
+
 # PR authors exempt from needing review evidence.
 #
 # This is not a hole: `CI gate` is separately a required check, so exempting these
@@ -518,6 +559,35 @@ api_object () { # api_object <path>
   printf '%s\n' "$body"
 }
 
+# Did an allowlisted reviewer actually run a review PASS over this PR at all?
+#
+# This is deliberately NOT head-bound and NOT findings-bound. It answers one
+# question — "has this reviewer ever processed this PR" — and it exists only to
+# corroborate `APPROVED`, which is otherwise summonable by a chat command. See
+# CODERABBIT_REVIEW_PASS_MARKER for the threat and the rejected alternative.
+#
+# The author is checked against REVIEWER_LOGINS as well as the marker, so a human
+# pasting the HTML comment into a comment of their own does not qualify.
+#
+#   rc 0 = a review pass is on record
+#   rc 1 = none (answered: the reviewer has not processed this PR)
+#   rc 2 = could not determine
+cr_review_pass_seen () { # cr_review_pass_seen <pr number>
+  local n="$1" seen rc
+  seen=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
+        # predicate: coderabbit-review-pass
+        ($authors | split(" ")) as $allowed
+        | [ .[]
+            | select(.user.login as $u | $allowed | index($u))
+            | select(.body // "" | contains($marker))
+          ] | if length > 0 then "yes" else "" end' \
+      --arg authors "$REVIEWER_LOGINS" --arg marker "$CODERABBIT_REVIEW_PASS_MARKER")
+  rc=$?
+  [ $rc -eq 2 ] && return 2
+  [ -n "$seen" ] && return 0
+  return 1
+}
+
 evaluate_pr () { # evaluate_pr <number>
   local n="$1" pr pr_number sha author state draft head_ref head_repo title base_ref
   local no_evidence_reason=""
@@ -644,20 +714,39 @@ evaluate_pr () { # evaluate_pr <number>
   # dismissal rewrites `state` to `DISMISSED`, and an unsubmitted draft is
   # `PENDING`, so neither can match the two states above.
   #
-  # RESIDUAL, STATED RATHER THAN HIDDEN: `@coderabbitai approve` submits an
-  # APPROVED review, and CodeRabbit's only ACL is `chat.allow_non_org_members`
-  # (default `true`). On a public repo without a `chat:` block, a commenter can
-  # therefore summon a verdict this branch accepts. #412 closes that by setting
-  # the flag; it is a prerequisite for trusting this branch on high-risk paths,
-  # not an optional hardening.
-  local reviews hit reviewer ev_sha q_rc
+  # THE TWO STATES ARE NOT EQUALLY TRUSTWORTHY, AND ARE NO LONGER TREATED SO.
+  #
+  # `@coderabbitai approve` is a chat command that submits an APPROVED review
+  # without reviewing anything, so that state can be MINTED FROM NOTHING.
+  # CodeRabbit's only ACL is `chat.allow_non_org_members`, and #412 sets it
+  # `false` — which closes the outsider half and cannot close the author half,
+  # because a maintainer IS an org member. Unqualified, this branch therefore let
+  # a maintainer satisfy the independent-review requirement on their own
+  # `.github/**` change with a one-line comment.
+  #
+  # So APPROVED is CORROBORATED and CHANGES_REQUESTED is not:
+  #   * CHANGES_REQUESTED counts on its own — no command summons one, and it comes
+  #     only out of a pass that ran and had objections.
+  #   * APPROVED counts only on a PR that also carries a CodeRabbit review-pass
+  #     artifact, at any commit and regardless of findings.
+  # See CODERABBIT_REVIEW_PASS_MARKER for what that artifact is, why it is NOT a
+  # substantive-content test (that would reintroduce #413 — proven against #409),
+  # and what residual remains.
+  #
+  # The corroboration lookup is LAZY: one paginated request, made only on a PR
+  # that actually has an APPROVED row to qualify. A PR carrying only
+  # CHANGES_REQUESTED never pays for it, nor does one greened by B1/B2 above,
+  # nor one with no reviews at all. A PR carrying both states does pay it, which
+  # is the deliberate price of the ordering below.
+  local reviews hit reviewer ev_sha ev_rest q_rc pass_rc
   reviews=$(api_query "repos/$REPO/pulls/$n/reviews?per_page=100" '
+        # predicate: branch-a-verdict
         ($logins | split(" ")) as $allowed
         | [ .[]
             | select(.user.login as $u | $allowed | index($u))
             | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED")
             | select(.commit_id != null)
-            | "\(.commit_id) \(.user.login)"
+            | "\(.commit_id) \(.state) \(.user.login)"
           ] | reverse | .[]' \
       --arg logins "$REVIEWER_LOGINS")
   q_rc=$?
@@ -665,9 +754,29 @@ evaluate_pr () { # evaluate_pr <number>
     publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
     return 1
   fi
+
+  # Drop the uncorroborated APPROVED rows BEFORE carry-forward walks the list, so
+  # that an inadmissible APPROVED at the head cannot mask an admissible
+  # CHANGES_REQUESTED at a patch-identical earlier commit.
+  case "$reviews" in
+    *" APPROVED "*)
+      cr_review_pass_seen "$n"; pass_rc=$?
+      if [ $pass_rc -eq 2 ]; then
+        publish "$sha" error "Cannot determine review evidence for ${sha:0:8} — GitHub API error"
+        return 1
+      fi
+      if [ $pass_rc -eq 1 ]; then
+        echo "    APPROVED present but no $REVIEWER_LOGINS review pass on record — not counting it" >&2
+        reviews=$(grep -v " APPROVED " <<<"$reviews") || reviews=""
+        no_evidence_reason="APPROVED review is not backed by a review pass on this PR"
+      fi
+      ;;
+  esac
+
   if [ -n "$reviews" ] \
      && hit=$(first_valid_evidence "$sha" "$base_ref" "$head_repo" <<<"$reviews"); then
-    ev_sha="${hit%% *}"; reviewer="${hit#* }"
+    # Payload is "<state> <login>"; only the login reaches the description.
+    ev_sha="${hit%% *}"; ev_rest="${hit#* }"; reviewer="${ev_rest#* }"
     if [ "$ev_sha" = "$sha" ]; then
       publish "$sha" success "Reviewed by $reviewer at ${sha:0:8}"
     else
@@ -721,13 +830,32 @@ evaluate_pr () { # evaluate_pr <number>
   # head is free and arrives within minutes; carry-forward would buy nothing and
   # would widen what a marker vouches for. Branch A keeps it because CodeRabbit's
   # counter is scarce and org-wide. See CARRY_FORWARD.
+  # HIGH RISK ENDS THE EVALUATION HERE, rather than falling through with a reason.
+  #
+  # The verdict is already determined at this point: branch D cannot publish
+  # `success` on a high-risk path by construction, and A, B1 and B2 have all
+  # declined above. Running the marker lookup anyway had two costs. It spent a
+  # paginated request per evaluation on a result that was going to be discarded;
+  # and a transient failure on that endpoint published `error`, even though
+  # nothing was left to determine. `error` is reserved for a branch that CANNOT
+  # ANSWER (see the header) — this branch has answered.
+  #
+  # A reason recorded by branch A is preferred where it exists, because it is
+  # strictly more specific: "there is an uncorroborated APPROVED" and "there is no
+  # CodeRabbit review at all" need different fixes, and the generic high-risk text
+  # would misreport the first as the second.
   if [ "$high_risk" = "1" ]; then
     echo "    high-risk path: a Claude review alone does not satisfy this gate" >&2
-    no_evidence_reason="high-risk path — needs coderabbitai[bot] review, not Claude alone"
+    if [ -z "$no_evidence_reason" ]; then
+      no_evidence_reason="high-risk path — needs coderabbitai[bot] review, not Claude alone"
+    fi
+    publish "$sha" failure "No review evidence for ${sha:0:8} — $no_evidence_reason"
+    return $?
   fi
 
   local claude_markers
   claude_markers=$(api_query "repos/$REPO/issues/$n/comments?per_page=100" '
+        # predicate: claude-marker-at-head
         ($authors | split(" ")) as $allowed
         | [ .[]
             | select(.user.login as $u | $allowed | index($u))
@@ -744,7 +872,8 @@ evaluate_pr () { # evaluate_pr <number>
     return 1
   fi
 
-  if [ "$high_risk" != "1" ] && [ -n "$claude_markers" ]; then
+  # No high-risk test here: that path returned above.
+  if [ -n "$claude_markers" ]; then
     local mk_run run_json obj_rc verified=""
     # The exact-head filter is in the jq above, so the marker's SHA is the head by
     # construction and only the run id is still needed here.
