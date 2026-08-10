@@ -53,6 +53,20 @@ concurrency:
 # mention-lane post can redeem. The marker closes it: the agent holds no
 # credential that can author `github-actions[bot]`, and the publisher validates
 # the cited run rather than inferring anything from submission times.
+#
+# WHY THE MARKER SURVIVES THE MOVE TO LIVENESS (#413)
+# ---------------------------------------------------
+# `review-evidence` no longer asks what the reviewer SAID, only that it ran. The
+# tempting simplification is to drop this job and let the publisher key on "a
+# successful run of this workflow file at this head". That fails OPEN here:
+# `claude-code-action` refuses to run when the PR head's copy of this file
+# differs from the default branch, and on that path
+# `src/entrypoints/run.ts` returns early having set only
+# `skipped_due_to_workflow_validation_mismatch` — the step exits 0 and this job
+# reports SUCCESS with nothing reviewed. So run success does not imply the
+# reviewer looked. This job is what separates the two, by refusing to mint unless
+# the action reported a `conclusion`, which run.ts sets only after the agent
+# actually executed.
 jobs:
   review:
     # Fork PRs get no repository secrets, so CLAUDE_CODE_OAUTH_TOKEN would be
@@ -67,7 +81,15 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       head_sha: ${{ steps.pr.outputs.head_sha }}
-      started_at: ${{ steps.pr.outputs.started_at }}
+      # THE LIVENESS SIGNAL. `claude-code-action` sets `conclusion` in
+      # `src/entrypoints/run.ts` only after the agent has actually executed
+      # (line 312, from `claudeResult.conclusion`). On the workflow-validation
+      # skip path it returns at line 177 having set only
+      # `skipped_due_to_workflow_validation_mismatch` — which the composite
+      # action does not expose — so `conclusion` comes through EMPTY. An empty
+      # value therefore means "the reviewer never ran", which is exactly the case
+      # a bare `needs: review` success cannot see.
+      conclusion: ${{ steps.claude-review.outputs.conclusion }}
     # READ-ONLY. The action posts under its own app installation token, not this
     # one, so the review still publishes; what this token cannot do is write a
     # commit status or author a marker comment.
@@ -78,14 +100,16 @@ jobs:
       id-token: write
 
     steps:
-      - name: Record head and start time
+      # The start time this step used to record is gone with the artifact count
+      # that consumed it: nothing in this workflow compares timestamps any more,
+      # and a runner clock was never something to gate on.
+      - name: Record head
         id: pr
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           printf 'head_sha=%s\n' "$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          printf 'started_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -102,7 +126,15 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # `--comment` is required, and its absence is why this lane posted
+          # nothing at all. The plugin's step 7 no-ops its ENTIRE posting path
+          # ("if --comment was NOT provided, stop here"), so the reviewer runs a
+          # full review and publishes none of it. Folded in from #410.
+          #
+          # It matters more under liveness than it did before: objections are
+          # enforced by GitHub's `required_review_thread_resolution`, which has
+          # nothing to resolve if the reviewer never opens a thread.
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
           # THE TOOL LIST IS LOAD-BEARING. Supplying `prompt:` puts the action in
           # AGENT mode, and in agent mode `src/modes/agent/index.ts` resolves the
           # tool list ONLY from `claude_args` — `settings` is not read for this.
@@ -138,8 +170,24 @@ jobs:
           # marker this workflow mints, not a review object, so the reviewer never
           # needs to submit one.
           #
-          # If this list goes stale the lane posts nothing and `marker` fails —
-          # loud and red, never a silent pass. Re-derive it, do not relax the gate.
+          # THIS LIST IS NOW THE LANE'S WEAKEST POINT, and the move to liveness
+          # (#413) is what made it so. The old marker predicate counted posted
+          # artifacts, so a stale list produced a denied reviewer, no artifacts,
+          # and a red `marker` — loud, never a silent pass. Observed on #401 at
+          # `6dcb987f`: 4 turns, 1 denial, nothing posted, `conclusion: success`,
+          # marker correctly refused. The predicate is now `conclusion == success`,
+          # which that same run WOULD satisfy: an agent denied at its first step
+          # still exits success, so a stale list would mint a marker for a review
+          # that read nothing.
+          #
+          # Accepted, with eyes open, because the alternative is the requirement
+          # #413 proved unsatisfiable — and because the failure is self-announcing
+          # in the review job log (denials are printed) rather than silent in the
+          # gate. Re-derive this list whenever the plugin changes; do not treat a
+          # green `marker` as proof the tool list is current. A follow-up worth
+          # having: bind an issue comment to THIS run by its run id in the body,
+          # which restores "the reviewer posted" without reintroducing either a
+          # timestamp or a findings requirement.
           claude_args: >-
             --allowed-tools
             "Task,Read,Grep,Glob,LS,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment"
@@ -154,70 +202,53 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Verify the review posted something, then mint the marker
+      - name: Verify the reviewer actually ran, then mint the marker
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ needs.review.outputs.head_sha }}
-          STARTED_AT: ${{ needs.review.outputs.started_at }}
+          CONCLUSION: ${{ needs.review.outputs.conclusion }}
           RUN_ID: ${{ github.run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SELF: .github/workflows/claude-code-review.yml
         run: |
           set -euo pipefail
 
-          # LIVENESS CHECK. `needs: review` proves the job succeeded; it does not
-          # prove the reviewer did anything. A run that exits success having
-          # posted nothing is this lane's routine failure mode, so success alone
-          # must never mint a marker — that is precisely how a green job becomes
-          # false evidence.
+          # LIVENESS CHECK — EXECUTION, NOT ARTIFACTS.
           #
-          # ONLY HEAD-BOUND ARTIFACTS COUNT. A formal review and an inline
-          # review comment both carry `commit_id`, so they are provably about
-          # THIS head. An issue comment carries no commit id and could only be
-          # bound by time — and `claude[bot]` is shared with claude.yml, so a
-          # mention-lane comment landing inside this window would satisfy
-          # liveness while the review lane posted nothing. That is precisely the
-          # shape this check exists to catch, so the time-bound signal is not
-          # used. (Binding by body text was considered: the plugin's clean-diff
-          # comment is its own string and we do not control it.)
+          # `needs: review` proves the JOB succeeded. It does not prove the
+          # REVIEWER ran: `claude-code-action` self-skips when this file differs
+          # from the copy on the default branch, exits 0, and leaves the job
+          # green. So job success alone must never mint a marker.
           #
-          # The cost is real and deliberate: if the reviewer's only artifact on a
-          # clean diff is an issue comment, liveness fails and the gate reports
-          # red. A red gate on a clean PR is a nuisance with an obvious fallback;
-          # a green gate on an unreviewed one is the failure this lane exists to
-          # remove. `STARTED_AT` is kept only for the log line — comparing a
-          # runner clock against GitHub timestamps is not something to gate on.
-          # `--paginate` emits one result PER PAGE, so a bare `| length` yields a
-          # number per page and the arithmetic below would break on any PR with
-          # more than 100 reviews or comments. Sum the pages. `|| echo 0` keeps a
-          # transport failure from producing an empty string, which would also
-          # break the arithmetic — and zero is the safe value, because zero
-          # artifacts means no marker is minted.
-          reviews=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews?per_page=100" \
-            --jq "[.[] | select(.user.login == \"claude[bot]\")
-                       | select(.commit_id == \"$HEAD_SHA\")
-                       | select(.state != \"PENDING\")] | length" \
-            | awk '{s+=$1} END{print s+0}') || reviews=0
-
-          inline=$(gh api --paginate "repos/$REPO/pulls/$PR/comments?per_page=100" \
-            --jq "[.[] | select(.user.login == \"claude[bot]\")
-                       | select(.commit_id == \"$HEAD_SHA\")] | length" \
-            | awk '{s+=$1} END{print s+0}') || inline=0
-
-          total=$(( reviews + inline ))
-          printf 'claude[bot] head-bound artifacts at %s: %s review(s), %s inline (job started %s)\n' \
-            "${HEAD_SHA:0:8}" "$reviews" "$inline" "$STARTED_AT"
-
-          if [ "$total" -eq 0 ]; then
+          # What separates the two is the action's own `conclusion` output.
+          # `src/entrypoints/run.ts` sets it from `claudeResult.conclusion` only
+          # after the agent has executed; on the validation-skip path it returns
+          # early having set only
+          # `skipped_due_to_workflow_validation_mismatch` — a step output the
+          # composite action does not expose — so `conclusion` arrives EMPTY here.
+          # Empty means "never ran". A non-empty value other than `success` means
+          # it ran and failed, which is equally not evidence.
+          #
+          # WHAT THIS DELIBERATELY NO LONGER COUNTS: head-bound `claude[bot]`
+          # artifacts. That check required the reviewer to have POSTED something
+          # carrying a `commit_id`, and #413 proved it unsatisfiable for a correct
+          # PR — a clean diff yields at most an issue comment, which has no commit
+          # id, so the gate stayed red on code nobody could fault. The old comment
+          # here called that "a nuisance with an obvious fallback"; the fallback
+          # did not exist, because branch A is blind to clean diffs in the same
+          # way. Liveness is now proved by execution, which a clean diff does not
+          # suppress.
+          if [ "$CONCLUSION" != "success" ]; then
             # WHY THIS ASKS WHO EDITED THE WORKFLOW BEFORE BLAMING THE TOOL LIST.
-            # `claude-code-action` refuses to run at all when this file differs
-            # from the copy on the default branch — "Workflow validation failed"
-            # — and it reports that skip as SUCCESS, so the symptom here is
-            # identical to a reviewer that ran and posted nothing. The two have
-            # completely different fixes, and the message used to assert the
-            # wrong one unconditionally, which cost a real investigation.
+            # An EMPTY `conclusion` says the agent never ran, but not why. The
+            # overwhelmingly common cause is that this PR edits this file:
+            # `claude-code-action` refuses to run when it differs from the copy on
+            # the default branch — "Workflow validation failed" — and reports that
+            # skip as SUCCESS. The other causes need completely different fixes,
+            # and an earlier version of this message asserted one of them
+            # unconditionally, which cost a real investigation.
             #
             # That validation is a control, not an obstacle: without it a PR
             # could rewrite the reviewing workflow and have its own version run
@@ -227,39 +258,59 @@ jobs:
             # `coderabbitai[bot]` and branch D could not have greened it anyway.
             #
             # Blob SHAs, not content: the API hands them over without fetching
-            # either file. A failed lookup leaves `differs` empty and falls
-            # through to the generic message rather than guessing.
+            # either file.
+            #
+            # `differs` ALONE CANNOT CARRY THIS, and that is the whole reason
+            # `compared` exists. An empty `differs` means one of two opposite
+            # things: the blobs matched, or a lookup failed and nothing was
+            # compared. Reporting "this file matches $DEFAULT_BRANCH" in the
+            # second case is an assertion this job did not compute — the same
+            # class of guess that cost the investigation recorded above, which is
+            # why it is worth a second variable rather than a shorter condition.
             differs=""
+            compared=""
             head_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$HEAD_SHA" --jq .sha 2>/dev/null) || head_blob=""
             base_blob=$(gh api "repos/$REPO/contents/$SELF?ref=$DEFAULT_BRANCH" --jq .sha 2>/dev/null) || base_blob=""
-            if [ -n "$head_blob" ] && [ -n "$base_blob" ] && [ "$head_blob" != "$base_blob" ]; then
-              differs=yes
+            if [ -n "$head_blob" ] && [ -n "$base_blob" ]; then
+              compared=yes
+              if [ "$head_blob" != "$base_blob" ]; then
+                differs=yes
+              fi
             fi
 
             if [ -n "$differs" ]; then
-              echo "::error::claude[bot] posted nothing at ${HEAD_SHA:0:8} because this PR edits $SELF," \
+              echo "::error::The reviewer never ran at ${HEAD_SHA:0:8} because this PR edits $SELF," \
                    "so claude-code-action skipped itself on workflow validation (it requires this file to match" \
                    "$DEFAULT_BRANCH) and reported success without running." \
                    "This is expected on a PR that changes the review workflow, and it resolves once the PR merges." \
                    "Such a PR touches .github/** and therefore needs a coderabbitai[bot] review regardless —" \
                    "branch D cannot satisfy the gate for it."
-            else
-              echo "::error::The review job succeeded but claude[bot] posted nothing at ${HEAD_SHA:0:8}." \
+            elif [ -z "$CONCLUSION" ] && [ -n "$compared" ]; then
+              echo "::error::claude-code-action reported no conclusion at ${HEAD_SHA:0:8}, so the agent never ran." \
                    "No marker will be minted and review-evidence stays red." \
-                   "This file matches $DEFAULT_BRANCH, so workflow validation is not the cause;" \
-                   "the usual one is a stale --allowed-tools list — see the comment on that input."
+                   "This file matches $DEFAULT_BRANCH, so workflow validation is not the cause —" \
+                   "read the review job log before changing anything here."
+            elif [ -z "$CONCLUSION" ]; then
+              echo "::error::claude-code-action reported no conclusion at ${HEAD_SHA:0:8}, so the agent never ran." \
+                   "No marker will be minted and review-evidence stays red." \
+                   "Could NOT compare this file against $DEFAULT_BRANCH (blob lookup failed), so workflow" \
+                   "validation is not ruled out — check whether this PR edits $SELF, then read the review job log."
+            else
+              echo "::error::The reviewer ran at ${HEAD_SHA:0:8} and concluded '$CONCLUSION', not success." \
+                   "No marker will be minted and review-evidence stays red." \
+                   "A stale --allowed-tools list is the usual cause — see the comment on that input."
             fi
             exit 1
           fi
 
           # The marker asserts only what this job can vouch for: a run of THIS
-          # workflow file, at THIS head, whose reviewer posted. The publisher
-          # re-derives every one of those facts from the run id rather than
-          # trusting the text.
+          # workflow file, at THIS head, whose reviewer executed and concluded
+          # success. The publisher re-derives every one of those facts from the run
+          # id rather than trusting the text.
           body=$(printf '%s\n\n%s\n\n%s\n' \
             "<!-- claude-review: $HEAD_SHA run:$RUN_ID -->" \
-            "Claude review completed for \`${HEAD_SHA:0:8}\` — [run $RUN_ID](https://github.com/$REPO/actions/runs/$RUN_ID)." \
-            "This marker records that the review ran and posted; it is not itself the review. \`review-evidence\` validates it by looking up the cited run.")
+            "Claude review ran to completion for \`${HEAD_SHA:0:8}\` — [run $RUN_ID](https://github.com/$REPO/actions/runs/$RUN_ID)." \
+            "This marker records that the reviewer ran; it is not itself the review, and it does not assert that anything was found. \`review-evidence\` validates it by looking up the cited run.")
 
           gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$body" --silent
           echo "marker posted for ${HEAD_SHA:0:8} citing run $RUN_ID"
