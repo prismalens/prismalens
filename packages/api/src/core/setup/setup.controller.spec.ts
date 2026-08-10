@@ -11,6 +11,7 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { AuthService } from "../auth/auth.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { LlmSettingsService } from "../settings/llm-settings.service.js";
 import { UsersService } from "../users/users.service.js";
 import { SetupController } from "./setup.controller.js";
 
@@ -35,6 +36,11 @@ const mockAuthService = {
 	createSessionCookies: vi.fn(),
 };
 
+const mockLlmSettingsService = {
+	getLlmCredentialStatus: vi.fn(),
+	getLlmSettings: vi.fn(),
+};
+
 describe("SetupController", () => {
 	let controller: SetupController;
 	let res: { append: ReturnType<typeof vi.fn> };
@@ -52,6 +58,7 @@ describe("SetupController", () => {
 				{ provide: UsersService, useValue: mockUsersService },
 				{ provide: AuthService, useValue: mockAuthService },
 				{ provide: PrismaService, useValue: {} },
+				{ provide: LlmSettingsService, useValue: mockLlmSettingsService },
 			],
 		})
 			.overrideGuard(ThrottlerGuard)

@@ -2,13 +2,24 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * J1, first-run setup (#268) — the regression guard for #358.
+ * J1, first-run setup (#268) — the regression guard for #358, plus the
+ * wizard's later steps (#332: AI provider, code location, first incident).
  *
  * The rest of the suite signs in through the LOGIN FORM, which is exactly why
  * #358 survived a green e2e run: the form path always set a cookie, so nothing
  * ever exercised the path where the wizard itself has to establish the session.
- * This spec covers only that: complete the wizard, then reload, and still be
- * the owner. A test that signs in through the form would pass against the bug.
+ * The core of this spec covers that: complete account creation, then reload,
+ * and still be the owner. A test that signs in through the form would pass
+ * against the bug.
+ *
+ * #332's later steps only exist on an instance that has just been created,
+ * and this is the only harness in the repo that starts genuinely empty — so
+ * their walkthrough lives here too, between account creation and the
+ * dashboard, rather than in `single-origin.spec.ts` (#237/#358), which stays
+ * state-agnostic on purpose. Every step past account is on-ramp, not a gate:
+ * this walkthrough skips through AI provider and, after code location, uses
+ * the wizard's own "Skip setup" link rather than completing first_incident
+ * for real — reaching the same dashboard either way.
  *
  * It runs ONLY under `PL_UP_E2E=1`, because it needs a genuinely empty database
  * — the default dev-stack harness seeds an owner up front, so `/setup` there
@@ -18,6 +29,8 @@
  * any order relative to `single-origin.spec.ts`.
  */
 
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
 const OWNER = {
@@ -105,11 +118,64 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	await page.locator("#confirmPassword").fill(OWNER.password);
 	await page.getByRole("button", { name: /create account/i }).click();
 
-	// The wizard shows its "Setup Complete!" card and then hard-navigates to the
-	// dashboard. Landing on /auth/login here already means the session is gone.
-	await expect(page.getByText(/setup complete/i)).toBeVisible({
-		timeout: 30_000,
+	// #358 already establishes the session at account-creation time (the
+	// controller applies Set-Cookie headers from a real sign-in before
+	// responding), so the wizard advances straight into the next step rather
+	// than bouncing to a "sign in to continue setup" interstitial. Landing back
+	// on /auth/login here would mean that regressed.
+	await expect(
+		page.getByRole("heading", { name: "Connect an AI provider" }),
+	).toBeVisible({ timeout: 30_000 });
+	await expect(page).not.toHaveURL(/\/auth\/login/);
+	await page.waitForLoadState("networkidle");
+	await page.screenshot({
+		path: `${SHOTS}/setup-ai-provider-default.png`,
+		fullPage: true,
 	});
+	// No provider key in CI, so skip: the step is an on-ramp, never a gate.
+	await page.getByRole("button", { name: "Skip for now" }).click();
+
+	// The code-location step (#332): an error state from the real surface
+	// before a value that resolves, exactly like the AI-provider step's own
+	// "no server round trip needed" error case above.
+	await expect(
+		page.getByRole("heading", { name: "Point PrismaLens at your code" }),
+	).toBeVisible({ timeout: 30_000 });
+	await page.locator("#setup-service-name").fill("e2e-service");
+	await page.locator("#setup-checkout-path").fill("/definitely/not/a/checkout");
+	await page.getByRole("button", { name: "Check" }).click();
+	await expect(page.getByRole("alert")).toContainText(/does not exist/i, {
+		timeout: 15_000,
+	});
+	await page.screenshot({
+		path: `${SHOTS}/setup-code-location-error.png`,
+		fullPage: true,
+	});
+
+	// A fresh artifact has no service catalog, so the step has to be able to
+	// create one from a real checkout — the repo these tests run from is one.
+	const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+	await page.locator("#setup-checkout-path").fill(repoRoot);
+	await page.getByRole("button", { name: "Check" }).click();
+	await expect(page.getByText(/Valid git checkout/i)).toBeVisible({
+		timeout: 15_000,
+	});
+	await page.screenshot({
+		path: `${SHOTS}/setup-code-location-default.png`,
+		fullPage: true,
+	});
+	await page.getByRole("button", { name: "Save & continue" }).click();
+
+	// The last step is on-ramp, not a gate: skipping it must reach the
+	// dashboard exactly like finishing it would.
+	await expect(
+		page.getByRole("heading", { name: "Run your first investigation" }),
+	).toBeVisible({ timeout: 30_000 });
+	await page.screenshot({
+		path: `${SHOTS}/setup-first-incident-default.png`,
+		fullPage: true,
+	});
+	await page.getByRole("button", { name: "Skip setup" }).click();
 	await page.waitForURL(/:\d+\/$/, { timeout: 30_000 });
 	await expect(dashboard(page)).toBeVisible({ timeout: 30_000 });
 
