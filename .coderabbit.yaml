@@ -93,19 +93,30 @@ reviews:
 # surface from the `reviews` block above. It defaults to allow_non_org_members:
 # true, so on a public repo any GitHub user who can comment could otherwise
 # issue commands — see https://docs.coderabbit.ai/guides/commands and
-# https://docs.coderabbit.ai/reference/review-commands. Two commands matter here:
+# https://docs.coderabbit.ai/reference/review-commands.
 #
-#   - `@coderabbitai resolve` resolves review threads. Ruleset 18441175 sets
-#     required_review_thread_resolution: true, so resolving threads removes a
-#     merge blocker — reachable today by an outside commenter on someone else's
-#     PR.
-#   - `@coderabbitai approve` submits an approving review, but per the commands
-#     doc only does so when reviews.request_changes_workflow is enabled, which
-#     #411 turned on above.
+# The command that matters here is `@coderabbitai resolve`: it resolves review
+# threads, and required_review_thread_resolution: true (ruleset 18441175) is now
+# the ONLY mechanism that blocks a merge on findings — #415 deleted the
+# review-evidence gate and everything that fed it. So an outside commenter
+# clearing threads on someone else's PR removes the last remaining blocker.
+# That is the whole reason for this change.
+#
+# `@coderabbitai approve` is not a live concern any more: it only submits an
+# approving review when reviews.request_changes_workflow is enabled, and #415
+# removed that setting (deliberately absent above, default false). With it off,
+# the command does nothing.
 #
 # Restricting to org members is a mitigation, not a fix: a PR author who is an
-# org member can still issue both commands on their own PR. That gap is why an
-# `APPROVE` summoned via chat must never be treated as merge authorization on
-# its own — see review-evidence.sh and ruleset 18441175.
+# org member can still issue `resolve` on their own PR. Ruleset 18441175 stands
+# regardless.
+#
+# Real cost, stated honestly: this also takes @coderabbitai review away from
+# outside contributors as a self-service re-request after
+# auto_pause_after_reviewed_commits stops incremental review on their PR.
+# Acceptable because admission is already a manual maintainer action (auto_review
+# is off; review-ready is applied by hand) — a maintainer can issue the
+# re-request too — and because no merge depends on a CodeRabbit review any more,
+# so the worst case is friction, not a deadlock.
 chat:
   allow_non_org_members: false
