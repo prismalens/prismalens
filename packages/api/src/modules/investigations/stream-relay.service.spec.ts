@@ -33,8 +33,8 @@ const BUFFER_SIZE = 50;
 const BUFFER_TTL_MS = 60_000;
 /** Age at which an unfinished buffer is swept. Mirrors MAX_IDLE_BUFFER_MS. */
 const MAX_ACTIVE_BUFFER_AGE_MS = 600_000;
-/** Deferral on a `done` with no live stream behind it. Mirrors TERMINAL_DONE_DELAY_MS. */
-const TERMINAL_DONE_DELAY_MS = 50;
+/** Deferral on a terminal outcome with no live stream behind it. Mirrors TERMINAL_DELAY_MS. */
+const TERMINAL_DELAY_MS = 50;
 /** Sweep tick. Mirrors SWEEP_INTERVAL_MS. */
 const SWEEP_INTERVAL_MS = 60_000;
 
@@ -76,16 +76,24 @@ describe("StreamRelayService", () => {
 		bus.publish<RelayMessage>(runEventsTopic(id), { kind: "done" });
 	}
 
-	/** Subscribe and collect what the subscriber actually receives. */
+	/**
+	 * Subscribe and collect what the subscriber actually receives.
+	 *
+	 * `onDone` and `onUnknown` are separate spies on purpose: they are the relay's two
+	 * terminal outcomes, and a test that only ever asserts "something terminal happened"
+	 * cannot see the defect where UNKNOWN is served the clean `done` of FINISHED (#388).
+	 */
 	function collect(id = ID) {
 		const events: string[] = [];
 		const onDone = vi.fn();
+		const onUnknown = vi.fn();
 		const subscription = relay.subscribe(
 			id,
 			(e) => events.push(marker(e)),
 			onDone,
+			onUnknown,
 		);
-		return { events, onDone, ...subscription };
+		return { events, onDone, onUnknown, ...subscription };
 	}
 
 	beforeEach(() => {
@@ -195,16 +203,29 @@ describe("StreamRelayService", () => {
 		});
 	});
 
+	/**
+	 * UNKNOWN and FINISHED must not be the same thing to a client.
+	 *
+	 * `done` asserts "this topic ended and you saw all of it". FINISHED can assert that;
+	 * UNKNOWN cannot, because an absent buffer is equally what a still-running run looks
+	 * like from a process that restarted or has not reclaimed the job yet. When the state
+	 * model first landed it routed both through the same `done`, and the sole client had
+	 * no way to tell them apart: a mid-restart subscriber marked a live investigation
+	 * completed and never reconnected (#388, on top of #369/#370/#371).
+	 */
 	describe("a topic with no live stream behind it", () => {
-		it("closes a subscriber for an id the relay has never heard of", () => {
+		it("ends an id the relay has never heard of WITHOUT a clean done", () => {
 			const sub = collect("never-relayed");
 
 			expect(sub.events).toEqual([]);
-			vi.advanceTimersByTime(TERMINAL_DONE_DELAY_MS);
-			expect(sub.onDone).toHaveBeenCalledOnce();
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS);
+			expect(sub.onUnknown).toHaveBeenCalledOnce();
+			// The falsifier. Routing UNKNOWN through `onDone` is the #388 defect: on the
+			// wire that is byte-identical to a genuinely finished run.
+			expect(sub.onDone).not.toHaveBeenCalled();
 		});
 
-		it("closes a subscriber that arrives after the finished buffer was TTL-swept", () => {
+		it("ends a subscriber that arrives after the finished buffer was TTL-swept WITHOUT a clean done", () => {
 			relay.attach(ID);
 			publish("a1", 0);
 			publishDone();
@@ -216,17 +237,36 @@ describe("StreamRelayService", () => {
 			const sub = collect();
 
 			expect(sub.events).toEqual([]);
-			vi.advanceTimersByTime(TERMINAL_DONE_DELAY_MS);
-			expect(sub.onDone).toHaveBeenCalledOnce();
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS);
+			// The run really did finish, but this process can no longer prove it, and a
+			// TTL sweep is indistinguishable from a restart. It gets the UNKNOWN answer.
+			expect(sub.onUnknown).toHaveBeenCalledOnce();
+			expect(sub.onDone).not.toHaveBeenCalled();
 		});
 
-		it("cancels the deferred done when the client disconnects first", () => {
+		it("still serves a clean done from the retained buffer BEFORE the TTL sweeps it", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			publishDone();
+
+			// FINISHED, not UNKNOWN — the buffer is the evidence, and the contrast with
+			// the test above is the entire distinction the two outcomes encode.
+			const sub = collect();
+
+			expect(sub.events).toEqual(["a1"]);
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS);
+			expect(sub.onDone).toHaveBeenCalledOnce();
+			expect(sub.onUnknown).not.toHaveBeenCalled();
+		});
+
+		it("cancels the deferred outcome when the client disconnects first", () => {
 			const sub = collect("never-relayed");
 
 			sub.unsubscribe();
-			vi.advanceTimersByTime(TERMINAL_DONE_DELAY_MS * 10);
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS * 10);
 
 			expect(sub.onDone).not.toHaveBeenCalled();
+			expect(sub.onUnknown).not.toHaveBeenCalled();
 		});
 	});
 

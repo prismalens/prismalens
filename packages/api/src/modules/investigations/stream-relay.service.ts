@@ -31,12 +31,13 @@ const MAX_IDLE_BUFFER_MS = 600_000;
 const SWEEP_INTERVAL_MS = 60_000;
 
 /**
- * How long a terminal `done` is deferred for a subscriber that had nothing live to
- * attach to (ms). `subscribe` replays synchronously, so at the moment it decides to
- * close, its return value is not yet in the caller's hands and the caller's writer may
- * not be wired up. One tick out is enough.
+ * How long a terminal outcome is deferred for a subscriber that had nothing live to
+ * attach to (ms) — the clean `done` of FINISHED and the unclean close of UNKNOWN alike.
+ * `subscribe` replays synchronously, so at the moment it decides to close, its return
+ * value is not yet in the caller's hands and the caller's writer may not be wired up.
+ * One tick out is enough.
  */
-const TERMINAL_DONE_DELAY_MS = 50;
+const TERMINAL_DELAY_MS = 50;
 
 interface StreamBuffer {
 	events: CanonicalEvent[];
@@ -65,11 +66,22 @@ interface StreamBuffer {
  * state has a defined terminal outcome — no state leaves a subscriber holding a live
  * subscription that nothing can ever fire:
  *
- * | State        | Relay evidence               | A subscriber receives                       |
- * | ------------ | ---------------------------- | ------------------------------------------- |
- * | **UNKNOWN**  | no buffer for the id         | no frames, then `done`                      |
- * | **ACTIVE**   | buffer present, `done` false | buffer replay, every live event, then `done`|
- * | **FINISHED** | buffer present, `done` true  | buffer replay, then `done`                  |
+ * | State        | Relay evidence               | A subscriber receives                        |
+ * | ------------ | ---------------------------- | -------------------------------------------- |
+ * | **UNKNOWN**  | no buffer for the id         | no frames, then an UNCLEAN close (no `done`) |
+ * | **ACTIVE**   | buffer present, `done` false | buffer replay, every live event, then `done` |
+ * | **FINISHED** | buffer present, `done` true  | buffer replay, then `done`                   |
+ *
+ * The three states have two terminal outcomes between them, and which one a subscriber
+ * gets is the whole point of the model. `done` is a CLAIM: this topic reached its end and
+ * you have seen it. UNKNOWN cannot make that claim — the buffer's absence says only that
+ * *this process* has nothing, which a restart or a not-yet-reclaimed run produces just as
+ * readily as a genuinely finished one. So UNKNOWN ends the response WITHOUT `done`, and
+ * an unclean close is the honest wire signal for "no idea": the browser's `EventSource`
+ * raises `onerror`, and the client falls back to the durable record. Routing UNKNOWN
+ * through `done` — as this did when the state model first landed (#388) — made a
+ * mid-restart client mark a still-running investigation completed, permanently, because
+ * on the wire it was byte-identical to FINISHED.
  *
  * One id's whole lifecycle, as the relay sees it:
  *
@@ -82,10 +94,11 @@ interface StreamBuffer {
  *                                                              detach, TTL armed
  *  t+20s  subscribe("inv-1")              FINISHED           replay [e1,e2], then `done`
  *  t+69s  TTL fires                       FINISHED -> UNKNOWN  buffer deleted
- *  t+70s  subscribe("inv-1")              UNKNOWN            no frames, then `done`
+ *  t+70s  subscribe("inv-1")              UNKNOWN            no frames, then close, no
+ *                                                              `done` — client polls
  * ```
  *
- * The `done` at t+70s is the fix for #370: that subscribe used to return a live
+ * The close at t+70s is the fix for #370: that subscribe used to return a live
  * subscription on a topic nothing was publishing to, and the client hung on a frameless
  * 200 until it gave up.
  *
@@ -109,7 +122,7 @@ export class StreamRelayService implements OnModuleDestroy {
 	private readonly emitter = new EventEmitter();
 	private readonly buffers = new Map<string, StreamBuffer>();
 	private readonly cleanupTimers = new Map<string, NodeJS.Timeout>();
-	/** Deferred `done` timers for subscribers that had nothing live to attach to. */
+	/** Deferred terminal-outcome timers for subscribers with nothing live to attach to. */
 	private readonly terminalTimers = new Set<NodeJS.Timeout>();
 	private readonly sweepInterval: NodeJS.Timeout;
 	/** Live EventBus subscriptions, one per attached run. */
@@ -253,8 +266,10 @@ export class StreamRelayService implements OnModuleDestroy {
 	 * Subscribe to a stream, dispatching on the topic's state (see the class doc).
 	 *
 	 * - **UNKNOWN** — nothing is relaying this id and nothing will publish on its topic,
-	 *   so the subscriber is closed rather than parked on an emitter that cannot fire.
-	 * - **FINISHED** — the retained buffer IS the whole stream: replay it, then close.
+	 *   so the subscriber is ended via `onUnknown` rather than parked on an emitter that
+	 *   cannot fire. `onDone` is deliberately NOT called: see the class doc on why the two
+	 *   terminal outcomes must stay distinguishable on the wire.
+	 * - **FINISHED** — the retained buffer IS the whole stream: replay it, then `onDone`.
 	 * - **ACTIVE** — replay the buffer, then stream live until the run's `done`.
 	 *
 	 * There is deliberately no duplicate suppression between replay and live delivery.
@@ -266,17 +281,24 @@ export class StreamRelayService implements OnModuleDestroy {
 	 * of every late joiner (#369). If identity-keyed suppression is ever needed, it
 	 * belongs on the event's `(branchId, seq)`, not on a count.
 	 *
+	 * @param onDone Terminal outcome for ACTIVE and FINISHED: the topic reached its end
+	 *   and this subscriber saw it. The caller may claim a clean stop.
+	 * @param onUnknown Terminal outcome for UNKNOWN: end the subscriber WITHOUT claiming
+	 *   the stream finished. Separate from `onDone`, and required, so that no caller can
+	 *   collapse the two onto one wire frame by omission — which is exactly the defect
+	 *   this parameter exists to prevent (#388).
 	 * @returns Cleanup function to call on unsubscribe
 	 */
 	subscribe(
 		investigationId: string,
 		handler: (event: CanonicalEvent) => void,
 		onDone: () => void,
+		onUnknown: () => void,
 	): { unsubscribe: () => void } {
 		const buffer = this.buffers.get(investigationId);
 
 		// UNKNOWN — never relayed here, or relayed and since TTL-swept.
-		if (!buffer) return this.closeWithoutStream(onDone);
+		if (!buffer) return this.closeWithoutStream(onUnknown);
 
 		// FINISHED — replay what is left of the buffer, then close. No listener is
 		// registered at all: the emitter's `done` for this topic already fired.
@@ -302,16 +324,20 @@ export class StreamRelayService implements OnModuleDestroy {
 	}
 
 	/**
-	 * End a subscription that has no live stream behind it, deferring the `done` by
-	 * {@link TERMINAL_DONE_DELAY_MS} so the caller can finish wiring its writer first.
-	 * The returned `unsubscribe` cancels it — a client that disconnects inside that
-	 * window must not have `onDone` run against a closed response.
+	 * End a subscription that has no live stream behind it, deferring its terminal
+	 * outcome by {@link TERMINAL_DELAY_MS} so the caller can finish wiring its writer
+	 * first. The returned `unsubscribe` cancels it — a client that disconnects inside
+	 * that window must not have the outcome run against a closed response.
+	 *
+	 * WHICH outcome is the caller's to pick: FINISHED passes its `onDone`, UNKNOWN its
+	 * `onUnknown`. This helper is deliberately agnostic — it schedules and cancels, and
+	 * knows nothing about what the topic is claiming.
 	 */
-	private closeWithoutStream(onDone: () => void): { unsubscribe: () => void } {
+	private closeWithoutStream(end: () => void): { unsubscribe: () => void } {
 		const timer = setTimeout(() => {
 			this.terminalTimers.delete(timer);
-			onDone();
-		}, TERMINAL_DONE_DELAY_MS);
+			end();
+		}, TERMINAL_DELAY_MS);
 		this.terminalTimers.add(timer);
 		return {
 			unsubscribe: () => {

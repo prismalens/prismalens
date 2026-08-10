@@ -20,7 +20,9 @@ import { StreamRelayService } from "./stream-relay.service.js";
  * SSE endpoint for real-time investigation stream events.
  *
  * Forwards the canonical investigation event stream (CanonicalEvent) as JSON via SSE,
- * then a final `{ type: "done" }` marker.
+ * then a final `{ type: "done" }` marker — but ONLY when the relay can actually vouch
+ * that the topic ended. For an UNKNOWN topic the response is ended with no marker at
+ * all; see the relay's topic state model and the `onUnknown` wiring below.
  *
  * Written against the raw response rather than Nest's `@Sse()` on purpose: `@Sse()` wraps
  * an Observable and gives the handler no access to `res.write`'s return value, so there
@@ -74,6 +76,19 @@ export class InvestigationStreamController {
 				// Final marker so the client knows the stream ended cleanly.
 				writer.send(JSON.stringify({ type: "done" }));
 				setTimeout(() => writer.close(), 100);
+			},
+			() => {
+				// UNKNOWN topic: this process has no buffer for the id, which is what a
+				// finished-and-swept run and a still-running one mid-restart both look
+				// like from here. Ending WITHOUT `done` is the honest answer — `done`
+				// would assert a clean finish we cannot see, and the client would mark a
+				// live investigation completed with no way back (#388). An unclean close
+				// raises `EventSource.onerror` in the browser, which is what re-engages
+				// the detail page's status polling.
+				this.logger.debug(
+					`No relay buffer for investigation ${id} — closing the stream without a done marker so the client falls back to polling`,
+				);
+				writer.close();
 			},
 		);
 		unsubscribe = subscription.unsubscribe;
