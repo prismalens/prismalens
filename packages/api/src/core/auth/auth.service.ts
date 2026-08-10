@@ -160,6 +160,33 @@ export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 	}
 
 	/**
+	 * Establish a browser session for a set of credentials and return the
+	 * `Set-Cookie` headers that do it.
+	 *
+	 * This is deliberately the SAME endpoint the login form posts to
+	 * (`/sign-in/email`), called in-process. Nothing here mints a cookie by
+	 * hand, so the cookie prefix, `HttpOnly`/`SameSite`/`Secure`, the signed
+	 * session-data cache and the expiry are whatever sign-in decided — which is
+	 * the point: a caller that needs a session without a form (today, only the
+	 * setup wizard) cannot drift away from the form's behaviour.
+	 *
+	 * Callers put the headers on the wire with `applySetCookieHeaders`.
+	 */
+	async createSessionCookies(credentials: {
+		email: string;
+		password: string;
+	}): Promise<Headers> {
+		const { headers } = await this.auth.api.signInEmail({
+			body: {
+				email: credentials.email,
+				password: credentials.password,
+			},
+			returnHeaders: true,
+		});
+		return headers;
+	}
+
+	/**
 	 * Create email sender function if SMTP is configured
 	 */
 	private createEmailSender() {
