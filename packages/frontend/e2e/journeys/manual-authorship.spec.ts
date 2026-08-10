@@ -93,7 +93,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.getByTestId("create-incident-button").click();
 		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
 		await page.waitForLoadState("networkidle");
-		await shot("create-incident-dialog-light");
+		await shot("create-incident-dialog-default");
 
 		// The same dialog, dark.
 		await page.evaluate(() => {
@@ -140,7 +140,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		});
 		await expect(page.getByTestId("incidents-empty-create")).toBeVisible();
 		await page.waitForLoadState("networkidle");
-		await shot("incidents-empty-state");
+		await shot("incidents-empty");
 	});
 
 	/**
