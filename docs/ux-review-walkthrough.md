@@ -27,9 +27,18 @@ this way: an entry was either in the document or conspicuously absent from it.
 
 This was accepted knowingly when the pattern changed, on the grounds that evidence belonging
 with the code change is worth more than a walkable index. The mitigation is the audit below,
-run by hand before each sign-off. The fix is **#304** — a `design-evidence` SHA-keyed required
-status modelled on #301's `review-evidence` gate, which turns the label from a convention into
-a merge blocker. Until #304 lands, do not skip the audit.
+run by hand before each sign-off. Mechanical enforcement is **#304**, not yet built. Do not
+skip the audit until it lands.
+
+**#304 must not be built as a SHA-keyed evidence status modelled on #301's `review-evidence`
+gate — that pattern was retired in #415.** It derived trust from a third-party reviewer's
+incidental artifacts (comments, review objects), which are undocumented and summonable by
+anyone who can comment; every predicate written over them relocated the hole rather than
+closing it. If a direction is worth naming here, it is a deterministic check over content this
+repo authors itself: if the diff touches `packages/frontend`, require a `## UX review` section
+in the PR body and the `ux-review` label — both GitHub-native data with no vendor grammar to
+drift and nothing to summon. That is a direction, not a decision; #304's design is the
+operator's to make.
 
 ## 1. List everything awaiting a walk
 

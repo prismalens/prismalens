@@ -51,7 +51,12 @@ Every PR touching `packages/frontend` — regardless of which agent or session p
    each of those the surface can actually reach, and pass a design review against the
    frontend-design standards. Capturing locally is no longer enough — they go *on the PR*. No
    screenshots visible there and no recorded verdict, no merge. (Mechanical enforcement is
-   planned as a `design-evidence` status — #304 — deferred until #301's pattern is promoted.)
+   planned as **#304**, not yet built. It must not be a SHA-keyed evidence status modelled on
+   #301's `review-evidence` gate — that pattern was retired in #415 because it derived trust
+   from a third-party reviewer's incidental artifacts, which are undocumented and summonable,
+   so every predicate over them relocated the hole rather than closing it. A deterministic
+   check over this repo's own content — the `## UX review` section and `ux-review` label
+   below — is the legitimate direction, not a decision #304 has made yet.)
 2. **A `## UX review` section in the PR body, and the `ux-review` label on the PR.** Fill in
    the template below. The heading text and the label are both load-bearing: they are how the
    operator finds this change again at milestone sign-off.
