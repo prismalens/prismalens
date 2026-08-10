@@ -42,26 +42,84 @@ Every implementation spec handed to a coding agent must name a **Docs surfaces**
 
 Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
 
-## Frontend changes carry a design gate, a UX-ledger entry, and an e2e spec
+## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 
 Every PR touching `packages/frontend` — regardless of which agent or session produces it:
 
-1. **Design validation before merge.** Capture screenshots of the changed surface from the
-   running dev stack (default + dark + empty/error states) and pass a design review against
-   the frontend-design standards. A frontend PR with no captured screenshots and no recorded
-   verdict does not merge. (Mechanical enforcement is planned as a `design-evidence` status —
-   #304 — deferred until #301's gate pattern is promoted here.)
-2. **UX review ledger entry.** Append a section to the operator's UX review ledger
-   (`~/ai-context/prismalens-ux-ledger.html`): what changed and why (issue/ADR), where to
-   click, what to verify per state, and any judgment calls made. The operator walks the
-   ledger as a milestone sign-off requirement. **UX-shape changes** (new page, navigation
-   change, new interaction model) are flagged to the operator immediately, not batched.
-3. **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303).
-   Until the harness lands, the PR body must name the intended spec so coverage debt stays
-   visible. Coverage is audited at each milestone alongside the ledger walkthrough.
+1. **Design validation before merge, with the screenshots on the PR.** Capture the changed
+   surface from the running dev stack in `default` and `dark`, plus `empty` and `error` for
+   each of those the surface can actually reach, and pass a design review against the
+   frontend-design standards. Capturing locally is no longer enough — they go *on the PR*. No
+   screenshots visible there and no recorded verdict, no merge. (Mechanical enforcement is
+   planned as **#304**, not yet built. It must not be a SHA-keyed evidence status modelled on
+   #301's `review-evidence` gate — that pattern was retired in #415 because it derived trust
+   from a third-party reviewer's incidental artifacts, which are undocumented and summonable,
+   so every predicate over them relocated the hole rather than closing it. A deterministic
+   check over this repo's own content — the `## UX review` section and `ux-review` label
+   below — is the legitimate direction, not a decision #304 has made yet.)
+2. **A `## UX review` section in the PR body, and the `ux-review` label on the PR.** Fill in
+   the template below. The heading text and the label are both load-bearing: they are how the
+   operator finds this change again at milestone sign-off.
+3. **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303). Until
+   the harness lands, name the intended spec in the PR body so coverage debt stays visible.
 
-An implementation spec for frontend work that omits these deliverables is incomplete — do
-not start implementation until they are added.
+**UX-shape changes** — a new page, a navigation change, a new interaction model — are flagged
+to the operator **immediately and out of band**, never batched into the milestone walk.
+
+An implementation spec for frontend work that omits these deliverables is incomplete — do not
+start implementation until they are added. Requirement 2 replaced an append-to-a-local-file
+ledger on 2026-08-09; that file is frozen, and the operator's side of this — walking a
+milestone, auditing for PRs that forgot the label — is now
+[`docs/ux-review-walkthrough.md`](docs/ux-review-walkthrough.md).
+
+### Screenshots
+
+Commit them beside the spec that exercises the surface, as
+`packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png` — `<suite>` is the Playwright
+directory (`journeys/`, `pl-up/`, …), `<state>` is `default`, `dark`, `empty`, or `error`.
+Generate them from the spec (`await page.screenshot(...)`) wherever it already reaches that
+state. **This repo is public and a committed PNG is permanent**: seeded or synthetic state
+only, and look at every file before `git add` — no keys, tokens, real alert or incident
+payloads, personal names, or emails.
+
+Embed each in the PR body with a raw URL pinned to the **head SHA** (`git rev-parse HEAD` after
+the final push), never the branch name — branch-pinned images 404 once the branch is deleted
+on merge:
+
+```
+![Incidents — dark](https://raw.githubusercontent.com/prismalens/prismalens/<head-sha>/packages/frontend/e2e/journeys/screenshots/incidents-dark.png)
+```
+
+### The `## UX review` template
+
+````markdown
+## UX review
+
+**UX shape:** none | new page | navigation change | new interaction model
+
+**What changed & why.** One paragraph. Closes #NNN, plus the ADR link if one governs it.
+
+**Where to click.** Numbered steps starting from a dev-app URL, including how to reach the
+required data state if a normal dev DB will not have it (seed command, `pl up` against an
+empty workspace dir, fixture).
+
+**What to verify, per state.** A `- [ ]` line each for default, dark, empty, error.
+
+**Judgment calls.** Anything the operator may want to veto, and why it was chosen. "None" is
+a valid answer; omitting the field is not.
+
+**Screenshots.** Design gate: PASS | FAIL — one commit-pinned image per state above. Drop a
+state only if the surface genuinely cannot reach it, and say which and why under Judgment
+calls.
+````
+
+Open the PR with the label already attached:
+
+```bash
+gh pr create --title '…' --body-file <body.md> --label ux-review
+```
+
+If it already exists: `gh pr edit <number> --add-label ux-review`.
 
 ## Implementation specs must declare a capability tier
 
