@@ -10,13 +10,11 @@
  * @module shared/enums
  */
 import {
-	AgentTypeSchema,
 	AlertStatusSchema,
 	CorrelationActionSchema,
 	DependencyCriticalitySchema,
 	DependencyTypeSchema,
 	EffortEstimateSchema,
-	ExecutionStatusSchema,
 	IncidentStatusSchema,
 	PrioritySchema,
 	RecommendationCategorySchema,
@@ -28,8 +26,6 @@ import {
 	SeveritySchema,
 	TimelineEntryTypeSchema,
 	TimelineSourceSchema,
-	ToolCategorySchema,
-	ToolExecutionStatusSchema,
 	UrgencySchema,
 	WorkflowStatusSchema,
 } from "@prismalens/contracts/schemas";
@@ -53,10 +49,6 @@ export const Priority = PrioritySchema.enum;
 // Investigation & Workflow
 export const WorkflowStatus = WorkflowStatusSchema.enum;
 export const RootCauseCategory = RootCauseCategorySchema.enum;
-export const AgentType = AgentTypeSchema.enum;
-export const ExecutionStatus = ExecutionStatusSchema.enum;
-export const ToolExecutionStatus = ToolExecutionStatusSchema.enum;
-export const ToolCategory = ToolCategorySchema.enum;
 
 // Recommendations
 export const RecommendationPriority = RecommendationPrioritySchema.enum;
@@ -91,12 +83,6 @@ export type WorkflowStatus =
 	(typeof WorkflowStatus)[keyof typeof WorkflowStatus];
 export type RootCauseCategory =
 	(typeof RootCauseCategory)[keyof typeof RootCauseCategory];
-export type AgentType = (typeof AgentType)[keyof typeof AgentType];
-export type ExecutionStatus =
-	(typeof ExecutionStatus)[keyof typeof ExecutionStatus];
-export type ToolExecutionStatus =
-	(typeof ToolExecutionStatus)[keyof typeof ToolExecutionStatus];
-export type ToolCategory = (typeof ToolCategory)[keyof typeof ToolCategory];
 export type RecommendationPriority =
 	(typeof RecommendationPriority)[keyof typeof RecommendationPriority];
 export type RecommendationCategory =

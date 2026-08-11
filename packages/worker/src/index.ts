@@ -136,7 +136,6 @@ async function main(): Promise<void> {
 				incidentId: start.data.incidentId,
 				findings: {},
 				recommendations: [],
-				agentExecutions: [],
 				error: message,
 			},
 		});

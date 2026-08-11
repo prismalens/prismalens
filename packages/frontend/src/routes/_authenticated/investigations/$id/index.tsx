@@ -13,7 +13,7 @@ import {
 	Search,
 	XCircle,
 } from "lucide-react";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useMemo } from "react";
 import { AgentExecutionsTab } from "@/components/investigation/AgentExecutionsTab";
 import { AnalysisTab } from "@/components/investigation/AnalysisTab";
 import { InvestigationDetailSkeleton } from "@/components/investigation/InvestigationDetailSkeleton";
@@ -30,6 +30,7 @@ import {
 	useCancelInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { transformLiveEventsToCanvas } from "@/lib/canvas";
 
 // Dynamically import React Flow to avoid SSR issues
 const InvestigationCanvas = lazy(
@@ -74,6 +75,15 @@ function InvestigationDetailPage() {
 	const eventsHistory = useInvestigationEventsHistory(investigationId, {
 		enabled: !!investigation && !isActive,
 	});
+	const events = isActive ? stream.events : (eventsHistory.data ?? []);
+
+	const agentCount = useMemo(() => {
+		if (!investigation) return 0;
+		return transformLiveEventsToCanvas(
+			events,
+			investigation.status,
+		).nodes.filter((node) => node.type === "agent").length;
+	}, [events, investigation]);
 
 	// When stream completes, refetch investigation data
 	useEffect(() => {
@@ -222,7 +232,7 @@ function InvestigationDetailPage() {
 					</TabsTrigger>
 					<TabsTrigger value="agents">
 						<Brain className="h-4 w-4 mr-1" />
-						Agents ({investigation.agentExecutions?.length ?? 0})
+						Agents ({agentCount})
 					</TabsTrigger>
 					<TabsTrigger value="analysis">
 						<Lightbulb className="h-4 w-4 mr-1" />
@@ -249,11 +259,14 @@ function InvestigationDetailPage() {
 								}
 							>
 								<InvestigationCanvas
-									agentExecutions={investigation.agentExecutions ?? []}
 									status={investigation.status}
 									investigationId={investigationId}
 									streamEvents={isActive ? stream.events : eventsHistory.data}
-									streamConnecting={isActive && stream.status === "connecting"}
+									streamConnecting={
+										isActive
+											? stream.status === "connecting"
+											: eventsHistory.isLoading
+									}
 								/>
 							</Suspense>
 						</CardContent>
@@ -261,9 +274,7 @@ function InvestigationDetailPage() {
 				</TabsContent>
 
 				<TabsContent value="agents">
-					<AgentExecutionsTab
-						agentExecutions={investigation.agentExecutions ?? []}
-					/>
+					<AgentExecutionsTab events={events} status={investigation.status} />
 				</TabsContent>
 
 				<TabsContent value="analysis">

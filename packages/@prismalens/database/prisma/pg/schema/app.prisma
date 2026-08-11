@@ -148,38 +148,6 @@ enum RootCauseCategory {
   unknown // Could not determine
 }
 
-/// Agent types
-enum AgentType {
-  llm // LLM-based agent
-  sequential // Sequential workflow agent
-  loop // Loop agent
-}
-
-/// Execution status for agents
-enum ExecutionStatus {
-  pending // Not started
-  running // Currently executing
-  completed // Finished successfully
-  failed // Failed with error
-}
-
-/// Tool execution status
-enum ToolExecutionStatus {
-  pending // Not started
-  running // Currently executing
-  success // Completed successfully
-  error // Failed with error
-}
-
-/// Tool categories
-enum ToolCategory {
-  file // File system operations
-  search // Code search
-  github // GitHub API
-  logs // Log retrieval
-  analysis // Analysis tools
-}
-
 /// Recommendation priority
 enum RecommendationPriority {
   critical // Do this immediately
@@ -601,7 +569,6 @@ model Investigation {
 
   // Relations
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  agentExecutions AgentExecution[] // Execution records for each agent
   recommendations Recommendation[] // Recommendations produced
   events          InvestigationEvent[] // Durable canonical event record (ADR-0018)
 
@@ -628,61 +595,6 @@ model InvestigationEvent {
   @@unique([investigationId, branchId, seq])
   @@index([investigationId, seq])
   @@map("investigation_events")
-}
-
-/// Agent execution within an investigation.
-/// Tracks each agent's contribution to the analysis (Alert, Gatherer, Analyzer, Recommender).
-model AgentExecution {
-  id              String          @id @default(uuid())
-  investigationId String
-  agentName       String // Agent identifier (extensible - not an enum)
-  agentType       AgentType       @default(llm)
-  status          ExecutionStatus @default(pending)
-  startedAt       DateTime?
-  completedAt     DateTime?
-  executionTimeMs Int? // Execution time in milliseconds
-  output          String? // JSON output from agent
-  branchId        String? // Harness branch identifier
-  inputTokens     Int? // LLM input tokens (for cost tracking)
-  outputTokens    Int? // LLM output tokens (for cost tracking)
-  error           String? // Error message if failed
-  createdAt       DateTime        @default(now())
-
-  // Relations
-  investigation  Investigation   @relation(fields: [investigationId], references: [id], onDelete: Cascade)
-  toolExecutions ToolExecution[] // Tools called by this agent
-
-  @@index([investigationId])
-  @@index([agentName])
-  @@map("agent_executions")
-}
-
-/// Tool execution within an agent execution.
-/// Tracks each tool call with arguments, results, and timing.
-model ToolExecution {
-  id               String              @id @default(uuid())
-  agentExecutionId String
-  toolName         String // Tool identifier
-  // Common toolName values: "search_and_preview" - Search codebase
-  //                         "read_file"          - Read file contents
-  //                         "call_github_api"    - GitHub API call
-  //                         "call_log_retriever_agent" - Log retrieval
-  //                         "analyze_root_cause" - Root cause analysis
-  toolCategory     ToolCategory? // Category for grouping
-  arguments        String? // JSON of tool arguments
-  result           String? // JSON of tool result (may be truncated)
-  status           ToolExecutionStatus @default(pending)
-  executionTimeMs  Int? // Execution time in milliseconds
-  dataQuality      String? // Assessment of data quality
-  error            String? // Error message if failed
-  executedAt       DateTime            @default(now())
-
-  // Relations
-  agentExecution AgentExecution @relation(fields: [agentExecutionId], references: [id], onDelete: Cascade)
-
-  @@index([agentExecutionId])
-  @@index([toolName])
-  @@map("tool_executions")
 }
 
 // =============================================================================

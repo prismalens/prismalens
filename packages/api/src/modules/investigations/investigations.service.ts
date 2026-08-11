@@ -8,11 +8,9 @@ import {
 	INVESTIGATION_REPORT_BRANCH,
 } from "@prismalens/contracts";
 import {
-	type AgentExecution,
 	type Investigation,
 	Prisma,
 	type Recommendation,
-	type ToolExecution,
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
@@ -20,14 +18,9 @@ import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import {
-	CreateAgentExecutionDto,
-	CreateInvestigationDto,
-	CreateToolExecutionDto,
-	UpdateAgentExecutionDto,
-} from "./dto/index.js";
+import { CreateInvestigationDto } from "./dto/index.js";
 
-export type { AgentExecution, Investigation, ToolExecution };
+export type { Investigation };
 
 export type InvestigationWithRelations = Investigation & {
 	incident: {
@@ -37,11 +30,6 @@ export type InvestigationWithRelations = Investigation & {
 		severity: string;
 		status: string;
 	};
-	agentExecutions: Array<
-		AgentExecution & {
-			toolExecutions: ToolExecution[];
-		}
-	>;
 	recommendations: Recommendation[];
 };
 
@@ -100,14 +88,6 @@ export class InvestigationsService {
 						status: true,
 					},
 				},
-				agentExecutions: {
-					include: {
-						toolExecutions: {
-							orderBy: { executedAt: "asc" },
-						},
-					},
-					orderBy: { createdAt: "asc" },
-				},
 				recommendations: {
 					orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
 				},
@@ -148,11 +128,6 @@ export class InvestigationsService {
 							title: true,
 							severity: true,
 							status: true,
-						},
-					},
-					agentExecutions: {
-						include: {
-							toolExecutions: true,
 						},
 					},
 					recommendations: true,
@@ -329,49 +304,7 @@ export class InvestigationsService {
 					},
 				});
 
-				// 2. Create agent executions with nested tool executions
-				if (dto.agentExecutions && dto.agentExecutions.length > 0) {
-					for (const agent of dto.agentExecutions) {
-						const agentExecution = await tx.agentExecution.create({
-							data: {
-								investigationId: id,
-								agentName: agent.agentName,
-								agentType: agent.agentType ?? "llm",
-								status: agent.status ?? "completed",
-								startedAt: agent.startedAt ? new Date(agent.startedAt) : null,
-								completedAt: agent.completedAt
-									? new Date(agent.completedAt)
-									: null,
-								executionTimeMs: agent.executionTimeMs,
-								output: agent.output ? JSON.stringify(agent.output) : null,
-								inputTokens: agent.inputTokens,
-								outputTokens: agent.outputTokens,
-								error: agent.error,
-							},
-						});
-
-						// Create tool executions for this agent
-						if (agent.toolExecutions && agent.toolExecutions.length > 0) {
-							await tx.toolExecution.createMany({
-								data: agent.toolExecutions.map((tool) => ({
-									agentExecutionId: agentExecution.id,
-									toolName: tool.toolName,
-									toolCategory: tool.toolCategory,
-									arguments: tool.arguments
-										? JSON.stringify(tool.arguments)
-										: null,
-									result: tool.result ? JSON.stringify(tool.result) : null,
-									status: tool.status ?? "success",
-									executionTimeMs: tool.executionTimeMs,
-									dataQuality: tool.dataQuality,
-									error: tool.error,
-								})),
-							});
-						}
-					}
-				}
-
-				// 3. Create recommendations
+				// 2. Create recommendations
 				if (dto.recommendations && dto.recommendations.length > 0) {
 					await tx.recommendation.createMany({
 						data: dto.recommendations.map((rec) => ({
@@ -388,7 +321,7 @@ export class InvestigationsService {
 					});
 				}
 
-				// 4. Update incident status (only if not already resolved/closed)
+				// 3. Update incident status (only if not already resolved/closed)
 				if (dto.status === "completed") {
 					await tx.incident.updateMany({
 						where: {
@@ -402,7 +335,7 @@ export class InvestigationsService {
 					});
 				}
 
-				// 5. Create timeline entry for completion
+				// 4. Create timeline entry for completion
 				const timelineTitle =
 					dto.status === "failed"
 						? "Investigation failed"
@@ -435,7 +368,7 @@ export class InvestigationsService {
 			});
 
 			this.logger.log(
-				`Wrote full result for investigation ${id} with ${dto.agentExecutions?.length ?? 0} agents and ${dto.recommendations?.length ?? 0} recommendations`,
+				`Wrote full result for investigation ${id} with ${dto.recommendations?.length ?? 0} recommendations`,
 			);
 
 			// Reduce overlay (ADR-0016 §5c) — enrich the report app-side AFTER it
@@ -597,99 +530,6 @@ export class InvestigationsService {
 		}
 
 		return { events, nextCursor };
-	}
-
-	/**
-	 * Create an agent execution record
-	 */
-	async createAgentExecution(
-		dto: CreateAgentExecutionDto,
-	): Promise<AgentExecution> {
-		return this.prisma.agentExecution.create({
-			data: {
-				investigationId: dto.investigationId,
-				agentName: dto.agentName,
-				agentType: dto.agentType ?? "llm",
-				status: "pending",
-			},
-		});
-	}
-
-	/**
-	 * Update an agent execution
-	 */
-	async updateAgentExecution(
-		id: string,
-		dto: UpdateAgentExecutionDto,
-	): Promise<AgentExecution | null> {
-		try {
-			const updateData: Record<string, unknown> = { ...dto };
-
-			if (dto.output) {
-				updateData.output =
-					typeof dto.output === "string"
-						? dto.output
-						: JSON.stringify(dto.output);
-			}
-
-			return await this.prisma.agentExecution.update({
-				where: { id },
-				data: updateData,
-			});
-		} catch {
-			return null;
-		}
-	}
-
-	/**
-	 * Create a tool execution record
-	 */
-	async createToolExecution(
-		dto: CreateToolExecutionDto,
-	): Promise<ToolExecution> {
-		return this.prisma.toolExecution.create({
-			data: {
-				agentExecutionId: dto.agentExecutionId,
-				toolName: dto.toolName,
-				toolCategory: dto.toolCategory,
-				arguments: dto.arguments ? JSON.stringify(dto.arguments) : null,
-				result: dto.result ? JSON.stringify(dto.result) : null,
-				status: dto.status ?? "pending",
-				executionTimeMs: dto.executionTimeMs,
-				error: dto.error,
-			},
-		});
-	}
-
-	/**
-	 * Get agent executions for an investigation
-	 */
-	async getAgentExecutions(
-		investigationId: string,
-	): Promise<Array<AgentExecution & { toolExecutions: ToolExecution[] }>> {
-		return this.prisma.agentExecution.findMany({
-			where: { investigationId },
-			include: {
-				toolExecutions: {
-					orderBy: { executedAt: "asc" },
-				},
-			},
-			orderBy: { createdAt: "asc" },
-		});
-	}
-
-	/**
-	 * Get tool executions for an investigation (flat list)
-	 */
-	async getToolExecutions(investigationId: string): Promise<ToolExecution[]> {
-		return this.prisma.toolExecution.findMany({
-			where: {
-				agentExecution: {
-					investigationId,
-				},
-			},
-			orderBy: { executedAt: "asc" },
-		});
 	}
 
 	/**

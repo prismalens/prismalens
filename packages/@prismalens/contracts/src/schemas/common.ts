@@ -5,7 +5,6 @@
  * Common schemas shared across all entities
  * Includes enums, pagination, and utility schemas
  */
-import { AGENT_IDS } from "@prismalens/config/agents";
 import { z } from "zod";
 
 // =============================================================================
@@ -116,22 +115,11 @@ export const RootCauseCategorySchema = z.enum([
 	"unknown",
 ]);
 
-export const AgentNameSchema = z.enum(AGENT_IDS);
-
-export const AgentTypeSchema = z.enum(["llm", "sequential", "loop"]);
-
 export const ExecutionStatusSchema = z.enum([
 	"pending",
 	"running",
 	"completed",
 	"failed",
-]);
-
-export const ToolExecutionStatusSchema = z.enum([
-	"pending",
-	"running",
-	"success",
-	"error",
 ]);
 
 export const ToolCategorySchema = z.enum([
@@ -344,10 +332,7 @@ export type IncidentStatus = z.infer<typeof IncidentStatusSchema>;
 export type Priority = z.infer<typeof PrioritySchema>;
 export type WorkflowStatus = z.infer<typeof WorkflowStatusSchema>;
 export type RootCauseCategory = z.infer<typeof RootCauseCategorySchema>;
-export type AgentName = z.infer<typeof AgentNameSchema>;
-export type AgentType = z.infer<typeof AgentTypeSchema>;
 export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
-export type ToolExecutionStatus = z.infer<typeof ToolExecutionStatusSchema>;
 export type ToolCategory = z.infer<typeof ToolCategorySchema>;
 export type HypothesisStatus = z.infer<typeof HypothesisStatusSchema>;
 export type EvidenceStatus = z.infer<typeof EvidenceStatusSchema>;
