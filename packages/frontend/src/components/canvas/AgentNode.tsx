@@ -11,10 +11,7 @@
 import type { ExecutionStatus } from "@prismalens/contracts";
 import { Handle, type NodeProps, Position } from "reactflow";
 import { Badge } from "@/components/ui/badge";
-import {
-	formatExecutionTime,
-	getAgentStyle,
-} from "@/lib/canvas/transform-executions";
+import { formatExecutionTime, getAgentStyle } from "@/lib/canvas";
 import { cn } from "@/lib/utils";
 import { StatusIndicator } from "./StatusIndicator";
 

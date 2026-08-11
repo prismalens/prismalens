@@ -76,14 +76,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.serviceIntegration;
 	}
 
-	get agentExecution() {
-		return prisma.agentExecution;
-	}
-
-	get toolExecution() {
-		return prisma.toolExecution;
-	}
-
 	get event() {
 		return prisma.event;
 	}

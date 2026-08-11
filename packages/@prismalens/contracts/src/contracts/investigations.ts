@@ -5,9 +5,7 @@
  * Investigation route contracts
  */
 import { oc } from "@orpc/contract";
-import { z } from "zod";
 import {
-	AgentExecutionWithToolsSchema,
 	CreateInvestigationSchema,
 	GetInvestigationEventsSchema,
 	IdParamSchema,
@@ -93,20 +91,6 @@ export const investigationsContract = {
 		})
 		.input(GetInvestigationEventsSchema)
 		.output(InvestigationEventsPageSchema),
-
-	/**
-	 * Get agent executions for an investigation
-	 * GET /investigations/:id/agents
-	 */
-	getAgentExecutions: oc
-		.route({
-			method: "GET",
-			path: "/investigations/{id}/agents",
-			summary: "Get agent executions for investigation",
-			tags: ["investigations"],
-		})
-		.input(IdParamSchema)
-		.output(z.array(AgentExecutionWithToolsSchema)),
 
 	/**
 	 * Cancel an investigation

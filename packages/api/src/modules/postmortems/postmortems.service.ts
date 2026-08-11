@@ -83,7 +83,6 @@ export class PostmortemsService {
 					orderBy: { createdAt: "desc" },
 					take: 1,
 					include: {
-						agentExecutions: true,
 						recommendations: true,
 					},
 				},
@@ -218,18 +217,6 @@ export class PostmortemsService {
 
 		if (investigation.rootCause) {
 			lessons.push(`Root Cause Identified: ${investigation.rootCause}`);
-		}
-
-		// Extract key findings from agent executions
-		if (investigation.agentExecutions?.length > 0) {
-			const completedAgents = investigation.agentExecutions.filter(
-				(e: any) => e.status === "completed",
-			);
-			if (completedAgents.length > 0) {
-				lessons.push(
-					`AI Analysis: ${completedAgents.length} agents completed analysis`,
-				);
-			}
 		}
 
 		return lessons.length > 0 ? lessons.join("\n\n") : undefined;

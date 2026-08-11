@@ -45,10 +45,6 @@ export {
 } from "./IncidentStatsBar";
 export { IncidentTable, type IncidentTableProps } from "./IncidentTable";
 export {
-	InvestigationCard,
-	type InvestigationCardProps,
-} from "./InvestigationCard";
-export {
 	InvestigationProgress,
 	type InvestigationProgressProps,
 } from "./InvestigationProgress";

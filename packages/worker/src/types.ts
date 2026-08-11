@@ -2,14 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import type {
-	AgentType,
 	EffortEstimate,
-	ExecutionStatus,
 	InvestigationJobData,
 	RecommendationCategory,
 	RecommendationPriority,
-	ToolCategory,
-	ToolExecutionStatus,
 	Urgency,
 } from "@prismalens/contracts/schemas";
 
@@ -31,22 +27,6 @@ export interface InvestigationResult {
 		urgency?: Urgency;
 		actionable?: boolean;
 		estimatedEffort?: EffortEstimate;
-	}>;
-	agentExecutions: Array<{
-		agentName: string;
-		agentType?: AgentType;
-		status: ExecutionStatus;
-		startedAt?: string;
-		completedAt?: string;
-		executionTimeMs?: number;
-		toolExecutions: Array<{
-			toolName: string;
-			toolCategory?: ToolCategory;
-			arguments?: unknown;
-			result?: unknown;
-			status?: ToolExecutionStatus;
-			executionTimeMs?: number;
-		}>;
 	}>;
 	error?: string;
 	errorType?: string;

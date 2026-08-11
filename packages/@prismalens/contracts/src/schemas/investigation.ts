@@ -6,17 +6,13 @@
  */
 import { z } from "zod";
 import {
-	AgentNameSchema,
-	AgentTypeSchema,
 	DateStringSchema,
 	EvidenceDirectionSchema,
 	EvidenceStatusSchema,
-	ExecutionStatusSchema,
 	HypothesisStatusSchema,
 	RecommendationPrioritySchema,
 	RootCauseCategorySchema,
 	ToolCategorySchema,
-	ToolExecutionStatusSchema,
 	WorkflowStatusSchema,
 } from "./common.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
@@ -188,48 +184,6 @@ export const InvestigationReportSchema = z.object({
 });
 
 // =============================================================================
-// TOOL EXECUTION SCHEMAS
-// =============================================================================
-
-export const ToolExecutionSchema = z.object({
-	id: z.string().uuid(),
-	agentExecutionId: z.string().uuid(),
-	toolName: z.string(),
-	toolCategory: ToolCategorySchema.nullable(),
-	arguments: z.record(z.string(), z.unknown()).nullable(),
-	result: z.record(z.string(), z.unknown()).nullable(),
-	status: ToolExecutionStatusSchema,
-	executionTimeMs: z.number().int().nullable(),
-	dataQuality: z.string().nullable(),
-	error: z.string().nullable(),
-	executedAt: DateStringSchema,
-});
-
-// =============================================================================
-// AGENT EXECUTION SCHEMAS
-// =============================================================================
-
-export const AgentExecutionSchema = z.object({
-	id: z.string().uuid(),
-	investigationId: z.string().uuid(),
-	agentName: AgentNameSchema,
-	agentType: AgentTypeSchema,
-	status: ExecutionStatusSchema,
-	startedAt: DateStringSchema.nullable(),
-	completedAt: DateStringSchema.nullable(),
-	executionTimeMs: z.number().int().nullable(),
-	output: z.record(z.string(), z.unknown()).nullable(),
-	inputTokens: z.number().int().nullable(),
-	outputTokens: z.number().int().nullable(),
-	error: z.string().nullable(),
-	createdAt: DateStringSchema,
-});
-
-export const AgentExecutionWithToolsSchema = AgentExecutionSchema.extend({
-	toolExecutions: z.array(ToolExecutionSchema).optional(),
-});
-
-// =============================================================================
 // INVESTIGATION SCHEMAS
 // =============================================================================
 
@@ -276,7 +230,6 @@ const RecommendationRefSchema = z.object({
 });
 
 export const InvestigationWithRelationsSchema = InvestigationSchema.extend({
-	agentExecutions: z.array(AgentExecutionWithToolsSchema).optional(),
 	recommendations: z.array(RecommendationRefSchema).optional(),
 });
 
@@ -312,11 +265,6 @@ export const InvestigationQuerySchema = z.object({
 // TYPE EXPORTS
 // =============================================================================
 
-export type ToolExecution = z.infer<typeof ToolExecutionSchema>;
-export type AgentExecution = z.infer<typeof AgentExecutionSchema>;
-export type AgentExecutionWithTools = z.infer<
-	typeof AgentExecutionWithToolsSchema
->;
 export type Investigation = z.infer<typeof InvestigationSchema>;
 export type CreateInvestigationInput = z.infer<
 	typeof CreateInvestigationSchema
@@ -338,31 +286,6 @@ export const UpdateInvestigationStatusSchema = z.object({
 	harnessThreadId: z.string().uuid().optional(),
 });
 
-export const CreateToolExecutionInputSchema = z.object({
-	toolName: z.string(),
-	toolCategory: z.string().optional(), // Using string directly to be permissive for inputs
-	arguments: z.record(z.string(), z.unknown()).nullable().optional(),
-	result: z.record(z.string(), z.unknown()).nullable().optional(),
-	status: ToolExecutionStatusSchema.optional(),
-	executionTimeMs: z.number().int().optional(),
-	dataQuality: z.string().optional(),
-	error: z.string().optional(),
-});
-
-export const CreateAgentExecutionInputSchema = z.object({
-	agentName: z.string(),
-	agentType: z.string().optional(),
-	status: ExecutionStatusSchema.optional(),
-	startedAt: z.string().datetime().optional(),
-	completedAt: z.string().datetime().optional(),
-	executionTimeMs: z.number().int().optional(),
-	output: z.record(z.string(), z.unknown()).optional(),
-	inputTokens: z.number().int().optional(),
-	outputTokens: z.number().int().optional(),
-	error: z.string().optional(),
-	toolExecutions: z.array(CreateToolExecutionInputSchema).optional(),
-});
-
 export const CreateRecommendationInputSchema = z.object({
 	title: z.string(),
 	description: z.string().optional(),
@@ -382,7 +305,6 @@ export const WriteInvestigationResultSchema = z.object({
 	/** The full ordered-evidence report (ADR-0002), persisted as Investigation.report. */
 	report: InvestigationReportSchema.optional(),
 	error: z.string().optional(),
-	agentExecutions: z.array(CreateAgentExecutionInputSchema).optional(),
 	recommendations: z.array(CreateRecommendationInputSchema).optional(),
 	origin: z.string().optional(),
 	schemaVersion: z.number().int().optional(),

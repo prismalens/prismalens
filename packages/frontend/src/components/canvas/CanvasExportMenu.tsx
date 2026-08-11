@@ -9,7 +9,6 @@
  * Dropdown menu for exporting the investigation canvas to PNG or JSON.
  */
 
-import type { AgentExecutionWithTools } from "@prismalens/contracts";
 import { chartColors } from "@prismalens/design-tokens/colors";
 import { toPng } from "html-to-image";
 import { Download, FileJson, Image } from "lucide-react";
@@ -27,14 +26,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export interface CanvasExportMenuProps {
-	agentExecutions?: AgentExecutionWithTools[];
 	investigationId?: string;
 }
 
-export function CanvasExportMenu({
-	agentExecutions = [],
-	investigationId,
-}: CanvasExportMenuProps) {
+export function CanvasExportMenu({ investigationId }: CanvasExportMenuProps) {
 	const { getNodes } = useReactFlow();
 	const [exportError, setExportError] = useState<string | null>(null);
 
@@ -84,29 +79,20 @@ export function CanvasExportMenu({
 	const downloadJson = useCallback(() => {
 		setExportError(null);
 
+		const agents = getNodes()
+			.filter((node) => node.type === "agent")
+			.map((node) => ({
+				id: node.id,
+				agentName: node.data.agentName,
+				status: node.data.status,
+				toolCount: node.data.toolCount,
+				error: node.data.error,
+			}));
+
 		const exportData = {
 			exportedAt: new Date().toISOString(),
 			investigationId,
-			agentExecutions: agentExecutions.map((exec) => ({
-				id: exec.id,
-				agentName: exec.agentName,
-				agentType: exec.agentType,
-				status: exec.status,
-				startedAt: exec.startedAt,
-				completedAt: exec.completedAt,
-				executionTimeMs: exec.executionTimeMs,
-				inputTokens: exec.inputTokens,
-				outputTokens: exec.outputTokens,
-				error: exec.error,
-				toolExecutions: exec.toolExecutions?.map((tool) => ({
-					id: tool.id,
-					toolName: tool.toolName,
-					toolCategory: tool.toolCategory,
-					status: tool.status,
-					executionTimeMs: tool.executionTimeMs,
-					error: tool.error,
-				})),
-			})),
+			agents,
 		};
 
 		const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -120,7 +106,7 @@ export function CanvasExportMenu({
 		link.click();
 
 		URL.revokeObjectURL(url);
-	}, [agentExecutions, investigationId]);
+	}, [getNodes, investigationId]);
 
 	return (
 		<div>

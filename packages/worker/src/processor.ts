@@ -453,7 +453,6 @@ function cancelledResult(data: InvestigationJobData): InvestigationResult {
 		incidentId: data.incidentId,
 		findings: {},
 		recommendations: [],
-		agentExecutions: [],
 		error: "Investigation cancelled",
 		errorType: "cancelled",
 	};
@@ -897,7 +896,6 @@ function successResult(
 			summary: report.summary,
 		},
 		recommendations: [],
-		agentExecutions: [],
 	};
 }
 
@@ -911,7 +909,6 @@ function failureResult(
 		incidentId: data.incidentId,
 		findings: {},
 		recommendations: [],
-		agentExecutions: [],
 		error,
 	};
 }
