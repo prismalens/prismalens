@@ -35,12 +35,12 @@
 		"changeset:publish": "node scripts/pack-cli.mjs --publish && changeset tag"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.6",
+		"@biomejs/biome": "2.5.7",
 		"@changesets/cli": "^2.31.1",
 		"@types/node": "catalog:",
-		"publint": "^0.3.22",
+		"publint": "^0.3.23",
 		"tsx": "catalog:",
-		"turbo": "^2.10.7",
+		"turbo": "^2.10.8",
 		"typescript": "catalog:"
 	},
 	"packageManager": "pnpm@10.27.0",
@@ -49,12 +49,20 @@
 		"pnpm": ">=9.0.0"
 	},
 	"pnpm": {
+		"//overrides": {
+			"e2b": "GHSA-4cwx-7wf7-3272 + 4 more (undici < 8.9.0). e2b declares its cloud-sandbox HTTP client as an EXACT aliased optional peer (`undici8: npm:undici@8.8.0`), so no semver range admits the patch — only a newer e2b does. e2b 2.38.2 moves that alias to undici@8.10.0. This is a real parent bump, expressed as an override floor because `pnpm update` does not re-resolve an optional peerDependency whose specifier is `*` (see @prismalens/engine peerDependencies). REMOVE once pnpm re-resolves the `*` peer on its own, or once engine pins e2b >= 2.38.2 directly.",
+			"js-yaml@5": "GHSA-pm4m-ph32-ghv5 (js-yaml 5.0.0-5.2.1, exponential parse time in flow collections). @nestjs/swagger 11.4.6 — the latest release — pins `js-yaml: 5.2.1` EXACTLY, so no parent bump reaches the patch. Scoped to the 5.x line on purpose: js-yaml 3.x (read-yaml-file) and 4.x (cosmiconfig, xmlbuilder2, @changesets/parse) are patched by plain resolution and must NOT be dragged to 5.x. REMOVE once @nestjs/swagger > 11.4.6 pins js-yaml >= 5.2.2.",
+			"esbuild": "GHSA-g7r4-m6w7-qqqr (esbuild 0.27.3-0.28.0, dev-server arbitrary file read on Windows). tsup 8.5.1 — the latest release — declares `esbuild: ^0.27.0`, which excludes every patched version; vite 8.2.1 already admits ^0.28.0 and 0.28.1 is independently in the tree via tsx/webpack/unplugin, so this override merely unifies the tree on the patched major-minor. REMOVE once tsup > 8.5.1 declares esbuild ^0.28.0."
+		},
 		"overrides": {
 			"vite": "^8.1.3",
 			"ws": ">=8.21.0",
 			"multer": ">=2.2.0",
 			"solid-js": ">=1.9.4",
-			"@hono/node-server": ">=1.19.13"
+			"@hono/node-server": ">=1.19.13",
+			"e2b": "^2.38.2",
+			"js-yaml@5": "^5.2.2",
+			"esbuild": "^0.28.1"
 		}
 	}
 }

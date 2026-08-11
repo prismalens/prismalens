@@ -18,14 +18,16 @@ reviews:
     # So it is spent in exactly two cases, and `labels` below is what implements
     # the first:
     #
-    #   1. The PR touches a path listed in .github/high-risk-paths.txt — the gate
-    #      itself, credential and crypto handling, the engine core, and contract
-    #      or schema surfaces. `review-admit.yml` applies
-    #      `review-ready` automatically on a path match, and
-    #      .github/scripts/review-evidence.sh keeps those PRs RED until
-    #      `coderabbitai[bot]` evidence exists — a Claude review alone does not
-    #      satisfy them. The publisher is the half that holds; the label is
-    #      convenience.
+    #   1. Someone decides a PR is worth an independent second opinion — a
+    #      sensitive surface (the CI/workflow surface itself, credential and crypto
+    #      handling, the engine core, contract or schema changes), or a Claude
+    #      review whose findings deserve a check from a reviewer sharing no model,
+    #      prompt or failure mode. Apply the `review-ready` label BY HAND.
+    #      This used to be automatic: `review-admit.yml` applied the label on a
+    #      path match against `.github/high-risk-paths.txt`, and the
+    #      `review-evidence` gate kept such PRs red until `coderabbitai[bot]`
+    #      evidence existed. Both were retired in #415 with the rest of that gate.
+    #      The label is now the whole mechanism, and it is a judgement call.
     #   2. The Claude lane is down — `@coderabbitai review`, by hand.
     #
     # SCOPE, precisely: `labels` gates AUTOMATIC review only. Manual triggers run
@@ -33,12 +35,11 @@ reviews:
     # it is the escape hatch for case 2 and for re-requesting after
     # `auto_pause_after_reviewed_commits` stops incremental reviews.
     #
-    # This is NOT a reduction in review. `review-evidence` is a required check
-    # (ruleset 18441175): a PR cannot merge without evidence for its current
-    # head, or evidence from an earlier commit that `CARRY_FORWARD` has shown to
-    # be patch-identical to it.
-    # Removing automatic review without that gate would have made "unreviewed"
-    # the silent default — which is why the gate shipped first, in #322.
+    # WHAT ENFORCES A MERGE, since it is no longer a required check: `CI gate`,
+    # the conventional-title check, and GitHub's native
+    # `required_review_thread_resolution` — an unresolved thread from any reviewer
+    # blocks the merge button. Findings block; silence does not. So an unlabelled
+    # PR is reviewed by the Claude lane only, and that is the accepted default.
     #
     # No dry run exists for this setting: CodeRabbit applies base-branch config
     # only for open-source repos, so it takes effect the moment it lands on main.
@@ -53,6 +54,13 @@ reviews:
     ignore_title_keywords:
       - "WIP"
       - "Version Packages" # changesets release PR — generated churn, reviewed for zero value
+  # `request_changes_workflow` is deliberately ABSENT (default: false). It was set
+  # true in #411 so a clean diff would still yield a formal review object for
+  # `review-evidence.sh` to consume; that consumer was deleted in #415. Left on, it
+  # is a redundant second blocker: a REQUEST_CHANGES verdict blocks merge on top of
+  # the unresolved threads that already do, and clearing it needs a dismissal or a
+  # re-review rather than resolving the finding it names.
+  #
   # Not a rate-limit lever (the limit counts reviews, not files) — this keeps PRs under
   # the OSS files-per-review cap of 50-150 and off generated noise.
   path_filters:
@@ -81,3 +89,34 @@ reviews:
     - path: "packages/frontend/src/**"
       instructions: >-
         Repo invariant: ordered-evidence epistemics — no numeric confidence scores anywhere in UI copy.
+# `chat` governs comment-chat commands (@coderabbitai ...), which is a separate
+# surface from the `reviews` block above. It defaults to allow_non_org_members:
+# true, so on a public repo any GitHub user who can comment could otherwise
+# issue commands — see https://docs.coderabbit.ai/guides/commands and
+# https://docs.coderabbit.ai/reference/review-commands.
+#
+# The command that matters here is `@coderabbitai resolve`: it resolves review
+# threads, and required_review_thread_resolution: true (ruleset 18441175) is now
+# the ONLY mechanism that blocks a merge on findings — #415 deleted the
+# review-evidence gate and everything that fed it. So an outside commenter
+# clearing threads on someone else's PR removes the last remaining blocker.
+# That is the whole reason for this change.
+#
+# `@coderabbitai approve` is not a live concern any more: it only submits an
+# approving review when reviews.request_changes_workflow is enabled, and #415
+# removed that setting (deliberately absent above, default false). With it off,
+# the command does nothing.
+#
+# Restricting to org members is a mitigation, not a fix: a PR author who is an
+# org member can still issue `resolve` on their own PR. Ruleset 18441175 stands
+# regardless.
+#
+# Real cost, stated honestly: this also takes @coderabbitai review away from
+# outside contributors as a self-service re-request after
+# auto_pause_after_reviewed_commits stops incremental review on their PR.
+# Acceptable because admission is already a manual maintainer action (auto_review
+# is off; review-ready is applied by hand) — a maintainer can issue the
+# re-request too — and because no merge depends on a CodeRabbit review any more,
+# so the worst case is friction, not a deadlock.
+chat:
+  allow_non_org_members: false

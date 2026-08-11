@@ -824,7 +824,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 				// group lives purely in the db, keyed by the grouping layer's runId.
 				await vi.waitFor(async () => {
 					const { DatabaseSync } = await import("node:sqlite");
-					const db = new DatabaseSync(join(workspace, "prismalens.db"));
+					const db = new DatabaseSync(join(workspace, "prismalens-cli.db"));
 					try {
 						const group = db
 							.prepare("SELECT id, formed_by FROM groups")
@@ -952,7 +952,7 @@ describe("startListenFromConfig (the pl listen command body)", () => {
 
 		// Force raw update bypassing normal rules to rewrite updatedAt
 		const { DatabaseSync } = await import("node:sqlite");
-		const db = new DatabaseSync(join(workspace, "prismalens.db"));
+		const db = new DatabaseSync(join(workspace, "prismalens-cli.db"));
 		db.prepare("UPDATE runs SET updated_at = ? WHERE run_id = ?").run(
 			new Date(staleTime).toISOString(),
 			"stale-run",

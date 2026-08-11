@@ -7,8 +7,9 @@
 # branch-protected, squash-merge repo.
 #
 # This is wired as a REQUIRED status check on `main` by repository ruleset
-# 18441175, alongside `CI gate` and `review-evidence`, so a non-conventional title
-# blocks merge. The ruleset is edited directly through the GitHub API; there is no
+# 18441175, alongside `CI gate` — the two remaining required contexts since #415
+# retired `review-evidence` — so a non-conventional title blocks merge.
+# The ruleset is edited directly through the GitHub API; there is no
 # in-tree file that defines it. `synchronize` is included because a required check
 # must run on each new push to stay green.
 name: Lint PR title

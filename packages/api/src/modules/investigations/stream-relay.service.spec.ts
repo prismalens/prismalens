@@ -31,8 +31,10 @@ const RUN_ID = "11111111-1111-4111-8111-111111111111";
 const BUFFER_SIZE = 50;
 /** Buffer TTL after a stream completes. Mirrors BUFFER_TTL_MS. */
 const BUFFER_TTL_MS = 60_000;
-/** Age at which an unfinished buffer is swept. Mirrors MAX_ACTIVE_BUFFER_AGE_MS. */
+/** Age at which an unfinished buffer is swept. Mirrors MAX_IDLE_BUFFER_MS. */
 const MAX_ACTIVE_BUFFER_AGE_MS = 600_000;
+/** Deferral on a terminal outcome with no live stream behind it. Mirrors TERMINAL_DELAY_MS. */
+const TERMINAL_DELAY_MS = 50;
 /** Sweep tick. Mirrors SWEEP_INTERVAL_MS. */
 const SWEEP_INTERVAL_MS = 60_000;
 
@@ -74,16 +76,24 @@ describe("StreamRelayService", () => {
 		bus.publish<RelayMessage>(runEventsTopic(id), { kind: "done" });
 	}
 
-	/** Subscribe and collect what the subscriber actually receives. */
+	/**
+	 * Subscribe and collect what the subscriber actually receives.
+	 *
+	 * `onDone` and `onUnknown` are separate spies on purpose: they are the relay's two
+	 * terminal outcomes, and a test that only ever asserts "something terminal happened"
+	 * cannot see the defect where UNKNOWN is served the clean `done` of FINISHED (#388).
+	 */
 	function collect(id = ID) {
 		const events: string[] = [];
 		const onDone = vi.fn();
+		const onUnknown = vi.fn();
 		const subscription = relay.subscribe(
 			id,
 			(e) => events.push(marker(e)),
 			onDone,
+			onUnknown,
 		);
-		return { events, onDone, ...subscription };
+		return { events, onDone, onUnknown, ...subscription };
 	}
 
 	beforeEach(() => {
@@ -172,6 +182,91 @@ describe("StreamRelayService", () => {
 
 			expect(relay.isActive(ID)).toBe(true);
 			expect(collect().events).toEqual(["orphan"]);
+		});
+
+		it("delivers EVERY live event to a late joiner, not just the ones past the replay count", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			publish("a2", 1);
+
+			// Joins with two events already buffered, so replayCount was 2.
+			const sub = collect();
+			publish("a3", 2);
+			publish("a4", 3);
+
+			// The old positional guard suppressed exactly as many live events as it had
+			// replayed, on the theory that an event could arrive DURING the replay. It
+			// cannot: the replay loop is synchronous. So it never dropped a duplicate,
+			// it dropped a3 and a4 — the first genuinely new events this client saw.
+			expect(sub.events).toEqual(["a1", "a2", "a3", "a4"]);
+			expect(sub.onDone).not.toHaveBeenCalled();
+		});
+	});
+
+	/**
+	 * UNKNOWN and FINISHED must not be the same thing to a client.
+	 *
+	 * `done` asserts "this topic ended and you saw all of it". FINISHED can assert that;
+	 * UNKNOWN cannot, because an absent buffer is equally what a still-running run looks
+	 * like from a process that restarted or has not reclaimed the job yet. When the state
+	 * model first landed it routed both through the same `done`, and the sole client had
+	 * no way to tell them apart: a mid-restart subscriber marked a live investigation
+	 * completed and never reconnected (#388, on top of #369/#370/#371).
+	 */
+	describe("a topic with no live stream behind it", () => {
+		it("ends an id the relay has never heard of WITHOUT a clean done", () => {
+			const sub = collect("never-relayed");
+
+			expect(sub.events).toEqual([]);
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS);
+			expect(sub.onUnknown).toHaveBeenCalledOnce();
+			// The falsifier. Routing UNKNOWN through `onDone` is the #388 defect: on the
+			// wire that is byte-identical to a genuinely finished run.
+			expect(sub.onDone).not.toHaveBeenCalled();
+		});
+
+		it("ends a subscriber that arrives after the finished buffer was TTL-swept WITHOUT a clean done", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			publishDone();
+
+			// Past the TTL: the buffer is gone, and buffer-absent used to be read as
+			// "assume live" — a 200 SSE stream with no frames and no done, forever.
+			vi.advanceTimersByTime(BUFFER_TTL_MS);
+
+			const sub = collect();
+
+			expect(sub.events).toEqual([]);
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS);
+			// The run really did finish, but this process can no longer prove it, and a
+			// TTL sweep is indistinguishable from a restart. It gets the UNKNOWN answer.
+			expect(sub.onUnknown).toHaveBeenCalledOnce();
+			expect(sub.onDone).not.toHaveBeenCalled();
+		});
+
+		it("still serves a clean done from the retained buffer BEFORE the TTL sweeps it", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			publishDone();
+
+			// FINISHED, not UNKNOWN — the buffer is the evidence, and the contrast with
+			// the test above is the entire distinction the two outcomes encode.
+			const sub = collect();
+
+			expect(sub.events).toEqual(["a1"]);
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS);
+			expect(sub.onDone).toHaveBeenCalledOnce();
+			expect(sub.onUnknown).not.toHaveBeenCalled();
+		});
+
+		it("cancels the deferred outcome when the client disconnects first", () => {
+			const sub = collect("never-relayed");
+
+			sub.unsubscribe();
+			vi.advanceTimersByTime(TERMINAL_DELAY_MS * 10);
+
+			expect(sub.onDone).not.toHaveBeenCalled();
+			expect(sub.onUnknown).not.toHaveBeenCalled();
 		});
 	});
 
@@ -301,6 +396,41 @@ describe("StreamRelayService", () => {
 			vi.advanceTimersByTime(SWEEP_INTERVAL_MS * 2);
 
 			expect(relay.isActive(ID)).toBe(true);
+		});
+
+		it("never truncates a run that keeps emitting past the idle threshold", () => {
+			relay.attach(ID);
+			const sub = collect();
+
+			// Twenty minutes of steady output — double the threshold. The sweep used to
+			// key on the buffer's total AGE, so it completed and detached this run at
+			// minute ten while the child was still working, and nothing re-attaches.
+			const ticks = (MAX_ACTIVE_BUFFER_AGE_MS / SWEEP_INTERVAL_MS) * 2;
+			for (let i = 0; i < ticks; i++) {
+				vi.advanceTimersByTime(SWEEP_INTERVAL_MS);
+				publish(`e${i}`, i);
+			}
+
+			expect(sub.events).toHaveLength(ticks);
+			expect(sub.onDone).not.toHaveBeenCalled();
+			expect(relay.isActive(ID)).toBe(true);
+			// Still relaying, so the run's remaining events still have a subscriber.
+			expect(bus.subscriberCount(runEventsTopic(ID))).toBe(1);
+		});
+
+		it("sweeps a run that has gone silent for longer than the idle threshold", () => {
+			relay.attach(ID);
+			publish("a1", 0);
+			const sub = collect();
+
+			// Emits for a while, then wedges.
+			vi.advanceTimersByTime(MAX_ACTIVE_BUFFER_AGE_MS / 2);
+			publish("a2", 1);
+			vi.advanceTimersByTime(MAX_ACTIVE_BUFFER_AGE_MS + SWEEP_INTERVAL_MS);
+
+			expect(sub.onDone).toHaveBeenCalledOnce();
+			expect(relay.isActive(ID)).toBe(false);
+			expect(bus.subscriberCount(runEventsTopic(ID))).toBe(0);
 		});
 	});
 

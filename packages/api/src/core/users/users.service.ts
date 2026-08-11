@@ -71,6 +71,16 @@ export class UsersService {
 			data: { role: "owner" satisfies AppRole },
 		});
 
+		// `signUpEmail` auto-signs-in, but this call is server-side: its session
+		// token is never handed to a browser, and it was minted BEFORE the role
+		// write above, so Better Auth's signed session-data cache would hold
+		// `role: "member"` for its five-minute lifetime. Drop it — callers that
+		// need a usable session ask for one after this returns
+		// (`AuthService.createSessionCookies`), which reads the owner role.
+		if (result.token) {
+			await this.prisma.session.deleteMany({ where: { token: result.token } });
+		}
+
 		return user;
 	}
 }

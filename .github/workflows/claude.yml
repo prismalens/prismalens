@@ -29,12 +29,16 @@ jobs:
     # can leave a comment can start a run that spends the subscription and feeds
     # attacker-chosen text to an agent holding this repo's app identity.
     #
-    # This filter is hardening, not the control that keeps the merge gate honest.
-    # That control is the run-binding in .github/scripts/review-evidence.sh, which
-    # refuses a `claude[bot]` review unless a run of claude-code-review.yml backs
-    # it — deliberately, because the adversary this repo models is a drifted agent
-    # holding a maintainer credential, and such an agent passes any association
-    # check there is.
+    # Since #415 there is no merge gate reading anything this lane could produce —
+    # `review-evidence` is retired and merges are enforced by `CI gate`, the title
+    # check, and GitHub's native unresolved-thread rule. So this filter is no longer
+    # backed by a second control underneath it: it is the whole of what stops an
+    # arbitrary commenter from spending the subscription and steering an agent that
+    # carries this repo's app identity. Note the limit of any association check —
+    # the adversary this repo models is a drifted agent holding a maintainer
+    # credential, and such an agent passes every one of them. What contains that is
+    # the token scope on this job and the `--disallowed-tools` list below, not this
+    # condition.
     if: |
       (
         github.event.comment.author_association == 'OWNER' ||
@@ -80,15 +84,16 @@ jobs:
 
           # This lane must never be able to SUBMIT a pull request review.
           #
-          # It shares the `claude[bot]` identity with claude-code-review.yml, and
-          # a formal review at the head SHA by that login is what the merge gate
-          # reads. A mention is attacker-influenced text by construction, so a
-          # mention lane that can submit reviews is a mention lane that can be
-          # talked into vouching for a diff nobody read. It never needed the
-          # capability: answering a mention is commenting, not reviewing.
+          # It shares the `claude[bot]` identity with claude-code-review.yml. A
+          # mention is attacker-influenced text by construction, so a mention lane
+          # that can submit reviews is a mention lane that can be talked into
+          # APPROVING — or, worse under the current arrangement, into RESOLVING the
+          # threads that are now the only thing blocking a merge. It never needed
+          # the capability: answering a mention is commenting, not reviewing.
           #
-          # Defence in depth, not the control — review-evidence.sh's run-binding
-          # is what actually holds, and it holds even if this is misconfigured.
+          # This is no longer defence in depth. Since #415 removed the
+          # `review-evidence` publisher there is no run-binding underneath to catch
+          # a misconfiguration here, so this list is load-bearing on its own.
           claude_args: >-
             --disallowed-tools "Bash(gh pr review:*)"
             --disallowed-tools "Bash(gh api:*pulls/*/reviews*)"
