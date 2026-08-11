@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
 import {
 	investigationKeys,
@@ -65,6 +66,13 @@ function InvestigationDetailPage() {
 	// SSE stream for real-time progress
 	const stream = useInvestigationStream(investigationId, {
 		enabled: isActive,
+	});
+
+	// Once finished, the canvas replays the same durable canonical-event record
+	// instead of `agentExecutions` (retired — real runs never populate it, see
+	// `db-investigation-store.ts`), through the same transform the live path uses.
+	const eventsHistory = useInvestigationEventsHistory(investigationId, {
+		enabled: !!investigation && !isActive,
 	});
 
 	// When stream completes, refetch investigation data
@@ -244,7 +252,7 @@ function InvestigationDetailPage() {
 									agentExecutions={investigation.agentExecutions ?? []}
 									status={investigation.status}
 									investigationId={investigationId}
-									streamEvents={isActive ? stream.events : undefined}
+									streamEvents={isActive ? stream.events : eventsHistory.data}
 									streamConnecting={isActive && stream.status === "connecting"}
 								/>
 							</Suspense>

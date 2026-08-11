@@ -210,9 +210,9 @@ test.describe("#247 — the investigation canvas streams live", () => {
 		const nodes = canvas.locator(".react-flow__node");
 
 		// 2. First agent step — the graph appears mid-run: START + one agent.
-		await deliver(page, events.agentStep("cartographer", "Mapping services"));
+		await deliver(page, events.agentStep("scout", "Mapping services"));
 		await expect(page.getByTestId("canvas-stream-connecting")).toBeHidden();
-		await expect(canvas.getByText("Cartographer")).toBeVisible();
+		await expect(canvas.getByText("Scout")).toBeVisible();
 		await expect(canvas.getByText("START")).toBeVisible();
 		await expect(nodes).toHaveCount(2);
 
@@ -225,16 +225,16 @@ test.describe("#247 — the investigation canvas streams live", () => {
 		// 4. The next agent step appends a second node while the first stays.
 		//    This is the whole point of #247: render-on-completion could not
 		//    show this intermediate shape at all.
-		await deliver(page, events.agentStep("detective", "Correlating deploys"));
-		await expect(canvas.getByText("Detective")).toBeVisible();
-		await expect(canvas.getByText("Cartographer")).toBeVisible();
+		await deliver(page, events.agentStep("analyst", "Correlating deploys"));
+		await expect(canvas.getByText("Analyst")).toBeVisible();
+		await expect(canvas.getByText("Scout")).toBeVisible();
 		await expect(nodes).toHaveCount(3);
 
 		// 4b. The newest node stays inside the canvas viewport. `fitView` fires
 		//     once at mount, which was enough when the graph arrived complete —
 		//     a growing graph pushes the node you are watching off the bottom
 		//     unless the view re-fits as it grows.
-		await expectNodeInFrame(page, "Detective");
+		await expectNodeInFrame(page, "Analyst");
 
 		// 5. Both agent edges animate while the run is in flight. The stream
 		//    carries no per-node completion signal — only `branch_done` ends a
@@ -284,12 +284,12 @@ test.describe("#247 — the investigation canvas streams live", () => {
 			await expect(page.getByTestId("canvas-stream-connecting")).toBeVisible({
 				timeout: 20_000,
 			});
-			await deliver(page, events.agentStep("cartographer", "Mapping services"));
+			await deliver(page, events.agentStep("scout", "Mapping services"));
 			await deliver(page, events.toolResult("search_logs", "412 lines"));
-			await deliver(page, events.agentStep("detective", "Correlating deploys"));
+			await deliver(page, events.agentStep("analyst", "Correlating deploys"));
 			// Wait for the re-fit animation to settle, or the shot catches the
 			// canvas mid-pan.
-			await expectNodeInFrame(page, "Detective");
+			await expectNodeInFrame(page, "Analyst");
 			return events;
 		};
 

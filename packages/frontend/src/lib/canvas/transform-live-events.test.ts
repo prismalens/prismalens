@@ -22,8 +22,8 @@ describe("transformLiveEventsToCanvas", () => {
 				branchId: "b1",
 				path: [],
 				seq: 1,
-				label: "cartographer",
-				text: "Starting cartographer",
+				label: "scout",
+				text: "Starting scout",
 				toolCalls: [],
 				ts: "2026-08-04T00:00:00Z",
 			},
@@ -31,16 +31,16 @@ describe("transformLiveEventsToCanvas", () => {
 
 		const { nodes, edges } = transformLiveEventsToCanvas(events, "running");
 
-		expect(nodes).toHaveLength(2); // START + cartographer
+		expect(nodes).toHaveLength(2); // START + scout
 		expect(nodes[0]?.id).toBe("start");
-		expect(nodes[1]?.id).toBe("live:b1:cartographer");
+		expect(nodes[1]?.id).toBe("live:b1:scout");
 		expect(nodes[1]?.data.status).toBe("running");
-		expect(nodes[1]?.data.label).toBe("Cartographer");
+		expect(nodes[1]?.data.label).toBe("Scout");
 		expect(nodes[1]?.data.toolCount).toBe(0);
 
 		expect(edges).toHaveLength(1);
 		expect(edges[0]?.source).toBe("start");
-		expect(edges[0]?.target).toBe("live:b1:cartographer");
+		expect(edges[0]?.target).toBe("live:b1:scout");
 		expect(edges[0]?.animated).toBe(true);
 	});
 
@@ -68,7 +68,7 @@ describe("transformLiveEventsToCanvas", () => {
 				branchId: "b1",
 				path: [],
 				seq: 1,
-				label: "detective",
+				label: "analyst",
 				text: "Investigating",
 				toolCalls: [],
 				ts: "2026-08-04T00:00:01Z",
@@ -92,8 +92,8 @@ describe("transformLiveEventsToCanvas", () => {
 
 		const { nodes } = transformLiveEventsToCanvas(events, "running");
 
-		expect(nodes).toHaveLength(2); // START + detective
-		expect(nodes[1]?.id).toBe("live:b1:detective");
+		expect(nodes).toHaveLength(2); // START + analyst
+		expect(nodes[1]?.id).toBe("live:b1:analyst");
 		expect(nodes[1]?.data.toolCount).toBe(1);
 	});
 
@@ -105,7 +105,7 @@ describe("transformLiveEventsToCanvas", () => {
 				branchId: "b1",
 				path: [],
 				seq: 1,
-				label: "surgeon",
+				label: "resolver",
 				text: "Executing repair",
 				toolCalls: [],
 				ts: "2026-08-04T00:00:00Z",
@@ -135,7 +135,7 @@ describe("transformLiveEventsToCanvas", () => {
 				branchId: "b1",
 				path: [],
 				seq: 1,
-				label: "detective",
+				label: "analyst",
 				text: "Analyzing",
 				toolCalls: [],
 				ts: "2026-08-04T00:00:00Z",
@@ -199,7 +199,7 @@ describe("transformLiveEventsToCanvas", () => {
 				branchId: "b1",
 				path: [],
 				seq: 1,
-				label: "detective",
+				label: "analyst",
 				text: "Step",
 				toolCalls: [],
 				ts: "2026-08-04T00:00:00Z",
@@ -207,7 +207,7 @@ describe("transformLiveEventsToCanvas", () => {
 		];
 
 		const completed = transformLiveEventsToCanvas(events, "completed");
-		expect(completed.nodes).toHaveLength(3); // START + detective + END
+		expect(completed.nodes).toHaveLength(3); // START + analyst + END
 		expect(completed.nodes[2]?.id).toBe("end");
 		expect(completed.nodes[2]?.data.label).toBe("END");
 		expect(completed.nodes[2]?.data.status).toBe("completed");
