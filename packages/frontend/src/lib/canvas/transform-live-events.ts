@@ -94,17 +94,17 @@ function formatAgentName(name: string): string {
 
 /**
  * The hue travels as an inline CSS variable — Tailwind extracts class names as
- * static source text, so an interpolated one yields no rule. The dark swap targets
- * `.dark &`: this app toggles that class, stock `dark:` is OS-preference (#417).
+ * static source text, so an interpolated one yields no rule. Plain `dark:` is
+ * correct here: `app.css` rebinds the variant to the app's `.dark` class (#423).
  */
 function generateAgentStyle(agentName: string): AgentStyle {
 	const hash = hashString(agentName);
 	const hue = hash % 360;
 
 	return {
-		bg: "bg-(--agent-bg) [.dark_&]:bg-(--agent-bg-dark)",
-		border: "border-(--agent-border) [.dark_&]:border-(--agent-border-dark)",
-		textColor: "text-(--agent-text) [.dark_&]:text-(--agent-text-dark)",
+		bg: "bg-(--agent-bg) dark:bg-(--agent-bg-dark)",
+		border: "border-(--agent-border) dark:border-(--agent-border-dark)",
+		textColor: "text-(--agent-text) dark:text-(--agent-text-dark)",
 		iconColor: "text-(--agent-icon)",
 		cssVars: {
 			"--agent-bg": `hsl(${hue}, 70%, 95%)`,
