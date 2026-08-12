@@ -49,3 +49,25 @@ export function providerHttpError(opts: {
 		`${opts.operation} failed for provider '${opts.provider}' (${httpStatusDiagnostic(opts.response.status)})`,
 	);
 }
+
+/**
+ * Build the error for a provider response whose body will not parse as JSON.
+ *
+ * A `SyntaxError` from a failed parse quotes a fragment of the offending input —
+ * the provider's body — which is the disclosure above, reached by a different
+ * route (a truncated token response quotes the token). Only the shape of the
+ * failure travels, never its content.
+ */
+export function providerJsonParseError(opts: {
+	/** What was being attempted, e.g. "OAuth token exchange". */
+	operation: string;
+	/** Omitted where `operation` already names the provider. */
+	provider?: string;
+	/** Only `status` is read. The body is never touched. */
+	response: { status: number };
+}): Error {
+	const target = opts.provider ? ` for provider '${opts.provider}'` : "";
+	return new Error(
+		`${opts.operation} failed${target}: provider returned a ${opts.response.status} response that is not valid JSON`,
+	);
+}

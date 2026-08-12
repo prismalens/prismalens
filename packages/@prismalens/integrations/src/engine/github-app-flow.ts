@@ -7,6 +7,7 @@
  * Pure/stateless — no NestJS dependencies (consistent with OAuth2Flow).
  */
 import { createSign } from "node:crypto";
+import { providerJsonParseError } from "./provider-http-error.js";
 
 export interface InstallationTokenResult {
 	token: string;
@@ -101,12 +102,22 @@ async function getInstallationToken(
 		);
 	}
 
-	const data = (await response.json()) as {
+	// An unguarded parse would throw a SyntaxError quoting the body — here that
+	// body is an installation-token response. See provider-http-error.ts (#347).
+	let data: {
 		token: string;
 		expires_at: string;
 		permissions: Record<string, string>;
 		repository_selection: string;
 	};
+	try {
+		data = (await response.json()) as typeof data;
+	} catch {
+		throw providerJsonParseError({
+			operation: "GitHub installation token exchange",
+			response,
+		});
+	}
 
 	// A 2xx with no token is not a success — never hand back a credential
 	// whose token is undefined.
@@ -140,7 +151,15 @@ async function listInstallations(jwt: string): Promise<GitHubInstallation[]> {
 		);
 	}
 
-	return (await response.json()) as GitHubInstallation[];
+	// Same guard as above: a SyntaxError would quote the provider's body.
+	try {
+		return (await response.json()) as GitHubInstallation[];
+	} catch {
+		throw providerJsonParseError({
+			operation: "GitHub list installations",
+			response,
+		});
+	}
 }
 
 /**
@@ -165,7 +184,15 @@ async function getInstallation(
 		throw new Error(`GitHub get installation failed (HTTP ${response.status})`);
 	}
 
-	return (await response.json()) as GitHubInstallation;
+	// Same guard as above: a SyntaxError would quote the provider's body.
+	try {
+		return (await response.json()) as GitHubInstallation;
+	} catch {
+		throw providerJsonParseError({
+			operation: "GitHub get installation",
+			response,
+		});
+	}
 }
 
 /**

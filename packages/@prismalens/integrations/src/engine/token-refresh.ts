@@ -8,6 +8,7 @@
 import type { AuthMode, AuthTemplate } from "../types.js";
 import { GitHubAppFlow } from "./github-app-flow.js";
 import { interpolate } from "./interpolate.js";
+import { providerJsonParseError } from "./provider-http-error.js";
 import type { TokenVault } from "./token-vault.js";
 
 export interface RefreshableConnection {
@@ -131,7 +132,19 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 			throw new Error(`Token refresh failed (HTTP ${response.status})`);
 		}
 
-		const data = (await response.json()) as Record<string, unknown>;
+		// An unguarded parse would throw a SyntaxError quoting the body, and a
+		// refresh error is persisted on the connection row. See
+		// provider-http-error.ts (#347).
+		let data: Record<string, unknown>;
+		try {
+			data = (await response.json()) as Record<string, unknown>;
+		} catch {
+			throw providerJsonParseError({
+				operation: "Token refresh",
+				provider: template.id,
+				response,
+			});
+		}
 
 		// A 2xx with no access_token is not a refresh — without this guard the
 		// working credential is overwritten with `accessToken: undefined` and the

@@ -8,7 +8,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { AuthTemplate, OAuthStateData, TokenResult } from "../types.js";
 import { interpolate } from "./interpolate.js";
-import { providerHttpError } from "./provider-http-error.js";
+import {
+	providerHttpError,
+	providerJsonParseError,
+} from "./provider-http-error.js";
 import type { TokenVault } from "./token-vault.js";
 
 /**
@@ -184,17 +187,17 @@ export class OAuth2Flow {
 			});
 		}
 
-		// `SyntaxError` from JSON.parse quotes the offending input, which is the
-		// provider's body — the same disclosure as a non-2xx body, reached by a
-		// different route (a truncated token response quotes the token). Report
-		// the shape of the failure, never its content.
+		// An unguarded parse would throw a SyntaxError quoting the body — the same
+		// disclosure as the non-2xx body above. See provider-http-error.ts (#347).
 		let data: Record<string, unknown>;
 		try {
 			data = (await response.json()) as Record<string, unknown>;
 		} catch {
-			throw new Error(
-				`OAuth token exchange failed for provider '${template.id}': provider returned a ${response.status} response that is not valid JSON`,
-			);
+			throw providerJsonParseError({
+				operation: "OAuth token exchange",
+				provider: template.id,
+				response,
+			});
 		}
 
 		if (data.error) {

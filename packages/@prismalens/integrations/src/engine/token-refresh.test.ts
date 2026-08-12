@@ -514,6 +514,24 @@ describe("TokenRefresher — OAuth2 refresh strategy", () => {
 		expect(deps.updates).toHaveLength(0);
 	});
 
+	it("keeps a token in a malformed 2xx body out of the persisted refresh error", async () => {
+		// The refresh error is written to the connection row, so a raw SyntaxError
+		// quoting the body's leading characters would persist the token prefix.
+		const deps = new MemoryRefreshDeps();
+		seed(deps);
+		fetchMock.mockResolvedValue(
+			new Response("tok_leaked_by_syntax_error is not json", { status: 200 }),
+		);
+		const refresher = new TokenRefresher(VAULT, deps);
+
+		await expect(refresher.getValidToken("conn_1")).rejects.toThrow(
+			"Token refresh failed for provider 'acme': provider returned a 200 response that is not valid JSON",
+		);
+		expect(deps.errors[0].error).not.toContain("tok_leaked_by_syntax_error");
+		expect(deps.errors[0].status).toBe("REFRESH_FAILED");
+		expect(deps.updates).toHaveLength(0);
+	});
+
 	it("throws rather than storing a credential with no access token", async () => {
 		const deps = new MemoryRefreshDeps();
 		seed(deps);

@@ -40,6 +40,7 @@ export {
 export {
 	httpStatusDiagnostic,
 	providerHttpError,
+	providerJsonParseError,
 } from "./provider-http-error.js";
 export type { RefreshableConnection, RefreshDeps } from "./token-refresh.js";
 export { TokenRefresher } from "./token-refresh.js";

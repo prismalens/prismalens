@@ -288,6 +288,27 @@ describe("GitHubAppFlow.getInstallationToken", () => {
 		).rejects.toThrow();
 	});
 
+	it("keeps a token in a malformed 2xx body out of the JSON parse failure", async () => {
+		// A body that starts with the credential: V8's SyntaxError quotes the
+		// input's leading characters, so the raw error would disclose its prefix.
+		fetchMock.mockResolvedValue(
+			new Response("ghs_leaked_installation_token is not json", { status: 200 }),
+		);
+
+		const error = await GitHubAppFlow.getInstallationToken(
+			"jwt-value",
+			"42",
+		).catch((e: unknown) => e as Error);
+
+		expect((error as Error).message).toBe(
+			"GitHub installation token exchange failed: provider returned a 200 response that is not valid JSON",
+		);
+		expect((error as Error).message).not.toContain(
+			"ghs_leaked_installation_token",
+		);
+		expect(error).not.toBeInstanceOf(SyntaxError);
+	});
+
 	it("throws when a 200 response carries no token", async () => {
 		fetchMock.mockResolvedValue(
 			jsonResponse({ expires_at: "2026-08-05T12:00:00Z", permissions: {} }),
@@ -357,6 +378,36 @@ describe("GitHubAppFlow installation listing", () => {
 		await expect(
 			GitHubAppFlow.getInstallation("jwt-value", "7"),
 		).rejects.toThrow("GitHub get installation failed (HTTP 404)");
+	});
+
+	it("does not quote a malformed listing body in the parse failure", async () => {
+		fetchMock.mockResolvedValue(
+			new Response('[{"account":{"login":"acme-private"', { status: 200 }),
+		);
+
+		const error = await GitHubAppFlow.listInstallations("jwt-value").catch(
+			(e: unknown) => e as Error,
+		);
+
+		expect((error as Error).message).toBe(
+			"GitHub list installations failed: provider returned a 200 response that is not valid JSON",
+		);
+		expect((error as Error).message).not.toContain("acme-private");
+	});
+
+	it("does not quote a malformed installation body in the parse failure", async () => {
+		fetchMock.mockResolvedValue(
+			new Response('{"account":{"login":"acme-private"', { status: 200 }),
+		);
+
+		const error = await GitHubAppFlow.getInstallation("jwt-value", "7").catch(
+			(e: unknown) => e as Error,
+		);
+
+		expect((error as Error).message).toBe(
+			"GitHub get installation failed: provider returned a 200 response that is not valid JSON",
+		);
+		expect((error as Error).message).not.toContain("acme-private");
 	});
 });
 

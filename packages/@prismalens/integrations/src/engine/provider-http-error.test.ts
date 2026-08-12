@@ -17,7 +17,11 @@ import { GitHubProvider } from "../providers/github/github.provider.js";
 import { RenderProvider } from "../providers/render/render.provider.js";
 import type { AuthenticatedRequestFn } from "../providers/types.js";
 import { VercelProvider } from "../providers/vercel/vercel.provider.js";
-import { httpStatusDiagnostic, providerHttpError } from "./provider-http-error.js";
+import {
+	httpStatusDiagnostic,
+	providerHttpError,
+	providerJsonParseError,
+} from "./provider-http-error.js";
 
 const SENTINEL = "sk-SENTINEL-DO-NOT-LOG";
 
@@ -88,6 +92,59 @@ describe("providerHttpError", () => {
 			"Widget API request failed for provider 'widget' (HTTP 401 Unauthorized)",
 		);
 		expect(response.bodyUsed).toBe(false);
+	});
+});
+
+describe("providerJsonParseError", () => {
+	it("names the operation, the provider and the status", () => {
+		expect(
+			providerJsonParseError({
+				operation: "OAuth token exchange",
+				provider: "acme",
+				response: { status: 200 },
+			}).message,
+		).toBe(
+			"OAuth token exchange failed for provider 'acme': provider returned a 200 response that is not valid JSON",
+		);
+	});
+
+	it("drops the provider clause where the operation already names it", () => {
+		expect(
+			providerJsonParseError({
+				operation: "GitHub get installation",
+				response: { status: 502 },
+			}).message,
+		).toBe(
+			"GitHub get installation failed: provider returned a 502 response that is not valid JSON",
+		);
+	});
+
+	it("carries none of the leading body fragment a real SyntaxError quotes", () => {
+		// V8 quotes the first 10 characters of the offending input, so a body that
+		// *starts* with the credential discloses its prefix. Bounded, not whole-body
+		// — but the refresh path persists this error, so it still must not travel.
+		const body = `${SENTINEL} is not json`;
+		const leaked = SENTINEL.slice(0, 10);
+		const raw = ((): Error => {
+			try {
+				JSON.parse(body);
+				throw new Error("expected a parse failure");
+			} catch (e) {
+				return e as Error;
+			}
+		})();
+		expect(raw.message).toContain(leaked);
+
+		const error = providerJsonParseError({
+			operation: "Token refresh",
+			provider: "acme",
+			response: { status: 200 },
+		});
+		for (const [surface, text] of Object.entries(errorSurfaces(error))) {
+			expect(text, `body fragment leaked via error ${surface}`).not.toContain(
+				leaked,
+			);
+		}
 	});
 });
 
