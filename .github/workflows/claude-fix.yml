@@ -112,6 +112,7 @@ jobs:
             --disallowed-tools "Bash(gh api:*pulls/*/reviews*)"
             --disallowed-tools "Bash(gh api:*resolveReviewThread*)"
             --disallowed-tools "Bash(gh pr merge:*)"
+            --disallowed-tools "Bash(gh api:*pulls/*/merge*)"
 
           prompt: |
             You are a code fixer. An org member has commented `@claude fix` on
