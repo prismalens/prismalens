@@ -236,18 +236,27 @@ jobs:
           # An impossible timestamp keeps the count honest (zero).
           [ -n "$STARTED_AT" ] || STARTED_AT="9999-01-01T00:00:00Z"
 
-          # Inline review comments claude[bot] left against the reviewed head.
-          # `original_commit_id` is checked too: GitHub rewrites `commit_id`
-          # when a comment outlives a force-push, but the original is stable.
+          # Inline review comments claude[bot] left against the reviewed head —
+          # strictly this head. No `original_commit_id` fallback: a comment that
+          # only matches after GitHub rewrote it for a newer push is a previous
+          # head's comment, and counting it would report stale work as this
+          # run's.
           inline=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate --jq \
             "[.[] | select(.user.login==\"claude[bot]\")
-                  | select(.commit_id==\"$HEAD_SHA\" or .original_commit_id==\"$HEAD_SHA\")] | length")
+                  | select(.commit_id==\"$HEAD_SHA\")] | length")
 
-          # Summary comments (the plugin's no-issues path posts one) created
-          # during this run. Time-scoped because issue comments carry no SHA.
+          # Summary comments (the plugin's no-issues path posts one). Three
+          # filters, each necessary: author, because only claude[bot] posts
+          # them; created >= run start, because issue comments carry no SHA;
+          # and the plugin's fixed '## Code review' heading, because the
+          # @claude MENTION lane shares the claude[bot] identity and a mention
+          # reply landing mid-review must not be counted as review output.
+          # This stays an advisory display, not evidence (#415): it reports
+          # what was posted, it does not certify who read what.
           summary=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq \
             "[.[] | select(.user.login==\"claude[bot]\")
-                  | select(.created_at >= \"$STARTED_AT\")] | length")
+                  | select(.created_at >= \"$STARTED_AT\")
+                  | select(.body | startswith(\"## Code review\"))] | length")
 
           if [ "$((inline + summary))" -gt 0 ]; then
             verdict="reviewed \`$short\` and posted ${inline} inline / ${summary} summary comment(s)."
@@ -261,8 +270,13 @@ jobs:
           body="$marker
           **Claude review lane** — [run]($RUN_URL): $verdict"
 
+          # Only this workflow's own comment qualifies for the upsert: without
+          # the author filter, any participant could pre-create a marker
+          # comment and this job would PATCH — and thereby keep republishing
+          # into — a comment it does not own.
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq \
-            "[.[] | select(.body | startswith(\"$marker\"))][0].id // empty")
+            "[.[] | select(.user.login==\"github-actions[bot]\")
+                  | select(.body | startswith(\"$marker\"))][0].id // empty")
           if [ -n "$existing" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$body" >/dev/null
           else
