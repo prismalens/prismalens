@@ -49,6 +49,7 @@ What replaced it:
 | Mechanism | What it does |
 | --- | --- |
 | `claude-code-review.yml` | reviews every same-repo PR and posts **inline findings** (`--comment` in its `prompt:` is what makes it post at all) |
+| `claude-fix.yml` | fixer lane: org members summon with `@claude fix` on a PR; applies fixes on the PR branch and pushes; holds the repo's only model-adjacent `contents: write`; cannot submit reviews, resolve threads, or merge — the reviewer or operator does those |
 | `required_review_thread_resolution` | any unresolved thread — from that reviewer or a human — blocks merge |
 | `review-ready` label | **manual** admission of an online CodeRabbit review via `.coderabbit.yaml`'s `auto_review.labels` valve, for sensitive paths or a second opinion |
 
@@ -107,5 +108,6 @@ rest are advisory or out-of-band and cannot affect a merge.
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
+| `claude-fix.yml` | `issue_comment`, `pull_request_review_comment` | org-summoned online fixer (`@claude fix`); holds `contents: write`, cannot review/resolve/merge |
 | `claude.yml` | `@claude` mentions | labour tool; cannot submit or resolve reviews |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |

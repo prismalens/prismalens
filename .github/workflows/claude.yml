@@ -36,9 +36,9 @@ jobs:
     # arbitrary commenter from spending the subscription and steering an agent that
     # carries this repo's app identity. Note the limit of any association check —
     # the adversary this repo models is a drifted agent holding a maintainer
-    # credential, and such an agent passes every one of them. What contains that is
-    # the token scope on this job and the `--disallowed-tools` list below, not this
-    # condition.
+    # credential, and such an agent passes every one of them. What contains that
+    # is documented below: token scope (primary) and the deny list (belt). See
+    # the CONTAINMENT comment on `claude_args`.
     if: |
       (
         github.event.comment.author_association == 'OWNER' ||
@@ -91,10 +91,28 @@ jobs:
           # threads that are now the only thing blocking a merge. It never needed
           # the capability: answering a mention is commenting, not reviewing.
           #
-          # This is no longer defence in depth. Since #415 removed the
-          # `review-evidence` publisher there is no run-binding underneath to catch
-          # a misconfiguration here, so this list is load-bearing on its own.
+          # CONTAINMENT — TWO LAYERS, IN ORDER OF STRENGTH.
+          #
+          #   1. TOKEN SCOPE. `pull-requests: read` on this job means the
+          #      GITHUB_TOKEN (the credential `gh` CLI uses) cannot submit
+          #      reviews, resolve threads, or merge via the GitHub API. The
+          #      action posts under its own app installation token (see
+          #      claude-code-review.yml L58-61), but the agent's Bash
+          #      commands use GITHUB_TOKEN. This blocks `gh api` calls to
+          #      `pulls/*/reviews`, `resolveReviewThread`, and
+          #      `pulls/*/merge` at the API level even if the command ran.
+          #
+          #   2. DENY LIST. Belt for the CLI command that token scope already
+          #      blocks at the API. Only prefix-form patterns are valid —
+          #      mid-pattern `:*` is treated literally by Claude Code and
+          #      matches nothing. The previous `Bash(gh api:*pulls/*/reviews*)`
+          #      entry had this bug and was removed.
+          #
+          # This lane has NO `--allowed-tools` and does not need one: without
+          # `prompt:` the action runs in TAG MODE, which builds its own default
+          # tool list (see claude-code-review.yml L149-163). The deny list
+          # subtracts from that default; it does not need to enumerate what is
+          # present.
           claude_args: >-
             --disallowed-tools "Bash(gh pr review:*)"
-            --disallowed-tools "Bash(gh api:*pulls/*/reviews*)"
 
