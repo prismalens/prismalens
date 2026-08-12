@@ -181,7 +181,6 @@ function InvestigationsPage() {
 									<TableHead>ID</TableHead>
 									<TableHead>Status</TableHead>
 									<TableHead>Root Cause</TableHead>
-									<TableHead>Agents</TableHead>
 									<TableHead>Started</TableHead>
 									<TableHead>Duration</TableHead>
 								</TableRow>
@@ -204,11 +203,6 @@ function InvestigationsPage() {
 										<TableCell>
 											<span className="text-sm line-clamp-1 max-w-[200px]">
 												{investigation.rootCause || "-"}
-											</span>
-										</TableCell>
-										<TableCell>
-											<span className="text-sm text-muted-foreground">
-												{investigation.agentExecutions?.length ?? 0}
 											</span>
 										</TableCell>
 										<TableCell className="text-sm text-muted-foreground">
@@ -305,7 +299,6 @@ function InvestigationsTableSkeleton() {
 							<TableHead>ID</TableHead>
 							<TableHead>Status</TableHead>
 							<TableHead>Root Cause</TableHead>
-							<TableHead>Agents</TableHead>
 							<TableHead>Started</TableHead>
 							<TableHead>Duration</TableHead>
 						</TableRow>
@@ -321,9 +314,6 @@ function InvestigationsTableSkeleton() {
 								</TableCell>
 								<TableCell>
 									<Skeleton className="h-4 w-32" />
-								</TableCell>
-								<TableCell>
-									<Skeleton className="h-4 w-8" />
 								</TableCell>
 								<TableCell>
 									<Skeleton className="h-4 w-24" />

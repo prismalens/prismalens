@@ -204,8 +204,6 @@ export class SettingsService {
 	async resetData() {
 		await this.prisma.$transaction([
 			this.prisma.recommendation.deleteMany({}),
-			this.prisma.toolExecution.deleteMany({}),
-			this.prisma.agentExecution.deleteMany({}),
 			this.prisma.investigation.deleteMany({}),
 			this.prisma.timelineEntry.deleteMany({}),
 			this.prisma.postmortem.deleteMany({}),
@@ -223,8 +221,6 @@ export class SettingsService {
 		await this.prisma.$transaction([
 			// Deep children first (no dependents)
 			this.prisma.recommendation.deleteMany({}),
-			this.prisma.toolExecution.deleteMany({}),
-			this.prisma.agentExecution.deleteMany({}),
 			this.prisma.investigation.deleteMany({}),
 			this.prisma.timelineEntry.deleteMany({}),
 			this.prisma.postmortem.deleteMany({}),

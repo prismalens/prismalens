@@ -16,7 +16,6 @@ import {
 	RootCauseCategory,
 	WorkflowStatus,
 } from "../../../shared/enums/index.js";
-import { AgentExecutionDto } from "./agent-execution.dto.js";
 import { RecommendationDto } from "./recommendation.dto.js";
 
 /**
@@ -65,13 +64,6 @@ export class InternalInvestigationResultDto {
 	@IsOptional()
 	@IsString()
 	error?: string;
-
-	/** Agent executions with nested tool executions */
-	@IsOptional()
-	@IsArray()
-	@ValidateNested({ each: true })
-	@Type(() => AgentExecutionDto)
-	agentExecutions?: AgentExecutionDto[];
 
 	/** Recommendations generated */
 	@IsOptional()

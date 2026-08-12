@@ -69,6 +69,7 @@ const env = {
 	// browser's origin here is Vite's. Moving the port without this yields
 	// "Invalid origin" on every login.
 	PRISMALENS_FRONTEND_URL: `http://localhost:${FRONTEND_PORT}`,
+	PRISMALENS_CORS_ORIGIN: `http://localhost:${FRONTEND_PORT}`,
 };
 
 if (!PL_UP) {

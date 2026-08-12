@@ -281,7 +281,6 @@ model Investigation {
   triggerReason String?
 
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  agentExecutions AgentExecution[]
   recommendations Recommendation[]
   events          InvestigationEvent[]
 
@@ -308,52 +307,6 @@ model InvestigationEvent {
   @@unique([investigationId, branchId, seq])
   @@index([investigationId, seq])
   @@map("investigation_events")
-}
-
-/// Agent execution within an investigation
-model AgentExecution {
-  id              String    @id @default(uuid())
-  investigationId String
-  agentName       String // alert_agent, gatherer_agent, analyzer_agent, recommender_agent
-  agentType       String    @default("llm") // llm, sequential, loop
-  status          String    @default("pending") // pending, running, completed, failed
-  startedAt       DateTime?
-  completedAt     DateTime?
-  executionTimeMs Int?
-  output          String? // JSON
-  branchId        String?
-  inputTokens     Int?
-  outputTokens    Int?
-  error           String?
-  createdAt       DateTime  @default(now())
-
-  investigation  Investigation   @relation(fields: [investigationId], references: [id], onDelete: Cascade)
-  toolExecutions ToolExecution[]
-
-  @@index([investigationId])
-  @@index([agentName])
-  @@map("agent_executions")
-}
-
-/// Tool execution within an agent execution
-model ToolExecution {
-  id               String   @id @default(uuid())
-  agentExecutionId String
-  toolName         String
-  toolCategory     String? // file, search, github, logs, analysis
-  arguments        String? // JSON
-  result           String? // JSON
-  status           String   @default("pending") // pending, running, success, error
-  executionTimeMs  Int?
-  dataQuality      String?
-  error            String?
-  executedAt       DateTime @default(now())
-
-  agentExecution AgentExecution @relation(fields: [agentExecutionId], references: [id], onDelete: Cascade)
-
-  @@index([agentExecutionId])
-  @@index([toolName])
-  @@map("tool_executions")
 }
 
 // =============================================================================

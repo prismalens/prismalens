@@ -3,6 +3,8 @@
 
 import { expect, test } from "@playwright/test";
 
+const SHOTS = "e2e/journeys/screenshots";
+
 test.describe("D4 substitute — alerts triage & culprit rendering journey", () => {
 	test("asserts total alert count and culprit / no-culprit investigation rendering", async ({
 		page,
@@ -58,5 +60,39 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByText("Culprit", { exact: true }),
 		).not.toBeVisible();
+	});
+
+	test("design evidence: investigation detail page in default and dark themes", async ({
+		page,
+	}) => {
+		const DETAIL_URL = "/investigations/d0111111-1111-4111-8111-111111111111";
+
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		// Default/Light state: set theme to light
+		await page.goto(DETAIL_URL);
+		await expect(
+			page.getByRole("tab", { name: "Analysis" }),
+		).toBeVisible({ timeout: 15_000 });
+		await setTheme("light");
+		await page.waitForLoadState("networkidle");
+		await page.screenshot({
+			path: `${SHOTS}/investigation-detail-default.png`,
+			fullPage: true,
+		});
+
+		// Dark state: set theme to dark
+		await setTheme("dark");
+		await page.waitForLoadState("networkidle");
+		await page.screenshot({
+			path: `${SHOTS}/investigation-detail-dark.png`,
+			fullPage: true,
+		});
 	});
 });

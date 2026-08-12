@@ -6,24 +6,13 @@ import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import type {
-	AgentName,
-	AgentType as ContractAgentType,
-	ExecutionStatus,
 	InvestigationReport,
 	RootCauseCategory,
-	ToolCategory,
-	ToolExecutionStatus,
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
-import type {
-	AgentExecution,
-	Investigation,
-	Recommendation,
-	ToolExecution,
-} from "@prismalens/database";
+import type { Investigation, Recommendation } from "@prismalens/database";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import type { AgentExecutionDto } from "../../infrastructure/internal/dto/agent-execution.dto.js";
 import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
@@ -151,25 +140,6 @@ export class InvestigationsController {
 				},
 			),
 
-			// GET /investigations/:id/agents - Get agent executions
-			getAgentExecutions: implement(
-				investigationsContract.getAgentExecutions,
-			).handler(async ({ input }) => {
-				const investigation = await this.investigationsService.findById(
-					input.id,
-				);
-				if (!investigation) {
-					throw new ORPCError("NOT_FOUND", {
-						message: `Investigation ${input.id} not found`,
-					});
-				}
-
-				const executions = await this.investigationsService.getAgentExecutions(
-					input.id,
-				);
-				return executions.map((e) => this.serializeAgentExecution(e));
-			}),
-
 			// POST /investigations/:id/cancel - Request cancellation of a run.
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
 			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
@@ -288,9 +258,6 @@ export class InvestigationsController {
 							| undefined,
 						report: input.report,
 						error: input.error,
-						agentExecutions: input.agentExecutions as
-							| AgentExecutionDto[]
-							| undefined,
 						recommendations: input.recommendations as
 							| RecommendationDto[]
 							| undefined,
@@ -347,11 +314,6 @@ export class InvestigationsController {
 
 		return {
 			...base,
-			agentExecutions: investigation.agentExecutions
-				? investigation.agentExecutions.map((e) =>
-						this.serializeAgentExecution(e),
-					)
-				: undefined,
 			recommendations: investigation.recommendations
 				? investigation.recommendations.map((r: Recommendation) => ({
 						id: r.id,
@@ -360,39 +322,6 @@ export class InvestigationsController {
 						status: r.status,
 					}))
 				: undefined,
-		};
-	}
-
-	private serializeAgentExecution(
-		execution: AgentExecution & { toolExecutions: ToolExecution[] },
-	) {
-		return {
-			id: execution.id,
-			investigationId: execution.investigationId,
-			agentName: execution.agentName as AgentName,
-			agentType: execution.agentType as ContractAgentType,
-			status: execution.status as ExecutionStatus,
-			startedAt: execution.startedAt?.toISOString() ?? null,
-			completedAt: execution.completedAt?.toISOString() ?? null,
-			executionTimeMs: execution.executionTimeMs ?? null,
-			output: safeParseJsonObject(execution.output) ?? null,
-			inputTokens: execution.inputTokens ?? null,
-			outputTokens: execution.outputTokens ?? null,
-			error: execution.error ?? null,
-			createdAt: execution.createdAt.toISOString(),
-			toolExecutions: execution.toolExecutions?.map((t: ToolExecution) => ({
-				id: t.id,
-				agentExecutionId: t.agentExecutionId,
-				toolName: t.toolName,
-				toolCategory: (t.toolCategory as ToolCategory | null) ?? null,
-				arguments: safeParseJsonObject(t.arguments) ?? null,
-				result: safeParseJsonObject(t.result) ?? null,
-				status: t.status as ToolExecutionStatus,
-				executionTimeMs: t.executionTimeMs ?? null,
-				dataQuality: t.dataQuality ?? null,
-				error: t.error ?? null,
-				executedAt: t.executedAt.toISOString(),
-			})),
 		};
 	}
 }

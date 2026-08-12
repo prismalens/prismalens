@@ -19,9 +19,7 @@ import {
 } from "@nestjs/common";
 import { assertDispatchTopology, getConfig } from "@prismalens/config";
 import type { InvestigationJobData } from "@prismalens/contracts";
-// biome-ignore lint/style/useImportType: Nest's DI needs the runtime class reference.
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-// biome-ignore lint/style/useImportType: Nest's DI needs the runtime class reference.
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 import { Dispatcher } from "./dispatcher.js";
 import { EVENT_BUS, type EventBus, runCancelTopic } from "./event-bus.js";

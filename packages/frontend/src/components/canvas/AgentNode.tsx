@@ -11,10 +11,7 @@
 import type { ExecutionStatus } from "@prismalens/contracts";
 import { Handle, type NodeProps, Position } from "reactflow";
 import { Badge } from "@/components/ui/badge";
-import {
-	formatExecutionTime,
-	getAgentStyle,
-} from "@/lib/canvas/transform-executions";
+import { formatExecutionTime, getAgentStyle } from "@/lib/canvas";
 import { cn } from "@/lib/utils";
 import { StatusIndicator } from "./StatusIndicator";
 
@@ -33,6 +30,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentNodeData>) {
 
 	return (
 		<div
+			style={style.cssVars}
 			className={cn(
 				"px-4 py-3 shadow-lg rounded-lg border-2 min-w-[220px] relative",
 				"transition-all duration-200",
