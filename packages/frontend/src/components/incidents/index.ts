@@ -17,6 +17,10 @@ export {
 	type CorrelatedAlertsProps,
 } from "./CorrelatedAlerts";
 export {
+	CreateIncidentDialog,
+	type CreateIncidentDialogProps,
+} from "./CreateIncidentDialog";
+export {
 	DateRangeFilter,
 	type DateRangeFilterProps,
 	type DateRangeValue,

@@ -15,10 +15,11 @@ import {
 	useNavigate,
 	useSearch,
 } from "@tanstack/react-router";
-import { BarChart3, List, RefreshCw } from "lucide-react";
+import { BarChart3, List, Plus, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DateRangeValue } from "@/components/incidents";
 import {
+	CreateIncidentDialog,
 	DateRangeFilter,
 	IncidentAnalytics,
 	IncidentDataTable,
@@ -74,6 +75,9 @@ function IncidentsPage() {
 		to: searchParams.to ? new Date(searchParams.to) : undefined,
 	});
 
+	// Manual authorship (C10) — create an incident without an alert source
+	const [isCreateOpen, setIsCreateOpen] = useState(false);
+
 	// Current tab
 	const currentTab = searchParams.tab || "list";
 
@@ -125,6 +129,12 @@ function IncidentsPage() {
 
 	const handleInvestigate = (incidentId: string) => {
 		investigateMutation.mutate({ id: incidentId });
+	};
+
+	// Land on the new incident: its detail page is where the next step of the
+	// journey (Start Investigation) lives.
+	const handleIncidentCreated = (incidentId: string) => {
+		navigate({ to: "/incidents/$id", params: { id: incidentId } });
 	};
 
 	const handleClearFilters = () => {
@@ -198,18 +208,34 @@ function IncidentsPage() {
 					</>
 				}
 				actions={
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => refetch()}
-						disabled={isRefetching}
-					>
-						<RefreshCw
-							className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
-						/>
-						Refresh
-					</Button>
+					<>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => refetch()}
+							disabled={isRefetching}
+						>
+							<RefreshCw
+								className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
+							/>
+							Refresh
+						</Button>
+						<Button
+							size="sm"
+							onClick={() => setIsCreateOpen(true)}
+							data-testid="create-incident-button"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Create Incident
+						</Button>
+					</>
 				}
+			/>
+
+			<CreateIncidentDialog
+				open={isCreateOpen}
+				onOpenChange={setIsCreateOpen}
+				onCreated={handleIncidentCreated}
 			/>
 
 			{/* Tabs */}
@@ -260,6 +286,7 @@ function IncidentsPage() {
 						isLoading={isLoading}
 						onAcknowledge={handleAcknowledge}
 						onInvestigate={handleInvestigate}
+						onCreate={() => setIsCreateOpen(true)}
 					/>
 				</TabsContent>
 

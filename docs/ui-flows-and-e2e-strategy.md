@@ -40,11 +40,11 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | J14 | Team operations & RBAC | — | C12 | — | ◻️ |
 | J15 | Correlation-rule management | — | C8 | — | ◻️ |
 | J16 | Approve → execute | — | C13 | — | ◻️ by design (ADR-0023) |
-| J17 | Manual authorship (demo without an alert source) | — | C10 | — | ◻️ |
+| J17 | Manual authorship (demo without an alert source) | `/incidents`, `/incidents/$id` | C10 | `manual-authorship.spec.ts` | ✅ |
 
-**Read this matrix as: 17 journeys, 4 specs, 0 journeys verified end-to-end.** Every ✅-shaped
-claim the suite could make, it does not yet make. See [What the four specs actually
-prove](#what-the-four-specs-actually-prove).
+**Read this matrix as: 17 journeys, 5 specs, 1 journey verified end-to-end.** Nearly every
+✅-shaped claim the suite could make, it still does not make. See [What the specs actually
+prove](#what-the-specs-actually-prove).
 
 Every capability in [`capabilities.md`](./capabilities.md) has a row above except **C4 (CLI local
 investigation loop)**, which is a CLI surface with no frontend journey by definition — it is
@@ -253,41 +253,59 @@ in `InvestigationCanvas`'s `nodeTypes`. This is correct per ADR-0023 — this re
 inert shell only. The e2e obligation here is the inverse of the others: a spec should eventually
 assert that **no execution path exists without a verified module**, not that approval works.
 
-### J17 — Manual authorship (demo without an alert source) — ◻️ no surface
+### J17 — Manual authorship (demo without an alert source) — ✅ covered
 
-C10's premise is that you can demonstrate the product without wiring a real alert source: author an
-alert, an incident, or an investigation by hand. The API procedures for it exist and are wrapped in
-hooks — `alerts.create`, `incidents.create`, `incidents.addAlert`, `investigations.create` — but
-**not one of them has a UI caller.** The corresponding hooks (`useCreateAlert`, `useCreateIncident`,
-`useAddAlertToIncident`, `useCreateInvestigation`) are exported and never imported by any component
-or route. There is no "New Alert" or "New Incident" control anywhere in the app; investigations
-start only via `incidents.investigate` from an incident that already exists.
+- **Entry point**: `/incidents` → *Create Incident* in the page header, or the same control in
+  the table's empty state (the state a `pl up` user actually lands in).
+- **Routes**: `/incidents` → `CreateIncidentDialog` → `incidents.create` → `/incidents/$id` →
+  `incidents.investigate` → `/investigations/$id`.
+- **Goal**: get a real incident, and a real investigation of it, into an instance that has no
+  alert source pointed at it.
+- **States**: the empty incidents table (offers the control rather than only explaining that
+  alerts will eventually arrive); submit disabled while the title is blank; a server error
+  rendered inline in the dialog; the created incident showing **Alerts (0)**; *Start
+  Investigation* disabled with a stated reason while no AI provider is configured.
+- **Coverage**: `manual-authorship.spec.ts` drives the whole path — it fills the dialog, asserts
+  the route lands on the new incident, asserts the incident has no alerts, and starts an
+  investigation from it, asserting the app routes to the investigation. It also asserts the
+  dialog cannot submit a blank title, and that with no AI provider *both* investigate
+  affordances are disabled and state the reason (stubbed at the settings response, so the
+  assertion does not depend on global provider state).
 
-So today, the only way to get data into a running instance is the webhook intake or the demo seed.
-Nothing to cover until the authorship controls are built — which matters more than it looks, because
-manual authorship is the fallback path for exactly the `pl up` user who has no Alertmanager to point
-at yet.
+Scope note: manual **alert** creation and manual **correlation** were deliberately left unbuilt
+(#286). `alerts.create` and `incidents.addAlert` still have no UI caller, and that is intentional
+— hand-stitched alerts would fake a correlation the engine never ran.
 
-## What the four specs actually prove
+## What the specs actually prove
 
-Worth stating plainly, because "we have 4 e2e specs" and "4 journeys are covered" are different
+Worth stating plainly, because "we have 5 e2e specs" and "5 journeys are covered" are different
 claims and only the first is true.
 
-The frontend wires **60 distinct mutation procedures** to UI controls. Across all four merged
-specs, exactly **one** is invoked: `postmortems.create`, via the *Start Blank* button. Everything
+The frontend wires **60 distinct mutation procedures** to UI controls. Across the five merged
+specs, exactly **three** are invoked: `postmortems.create` via the *Start Blank* button, and
+`incidents.create` + `incidents.investigate` via `manual-authorship.spec.ts` (#286). Everything
 else the suite does is navigate to a URL and assert that seeded text is on the screen.
 
-That makes the current suite a **render-and-route smoke suite**: it catches white screens, broken
-routes, crashed API boot, hydration failures, and data-shape regressions like #309's pagination
-total. Those are real and worth having — the suite already caught a schema-invalid seed during
-#316. But it cannot catch a broken form, a mutation that 500s, a state transition that does not
-stick, or a regression in any of the five stream-panel states.
+That makes the rest of the suite a **render-and-route smoke suite**: it catches white screens,
+broken routes, crashed API boot, hydration failures, and data-shape regressions like #309's
+pagination total. Those are real and worth having — the suite already caught a schema-invalid
+seed during #316. But outside J17 it cannot catch a broken form, a mutation that 500s, a state
+transition that does not stick, or a regression in any of the five stream-panel states.
 
 Two further structural facts about the harness:
 
-- **It binds ports 3000 and 3001 with `reuseExistingServer: false`**, so it cannot run alongside a
-  dev stack. Every contributor and every agent must stop `pnpm dev` to run e2e locally. See the
-  follow-up in [Cost and follow-ups](#cost-and-follow-ups).
+- **It binds a frontend and an API port with `reuseExistingServer: false`**, so it cannot share
+  them with a running dev stack. Since #286 those ports are overridable — the defaults are still
+  3000 and 3001, but `PRISMALENS_FRONTEND_PORT` and `PRISMALENS_PORT` move both the servers and
+  the `baseURL`, so a run no longer has to take down `pnpm dev`:
+
+  ```bash
+  PRISMALENS_FRONTEND_PORT=3200 PRISMALENS_PORT=3201 \
+    pnpm --filter @prismalens/frontend exec playwright test
+  ```
+
+  `PRISMALENS_FRONTEND_URL` moves with the frontend port automatically; it has to, or Better
+  Auth rejects every sign-in from the new origin as `Invalid origin`.
 - **It boots the dev topology, not the shipped one.** Two web servers (TanStack dev server on
   3000, Nest API on 3001). #237 ships `pl up` as a *single process serving the SPA and the API on
   one port*. Nothing in the current harness exercises that topology, so today's green e2e run says
@@ -339,7 +357,8 @@ reader unable to tell what was considered from what was missed, so the dispositi
 Deferred does not mean uncovered forever — it means the per-PR growth rule picks them up the next
 time someone touches that surface, rather than the baseline paying for them now.
 
-Concretely, **five new specs on top of the four merged**, target of nine:
+Concretely, **five new specs on top of the five merged**, target of ten (J17's
+`manual-authorship.spec.ts` landed with #286 and is already counted among the merged):
 
 | Spec | Journey | Why it earns its place |
 |---|---|---|
@@ -356,7 +375,7 @@ lock) and the J7 *analytics tab* smoke into `incident-postmortem.spec.ts`, and t
 Deliberately **out of scope**: the React Flow canvas's graph rendering (expensive to assert, cheap
 to eyeball — the design gate covers it), the *contents* of the four analytics charts (same
 reasoning; the tab itself is smoked, per the definition above), per-integration OAuth loops (they
-need live third parties), and anything under J14, J15, J16, or J17 until those surfaces are routed.
+need live third parties), and anything under J14, J15, or J16 until those surfaces are routed.
 
 ### 2. CI tier — stay non-required, with a stated promotion trigger
 
@@ -467,8 +486,8 @@ deletion lands. All three artifacts green on `main` — that is the gate.
 
 ### Cost and follow-ups
 
-Nine specs at roughly 40–80 lines each is the steady state proposed here. The suite currently runs
-5 tests in ~36 s locally; nine specs with write paths lands around 2–3 minutes, which is well
+Ten specs at roughly 40–80 lines each is the steady state proposed here. The suite currently runs
+13 tests in ~58 s locally; ten specs with write paths lands around 2–3 minutes, which is well
 inside the CI budget and does not slow the existing gate.
 
 The recurring cost is **selector maintenance, not spec authoring**. The merged specs select by role
@@ -478,12 +497,8 @@ size — `data-testid` everywhere is its own tax — but it means the honest bud
 per frontend PR*, which is exactly what AGENTS.md already requires. No new standing cost is being
 proposed here.
 
-Two follow-ups worth filing, neither blocking:
+One follow-up worth filing, not blocking:
 
-- **Configurable ports.** `reuseExistingServer: false` on hard-coded 3000/3001 means running e2e
-  takes down the dev stack. With multiple agents working in parallel worktrees against one machine,
-  this is a real friction tax and an accident waiting to happen. Reading the ports from env
-  (defaulting to today's values) is a small change with a large quality-of-life return.
 - **Firefox and WebKit projects.** Flagged as a deliberate follow-up in `playwright.config.ts`.
   Low priority for a single-tenant tool whose operators choose their own browser; revisit only if a
   rendering bug is ever reported that chromium did not catch.
@@ -495,9 +510,10 @@ Two follow-ups worth filing, neither blocking:
   is (CONTRIBUTING.md, *Making a change*).
 - A PR that **adds a spec** flips that journey's verdict. `🟦 → ✅` requires the journey's write
   path to be exercised, not just its route to render.
-- A journey marked **◻️** graduates to a real row the moment its surface is routed — J14 (RBAC),
-  J15 (correlation rules), and J17 (manual authorship) are each one route or control away from
-  being real journeys with real gaps.
+- A journey marked **◻️** graduates to a real row the moment its surface is routed — J14 (RBAC)
+  and J15 (correlation rules) are each one route or control away from being real journeys with
+  real gaps. J17 made exactly that trip in #286: one control on `/incidents` turned it from "no
+  surface" into the suite's first end-to-end journey.
 - **Coverage is audited at each milestone**, alongside the operator's UX ledger walkthrough
   (AGENTS.md, *Frontend changes carry a design gate*). The matrix is the audit's input.
 - When capabilities move in [`capabilities.md`](./capabilities.md), check whether a journey row

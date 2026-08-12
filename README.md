@@ -40,6 +40,26 @@ dashboard and the API serves it from the same origin. Use
 `--workspace <dir>` to put the database and secrets somewhere other than
 `~/.prismalens`.
 
+### Try it without an alert source
+
+A fresh install has nothing pointed at it, so no incidents arrive on their own.
+You do not need an Alertmanager to see the product work — author an incident by
+hand:
+
+1. **Settings → AI Provider**: set a provider and key. Investigations are
+   disabled until you do, and the buttons say so.
+2. **Incidents → Create Incident**: a title is the only required field. Pick a
+   **Service** if you have one — that is what decides which code the
+   investigation reads.
+3. You land on the new incident (`INC-1`, **Alerts (0)**).
+4. **Investigation → Start Investigation** runs the real investigation path on
+   it, then shows the report.
+
+That is the same `incidents.create` and `incidents.investigate` path the
+correlation engine uses, so nothing about the run is a mock. Full journey and
+what it produces at each step:
+[`docs/capabilities.md`](docs/capabilities.md#manual-authorship--demoing-without-an-alert-source).
+
 ### Or just the CLI
 
 The same binary is a standalone investigator that needs nothing running:
