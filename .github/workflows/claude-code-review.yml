@@ -83,40 +83,43 @@ jobs:
           # credential in .git/config for the whole job.
           persist-credentials: false
 
-      # PINNED CLI — THE ASYNC-SUBAGENT REGRESSION (#403, root-caused 2026-08-12).
-      #
-      # Claude Code >= 2.1.227 launches Task/Agent subagents ASYNCHRONOUSLY: the
-      # tool result is "Async agent launched successfully... you will be notified
-      # when it completes", and that notification arrives on a LATER turn. The
-      # action runs the CLI in one-shot print mode, where ending the turn ends
-      # the process — so a reviewer that launches the plugin's step-1 eligibility
-      # subagent and yields to wait exits `success` having reviewed nothing.
-      # Observed end-to-end in run 31570506278 (full transcript in that log,
-      # courtesy of `show_full_output` below): the last assistant message is
-      # "I'll continue once that comes back", and nothing ever came back to a
-      # process that had already exited. This is why every review from
-      # 2026-08-11 onward posted nothing (CLI 2.1.227/2.1.228) while the
-      # 2026-08-10 runs (2.1.226) posted normally.
-      #
-      # UNPIN once upstream runs subagents synchronously in print mode again, or
-      # the action survives the launch→notification gap: delete this step and
-      # the `path_to_claude_code_executable` input. Then VERIFY on a real PR
-      # that a review actually posts — a green job proves nothing; read the
-      # liveness comment the `announce` job leaves on the PR.
-      - name: Pin Claude Code 2.1.226 (last CLI with synchronous subagents)
-        id: pinned-claude
-        run: |
-          set -euo pipefail
-          npm install -g @anthropic-ai/claude-code@2.1.226
-          echo "path=$(command -v claude)" >> "$GITHUB_OUTPUT"
-          claude --version
-
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
+        # SYNCHRONOUS SUBAGENTS, PINNED BY BEHAVIOR — THE ASYNC REGRESSION
+        # (#403, root-caused 2026-08-12).
+        #
+        # Recent Claude Code CLIs launch Task/Agent subagents in the BACKGROUND
+        # by default (documented default since 2.1.198): the tool result is
+        # "Async agent launched successfully... you will be notified when it
+        # completes", and that notification arrives on a LATER turn. The action
+        # runs the CLI in one-shot print mode, where ending the turn ends the
+        # process — so a reviewer that launches the plugin's step-1 eligibility
+        # subagent and yields to wait exits `success` having reviewed nothing.
+        # Observed end-to-end in run 31570506278 (full transcript in that log,
+        # courtesy of `show_full_output` below): the last assistant message is
+        # "I'll continue once that comes back", and nothing ever came back to a
+        # process that had already exited. Every review from 2026-08-11 onward
+        # (CLI 2.1.227/228) posted nothing; the 2026-08-10 runs (2.1.226)
+        # posted normally.
+        #
+        # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 (code.claude.com/docs/en/
+        # env-vars) disables all background-task machinery, including the
+        # `run_in_background` parameter on subagent tools — every subagent
+        # blocks and returns its result inline, which is the only shape that
+        # can work in print mode. Verified on 2.1.228 before adopting. The CLI
+        # itself stays unpinned and tracks latest; step-level `env` reaches the
+        # CLI because the action spawns it as a child process.
+        #
+        # REMOVE once upstream makes print mode survive the launch→notification
+        # gap (the 2.1.228 changelog's self-hosted-runner fix is the same bug
+        # class, so it is on their radar). Then VERIFY on a real PR that a
+        # review actually posts — a green job proves nothing; read the liveness
+        # comment the `announce` job leaves on the PR.
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          path_to_claude_code_executable: ${{ steps.pinned-claude.outputs.path }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           # The transcript is the only place a silent run is diagnosable. The
