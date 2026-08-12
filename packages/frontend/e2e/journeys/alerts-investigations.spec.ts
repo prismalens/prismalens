@@ -3,6 +3,8 @@
 
 import { expect, test } from "@playwright/test";
 
+const SHOTS = "e2e/journeys/screenshots";
+
 test.describe("D4 substitute — alerts triage & culprit rendering journey", () => {
 	test("asserts total alert count and culprit / no-culprit investigation rendering", async ({
 		page,
@@ -58,5 +60,37 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByText("Culprit", { exact: true }),
 		).not.toBeVisible();
+	});
+
+	test("design evidence: investigation detail page in default and dark themes", async ({
+		page,
+	}) => {
+		const DETAIL_URL = "/investigations/d0111111-1111-4111-8111-111111111111";
+
+		// Default state: no prismalens-theme cookie set
+		await page.context().clearCookies({ name: "prismalens-theme" });
+		await page.goto(DETAIL_URL);
+		await expect(
+			page.getByRole("tab", { name: "Analysis" }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await page.screenshot({
+			path: `${SHOTS}/investigation-detail-default.png`,
+			fullPage: true,
+		});
+
+		// Dark state: prismalens-theme cookie explicitly set to dark
+		await page.evaluate((theme) => {
+			document.cookie = `prismalens-theme=${theme}; path=/; max-age=31536000`;
+		}, "dark");
+		await page.reload();
+		await expect(
+			page.getByRole("tab", { name: "Analysis" }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await page.screenshot({
+			path: `${SHOTS}/investigation-detail-dark.png`,
+			fullPage: true,
+		});
 	});
 });
