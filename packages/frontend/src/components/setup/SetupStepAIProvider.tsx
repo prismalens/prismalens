@@ -81,7 +81,10 @@ export function SetupStepAIProvider({
 	const [tested, setTested] = useState(false);
 
 	const providerMeta = LLM_PROVIDERS[selectedProvider];
-	const needsApiKey = providerMeta.envVar !== null;
+	// Every provider names an `envVar`, so it cannot say whether a key is
+	// REQUIRED — ollama and custom run keyless. Same SSOT flag the API's
+	// isActiveProviderUsable reads, so the two agree (PR #396 threads A/B).
+	const requiresApiKey = providerMeta.requiresApiKey;
 	const credential = credentialStatus?.providers?.[selectedProvider];
 	const storedKey = credential != null && credential.activeSource !== "none";
 
@@ -151,7 +154,7 @@ export function SetupStepAIProvider({
 		updateSettings.isPending;
 	// A key already in the environment (Docker/K8s secret) is a first-class
 	// answer to this step — do not force the operator to paste it again.
-	const keySatisfied = !needsApiKey || storedKey || apiKey.trim().length > 0;
+	const keySatisfied = !requiresApiKey || storedKey || apiKey.trim().length > 0;
 	const canContinue = keySatisfied && model.length > 0;
 
 	function resetFeedback() {
@@ -168,7 +171,9 @@ export function SetupStepAIProvider({
 	async function handleContinue() {
 		resetFeedback();
 		try {
-			if (needsApiKey && apiKey.trim()) {
+			// A keyless provider may still be given one (Ollama Cloud) — save
+			// whatever was typed, never gate the save on requiredness.
+			if (apiKey.trim()) {
 				await saveCredential.mutateAsync({
 					provider: selectedProvider,
 					apiKey: apiKey.trim(),
@@ -297,9 +302,13 @@ export function SetupStepAIProvider({
 					)}
 				</div>
 
-				{needsApiKey && (
+				{/* Shown whenever the provider can hold a key at all — a keyless one
+				    accepts an optional key rather than demanding one. */}
+				{providerMeta.envVar && (
 					<div className="space-y-2">
-						<Label htmlFor="setup-api-key">API key</Label>
+						<Label htmlFor="setup-api-key">
+							API key{requiresApiKey ? "" : " (optional)"}
+						</Label>
 						{storedKey ? (
 							<div className="flex items-center gap-3">
 								<Badge variant="secondary">

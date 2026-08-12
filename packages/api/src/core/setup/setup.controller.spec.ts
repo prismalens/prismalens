@@ -2,8 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Regression cover for #358: completing the setup wizard has to leave a session
- * cookie, not just a created account.
+ * Regression cover for #358 (completing the wizard has to leave a session
+ * cookie, not just a created account) and PR #396 thread A (the `ai_provider`
+ * step reports the ACTIVE provider's usability, not "a key exists somewhere").
  */
 
 import { Logger } from "@nestjs/common";
@@ -37,8 +38,12 @@ const mockAuthService = {
 };
 
 const mockLlmSettingsService = {
-	getLlmCredentialStatus: vi.fn(),
-	getLlmSettings: vi.fn(),
+	isActiveProviderUsable: vi.fn(),
+};
+
+const mockPrisma = {
+	service: { count: vi.fn() },
+	incident: { count: vi.fn() },
 };
 
 describe("SetupController", () => {
@@ -57,7 +62,7 @@ describe("SetupController", () => {
 			providers: [
 				{ provide: UsersService, useValue: mockUsersService },
 				{ provide: AuthService, useValue: mockAuthService },
-				{ provide: PrismaService, useValue: {} },
+				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: LlmSettingsService, useValue: mockLlmSettingsService },
 			],
 		})
@@ -139,6 +144,43 @@ describe("SetupController", () => {
 
 		expect(result.user.email).toBe(OWNER.email);
 		expect(res.append).not.toHaveBeenCalled();
+	});
+
+	describe("getStatus — the ai_provider step", () => {
+		beforeEach(() => {
+			mockUsersService.isSetupComplete.mockResolvedValue(true);
+			mockPrisma.service.count.mockResolvedValue(0);
+			mockPrisma.incident.count.mockResolvedValue(0);
+		});
+
+		it("is incomplete while the active provider is not usable, and is the current step", async () => {
+			mockLlmSettingsService.isActiveProviderUsable.mockResolvedValue(false);
+
+			const status = await getHandlers().getStatus({});
+
+			expect(status.steps.aiProvider).toBe(false);
+			expect(status.currentStep).toBe("ai_provider");
+		});
+
+		it("is complete once the active provider is usable", async () => {
+			mockLlmSettingsService.isActiveProviderUsable.mockResolvedValue(true);
+
+			const status = await getHandlers().getStatus({});
+
+			expect(status.steps.aiProvider).toBe(true);
+			expect(status.currentStep).toBe("code_location");
+		});
+
+		it("probes nothing before an owner exists", async () => {
+			mockUsersService.isSetupComplete.mockResolvedValue(false);
+
+			const status = await getHandlers().getStatus({});
+
+			expect(status.steps.aiProvider).toBe(false);
+			expect(
+				mockLlmSettingsService.isActiveProviderUsable,
+			).not.toHaveBeenCalled();
+		});
 	});
 
 	it("maps an already-set-up instance to FORBIDDEN", async () => {

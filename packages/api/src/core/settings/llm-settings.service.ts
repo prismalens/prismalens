@@ -5,9 +5,11 @@ import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import {
 	getAllowedHosts,
 	getApiKeyEnvVar,
+	isLLMProviderId,
 	LLM_PROVIDER_IDS,
 	LLM_PROVIDERS,
 	type LLMProviderId,
+	providerRequiresApiKey,
 } from "@prismalens/config/llm";
 import { pingModel } from "@prismalens/config/model";
 import type {
@@ -234,6 +236,54 @@ export class LlmSettingsService {
 		}
 	}
 
+	/**
+	 * The provider/model/baseUrl a run will ACTUALLY use: DB settings first, then
+	 * `PRISMALENS_LLM_PROVIDER` / `PRISMALENS_LLM_MODEL`. Shared by the worker's
+	 * credential fetch and the setup wizard's step check so the two cannot
+	 * disagree about what is configured (PR #396 thread A).
+	 */
+	async resolveActiveLlmConfig(): Promise<{
+		provider: LLMProviderId | null;
+		model: string | null;
+		baseUrl: string | null;
+	}> {
+		const settings = await this.getLlmSettings();
+		const candidate =
+			settings.activeProvider ?? process.env.PRISMALENS_LLM_PROVIDER ?? null;
+		const provider = candidate && isLLMProviderId(candidate) ? candidate : null;
+
+		const envModel = process.env.PRISMALENS_LLM_MODEL ?? null;
+		const model = provider
+			? settings.providers[provider]?.model || envModel
+			: envModel;
+
+		return {
+			provider,
+			model: model ?? null,
+			baseUrl: provider
+				? (settings.providers[provider]?.baseUrl ?? null)
+				: null,
+		};
+	}
+
+	/**
+	 * Is the ACTIVE provider genuinely runnable — chosen, given a model, and
+	 * credentialled unless it is keyless? A key sitting in the env for some other
+	 * provider is not configuration (PR #396 thread A).
+	 *
+	 * Deliberately does NOT call `getLlmEnvStatus()`: that pings Ollama over HTTP,
+	 * and the unauthenticated setup-status route the app's layout hits on load
+	 * must stay cheap reads.
+	 */
+	async isActiveProviderUsable(): Promise<boolean> {
+		const { provider, model } = await this.resolveActiveLlmConfig();
+		if (!provider || !model) return false;
+		if (!providerRequiresApiKey(provider)) return true;
+
+		const credential = (await this.getLlmCredentialStatus())[provider];
+		return !!credential && (credential.hasDbKey || credential.hasEnvKey);
+	}
+
 	async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
 		// Allowlist check: validate any base URLs before persisting
 		if (dto.providers) {
@@ -414,8 +464,7 @@ export class LlmSettingsService {
 			const apiKey = envVarName ? process.env[envVarName] : undefined;
 
 			// Cloud providers require a key; ollama/custom endpoints may be keyless.
-			const requiresKey = provider !== "ollama" && provider !== "custom";
-			if (requiresKey && !apiKey) {
+			if (providerRequiresApiKey(provider) && !apiKey) {
 				return {
 					success: false,
 					error: `API key not configured. Set ${envVarName} environment variable.`,

@@ -12,9 +12,6 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { LlmSettingsService } from "../settings/llm-settings.service.js";
 import { UsersService } from "../users/users.service.js";
 
-/** Providers that work without an API key, so "no credential" is not "not configured". */
-const KEYLESS_PROVIDERS = new Set(["ollama", "custom"]);
-
 // Public: setup runs before any user exists, so auth is not possible.
 // createOwner is self-guarding ("already set up" check).
 // @Public() must be class-level because @Implement generates individual
@@ -38,33 +35,6 @@ export class SetupController {
 		private readonly llmSettingsService: LlmSettingsService,
 	) {}
 
-	/**
-	 * Is an LLM provider usable? True when any provider has a key (stored
-	 * encrypted in the DB, or supplied by env), or when the operator has
-	 * deliberately made a keyless provider active and given it a model.
-	 *
-	 * Deliberately does NOT call `getLlmEnvStatus()`: that pings Ollama over
-	 * HTTP, and this handler runs on an unauthenticated route that the app's
-	 * layout hits on load. Setup status must stay three cheap reads.
-	 */
-	private async isAiProviderConfigured(): Promise<boolean> {
-		const credentialStatus =
-			await this.llmSettingsService.getLlmCredentialStatus();
-		if (
-			Object.values(credentialStatus).some((s) => s.hasDbKey || s.hasEnvKey)
-		) {
-			return true;
-		}
-
-		const settings = await this.llmSettingsService.getLlmSettings();
-		const active = settings.activeProvider;
-		return (
-			!!active &&
-			KEYLESS_PROVIDERS.has(active) &&
-			!!settings.providers[active]?.model
-		);
-	}
-
 	@Implement(setupContract)
 	setup() {
 		return {
@@ -87,8 +57,10 @@ export class SetupController {
 					};
 				}
 
+				// "Configured" means the ACTIVE provider is runnable, not that some
+				// key exists — see LlmSettingsService.isActiveProviderUsable.
 				const [aiProvider, mappedServices, incidents] = await Promise.all([
-					this.isAiProviderConfigured(),
+					this.llmSettingsService.isActiveProviderUsable(),
 					this.prisma.service.count({
 						where: { localCheckoutPath: { not: null } },
 					}),

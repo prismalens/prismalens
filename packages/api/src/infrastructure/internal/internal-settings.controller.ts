@@ -9,7 +9,7 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiExcludeController } from "@nestjs/swagger";
-import { getApiKeyEnvVar, type LLMProviderId } from "@prismalens/config/llm";
+import { getApiKeyEnvVar } from "@prismalens/config/llm";
 import { Public } from "../../core/auth/public.decorator.js";
 import { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
 import { InternalGuard } from "./guards/internal.guard.js";
@@ -52,31 +52,17 @@ export class InternalSettingsController {
 		baseUrl: string | null;
 		credentials: Record<string, string>;
 	}> {
-		const settings = await this.llmSettingsService.getLlmSettings();
-		const provider =
-			settings.activeProvider ??
-			(process.env.PRISMALENS_LLM_PROVIDER as LLMProviderId | undefined) ??
-			null;
-		const model = provider
-			? (settings.providers[provider as LLMProviderId]?.model ??
-				process.env.PRISMALENS_LLM_MODEL ??
-				null)
-			: (process.env.PRISMALENS_LLM_MODEL ?? null);
-
-		// The user-configured base URL (validated against the provider allowlist on
-		// save) — without it the worker can only ever use the hardcoded default,
-		// which mis-points ollama-local and `custom` deployments (ledger:
-		// worker-provider-hardwiring).
-		const baseUrl = provider
-			? (settings.providers[provider as LLMProviderId]?.baseUrl ?? null)
-			: null;
+		// `baseUrl` is the user-configured one (validated against the provider
+		// allowlist on save) — without it the worker can only ever use the
+		// hardcoded default, which mis-points ollama-local and `custom`
+		// deployments (ledger: worker-provider-hardwiring).
+		const { provider, model, baseUrl } =
+			await this.llmSettingsService.resolveActiveLlmConfig();
 
 		const credentials: Record<string, string> = {};
 		if (provider) {
-			const apiKey = this.llmSettingsService.resolveApiKey(
-				provider as LLMProviderId,
-			);
-			const envVar = getApiKeyEnvVar(provider as LLMProviderId);
+			const apiKey = this.llmSettingsService.resolveApiKey(provider);
+			const envVar = getApiKeyEnvVar(provider);
 			if (envVar && apiKey) {
 				credentials[envVar] = apiKey;
 			}
