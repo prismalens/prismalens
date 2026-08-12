@@ -67,26 +67,28 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	}) => {
 		const DETAIL_URL = "/investigations/d0111111-1111-4111-8111-111111111111";
 
-		// Default state: no prismalens-theme cookie set
-		await page.context().clearCookies({ name: "prismalens-theme" });
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
 		await expect(
 			page.getByRole("tab", { name: "Analysis" }),
 		).toBeVisible({ timeout: 15_000 });
+		await setTheme("light");
 		await page.waitForLoadState("networkidle");
 		await page.screenshot({
 			path: `${SHOTS}/investigation-detail-default.png`,
 			fullPage: true,
 		});
 
-		// Dark state: prismalens-theme cookie explicitly set to dark
-		await page.evaluate((theme) => {
-			document.cookie = `prismalens-theme=${theme}; path=/; max-age=31536000`;
-		}, "dark");
-		await page.reload();
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
+		// Dark state: set theme to dark
+		await setTheme("dark");
 		await page.waitForLoadState("networkidle");
 		await page.screenshot({
 			path: `${SHOTS}/investigation-detail-dark.png`,
