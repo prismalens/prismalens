@@ -21,6 +21,7 @@ export {
 	getAllowedHosts,
 	getApiKeyEnvVar,
 	getDefaultModel,
+	isLLMProviderId,
 	LLM_CREDENTIAL_ENV_VARS,
 	LLM_PROVIDER_IDS,
 	// Static metadata
@@ -28,4 +29,5 @@ export {
 	type LLMProviderId,
 	// Zod schemas (for provider ID validation only)
 	llmProviderIdSchema,
+	providerRequiresApiKey,
 } from "./providers/llm.js";

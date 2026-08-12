@@ -11,6 +11,10 @@ import { z } from "zod";
  * `defaultModel` used when the user hasn't picked one (ADR-0013). Actual model
  * calls go through `@prismalens/config/model` — the Vercel AI SDK resolver.
  *
+ * `envVar` is where a key LIVES, never whether one is NEEDED: ollama and custom
+ * name an env var but run keyless. `requiresApiKey` is the only keyless test —
+ * inferring it from `envVar` is always wrong (PR #396 threads A/B).
+ *
  * @example
  * ```typescript
  * const provider = LLM_PROVIDERS.anthropic;
@@ -25,6 +29,7 @@ export const LLM_PROVIDERS = {
 		helpUrl: "https://console.anthropic.com/settings/keys",
 		defaultModel: "claude-sonnet-5",
 		envVar: "ANTHROPIC_API_KEY",
+		requiresApiKey: true,
 		logoUrl: "https://models.dev/logos/anthropic.svg",
 		allowedHosts: ["api.anthropic.com"] as string[],
 	},
@@ -34,6 +39,7 @@ export const LLM_PROVIDERS = {
 		helpUrl: "https://platform.openai.com/api-keys",
 		defaultModel: "gpt-5.4-mini",
 		envVar: "OPENAI_API_KEY",
+		requiresApiKey: true,
 		logoUrl: "https://models.dev/logos/openai.svg",
 		allowedHosts: ["api.openai.com"] as string[],
 	},
@@ -43,6 +49,7 @@ export const LLM_PROVIDERS = {
 		helpUrl: "https://aistudio.google.com",
 		defaultModel: "gemini-3.5-flash",
 		envVar: "GOOGLE_API_KEY",
+		requiresApiKey: true,
 		logoUrl: "https://models.dev/logos/google.svg",
 		allowedHosts: ["generativelanguage.googleapis.com"] as string[],
 	},
@@ -52,6 +59,7 @@ export const LLM_PROVIDERS = {
 		helpUrl: "https://ollama.ai",
 		defaultModel: "gpt-oss:20b-cloud",
 		envVar: "OLLAMA_API_KEY", // Optional — for Ollama Cloud
+		requiresApiKey: false,
 		baseUrlRequired: false,
 		defaultBaseUrl: "http://localhost:11434/v1",
 		cloudBaseUrl: "https://ollama.com",
@@ -64,6 +72,7 @@ export const LLM_PROVIDERS = {
 		helpUrl: "https://console.groq.com/keys",
 		defaultModel: "openai/gpt-oss-120b",
 		envVar: "GROQ_API_KEY",
+		requiresApiKey: true,
 		free: true,
 		logoUrl: "https://models.dev/logos/groq.svg",
 		allowedHosts: ["api.groq.com"] as string[],
@@ -74,6 +83,7 @@ export const LLM_PROVIDERS = {
 		helpUrl: "https://platform.openai.com/docs/api-reference",
 		defaultModel: null,
 		envVar: "CUSTOM_LLM_API_KEY",
+		requiresApiKey: false,
 		baseUrlRequired: true,
 		defaultBaseUrl: "http://localhost:8000/v1",
 		logoUrl: null,
@@ -131,6 +141,21 @@ export const llmProviderIdSchema = z.enum(LLM_PROVIDER_IDS);
  */
 export function getApiKeyEnvVar(providerId: LLMProviderId): string {
 	return LLM_PROVIDERS[providerId].envVar;
+}
+
+/**
+ * Does this provider refuse to run without a credential? False for the keyless
+ * endpoints (ollama, custom), which name an `envVar` only because they *may*
+ * accept a key. The API's "setup step done" check and the wizard's "can
+ * continue" gate both read this, so they cannot disagree (PR #396 threads A/B).
+ */
+export function providerRequiresApiKey(providerId: LLMProviderId): boolean {
+	return LLM_PROVIDERS[providerId].requiresApiKey;
+}
+
+/** Narrow an untrusted string (env var, stored JSON) to a known provider id. */
+export function isLLMProviderId(value: string): value is LLMProviderId {
+	return Object.hasOwn(LLM_PROVIDERS, value);
 }
 
 /**

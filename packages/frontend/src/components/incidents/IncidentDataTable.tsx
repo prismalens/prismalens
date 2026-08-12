@@ -41,6 +41,7 @@ import {
 	Search,
 } from "lucide-react";
 import { useState } from "react";
+import { SetupNextStepHint } from "@/components/setup";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -374,7 +375,7 @@ export function IncidentDataTable({
 	if (incidents.length === 0) {
 		return (
 			<div
-				className="flex flex-col items-center justify-center py-12 text-muted-foreground"
+				className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground"
 				data-testid="incidents-empty-state"
 			>
 				<FileText className="h-12 w-12 mb-4 opacity-50" />
@@ -393,6 +394,12 @@ export function IncidentDataTable({
 						Create Incident
 					</Button>
 				)}
+				{/*
+				 * The sentence above is only true once something can raise an alert.
+				 * On a fresh instance this was a dead end; the hint names whichever
+				 * setup step is actually missing (#332).
+				 */}
+				<SetupNextStepHint className="mt-4" />
 			</div>
 		);
 	}

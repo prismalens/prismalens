@@ -9,12 +9,19 @@ import { AuthService } from "../auth/auth.service.js";
 import { Public } from "../auth/public.decorator.js";
 import { applySetCookieHeaders } from "../auth/session-cookies.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { LlmSettingsService } from "../settings/llm-settings.service.js";
 import { UsersService } from "../users/users.service.js";
 
 // Public: setup runs before any user exists, so auth is not possible.
 // createOwner is self-guarding ("already set up" check).
 // @Public() must be class-level because @Implement generates individual
 // route handlers — method-level @Public() doesn't propagate to them.
+//
+// getStatus therefore answers unauthenticated callers. It returns BOOLEANS ONLY
+// — never a provider name, a checkout path, or a count — so the most an
+// unauthenticated caller on a single-tenant instance learns is how far its
+// operator got through the wizard. Before an owner exists it short-circuits and
+// probes nothing at all.
 @Public()
 @UseGuards(ThrottlerGuard)
 @Controller()
@@ -24,7 +31,8 @@ export class SetupController {
 	constructor(
 		private readonly usersService: UsersService,
 		private readonly authService: AuthService,
-		readonly _prisma: PrismaService,
+		private readonly prisma: PrismaService,
+		private readonly llmSettingsService: LlmSettingsService,
 	) {}
 
 	@Implement(setupContract)
@@ -32,12 +40,53 @@ export class SetupController {
 		return {
 			// GET /setup/status
 			getStatus: implement(setupContract.getStatus).handler(async () => {
-				const ownerComplete = await this.usersService.isSetupComplete();
-				const currentStep: SetupStep = ownerComplete ? "complete" : "account";
+				const owner = await this.usersService.isSetupComplete();
+
+				// No owner yet: nothing downstream can be true, and an
+				// unauthenticated caller gets told nothing about the instance.
+				if (!owner) {
+					return {
+						setupComplete: false,
+						steps: {
+							owner: false,
+							aiProvider: false,
+							codeLocation: false,
+							firstIncident: false,
+						},
+						currentStep: "account" as SetupStep,
+					};
+				}
+
+				// "Configured" means the ACTIVE provider is runnable, not that some
+				// key exists — see LlmSettingsService.isActiveProviderUsable.
+				const [aiProvider, mappedServices, incidents] = await Promise.all([
+					this.llmSettingsService.isActiveProviderUsable(),
+					this.prisma.service.count({
+						where: { localCheckoutPath: { not: null } },
+					}),
+					this.prisma.incident.count(),
+				]);
+
+				const steps = {
+					owner,
+					aiProvider,
+					codeLocation: mappedServices > 0,
+					firstIncident: incidents > 0,
+				};
+
+				// currentStep is the first incomplete step. Order is the contract's
+				// own enum order, so the progress bar cannot drift from the server.
+				let currentStep: SetupStep = "complete";
+				if (!steps.owner) currentStep = "account";
+				else if (!steps.aiProvider) currentStep = "ai_provider";
+				else if (!steps.codeLocation) currentStep = "code_location";
+				else if (!steps.firstIncident) currentStep = "first_incident";
 
 				return {
-					setupComplete: ownerComplete,
-					steps: { owner: ownerComplete },
+					// An owner exists — the app is usable. The remaining steps are
+					// on-ramp, not a gate.
+					setupComplete: true,
+					steps,
 					currentStep,
 				};
 			}),
