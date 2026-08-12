@@ -54,7 +54,7 @@ PrismaLens supports two primary operational placements:
 
 PrismaLens eliminates external database dependencies by storing all state in an embedded SQLite database managed via `better-sqlite3`:
 
-- **Workspace Knob:** The database location is resolved solely via the application workspace directory (`~/.prismalens` or `PRISMALENS_WORKSPACE_DIR`). `DATABASE_URL` environment variables are explicitly ignored ([`packages/cli/src/cli/up.ts:97-107`](../packages/cli/src/cli/up.ts#L97-L107)).
+- **Workspace Knob:** The database location is resolved solely via the application workspace directory (`~/.prismalens` or `PRISMALENS_WORKSPACE_DIR`). `PRISMALENS_DB_URL` and `DATABASE_URL` are both ignored for path resolution — the workspace dir is the only knob ([`packages/cli/src/cli/up.ts:97-107`](../packages/cli/src/cli/up.ts#L97-L107)). (`DATABASE_URL` is separately read by the auth layer to detect Postgres — [`packages/api/src/core/auth/auth.service.ts:56`](../packages/api/src/core/auth/auth.service.ts#L56) — unrelated to path resolution.)
 - **Programmatic Migrations:** Pending SQL migrations are applied programmatically before NestJS completes initialization using `@prismalens/database/migrator` ([`packages/api/src/main.ts:48-83`](../packages/api/src/main.ts#L48-L83)).
 - **Self-Contained SQL Migration Files:** Migration SQL scripts travel inside the published npm package tarball under `@prismalens/database/dist/prisma/sqlite/schema/` (staged by `scripts/pack-cli.mjs`).
 
