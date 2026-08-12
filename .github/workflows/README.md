@@ -19,7 +19,12 @@ live ruleset, are what to trust.
 | Required check | Published by | Kind |
 | --- | --- | --- |
 | `CI gate` | `ci.yml` → job `ci-gate` | check run |
-| `Validate PR title (conventional commits)` | `pr-title.yml` → job `validate` | check run |
+| `Validate PR title (conventional commits)` | `pr-title.yml` → job `validate` (single check run; step-level event split) | check run |
+
+Both required contexts also report on `merge_group` events (#403): the merge
+queue validates each PR against a speculative merge onto `main`, which is what
+replaces the ruleset's "branch must be up to date" requirement and its
+full-CI-rerun-per-sibling-merge cost.
 
 The third blocker is not a check at all: `required_review_thread_resolution: true`
 on the same ruleset. An unresolved review thread blocks the merge button natively,
