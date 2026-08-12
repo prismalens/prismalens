@@ -110,6 +110,7 @@ export function ServiceLocalCheckoutCard({
 				</p>
 
 				{!localCheckoutPath && (
+					// biome-ignore lint/a11y/useSemanticElements: ARIA status role on p element
 					<p
 						role="status"
 						className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300"
@@ -163,6 +164,7 @@ export function ServiceLocalCheckoutCard({
 				</div>
 
 				{validation?.valid && (
+					// biome-ignore lint/a11y/useSemanticElements: ARIA status role on p element
 					<p
 						role="status"
 						className="flex items-start gap-2 text-sm text-emerald-700 dark:text-emerald-400"
@@ -208,6 +210,7 @@ export function ServiceLocalCheckoutCard({
 				)}
 
 				{saved && (
+					// biome-ignore lint/a11y/useSemanticElements: ARIA status role on p element
 					<p
 						role="status"
 						className="text-sm text-emerald-700 dark:text-emerald-400"

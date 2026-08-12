@@ -13,7 +13,6 @@ import {
 import { ThrottlerGuard } from "@nestjs/throttler";
 import type { Response } from "express";
 import { BoundedSseWriter } from "./sse-writer.js";
-// biome-ignore lint/style/useImportType: Nest's DI needs the runtime class reference.
 import { StreamRelayService } from "./stream-relay.service.js";
 
 /**

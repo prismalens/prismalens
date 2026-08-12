@@ -122,7 +122,7 @@ function redactVcsEmails(input: string): string {
 // ---------------------------------------------------------------------------
 // Normalizes `/home/<user>` → `/home/user` for any username that isn't already
 // the literal `user`. Also handles the flattened `-home-<user>-` form.
-const HOME_PATH_RE = /\/home\/(?!user[\\/\s"\\-])([a-z_][a-z0-9_-]{0,31})/g;
+const HOME_PATH_RE = /\/home\/(?!user[\\/\s"-])([a-z_][a-z0-9_-]{0,31})/g;
 const FLAT_HOME_RE = /-home-(?!user-)([a-z_][a-z0-9_-]{0,31})-/g;
 
 function normalizeHomePaths(input: string): string {

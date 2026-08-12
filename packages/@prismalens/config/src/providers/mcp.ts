@@ -72,6 +72,7 @@ export const MCP_SERVERS = {
 		credentialMapping: {
 			http: {
 				headerName: "Authorization",
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: template placeholder
 				headerTemplate: "Bearer ${credentials.accessToken}",
 			},
 			stdio: {
@@ -100,6 +101,7 @@ export const MCP_SERVERS = {
 		credentialMapping: {
 			http: {
 				headerName: "Authorization",
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: template placeholder
 				headerTemplate: "Bearer ${credentials.apiKey}",
 			},
 		},
@@ -230,7 +232,9 @@ export function buildDefaultMCPConfig(
 		// Build header value from template
 		const token = credentials.accessToken || credentials.apiKey || "";
 		const headerValue = credMapping.headerTemplate
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: template placeholder
 			.replace("${credentials.accessToken}", token)
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: template placeholder
 			.replace("${credentials.apiKey}", token);
 
 		return {
