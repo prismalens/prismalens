@@ -28,7 +28,65 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # RESOLVE THE PR HEAD BEFORE GRANTING WRITE ACCESS.
+  # ------------------------------------------------------------------
+  # For `issue_comment`, the default checkout ref is the repo default branch,
+  # not the PR branch. For `pull_request_review_comment`, the default ref is a
+  # detached PR merge ref — `git push` has no upstream to target. Either way
+  # the agent would commit to the wrong place or fail entirely.
+  #
+  # This lightweight job runs with minimal permissions (pull-requests: read),
+  # fetches the PR head ref/sha/repo via `gh api`, and gates the write-capable
+  # `fix` job on a same-repo check. A fork PR must hard-stop the run here:
+  # the write credential on `fix` must never meet attacker-controlled code
+  # from a fork ref (same class as the `pull_request_target` footgun).
+  resolve-pr:
+    # Same association + mention filter as the fix job — no point resolving
+    # the PR if we would skip the fix anyway.
+    if: |
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      ) && (
+        (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude fix')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude fix'))
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      head_ref: ${{ steps.pr.outputs.head_ref }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      same_repo: ${{ steps.pr.outputs.same_repo }}
+    steps:
+      - name: Fetch PR metadata and validate origin
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          head_ref="$(jq -r '.head.ref' <<< "$pr")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr")"
+          head_repo="$(jq -r '.head.repo.full_name' <<< "$pr")"
+
+          echo "head_ref=${head_ref}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+
+          # FORK GUARD — the whole point of this job.
+          # If the PR comes from a fork, `same_repo` is 'false' and the
+          # `fix` job's `if:` will skip, denying the write credential to
+          # code the repo owner did not author.
+          if [[ "$head_repo" == "$GITHUB_REPOSITORY" ]]; then
+            echo "same_repo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::PR head repo '${head_repo}' does not match '${GITHUB_REPOSITORY}' — refusing to checkout fork code with write credentials."
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
+          fi
+
   fix:
+    needs: resolve-pr
     # TWO conditions, and both matter.
     #
     # The mention itself is the second half. The first half is WHO may mention:
@@ -50,15 +108,11 @@ jobs:
     # The `github.event.issue.pull_request` guard ensures the issue_comment trigger
     # only fires on pull requests, not bare issues — a fix on an issue has no
     # branch to push to.
+    #
+    # The `same_repo` gate is the fork guard from `resolve-pr` — it prevents a
+    # fork PR from ever reaching the write-capable checkout below.
     if: |
-      (
-        github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR'
-      ) && (
-        (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude fix')) ||
-        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude fix'))
-      )
+      needs.resolve-pr.outputs.same_repo == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -69,6 +123,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # Check out the PR head branch, not the default branch or merge ref.
+          # `resolve-pr` already validated that this ref belongs to the same
+          # repo, so the write credential is safe to use here.
+          ref: ${{ needs.resolve-pr.outputs.head_ref }}
           fetch-depth: 1
           # The agent pushes to the PR branch, so it needs a credential.
           # `contents: write` on the job token is what backs this.
