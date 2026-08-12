@@ -1,0 +1,135 @@
+# The fixer lane — applies code fixes on a PR branch when an org member comments
+# `@claude fix`. Tracked in #403 (operator decision 2026-08-12: fixes apply
+# online; merges stay human; reviewer/operator resolve threads, never the fixer).
+#
+# THIS LANE HOLDS `contents: write` — THE REPO'S ONLY MODEL-ADJACENT WRITE.
+# ------------------------------------------------------------------
+# That is what lets the fixer push commits to the PR branch. It is deliberately
+# absent from `claude.yml` (mention lane) and `claude-code-review.yml` (review
+# lane), both of which are read-only by design. The trade-off: this lane can
+# modify source files and push, so the `--disallowed-tools` list and the
+# association filter are the controls that stop an attacker-influenced comment
+# from steering a write into the repo. Losing either control gives a public
+# commenter a push path. Neither is defence in depth for the other.
+name: Claude Fix
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# Serialise per PR so two `@claude fix` comments in quick succession cannot race
+# on the same branch. NOT `cancel-in-progress`: a fix is an instruction someone
+# typed, and killing it half-done loses work nobody asked to discard (same
+# reasoning as claude.yml's mention lane).
+concurrency:
+  group: claude-fix-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    # TWO conditions, and both matter.
+    #
+    # The mention itself is the second half. The first half is WHO may mention:
+    # this is a public repo, so without the association filter any account that
+    # can leave a comment can start a run that spends the subscription and feeds
+    # attacker-chosen text to an agent holding this repo's app identity.
+    #
+    # Since #415 there is no merge gate reading anything this lane could produce —
+    # `review-evidence` is retired and merges are enforced by `CI gate`, the title
+    # check, and GitHub's native unresolved-thread rule. So this filter is no longer
+    # backed by a second control underneath it: it is the whole of what stops an
+    # arbitrary commenter from spending the subscription and steering an agent that
+    # carries this repo's app identity. Note the limit of any association check —
+    # the adversary this repo models is a drifted agent holding a maintainer
+    # credential, and such an agent passes every one of them. What contains that is
+    # the token scope on this job and the `--disallowed-tools` list below, not this
+    # condition.
+    #
+    # The `github.event.issue.pull_request` guard ensures the issue_comment trigger
+    # only fires on pull requests, not bare issues — a fix on an issue has no
+    # branch to push to.
+    if: |
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      ) && (
+        (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude fix')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude fix'))
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          # The agent pushes to the PR branch, so it needs a credential.
+          # `contents: write` on the job token is what backs this.
+          persist-credentials: true
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        # SYNCHRONOUS SUBAGENTS, PINNED BY BEHAVIOR — THE ASYNC REGRESSION
+        # (#403, root-caused 2026-08-12).
+        #
+        # Same failure shape as the review lane: recent Claude Code CLIs
+        # launch subagents in the background by default, and the action's
+        # one-shot print mode exits before a background subagent can report
+        # back. See the full root-cause in claude-code-review.yml; the fix
+        # is the same env var.
+        #
+        # REMOVE once upstream makes print mode survive the launch→notification
+        # gap, then VERIFY on a real PR that the fixer actually pushes.
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # THE TOOL DENY LIST IS LOAD-BEARING.
+          #
+          # This lane can push commits — it must never be able to do anything
+          # else that affects the merge path. The deny list prevents:
+          #   1. Submitting a review (approve/request-changes/comment-as-review)
+          #   2. Resolving review threads (that is the reviewer's or operator's
+          #      job — resolving your own findings is self-grading)
+          #   3. Merging the PR (fixes apply online; merges stay human)
+          #   4. Using the reviews API directly (same as 1, via raw API)
+          #
+          # This is not defence in depth — it is the only thing stopping a
+          # `contents: write` agent from approving and merging its own fixes.
+          # The association filter above stops outsiders; this list stops the
+          # agent itself.
+          claude_args: >-
+            --disallowed-tools "Bash(gh pr review:*)"
+            --disallowed-tools "Bash(gh api:*pulls/*/reviews*)"
+            --disallowed-tools "Bash(gh api:*resolveReviewThread*)"
+            --disallowed-tools "Bash(gh pr merge:*)"
+
+          prompt: |
+            You are a code fixer. An org member has commented `@claude fix` on
+            this pull request. Your job:
+
+            1. Read the PR diff and ALL unresolved review threads on this PR.
+            2. For each unresolved thread that describes a fixable issue, apply
+               the fix to the codebase on the PR's existing branch.
+            3. Commit your changes with clear, conventional-commit messages.
+               Never force-push — always a normal `git push`.
+            4. After pushing, reply IN EACH review thread you addressed with
+               the commit SHA that fixes it. Do NOT resolve the thread — the
+               reviewer or operator will do that after verifying.
+            5. If a finding requires changes to files under `.github/workflows/`,
+               do NOT edit those files. Instead, reply in the thread explaining
+               that the fix requires a workflow change and must be applied by
+               the operator.
+            6. If you cannot fix a finding, reply in its thread explaining why.
+
+            Never resolve review threads. Never submit a review. Never merge.
+            Never force-push.
