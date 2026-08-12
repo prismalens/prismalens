@@ -257,13 +257,14 @@ export class SqliteSessionManager implements SessionManager {
 		tx(this.db, () => {
 			this.db
 				.prepare(`
-					INSERT INTO groups (id, group_key, formed_by, created_at)
-					VALUES (?, ?, ?, ?)
+					INSERT INTO groups (id, group_key, formed_by, previous_run_id, created_at)
+					VALUES (?, ?, ?, ?, ?)
 					ON CONFLICT(id) DO UPDATE SET
 						group_key = excluded.group_key,
-						formed_by = excluded.formed_by
+						formed_by = excluded.formed_by,
+						previous_run_id = excluded.previous_run_id
 				`)
-				.run(runId, rec.groupKey, rec.formedBy, now);
+				.run(runId, rec.groupKey, rec.formedBy, rec.previousRunId ?? null, now);
 
 			this.db.prepare("DELETE FROM group_alerts WHERE group_id = ?").run(runId);
 

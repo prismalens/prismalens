@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { createHash, randomUUID } from "node:crypto";
-import { pickServiceLabel } from "@prismalens/config";
+import { alertFlapWindowMs, pickServiceLabel } from "@prismalens/config";
 import type { GroupRecord, SessionManager } from "../core/session.js";
 
 export interface GroupingPort {
@@ -27,6 +27,9 @@ export interface GroupingOptions {
 		alerts: Record<string, unknown>[],
 	) => Promise<void>;
 	log: (msg: string) => void;
+	/** #231 R4 flap window. Defaults to the one global knob
+	 *  (`PRISMALENS_ALERT_FLAP_WINDOW_MINUTES`); tests inject their own. */
+	flapWindowMs?: number;
 }
 
 export function deriveGroupKey(
@@ -107,6 +110,40 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 		runId?: string;
 	}
 	const activeAlerts = new Map<string, ActiveAlert>();
+
+	// #231 R4: dedupeKey -> the run it last completed under, and when. A refire
+	// after completion still starts a NEW run; this only lets that run record
+	// `previousRunId`. Entries older than the flap window are pruned on read.
+	const flapWindowMs = options.flapWindowMs ?? alertFlapWindowMs();
+	const completedRuns = new Map<
+		string,
+		{ runId: string; completedAtMs: number }
+	>();
+
+	function noteCompleted(runId: string, dedupeKeys: Set<string>): void {
+		const completedAtMs = Date.now();
+		for (const key of dedupeKeys) {
+			completedRuns.set(key, { runId, completedAtMs });
+		}
+	}
+
+	/** The most recent in-window predecessor across this group's dedupe keys. */
+	function resolvePreviousRunId(
+		dedupeKeys: Iterable<string>,
+	): string | undefined {
+		const now = Date.now();
+		let best: { runId: string; completedAtMs: number } | undefined;
+		for (const key of dedupeKeys) {
+			const prior = completedRuns.get(key);
+			if (!prior) continue;
+			if (now - prior.completedAtMs > flapWindowMs) {
+				completedRuns.delete(key);
+				continue;
+			}
+			if (!best || prior.completedAtMs > best.completedAtMs) best = prior;
+		}
+		return best?.runId;
+	}
 
 	return {
 		isShuttingDown() {
@@ -227,12 +264,19 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 						}
 
 						// synchronously set up the record
+						const previousRunId = resolvePreviousRunId(dedupeKeys);
 						const rec: GroupRecord = {
 							groupKey,
 							formedBy: "window",
 							alerts: alertsToRun,
 							lateAlerts: [],
+							...(previousRunId && { previousRunId }),
 						};
+						if (previousRunId) {
+							options.log(
+								`Run ${runId} refires group ${groupKey} within the flap window; linked to previous run ${previousRunId}`,
+							);
+						}
 
 						const writePromise = Promise.resolve()
 							.then(() => options.sessions.writeGroupRecord(runId, rec))
@@ -270,6 +314,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 									for (const key of dedupeKeys) {
 										activeAlerts.delete(key);
 									}
+									noteCompleted(runId, dedupeKeys);
 								}
 							})
 							.catch((err) => {
@@ -280,6 +325,7 @@ export function createGroupingLayer(options: GroupingOptions): GroupingPort {
 								for (const key of dedupeKeys) {
 									activeAlerts.delete(key);
 								}
+								noteCompleted(runId, dedupeKeys);
 							});
 					}, options.windowMs),
 				};

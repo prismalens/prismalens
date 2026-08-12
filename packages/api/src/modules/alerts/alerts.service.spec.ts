@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { AlertFactory } from "../../../test/factories/index.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { Severity } from "../../shared/enums/index.js";
+import { AlertStatus, Severity } from "../../shared/enums/index.js";
 import { AlertsService } from "./alerts.service.js";
 import type { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 
@@ -21,6 +22,15 @@ const mockPrismaService = {
 		count: vi.fn(),
 		groupBy: vi.fn(),
 	},
+	timelineEntry: {
+		create: vi.fn(),
+	},
+};
+
+/** The #231 flap window, in the units the service reads it in (minutes). */
+const FLAP_WINDOW_MINUTES = 15;
+const mockConfigService = {
+	get: vi.fn(() => FLAP_WINDOW_MINUTES),
 };
 
 describe("AlertsService (BDD)", () => {
@@ -28,12 +38,14 @@ describe("AlertsService (BDD)", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockConfigService.get.mockReturnValue(FLAP_WINDOW_MINUTES);
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				AlertsService,
 				{ provide: PrismaService, useValue: mockPrismaService },
+				{ provide: ConfigService, useValue: mockConfigService },
 			],
 		}).compile();
 
@@ -63,8 +75,8 @@ describe("AlertsService (BDD)", () => {
 				fingerprint: expect.any(String) as unknown as string,
 			});
 
-			// First call to findUnique for dedup check returns null (no duplicate)
-			mockPrismaService.alert.findUnique.mockResolvedValue(null);
+			// The dedup read is findFirst (dedupKey is not unique — #231 R2b)
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
 			mockPrismaService.alert.create.mockResolvedValue(expectedAlert);
 
 			const result = await service.create(createDto);
@@ -90,7 +102,7 @@ describe("AlertsService (BDD)", () => {
 				severity: "medium",
 			});
 
-			mockPrismaService.alert.findUnique.mockResolvedValue(null);
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
 			mockPrismaService.alert.create.mockResolvedValue(expectedAlert);
 
 			await service.create(createDto);
@@ -115,7 +127,7 @@ describe("AlertsService (BDD)", () => {
 				occurrenceCount: 2,
 			});
 
-			mockPrismaService.alert.findUnique.mockResolvedValue(existingAlert);
+			mockPrismaService.alert.findFirst.mockResolvedValue(existingAlert);
 			mockPrismaService.alert.update.mockResolvedValue(updatedAlert);
 
 			const result = await service.create(createDto);
@@ -123,6 +135,199 @@ describe("AlertsService (BDD)", () => {
 			expect(result.occurrenceCount).toBe(2);
 			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
 			expect(mockPrismaService.alert.update).toHaveBeenCalled();
+		});
+	});
+
+	// ==========================================================================
+	// #231 — ruled dedup / flap-suppression semantics.
+	// Fake timers pin "now"; the flap window comes from the injected config mock.
+	// ==========================================================================
+	describe("create — dedup & flap semantics (#231)", () => {
+		const NOW = new Date("2026-08-12T12:00:00.000Z");
+		const MINUTE = 60 * 1000;
+
+		const refireDto: CreateAlertDto = {
+			source: "prometheus",
+			title: "HighErrorRate",
+			severity: Severity.high,
+		};
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+			vi.setSystemTime(NOW);
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		/** The row `create()`'s dedup read returns, with a status + resolve time. */
+		function existing(overrides: Partial<ReturnType<typeof AlertFactory.create>>) {
+			const alert = AlertFactory.create({
+				id: "alert-existing",
+				occurrenceCount: 3,
+				incidentId: "incident-1",
+				...overrides,
+			});
+			// Both reads answer, so the branch under test is the service's, not the
+			// mock's — a spec that only stubs findFirst would pass vacuously against
+			// the pre-#231 findUnique read.
+			mockPrismaService.alert.findFirst.mockResolvedValue(alert);
+			mockPrismaService.alert.findUnique.mockResolvedValue(alert);
+			mockPrismaService.alert.update.mockImplementation(
+				async ({ data }: { data: Record<string, unknown> }) =>
+					AlertFactory.create({
+						...alert,
+						...data,
+						occurrenceCount: alert.occurrenceCount + 1,
+						status:
+							typeof data.status === "string" ? data.status : alert.status,
+					}),
+			);
+			return alert;
+		}
+
+		it("R1: a refire inside the flap window reopens a resolved alert to triggered", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 5 * MINUTE),
+			});
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
+			expect(mockPrismaService.alert.update).toHaveBeenCalledWith({
+				where: { id: "alert-existing" },
+				data: expect.objectContaining({
+					occurrenceCount: { increment: 1 },
+					status: AlertStatus.triggered,
+					resolvedAt: null,
+					triggeredAt: NOW,
+				}),
+			});
+			expect(result.status).toBe(AlertStatus.triggered);
+			expect(result.occurrenceCount).toBe(4);
+		});
+
+		it("R1: the reopen appends a 'reopened by refire (flap)' timeline entry", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 5 * MINUTE),
+			});
+
+			await service.create(refireDto);
+
+			expect(mockPrismaService.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					incidentId: "incident-1",
+					title: "Alert reopened by refire (flap)",
+				}),
+			});
+		});
+
+		it("R1: an alert with no incident reopens without a timeline entry", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 1 * MINUTE),
+				incidentId: null,
+			});
+
+			const result = await service.create(refireDto);
+
+			expect(result.status).toBe(AlertStatus.triggered);
+			expect(mockPrismaService.timelineEntry.create).not.toHaveBeenCalled();
+		});
+
+		it("R2a: a refire of a triggered alert bumps the counter and leaves the status alone", async () => {
+			existing({ status: AlertStatus.triggered, resolvedAt: null });
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
+			expect(result.status).toBe(AlertStatus.triggered);
+			expect(result.occurrenceCount).toBe(4);
+			const [[call]] = mockPrismaService.alert.update.mock.calls as [
+				[{ data: Record<string, unknown> }],
+			];
+			expect(call.data).not.toHaveProperty("status");
+		});
+
+		it("R2a: a refire of an acknowledged (in-flight) alert bumps the counter only", async () => {
+			existing({ status: AlertStatus.acknowledged, resolvedAt: null });
+
+			const result = await service.create(refireDto);
+
+			expect(result.status).toBe(AlertStatus.acknowledged);
+			const [[call]] = mockPrismaService.alert.update.mock.calls as [
+				[{ data: Record<string, unknown> }],
+			];
+			expect(call.data).not.toHaveProperty("status");
+		});
+
+		it("R2b: a refire of a resolved alert OUTSIDE the flap window inserts a new alert row", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 16 * MINUTE),
+			});
+			mockPrismaService.alert.create.mockResolvedValue(
+				AlertFactory.create({ id: "alert-new-episode" }),
+			);
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.update).not.toHaveBeenCalled();
+			expect(mockPrismaService.alert.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					status: AlertStatus.triggered,
+					occurrenceCount: 1,
+				}),
+			});
+			expect(result.id).toBe("alert-new-episode");
+		});
+
+		it("R2b: the window boundary is inclusive — exactly 15 min still reopens", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 15 * MINUTE),
+			});
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
+			expect(result.status).toBe(AlertStatus.triggered);
+		});
+
+		it("R2c: a refire of a suppressed alert bumps the counter and NEVER reopens", async () => {
+			existing({
+				status: AlertStatus.suppressed,
+				resolvedAt: new Date(NOW.getTime() - 1 * MINUTE),
+			});
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
+			expect(result.status).toBe(AlertStatus.suppressed);
+			expect(result.occurrenceCount).toBe(4);
+			const [[call]] = mockPrismaService.alert.update.mock.calls as [
+				[{ data: Record<string, unknown> }],
+			];
+			expect(call.data).not.toHaveProperty("status");
+			expect(mockPrismaService.timelineEntry.create).not.toHaveBeenCalled();
+		});
+
+		it("reads the flap window from config, with no caller-side fallback", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 40 * MINUTE),
+			});
+			mockConfigService.get.mockReturnValue(60);
+
+			const result = await service.create(refireDto);
+
+			expect(mockConfigService.get).toHaveBeenCalledWith(
+				"PRISMALENS_ALERT_FLAP_WINDOW_MINUTES",
+				{ infer: true },
+			);
+			expect(result.status).toBe(AlertStatus.triggered);
 		});
 	});
 
