@@ -22,7 +22,7 @@ reviews:
     #      sensitive surface (the CI/workflow surface itself, credential and crypto
     #      handling, the engine core, contract or schema changes), or a Claude
     #      review whose findings deserve a check from a reviewer sharing no model,
-    #      prompt or failure mode. Apply the `review-ready` label BY HAND.
+    #      prompt or failure mode. Apply the `coderabbit_review` label BY HAND.
     #      This used to be automatic: `review-admit.yml` applied the label on a
     #      path match against `.github/high-risk-paths.txt`, and the
     #      `review-evidence` gate kept such PRs red until `coderabbitai[bot]`
@@ -46,7 +46,7 @@ reviews:
     # The revert is one commit — see ~/ai-context/state/prismalens-valve-revert.md.
     enabled: false
     labels:
-      - "review-ready"
+      - "coderabbit_review"
     # Still load-bearing under the flip: once a PR IS admitted, this stops a
     # fix-push loop from spending the counter again on every push. Push fixes as
     # a batch, then re-request explicitly with `@coderabbitai review`.
@@ -115,7 +115,7 @@ reviews:
 # outside contributors as a self-service re-request after
 # auto_pause_after_reviewed_commits stops incremental review on their PR.
 # Acceptable because admission is already a manual maintainer action (auto_review
-# is off; review-ready is applied by hand) — a maintainer can issue the
+# is off; coderabbit_review is applied by hand) — a maintainer can issue the
 # re-request too — and because no merge depends on a CodeRabbit review any more,
 # so the worst case is friction, not a deadlock.
 chat:
