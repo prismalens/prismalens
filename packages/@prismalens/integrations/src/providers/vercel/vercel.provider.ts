@@ -8,6 +8,7 @@
  * Uses Vercel REST API: https://vercel.com/docs/rest-api
  */
 import type { DeploymentService } from "@prismalens/config/integrations";
+import { providerHttpError } from "../../engine/provider-http-error.js";
 import type { DeploymentProvider } from "../deployment.interface.js";
 import type { AuthenticatedRequestFn } from "../types.js";
 
@@ -46,8 +47,12 @@ interface VercelProjectsResponse {
 
 async function json<T>(response: Response): Promise<T> {
 	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`Vercel API error: ${response.status} - ${errorText}`);
+		// Never the response body — see provider-http-error.ts (#347 F1).
+		throw providerHttpError({
+			operation: "Vercel API request",
+			provider: "vercel",
+			response,
+		});
 	}
 	return response.json() as Promise<T>;
 }

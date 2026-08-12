@@ -8,7 +8,40 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { AuthTemplate, OAuthStateData, TokenResult } from "../types.js";
 import { interpolate } from "./interpolate.js";
+import {
+	providerHttpError,
+	providerJsonParseError,
+} from "./provider-http-error.js";
 import type { TokenVault } from "./token-vault.js";
+
+/**
+ * The OAuth2 token-endpoint error codes we are willing to name in a log line
+ * (RFC 6749 §5.2 plus the device-flow codes of RFC 8628 §3.5).
+ */
+const OAUTH2_ERROR_CODES: ReadonlySet<string> = new Set([
+	"access_denied",
+	"authorization_pending",
+	"expired_token",
+	"invalid_client",
+	"invalid_grant",
+	"invalid_request",
+	"invalid_scope",
+	"slow_down",
+	"unauthorized_client",
+	"unsupported_grant_type",
+]);
+
+/**
+ * Fence the provider-supplied `error` field by enumeration rather than by
+ * shape: a bearer token is itself a short token-shaped string, so any
+ * "looks like a code" filter would pass it straight through. Anything not on
+ * the registered list is reported as unrecognised, never echoed.
+ */
+function safeOAuthErrorCode(value: unknown): string {
+	return typeof value === "string" && OAUTH2_ERROR_CODES.has(value)
+		? value
+		: "unrecognized_error_code";
+}
 
 export interface OAuth2StoreDeps {
 	saveOAuthState(data: OAuthStateData): Promise<void>;
@@ -96,65 +129,6 @@ export class OAuth2Flow {
 		return { url: `${authUrl}?${urlParams.toString()}`, state };
 	}
 
-	async handleCallback(
-		code: string,
-		stateToken: string,
-		getClientCredentials: (
-			integrationId: string,
-		) => Promise<{ clientId: string; clientSecret: string }>,
-	): Promise<{
-		tokenResult: TokenResult;
-		oauthState: OAuthStateData;
-	}> {
-		const oauthState = await this.deps.getOAuthState(stateToken);
-		if (!oauthState) {
-			throw new Error("Invalid OAuth state — possible CSRF attack");
-		}
-		if (oauthState.expiresAt < new Date()) {
-			await this.deps.deleteOAuthState(stateToken);
-			throw new Error("OAuth state expired");
-		}
-		await this.deps.deleteOAuthState(stateToken);
-
-		const { clientId, clientSecret } = await getClientCredentials(
-			oauthState.integrationId,
-		);
-
-		return {
-			tokenResult: await this.exchangeCode(
-				code,
-				oauthState,
-				clientId,
-				clientSecret,
-			),
-			oauthState,
-		};
-	}
-
-	private async exchangeCode(
-		code: string,
-		oauthState: OAuthStateData,
-		clientId: string,
-		clientSecret: string,
-	): Promise<TokenResult> {
-		// The template is looked up by the caller — we receive it indirectly
-		// For now, we do a generic token exchange. Template-specific params
-		// are handled by the NestJS adapter layer.
-		const tokenBody: Record<string, string> = {
-			grant_type: "authorization_code",
-			code,
-			redirect_uri: oauthState.callbackUrl,
-			client_id: clientId,
-			client_secret: clientSecret,
-		};
-
-		if (oauthState.codeVerifier) {
-			tokenBody.code_verifier = oauthState.codeVerifier;
-		}
-
-		return { tokenBody } as unknown as TokenResult;
-	}
-
 	/**
 	 * Full token exchange with a known template.
 	 */
@@ -202,16 +176,46 @@ export class OAuth2Flow {
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
+			// The body is deliberately not read: a token-endpoint error body can
+			// echo the authorization code, a bearer/refresh token or the client
+			// credentials we just sent, and this error is logged by the OAuth
+			// callback handler. Only HTTP-level diagnostics travel with it.
+			throw providerHttpError({
+				operation: "OAuth token exchange",
+				provider: template.id,
+				response,
+			});
+		}
+
+		// An unguarded parse would throw a SyntaxError quoting the body — the same
+		// disclosure as the non-2xx body above. See provider-http-error.ts (#347).
+		let data: Record<string, unknown>;
+		try {
+			data = (await response.json()) as Record<string, unknown>;
+		} catch {
+			throw providerJsonParseError({
+				operation: "OAuth token exchange",
+				provider: template.id,
+				response,
+			});
+		}
+
+		if (data.error) {
+			// `error` and `error_description` are provider-supplied strings, so
+			// neither is echoed verbatim. The code is fenced by enumeration
+			// against RFC 6749 §5.2 / RFC 8628 §3.5; the free-text description is
+			// dropped entirely.
 			throw new Error(
-				`Token exchange failed (${response.status}): ${errorText}`,
+				`OAuth token exchange failed for provider '${template.id}': provider returned error '${safeOAuthErrorCode(data.error)}' in a ${response.status} response`,
 			);
 		}
 
-		const data = (await response.json()) as Record<string, unknown>;
-
-		if (data.error) {
-			throw new Error(`OAuth error: ${data.error_description ?? data.error}`);
+		// A 2xx with no usable access_token is not a success — without this guard
+		// the credential is stored with `accessToken: undefined`. Whitespace-only
+		// counts as absent.
+		const accessToken = data.access_token;
+		if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
+			throw new Error("Token exchange response has no access_token");
 		}
 
 		const metadata: Record<string, unknown> = {};
@@ -225,7 +229,7 @@ export class OAuth2Flow {
 		const separator = template.oauth2.scopeSeparator ?? " ";
 
 		return {
-			accessToken: data.access_token as string,
+			accessToken,
 			refreshToken: (data.refresh_token as string) ?? null,
 			tokenType: (data.token_type as string) ?? "bearer",
 			expiresIn: (data.expires_in as number) ?? null,

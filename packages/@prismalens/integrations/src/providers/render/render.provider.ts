@@ -8,6 +8,7 @@
  * Uses Render API v1: https://docs.render.com/api
  */
 import type { DeploymentService } from "@prismalens/config/integrations";
+import { providerHttpError } from "../../engine/provider-http-error.js";
 import type { DeploymentProvider } from "../deployment.interface.js";
 import type { AuthenticatedRequestFn } from "../types.js";
 
@@ -58,8 +59,12 @@ interface ProjectContext {
 
 async function json<T>(response: Response): Promise<T> {
 	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`Render API error: ${response.status} - ${errorText}`);
+		// Never the response body — see provider-http-error.ts (#347 F1).
+		throw providerHttpError({
+			operation: "Render API request",
+			provider: "render",
+			response,
+		});
 	}
 	return response.json() as Promise<T>;
 }
