@@ -55,8 +55,12 @@ What replaced it:
 **Findings block; silence does not.** What is genuinely lost is the machine
 guarantee that a reviewer ran on a given head — a guarantee that, per the above, was
 never actually held. A reviewer that silently posts nothing now yields a PR that
-merges unreviewed; the `Report reviewer liveness` step in `claude-code-review.yml`
-announces that in the job log, and nowhere else.
+merges unreviewed. Two places announce that fact, neither of which gates:
+the `Report reviewer liveness` step in `claude-code-review.yml` warns in the job
+log, and the `announce` job in the same file upserts one advisory comment per PR
+stating whether `claude[bot]` actually published anything for the reviewed head
+(added after 2026-08-11, when the reviewer ran full reviews, posted nothing, and
+every job stayed green for a day before anyone noticed).
 
 ## Gate-writers — the workflows that can publish a required check
 
