@@ -20,6 +20,7 @@ import {
 	API_GLOBAL_PREFIX_EXCLUDE,
 	WEBHOOK_RUNTIME_PATH_PREFIX,
 } from "./shared/constants/routes.js";
+import { isEaddrinuseError } from "./shared/utils/listen-error.js";
 
 // Set service info for all loggers
 Logger.setServiceInfo({
@@ -241,7 +242,18 @@ async function bootstrap() {
 		);
 	}
 
-	await app.listen(port, host);
+	// Catch EADDRINUSE to print a clear error and exit 1 without stack trace (#237).
+	try {
+		await app.listen(port, host);
+	} catch (error: unknown) {
+		if (isEaddrinuseError(error)) {
+			logger.error(
+				`Port ${port} on ${host} is already in use. Specify a different port with --port or PRISMALENS_PORT.`,
+			);
+			process.exit(1);
+		}
+		throw error;
+	}
 
 	const protocolDisplay = httpsOptions ? "https" : "http";
 	logger.info(`PrismaLens API running on ${protocolDisplay}://${host}:${port}`);
