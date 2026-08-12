@@ -6,11 +6,12 @@
 /**
  * Investigation Canvas Component
  *
- * Visualizes the LangGraph agent execution flow dynamically from AgentExecution data.
- * Renders START → agent nodes → END based on actual database records.
+ * Visualizes the agent execution flow dynamically from AgentExecution data
+ * or live CanonicalEvent stream.
+ * Renders START → agent nodes → END based on actual database records or live events.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
 	Background,
 	Controls,
@@ -18,20 +19,25 @@ import ReactFlow, {
 	type Node,
 	ReactFlowProvider,
 	useEdgesState,
+	useNodesInitialized,
 	useNodesState,
+	useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
 import type {
 	AgentExecutionWithTools,
+	CanonicalEvent,
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import { chartColors } from "@prismalens/design-tokens/colors";
+import { Loader2 } from "lucide-react";
 
 import { AgentNode, CanvasExportMenu, StartEndNode } from "@/components/canvas";
 import {
 	getAgentMiniMapColor,
 	transformExecutionsToCanvas,
+	transformLiveEventsToCanvas,
 } from "@/lib/canvas";
 import { NodeDetailsPanel } from "./canvas/NodeDetailsPanel";
 
@@ -49,6 +55,10 @@ export interface InvestigationCanvasProps {
 	variant?: "full" | "mini";
 	/** Callback when user wants to view full canvas (mini mode only) */
 	onViewFull?: () => void;
+	/** Real-time SSE stream events when investigation is active */
+	streamEvents?: CanonicalEvent[];
+	/** Whether the stream is currently connecting (pre-first-event) */
+	streamConnecting?: boolean;
 }
 
 export default function InvestigationCanvas(props: InvestigationCanvasProps) {
@@ -65,17 +75,46 @@ function InvestigationCanvasInner({
 	investigationId,
 	variant = "full",
 	onViewFull,
+	streamEvents,
+	streamConnecting,
 }: InvestigationCanvasProps) {
 	const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 	const isMini = variant === "mini";
 
-	// Transform executions to canvas nodes/edges
+	// Transform executions or live stream events to canvas nodes/edges
 	const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
+		if (streamEvents !== undefined) {
+			return transformLiveEventsToCanvas(streamEvents, status);
+		}
 		return transformExecutionsToCanvas(agentExecutions, status);
-	}, [agentExecutions, status]);
+	}, [agentExecutions, status, streamEvents]);
 
-	const [nodes, , onNodesChange] = useNodesState(initialNodes);
-	const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+	const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+	const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+	// Re-sync nodes and edges whenever initialNodes/initialEdges update
+	useEffect(() => {
+		setNodes(initialNodes);
+		setEdges(initialEdges);
+	}, [initialNodes, initialEdges, setNodes, setEdges]);
+
+	// `fitView` runs once, at mount. That was enough when the graph arrived
+	// complete; a live stream appends nodes afterwards, so the newest node —
+	// precisely the one being watched — drifts out of the viewport and the
+	// operator has to pan to follow their own investigation. Re-fit as the
+	// graph grows, and only on the streaming path so the completed-run render
+	// keeps its single mount-time fit.
+	// `nodesInitialized` is the signal that the newly appended nodes have been
+	// measured; fitting before that fits to zero-sized nodes and does nothing.
+	const { fitView } = useReactFlow();
+	const nodesInitialized = useNodesInitialized();
+	const nodeCount = nodes.length;
+	useEffect(() => {
+		if (streamEvents === undefined || nodeCount === 0 || !nodesInitialized) {
+			return;
+		}
+		fitView({ padding: isMini ? 0.1 : 0.2, duration: 200 });
+	}, [nodeCount, nodesInitialized, streamEvents, fitView, isMini]);
 
 	// Handle node click to show details
 	const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -102,14 +141,19 @@ function InvestigationCanvasInner({
 		return chartColors.node.default;
 	}, []);
 
+	const showConnecting =
+		Boolean(streamConnecting) &&
+		(streamEvents ? streamEvents.length === 0 : nodes.length === 0);
+
 	return (
 		<div
+			data-testid="investigation-canvas"
 			className={`relative w-full bg-zinc-100 dark:bg-zinc-800 rounded-lg ${
 				isMini ? "h-[200px]" : "h-[500px]"
 			}`}
 		>
 			{/* Export Menu - positioned top right (full mode only) */}
-			{!isMini && (
+			{!isMini && !showConnecting && (
 				<div className="absolute top-2 right-2 z-10">
 					<CanvasExportMenu
 						agentExecutions={agentExecutions}
@@ -119,7 +163,7 @@ function InvestigationCanvasInner({
 			)}
 
 			{/* View Full button (mini mode only) */}
-			{isMini && onViewFull && (
+			{isMini && onViewFull && !showConnecting && (
 				<button
 					type="button"
 					onClick={onViewFull}
@@ -129,30 +173,42 @@ function InvestigationCanvasInner({
 				</button>
 			)}
 
-			<ReactFlow
-				nodes={nodes}
-				edges={edges}
-				onNodesChange={onNodesChange}
-				onEdgesChange={onEdgesChange}
-				onNodeClick={isMini ? undefined : onNodeClick}
-				onPaneClick={isMini ? undefined : onPaneClick}
-				nodeTypes={nodeTypes}
-				fitView
-				fitViewOptions={{ padding: isMini ? 0.1 : 0.2 }}
-				attributionPosition="bottom-left"
-				proOptions={{ hideAttribution: true }}
-				panOnDrag={!isMini}
-				zoomOnScroll={!isMini}
-				zoomOnPinch={!isMini}
-				zoomOnDoubleClick={!isMini}
-				nodesDraggable={!isMini}
-				nodesConnectable={false}
-				elementsSelectable={!isMini}
-			>
-				<Background color={chartColors.muted} gap={isMini ? 12 : 16} />
-				{!isMini && <Controls />}
-				{!isMini && <MiniMap nodeColor={minimapNodeColor} zoomable pannable />}
-			</ReactFlow>
+			{showConnecting ? (
+				<div
+					data-testid="canvas-stream-connecting"
+					className="flex flex-col items-center justify-center h-full gap-2 text-sm text-muted-foreground"
+				>
+					<Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+					<span>Connecting to stream...</span>
+				</div>
+			) : (
+				<ReactFlow
+					nodes={nodes}
+					edges={edges}
+					onNodesChange={onNodesChange}
+					onEdgesChange={onEdgesChange}
+					onNodeClick={isMini ? undefined : onNodeClick}
+					onPaneClick={isMini ? undefined : onPaneClick}
+					nodeTypes={nodeTypes}
+					fitView
+					fitViewOptions={{ padding: isMini ? 0.1 : 0.2 }}
+					attributionPosition="bottom-left"
+					proOptions={{ hideAttribution: true }}
+					panOnDrag={!isMini}
+					zoomOnScroll={!isMini}
+					zoomOnPinch={!isMini}
+					zoomOnDoubleClick={!isMini}
+					nodesDraggable={!isMini}
+					nodesConnectable={false}
+					elementsSelectable={!isMini}
+				>
+					<Background color={chartColors.muted} gap={isMini ? 12 : 16} />
+					{!isMini && <Controls />}
+					{!isMini && (
+						<MiniMap nodeColor={minimapNodeColor} zoomable pannable />
+					)}
+				</ReactFlow>
+			)}
 
 			{/* Node Details Panel (full mode only) */}
 			{!isMini && (
