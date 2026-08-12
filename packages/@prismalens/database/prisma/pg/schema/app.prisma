@@ -46,7 +46,7 @@
 // 1. Webhook receives raw payload → creates Event (immutable)
 // 2. Event is normalized → creates/updates Alert (deduplicated by dedupKey)
 // 3. Alert is correlated → linked to existing or new Incident
-// 4. AI worker investigates → creates Investigation with AgentExecutions
+// 4. AI worker investigates → creates Investigation with canonical events
 // 5. Investigation produces → Recommendations and updates Incident
 //
 // EDITION:
@@ -539,7 +539,6 @@ model Incident {
 // =============================================================================
 // Investigation is the AI-driven analysis of an incident.
 // It tracks the multi-agent workflow and produces recommendations.
-// AgentExecution and ToolExecution provide full observability.
 // =============================================================================
 
 /// AI-driven investigation of an incident.
