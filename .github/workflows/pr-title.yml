@@ -26,29 +26,30 @@ on:
   # PR title to validate in a `merge_group` event — the title was already
   # validated (and is immutable to the queue) on the pull_request_target events
   # above, and a PR with a red title check cannot enter the queue in the first
-  # place — so the queue leg reports success by construction rather than
-  # re-checking. Split into two jobs because the two events carry different
-  # payloads; both report the same required context name.
+  # place — so the queue leg passes by construction rather than re-checking.
   merge_group:
 
 permissions:
   pull-requests: read
 
 jobs:
+  # ONE job, with the event condition at STEP level. Not two same-named jobs
+  # with job-level `if`s: that publishes two check runs under the required
+  # context name (one real, one skipped), and which of them branch protection
+  # resolves the context against is undefined — a skipped run could shadow a
+  # genuine lint failure. A step-level skip leaves this single job (and its
+  # single check run) green, so exactly one check run per event carries the
+  # required name. Caught by the review lane on the PR that introduced the
+  # two-job split.
   validate:
     name: Validate PR title (conventional commits)
-    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     steps:
       # No `with:` config — defaults validate against the standard conventional-commit
       # types (feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert).
-      - uses: amannn/action-semantic-pull-request@v6
+      - if: github.event_name != 'merge_group'
+        uses: amannn/action-semantic-pull-request@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  validate-queue:
-    name: Validate PR title (conventional commits)
-    if: github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Title validated on the pull request before it entered the merge queue."
+      - if: github.event_name == 'merge_group'
+        run: echo "Title validated on the pull request before it entered the merge queue."

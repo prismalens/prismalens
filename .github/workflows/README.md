@@ -19,7 +19,7 @@ live ruleset, are what to trust.
 | Required check | Published by | Kind |
 | --- | --- | --- |
 | `CI gate` | `ci.yml` → job `ci-gate` | check run |
-| `Validate PR title (conventional commits)` | `pr-title.yml` → jobs `validate` (PR events) / `validate-queue` (merge queue) | check run |
+| `Validate PR title (conventional commits)` | `pr-title.yml` → job `validate` (single check run; step-level event split) | check run |
 
 Both required contexts also report on `merge_group` events (#403): the merge
 queue validates each PR against a speculative merge onto `main`, which is what
