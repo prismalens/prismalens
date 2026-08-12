@@ -7,10 +7,10 @@
 # That is what lets the fixer push commits to the PR branch. It is deliberately
 # absent from `claude.yml` (mention lane) and `claude-code-review.yml` (review
 # lane), both of which are read-only by design. The trade-off: this lane can
-# modify source files and push, so the `--disallowed-tools` list and the
-# association filter are the controls that stop an attacker-influenced comment
-# from steering a write into the repo. Losing either control gives a public
-# commenter a push path. Neither is defence in depth for the other.
+# modify source files and push, so the `--allowed-tools` list (primary), token
+# scope, the `--disallowed-tools` belt, and the association filter are the
+# controls that stop an attacker-influenced comment from steering a write into
+# the repo. See the CONTAINMENT comment on the `fix` job for the full model.
 name: Claude Fix
 
 on:
@@ -101,9 +101,30 @@ jobs:
     # arbitrary commenter from spending the subscription and steering an agent that
     # carries this repo's app identity. Note the limit of any association check —
     # the adversary this repo models is a drifted agent holding a maintainer
-    # credential, and such an agent passes every one of them. What contains that is
-    # the token scope on this job and the `--disallowed-tools` list below, not this
-    # condition.
+    # credential, and such an agent passes every one of them.
+    #
+    # CONTAINMENT OF A DRIFTED AGENT — THREE LAYERS, IN ORDER OF STRENGTH.
+    #
+    #   1. ALLOWLIST (`--allowed-tools`). Agent mode resolves its tool list
+    #      ONLY from `claude_args`, so only the tools listed below are
+    #      available at all. Anything not listed — `Task`, `gh api`, `gh pr
+    #      review`, `gh pr merge`, `mcp__github_inline_comment__*` — is
+    #      unreachable regardless of the deny list. This is the primary
+    #      control.
+    #
+    #   2. TOKEN SCOPE. `pull-requests: read` on the GITHUB_TOKEN means the
+    #      checked-out credential cannot submit reviews, resolve threads, or
+    #      merge via the GitHub API even if a command somehow executed. The
+    #      action posts under its own app installation token (see
+    #      claude-code-review.yml L58-61), but the app token's scope is
+    #      bounded to what the action itself calls — the agent's Bash
+    #      commands use GITHUB_TOKEN, which is read-only for PRs.
+    #
+    #   3. DENY LIST (`--disallowed-tools`). Belt only, for the two CLI
+    #      commands that the allowlist's `Bash(gh pr :*)` prefix patterns
+    #      might accidentally widen in a future edit. Only prefix-form
+    #      patterns (`Bash(command:*)`) are valid here — mid-pattern `:*`
+    #      is treated literally by Claude Code and matches nothing.
     #
     # The `github.event.issue.pull_request` guard ensures the issue_comment trigger
     # only fires on pull requests, not bare issues — a fix on an issue has no
@@ -151,26 +172,65 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # THE TOOL DENY LIST IS LOAD-BEARING.
+          # THE ALLOWED-TOOLS LIST IS LOAD-BEARING.
           #
-          # This lane can push commits — it must never be able to do anything
-          # else that affects the merge path. The deny list prevents:
-          #   1. Submitting a review (approve/request-changes/comment-as-review)
-          #   2. Resolving review threads (that is the reviewer's or operator's
-          #      job — resolving your own findings is self-grading)
-          #   3. Merging the PR (fixes apply online; merges stay human)
-          #   4. Using the reviews API directly (same as 1, via raw API)
+          # `prompt:` puts this action in agent mode, and agent mode resolves
+          # its entire tool list ONLY from `claude_args` — `settings` is not
+          # read. MCP posting servers are installed conditionally on this list.
+          # An omitted list leaves the agent with no tools at all: observed
+          # twice on 2026-08-09 (review lane), both ran many turns, hit
+          # permission denials, posted nothing, reported `conclusion: success`.
           #
-          # This is not defence in depth — it is the only thing stopping a
-          # `contents: write` agent from approving and merging its own fixes.
-          # The association filter above stops outsiders; this list stops the
-          # agent itself.
+          # THE LIST IS SCOPED TO WHAT THE FIXER NEEDS AND NOTHING MORE.
+          #
+          # Deliberately PRESENT:
+          #   - Read,Grep,Glob,LS — read the codebase
+          #   - Edit,Write,MultiEdit,TodoWrite — edit files
+          #   - Bash(git status:*) through Bash(git push:*) — commit and push
+          #   - Bash(gh pr view:*),Bash(gh pr diff:*) — read the PR
+          #   - mcp__github_comment__update_claude_comment — report back
+          #     (see REPLY MECHANISM below)
+          #
+          # Deliberately ABSENT:
+          #   - Task — no subagents; the fixer is a single-shot editor.
+          #   - mcp__github_inline_comment__create_inline_comment — the fixer
+          #     replies to existing findings, it does not open new ones.
+          #   - Any `gh api` prefix — no prefix narrow enough for thread
+          #     replies (`gh api repos/.../pulls/N/comments`) can be written
+          #     that does not also cover the reviews and merge endpoints,
+          #     because `gh api` accepts flags before the path (`-X POST`,
+          #     `--method`, `-H`, etc.) and prefix matching cannot skip them.
+          #     `Bash(gh api:*)` uses a mid-pattern colon that Claude Code
+          #     treats literally (docs: `:*` is only recognized at the end),
+          #     so it would match nothing anyway.
+          #   - Bash(gh pr comment:*) — not needed; the MCP tool is safer
+          #     because it can only update the bot's own comment.
+          #   - Bash(gh pr review:*),Bash(gh pr merge:*) — the fixer must
+          #     never submit reviews or merge.
+          #
+          # REPLY MECHANISM — MCP FALLBACK.
+          #
+          # The ideal path is per-thread replies via `gh api ...pulls/N/comments
+          # -F in_reply_to=ID`. But no `Bash(gh api ...)` prefix can be scoped
+          # narrowly enough: the reviews, merge, and resolve-thread endpoints
+          # share the same `gh api repos/...` prefix, and flag reordering
+          # (`-X POST` vs `--method POST` vs implicit POST) defeats any fixed
+          # prefix. Rather than allow a broad `gh api` surface on the one job
+          # that holds `contents: write`, the fixer uses
+          # `mcp__github_comment__update_claude_comment` to update its own
+          # summary comment with a table of findings and the commit SHAs that
+          # address them. The reviewer or operator can then cross-reference
+          # each thread. This is less convenient but safer: the MCP tool can
+          # only update comments the bot itself authored.
+          #
+          # A stale list fails SILENTLY — an agent denied at its first step
+          # still exits `success`. Re-derive this list whenever the action
+          # changes; a green job is not proof the list is current.
           claude_args: >-
+            --allowed-tools
+            "Read,Grep,Glob,LS,Edit,Write,MultiEdit,TodoWrite,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh pr view:*),Bash(gh pr diff:*),mcp__github_comment__update_claude_comment"
             --disallowed-tools "Bash(gh pr review:*)"
-            --disallowed-tools "Bash(gh api:*pulls/*/reviews*)"
-            --disallowed-tools "Bash(gh api:*resolveReviewThread*)"
             --disallowed-tools "Bash(gh pr merge:*)"
-            --disallowed-tools "Bash(gh api:*pulls/*/merge*)"
 
           prompt: |
             You are a code fixer. An org member has commented `@claude fix` on
@@ -181,14 +241,19 @@ jobs:
                the fix to the codebase on the PR's existing branch.
             3. Commit your changes with clear, conventional-commit messages.
                Never force-push — always a normal `git push`.
-            4. After pushing, reply IN EACH review thread you addressed with
-               the commit SHA that fixes it. Do NOT resolve the thread — the
-               reviewer or operator will do that after verifying.
+            4. After pushing, update your summary comment (using the
+               `mcp__github_comment__update_claude_comment` tool) with a table
+               listing each review thread you addressed and the commit SHA that
+               fixes it. Format: one row per thread, with the thread's first
+               line of context and the short SHA. This lets the reviewer or
+               operator cross-reference each thread with its fix.
             5. If a finding requires changes to files under `.github/workflows/`,
-               do NOT edit those files. Instead, reply in the thread explaining
+               do NOT edit those files. Instead, note in the summary comment
                that the fix requires a workflow change and must be applied by
                the operator.
-            6. If you cannot fix a finding, reply in its thread explaining why.
+            6. If you cannot fix a finding, note it in the summary comment
+               explaining why.
 
             Never resolve review threads. Never submit a review. Never merge.
             Never force-push.
+
