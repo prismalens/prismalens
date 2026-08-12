@@ -40,6 +40,10 @@
  *                    or ABI-mismatched `.node` reports itself instead of
  *                    surfacing as an unexplained boot failure 90s later.
  *   /health          200. Fails if the process never listens.
+ *   route table      one route per major module answers its guard (401) rather than
+ *                    the unregistered-path JSON 404. A module dropped from
+ *                    `AppModule` boots and serves /health perfectly well; only its
+ *                    routes go missing, which is what this catches.
  *   static asset     `/` must be the SPA shell, and the first same-origin JS/CSS
  *                    it references must come back 200 with a NON-HTML
  *                    content-type. The content-type half is the load-bearing
@@ -515,17 +519,37 @@ if (!healthy) {
 }
 ok("/health 200");
 
-// #327's lesson: HTTP assertions were reported green for an artifact that never
-// finished booting. /health alone can be answered by a half-registered app, so
-// the route table is checked too. Nest colourises its logs, which puts ANSI
-// escapes between the `[RouterExplorer]` tag and the message — match on
-// `Mapped {` alone or the count is silently zero.
-const routes = (readLog().match(/Mapped \{/g) ?? []).length;
-if (routes < 100) {
-	dumpLog();
-	die(`pl up mapped ${routes} routes — it did not finish booting`);
+// Route paths are the product's published HTTP contract; the Nest log text this
+// used to count is not (PR #394). An unregistered path answers the JSON 404
+// asserted below, so a module missing from `AppModule` reports itself by name.
+const BOOT_ROUTES = [
+	"/api/incidents",
+	"/api/investigations",
+	"/api/alerts",
+	"/api/services",
+	"/api/events",
+	"/api/integrations",
+];
+const unregistered = [];
+for (const route of BOOT_ROUTES) {
+	let observed;
+	try {
+		const response = await fetch(base + route, {
+			signal: AbortSignal.timeout(10_000),
+		});
+		observed = response.status === 404 ? "404 (not registered)" : null;
+	} catch (error) {
+		observed = `unreachable: ${error.message}`;
+	}
+	if (observed) unregistered.push(`${route} → ${observed}`);
 }
-ok("route table registered", `${routes} routes`);
+if (unregistered.length > 0) {
+	dumpLog();
+	die(
+		`pl up did not finish booting — ${unregistered.join(", ")}; the route table is incomplete`,
+	);
+}
+ok("route table registered", `${BOOT_ROUTES.length} module routes answer`);
 
 if (readLog().includes("CORS enabled for origins")) {
 	bad("single-origin serving", "the vestigial CORS allowlist is back");
@@ -731,16 +755,17 @@ if (!cookie) {
 					`status ${started.status}: ${(await started.text()).slice(0, 200)}`,
 				);
 			} else {
-				// The log marker is the race-free signal — the child can live for only a
-				// couple of seconds, so a process-table poll alone would be flaky. The
-				// poll still runs, because its job is to RECORD pids for the orphan
-				// assertion, not to decide whether the fork happened.
+				// The child's own log line is the only fork signal available: with no LLM
+				// configured the run throws before it writes any investigation status, so
+				// nothing observable ever reaches the API. `context` is the JSON logger's
+				// structured field, not message text (PR #394). The pid poll only RECORDS
+				// pids for the orphan assertion; it never decides whether the fork happened.
 				let diagnosed = false;
 				for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
 					await sleep(1000);
 					sample();
 					const log = readLog();
-					forked = log.includes('"context":"InvestigationRun"');
+					forked = /"context"\s*:\s*"InvestigationRun"/.test(log);
 					if (/Cannot locate the investigation child entrypoint/.test(log)) {
 						bad(
 							"fork",
