@@ -180,11 +180,61 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
   cause, culprit or no-culprit, recommendations, evidence); `investigations.cancel`; and the live
   `InvestigationStreamPanel`, which has five states of its own — `idle`, `connecting`,
   `streaming`, `completed`, `error` (ADR-0008 canonical stream).
-- **Coverage**: the `analysis` tab only, but well: `alerts-investigations.spec.ts` asserts both the
-  culprit case (service, change ref `v2.4.1`, mechanism) and the **no-culprit** case — that absence
-  stays absence and no culprit section is invented. That is the strongest assertion in the suite.
-  The canvas, the agents tab, cancel, and **all five stream-panel states** are untested. The stream
-  panel is what #243's verification calls a live check.
+
+#### Where the canvas and agents tab get their data
+
+One data source, two transports. `transformLiveEventsToCanvas` is the *only* canvas transform:
+it takes canonical events (ADR-0008) and returns the nodes and edges. Those events reach it live
+over SSE while the run is active, and from a replay of the durable canonical-event record once it
+has finished — `GET /investigations/:id/events`, seq-cursor paginated and looped to completion by
+`src/lib/api/hooks/use-investigation-events.ts`. The **agents tab count** and the canvas's
+**Export JSON** are both derived from those same event-derived nodes, so the three surfaces cannot
+disagree. The old render-on-completion path over `AgentExecution` / `ToolExecution` rows is
+retired ([#417](https://github.com/prismalens/prismalens/issues/417)); there is no second source
+left to drift.
+
+Which transport feeds the canvas is decided once per render, from `investigation.status`:
+
+```
+                        investigation.status
+                                 │
+              ┌──────running/pending──┴──completed/failed──┐
+              ▼                                            ▼
+   useInvestigationStream (SSE)              useInvestigationEventsHistory
+   /investigations/:id/stream                GET /investigations/:id/events
+              │                                            │
+      first event arrived?                          fetch settled?
+      ┌───no──┴──yes──┐                        ┌───no───────┴──yes──┐
+      ▼               ▼                        ▼                    ▼
+"Connecting to    graph grows            "Loading investigation   events > 0 ?
+ stream…"         event by event,         events…"                ┌──no──┴─yes─┐
+                  re-fits per node                                ▼            ▼
+                                                            empty canvas   whole graph
+                                                            (record is     at once,
+                                                             genuinely     fitted once
+                                                             empty)
+```
+
+Both placeholders render under the same `data-testid="canvas-stream-connecting"`; only the copy
+differs, because a finished investigation is fetching a durable record, not connecting to
+anything.
+
+- **Coverage**: the `analysis` tab is covered well: `alerts-investigations.spec.ts` asserts both
+  the culprit case (service, change ref `v2.4.1`, mechanism) and the **no-culprit** case — that
+  absence stays absence and no culprit section is invented. That is the strongest assertion in the
+  suite. The **live** canvas is covered by `live-canvas.spec.ts` (#247), which drives real
+  `CanonicalEvent` payloads through a controlled `EventSource` stand-in and asserts the connecting
+  placeholder, a node appearing per `agent_step`, a tool count updating in place, the re-fit that
+  keeps the newest node in frame, edge animation, `error`, and `branch_done` — plus the design-gate
+  screenshots in both themes. Still untested: the **completed-investigation replay path**, the
+  agents tab, cancel, and **all five stream-panel states**. The stream panel is what #243's
+  verification calls a live check.
+- **Known coverage debt — the replay path cannot be smoked against the demo seed as it stands.**
+  `packages/@prismalens/database/prisma/seeds/demo-data.ts` writes **zero `InvestigationEvent`
+  rows**, so every seeded completed investigation replays the empty right-hand branch of the
+  diagram above: the canvas renders empty and there is nothing for a spec to assert. Seeding a
+  canonical-event record for at least one completed investigation is the prerequisite for a
+  replay spec, and should land with it rather than before it.
 
 ### J11 — Storm: alert flood → one grouped investigation
 

@@ -30,6 +30,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentNodeData>) {
 
 	return (
 		<div
+			style={style.cssVars}
 			className={cn(
 				"px-4 py-3 shadow-lg rounded-lg border-2 min-w-[220px] relative",
 				"transition-all duration-200",

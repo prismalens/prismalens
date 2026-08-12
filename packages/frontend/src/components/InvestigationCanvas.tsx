@@ -13,7 +13,7 @@
  * so there is exactly one rendering path regardless of run state.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
 	Background,
 	Controls,
@@ -95,21 +95,23 @@ function InvestigationCanvasInner({
 		setEdges(initialEdges);
 	}, [initialNodes, initialEdges, setNodes, setEdges]);
 
-	// `fitView` runs once, at mount. That was enough for a one-shot replay of a
-	// finished investigation; a running one appends nodes over the live stream
-	// afterwards, so the newest node — precisely the one being watched — drifts
-	// out of the viewport and the operator has to pan to follow their own
-	// investigation. Re-fit as the graph grows, and only while actively
-	// running, so a replayed/terminal render keeps its single mount-time fit.
-	// `nodesInitialized` is the signal that the newly appended nodes have been
-	// measured; fitting before that fits to zero-sized nodes and does nothing.
+	// `nodesInitialized` is the measurement signal — fitting before it fits to
+	// zero-sized nodes and does nothing. A live run appends nodes and needs a
+	// re-fit per growth; a replay lands once after mount and needs one (#247).
 	const isLive = status === "running" || status === "pending";
 	const { fitView } = useReactFlow();
 	const nodesInitialized = useNodesInitialized();
 	const nodeCount = nodes.length;
+	const replayFitted = useRef(false);
 	useEffect(() => {
-		if (!isLive || nodeCount === 0 || !nodesInitialized) {
+		if (nodeCount === 0 || !nodesInitialized) {
 			return;
+		}
+		if (!isLive) {
+			if (replayFitted.current) {
+				return;
+			}
+			replayFitted.current = true;
 		}
 		fitView({ padding: isMini ? 0.1 : 0.2, duration: 200 });
 	}, [nodeCount, nodesInitialized, isLive, fitView, isMini]);
@@ -174,7 +176,11 @@ function InvestigationCanvasInner({
 					className="flex flex-col items-center justify-center h-full gap-2 text-sm text-muted-foreground"
 				>
 					<Loader2 className="h-5 w-5 animate-spin text-blue-500" />
-					<span>Connecting to stream...</span>
+					<span>
+						{isLive
+							? "Connecting to stream..."
+							: "Loading investigation events..."}
+					</span>
 				</div>
 			) : (
 				<ReactFlow

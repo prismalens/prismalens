@@ -25,6 +25,7 @@ import type {
 } from "@prismalens/contracts";
 import type { LucideIcon } from "lucide-react";
 import { Brain, Cog, Compass, Wrench } from "lucide-react";
+import type { CSSProperties } from "react";
 import type { Edge, Node } from "reactflow";
 import { MarkerType } from "reactflow";
 
@@ -37,6 +38,8 @@ export interface AgentStyle {
 	border: string;
 	textColor: string;
 	iconColor: string;
+	/** Inline `--agent-*` values the class strings above read; spread onto `style`. */
+	cssVars: CSSProperties;
 	displayName: string;
 	icon: LucideIcon;
 }
@@ -90,18 +93,28 @@ function formatAgentName(name: string): string {
 }
 
 /**
- * Generate dynamic agent style based on agent name
- * Uses hash-based color generation for consistent colors
+ * The hue travels as an inline CSS variable — Tailwind extracts class names as
+ * static source text, so an interpolated one yields no rule. The dark swap targets
+ * `.dark &`: this app toggles that class, stock `dark:` is OS-preference (#417).
  */
 function generateAgentStyle(agentName: string): AgentStyle {
 	const hash = hashString(agentName);
 	const hue = hash % 360;
 
 	return {
-		bg: `bg-[hsl(${hue},70%,95%)] dark:bg-[hsl(${hue},40%,15%)]`,
-		border: `border-[hsl(${hue},60%,60%)] dark:border-[hsl(${hue},50%,40%)]`,
-		textColor: `text-[hsl(${hue},80%,30%)] dark:text-[hsl(${hue},70%,70%)]`,
-		iconColor: `text-[hsl(${hue},70%,45%)]`,
+		bg: "bg-(--agent-bg) [.dark_&]:bg-(--agent-bg-dark)",
+		border: "border-(--agent-border) [.dark_&]:border-(--agent-border-dark)",
+		textColor: "text-(--agent-text) [.dark_&]:text-(--agent-text-dark)",
+		iconColor: "text-(--agent-icon)",
+		cssVars: {
+			"--agent-bg": `hsl(${hue}, 70%, 95%)`,
+			"--agent-bg-dark": `hsl(${hue}, 40%, 15%)`,
+			"--agent-border": `hsl(${hue}, 60%, 60%)`,
+			"--agent-border-dark": `hsl(${hue}, 50%, 40%)`,
+			"--agent-text": `hsl(${hue}, 80%, 30%)`,
+			"--agent-text-dark": `hsl(${hue}, 70%, 70%)`,
+			"--agent-icon": `hsl(${hue}, 70%, 45%)`,
+		} as CSSProperties,
 		displayName: formatAgentName(agentName),
 		icon: Cog,
 	};
