@@ -118,20 +118,27 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	await page.locator("#confirmPassword").fill(OWNER.password);
 	await page.getByRole("button", { name: /create account/i }).click();
 
-	// Account creation sets the session cookie, but React's cached `useSession()`
-	// state is not auto-invalidated when the oRPC mutation returns, rendering
-	// the hand-off interstitial. Reloading after the response arrives refreshes
-	// `useSession()` from the session cookie and advances into Step 2.
-	await expect(
-		page.getByRole("heading", { name: "Sign in to continue setup" }),
-	).toBeVisible({ timeout: 30_000 });
-	await page.reload();
-
+	// #358 already establishes the session at account-creation time (the
+	// controller applies Set-Cookie headers from a real sign-in before
+	// responding), and #437 made the wizard refetch `useSession()` on the
+	// account step so the client agrees. So the wizard advances straight into
+	// the next step, with NO reload, rather than bouncing to a "sign in to
+	// continue setup" interstitial. Either that card appearing here or landing
+	// back on /auth/login would mean that regressed.
 	await expect(
 		page.getByRole("heading", { name: "Connect an AI provider" }),
 	).toBeVisible({ timeout: 30_000 });
+	await expect(
+		page.getByRole("heading", { name: "Sign in to continue setup" }),
+	).toHaveCount(0);
 	await expect(page).not.toHaveURL(/\/auth\/login/);
+	// The step arrives without a navigation now, so `networkidle` settles before
+	// the provider list has rendered and photographs a spinner. Wait for the
+	// list itself.
 	await page.waitForLoadState("networkidle");
+	await expect(page.getByRole("button", { name: /anthropic/i })).toBeVisible({
+		timeout: 30_000,
+	});
 	await page.screenshot({
 		path: `${SHOTS}/setup-ai-provider-default.png`,
 		fullPage: true,
