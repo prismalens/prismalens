@@ -118,11 +118,15 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	await page.locator("#confirmPassword").fill(OWNER.password);
 	await page.getByRole("button", { name: /create account/i }).click();
 
-	// #358 already establishes the session at account-creation time (the
-	// controller applies Set-Cookie headers from a real sign-in before
-	// responding), so the wizard advances straight into the next step rather
-	// than bouncing to a "sign in to continue setup" interstitial. Landing back
-	// on /auth/login here would mean that regressed.
+	// Account creation sets the session cookie, but React's cached `useSession()`
+	// state is not auto-invalidated when the oRPC mutation returns, rendering
+	// the hand-off interstitial. Reloading after the response arrives refreshes
+	// `useSession()` from the session cookie and advances into Step 2.
+	await expect(
+		page.getByRole("heading", { name: "Sign in to continue setup" }),
+	).toBeVisible({ timeout: 30_000 });
+	await page.reload();
+
 	await expect(
 		page.getByRole("heading", { name: "Connect an AI provider" }),
 	).toBeVisible({ timeout: 30_000 });
