@@ -120,14 +120,25 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 
 	// #358 already establishes the session at account-creation time (the
 	// controller applies Set-Cookie headers from a real sign-in before
-	// responding), so the wizard advances straight into the next step rather
-	// than bouncing to a "sign in to continue setup" interstitial. Landing back
-	// on /auth/login here would mean that regressed.
+	// responding), and #437 made the wizard refetch `useSession()` on the
+	// account step so the client agrees. So the wizard advances straight into
+	// the next step, with NO reload, rather than bouncing to a "sign in to
+	// continue setup" interstitial. Either that card appearing here or landing
+	// back on /auth/login would mean that regressed.
 	await expect(
 		page.getByRole("heading", { name: "Connect an AI provider" }),
 	).toBeVisible({ timeout: 30_000 });
+	await expect(
+		page.getByRole("heading", { name: "Sign in to continue setup" }),
+	).toHaveCount(0);
 	await expect(page).not.toHaveURL(/\/auth\/login/);
+	// The step arrives without a navigation now, so `networkidle` settles before
+	// the provider list has rendered and photographs a spinner. Wait for the
+	// list itself.
 	await page.waitForLoadState("networkidle");
+	await expect(page.getByRole("button", { name: /anthropic/i })).toBeVisible({
+		timeout: 30_000,
+	});
 	await page.screenshot({
 		path: `${SHOTS}/setup-ai-provider-default.png`,
 		fullPage: true,

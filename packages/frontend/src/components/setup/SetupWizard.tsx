@@ -52,7 +52,11 @@ export function SetupWizard({
 }: SetupWizardProps) {
 	const [currentStep, setCurrentStep] = useState<SetupStep>(initialStep);
 	const { data: status, refetch: refetchStatus } = useSetupStatus();
-	const { data: session, isPending: sessionPending } = useSession();
+	const {
+		data: session,
+		isPending: sessionPending,
+		refetch: refetchSession,
+	} = useSession();
 
 	const getRedirectDestination = () => {
 		if (redirect) {
@@ -80,6 +84,10 @@ export function SetupWizard({
 	 * ticks from the server's view rather than from optimism, then advance.
 	 */
 	const handleStepDone = async (step: SetupStep) => {
+		// The account step mints a session server-side (#358), but Better Auth's
+		// `useSession()` store is not told, so `needsSession` below would bounce a
+		// brand-new owner to the sign-in interstitial (#437). Refetch before advancing.
+		if (step === "account") await refetchSession();
 		await refetchStatus();
 		advanceFrom(step);
 	};
