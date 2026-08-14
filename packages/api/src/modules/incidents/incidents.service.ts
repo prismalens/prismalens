@@ -209,7 +209,9 @@ export class IncidentsService {
 					},
 					service: true,
 					investigations: {
-						where: { status: "completed" },
+						// No status filter: a `running` investigation must surface here too,
+						// or the dashboard's progress bar (gated on status === "running")
+						// can never render (#latestInvestigation bug).
 						orderBy: { createdAt: "desc" },
 						take: 1,
 						select: {

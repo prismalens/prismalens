@@ -236,6 +236,18 @@ describe("incidents serialization contract conformance", () => {
 		).toEqual([]);
 	});
 
+	it("carries the investigation's rootCause through, not dropped by the serializer", () => {
+		// The bug: the serializer whitelisted id/status/createdAt/completedAt
+		// only, so `rootCause` was always undefined at the client even though
+		// Prisma selected it — see IncidentDetailPanel's `latestInvestigation`.
+		const serialized = serialize(seededIncidentRow) as {
+			investigations: { rootCause: unknown }[];
+		};
+		expect(serialized.investigations[0].rootCause).toBe(
+			seededIncidentRow.investigations[0].rootCause,
+		);
+	});
+
 	it("preserves a completed investigation's completedAt", async () => {
 		const { IncidentWithRelationsSchema } = await import(
 			"@prismalens/contracts/schemas"

@@ -174,6 +174,20 @@ describe("IncidentsService", () => {
 			expect(result.data).toEqual(incidents);
 			expect(result.total).toBe(5);
 		});
+
+		it("does not filter the latest investigation to status=completed", async () => {
+			// The bug: filtering to `completed` here means a `running`
+			// investigation can never reach the dashboard, so its progress bar
+			// (gated on status === "running") could never render.
+			mockPrisma.incident.findMany.mockResolvedValue([]);
+			mockPrisma.incident.count.mockResolvedValue(0);
+
+			await service.findAll({ limit: 50, offset: 0 });
+
+			const [{ include }] = mockPrisma.incident.findMany.mock.calls[0];
+			expect(include.investigations.where).toBeUndefined();
+			expect(include.investigations.take).toBe(1);
+		});
 	});
 });
 
