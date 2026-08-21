@@ -4,7 +4,7 @@
 /**
  * Git Provider Interface
  *
- * Abstraction layer for git hosting services (GitHub, GitLab, BitBucket).
+ * Abstraction layer for git hosting services (GitHub, etc.).
  * Uses an injected authenticated request function (from AuthManager.request)
  * instead of raw access tokens.
  */
@@ -26,7 +26,7 @@ export interface GitProviderContext {
 /**
  * Git Provider interface
  *
- * Each provider (GitHub, GitLab, BitBucket) implements this interface
+ * Each VCS provider segment implements this interface
  * to provide a unified API for interacting with git repositories.
  */
 export interface GitProvider {
@@ -56,5 +56,3 @@ export interface GitProvider {
 		request: AuthenticatedRequestFn,
 	): Promise<{ id: string; login: string; name?: string; avatarUrl?: string }>;
 }
-
-export type GitProviderFactory = (providerName: string) => GitProvider | null;

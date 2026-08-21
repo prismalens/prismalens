@@ -36,28 +36,39 @@ export {
 	TokenVault,
 } from "./engine/index.js";
 // Providers — deployment
-export type {
-	DeploymentProvider,
-	DeploymentProviderFactory,
-} from "./providers/deployment.interface.js";
+export type { DeploymentProvider } from "./providers/deployment.interface.js";
 // Providers — git
 export type {
 	GitProvider,
 	GitProviderContext,
-	GitProviderFactory,
 } from "./providers/git.interface.js";
+// Providers — adapters & registry (#446)
 export {
-	createDeploymentProvider,
-	createGitProvider,
-	GitHubProvider,
-	isDeploymentProviderSupported,
-	isGitProviderSupported,
-	RenderProvider,
-	resolveDeploymentProviderName,
-	resolveGitProviderName,
+	adapterCapabilities,
+	adapterSegments,
+	createAdapter,
+	GitHubAdapter,
+	GitHubVcsSegment,
+	getAdapter,
+	getAdapterCapabilities,
+	getAdapterSegments,
+	getTemplatesForCapability,
+	getTemplatesForSegment,
+	isAdapterSupported,
+	RenderAdapter,
+	RenderDeploymentSegment,
+	templatesForCapability,
+	templatesForSegment,
+	VercelAdapter,
+	VercelDeploymentSegment,
 } from "./providers/index.js";
 // Providers — shared types
-export type { AuthenticatedRequestFn } from "./providers/types.js";
+export type {
+	AuthenticatedRequestFn,
+	ProviderAdapter,
+	ProviderAdapterFactory,
+	SegmentKind,
+} from "./providers/types.js";
 // Templates
 export {
 	getAllTemplates,

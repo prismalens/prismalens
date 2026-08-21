@@ -13,10 +13,10 @@
  */
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
-import { GitHubProvider } from "../providers/github/github.provider.js";
-import { RenderProvider } from "../providers/render/render.provider.js";
+import { GitHubAdapter } from "../providers/github/github.adapter.js";
+import { RenderAdapter } from "../providers/render/render.adapter.js";
 import type { AuthenticatedRequestFn } from "../providers/types.js";
-import { VercelProvider } from "../providers/vercel/vercel.provider.js";
+import { VercelAdapter } from "../providers/vercel/vercel.adapter.js";
 import {
 	httpStatusDiagnostic,
 	providerHttpError,
@@ -158,14 +158,14 @@ function failingRequest(status: number, body: string): AuthenticatedRequestFn {
 }
 
 describe("provider clients do not leak the response body (#347 F1)", () => {
-	it("GitHubProvider", async () => {
+	it("GitHubAdapter", async () => {
 		const request = failingRequest(
 			422,
 			JSON.stringify({ message: `bad token ${SENTINEL}` }),
 		);
 
 		const error = expectNoSentinel(
-			await new GitHubProvider()
+			await new GitHubAdapter().vcs
 				.getOrganizations(request)
 				.then(() => {
 					throw new Error("expected getOrganizations to reject");
@@ -178,14 +178,14 @@ describe("provider clients do not leak the response body (#347 F1)", () => {
 		);
 	});
 
-	it("VercelProvider", async () => {
+	it("VercelAdapter", async () => {
 		const request = failingRequest(
 			403,
 			JSON.stringify({ error: { message: `token ${SENTINEL}` } }),
 		);
 
 		const error = expectNoSentinel(
-			await new VercelProvider()
+			await new VercelAdapter().deployment
 				.listServices(request)
 				.then(() => {
 					throw new Error("expected listServices to reject");
@@ -198,11 +198,11 @@ describe("provider clients do not leak the response body (#347 F1)", () => {
 		);
 	});
 
-	it("RenderProvider", async () => {
+	it("RenderAdapter", async () => {
 		const request = failingRequest(500, `internal error: ${SENTINEL}`);
 
 		const error = expectNoSentinel(
-			await new RenderProvider()
+			await new RenderAdapter().deployment
 				.listServices(request)
 				.then(() => {
 					throw new Error("expected listServices to reject");
