@@ -142,7 +142,7 @@ describe("AlertMappingController (BDD)", () => {
 			mockAlertMappingService.findAll.mockResolvedValue(rules);
 
 			const handlers = getHandlers();
-			const result = await handlers.list({} as any);
+			const result = await handlers.list({ input: {} } as any);
 
 			expect(result).toHaveLength(2);
 			expect(service.findAll).toHaveBeenCalled();
@@ -152,7 +152,7 @@ describe("AlertMappingController (BDD)", () => {
 			mockAlertMappingService.findAll.mockResolvedValue([]);
 
 			const handlers = getHandlers();
-			const result = await handlers.list({} as any);
+			const result = await handlers.list({ input: {} } as any);
 
 			expect(result).toEqual([]);
 		});

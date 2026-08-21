@@ -9,6 +9,16 @@
 
 // Re-export the oRPC client for direct usage
 export { client, orpc } from "../orpc-client";
+// Alert mapping rule hooks
+export {
+	alertMappingKeys,
+	useAlertMappingRule,
+	useAlertMappingRules,
+	useCreateAlertMappingRule,
+	useDeleteAlertMappingRule,
+	useTestAlertMapping,
+	useUpdateAlertMappingRule,
+} from "./use-alert-mapping-orpc";
 // Alert hooks
 export {
 	alertKeys,
@@ -21,6 +31,16 @@ export {
 	useResolveAlert,
 	useUpdateAlert,
 } from "./use-alerts-orpc";
+// Correlation rule hooks
+export {
+	correlationKeys,
+	useCorrelationRule,
+	useCorrelationRules,
+	useCreateCorrelationRule,
+	useDeleteCorrelationRule,
+	useTestCorrelation,
+	useUpdateCorrelationRule,
+} from "./use-correlation-orpc";
 // Deployment hooks
 export {
 	deploymentKeys,

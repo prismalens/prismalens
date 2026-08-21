@@ -38,11 +38,11 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | J12 | Settings — AI provider, policy, connections, danger zone | `/settings?tab=…` | C2, C9 | `integrations-settings.spec.ts` | 🟦 1 of 5 tabs |
 | J13 | Integration configuration | `/settings/integrations/configure` | C2 | `integrations-settings.spec.ts` | 🟦 render only |
 | J14 | Team operations & RBAC | — | C12 | — | ◻️ |
-| J15 | Correlation-rule management | — | C8 | — | ◻️ |
+| J15 | Correlation & alert-mapping rule management | `/rules?tab=…` | C8 | `rules-management.spec.ts` | ✅ |
 | J16 | Approve → execute | — | C13 | — | ◻️ by design (ADR-0023) |
 | J17 | Manual authorship (demo without an alert source) | `/incidents`, `/incidents/$id` | C10 | `manual-authorship.spec.ts` | ✅ |
 
-**Read this matrix as: 17 journeys, 5 specs, 1 journey verified end-to-end.** Nearly every
+**Read this matrix as: 17 journeys, 6 specs, 2 journeys verified end-to-end.** Nearly every
 ✅-shaped claim the suite could make, it still does not make. See [What the specs actually
 prove](#what-the-specs-actually-prove).
 
@@ -290,11 +290,71 @@ user sees every surface. #268's brief asks for RBAC journeys to be enumerated �
 enumerate. When multi-user RBAC lands (ADR-0011 §6, and the server-deploy half of #237's access
 model), this row becomes a real journey and needs its own specs at that time, not before.
 
-### J15 — Correlation-rule management — ◻️ no surface
+### J15 — Correlation & alert-mapping rule management — ✅ covered
 
-`CorrelationRulesSettings.tsx` is exported by `components/settings/index.ts` and reached by **no
-route** — it is absent from the settings `TABS` array. C8 ("rule management that tells the truth")
-has a component and no way to open it. Nothing to cover until it is routed.
+- **Entry point**: *Rules* in the navbar, between *Services* and *Investigations*.
+- **Routes**: `/rules?tab=correlation` and `/rules?tab=mapping` — one route, two tabs, each with
+  its own list, form dialog, and test dialog. The tab lives in the URL, so a tab is linkable.
+- **Goal**: see every saved rule, change one, and find out what the engine would actually do with
+  an alert — without reading the database.
+- **States**: the mapping table's empty state (what a fresh install sees, since the demo seed
+  ships correlation rules and no mapping rules); a skeleton while the list loads; an inline error
+  with *Retry* when the list query fails; the create dialog's client-side JSON validation; the
+  server's duplicate-name `CONFLICT` rendered inside the dialog; a per-row *Enabled* toggle
+  disabled while its write is in flight.
+- **Coverage**: `rules-management.spec.ts` drives both halves through real endpoints — it creates
+  a `suppress` rule, evaluates a sample alert against it, disables the rule and re-evaluates to
+  prove the answer changed, creates a mapping rule bound to a seeded service and evaluates that
+  too, deletes through the confirm dialog, and asserts the duplicate-name conflict surfaces in
+  the dialog.
+
+**What the test affordance does, exactly.** `POST /correlation/test` and
+`POST /alert-mapping/test` take `{ alertData }` and nothing else: they evaluate the sample against
+the **saved, enabled** rule set. There is no draft-rule parameter, so there is no test-before-save
+— the dialog copy says so rather than implying otherwise. Four things interact in one evaluation
+(match criteria × priority order × action × time window), so here is the worked example the spec
+and the dialogs both use:
+
+Rule (the create dialog's defaults, with `action` set to `suppress`):
+
+```json
+{
+  "name": "Suppress checkout noise",
+  "action": "suppress",
+  "priority": 0,
+  "timeWindowMinutes": 60,
+  "matchCriteria": { "match": { "severity": ["critical"], "source": "prometheus" } }
+}
+```
+
+Sample alert (the test dialog's default):
+
+```json
+{
+  "title": "Checkout latency above SLO",
+  "severity": "critical",
+  "source": "prometheus"
+}
+```
+
+Response, as the dialog renders it:
+
+```json
+{
+  "matchedRule": { "name": "Suppress checkout noise" },
+  "action": "suppress",
+  "reason": "Suppressed by rule: Suppress checkout noise"
+}
+```
+
+Disable that rule and the same sample returns `matchedRule: null` — which the dialog renders as
+*No rule matched*. That difference is the whole point of C8: the screen reports what the engine
+does, not what the form said.
+
+Correlation and mapping criteria are **not** the same shape. Correlation nests its predicates
+under `match` (`tags`, `severity`, `service`, `source`); alert mapping reads a flat object
+(`source`, `labels` with `*` wildcards, `tags`). A correlation rule written without the `match`
+wrapper matches nothing — as two of the demo seed's own rules demonstrate.
 
 ### J16 — Approve → execute — ◻️ inert by design
 
@@ -331,15 +391,17 @@ Scope note: manual **alert** creation and manual **correlation** were deliberate
 Worth stating plainly, because "we have 5 e2e specs" and "5 journeys are covered" are different
 claims and only the first is true.
 
-The frontend wires **60 distinct mutation procedures** to UI controls. Across the five merged
-specs, exactly **three** are invoked: `postmortems.create` via the *Start Blank* button, and
-`incidents.create` + `incidents.investigate` via `manual-authorship.spec.ts` (#286). Everything
+The frontend wires **60 distinct mutation procedures** to UI controls. Across the six merged
+specs, exactly **nine** are invoked: `postmortems.create` via the *Start Blank* button,
+`incidents.create` + `incidents.investigate` via `manual-authorship.spec.ts` (#286), and
+`correlation.create` / `correlation.update` / `correlation.test` / `alertMapping.create` /
+`alertMapping.test` / `alertMapping.delete` via `rules-management.spec.ts` (#294). Everything
 else the suite does is navigate to a URL and assert that seeded text is on the screen.
 
 That makes the rest of the suite a **render-and-route smoke suite**: it catches white screens,
 broken routes, crashed API boot, hydration failures, and data-shape regressions like #309's
 pagination total. Those are real and worth having — the suite already caught a schema-invalid
-seed during #316. But outside J17 it cannot catch a broken form, a mutation that 500s, a state
+seed during #316. But outside J15 and J17 it cannot catch a broken form, a mutation that 500s, a state
 transition that does not stick, or a regression in any of the five stream-panel states.
 
 Two further structural facts about the harness:
@@ -407,8 +469,9 @@ reader unable to tell what was considered from what was missed, so the dispositi
 Deferred does not mean uncovered forever — it means the per-PR growth rule picks them up the next
 time someone touches that surface, rather than the baseline paying for them now.
 
-Concretely, **five new specs on top of the five merged**, target of ten (J17's
-`manual-authorship.spec.ts` landed with #286 and is already counted among the merged):
+Concretely, **five new specs on top of the six merged**, target of eleven (J17's
+`manual-authorship.spec.ts` landed with #286 and J15's `rules-management.spec.ts` with #294; both
+are already counted among the merged):
 
 | Spec | Journey | Why it earns its place |
 |---|---|---|
@@ -425,7 +488,7 @@ lock) and the J7 *analytics tab* smoke into `incident-postmortem.spec.ts`, and t
 Deliberately **out of scope**: the React Flow canvas's graph rendering (expensive to assert, cheap
 to eyeball — the design gate covers it), the *contents* of the four analytics charts (same
 reasoning; the tab itself is smoked, per the definition above), per-integration OAuth loops (they
-need live third parties), and anything under J14, J15, or J16 until those surfaces are routed.
+need live third parties), and anything under J14 or J16 until those surfaces are routed.
 
 ### 2. CI tier — stay non-required, with a stated promotion trigger
 
@@ -561,9 +624,9 @@ One follow-up worth filing, not blocking:
 - A PR that **adds a spec** flips that journey's verdict. `🟦 → ✅` requires the journey's write
   path to be exercised, not just its route to render.
 - A journey marked **◻️** graduates to a real row the moment its surface is routed — J14 (RBAC)
-  and J15 (correlation rules) are each one route or control away from being real journeys with
-  real gaps. J17 made exactly that trip in #286: one control on `/incidents` turned it from "no
-  surface" into the suite's first end-to-end journey.
+  is still one route away. J17 made exactly that trip in #286, when one control on `/incidents`
+  turned it from "no surface" into the suite's first end-to-end journey; J15 made it in #294,
+  when `/rules` gave C8 a surface at all.
 - **Coverage is audited at each milestone**, alongside the operator's UX ledger walkthrough
   (AGENTS.md, *Frontend changes carry a design gate*). The matrix is the audit's input.
 - When capabilities move in [`capabilities.md`](./capabilities.md), check whether a journey row

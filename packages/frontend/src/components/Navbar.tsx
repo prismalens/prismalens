@@ -97,6 +97,16 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
+										<Link to="/rules" search={{ tab: "correlation" }}>
+											Rules
+										</Link>
+									</NavigationMenuLink>
+								</NavigationMenuItem>
+								<NavigationMenuItem>
+									<NavigationMenuLink
+										asChild
+										className={navigationMenuTriggerStyle()}
+									>
 										<Link to="/investigations">{m.nav_investigations()}</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>
