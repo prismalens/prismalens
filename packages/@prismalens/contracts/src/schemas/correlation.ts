@@ -5,7 +5,11 @@
  * Correlation rule schemas
  */
 import { z } from "zod";
-import { CorrelationActionSchema, DateStringSchema } from "./common.js";
+import {
+	CorrelationActionSchema,
+	DateStringSchema,
+	QueryBooleanSchema,
+} from "./common.js";
 
 // =============================================================================
 // CORRELATION RULE SCHEMAS
@@ -56,7 +60,7 @@ export const TestCorrelationResponseSchema = z.object({
 // =============================================================================
 
 export const CorrelationRuleQuerySchema = z.object({
-	enabled: z.coerce.boolean().optional(),
+	enabled: QueryBooleanSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });

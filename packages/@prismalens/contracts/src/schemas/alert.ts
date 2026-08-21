@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
 	AlertStatusSchema,
 	DateStringSchema,
+	QueryBooleanSchema,
 	SeveritySchema,
 } from "./common.js";
 import { ServiceSchema } from "./service.js";
@@ -134,7 +135,7 @@ export const AlertQuerySchema = z.object({
 	severity: SeveritySchema.optional(),
 	serviceId: z.string().uuid().optional(),
 	incidentId: z.string().uuid().optional(),
-	hasIncident: z.coerce.boolean().optional(),
+	hasIncident: QueryBooleanSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });
