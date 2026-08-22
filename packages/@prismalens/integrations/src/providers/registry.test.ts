@@ -3,17 +3,18 @@
 
 import { describe, expect, it } from "vitest";
 import {
-	adapterCapabilities,
+	getCapabilities,
+	getTemplatesForCapability,
+} from "../engine/index.js";
+import { getTemplate } from "../templates/index.js";
+import {
 	adapterSegments,
 	createAdapter,
-	getAdapterCapabilities,
 	getAdapterSegments,
-	getTemplatesForCapability,
 	getTemplatesForSegment,
 	GitHubAdapter,
 	isAdapterSupported,
 	RenderAdapter,
-	templatesForCapability,
 	templatesForSegment,
 	VercelAdapter,
 } from "./index.js";
@@ -58,7 +59,7 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(isAdapterSupported("nonsense")).toBe(false);
 	});
 
-	it("derives segments and capabilities correctly per adapter", () => {
+	it("derives segments correctly per adapter", () => {
 		const github = new GitHubAdapter();
 		const render = new RenderAdapter();
 		const vercel = new VercelAdapter();
@@ -78,26 +79,6 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(vercel.vcs).toBeUndefined();
 		expect(getAdapterSegments(vercel)).toEqual(["deployment"]);
 		expect(adapterSegments(vercel)).toEqual(["deployment"]);
-
-		// Capability derivation
-		const githubCaps = getAdapterCapabilities(github);
-		expect(githubCaps).toContain("vcs:list_orgs");
-		expect(githubCaps).toContain("vcs:list_repos");
-		expect(githubCaps).toContain("vcs:read_file");
-		expect(githubCaps).toContain("vcs:read_commit_status");
-		expect(githubCaps).not.toContain("deployment:list_services");
-
-		const renderCaps = getAdapterCapabilities(render);
-		expect(renderCaps).toContain("deployment:list_services");
-		expect(renderCaps).toContain("deployment:get_service");
-		expect(renderCaps).toContain("deployment:list_deploys");
-		expect(renderCaps).not.toContain("vcs:list_repos");
-
-		const vercelCaps = adapterCapabilities(vercel);
-		expect(vercelCaps).toContain("deployment:list_services");
-		expect(vercelCaps).toContain("deployment:get_service");
-		expect(vercelCaps).toContain("deployment:list_deploys");
-		expect(vercelCaps).not.toContain("vcs:list_repos");
 	});
 
 	it("answers reverse-direction queries for segments and capabilities", () => {
@@ -112,18 +93,25 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 			"render",
 			"vercel",
 		]);
-		expect(templatesForCapability("deployment:list_services")).toEqual([
-			"render",
-			"vercel",
-		]);
 		expect(getTemplatesForCapability("vcs:read_file")).toEqual([
 			"github-app",
 			"github-token",
 		]);
-		expect(templatesForCapability("vcs:read_file")).toEqual([
+		expect(getTemplatesForCapability("vcs:list_orgs")).toEqual([
+			"github-token",
+		]);
+		expect(getTemplatesForCapability("vcs:list_repos")).toEqual([
 			"github-app",
 			"github-token",
 		]);
 		expect(getTemplatesForCapability("monitoring:read")).toEqual([]);
+
+		// Template-level capability asymmetry
+		const appTemplate = getTemplate("github-app");
+		const tokenTemplate = getTemplate("github-token");
+		expect(appTemplate).toBeDefined();
+		expect(tokenTemplate).toBeDefined();
+		expect(getCapabilities(appTemplate!)).not.toContain("vcs:list_orgs");
+		expect(getCapabilities(tokenTemplate!)).toContain("vcs:list_orgs");
 	});
 });

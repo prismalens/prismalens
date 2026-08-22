@@ -27,7 +27,8 @@ export type SegmentKind = "vcs" | "deployment";
 /**
  * Provider adapter interface (#446).
  * One adapter class per vendor, exposing optional per-kind segments.
- * Capabilities are derived from segment presence — never declared separately.
+ * Segments are derived from presence, never declared — they answer "does this adapter implement VCS operations at all".
+ * Capabilities are per-template grants — read them from the template's requiredPermissions via engine/capability-check.ts, never from segment presence (#446).
  */
 export interface ProviderAdapter {
 	readonly name: string;

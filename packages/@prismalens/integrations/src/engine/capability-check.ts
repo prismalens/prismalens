@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import type { Capability } from "@prismalens/config/integrations";
+import { getRegisteredTemplateIds } from "../providers/index.js";
+import { getTemplate } from "../templates/index.js";
 import type { AuthTemplate } from "../types.js";
 
 /**
@@ -54,4 +56,20 @@ export function assertCapability(
 	if (!hasCapability(template, capability)) {
 		throw new CapabilityNotSupportedError(template.id, capability);
 	}
+}
+
+/**
+ * Return templateIds providing a capability that have a registered adapter (#446).
+ * The adapter-registered filter is deliberate: answers which templates the engine
+ * can both authorize and execute (e.g. excludes Prometheus until adapter exists).
+ */
+export function getTemplatesForCapability(capability: Capability): string[] {
+	const result: string[] = [];
+	for (const templateId of getRegisteredTemplateIds()) {
+		const template = getTemplate(templateId);
+		if (template && hasCapability(template, capability)) {
+			result.push(templateId);
+		}
+	}
+	return result;
 }

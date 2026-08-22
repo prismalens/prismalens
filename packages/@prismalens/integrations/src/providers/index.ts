@@ -5,7 +5,6 @@
  * Providers — unified exact-templateId registry and segmented adapters (#446)
  */
 
-import type { Capability } from "@prismalens/config/integrations";
 import { GitHubAdapter } from "./github/github.adapter.js";
 import { RenderAdapter } from "./render/render.adapter.js";
 import type { ProviderAdapter, SegmentKind } from "./types.js";
@@ -52,6 +51,11 @@ export function isAdapterSupported(templateId: string): boolean {
 	return templateId in ADAPTER_REGISTRY;
 }
 
+/** Return all templateIds registered in ADAPTER_REGISTRY (#446). */
+export function getRegisteredTemplateIds(): string[] {
+	return Object.keys(ADAPTER_REGISTRY);
+}
+
 /** Derive segment kinds from adapter segment presence (#446). */
 export function getAdapterSegments(adapter: ProviderAdapter): SegmentKind[] {
 	const segments: SegmentKind[] = [];
@@ -61,29 +65,6 @@ export function getAdapterSegments(adapter: ProviderAdapter): SegmentKind[] {
 }
 
 export const adapterSegments = getAdapterSegments;
-
-/** Derive capabilities from adapter segment presence (#446). */
-export function getAdapterCapabilities(adapter: ProviderAdapter): Capability[] {
-	const caps: Capability[] = [];
-	if (adapter.vcs) {
-		caps.push(
-			"vcs:list_orgs",
-			"vcs:list_repos",
-			"vcs:read_file",
-			"vcs:read_commit_status",
-		);
-	}
-	if (adapter.deployment) {
-		caps.push(
-			"deployment:list_services",
-			"deployment:get_service",
-			"deployment:list_deploys",
-		);
-	}
-	return caps;
-}
-
-export const adapterCapabilities = getAdapterCapabilities;
 
 /** Return templateIds providing a given segment kind (#446). */
 export function getTemplatesForSegment(segment: SegmentKind): string[] {
@@ -98,18 +79,3 @@ export function getTemplatesForSegment(segment: SegmentKind): string[] {
 }
 
 export const templatesForSegment = getTemplatesForSegment;
-
-/** Return templateIds providing a given capability (#446). */
-export function getTemplatesForCapability(capability: Capability): string[] {
-	const result: string[] = [];
-	for (const [templateId, AdapterClass] of Object.entries(ADAPTER_REGISTRY)) {
-		const adapter = new AdapterClass();
-		const caps = getAdapterCapabilities(adapter);
-		if (caps.includes(capability)) {
-			result.push(templateId);
-		}
-	}
-	return result;
-}
-
-export const templatesForCapability = getTemplatesForCapability;

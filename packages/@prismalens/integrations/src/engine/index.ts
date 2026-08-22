@@ -7,6 +7,7 @@ export {
 	assertCapability,
 	CapabilityNotSupportedError,
 	getCapabilities,
+	getTemplatesForCapability,
 	hasCapability,
 } from "./capability-check.js";
 export {
