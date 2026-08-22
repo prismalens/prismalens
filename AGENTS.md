@@ -6,17 +6,19 @@ Instructions for AI coding agents working in this repository.
 ## mage knowledge base (external hub)
 
 This repository's durable knowledge lives in an external **mage hub** at
-`/home/sumit/.mage/hubs/github.com/prismalens/prismalens-docs-hub`, where this repo is the **prismalens-platform** project. mage is a portable,
+`/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb`, where this repo is the **prismalens-platform** project. mage is a portable,
 file-based knowledge base of notes — insight, procedure, and pointers (not
 copies of sources) — navigable as an Obsidian graph.
 
 **Before non-trivial work in this repo:**
 
-1. Read the hub index first: `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-docs-hub/INDEX.md` — find the **prismalens-platform** wing (its
+1. Read the hub index first: `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb/INDEX.md` — find the **prismalens-platform** wing (its
    notes are grouped there; in a large hub the wing links out to its own
-   `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-docs-hub/_index.prismalens-platform.md`). One line per note: type · title · keywords · → link. Open
+   `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb/_index.prismalens-platform.md`). One line per note: type · title · keywords · → link. Open
    only the notes the task touches; don't read everything.
-2. Skim `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-docs-hub/decisions/` for the hub's governing decisions.
+2. Skim `/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb/projects/prismalens-platform/decisions/`
+   for the project's governing ADRs. Note the path: the hub-root `decisions/` directory
+   holds only a `.gitkeep` — every accepted ADR lives under the project wing.
 3. Treat notes as point-in-time. If a note is `status: stale-suspect`, or its
    `last_reviewed` / `provenance.commit` looks old, verify it against the
    current code before relying on it.

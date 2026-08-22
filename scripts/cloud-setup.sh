@@ -10,13 +10,13 @@ fi
 command -v gh >/dev/null 2>&1 || { apt-get update -qq >/dev/null && apt-get install -y -qq gh >/dev/null; } || true
 command -v mage >/dev/null 2>&1 || npm install -g mage-memory@latest >/dev/null 2>&1 || true
 
-# The mage KB is external (hub: prismalens/prismalens-docs-hub); clone it to
+# The mage KB is external (hub: prismalens/prismalens-kb); clone it to
 # the derived hub location so the CLI resolves the docs root. Read path only:
 # the cloud git proxy can push nothing but the session branch.
-HUB_DIR="${MAGE_HOME:-$HOME/.mage}/hubs/github.com/prismalens/prismalens-docs-hub"
+HUB_DIR="${MAGE_HOME:-$HOME/.mage}/hubs/github.com/prismalens/prismalens-kb"
 if [ ! -e "$HUB_DIR/.git" ]; then
   mkdir -p "$(dirname "$HUB_DIR")"
-  git clone --depth 1 https://github.com/prismalens/prismalens-docs-hub.git "$HUB_DIR" \
+  git clone --depth 1 https://github.com/prismalens/prismalens-kb.git "$HUB_DIR" \
     || echo "cloud-setup: hub clone FAILED — do not capture mage notes this session; they would silently land in the repo KB (Sumit1993/mage-memory#158)" >&2
 fi
 exit 0

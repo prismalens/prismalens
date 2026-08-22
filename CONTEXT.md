@@ -2,7 +2,7 @@
 
 Project-specific vocabulary for the two-tier investigation engine. Used by architecture
 reviews and the grilling loop so deepened modules are named consistently. Decisions live
-in the mage hub (`prismalens-docs-hub`, project `prismalens-platform`) ADRs — this file
+in the mage hub (`prismalens-kb`, project `prismalens-platform`) ADRs — this file
 only sharpens the words those ADRs use. Where a term refines an ADR, it says so.
 
 ## Language
