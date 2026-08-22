@@ -58,6 +58,7 @@ export class AlertsController {
 					serviceId: input.serviceId,
 					incidentId: input.incidentId,
 					hasIncident: input.hasIncident,
+					unassigned: input.unassigned,
 					limit: input.limit,
 					offset: input.offset,
 				});

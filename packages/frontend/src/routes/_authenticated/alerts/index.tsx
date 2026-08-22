@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	type AlertStatus,
-	isUnassignedAlert,
-	type Severity,
-} from "@prismalens/contracts";
+import type { AlertStatus, Severity } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -42,12 +38,12 @@ function AlertsPage() {
 		navigate({ search: { tab: nextTab as AlertsTab }, replace: true });
 	};
 
-	// hasIncident filters server-side; unmapped tab applies isUnassignedAlert
-	// to match the dashboard's status constraint (see UNASSIGNED_ALERT_STATUSES).
+	// `unassigned` filters server-side, so `limit` windows the unassigned set
+	// itself; a browser-side predicate would window all statuses first.
 	const queryParams = {
 		...(statusFilter !== "all" && { status: statusFilter }),
 		...(severityFilter !== "all" && { severity: severityFilter }),
-		...(tab === "unmapped" && { hasIncident: false }),
+		...(tab === "unmapped" && { unassigned: true }),
 		limit: 100,
 	};
 
@@ -58,9 +54,7 @@ function AlertsPage() {
 		refetch,
 		isRefetching,
 	} = useQuery(orpc.alerts.list.queryOptions({ input: queryParams }));
-	const rawAlerts = alertsResponse?.data ?? [];
-	const alerts =
-		tab === "unmapped" ? rawAlerts.filter(isUnassignedAlert) : rawAlerts;
+	const alerts = alertsResponse?.data ?? [];
 
 	// Fetch stats
 	const { data: stats } = useQuery(

@@ -66,7 +66,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	 * #tab=unmapped — the dashboard's "Unassigned" links (`/alerts?tab=unmapped`)
 	 * used to do nothing: the alerts route declared no `validateSearch`, so the
 	 * param was silently dropped. The route now honours it via a real,
-	 * backend-filterable field (`hasIncident`, AlertQuerySchema) — not an
+	 * backend-filterable field (`unassigned`, AlertQuerySchema) — not an
 	 * invented one.
 	 */
 	test("tab=unmapped filters alerts to those with no incident", async ({
@@ -107,14 +107,25 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		).toBeVisible({ timeout: 15_000 });
 	});
 
-	test("tab=unmapped excludes resolved and suppressed alerts even if they lack an incident", async ({
+	/**
+	 * The unassigned set is resolved server-side (`unassigned=true`,
+	 * AlertQuerySchema). Filtering a page in the browser capped the tab at
+	 * whatever fit in one 100-row window — see
+	 * .changeset/ux-study-alerts-tab-rootcause-progress.md.
+	 */
+	test("tab=unmapped asks the server for the unassigned set instead of filtering a page in the browser", async ({
 		page,
 	}) => {
+		const requested: string[] = [];
 		await page.route(
-			(url) =>
-				url.pathname === "/api/alerts" &&
-				url.searchParams.get("hasIncident") === "false",
-			async (route) => {
+			(url) => url.pathname === "/api/alerts",
+			async (route, request) => {
+				const url = new URL(request.url());
+				requested.push(url.search);
+				if (url.searchParams.get("unassigned") !== "true") {
+					await route.continue();
+					return;
+				}
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -146,34 +157,8 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 								createdAt: new Date().toISOString(),
 								updatedAt: new Date().toISOString(),
 							},
-							{
-								id: "a0000003-0000-4000-8000-000000000003",
-								dedupKey: "alert-resolved",
-								title: "Resolved Alert Without Incident",
-								severity: "low",
-								status: "resolved",
-								incidentId: null,
-								triggeredAt: new Date().toISOString(),
-								occurrenceCount: 1,
-								lastOccurrence: new Date().toISOString(),
-								createdAt: new Date().toISOString(),
-								updatedAt: new Date().toISOString(),
-							},
-							{
-								id: "a0000004-0000-4000-8000-000000000004",
-								dedupKey: "alert-suppressed",
-								title: "Suppressed Alert Without Incident",
-								severity: "info",
-								status: "suppressed",
-								incidentId: null,
-								triggeredAt: new Date().toISOString(),
-								occurrenceCount: 1,
-								lastOccurrence: new Date().toISOString(),
-								createdAt: new Date().toISOString(),
-								updatedAt: new Date().toISOString(),
-							},
 						],
-						pagination: { total: 4, limit: 100, offset: 0, hasMore: false },
+						pagination: { total: 137, limit: 100, offset: 0, hasMore: true },
 					}),
 				});
 			},
@@ -184,21 +169,75 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
 
-		// Triggered and Acknowledged alerts should be rendered
+		// Exactly what the server returned is rendered — no second, narrower
+		// predicate in the browser.
 		await expect(
 			page.getByText("Triggered Alert Without Incident"),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(
 			page.getByText("Acknowledged Alert Without Incident"),
 		).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator("table tbody tr")).toHaveCount(2);
 
-		// Resolved and Suppressed alerts should NOT be rendered in the unmapped tab
+		expect(requested.some((search) => search.includes("unassigned=true"))).toBe(
+			true,
+		);
+		expect(requested.some((search) => search.includes("hasIncident"))).toBe(
+			false,
+		);
+
+		await page.unroute("**/api/alerts");
+	});
+
+	test("the dashboard Unassigned count and the unmapped tab read the same server-side set", async ({
+		page,
+	}) => {
+		// The stub reports 137 unassigned alerts but returns 4 rows: the count
+		// must come from `pagination.total`, never from the returned page.
+		const unassignedRows = Array.from({ length: 4 }, (_, i) => ({
+			id: `a000000${i + 1}-0000-4000-8000-00000000000${i + 1}`,
+			dedupKey: `unassigned-${i}`,
+			title: `Unassigned Alert ${i + 1}`,
+			severity: "high",
+			status: i % 2 === 0 ? "triggered" : "acknowledged",
+			incidentId: null,
+			triggeredAt: new Date().toISOString(),
+			occurrenceCount: 1,
+			lastOccurrence: new Date().toISOString(),
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}));
+
+		await page.route(
+			(url) =>
+				url.pathname === "/api/alerts" &&
+				url.searchParams.get("unassigned") === "true",
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						data: unassignedRows,
+						pagination: { total: 137, limit: 100, offset: 0, hasMore: true },
+					}),
+				});
+			},
+		);
+
+		await page.goto("/");
+		await expect(page.getByRole("link", { name: /Unassigned:/ })).toHaveText(
+			"Unassigned: 137",
+			{ timeout: 15_000 },
+		);
+
+		await page.goto("/alerts?tab=unmapped");
 		await expect(
-			page.getByText("Resolved Alert Without Incident"),
-		).not.toBeVisible();
-		await expect(
-			page.getByText("Suppressed Alert Without Incident"),
-		).not.toBeVisible();
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator("table tbody tr")).toHaveCount(
+			unassignedRows.length,
+		);
+		await expect(page.getByText("Unassigned Alert 1")).toBeVisible();
 
 		await page.unroute("**/api/alerts");
 	});
@@ -239,7 +278,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await page.route(
 			(url) =>
 				url.pathname === "/api/alerts" &&
-				url.searchParams.get("hasIncident") === "false",
+				url.searchParams.get("unassigned") === "true",
 			async (route) => {
 				await route.fulfill({
 					status: 200,

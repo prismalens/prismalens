@@ -2,11 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import {
-	AlertQuerySchema,
-	isUnassignedAlert,
-	UNASSIGNED_ALERT_STATUSES,
-} from "./alert.js";
+import { AlertQuerySchema, UNASSIGNED_ALERT_STATUSES } from "./alert.js";
 
 describe("AlertQuerySchema.hasIncident", () => {
 	// z.coerce.boolean() is `Boolean(value)` — the HTTP query string "false"
@@ -44,44 +40,52 @@ describe("AlertQuerySchema.hasIncident", () => {
 	});
 });
 
-describe("isUnassignedAlert predicate and UNASSIGNED_ALERT_STATUSES", () => {
+describe("AlertQuerySchema.unassigned and UNASSIGNED_ALERT_STATUSES", () => {
 	it("defines UNASSIGNED_ALERT_STATUSES as triggered and acknowledged", () => {
 		expect(UNASSIGNED_ALERT_STATUSES).toEqual(["triggered", "acknowledged"]);
 	});
 
-	it("returns true for unassigned alerts with status triggered or acknowledged", () => {
-		expect(isUnassignedAlert({ incidentId: null, status: "triggered" })).toBe(
-			true,
-		);
+	it("parses the HTTP query string 'true' as true", () => {
 		expect(
-			isUnassignedAlert({ incidentId: null, status: "acknowledged" }),
+			AlertQuerySchema.parse({ unassigned: "true", limit: 50, offset: 0 })
+				.unassigned,
 		).toBe(true);
 	});
 
-	it("returns false for alerts with status resolved, suppressed, or correlated even if incidentId is null", () => {
-		expect(isUnassignedAlert({ incidentId: null, status: "resolved" })).toBe(
-			false,
-		);
-		expect(isUnassignedAlert({ incidentId: null, status: "suppressed" })).toBe(
-			false,
-		);
-		expect(isUnassignedAlert({ incidentId: null, status: "correlated" })).toBe(
-			false,
-		);
+	it("parses the HTTP query string 'false' as false", () => {
+		expect(
+			AlertQuerySchema.parse({ unassigned: "false", limit: 50, offset: 0 })
+				.unassigned,
+		).toBe(false);
 	});
 
-	it("returns false for alerts assigned to an incident regardless of status", () => {
+	it("still accepts a real boolean from an in-process caller", () => {
 		expect(
-			isUnassignedAlert({
-				incidentId: "11111111-1111-4111-8111-111111111111",
-				status: "triggered",
-			}),
-		).toBe(false);
+			AlertQuerySchema.parse({ unassigned: true, limit: 50, offset: 0 })
+				.unassigned,
+		).toBe(true);
+	});
+
+	it("leaves unassigned undefined when omitted, so existing callers are unaffected", () => {
 		expect(
-			isUnassignedAlert({
-				incidentId: "11111111-1111-4111-8111-111111111111",
-				status: "acknowledged",
-			}),
-		).toBe(false);
+			AlertQuerySchema.parse({ limit: 50, offset: 0 }).unassigned,
+		).toBeUndefined();
+	});
+
+	it("accepts unassigned alongside status, severity and limit", () => {
+		const parsed = AlertQuerySchema.parse({
+			unassigned: "true",
+			status: "acknowledged",
+			severity: "critical",
+			limit: "100",
+			offset: "0",
+		});
+		expect(parsed).toEqual({
+			unassigned: true,
+			status: "acknowledged",
+			severity: "critical",
+			limit: 100,
+			offset: 0,
+		});
 	});
 });
