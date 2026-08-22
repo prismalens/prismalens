@@ -15,6 +15,8 @@ import type { CanonicalEvent } from "@prismalens/contracts";
  */
 
 export const INVESTIGATION_ID = "d0111111-1111-4111-8111-111111111111";
+/** The demo seed's second investigation — for navigating between two of them. */
+export const SECOND_INVESTIGATION_ID = "d0222222-2222-4222-8222-222222222222";
 export const RUN_ID = "e0111111-1111-4111-8111-111111111111";
 export const DETAIL_URL = `/investigations/${INVESTIGATION_ID}`;
 export const SHOTS = "e2e/journeys/screenshots";
@@ -42,9 +44,12 @@ declare global {
  * stream at all; one field of the real response is rewritten, the rest is the
  * API's own payload.
  */
-export async function serveAsRunning(page: Page): Promise<void> {
+export async function serveAsRunning(
+	page: Page,
+	investigationId: string = INVESTIGATION_ID,
+): Promise<void> {
 	await page.route(
-		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}`,
+		(url) => url.pathname === `/api/investigations/${investigationId}`,
 		async (route) => {
 			const response = await route.fetch();
 			const body = (await response.json()) as Record<string, unknown>;

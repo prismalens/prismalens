@@ -45,7 +45,9 @@ export function useInvestigationStream(
 			return;
 		}
 
-		setState((prev) => ({ ...prev, status: "connecting" }));
+		// A new subscription is a new run's stream: anything already in state
+		// belongs to the investigation just navigated away from (#280).
+		setState({ ...INITIAL_STATE, status: "connecting" });
 
 		const source = new EventSource(
 			`/api/investigations/${investigationId}/stream`,
