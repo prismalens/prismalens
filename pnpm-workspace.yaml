@@ -9,7 +9,7 @@ catalog:
   '@orpc/contract': ^1.15.0
   '@types/node': ^26.1.2
   ai: ^7.0.68
-  better-auth: ~1.7.1
+  better-auth: ~1.6.25
   dotenv: ^17.4.2
   eslint: ^10.8.1
   rxjs: ^7.8.2
