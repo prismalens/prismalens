@@ -5,7 +5,7 @@
  * Event schemas (raw incoming signals)
  */
 import { z } from "zod";
-import { DateStringSchema } from "./common.js";
+import { DateStringSchema, QueryBooleanSchema } from "./common.js";
 
 // =============================================================================
 // EVENT SCHEMAS
@@ -38,7 +38,7 @@ export const CreateEventSchema = z.object({
 export const EventQuerySchema = z.object({
 	source: z.string().optional(),
 	eventType: z.string().optional(),
-	processed: z.coerce.boolean().optional(),
+	processed: QueryBooleanSchema.optional(),
 	alertId: z.string().uuid().optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),

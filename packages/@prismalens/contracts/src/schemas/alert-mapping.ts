@@ -5,7 +5,7 @@
  * Alert mapping rule schemas
  */
 import { z } from "zod";
-import { DateStringSchema } from "./common.js";
+import { DateStringSchema, QueryBooleanSchema } from "./common.js";
 
 // =============================================================================
 // ALERT MAPPING RULE SCHEMAS
@@ -68,7 +68,7 @@ export const TestMappingResponseSchema = z.object({
 
 export const AlertMappingQuerySchema = z.object({
 	serviceId: z.string().uuid().optional(),
-	enabled: z.coerce.boolean().optional(),
+	enabled: QueryBooleanSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });

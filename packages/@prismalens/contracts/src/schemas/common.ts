@@ -261,6 +261,19 @@ export const LicenseTierSchema = z.enum(["community", "enterprise"]);
 // PAGINATION & COMMON QUERY SCHEMAS
 // =============================================================================
 
+/**
+ * Accepts booleans and case-insensitive "true"/"false" strings. Query params arrive as
+ * strings where Boolean("false") is true, so z.coerce.boolean() must never be used.
+ */
+export const QueryBooleanSchema = z.preprocess((val) => {
+	if (typeof val === "string") {
+		const lower = val.toLowerCase();
+		if (lower === "true") return true;
+		if (lower === "false") return false;
+	}
+	return val;
+}, z.boolean());
+
 export const PaginationSchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
