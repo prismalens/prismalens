@@ -113,5 +113,23 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(tokenTemplate).toBeDefined();
 		expect(getCapabilities(appTemplate!)).not.toContain("vcs:list_orgs");
 		expect(getCapabilities(tokenTemplate!)).toContain("vcs:list_orgs");
+
+		const renderTemplate = getTemplate("render");
+		const vercelTemplate = getTemplate("vercel");
+		expect(renderTemplate).toBeDefined();
+		expect(vercelTemplate).toBeDefined();
+		expect(getCapabilities(renderTemplate!)).toContain(
+			"deployment:list_services",
+		);
+		expect(getCapabilities(renderTemplate!)).toContain("deployment:get_service");
+		expect(getCapabilities(renderTemplate!)).toContain("deployment:list_deploys");
+		expect(getCapabilities(renderTemplate!)).not.toContain("vcs:list_repos");
+
+		expect(getCapabilities(vercelTemplate!)).toContain(
+			"deployment:list_services",
+		);
+		expect(getCapabilities(vercelTemplate!)).toContain("deployment:get_service");
+		expect(getCapabilities(vercelTemplate!)).toContain("deployment:list_deploys");
+		expect(getCapabilities(vercelTemplate!)).not.toContain("vcs:list_repos");
 	});
 });
