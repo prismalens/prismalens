@@ -25,9 +25,10 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	type BranchGroup,
+	deriveStreamView,
 	type EventRow as EventRowData,
-	groupEventsByBranch,
 } from "@/lib/investigation-events";
+import { INITIAL_TAIL_FOLLOW, nextTailFollow } from "@/lib/stream-autoscroll";
 
 interface InvestigationStreamPanelProps {
 	events: CanonicalEvent[];
@@ -46,31 +47,44 @@ export function InvestigationStreamPanel({
 	status,
 }: InvestigationStreamPanelProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
+	// Sampled while the reader scrolls, not after new rows land: at append time
+	// the viewport's own growth is indistinguishable from a scroll-up (#280).
+	const tailRef = useRef(INITIAL_TAIL_FOLLOW);
+
+	useEffect(() => {
+		const viewport = scrollRef.current?.querySelector<HTMLElement>(
+			"[data-radix-scroll-area-viewport]",
+		);
+		if (!viewport) return;
+
+		const onScroll = () => {
+			tailRef.current = nextTailFollow(tailRef.current, viewport);
+		};
+		viewport.addEventListener("scroll", onScroll, { passive: true });
+		return () => viewport.removeEventListener("scroll", onScroll);
+	}, []);
 
 	// Auto-scroll to bottom on new events (target the Radix viewport)
 	useEffect(() => {
-		const viewport = scrollRef.current?.querySelector(
+		if (events.length === 0 || !tailRef.current.following) return;
+		const viewport = scrollRef.current?.querySelector<HTMLElement>(
 			"[data-radix-scroll-area-viewport]",
 		);
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
-	}, []);
+	}, [events.length]);
 
-	// Group by branchId (ADR-0016 fan-out seam — CanonicalEvent already carries
-	// branchId/path). N=1 today collapses to a single "root" branch, so this is a
-	// no-op shape until fan-out lands.
-	const grouped = useMemo(() => groupEventsByBranch(events), [events]);
-	const isMultiBranch = grouped.branches.length > 1;
-
-	// Single-branch (today's default): flatten back to one list, report row
-	// last, so the panel renders EXACTLY as before the grouping was added.
-	const flatRows: EventRowData[] = isMultiBranch
-		? []
-		: [...(grouped.branches[0]?.rows ?? []), ...grouped.reportRows];
+	// Group by branchId (ADR-0016 fan-out seam). A run that did not fan out —
+	// including the first branch of one that is about to — renders as the single
+	// flat list it was before the grouping was added.
+	const { isMultiBranch, branches, reportRows, flatRows } = useMemo(
+		() => deriveStreamView(events),
+		[events],
+	);
 
 	return (
-		<Card>
+		<Card data-testid="investigation-stream-panel">
 			<CardHeader className="pb-3">
 				<div className="flex items-center justify-between">
 					<CardTitle className="text-base flex items-center gap-2">
@@ -84,6 +98,15 @@ export function InvestigationStreamPanel({
 							<AlertTriangle className="h-4 w-4 text-amber-500" />
 						)}
 						Investigation Progress
+						{isMultiBranch && (
+							<span
+								data-testid="stream-branch-badge"
+								className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex items-center gap-1"
+							>
+								<GitBranch className="h-3 w-3" />
+								{branches.length} branches
+							</span>
+						)}
 					</CardTitle>
 					{latestText && (
 						<span className="text-sm text-muted-foreground max-w-md truncate">
@@ -99,7 +122,10 @@ export function InvestigationStreamPanel({
 						{!isMultiBranch &&
 							flatRows.length === 0 &&
 							status === "connecting" && (
-								<p className="text-sm text-muted-foreground py-4 text-center">
+								<p
+									data-testid="stream-panel-connecting"
+									className="text-sm text-muted-foreground py-4 text-center"
+								>
 									Connecting to stream...
 								</p>
 							)}
@@ -107,10 +133,10 @@ export function InvestigationStreamPanel({
 							flatRows.map((row) => <EventRow key={row.key} row={row} />)}
 						{isMultiBranch && (
 							<div className="space-y-2">
-								{grouped.branches.map((group) => (
+								{branches.map((group) => (
 									<BranchSection key={group.branchId} group={group} />
 								))}
-								{grouped.reportRows.map((row) => (
+								{reportRows.map((row) => (
 									<EventRow key={row.key} row={row} />
 								))}
 							</div>
@@ -132,7 +158,7 @@ function BranchSection({ group }: { group: BranchGroup }) {
 
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen}>
-			<div className="rounded-md border">
+			<div data-testid="stream-branch-section" className="rounded-md border">
 				<CollapsibleTrigger asChild>
 					<button
 						type="button"
@@ -178,7 +204,10 @@ const ICON_MAP: Record<EventRowData["icon"], React.ReactNode> = {
 
 function EventRow({ row }: { row: EventRowData }) {
 	return (
-		<div className="flex items-start gap-2 py-1 text-sm">
+		<div
+			data-testid="stream-event-row"
+			className="flex items-start gap-2 py-1 text-sm"
+		>
 			{ICON_MAP[row.icon]}
 			<div className="min-w-0">
 				<span className="text-foreground">{row.message}</span>
