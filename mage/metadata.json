@@ -2,8 +2,8 @@
 	"schema": "mage.v1",
 	"mode": "external",
 	"project": "prismalens-platform",
-	"hub_path": "/home/sumit/.mage/hubs/github.com/prismalens/prismalens-docs-hub",
-	"hub_repo": "https://github.com/prismalens/prismalens-docs-hub.git",
+	"hub_path": "/home/sumit/.mage/hubs/github.com/prismalens/prismalens-kb",
+	"hub_repo": "https://github.com/prismalens/prismalens-kb.git",
 	"hub_refs": [],
 	"linked_at": "2026-06-03T19:38:55Z"
 }
