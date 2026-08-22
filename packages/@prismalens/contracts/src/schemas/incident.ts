@@ -82,6 +82,9 @@ const UserRefSchema = z.object({
 const InvestigationRefSchema = z.object({
 	id: z.string().uuid(),
 	status: z.string(),
+	// Rendered by IncidentDetailPanel — omitting it here strips the field at
+	// the oRPC output boundary even though the service selects it.
+	rootCause: z.string().nullable(),
 	createdAt: DateStringSchema,
 	completedAt: DateStringSchema.nullable(),
 });

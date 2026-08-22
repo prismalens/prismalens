@@ -62,6 +62,243 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		).not.toBeVisible();
 	});
 
+	/**
+	 * #tab=unmapped — the dashboard's "Unassigned" links (`/alerts?tab=unmapped`)
+	 * used to do nothing: the alerts route declared no `validateSearch`, so the
+	 * param was silently dropped. The route now honours it via a real,
+	 * backend-filterable field (`unassigned`, AlertQuerySchema) — not an
+	 * invented one.
+	 */
+	test("tab=unmapped filters alerts to those with no incident", async ({
+		page,
+	}) => {
+		// 1. Direct link (as the dashboard sends it): the Unmapped tab is
+		//    pre-selected and the table only shows alerts with no incident.
+		await page.goto("/alerts?tab=unmapped");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		const rows = page.locator("table tbody tr");
+		await expect(rows.first()).toBeVisible({ timeout: 15_000 });
+		const rowCount = await rows.count();
+		expect(rowCount).toBeGreaterThan(0);
+		expect(rowCount).toBeLessThan(60); // fewer than the full 60-alert seed
+		// An unmapped alert renders no "INC-" incident link (AlertsTable).
+		await expect(page.getByText(/^INC-/)).toHaveCount(0);
+
+		// 2. Switching tabs updates the URL and the result set.
+		await page.getByRole("tab", { name: "All Alerts" }).click();
+		await expect(page).toHaveURL(/tab=all/);
+		await expect(page.getByTestId("alerts-total-count")).toHaveText("60", {
+			timeout: 15_000,
+		});
+
+		// 3. The real repro: the dashboard's "Unassigned" link actually navigates
+		//    and lands with the Unmapped tab selected.
+		await page.goto("/");
+		await page.getByRole("link", { name: /Unassigned:/ }).click();
+		await expect(page).toHaveURL(/\/alerts\?tab=unmapped/);
+		await expect(
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+	});
+
+	/**
+	 * The unassigned set is resolved server-side (`unassigned=true`,
+	 * AlertQuerySchema). Filtering a page in the browser capped the tab at
+	 * whatever fit in one 100-row window — see
+	 * .changeset/ux-study-alerts-tab-rootcause-progress.md.
+	 */
+	test("tab=unmapped asks the server for the unassigned set instead of filtering a page in the browser", async ({
+		page,
+	}) => {
+		const requested: string[] = [];
+		await page.route(
+			(url) => url.pathname === "/api/alerts",
+			async (route, request) => {
+				const url = new URL(request.url());
+				requested.push(url.search);
+				if (url.searchParams.get("unassigned") !== "true") {
+					await route.continue();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						data: [
+							{
+								id: "a0000001-0000-4000-8000-000000000001",
+								dedupKey: "alert-triggered",
+								title: "Triggered Alert Without Incident",
+								severity: "high",
+								status: "triggered",
+								incidentId: null,
+								triggeredAt: new Date().toISOString(),
+								occurrenceCount: 1,
+								lastOccurrence: new Date().toISOString(),
+								createdAt: new Date().toISOString(),
+								updatedAt: new Date().toISOString(),
+							},
+							{
+								id: "a0000002-0000-4000-8000-000000000002",
+								dedupKey: "alert-acknowledged",
+								title: "Acknowledged Alert Without Incident",
+								severity: "medium",
+								status: "acknowledged",
+								incidentId: null,
+								triggeredAt: new Date().toISOString(),
+								occurrenceCount: 1,
+								lastOccurrence: new Date().toISOString(),
+								createdAt: new Date().toISOString(),
+								updatedAt: new Date().toISOString(),
+							},
+						],
+						pagination: { total: 137, limit: 100, offset: 0, hasMore: true },
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts?tab=unmapped");
+		await expect(
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		// Exactly what the server returned is rendered — no second, narrower
+		// predicate in the browser.
+		await expect(
+			page.getByText("Triggered Alert Without Incident"),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByText("Acknowledged Alert Without Incident"),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator("table tbody tr")).toHaveCount(2);
+
+		expect(requested.some((search) => search.includes("unassigned=true"))).toBe(
+			true,
+		);
+		expect(requested.some((search) => search.includes("hasIncident"))).toBe(
+			false,
+		);
+
+		await page.unroute("**/api/alerts");
+	});
+
+	test("the dashboard Unassigned count and the unmapped tab read the same server-side set", async ({
+		page,
+	}) => {
+		// The stub reports 137 unassigned alerts but returns 4 rows: the count
+		// must come from `pagination.total`, never from the returned page.
+		const unassignedRows = Array.from({ length: 4 }, (_, i) => ({
+			id: `a000000${i + 1}-0000-4000-8000-00000000000${i + 1}`,
+			dedupKey: `unassigned-${i}`,
+			title: `Unassigned Alert ${i + 1}`,
+			severity: "high",
+			status: i % 2 === 0 ? "triggered" : "acknowledged",
+			incidentId: null,
+			triggeredAt: new Date().toISOString(),
+			occurrenceCount: 1,
+			lastOccurrence: new Date().toISOString(),
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}));
+
+		await page.route(
+			(url) =>
+				url.pathname === "/api/alerts" &&
+				url.searchParams.get("unassigned") === "true",
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						data: unassignedRows,
+						pagination: { total: 137, limit: 100, offset: 0, hasMore: true },
+					}),
+				});
+			},
+		);
+
+		await page.goto("/");
+		await expect(page.getByRole("link", { name: /Unassigned:/ })).toHaveText(
+			"Unassigned: 137",
+			{ timeout: 15_000 },
+		);
+
+		await page.goto("/alerts?tab=unmapped");
+		await expect(
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator("table tbody tr")).toHaveCount(
+			unassignedRows.length,
+		);
+		await expect(page.getByText("Unassigned Alert 1")).toBeVisible();
+
+		await page.unroute("**/api/alerts");
+	});
+
+	test("design evidence: alerts unmapped tab in default, dark, and empty states", async ({
+		page,
+	}) => {
+		const shot = (name: string) =>
+			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		await page.goto("/alerts?tab=unmapped");
+		await expect(
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(page.locator("table tbody tr").first()).toBeVisible({
+			timeout: 15_000,
+		});
+
+		await setTheme("light");
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-unmapped-default");
+
+		await setTheme("dark");
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-unmapped-dark");
+
+		// Empty: no alert in the seed is genuinely unmapped-and-nothing-else, so
+		// the empty state is reached by stubbing the filtered response rather
+		// than deleting seed data.
+		await page.route(
+			(url) =>
+				url.pathname === "/api/alerts" &&
+				url.searchParams.get("unassigned") === "true",
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						data: [],
+						pagination: { total: 0, limit: 50, offset: 0, hasMore: false },
+					}),
+				});
+			},
+		);
+		await page.reload();
+		await expect(page.getByText("No alerts found")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-unmapped-empty");
+		await page.unroute("**/api/alerts");
+	});
+
 	test("design evidence: investigation detail page in default and dark themes", async ({
 		page,
 	}) => {

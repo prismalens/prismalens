@@ -4,6 +4,7 @@
 import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, type TestingModule } from "@nestjs/testing";
+import type { Alert } from "@prismalens/database";
 import { AlertFactory } from "../../../test/factories/index.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { AlertStatus, Severity } from "../../shared/enums/index.js";
@@ -481,6 +482,176 @@ describe("AlertsService (BDD)", () => {
 					skip: 0,
 				}),
 			);
+		});
+	});
+
+	describe("findAll with the unassigned filter", () => {
+		// The row window has to apply to the unassigned set itself; filtering a
+		// page of 100 in the browser instead hides every triggered alert behind
+		// newer resolved ones (.changeset/ux-study-alerts-tab-rootcause-progress.md).
+		type StatusFilter = string | { in: readonly string[] } | undefined;
+		type AlertWhere = {
+			incidentId?: string | null;
+			status?: StatusFilter;
+			severity?: string;
+		};
+
+		const matches = (alert: Alert, where: AlertWhere): boolean => {
+			if ("incidentId" in where && alert.incidentId !== where.incidentId) {
+				return false;
+			}
+			if (where.severity !== undefined && alert.severity !== where.severity) {
+				return false;
+			}
+			const status = where.status;
+			if (typeof status === "string") return alert.status === status;
+			if (status) return status.in.includes(alert.status);
+			return true;
+		};
+
+		const seedPrisma = (rows: Alert[]) => {
+			mockPrismaService.alert.findMany.mockImplementation(
+				({
+					where,
+					take,
+					skip,
+				}: {
+					where: AlertWhere;
+					take?: number;
+					skip?: number;
+				}) => {
+					const offset = skip ?? 0;
+					const filtered = rows
+						.filter((a) => matches(a, where))
+						.sort((a, b) => b.triggeredAt.getTime() - a.triggeredAt.getTime());
+					return Promise.resolve(
+						filtered.slice(
+							offset,
+							take === undefined ? undefined : offset + take,
+						),
+					);
+				},
+			);
+			mockPrismaService.alert.count.mockImplementation(
+				({ where }: { where: AlertWhere }) =>
+					Promise.resolve(rows.filter((a) => matches(a, where)).length),
+			);
+		};
+
+		const EPOCH = new Date("2026-08-20T00:00:00.000Z").getTime();
+		const minutesAgo = (n: number) => new Date(EPOCH - n * 60_000);
+		const INCIDENT_ID = "c0000000-0000-4000-8000-000000000001";
+
+		const buildRows = (unassignedCount: number): Alert[] => [
+			// Newest and incident-less, but not "unassigned" by the shared definition.
+			...Array.from({ length: 120 }, (_, i) =>
+				AlertFactory.create({
+					status: i % 2 === 0 ? "resolved" : "suppressed",
+					incidentId: null,
+					triggeredAt: minutesAgo(i),
+				}),
+			),
+			// Older, and the set both the Unmapped tab and the dashboard mean.
+			...Array.from({ length: unassignedCount }, (_, i) =>
+				AlertFactory.create({
+					status: i % 2 === 0 ? "triggered" : "acknowledged",
+					incidentId: null,
+					triggeredAt: minutesAgo(200 + i),
+				}),
+			),
+			...Array.from({ length: 10 }, (_, i) =>
+				AlertFactory.create({
+					status: "triggered",
+					incidentId: INCIDENT_ID,
+					triggeredAt: minutesAgo(300 + i),
+				}),
+			),
+		];
+
+		it("returns the triggered and acknowledged alerts even when 120 newer incident-less alerts are resolved or suppressed", async () => {
+			seedPrisma(buildRows(30));
+
+			const result = await service.findAll({ unassigned: true, limit: 100 });
+
+			expect(result.total).toBe(30);
+			expect(result.data).toHaveLength(30);
+			expect(
+				result.data.every(
+					(a) =>
+						a.incidentId === null &&
+						(a.status === "triggered" || a.status === "acknowledged"),
+				),
+			).toBe(true);
+		});
+
+		it("reports the full unassigned count in total even when the page is capped at 100", async () => {
+			seedPrisma(buildRows(130));
+
+			const result = await service.findAll({ unassigned: true, limit: 100 });
+
+			expect(result.data).toHaveLength(100);
+			expect(result.total).toBe(130);
+		});
+
+		it("builds the where clause from incidentId null and the shared status set", async () => {
+			seedPrisma(buildRows(30));
+
+			await service.findAll({ unassigned: true, limit: 100 });
+
+			expect(mockPrismaService.alert.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: {
+						incidentId: null,
+						status: { in: ["triggered", "acknowledged"] },
+					},
+					take: 100,
+				}),
+			);
+		});
+
+		it("intersects with an explicit status instead of letting either filter win", async () => {
+			seedPrisma(buildRows(30));
+
+			const acknowledged = await service.findAll({
+				unassigned: true,
+				status: "acknowledged",
+			});
+			expect(acknowledged.total).toBe(15);
+			expect(acknowledged.data.every((a) => a.status === "acknowledged")).toBe(
+				true,
+			);
+
+			const resolved = await service.findAll({
+				unassigned: true,
+				status: "resolved",
+			});
+			expect(resolved.total).toBe(0);
+			expect(resolved.data).toHaveLength(0);
+		});
+
+		it("still honours severity alongside the unassigned filter", async () => {
+			seedPrisma([
+				AlertFactory.create({
+					status: "triggered",
+					incidentId: null,
+					severity: "critical",
+					triggeredAt: minutesAgo(1),
+				}),
+				AlertFactory.create({
+					status: "triggered",
+					incidentId: null,
+					severity: "low",
+					triggeredAt: minutesAgo(2),
+				}),
+			]);
+
+			const result = await service.findAll({
+				unassigned: true,
+				severity: "critical",
+			});
+
+			expect(result.total).toBe(1);
+			expect(result.data[0]?.severity).toBe("critical");
 		});
 	});
 

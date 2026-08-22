@@ -59,13 +59,15 @@ function CommandCenter() {
 	);
 	const incidents = incidentsResponse?.data ?? [];
 
-	// Fetch alerts for stats
+	// The unassigned set is resolved server-side, so `pagination.total` is the
+	// true count; `data` is only the page this panel previews.
 	const { data: alertsResponse, isLoading: alertsLoading } = useQuery(
 		orpc.alerts.list.queryOptions({
-			input: { status: "triggered", limit: 100 },
+			input: { unassigned: true, limit: 100 },
 		}),
 	);
-	const alerts = alertsResponse?.data ?? [];
+	const unassignedAlerts = alertsResponse?.data ?? [];
+	const unassignedCount = alertsResponse?.pagination.total ?? 0;
 
 	// Fetch pending recommendations
 	const { data: recommendations = [], isLoading: recommendationsLoading } =
@@ -81,11 +83,6 @@ function CommandCenter() {
 	);
 	const investigatingIncidents = incidents.filter(
 		(i) => i.status === "investigating",
-	);
-	const unassignedAlerts = alerts.filter(
-		(a) =>
-			!a.incidentId &&
-			(a.status === "triggered" || a.status === "acknowledged"),
 	);
 
 	// Calculate MTTR (simplified - would need historical data in real implementation)
@@ -225,7 +222,7 @@ function CommandCenter() {
 							search={{ tab: "unmapped" }}
 							className="hover:text-foreground transition-colors"
 						>
-							Unassigned: {unassignedAlerts.length}
+							Unassigned: {unassignedCount}
 						</Link>
 						<span>&middot;</span>
 						<span>MTTR: {avgMttr !== null ? `${avgMttr}m` : "--"}</span>
@@ -343,7 +340,7 @@ function CommandCenter() {
 					{/* Unassigned Alerts */}
 					<NeedsAttentionCard
 						title="Unassigned Alerts"
-						count={unassignedAlerts.length}
+						count={unassignedCount}
 						icon={<AlertCircle className="h-5 w-5 text-muted-foreground" />}
 						loading={alertsLoading}
 						emptyText="All alerts are assigned to incidents"

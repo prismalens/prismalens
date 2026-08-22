@@ -3,27 +3,48 @@
 
 import type { AlertStatus, Severity } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	useNavigate,
+	useSearch,
+} from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { AlertFilters, AlertsTable } from "@/components/alerts";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { orpc } from "@/lib/api/orpc-client";
+
+type AlertsTab = "all" | "unmapped";
+const ALERTS_TABS: AlertsTab[] = ["all", "unmapped"];
 
 export const Route = createFileRoute("/_authenticated/alerts/")({
 	component: AlertsPage,
+	validateSearch: (search: Record<string, unknown>): { tab?: AlertsTab } => ({
+		tab: (ALERTS_TABS as string[]).includes(search.tab as string)
+			? (search.tab as AlertsTab)
+			: "all",
+	}),
 });
 
 function AlertsPage() {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate({ from: "/alerts/" });
+	const { tab = "all" } = useSearch({ from: "/_authenticated/alerts/" });
 	const [statusFilter, setStatusFilter] = useState<AlertStatus | "all">("all");
 	const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
 
-	// Build query params
+	const handleTabChange = (nextTab: string) => {
+		navigate({ search: { tab: nextTab as AlertsTab }, replace: true });
+	};
+
+	// `unassigned` filters server-side, so `limit` windows the unassigned set
+	// itself; a browser-side predicate would window all statuses first.
 	const queryParams = {
 		...(statusFilter !== "all" && { status: statusFilter }),
 		...(severityFilter !== "all" && { severity: severityFilter }),
-		limit: 50,
+		...(tab === "unmapped" && { unassigned: true }),
+		limit: 100,
 	};
 
 	// Fetch alerts
@@ -126,22 +147,38 @@ function AlertsPage() {
 				</div>
 			)}
 
-			{/* Filters */}
-			<AlertFilters
-				status={statusFilter}
-				severity={severityFilter}
-				onStatusChange={setStatusFilter}
-				onSeverityChange={setSeverityFilter}
-				onClear={handleClearFilters}
-			/>
+			{/* Tabs */}
+			<Tabs value={tab} onValueChange={handleTabChange}>
+				<TabsList>
+					<TabsTrigger value="all">All Alerts</TabsTrigger>
+					<TabsTrigger value="unmapped">Unmapped</TabsTrigger>
+				</TabsList>
 
-			{/* Table */}
-			<AlertsTable
-				alerts={alerts}
-				isLoading={isLoading}
-				onAcknowledge={handleAcknowledge}
-				onResolve={handleResolve}
-			/>
+				{/* Same panel shape for both tabs — only the query params (and thus
+				 * `alerts`) differ, driven by `tab` above. Two panels (not one dynamic
+				 * `value`) keep Radix's tab/tabpanel ARIA pairing correct. */}
+				{ALERTS_TABS.map((tabValue) => (
+					<TabsContent
+						key={tabValue}
+						value={tabValue}
+						className="space-y-6 mt-4"
+					>
+						<AlertFilters
+							status={statusFilter}
+							severity={severityFilter}
+							onStatusChange={setStatusFilter}
+							onSeverityChange={setSeverityFilter}
+							onClear={handleClearFilters}
+						/>
+						<AlertsTable
+							alerts={alerts}
+							isLoading={isLoading}
+							onAcknowledge={handleAcknowledge}
+							onResolve={handleResolve}
+						/>
+					</TabsContent>
+				))}
+			</Tabs>
 		</div>
 	);
 }

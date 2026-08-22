@@ -365,6 +365,7 @@ export class IncidentsController {
 			serialized.investigations = incident.investigations.map((i: any) => ({
 				id: i.id,
 				status: i.status,
+				rootCause: i.rootCause ?? null,
 				createdAt:
 					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
 				completedAt:

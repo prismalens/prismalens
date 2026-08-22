@@ -5,6 +5,7 @@ import * as crypto from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "@prismalens/config";
+import { UNASSIGNED_ALERT_STATUSES } from "@prismalens/contracts/schemas";
 import type { Alert } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -295,21 +296,34 @@ export class AlertsService {
 		serviceId?: string;
 		incidentId?: string;
 		hasIncident?: boolean;
+		unassigned?: boolean;
 		limit?: number;
 		offset?: number;
 	}): Promise<{ data: AlertWithRelations[]; total: number }> {
+		// `unassigned` is the sole definition of the dashboard's "Unassigned" set,
+		// intersected with an explicit `status` so neither filter silently wins.
+		const unassignedStatuses = options?.unassigned
+			? UNASSIGNED_ALERT_STATUSES.filter(
+					(s) => options.status === undefined || s === options.status,
+				)
+			: undefined;
+
 		const where = {
-			...(options?.status && { status: options.status }),
+			...(unassignedStatuses
+				? { status: { in: unassignedStatuses } }
+				: options?.status && { status: options.status }),
 			...(options?.severity && { severity: options.severity }),
 			...(options?.serviceId && { serviceId: options.serviceId }),
-			// A specific incidentId wins over the coarser hasIncident predicate.
-			// Both write the same key, so spreading hasIncident unconditionally
-			// would silently discard the caller's incidentId filter.
-			...(options?.incidentId
-				? { incidentId: options.incidentId }
-				: options?.hasIncident !== undefined && {
-						incidentId: options.hasIncident ? { not: null } : null,
-					}),
+			// All three write `incidentId`, so precedence is explicit: `unassigned`
+			// (a row with an incident is never unassigned) outranks a specific
+			// incidentId, which outranks the coarser hasIncident.
+			...(options?.unassigned
+				? { incidentId: null }
+				: options?.incidentId
+					? { incidentId: options.incidentId }
+					: options?.hasIncident !== undefined && {
+							incidentId: options.hasIncident ? { not: null } : null,
+						}),
 		};
 
 		const [data, total] = await Promise.all([

@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import {
+	type AlertStatus,
 	AlertStatusSchema,
 	DateStringSchema,
 	QueryBooleanSchema,
@@ -136,6 +137,9 @@ export const AlertQuerySchema = z.object({
 	serviceId: z.string().uuid().optional(),
 	incidentId: z.string().uuid().optional(),
 	hasIncident: QueryBooleanSchema.optional(),
+	// No incident AND status in UNASSIGNED_ALERT_STATUSES. Server-side because
+	// `limit` caps at 100: a browser-side predicate windows all statuses first.
+	unassigned: QueryBooleanSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
 });
@@ -171,6 +175,19 @@ export const AlertStatsSchema = z.object({
 	byStatus: z.record(z.string(), z.number().int()),
 	bySeverity: z.record(z.string(), z.number().int()),
 });
+
+// =============================================================================
+// UNASSIGNED ALERTS DEFINITION
+// =============================================================================
+
+// Applied only by AlertsService.findAll, via AlertQuerySchema.unassigned. A
+// second client-side copy is what made the dashboard and the tab disagree.
+export const UNASSIGNED_ALERT_STATUSES = [
+	"triggered",
+	"acknowledged",
+] as const satisfies readonly AlertStatus[];
+
+export type UnassignedAlertStatus = (typeof UNASSIGNED_ALERT_STATUSES)[number];
 
 // =============================================================================
 // TYPE EXPORTS

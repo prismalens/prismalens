@@ -209,9 +209,13 @@ export class IncidentsService {
 					},
 					service: true,
 					investigations: {
-						where: { status: "completed" },
+						// No status filter: a `running` investigation must surface here too,
+						// or the dashboard's progress bar (gated on status === "running")
+						// can never render (#latestInvestigation bug).
+						// Take multiple so an older completed investigation's rootCause
+						// remains accessible when a newer investigation is running or failed.
 						orderBy: { createdAt: "desc" },
-						take: 1,
+						take: 5,
 						select: {
 							id: true,
 							status: true,

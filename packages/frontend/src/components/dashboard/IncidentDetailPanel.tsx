@@ -57,6 +57,10 @@ export function IncidentDetailPanel({
 	isResolving,
 }: IncidentDetailPanelProps) {
 	const latestInvestigation = incident.investigations?.[0];
+	const completedInvestigation =
+		incident.investigations?.find(
+			(i) => i.status === "completed" && i.rootCause,
+		) ?? incident.investigations?.find((i) => i.status === "completed");
 
 	return (
 		<>
@@ -179,11 +183,11 @@ export function IncidentDetailPanel({
 										</p>
 									</div>
 								)}
-								{latestInvestigation.rootCause && (
+								{completedInvestigation?.rootCause && (
 									<div className="p-3 rounded-lg bg-muted/50">
 										<h4 className="text-sm font-medium mb-1">Root Cause</h4>
 										<p className="text-sm text-muted-foreground">
-											{latestInvestigation.rootCause}
+											{completedInvestigation.rootCause}
 										</p>
 									</div>
 								)}
