@@ -69,6 +69,51 @@ async function serveStormInvestigationAsRunning(page: Page): Promise<void> {
 	);
 }
 
+async function serveStormWithNewerInvestigation(
+	page: Page,
+	newerStatus: "running" | "failed",
+): Promise<void> {
+	await page.route(
+		(url) => url.pathname === "/api/incidents",
+		async (route) => {
+			const response = await route.fetch();
+			const body = (await response.json()) as {
+				data: Array<{
+					title: string;
+					investigations?: Array<{
+						id: string;
+						status: string;
+						rootCause?: string | null;
+						createdAt: string;
+						completedAt?: string | null;
+					}>;
+				}>;
+			};
+			for (const incident of body.data) {
+				if (
+					incident.title.includes(STORM_INCIDENT_TITLE) &&
+					incident.investigations?.[0]
+				) {
+					const existingCompleted = incident.investigations[0];
+					const newerInvestigation = {
+						id: "d0333333-3333-4333-8333-333333333333",
+						status: newerStatus,
+						rootCause: null,
+						createdAt: new Date(Date.now() + 60000).toISOString(),
+						completedAt: null,
+					};
+					incident.investigations = [newerInvestigation, existingCompleted];
+				}
+			}
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(body),
+			});
+		},
+	);
+}
+
 test.describe("UX study — dashboard incident panel (rootCause + progress bar)", () => {
 	test("renders latestInvestigation.rootCause for a completed investigation", async ({
 		page,
@@ -91,6 +136,33 @@ test.describe("UX study — dashboard incident panel (rootCause + progress bar)"
 			timeout: 15_000,
 		});
 		await expect(page.getByText("Investigation in progress...")).toBeVisible();
+	});
+
+	test("surfaces rootCause from older completed investigation alongside progress bar when newer investigation is running", async ({
+		page,
+	}) => {
+		await serveStormWithNewerInvestigation(page, "running");
+		await selectIncident(page, STORM_INCIDENT_TITLE);
+		await expect(page.getByRole("progressbar")).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(page.getByText("Investigation in progress...")).toBeVisible();
+		await expect(page.getByText("Root Cause")).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText(STORM_ROOT_CAUSE)).toBeVisible({
+			timeout: 15_000,
+		});
+	});
+
+	test("surfaces rootCause from older completed investigation when newer investigation has failed", async ({
+		page,
+	}) => {
+		await serveStormWithNewerInvestigation(page, "failed");
+		await selectIncident(page, STORM_INCIDENT_TITLE);
+		await expect(page.getByRole("progressbar")).not.toBeVisible();
+		await expect(page.getByText("Root Cause")).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText(STORM_ROOT_CAUSE)).toBeVisible({
+			timeout: 15_000,
+		});
 	});
 
 	test("shows the no-investigation empty state for an incident with none", async ({

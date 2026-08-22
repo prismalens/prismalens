@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AlertStatus, Severity } from "@prismalens/contracts";
+import {
+	type AlertStatus,
+	isUnassignedAlert,
+	type Severity,
+} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -38,14 +42,13 @@ function AlertsPage() {
 		navigate({ search: { tab: nextTab as AlertsTab }, replace: true });
 	};
 
-	// Build query params. "unmapped" mirrors the dashboard's definition of an
-	// unassigned alert — hasIncident is a real, backend-filterable field
-	// (AlertQuerySchema), not an invented one.
+	// hasIncident filters server-side; unmapped tab applies isUnassignedAlert
+	// to match the dashboard's status constraint (see UNASSIGNED_ALERT_STATUSES).
 	const queryParams = {
 		...(statusFilter !== "all" && { status: statusFilter }),
 		...(severityFilter !== "all" && { severity: severityFilter }),
 		...(tab === "unmapped" && { hasIncident: false }),
-		limit: 50,
+		limit: 100,
 	};
 
 	// Fetch alerts
@@ -55,7 +58,9 @@ function AlertsPage() {
 		refetch,
 		isRefetching,
 	} = useQuery(orpc.alerts.list.queryOptions({ input: queryParams }));
-	const alerts = alertsResponse?.data ?? [];
+	const rawAlerts = alertsResponse?.data ?? [];
+	const alerts =
+		tab === "unmapped" ? rawAlerts.filter(isUnassignedAlert) : rawAlerts;
 
 	// Fetch stats
 	const { data: stats } = useQuery(

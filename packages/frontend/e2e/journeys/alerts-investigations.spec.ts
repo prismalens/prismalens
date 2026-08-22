@@ -107,6 +107,102 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		).toBeVisible({ timeout: 15_000 });
 	});
 
+	test("tab=unmapped excludes resolved and suppressed alerts even if they lack an incident", async ({
+		page,
+	}) => {
+		await page.route(
+			(url) =>
+				url.pathname === "/api/alerts" &&
+				url.searchParams.get("hasIncident") === "false",
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						data: [
+							{
+								id: "a0000001-0000-4000-8000-000000000001",
+								dedupKey: "alert-triggered",
+								title: "Triggered Alert Without Incident",
+								severity: "high",
+								status: "triggered",
+								incidentId: null,
+								triggeredAt: new Date().toISOString(),
+								occurrenceCount: 1,
+								lastOccurrence: new Date().toISOString(),
+								createdAt: new Date().toISOString(),
+								updatedAt: new Date().toISOString(),
+							},
+							{
+								id: "a0000002-0000-4000-8000-000000000002",
+								dedupKey: "alert-acknowledged",
+								title: "Acknowledged Alert Without Incident",
+								severity: "medium",
+								status: "acknowledged",
+								incidentId: null,
+								triggeredAt: new Date().toISOString(),
+								occurrenceCount: 1,
+								lastOccurrence: new Date().toISOString(),
+								createdAt: new Date().toISOString(),
+								updatedAt: new Date().toISOString(),
+							},
+							{
+								id: "a0000003-0000-4000-8000-000000000003",
+								dedupKey: "alert-resolved",
+								title: "Resolved Alert Without Incident",
+								severity: "low",
+								status: "resolved",
+								incidentId: null,
+								triggeredAt: new Date().toISOString(),
+								occurrenceCount: 1,
+								lastOccurrence: new Date().toISOString(),
+								createdAt: new Date().toISOString(),
+								updatedAt: new Date().toISOString(),
+							},
+							{
+								id: "a0000004-0000-4000-8000-000000000004",
+								dedupKey: "alert-suppressed",
+								title: "Suppressed Alert Without Incident",
+								severity: "info",
+								status: "suppressed",
+								incidentId: null,
+								triggeredAt: new Date().toISOString(),
+								occurrenceCount: 1,
+								lastOccurrence: new Date().toISOString(),
+								createdAt: new Date().toISOString(),
+								updatedAt: new Date().toISOString(),
+							},
+						],
+						pagination: { total: 4, limit: 100, offset: 0, hasMore: false },
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts?tab=unmapped");
+		await expect(
+			page.getByRole("tab", { name: "Unmapped", selected: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		// Triggered and Acknowledged alerts should be rendered
+		await expect(
+			page.getByText("Triggered Alert Without Incident"),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByText("Acknowledged Alert Without Incident"),
+		).toBeVisible({ timeout: 15_000 });
+
+		// Resolved and Suppressed alerts should NOT be rendered in the unmapped tab
+		await expect(
+			page.getByText("Resolved Alert Without Incident"),
+		).not.toBeVisible();
+		await expect(
+			page.getByText("Suppressed Alert Without Incident"),
+		).not.toBeVisible();
+
+		await page.unroute("**/api/alerts");
+	});
+
 	test("design evidence: alerts unmapped tab in default, dark, and empty states", async ({
 		page,
 	}) => {

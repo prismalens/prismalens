@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { isUnassignedAlert } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
@@ -62,7 +63,7 @@ function CommandCenter() {
 	// Fetch alerts for stats
 	const { data: alertsResponse, isLoading: alertsLoading } = useQuery(
 		orpc.alerts.list.queryOptions({
-			input: { status: "triggered", limit: 100 },
+			input: { limit: 100 },
 		}),
 	);
 	const alerts = alertsResponse?.data ?? [];
@@ -82,11 +83,7 @@ function CommandCenter() {
 	const investigatingIncidents = incidents.filter(
 		(i) => i.status === "investigating",
 	);
-	const unassignedAlerts = alerts.filter(
-		(a) =>
-			!a.incidentId &&
-			(a.status === "triggered" || a.status === "acknowledged"),
-	);
+	const unassignedAlerts = alerts.filter(isUnassignedAlert);
 
 	// Calculate MTTR (simplified - would need historical data in real implementation)
 	const resolvedIncidents = incidents.filter(

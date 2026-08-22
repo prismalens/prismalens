@@ -186,8 +186,18 @@ describe("IncidentsService", () => {
 
 			const [{ include }] = mockPrisma.incident.findMany.mock.calls[0];
 			expect(include.investigations.where).toBeUndefined();
-			expect(include.investigations.take).toBe(1);
+		});
+
+		it("includes multiple investigations so older completed investigations remain available alongside newer running ones", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([]);
+			mockPrisma.incident.count.mockResolvedValue(0);
+
+			await service.findAll({ limit: 50, offset: 0 });
+
+			const [{ include }] = mockPrisma.incident.findMany.mock.calls[0];
+			expect(include.investigations.take).toBeGreaterThanOrEqual(2);
 		});
 	});
 });
+
 

@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import {
+	type AlertStatus,
 	AlertStatusSchema,
 	DateStringSchema,
 	QueryBooleanSchema,
@@ -171,6 +172,24 @@ export const AlertStatsSchema = z.object({
 	byStatus: z.record(z.string(), z.number().int()),
 	bySeverity: z.record(z.string(), z.number().int()),
 });
+
+// =============================================================================
+// UNASSIGNED ALERTS DEFINITION
+// =============================================================================
+
+export const UNASSIGNED_ALERT_STATUSES = ["triggered", "acknowledged"] as const;
+
+export type UnassignedAlertStatus = (typeof UNASSIGNED_ALERT_STATUSES)[number];
+
+export function isUnassignedAlert(alert: {
+	incidentId?: string | null;
+	status: AlertStatus | string;
+}): boolean {
+	return (
+		!alert.incidentId &&
+		(UNASSIGNED_ALERT_STATUSES as readonly string[]).includes(alert.status)
+	);
+}
 
 // =============================================================================
 // TYPE EXPORTS

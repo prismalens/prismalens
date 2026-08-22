@@ -270,4 +270,61 @@ describe("incidents serialization contract conformance", () => {
 				.investigations[0].completedAt,
 		).toBe("2026-08-05T19:00:00.000Z");
 	});
+
+	it("surfaces both a newer running investigation and an older completed investigation with its rootCause", async () => {
+		const { IncidentWithRelationsSchema } = await import(
+			"@prismalens/contracts/schemas"
+		);
+
+		const incidentWithMultipleInvestigations = {
+			...seededIncidentRow,
+			investigations: [
+				{
+					id: "d0222222-2222-4222-8222-222222222222",
+					status: "running",
+					summary: null,
+					rootCause: null,
+					rootCauseCategory: null,
+					createdAt: new Date("2026-08-05T19:00:00.000Z"),
+					completedAt: null,
+				},
+				{
+					id: "d0111111-1111-4111-8111-111111111111",
+					status: "completed",
+					summary:
+						"Database connection pool exhaustion caused cascading 5xx gateway errors.",
+					rootCause:
+						"Connection pool size in auth-service was misconfigured and capped at 10 pool connections after release v2.4.1.",
+					rootCauseCategory: "config",
+					createdAt: new Date("2026-08-05T18:33:42.270Z"),
+					completedAt: new Date("2026-08-05T18:35:00.000Z"),
+				},
+			],
+		};
+
+		const serialized = serialize(incidentWithMultipleInvestigations) as {
+			investigations: Array<{
+				id: string;
+				status: string;
+				rootCause: string | null;
+				createdAt: string;
+				completedAt: string | null;
+			}>;
+		};
+
+		const result = IncidentWithRelationsSchema.safeParse(serialized);
+		expect(
+			result.success
+				? []
+				: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+		).toEqual([]);
+
+		expect(serialized.investigations).toHaveLength(2);
+		expect(serialized.investigations[0].status).toBe("running");
+		expect(serialized.investigations[0].rootCause).toBeNull();
+		expect(serialized.investigations[1].status).toBe("completed");
+		expect(serialized.investigations[1].rootCause).toBe(
+			"Connection pool size in auth-service was misconfigured and capped at 10 pool connections after release v2.4.1.",
+		);
+	});
 });
