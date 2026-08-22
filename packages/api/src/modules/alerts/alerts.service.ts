@@ -276,11 +276,13 @@ export class AlertsService {
 	}
 
 	/**
-	 * Find alert by source alert ID
+	 * Find the newest alert episode for a source alert ID (#231 — externalId is
+	 * no longer unique, so this reads the latest row rather than the only one).
 	 */
 	async findBySourceAlertId(sourceAlertId: string): Promise<Alert | null> {
-		return this.prisma.alert.findUnique({
+		return this.prisma.alert.findFirst({
 			where: { externalId: sourceAlertId },
+			orderBy: { triggeredAt: "desc" },
 		});
 	}
 

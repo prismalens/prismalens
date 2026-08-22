@@ -92,6 +92,10 @@ Notes that are easy to get wrong:
 * **`dedupKey` is no longer a unique column.** R2b needs a second row under the same key,
   so migration `20260812180006_alert_dedup_key_not_unique` swaps the unique index for a
   plain one. Every read is `findFirst(... orderBy triggeredAt desc)` — newest episode wins.
+* **`externalId` is likewise no longer unique.** A refire of a Prometheus / source condition
+  shares its stable fingerprint across episodes, so migration
+  `20260822161331_alert_external_id_not_unique` replaces the unique constraint with a plain
+  index and `findBySourceAlertId` reads the newest episode.
 * **The timeline entry is advisory.** An alert with no linked incident has nowhere to record
   the reopen, and a failed timeline write is logged, never fatal to ingest.
 

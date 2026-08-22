@@ -329,6 +329,83 @@ describe("AlertsService (BDD)", () => {
 			);
 			expect(result.status).toBe(AlertStatus.triggered);
 		});
+
+		it("R2b: a refire of a resolved alert OUTSIDE the flap window with the same sourceAlertId creates a new episode row", async () => {
+			const fingerprint = "fp-stable-123";
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 16 * MINUTE),
+				externalId: fingerprint,
+			});
+			const newEpisodeAlert = AlertFactory.create({
+				id: "alert-new-episode",
+				externalId: fingerprint,
+			});
+			mockPrismaService.alert.create.mockResolvedValue(newEpisodeAlert);
+
+			const result = await service.create({
+				...refireDto,
+				sourceAlertId: fingerprint,
+			});
+
+			expect(mockPrismaService.alert.update).not.toHaveBeenCalled();
+			expect(mockPrismaService.alert.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					externalId: fingerprint,
+					status: AlertStatus.triggered,
+					occurrenceCount: 1,
+				}),
+			});
+			expect(result.id).toBe("alert-new-episode");
+		});
+	});
+
+	describe("findByDedupKey", () => {
+		it("finds newest episode by dedupKey using findFirst ordered by triggeredAt desc (#231)", async () => {
+			const alert = AlertFactory.create({
+				id: "alert-latest",
+				dedupKey: "key-123",
+			});
+			mockPrismaService.alert.findFirst.mockResolvedValue(alert);
+
+			const result = await service.findByDedupKey("key-123");
+
+			expect(result).toEqual(alert);
+			expect(mockPrismaService.alert.findFirst).toHaveBeenCalledWith({
+				where: { dedupKey: "key-123" },
+				orderBy: { triggeredAt: "desc" },
+			});
+		});
+	});
+
+	describe("findBySourceAlertId", () => {
+		it("finds newest episode by sourceAlertId using findFirst ordered by triggeredAt desc (#231)", async () => {
+			const alert = AlertFactory.create({
+				id: "alert-latest",
+				externalId: "ext-123",
+			});
+			mockPrismaService.alert.findFirst.mockResolvedValue(alert);
+
+			const result = await service.findBySourceAlertId("ext-123");
+
+			expect(result).toEqual(alert);
+			expect(mockPrismaService.alert.findFirst).toHaveBeenCalledWith({
+				where: { externalId: "ext-123" },
+				orderBy: { triggeredAt: "desc" },
+			});
+		});
+
+		it("should return null when alert not found by sourceAlertId", async () => {
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+
+			const result = await service.findBySourceAlertId("non-existent");
+
+			expect(result).toBeNull();
+			expect(mockPrismaService.alert.findFirst).toHaveBeenCalledWith({
+				where: { externalId: "non-existent" },
+				orderBy: { triggeredAt: "desc" },
+			});
+		});
 	});
 
 	describe("findById", () => {

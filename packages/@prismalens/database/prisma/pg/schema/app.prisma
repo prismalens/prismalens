@@ -482,7 +482,7 @@ model Alert {
   // episode row under the same key, so reads take the newest row (#231).
   dedupKey        String // Hash of (source + title + severity) for deduplication
   fingerprint     String? // Content fingerprint for similarity matching
-  externalId      String?     @unique // Original ID from source system
+  externalId      String?     // Original ID from source system
   title           String
   description     String?
   severity        Severity    @default(medium)
@@ -514,6 +514,7 @@ model Alert {
   @@index([triggeredAt])
   @@index([fingerprint])
   @@index([dedupKey])
+  @@index([externalId])
   @@map("alerts")
 }
 
