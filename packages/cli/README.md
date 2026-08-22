@@ -150,6 +150,19 @@ it is the ONLY knob for their location — `DATABASE_URL` is ignored.
 Open the printed URL, create the owner account, and the install is working.
 `pl up` runs in the foreground; Ctrl-C stops it.
 
+#### Access model & trust posture
+
+| Placement | Default bind | Who can reach it | Auth posture | When to use |
+| --- | --- | --- | --- | --- |
+| **Laptop / Workstation** | `127.0.0.1` (`localhost`) | Local machine user only | First-run owner setup (`POST /api/setup`), session cookies, host allowlist restricted to loopback | Single-user local investigation, developer workstation |
+| **VM / Server / Container** | `--host 0.0.0.0` (explicit opt-in) | Network / team members on accessible host & port | Session cookies, DNS-rebinding protection (`PRISMALENS_ALLOWED_HOSTS`). Fine-grained multi-user RBAC is not yet implemented. Put behind trusted network boundary / TLS | Shared team instance, internal staging server, container deployment |
+
+Binding to a non-loopback interface (`--host 0.0.0.0` or LAN IP) puts PrismaLens on the network and emits a security warning log at boot. Non-loopback deployments must list authorized hostnames in `PRISMALENS_ALLOWED_HOSTS` to defend against DNS-rebinding attacks on `@Public()` routes (`/api/setup`, `/api/auth/*`). Fine-grained multi-user RBAC is **not yet implemented** (ADR-0011 §6).
+
+**Known Limitation:** If the target port is already bound by another process (`EADDRINUSE`), `pl up` currently crashes with an unhandled exception stack trace (fix in flight on branch `r1/237-eaddrinuse-handling`).
+
+For the complete single-process topology and packaging spec, see [`docs/runtime-and-packaging.md`](../../docs/runtime-and-packaging.md).
+
 ### `listen`
 
 Start the primary, token-authed local HTTP listener for incoming Alertmanager webhooks. Under ADR-0022's reactive-pull posture, PrismaLens does not poll or ingest on a standing basis; `listen` is the primary reactive surface — firing alerts delivered by webhooks are debounced within the configured `grouping_window_ms` window (default 60s) into a single investigation (Phase 1 R1).
