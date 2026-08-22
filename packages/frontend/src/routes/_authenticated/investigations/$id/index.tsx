@@ -194,7 +194,11 @@ function InvestigationDetailPage() {
 
 			{/* Real-time stream panel for active investigations */}
 			{isActive && stream.status !== "error" && (
+				// Every piece of the panel's state is per-investigation, and a
+				// `$id` param change re-renders this route rather than remounting
+				// it — so the panel is keyed to discard all of it at once (#280).
 				<InvestigationStreamPanel
+					key={investigationId}
 					events={stream.events}
 					latestText={stream.latestText}
 					status={stream.status}
