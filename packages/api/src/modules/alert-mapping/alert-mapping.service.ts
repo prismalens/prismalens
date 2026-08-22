@@ -42,11 +42,22 @@ export class AlertMappingService {
 		});
 	}
 
-	async findAll(): Promise<
-		(AlertMappingRule & { service?: Service | null })[]
-	> {
+	/**
+	 * Filters are opt-in: evaluation asks for `{ enabled: true }`, management
+	 * asks for everything. An unconditional enabled filter here would hide a
+	 * disabled rule from `/rules`, leaving no way to switch it back on (#294).
+	 */
+	async findAll(options?: {
+		enabled?: boolean;
+		serviceId?: string;
+	}): Promise<(AlertMappingRule & { service?: Service | null })[]> {
 		return this.prisma.alertMappingRule.findMany({
-			where: { enabled: true },
+			where: {
+				...(options?.enabled !== undefined && { enabled: options.enabled }),
+				...(options?.serviceId !== undefined && {
+					serviceId: options.serviceId,
+				}),
+			},
 			include: { service: true },
 			orderBy: { priority: "asc" },
 		});
@@ -103,7 +114,7 @@ export class AlertMappingService {
 		rule: (AlertMappingRule & { service?: Service | null }) | null;
 		service: Service | null;
 	}> {
-		const rules = await this.findAll();
+		const rules = await this.findAll({ enabled: true });
 
 		this.logger.debug(
 			`Resolving service for alert: "${alert.title}" (${alert.source || "unknown"}), ` +

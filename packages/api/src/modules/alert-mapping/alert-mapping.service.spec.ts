@@ -171,7 +171,7 @@ describe("AlertMappingService (BDD)", () => {
 
 			mockPrismaService.alertMappingRule.findMany.mockResolvedValue(rules);
 
-			const result = await service.findAll();
+			const result = await service.findAll({ enabled: true });
 
 			expect(result).toEqual(rules);
 			expect(mockPrismaService.alertMappingRule.findMany).toHaveBeenCalledWith({
@@ -198,7 +198,7 @@ describe("AlertMappingService (BDD)", () => {
 				enabledRule,
 			]);
 
-			await service.findAll();
+			await service.findAll({ enabled: true });
 
 			expect(mockPrismaService.alertMappingRule.findMany).toHaveBeenCalledWith({
 				where: { enabled: true },

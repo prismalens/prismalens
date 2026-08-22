@@ -35,8 +35,11 @@ export class AlertMappingController {
 			),
 
 			// GET /alert-mapping/rules - List alert mapping rules
-			list: implement(alertMappingContract.list).handler(async () => {
-				const rules = await this.alertMappingService.findAll();
+			list: implement(alertMappingContract.list).handler(async ({ input }) => {
+				const rules = await this.alertMappingService.findAll({
+					enabled: input.enabled,
+					serviceId: input.serviceId,
+				});
 				return rules.map((r) => this.serializeRuleWithService(r));
 			}),
 
@@ -133,11 +136,12 @@ export class AlertMappingController {
 		const serialized = this.serializeRule(rule) as any;
 
 		if (rule.service) {
+			// Exactly ServiceRefSchema's three fields — `type`/`tier` were emitted
+			// here and are not in the contract, so no client could read them (#294).
 			serialized.service = {
 				id: rule.service.id,
 				name: rule.service.name,
-				type: rule.service.type,
-				tier: rule.service.tier,
+				displayName: rule.service.displayName ?? null,
 			};
 		}
 
