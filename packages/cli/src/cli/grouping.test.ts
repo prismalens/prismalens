@@ -14,7 +14,7 @@ describe("Grouping layer", () => {
 		vi.useRealTimers();
 	});
 
-	function setup() {
+	function setup(overrides?: { flapWindowMs?: number }) {
 		const logs: string[] = [];
 		const records = new Map<string, GroupRecord>();
 		const lateAlerts = new Map<string, Record<string, unknown>[]>();
@@ -48,6 +48,8 @@ describe("Grouping layer", () => {
 			sessions,
 			runInvestigation,
 			log: (msg) => logs.push(msg),
+			// #231 R4 — injected so the linkage window is independent of env config.
+			flapWindowMs: overrides?.flapWindowMs ?? 15 * 60_000,
 		});
 
 		return {
@@ -362,6 +364,137 @@ describe("Grouping layer", () => {
 
 		expect(runs.length).toBe(2);
 		expect(runs[1].alerts).toEqual([alertB]);
+	});
+
+	// ==========================================================================
+	// #231 R4 — a post-completion refire still starts a NEW run; the new run's
+	// record just carries previousRunId when the prior run finished in-window.
+	// ==========================================================================
+	describe("cross-run flap linkage (#231 R4)", () => {
+		const alert = {
+			fingerprint: "flappy",
+			status: "firing",
+			labels: { alertname: "A", service: "web" },
+		};
+
+		/** Drive one alert through a full window -> run -> completion cycle. */
+		async function runOnce(grouping: {
+			admit: (
+				firing: Record<string, unknown>[],
+				payload: Record<string, unknown>,
+			) => void;
+		}) {
+			grouping.admit([alert], {});
+			await vi.runAllTimersAsync();
+		}
+
+		it("baseline: the fingerprint short-circuit still suppresses an in-flight re-page", async () => {
+			const { grouping, runs, lateAlerts, setGate } = setup();
+			let resolveGate!: () => void;
+			setGate(
+				new Promise((r) => {
+					resolveGate = r;
+				}),
+			);
+
+			grouping.admit([alert], {});
+			await vi.advanceTimersByTimeAsync(60000);
+			grouping.admit([alert], {}); // same fingerprint, run still in flight
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(runs.length).toBe(1);
+			expect(lateAlerts.get(runs[0].runId)).toEqual([alert]);
+
+			resolveGate();
+			await vi.runAllTimersAsync();
+		});
+
+		it("baseline: a different fingerprint in a running group appends rather than dispatching", async () => {
+			const { grouping, runs, lateAlerts, setGate } = setup();
+			let resolveGate!: () => void;
+			setGate(
+				new Promise((r) => {
+					resolveGate = r;
+				}),
+			);
+			const sibling = {
+				fingerprint: "sibling",
+				status: "firing",
+				labels: { alertname: "A", service: "web" },
+			};
+
+			grouping.admit([alert], {});
+			await vi.advanceTimersByTimeAsync(60000);
+			grouping.admit([sibling], {});
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(runs.length).toBe(1);
+			expect(lateAlerts.get(runs[0].runId)).toEqual([sibling]);
+
+			resolveGate();
+			await vi.runAllTimersAsync();
+		});
+
+		it("links the new run to the completed one when the refire lands inside the flap window", async () => {
+			const { grouping, runs, records, logs } = setup();
+
+			await runOnce(grouping);
+			expect(runs.length).toBe(1);
+
+			// 5 minutes later, well inside the 15-minute window.
+			await vi.advanceTimersByTimeAsync(5 * 60_000);
+			await runOnce(grouping);
+
+			expect(runs.length).toBe(2);
+			expect(runs[1].runId).not.toBe(runs[0].runId);
+			expect(records.get(runs[1].runId)?.previousRunId).toBe(runs[0].runId);
+			expect(
+				logs.some((l) => l.includes(`linked to previous run ${runs[0].runId}`)),
+			).toBe(true);
+		});
+
+		it("leaves previousRunId unset when the refire lands outside the flap window", async () => {
+			const { grouping, runs, records } = setup();
+
+			await runOnce(grouping);
+			await vi.advanceTimersByTimeAsync(16 * 60_000);
+			await runOnce(grouping);
+
+			expect(runs.length).toBe(2);
+			expect(records.get(runs[1].runId)?.previousRunId).toBeUndefined();
+		});
+
+		it("the first run of a fingerprint has no previousRunId", async () => {
+			const { grouping, runs, records } = setup();
+
+			await runOnce(grouping);
+
+			expect(records.get(runs[0].runId)?.previousRunId).toBeUndefined();
+		});
+
+		it("honours an injected flap window rather than a hardcoded 15 minutes", async () => {
+			const { grouping, runs, records } = setup({ flapWindowMs: 60_000 });
+
+			await runOnce(grouping);
+			await vi.advanceTimersByTimeAsync(2 * 60_000);
+			await runOnce(grouping);
+
+			expect(records.get(runs[1].runId)?.previousRunId).toBeUndefined();
+		});
+
+		it("links across a chain of refires, each to its immediate predecessor", async () => {
+			const { grouping, runs, records } = setup();
+
+			await runOnce(grouping);
+			await vi.advanceTimersByTimeAsync(2 * 60_000);
+			await runOnce(grouping);
+			await vi.advanceTimersByTimeAsync(2 * 60_000);
+			await runOnce(grouping);
+
+			expect(runs.length).toBe(3);
+			expect(records.get(runs[1].runId)?.previousRunId).toBe(runs[0].runId);
+			expect(records.get(runs[2].runId)?.previousRunId).toBe(runs[1].runId);
+		});
 	});
 });
 

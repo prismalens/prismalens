@@ -58,6 +58,9 @@ export interface GroupRecord {
 	formedBy: "window" | "overlay";
 	alerts: Record<string, unknown>[];
 	lateAlerts: Record<string, unknown>[];
+	/** The run one of these alerts last completed under, when that completion is
+	 *  inside the flap window (#231 R4). Linkage only — the run is not resumed. */
+	previousRunId?: string;
 }
 
 export interface SessionManager {

@@ -44,11 +44,15 @@ const SCHEMA = `
 		PRAGMA busy_timeout = 5000;
 		PRAGMA foreign_keys = ON;
 
+		-- previous_run_id: the run this group's dedupe keys last completed under,
+		-- when that completion falls inside the flap window (#231 R4). Recorded,
+		-- never resurrected — a post-completion refire still starts a fresh run.
 		CREATE TABLE IF NOT EXISTS groups (
-			id         TEXT PRIMARY KEY,
-			group_key  TEXT,
-			formed_by  TEXT NOT NULL DEFAULT 'window',
-			created_at TEXT NOT NULL
+			id              TEXT PRIMARY KEY,
+			group_key       TEXT,
+			formed_by       TEXT NOT NULL DEFAULT 'window',
+			previous_run_id TEXT,
+			created_at      TEXT NOT NULL
 		);
 
 		CREATE TABLE IF NOT EXISTS runs (
@@ -95,7 +99,7 @@ const SCHEMA = `
 `;
 
 const SCHEMA_CHECK = `
-		SELECT id, group_key, formed_by, created_at FROM groups LIMIT 1;
+		SELECT id, group_key, formed_by, previous_run_id, created_at FROM groups LIMIT 1;
 		SELECT run_id, group_id, status, alertname, agent, repo, workspace_path, error, suppression_reason, origin, schema_version, created_at, updated_at, completed_at FROM runs LIMIT 1;
 		SELECT id, run_id, payload FROM events LIMIT 1;
 		SELECT run_id, payload FROM reports LIMIT 1;
@@ -108,6 +112,7 @@ const SCHEMA_CHECK = `
 const ADDITIVE_MIGRATIONS = [
 	`ALTER TABLE runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'local'`,
 	`ALTER TABLE runs ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE groups ADD COLUMN previous_run_id TEXT`,
 ];
 
 /**

@@ -209,14 +209,27 @@ export class WebhooksService {
 		};
 	}
 
-	async processGithubWebhook(dto: GithubWebhookDto): Promise<WebhookResult> {
+	/**
+	 * @param deliveryGuid GitHub's `X-GitHub-Delivery` — unique per delivery and
+	 * REUSED on a redelivery, which is exactly the idempotency key `ingestEvent`
+	 * wants. Closes the asymmetry #309 left between this path and the others (#231 R3).
+	 */
+	async processGithubWebhook(
+		dto: GithubWebhookDto,
+		deliveryGuid?: string,
+	): Promise<WebhookResult> {
 		// 1. Create immutable event record
-		const event = await this.eventsService.create({
-			source: "github",
-			sourceEventId: this.extractGithubEventId(dto),
-			eventType: this.determineGithubEventType(dto),
-			payload: dto as unknown as Record<string, unknown>,
-		});
+		const ingested = await this.ingestEvent(deliveryGuid, () =>
+			this.eventsService.create({
+				source: "github",
+				sourceEventId: this.extractGithubEventId(dto),
+				idempotencyKey: deliveryGuid,
+				eventType: this.determineGithubEventType(dto),
+				payload: dto as unknown as Record<string, unknown>,
+			}),
+		);
+		if ("replay" in ingested) return ingested.replay;
+		const event = ingested.event;
 
 		this.logger.log(`Created event ${event.id} from GitHub webhook`);
 

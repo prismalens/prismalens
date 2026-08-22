@@ -100,6 +100,35 @@ export const globalSchema = z.object({
 		.describe(
 			"Allow any origin for webhook endpoints (for browser-based testing tools)",
 		),
+
+	// Alert dedup / flap suppression (#231)
+	PRISMALENS_ALERT_FLAP_WINDOW_MINUTES: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.default(15)
+		.describe(
+			"Minutes after an alert resolves during which a refire of the same dedupKey " +
+				"reopens it as a flap instead of opening a new alert. One global knob, " +
+				"shared by the API dedup path and the CLI grouping layer (#231).",
+		),
 });
 
 export type ServerConfig = z.infer<typeof globalSchema>;
+
+/**
+ * The #231 flap window in milliseconds. The zod default above is the single
+ * source of truth — callers must NOT pass their own fallback (a `.get(key, x)`
+ * fallback is silently dead next to a schema default).
+ */
+export function alertFlapWindowMs(
+	env: Record<string, string | undefined> = process.env,
+): number {
+	return (
+		globalSchema.shape.PRISMALENS_ALERT_FLAP_WINDOW_MINUTES.parse(
+			env.PRISMALENS_ALERT_FLAP_WINDOW_MINUTES,
+		) *
+		60 *
+		1000
+	);
+}

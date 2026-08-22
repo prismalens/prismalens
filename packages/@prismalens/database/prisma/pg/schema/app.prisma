@@ -446,9 +446,11 @@ model Event {
 model Alert {
   id              String      @id @default(uuid())
   tenantId        String?     // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  dedupKey        String      @unique // Hash of (source + title + severity) for deduplication
+  // Deliberately NOT unique: a refire outside the flap window opens a NEW
+  // episode row under the same key, so reads take the newest row (#231).
+  dedupKey        String // Hash of (source + title + severity) for deduplication
   fingerprint     String? // Content fingerprint for similarity matching
-  externalId      String?     @unique // Original ID from source system
+  externalId      String?     // Original ID from source system
   title           String
   description     String?
   severity        Severity    @default(medium)
@@ -479,6 +481,8 @@ model Alert {
   @@index([incidentId])
   @@index([triggeredAt])
   @@index([fingerprint])
+  @@index([dedupKey])
+  @@index([externalId])
   @@map("alerts")
 }
 

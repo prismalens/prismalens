@@ -249,4 +249,81 @@ describe("WebhooksService", () => {
 			service.processGenericWebhook({ title: "Test Alert" }, "idem-other"),
 		).rejects.toMatchObject({ code: "P2003" });
 	});
+
+	// ==========================================================================
+	// #231 R3 — the GitHub path gets the same ingestEvent wrapping as the others,
+	// keyed on X-GitHub-Delivery (GitHub reuses the GUID on a redelivery).
+	// ==========================================================================
+	describe("GitHub delivery-GUID idempotency (#231 R3)", () => {
+		const githubDto = {
+			action: "opened",
+			issue: { number: 7, title: "Disk full", html_url: "https://gh/i/7" },
+			repository: { full_name: "acme/api" },
+		};
+		const DELIVERY_GUID = "a1b2c3d4-0000-1111-2222-333344445555";
+
+		it("passes the delivery GUID through as the event's idempotency key", async () => {
+			vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce(null);
+
+			await service.processGithubWebhook(githubDto, DELIVERY_GUID);
+
+			expect(eventsService.findByIdempotencyKey).toHaveBeenCalledWith(
+				DELIVERY_GUID,
+			);
+			expect(eventsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					source: "github",
+					idempotencyKey: DELIVERY_GUID,
+				}),
+			);
+		});
+
+		it("replays a redelivery of the same GUID without re-creating event or alert", async () => {
+			vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce({
+				...mockEvent,
+				source: "github",
+				idempotencyKey: DELIVERY_GUID,
+			});
+
+			const result = await service.processGithubWebhook(
+				githubDto,
+				DELIVERY_GUID,
+			);
+
+			expect(eventsService.create).not.toHaveBeenCalled();
+			expect(alertsService.create).not.toHaveBeenCalled();
+			expect(correlationService.correlateAlert).not.toHaveBeenCalled();
+			expect(result.alert.id).toBe("alt-123");
+			expect(result.correlationReason).toContain("Idempotent replay");
+		});
+
+		it("defers to the winner when a concurrent redelivery wins the insert race", async () => {
+			vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce(null);
+			vi.mocked(eventsService.create).mockRejectedValueOnce(
+				uniqueKeyViolation(),
+			);
+			vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce({
+				...mockEvent,
+				source: "github",
+				idempotencyKey: DELIVERY_GUID,
+			});
+
+			const result = await service.processGithubWebhook(
+				githubDto,
+				DELIVERY_GUID,
+			);
+
+			expect(alertsService.create).not.toHaveBeenCalled();
+			expect(result.correlationReason).toContain("Idempotent replay");
+		});
+
+		it("still processes a delivery that carries no GUID", async () => {
+			const result = await service.processGithubWebhook(githubDto);
+
+			expect(eventsService.findByIdempotencyKey).not.toHaveBeenCalled();
+			expect(eventsService.create).toHaveBeenCalledTimes(1);
+			expect(alertsService.create).toHaveBeenCalledTimes(1);
+			expect(result.alert.id).toBe("alt-123");
+		});
+	});
 });
