@@ -2,80 +2,80 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Providers — barrel exports + factories
+ * Providers — unified exact-templateId registry and segmented adapters (#446)
  */
 
-// Deployment provider
-export type {
-	DeploymentProvider,
-	DeploymentProviderFactory,
-} from "./deployment.interface.js";
+import { GitHubAdapter } from "./github/github.adapter.js";
+import { RenderAdapter } from "./render/render.adapter.js";
+import type { ProviderAdapter, SegmentKind } from "./types.js";
+import { VercelAdapter } from "./vercel/vercel.adapter.js";
 
+// Deployment provider
+export type { DeploymentProvider } from "./deployment.interface.js";
 // Git provider
 export type {
 	GitProvider,
 	GitProviderContext,
-	GitProviderFactory,
 } from "./git.interface.js";
-export { GitHubProvider } from "./github/github.provider.js";
-export { RenderProvider } from "./render/render.provider.js";
-// Shared types
-export type { AuthenticatedRequestFn } from "./types.js";
-export { VercelProvider } from "./vercel/vercel.provider.js";
+export { GitHubAdapter, GitHubVcsSegment } from "./github/index.js";
+export { RenderAdapter, RenderDeploymentSegment } from "./render/index.js";
+// Shared provider and adapter types
+export type {
+	AuthenticatedRequestFn,
+	ProviderAdapter,
+	ProviderAdapterFactory,
+	SegmentKind,
+} from "./types.js";
+export { VercelAdapter, VercelDeploymentSegment } from "./vercel/index.js";
 
-// ── Git provider factory ──
+// ── Exact-templateId adapter registry ──
 
-import type { GitProvider } from "./git.interface.js";
-import { GitHubProvider } from "./github/github.provider.js";
-
-const gitProviders: Record<string, new () => GitProvider> = {
-	github: GitHubProvider,
+const ADAPTER_REGISTRY: Record<string, new () => ProviderAdapter> = {
+	"github-app": GitHubAdapter,
+	"github-token": GitHubAdapter,
+	render: RenderAdapter,
+	vercel: VercelAdapter,
 };
 
-export function createGitProvider(providerName: string): GitProvider | null {
-	const ProviderClass = gitProviders[providerName.toLowerCase()];
-	if (!ProviderClass) return null;
-	return new ProviderClass();
+/** Create an adapter instance for an exact templateId (#446). */
+export function createAdapter(templateId: string): ProviderAdapter | null {
+	const AdapterClass = ADAPTER_REGISTRY[templateId];
+	if (!AdapterClass) return null;
+	return new AdapterClass();
 }
 
-export function isGitProviderSupported(providerName: string): boolean {
-	return providerName.toLowerCase() in gitProviders;
+export const getAdapter = createAdapter;
+
+/** Check if an exact templateId has a registered adapter (#446). */
+export function isAdapterSupported(templateId: string): boolean {
+	return templateId in ADAPTER_REGISTRY;
 }
 
-export function resolveGitProviderName(templateId: string): string | null {
-	if (templateId.startsWith("github")) return "github";
-	if (templateId.startsWith("gitlab")) return "gitlab";
-	if (templateId.startsWith("bitbucket")) return "bitbucket";
-	return null;
+/** Return all templateIds registered in ADAPTER_REGISTRY (#446). */
+export function getRegisteredTemplateIds(): string[] {
+	return Object.keys(ADAPTER_REGISTRY);
 }
 
-// ── Deployment provider factory ──
-
-import type { DeploymentProvider } from "./deployment.interface.js";
-import { RenderProvider } from "./render/render.provider.js";
-import { VercelProvider } from "./vercel/vercel.provider.js";
-
-const deploymentProviders: Record<string, new () => DeploymentProvider> = {
-	render: RenderProvider,
-	vercel: VercelProvider,
-};
-
-export function createDeploymentProvider(
-	providerName: string,
-): DeploymentProvider | null {
-	const ProviderClass = deploymentProviders[providerName.toLowerCase()];
-	if (!ProviderClass) return null;
-	return new ProviderClass();
+/** Derive segment kinds from adapter segment presence (#446). */
+export function getAdapterSegments(adapter: ProviderAdapter): SegmentKind[] {
+	const segments: SegmentKind[] = [];
+	if (adapter.vcs) segments.push("vcs");
+	if (adapter.deployment) segments.push("deployment");
+	return segments;
 }
 
-export function isDeploymentProviderSupported(providerName: string): boolean {
-	return providerName.toLowerCase() in deploymentProviders;
+export const adapterSegments = getAdapterSegments;
+
+/** Return templateIds providing a given segment kind (#446). */
+export function getTemplatesForSegment(segment: SegmentKind): string[] {
+	const result: string[] = [];
+	for (const [templateId, AdapterClass] of Object.entries(ADAPTER_REGISTRY)) {
+		const adapter = new AdapterClass();
+		if (adapter[segment]) {
+			result.push(templateId);
+		}
+	}
+	return result;
 }
 
-export function resolveDeploymentProviderName(
-	templateId: string,
-): string | null {
-	if (templateId.startsWith("render")) return "render";
-	if (templateId.startsWith("vercel")) return "vercel";
-	return null;
-}
+export const templatesForSegment = getTemplatesForSegment;

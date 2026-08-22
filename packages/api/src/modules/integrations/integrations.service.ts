@@ -26,14 +26,12 @@ import {
 	assertCapability,
 	CapabilityNotSupportedError,
 	checkGitHubAppPermissions,
-	createGitProvider,
+	createAdapter,
 	GitHubAppFlow,
 	type GitHubInstallation,
 	getAllTemplates,
 	getTemplate,
 	hasCapability,
-	isGitProviderSupported,
-	resolveGitProviderName,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
@@ -641,16 +639,9 @@ export class IntegrationsService implements OnModuleInit {
 		}
 
 		const template = getTemplate(connection.integration.templateId);
-		const providerName = resolveGitProviderName(
-			connection.integration.templateId,
-		);
-		if (!providerName || !isGitProviderSupported(providerName)) {
+		const adapter = createAdapter(connection.integration.templateId);
+		if (!adapter?.vcs) {
 			throw new BadRequestException("Not a supported git provider");
-		}
-
-		const provider = createGitProvider(providerName);
-		if (!provider) {
-			throw new BadRequestException("Failed to create git provider");
 		}
 
 		const requestFn = this.createRequestFn(connectionId);
@@ -661,7 +652,11 @@ export class IntegrationsService implements OnModuleInit {
 			this.logger.log(
 				`Template "${template.id}" lacks vcs:list_orgs — deriving orgs from repositories`,
 			);
-			const repos = await provider.getRepositories(requestFn, undefined, ctx);
+			const repos = await adapter.vcs.getRepositories(
+				requestFn,
+				undefined,
+				ctx,
+			);
 			const ownerMap = new Map<string, GitOrganization>();
 			for (const repo of repos) {
 				const ownerName = repo.fullName.split("/")[0];
@@ -676,7 +671,7 @@ export class IntegrationsService implements OnModuleInit {
 			return Array.from(ownerMap.values());
 		}
 
-		return provider.getOrganizations(requestFn, ctx);
+		return adapter.vcs.getOrganizations(requestFn, ctx);
 	}
 
 	async getGitRepositories(
@@ -701,20 +696,13 @@ export class IntegrationsService implements OnModuleInit {
 			}
 		}
 
-		const providerName = resolveGitProviderName(
-			connection.integration.templateId,
-		);
-		if (!providerName || !isGitProviderSupported(providerName)) {
+		const adapter = createAdapter(connection.integration.templateId);
+		if (!adapter?.vcs) {
 			throw new BadRequestException("Not a supported git provider");
 		}
 
-		const provider = createGitProvider(providerName);
-		if (!provider) {
-			throw new BadRequestException("Failed to create git provider");
-		}
-
 		const requestFn = this.createRequestFn(connectionId);
-		return provider.getRepositories(requestFn, org, {
+		return adapter.vcs.getRepositories(requestFn, org, {
 			authMode: template?.authMode,
 		});
 	}
@@ -947,7 +935,7 @@ export class IntegrationsService implements OnModuleInit {
 
 			contexts.push({
 				type:
-					resolveGitProviderName(conn.integration.templateId) ??
+					createAdapter(conn.integration.templateId)?.name ??
 					conn.integration.templateId,
 				connectionId: conn.id,
 				credentials,
@@ -991,7 +979,7 @@ export class IntegrationsService implements OnModuleInit {
 
 					contexts.push({
 						type:
-							resolveGitProviderName(si.connection.integration.templateId) ??
+							createAdapter(si.connection.integration.templateId)?.name ??
 							si.connection.integration.templateId,
 						connectionId: si.connectionId,
 						credentials,
@@ -1030,7 +1018,7 @@ export class IntegrationsService implements OnModuleInit {
 
 			return {
 				type:
-					resolveGitProviderName(conn.integration.templateId) ??
+					createAdapter(conn.integration.templateId)?.name ??
 					conn.integration.templateId,
 				connectionId: conn.id,
 				credentials,

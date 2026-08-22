@@ -12,12 +12,7 @@ import type {
 	Service,
 	ServiceSuggestion,
 } from "@prismalens/database";
-import {
-	createDeploymentProvider,
-	getTemplate,
-	resolveDeploymentProviderName,
-	resolveGitProviderName,
-} from "@prismalens/integrations";
+import { createAdapter, getTemplate } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CredentialsService } from "../integrations/crypto/credentials.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
@@ -93,15 +88,15 @@ export class ServiceDiscoveryService {
 	async discoverFromVcsProvider(
 		connection: ConnectionWithTemplate,
 	): Promise<ServiceSuggestion[]> {
-		const providerName = resolveGitProviderName(
-			connection.integration.templateId,
-		);
+		const adapter = createAdapter(connection.integration.templateId);
 
-		if (!providerName) {
+		if (!adapter?.vcs) {
 			throw new BadRequestException(
 				`Service discovery not supported for provider "${connection.integration.templateId}"`,
 			);
 		}
+
+		const providerName = adapter.name;
 
 		this.logger.log(
 			`Discovering services from ${providerName} connection: ${connection.id}`,
@@ -175,29 +170,22 @@ export class ServiceDiscoveryService {
 	async discoverFromDeploymentProvider(
 		connection: ConnectionWithTemplate,
 	): Promise<ServiceSuggestion[]> {
-		const providerName = resolveDeploymentProviderName(
-			connection.integration.templateId,
-		);
+		const adapter = createAdapter(connection.integration.templateId);
 
-		if (!providerName) {
+		if (!adapter?.deployment) {
 			throw new BadRequestException(
 				`Deployment discovery not supported for provider "${connection.integration.templateId}"`,
 			);
 		}
 
+		const providerName = adapter.name;
+
 		this.logger.log(
 			`Discovering deployments from ${providerName} connection: ${connection.id}`,
 		);
 
-		const provider = createDeploymentProvider(providerName);
-		if (!provider) {
-			throw new BadRequestException(
-				`Failed to create deployment provider: ${providerName}`,
-			);
-		}
-
 		const requestFn = this.integrationsService.createRequestFn(connection.id);
-		const deploymentServices = await provider.listServices(requestFn);
+		const deploymentServices = await adapter.deployment.listServices(requestFn);
 
 		const suggestions: ServiceSuggestion[] = [];
 

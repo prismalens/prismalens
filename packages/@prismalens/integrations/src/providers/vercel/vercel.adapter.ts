@@ -2,15 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Vercel Provider Implementation
+ * Vercel Adapter Implementation (#446)
  *
- * Implements the DeploymentProvider interface for Vercel.
+ * Exposes the deployment segment for Vercel.
  * Uses Vercel REST API: https://vercel.com/docs/rest-api
  */
 import type { DeploymentService } from "@prismalens/config/integrations";
 import { providerHttpError } from "../../engine/provider-http-error.js";
 import type { DeploymentProvider } from "../deployment.interface.js";
-import type { AuthenticatedRequestFn } from "../types.js";
+import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
 // Vercel API response types
 interface VercelProject {
@@ -104,7 +104,7 @@ function mapProject(project: VercelProject): DeploymentService {
 	};
 }
 
-export class VercelProvider implements DeploymentProvider {
+export class VercelDeploymentSegment implements DeploymentProvider {
 	readonly name = "vercel";
 
 	/**
@@ -165,4 +165,9 @@ export class VercelProvider implements DeploymentProvider {
 			return false;
 		}
 	}
+}
+
+export class VercelAdapter implements ProviderAdapter {
+	readonly name = "vercel";
+	readonly deployment: DeploymentProvider = new VercelDeploymentSegment();
 }

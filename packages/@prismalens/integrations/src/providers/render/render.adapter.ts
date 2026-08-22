@@ -2,15 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Render Provider Implementation
+ * Render Adapter Implementation (#446)
  *
- * Implements the DeploymentProvider interface for Render.
+ * Exposes the deployment segment for Render.
  * Uses Render API v1: https://docs.render.com/api
  */
 import type { DeploymentService } from "@prismalens/config/integrations";
 import { providerHttpError } from "../../engine/provider-http-error.js";
 import type { DeploymentProvider } from "../deployment.interface.js";
-import type { AuthenticatedRequestFn } from "../types.js";
+import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
 // Render API response types
 interface RenderServiceItem {
@@ -98,7 +98,7 @@ function mapService(
 	};
 }
 
-export class RenderProvider implements DeploymentProvider {
+export class RenderDeploymentSegment implements DeploymentProvider {
 	readonly name = "render";
 
 	/**
@@ -209,11 +209,16 @@ export class RenderProvider implements DeploymentProvider {
 			// Projects API may not be available or user may have no projects.
 			// Graceful fallback — services will be listed without project context.
 			console.warn(
-				"[RenderProvider] fetchProjectMap failed (non-blocking):",
+				"[RenderAdapter] fetchProjectMap failed (non-blocking):",
 				error,
 			);
 		}
 
 		return map;
 	}
+}
+
+export class RenderAdapter implements ProviderAdapter {
+	readonly name = "render";
+	readonly deployment: DeploymentProvider = new RenderDeploymentSegment();
 }

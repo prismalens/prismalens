@@ -2,11 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * GitHub Provider Implementation
+ * GitHub Adapter Implementation (#446)
  *
- * Implements the GitProvider interface for GitHub.
- * Uses the injected authenticated request function (from AuthManager.request).
- * Handles both user tokens (PAT/OAuth) and GitHub App installation tokens.
+ * Exposes the VCS segment for GitHub.
+ * Uses injected AuthenticatedRequestFn — providers never see raw tokens.
  */
 import type {
 	GitFileContent,
@@ -15,7 +14,7 @@ import type {
 } from "@prismalens/config/integrations";
 import { providerHttpError } from "../../engine/provider-http-error.js";
 import type { GitProvider, GitProviderContext } from "../git.interface.js";
-import type { AuthenticatedRequestFn } from "../types.js";
+import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
 // GitHub API response types (snake_case)
 interface GitHubOrg {
@@ -138,7 +137,7 @@ function mapRepo(repo: GitHubRepo): GitRepository {
 	};
 }
 
-export class GitHubProvider implements GitProvider {
+export class GitHubVcsSegment implements GitProvider {
 	readonly name = "github";
 
 	/**
@@ -282,4 +281,9 @@ export class GitHubProvider implements GitProvider {
 			avatarUrl: user.avatar_url,
 		};
 	}
+}
+
+export class GitHubAdapter implements ProviderAdapter {
+	readonly name = "github";
+	readonly vcs: GitProvider = new GitHubVcsSegment();
 }

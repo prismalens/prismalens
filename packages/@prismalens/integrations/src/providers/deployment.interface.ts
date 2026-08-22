@@ -13,7 +13,7 @@ import type { AuthenticatedRequestFn } from "./types.js";
 /**
  * Deployment Provider interface
  *
- * Each provider (Render, Vercel, etc.) implements this interface
+ * Each deployment provider segment implements this interface
  * to provide a unified API for interacting with deployment platforms.
  */
 export interface DeploymentProvider {
@@ -31,7 +31,3 @@ export interface DeploymentProvider {
 	/** Test the connection */
 	testConnection(request: AuthenticatedRequestFn): Promise<boolean>;
 }
-
-export type DeploymentProviderFactory = (
-	providerName: string,
-) => DeploymentProvider | null;
