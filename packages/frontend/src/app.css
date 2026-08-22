@@ -6,6 +6,10 @@
 
 @plugin "tailwindcss-animate";
 
+/* The app toggles a `.dark` class on <html>; stock Tailwind `dark:` compiles to
+   `@media (prefers-color-scheme: dark)` and would follow the OS instead (#423). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Base Styles */
 * {
   border-color: var(--border);
