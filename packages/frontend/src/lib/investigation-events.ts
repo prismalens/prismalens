@@ -158,3 +158,30 @@ export function groupEventsByBranch(
 		reportRows: Array.from(reportRows.values()),
 	};
 }
+
+export interface StreamView extends GroupedEventRows {
+	/** True only when the run really fanned out. */
+	isMultiBranch: boolean;
+	/** Single-branch rendering: one flat list, report row last. Empty otherwise. */
+	flatRows: EventRow[];
+}
+
+/**
+ * The stream panel's whole render decision, PURE and testable apart from React.
+ *
+ * A branch id is not a fan-out signal: a live fan-out shows `[b0]` before `b1`
+ * arrives, and a cancelled run's terminal event is stamped `supervisor`
+ * (`engine/src/supervisor/investigate.ts`). Only the branch COUNT is (#280).
+ */
+export function deriveStreamView(events: CanonicalEvent[]): StreamView {
+	const grouped = groupEventsByBranch(events);
+	const isMultiBranch = grouped.branches.length > 1;
+
+	return {
+		...grouped,
+		isMultiBranch,
+		flatRows: isMultiBranch
+			? []
+			: [...(grouped.branches[0]?.rows ?? []), ...grouped.reportRows],
+	};
+}
