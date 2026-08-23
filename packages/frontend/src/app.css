@@ -37,3 +37,20 @@ code {
   border-radius: 0.25rem;
 }
 
+/* React Flow MiniMap styling for light and dark themes (#436) */
+.react-flow__minimap {
+  background-color: var(--card) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.react-flow__minimap-mask {
+  fill: rgb(240 240 240 / 0.6);
+}
+
+:where(.dark, .dark *) .react-flow__minimap-mask {
+  fill: rgb(0 0 0 / 0.7);
+}
+
+

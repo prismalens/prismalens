@@ -164,13 +164,16 @@ export function getAgentStyle(agentName: string): AgentStyle {
 }
 
 /**
- * Get minimap node color based on agent name
- * Uses hash-based color generation for consistency
+ * MiniMap node fill hue matches the canvas node; lightness drops in dark mode
+ * so nodes contrast against the dark card background (#436).
  */
-export function getAgentMiniMapColor(agentName: string): string {
+export function getAgentMiniMapColor(
+	agentName: string,
+	theme: "light" | "dark" = "light",
+): string {
 	const hash = hashString(agentName);
 	const hue = hash % 360;
-	return `hsl(${hue}, 70%, 85%)`;
+	return theme === "dark" ? `hsl(${hue}, 50%, 40%)` : `hsl(${hue}, 70%, 85%)`;
 }
 
 // =============================================================================

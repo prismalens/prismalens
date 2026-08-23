@@ -260,6 +260,39 @@ test.describe("#247 — the investigation canvas streams live", () => {
 		await expect(nodes).toHaveCount(3);
 	});
 
+	test("#436 — minimap uses dark theme styling in dark mode", async ({
+		page,
+	}) => {
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		await serveAsRunning(page);
+		await installStreamDouble(page);
+		await page.goto(DETAIL_URL);
+
+		const events = eventFactory();
+		await setTheme("dark");
+		await expect(page.getByTestId("canvas-stream-connecting")).toBeVisible({
+			timeout: 20_000,
+		});
+		await deliver(page, events.agentStep("scout", "Mapping services"));
+		await expectNodeInFrame(page, "Scout");
+
+		const minimap = page.locator(".react-flow__minimap");
+		await expect(minimap).toBeVisible();
+
+		// In dark mode, the minimap container background must not stay white (#fff / rgb(255, 255, 255))
+		const bg = await minimap.evaluate((el) => {
+			return window.getComputedStyle(el).backgroundColor;
+		});
+		expect(bg).not.toBe("rgb(255, 255, 255)");
+	});
+
 	/**
 	 * Design evidence for the frontend gate (AGENTS.md): the changed surface in
 	 * both themes plus its empty and error states, captured the same way #286's
