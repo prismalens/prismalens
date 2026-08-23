@@ -23,6 +23,10 @@ const mockPrismaService = {
 	},
 	service: {
 		findUnique: vi.fn(),
+		findMany: vi.fn(),
+	},
+	alert: {
+		findMany: vi.fn(),
 	},
 };
 
@@ -576,6 +580,241 @@ describe("AlertMappingService (BDD)", () => {
 			const result = await service.resolveServiceForAlert(alert);
 
 			expect(result).toBeNull();
+		});
+	});
+
+	describe("getHealth", () => {
+		it("should return empty health summary when no services and no rules exist", async () => {
+			mockPrismaService.service.findMany.mockResolvedValue([]);
+			mockPrismaService.alertMappingRule.findMany.mockResolvedValue([]);
+			mockPrismaService.alert.findMany.mockResolvedValue([]);
+
+			const health = await service.getHealth();
+
+			expect(health.summary).toEqual({
+				totalIssues: 0,
+				unmappedServicesCount: 0,
+				neverMatchedRulesCount: 0,
+				stoppedMatchingRulesCount: 0,
+				healthyRulesCount: 0,
+				disabledRulesCount: 0,
+				totalRules: 0,
+				totalServices: 0,
+				windowHours: 168,
+			});
+			expect(health.issues).toEqual([]);
+			expect(health.services).toEqual([]);
+			expect(health.rules).toEqual([]);
+		});
+
+		it("should detect unmapped services when services have no enabled rules", async () => {
+			const services = [
+				{
+					id: "s-1",
+					name: "auth-service",
+					displayName: "Auth Service",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+				{
+					id: "s-2",
+					name: "billing-service",
+					displayName: "Billing Service",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+			];
+
+			const rules = [
+				{
+					id: "r-1",
+					name: "Disabled Auth Rule",
+					serviceId: "s-1",
+					enabled: false,
+					priority: 100,
+					matchCriteria: JSON.stringify({ source: "auth" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+			];
+
+			mockPrismaService.service.findMany.mockResolvedValue(services);
+			mockPrismaService.alertMappingRule.findMany.mockResolvedValue(rules);
+			mockPrismaService.alert.findMany.mockResolvedValue([]);
+
+			const health = await service.getHealth();
+
+			expect(health.summary.unmappedServicesCount).toBe(2);
+			expect(health.summary.disabledRulesCount).toBe(1);
+			expect(health.summary.totalIssues).toBe(2);
+
+			const unmappedIssues = health.issues.filter(
+				(i) => i.type === "unmapped_service",
+			);
+			expect(unmappedIssues).toHaveLength(2);
+			expect(unmappedIssues.map((i) => i.serviceId)).toEqual(["s-1", "s-2"]);
+		});
+
+		it("should distinguish never_matched rules from stopped_matching rules", async () => {
+			const now = new Date();
+			const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
+			const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+
+			const services = [
+				{
+					id: "s-1",
+					name: "api-gateway",
+					displayName: "API Gateway",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+			];
+
+			const rules = [
+				{
+					id: "r-never",
+					name: "Never Matched Rule",
+					serviceId: "s-1",
+					enabled: true,
+					priority: 10,
+					matchCriteria: JSON.stringify({ source: "rare-source" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+				{
+					id: "r-stopped",
+					name: "Stopped Matching Rule",
+					serviceId: "s-1",
+					enabled: true,
+					priority: 20,
+					matchCriteria: JSON.stringify({ source: "old-source" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+				{
+					id: "r-healthy",
+					name: "Healthy Rule",
+					serviceId: "s-1",
+					enabled: true,
+					priority: 30,
+					matchCriteria: JSON.stringify({ source: "live-source" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+			];
+
+			const alerts = [
+				// An alert matching r-stopped from 10 days ago (outside 7-day window)
+				{
+					id: "a-old",
+					title: "Old Alert",
+					source: "old-source",
+					labels: null,
+					tags: null,
+					triggeredAt: tenDaysAgo,
+				},
+				// An alert matching r-healthy from 2 hours ago (inside 7-day window)
+				{
+					id: "a-live",
+					title: "Live Alert",
+					source: "live-source",
+					labels: null,
+					tags: null,
+					triggeredAt: twoHoursAgo,
+				},
+			];
+
+			mockPrismaService.service.findMany.mockResolvedValue(services);
+			mockPrismaService.alertMappingRule.findMany.mockResolvedValue(rules);
+			mockPrismaService.alert.findMany.mockResolvedValue(alerts);
+
+			const health = await service.getHealth({ windowHours: 168 });
+
+			// Service has enabled rules, so unmappedServicesCount is 0
+			expect(health.summary.unmappedServicesCount).toBe(0);
+			expect(health.summary.neverMatchedRulesCount).toBe(1);
+			expect(health.summary.stoppedMatchingRulesCount).toBe(1);
+			expect(health.summary.healthyRulesCount).toBe(1);
+			expect(health.summary.totalIssues).toBe(2);
+
+			const neverMatchedIssue = health.issues.find(
+				(i) => i.type === "never_matched",
+			);
+			expect(neverMatchedIssue?.ruleId).toBe("r-never");
+			expect(neverMatchedIssue?.lastMatchedAt).toBeNull();
+
+			const stoppedIssue = health.issues.find(
+				(i) => i.type === "stopped_matching",
+			);
+			expect(stoppedIssue?.ruleId).toBe("r-stopped");
+			expect(stoppedIssue?.lastMatchedAt).toBe(tenDaysAgo.toISOString());
+
+			const healthyRule = health.rules.find((r) => r.ruleId === "r-healthy");
+			expect(healthyRule?.status).toBe("healthy");
+			expect(healthyRule?.windowMatches).toBe(1);
+			expect(healthyRule?.totalMatches).toBe(1);
+		});
+
+		it("should evaluate matches in priority order so lower priority rule does not steal alerts", async () => {
+			const services = [
+				{ id: "s-1", name: "api", displayName: "API" },
+			];
+			const now = new Date();
+
+			const rules = [
+				{
+					id: "r-high",
+					name: "High Priority",
+					serviceId: "s-1",
+					enabled: true,
+					priority: 1,
+					matchCriteria: JSON.stringify({ source: "common" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+				{
+					id: "r-low",
+					name: "Low Priority",
+					serviceId: "s-1",
+					enabled: true,
+					priority: 100,
+					matchCriteria: JSON.stringify({ source: "common" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+			];
+
+			const alerts = [
+				{
+					id: "a-1",
+					title: "Common Alert",
+					source: "common",
+					labels: null,
+					tags: null,
+					triggeredAt: now,
+				},
+			];
+
+			mockPrismaService.service.findMany.mockResolvedValue(services);
+			mockPrismaService.alertMappingRule.findMany.mockResolvedValue(rules);
+			mockPrismaService.alert.findMany.mockResolvedValue(alerts);
+
+			const health = await service.getHealth();
+
+			const highRuleHealth = health.rules.find((r) => r.ruleId === "r-high");
+			const lowRuleHealth = health.rules.find((r) => r.ruleId === "r-low");
+
+			expect(highRuleHealth?.status).toBe("healthy");
+			expect(highRuleHealth?.windowMatches).toBe(1);
+
+			expect(lowRuleHealth?.status).toBe("never_matched");
+			expect(lowRuleHealth?.windowMatches).toBe(0);
 		});
 	});
 });

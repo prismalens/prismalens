@@ -273,6 +273,46 @@ into an incident would fake a correlation the engine never performed.
 3. `pl listen` receives Alertmanager webhooks — or pipe an alert into `pl investigate`.
 4. `pl status` lists runs; `pl report <id>` prints the ordered-evidence report.
 
+### C8 — Rule management that tells the truth
+
+1. **Rules → Correlation**: list, create, edit, toggle, and delete correlation rules; *Test with sample alert* evaluates against the saved enabled rule set.
+2. **Rules → Alert mapping**: list, create, edit, toggle, and delete mapping rules; *Test with sample alert* previews service resolution against sample payloads.
+3. **Rules → Alert mapping health**: the mapping tab surfaces unmapped services via a top banner and rule health inline via status badges (*Healthy*, *Never matched*, *No matches (168h)*, *Disabled*).
+4. **Dashboard → Alert Mapping Issues**: the Command Center's *Alert Mapping Issues* card reflects the live query count of unmapped services and dead rules, linking directly to `/rules?tab=mapping`.
+
+#### Mapping health evaluation model
+
+Mapping health answers two fundamental operational questions: which services lack mapping coverage, and which mapping rules are inactive or dead.
+
+```
+                             Mapping Health Analysis
+                                        │
+             ┌──────────────────────────┴──────────────────────────┐
+             ▼                                                     ▼
+      Service Coverage                                      Rule Activity
+(Services with enabled rules?)                        (Matches over 168h window)
+ ┌───────────┴───────────┐                            ┌────────────┴────────────┐
+ ▼                       ▼                            ▼                         ▼
+≥1 rule               0 rules                 ≥1 match (window)         0 matches (window)
+Healthy          UNMAPPED SERVICE                  HEALTHY                      │
+                  (Health Issue)                                        ┌───────┴───────┐
+                                                                        ▼               ▼
+                                                               0 matches (all)    ≥1 match (past)
+                                                                NEVER MATCHED    STOPPED MATCHING
+                                                                (Health Issue)    (Health Issue)
+```
+
+#### Worked example
+
+| Entity | Configuration | State in DB | Health Status |
+|---|---|---|---|
+| Service `api-gateway` | 1 enabled rule (`Prometheus API`) | Alert matched 2 hours ago | **Healthy** (0 issues) |
+| Service `auth-service` | 1 enabled rule (`Auth Rule`) | 0 alert matches all-time | **Never matched** (1 issue: dead rule) |
+| Service `payment-service` | 1 enabled rule (`Stripe Rule`) | Last match 10 days ago (window: 7d) | **Stopped matching** (1 issue: dead rule) |
+| Service `analytics-pipeline` | 0 mapping rules | 0 rules pointing to service | **Unmapped service** (1 issue: unmapped) |
+
+Total issues reported on the dashboard card: **3** (1 unmapped service + 1 never-matched rule + 1 stopped-matching rule). Clicking *View in Rules* lands on `/rules?tab=mapping`, where all 3 issues are visible.
+
 ## How this catalog is maintained
 
 - Every capability issue carries the journey steps, a **proof** requirement (demo against a

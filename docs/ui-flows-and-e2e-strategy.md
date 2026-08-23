@@ -301,12 +301,12 @@ model), this row becomes a real journey and needs its own specs at that time, no
   ships correlation rules and no mapping rules); a skeleton while the list loads; an inline error
   with *Retry* when the list query fails; the create dialog's client-side JSON validation; the
   server's duplicate-name `CONFLICT` rendered inside the dialog; a per-row *Enabled* toggle
-  disabled while its write is in flight.
-- **Coverage**: `rules-management.spec.ts` drives both halves through real endpoints — it creates
-  a `suppress` rule, evaluates a sample alert against it, disables the rule and re-evaluates to
-  prove the answer changed, creates a mapping rule bound to a seeded service and evaluates that
-  too, deletes through the confirm dialog, and asserts the duplicate-name conflict surfaces in
-  the dialog.
+  disabled while its write is in flight; the unmapped services banner when services lack rules;
+  and inline health badges (*Healthy*, *Never matched*, *No matches*, *Disabled*) on mapping rules.
+- **Coverage**: `rules-management.spec.ts` and `mapping-health.spec.ts` (#452) drive both halves
+  through real endpoints — creating rules, evaluating sample alerts, toggling enabled state,
+  verifying live health query counts on the Command Center's *Alert Mapping Issues* card, and
+  asserting parity between the dashboard card count and the `/rules?tab=mapping` issues list.
 
 **What the test affordance does, exactly.** `POST /correlation/test` and
 `POST /alert-mapping/test` take `{ alertData }` and nothing else: they evaluate the sample against

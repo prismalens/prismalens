@@ -3,12 +3,15 @@
 
 "use client";
 
-import type { AlertMappingQuery } from "@prismalens/contracts";
+import type {
+	AlertMappingHealthQuery,
+	AlertMappingQuery,
+} from "@prismalens/contracts";
 /**
  * Alert mapping rule hooks using oRPC client
  *
  * Type-safe hooks for alert-mapping rule CRUD and the mapping-evaluation test
- * endpoint, backing the `/rules` screen (#294).
+ * endpoint, backing the `/rules` screen (#294) and mapping health (#452).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
@@ -24,6 +27,8 @@ export const alertMappingKeys = {
 		orpc.alertMapping.list.key({ input: filters }),
 	details: () => orpc.alertMapping.key({ type: "query" }),
 	detail: (id: string) => orpc.alertMapping.get.key({ input: { id } }),
+	health: (params?: Partial<AlertMappingHealthQuery>) =>
+		orpc.alertMapping.health.key({ input: params ?? {} }),
 };
 
 /**
@@ -50,6 +55,19 @@ export function useAlertMappingRule(id: string) {
 }
 
 /**
+ * Fetch alert mapping health status and issues
+ */
+export function useAlertMappingHealth(
+	params?: Partial<AlertMappingHealthQuery>,
+) {
+	return useQuery(
+		orpc.alertMapping.health.queryOptions({
+			input: params ?? {},
+		}),
+	);
+}
+
+/**
  * Create an alert mapping rule
  */
 export function useCreateAlertMappingRule() {
@@ -59,6 +77,7 @@ export function useCreateAlertMappingRule() {
 		...orpc.alertMapping.create.mutationOptions(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: alertMappingKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: alertMappingKeys.health() });
 		},
 	});
 }
@@ -73,6 +92,7 @@ export function useUpdateAlertMappingRule() {
 		...orpc.alertMapping.update.mutationOptions(),
 		onSuccess: (rule) => {
 			queryClient.invalidateQueries({ queryKey: alertMappingKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: alertMappingKeys.health() });
 			queryClient.setQueryData(alertMappingKeys.detail(rule.id), rule);
 		},
 	});
@@ -88,6 +108,7 @@ export function useDeleteAlertMappingRule() {
 		...orpc.alertMapping.delete.mutationOptions(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: alertMappingKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: alertMappingKeys.health() });
 		},
 	});
 }

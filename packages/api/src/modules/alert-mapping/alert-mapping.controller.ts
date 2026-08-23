@@ -14,6 +14,24 @@ import type {
 	UpdateMappingRuleDto,
 } from "./dto/index.js";
 
+interface RuleWithOptionalService {
+	id: string;
+	name: string;
+	description: string | null;
+	priority: number;
+	enabled: boolean;
+	matchCriteria: string | Record<string, unknown>;
+	conditions?: string;
+	serviceId: string;
+	createdAt: Date | string;
+	updatedAt: Date | string;
+	service?: {
+		id: string;
+		name: string;
+		displayName?: string | null;
+	} | null;
+}
+
 @Controller()
 export class AlertMappingController {
 	private readonly logger = new Logger(AlertMappingController.name);
@@ -101,15 +119,24 @@ export class AlertMappingController {
 					serviceName: service?.name ?? null,
 				};
 			}),
+
+			// GET /alert-mapping/health - Get mapping health status and issues
+			health: implement(alertMappingContract.health).handler(
+				async ({ input }) => {
+					return this.alertMappingService.getHealth({
+						windowHours: input?.windowHours,
+					});
+				},
+			),
 		};
 	}
 
-	private serializeRule(rule: Record<string, any>): AlertMappingRule {
+	private serializeRule(rule: RuleWithOptionalService): AlertMappingRule {
 		// Drop the raw `service` relation. Rules loaded via findAll/findById carry
 		// the full Service row, and spreading it here would emit every column —
 		// bypassing serializeRuleWithService's four-field whitelist, which is the
 		// only place a service is allowed to be exposed.
-		const { service: _service, ...rest } = rule;
+		const { service: _service, conditions: _conditions, ...rest } = rule;
 
 		return {
 			...rest,
@@ -127,24 +154,23 @@ export class AlertMappingController {
 				rule.updatedAt instanceof Date
 					? rule.updatedAt.toISOString()
 					: rule.updatedAt,
-		} as AlertMappingRule;
+		};
 	}
 
 	private serializeRuleWithService(
-		rule: Record<string, any>,
+		rule: RuleWithOptionalService,
 	): AlertMappingRuleWithService {
-		const serialized = this.serializeRule(rule) as any;
+		const serialized = this.serializeRule(rule);
 
-		if (rule.service) {
-			// Exactly ServiceRefSchema's three fields — `type`/`tier` were emitted
-			// here and are not in the contract, so no client could read them (#294).
-			serialized.service = {
-				id: rule.service.id,
-				name: rule.service.name,
-				displayName: rule.service.displayName ?? null,
-			};
-		}
-
-		return serialized as AlertMappingRuleWithService;
+		return {
+			...serialized,
+			...(rule.service && {
+				service: {
+					id: rule.service.id,
+					name: rule.service.name,
+					displayName: rule.service.displayName ?? null,
+				},
+			}),
+		};
 	}
 }
