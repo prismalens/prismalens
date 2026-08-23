@@ -381,3 +381,104 @@ test("names the empty-repository case instead of failing closed on it", () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// --- Dependency-range bump exemption (#328 review round 2) ---
+
+/** Base commit carries a dependency; the branch retargets its range the way a
+ * Dependabot (or hand-rolled) bump does. */
+function makeDepBump(dir, opts = {}) {
+	const manifest = (deps, extra = {}) =>
+		JSON.stringify({
+			name: "@prismalens/api",
+			version: extra.version ?? "0.1.0",
+			private: true,
+			dependencies: deps,
+			...(extra.fields ?? {}),
+		});
+
+	writeFileSync(
+		join(dir, "packages", "api", "package.json"),
+		manifest({ lodash: "^4.17.20", zod: "^3.22.0" }),
+	);
+	runGit(dir, ["add", "."]);
+	runGit(dir, ["commit", "-m", "chore(api): declare dependencies"]);
+
+	runGit(dir, ["checkout", "-b", "chore/bump-deps"]);
+	const deps = { lodash: "^4.17.21", zod: "^3.22.0" };
+	if (opts.addDependency) deps["brand-new-dep"] = "^1.0.0";
+	if (opts.aliasDependency) deps.lodash = "npm:something-else@1.0.0";
+	writeFileSync(
+		join(dir, "packages", "api", "package.json"),
+		manifest(deps, {
+			version: opts.bumpVersion ? "0.2.0" : undefined,
+			fields: opts.otherField ? { bin: { pl: "./dist/other.js" } } : undefined,
+		}),
+	);
+	if (opts.alsoTouchSource) {
+		writeFileSync(
+			join(dir, "packages", "api", "src", "index.ts"),
+			"export const app = 'smuggled';\n",
+		);
+	}
+	runGit(dir, ["add", "-A"]);
+	runGit(dir, ["commit", "-m", "chore(deps): bump lodash"]);
+}
+
+test("exempts a dependency-range bump and says why", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makeDepBump(dir);
+		const res = runValidator(dir);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /dependency-range bump/i);
+		assert.match(res.stdout, /packages\/api\/package\.json/);
+		assert.doesNotMatch(res.stderr, /No changeset found/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("refuses a dependency bump that also edits real source", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makeDepBump(dir, { alsoTouchSource: true });
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(
+			res.stderr,
+			/dependency-bump exemption does not apply: 1 changed file\(s\)/,
+		);
+		assert.match(res.stderr, /✗ packages\/api\/src\/index\.ts/);
+		assert.doesNotMatch(res.stdout, /dependency-range bump/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("refuses a dependency bump that adds a new dependency key", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makeDepBump(dir, { addDependency: true });
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(res.stderr, /✗ packages\/api\/package\.json/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("refuses a dependency bump that also changes a version field", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makeDepBump(dir, { bumpVersion: true });
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(res.stderr, /✗ packages\/api\/package\.json/);
+	} finally {
+		cleanup();
+	}
+});

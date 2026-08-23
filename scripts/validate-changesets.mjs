@@ -170,35 +170,45 @@ const DEP_FIELDS = [
 // A range, not an alias/tarball/git target: `1.2.3`, `^1.2`, `workspace:*`.
 const VERSION_RANGE = /^(workspace:)?[*^~<>=\d]/;
 
-function isVersionOnlyManifestEdit(filePath, mergeBase) {
-	if (!/(^|\/)package\.json$/.test(filePath)) return false;
+// Classifies a package.json diff: null unless every difference is confined to
+// `version` and dependency-RANGE values; otherwise which of the two changed.
+// Both presence-check exemptions are predicates over this (#328).
+function manifestChange(filePath, mergeBase) {
+	if (!/(^|\/)package\.json$/.test(filePath)) return null;
 	let before;
 	let after;
 	try {
 		before = JSON.parse(gitOut(["show", `${mergeBase}:${filePath}`]));
 		after = readJson(join(repoRoot, filePath));
 	} catch {
-		return false;
+		return null;
 	}
+	let version = false;
+	let deps = false;
 	for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-		if (key === "version") continue;
 		const b = before[key];
 		const a = after[key];
+		if (key === "version") {
+			if (b !== a) version = true;
+			continue;
+		}
 		if (DEP_FIELDS.includes(key)) {
 			for (const dep of new Set([
 				...Object.keys(b ?? {}),
 				...Object.keys(a ?? {}),
 			])) {
 				if (typeof b?.[dep] !== "string" || typeof a?.[dep] !== "string") {
-					return false;
+					return null;
 				}
-				if (b[dep] !== a[dep] && !VERSION_RANGE.test(a[dep])) return false;
+				if (b[dep] === a[dep]) continue;
+				if (!VERSION_RANGE.test(a[dep])) return null;
+				deps = true;
 			}
 			continue;
 		}
-		if (JSON.stringify(b) !== JSON.stringify(a)) return false;
+		if (JSON.stringify(b) !== JSON.stringify(a)) return null;
 	}
-	return true;
+	return { version, deps };
 }
 
 const argv = process.argv.slice(2);
@@ -254,26 +264,37 @@ const changesetInDiff = changedFiles.some(
 );
 
 let hasError = false;
-let releaseExemption = null;
+let exemption = null;
 
 // 1. Presence check
 if (changedPublishable.length > 0 && !changesetInDiff) {
-	// The release PR deletes every consumed changeset and can never run
-	// `changeset --empty`, so it is exempt — recognised by diff shape, not branch
-	// name. See CONTRIBUTING.md → "Release PRs are exempt…" (#328).
+	// Two diffs no human can attach a changeset to, both recognised by shape and
+	// never by branch/author (forgeable): the release PR, and a dependency-range
+	// bump. See CONTRIBUTING.md → "… exempt from the presence check" (#328).
 	const consumed = probe.mergeBase
 		? changedFiles.filter(
 				(f) => isChangesetFile(f) && !existsSync(join(repoRoot, f)),
 			)
 		: [];
-	const notVersionOnly = consumed.length
-		? changedPublishable.filter(
-				(f) => !isVersionOnlyManifestEdit(f, probe.mergeBase),
-			)
-		: changedPublishable;
+	const shapes = new Map(
+		changedPublishable.map((f) => [
+			f,
+			probe.mergeBase ? manifestChange(f, probe.mergeBase) : null,
+		]),
+	);
+	// Release PR: consumes changesets; manifests may move `version` and ranges.
+	const notManifestOnly = changedPublishable.filter((f) => !shapes.get(f));
+	// Dependency bump: ranges only — no `version`, no other field, no source.
+	const notRangeOnly = changedPublishable.filter(
+		(f) => !shapes.get(f) || shapes.get(f).version,
+	);
+	const bumpsRanges = changedPublishable.some((f) => shapes.get(f)?.deps);
+	const touchesManifest = changedPublishable.some((f) =>
+		/(^|\/)package\.json$/.test(f),
+	);
 
-	if (consumed.length > 0 && notVersionOnly.length === 0) {
-		releaseExemption = { consumed };
+	if (consumed.length > 0 && notManifestOnly.length === 0) {
+		exemption = { kind: "release" };
 		console.log(
 			"changeset presence check skipped — this is a Version Packages release PR:",
 		);
@@ -286,6 +307,25 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 		console.log(`  • branch: ${headBranch()}`);
 		console.log(
 			'  See CONTRIBUTING.md → "Release PRs are exempt from the presence check".\n',
+		);
+	} else if (
+		consumed.length === 0 &&
+		bumpsRanges &&
+		notRangeOnly.length === 0
+	) {
+		exemption = { kind: "deps" };
+		console.log(
+			"changeset presence check skipped — this is a dependency-range bump:",
+		);
+		console.log(
+			`  • every changed publishable file is a dependency-range-only package.json: ${changedPublishable.join(", ")}`,
+		);
+		console.log(
+			"  • no source file, no other manifest field, no version bump, no changeset consumed",
+		);
+		console.log(`  • branch: ${headBranch()}`);
+		console.log(
+			'  See CONTRIBUTING.md → "Dependency-range bumps are exempt from the presence check".\n',
 		);
 	} else {
 		hasError = true;
@@ -300,10 +340,19 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 		if (consumed.length > 0) {
 			console.error(
 				`\nThis branch deletes ${consumed.length} changeset(s) the way a release PR does, but the ` +
-					`release-PR exemption does not apply: ${notVersionOnly.length} changed file(s) under packages/ ` +
+					`release-PR exemption does not apply: ${notManifestOnly.length} changed file(s) under packages/ ` +
 					"are not version-field-only package.json edits:",
 			);
-			for (const f of notVersionOnly.slice(0, 10)) {
+			for (const f of notManifestOnly.slice(0, 10)) {
+				console.error(`  ✗ ${f}`);
+			}
+		} else if (touchesManifest) {
+			console.error(
+				"\nThis branch edits package.json the way a dependency bump does, but the " +
+					`dependency-bump exemption does not apply: ${notRangeOnly.length} changed file(s) under packages/ ` +
+					"are not dependency-range-only package.json edits:",
+			);
+			for (const f of notRangeOnly.slice(0, 10)) {
 				console.error(`  ✗ ${f}`);
 			}
 		}
@@ -361,9 +410,11 @@ if (hasError) {
 	process.exit(1);
 }
 
-if (releaseExemption) {
+if (exemption) {
+	const why =
+		exemption.kind === "release" ? "release PR" : "dependency-range bump";
 	console.log(
-		`changesets OK — release PR exempt from the presence check; ${files.length} changeset(s) validated.`,
+		`changesets OK — ${why} exempt from the presence check; ${files.length} changeset(s) validated.`,
 	);
 } else if (probe.empty) {
 	console.log(

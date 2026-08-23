@@ -326,7 +326,10 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
 4. **Release PRs are exempt** — the machine-generated "chore: version packages" PR
    deletes the changesets it consumes and can never add one. See
    [Release PRs are exempt from the presence check](#release-prs-are-exempt-from-the-presence-check).
-5. **The gate fails closed.** If it cannot compute the diff (a shallow clone, an
+5. **Dependency-range bumps are exempt** — a `package.json` diff that only moves
+   dependency *ranges* carries no code and therefore no release note. See
+   [Dependency-range bumps are exempt from the presence check](#dependency-range-bumps-are-exempt-from-the-presence-check).
+6. **The gate fails closed.** If it cannot compute the diff (a shallow clone, an
    unresolvable base ref, git unavailable) it exits non-zero with the git error
    attached. It never reports "no publishable packages modified" on a broken probe.
 
@@ -423,6 +426,71 @@ This branch deletes 4 changeset(s) the way a release PR does, but the release-PR
   ✗ packages/cli/src/index.ts
 ...
 ```
+
+### Dependency-range bumps are exempt from the presence check
+
+A Dependabot group bump — or a maintainer doing the same thing by hand — edits
+`packages/*/package.json` and nothing else. Those manifests are publishable files, so
+the presence check fired on them, and Dependabot cannot author a changeset.
+
+Like the release-PR exemption, this one is decided from the **shape of the diff**. It
+is deliberately **not** keyed on `dependabot[bot]` or any other identity: an author
+check is forgeable in the same way a branch name is, and it would wrongly refuse a
+human doing the identical, equally note-free change. The consequence is accepted —
+**a human doing a pure dependency bump is exempt too.**
+
+The exemption applies only when *all* of these hold:
+
+* at least one changed `package.json` moves a dependency range, and
+* **every** changed publishable file is a `package.json` whose parsed before/after
+  differ *only* in dependency-range **values** under `dependencies`,
+  `devDependencies`, `peerDependencies` or `optionalDependencies`, and
+* no `version` field changed (that is the release-PR case, kept separate), and
+* no changeset was deleted (likewise).
+
+Adding or removing a dependency key, retargeting one away from a version range
+(`npm:`, `file:`, `link:`, `git+…`, a tarball URL), touching any other manifest
+field, or changing one line of source aborts it. `pnpm-lock.yaml` and the root
+`package.json` are outside `packages/` and never counted either way.
+
+```console
+$ node scripts/validate-changesets.mjs --base '44506b6^'   # replaying #444, a Dependabot group bump
+changeset presence check skipped — this is a dependency-range bump:
+  • every changed publishable file is a dependency-range-only package.json: packages/@prismalens/logger/package.json, packages/api/package.json, packages/frontend/package.json
+  • no source file, no other manifest field, no version bump, no changeset consumed
+  • branch: dependabot/npm_and_yarn/dev-minor-patch-…
+  See CONTRIBUTING.md → "Dependency-range bumps are exempt from the presence check".
+
+changesets OK — dependency-range bump exempt from the presence check; 0 changeset(s) validated.
+```
+
+Smuggle anything else into that diff and it is refused, with the offending files named:
+
+```console
+$ node scripts/validate-changesets.mjs --base '44506b6^'
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/@prismalens/logger/package.json
+  • packages/api/package.json
+  • packages/api/src/main.ts
+  • packages/frontend/package.json
+
+This branch edits package.json the way a dependency bump does, but the dependency-bump exemption does not apply: 1 changed file(s) under packages/ are not dependency-range-only package.json edits:
+  ✗ packages/api/src/main.ts
+...
+$ echo $?
+1
+```
+
+**How the two exemptions interact.** Both are `every changed publishable file is …`
+predicates evaluated over the same file list, so OR-ing them can never admit a file
+neither would admit on its own. The dependency-bump file shape (ranges only) is a
+strict subset of the release-PR file shape (ranges *and* `version`), which means the
+union of what they accept is exactly what the release-PR exemption already accepted
+before this rule existed. A diff that both deletes a changeset and edits dependency
+ranges is handled by the release-PR branch, as it was before; add a new dependency key
+or a source file to it and both branches refuse it.
 
 ### The gate fails closed when it cannot compute the diff
 
