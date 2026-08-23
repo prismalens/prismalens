@@ -261,6 +261,11 @@ export class AlertMappingService {
 				orderBy: { priority: "asc" },
 			}),
 			this.prisma.alert.findMany({
+				where: {
+					triggeredAt: {
+						gte: windowStart,
+					},
+				},
 				select: {
 					id: true,
 					source: true,

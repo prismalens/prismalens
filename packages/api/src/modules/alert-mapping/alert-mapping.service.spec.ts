@@ -816,5 +816,94 @@ describe("AlertMappingService (BDD)", () => {
 			expect(lowRuleHealth?.status).toBe("never_matched");
 			expect(lowRuleHealth?.windowMatches).toBe(0);
 		});
+
+		it("should push the time window into the alert query where clause (#452)", async () => {
+			const now = new Date();
+			const windowHours = 48;
+			const expectedWindowStartMin = new Date(
+				now.getTime() - windowHours * 60 * 60 * 1000 - 1000,
+			);
+			const expectedWindowStartMax = new Date(
+				now.getTime() - windowHours * 60 * 60 * 1000 + 1000,
+			);
+
+			const services = [
+				{
+					id: "s-1",
+					name: "api-service",
+					displayName: "API Service",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+			];
+
+			const rules = [
+				{
+					id: "r-1",
+					name: "API Rule",
+					serviceId: "s-1",
+					enabled: true,
+					priority: 1,
+					matchCriteria: JSON.stringify({ source: "api" }),
+					createdAt: new Date(),
+					updatedAt: new Date(),
+					service: services[0],
+				},
+			];
+
+			// Alerts both inside and outside the window
+			const alertsInsideWindow = [
+				{
+					id: "a-inside",
+					title: "Recent Alert",
+					source: "api",
+					labels: null,
+					tags: null,
+					triggeredAt: new Date(now.getTime() - 2 * 60 * 60 * 1000), // 2h ago (inside)
+				},
+			];
+
+			mockPrismaService.service.findMany.mockResolvedValue(services);
+			mockPrismaService.alertMappingRule.findMany.mockResolvedValue(rules);
+			mockPrismaService.alert.findMany.mockResolvedValue(alertsInsideWindow);
+
+			const health = await service.getHealth({ windowHours });
+
+			// Assert query's where carries the time window bound
+			expect(mockPrismaService.alert.findMany).toHaveBeenCalledWith({
+				where: {
+					triggeredAt: {
+						gte: expect.any(Date),
+					},
+				},
+				select: {
+					id: true,
+					source: true,
+					labels: true,
+					tags: true,
+					title: true,
+					description: true,
+					triggeredAt: true,
+				},
+				orderBy: { triggeredAt: "desc" },
+			});
+
+			const callArgs = mockPrismaService.alert.findMany.mock.calls[0]?.[0];
+			const gteDate: Date = callArgs?.where?.triggeredAt?.gte;
+			expect(gteDate).toBeInstanceOf(Date);
+			expect(gteDate.getTime()).toBeGreaterThanOrEqual(
+				expectedWindowStartMin.getTime(),
+			);
+			expect(gteDate.getTime()).toBeLessThanOrEqual(
+				expectedWindowStartMax.getTime(),
+			);
+
+			// Behaviour is unchanged: same issues and same totalIssues as expected
+			expect(health.summary.totalIssues).toBe(0);
+			expect(health.summary.healthyRulesCount).toBe(1);
+			expect(health.rules[0]?.status).toBe("healthy");
+			expect(health.rules[0]?.windowMatches).toBe(1);
+			expect(health.rules[0]?.totalMatches).toBe(1);
+		});
 	});
 });
