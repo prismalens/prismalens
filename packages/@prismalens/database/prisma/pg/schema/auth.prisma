@@ -74,6 +74,7 @@ model Account {
   userId                String
   accountId             String
   providerId            String // "credential", "google", "github", etc.
+  issuer                String
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
