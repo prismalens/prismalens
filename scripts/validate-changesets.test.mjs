@@ -74,11 +74,11 @@ function createRepoFixture() {
 	};
 }
 
-function runValidator(cwd, args = []) {
+function runValidator(cwd, args = [], baseArgs = ["--base", "main"]) {
 	try {
 		const stdout = execFileSync(
 			"node",
-			["scripts/validate-changesets.mjs", "--base", "main", ...args],
+			["scripts/validate-changesets.mjs", ...baseArgs, ...args],
 			{
 				cwd,
 				encoding: "utf8",
@@ -241,5 +241,143 @@ test("fails when a changeset names an unknown non-workspace package", () => {
 		assert.match(res.stderr, /not a workspace package/);
 	} finally {
 		cleanup();
+	}
+});
+
+// --- Release PR exemption + fail-closed diff probe (#328 review findings) ---
+
+/** Simulates what `changesets/action` opens: consumed changesets deleted, the
+ * published manifest's version field bumped, CHANGELOG appended. */
+function makeReleasePr(dir, { alsoTouchSource = false } = {}) {
+	writeFileSync(
+		join(dir, ".changeset", "consumed.md"),
+		'---\n"prismalens": patch\n---\n\nA real fix.\n',
+	);
+	runGit(dir, ["add", "."]);
+	runGit(dir, ["commit", "-m", "feat: land a change with a changeset"]);
+
+	runGit(dir, ["checkout", "-b", "changeset-release/main"]);
+	rmSync(join(dir, ".changeset", "consumed.md"));
+	writeFileSync(
+		join(dir, "packages", "cli", "package.json"),
+		JSON.stringify({ name: "prismalens", version: "0.1.1" }),
+	);
+	writeFileSync(
+		join(dir, "packages", "cli", "CHANGELOG.md"),
+		"# prismalens\n\n## 0.1.1\n\n### Patch Changes\n\n- A real fix.\n",
+	);
+	if (alsoTouchSource) {
+		writeFileSync(
+			join(dir, "packages", "api", "src", "index.ts"),
+			"export const app = 'smuggled';\n",
+		);
+	}
+	runGit(dir, ["add", "-A"]);
+	runGit(dir, ["commit", "-m", "chore: version packages"]);
+}
+
+test("exempts a Version Packages release PR and says why", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makeReleasePr(dir);
+		const res = runValidator(dir);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /release PR/i);
+		assert.match(res.stdout, /\.changeset\/consumed\.md/);
+		assert.match(res.stdout, /packages\/cli\/package\.json/);
+		assert.doesNotMatch(res.stderr, /No changeset found/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("refuses a release-shaped PR that also edits real source", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makeReleasePr(dir, { alsoTouchSource: true });
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(res.stderr, /packages\/api\/src\/index\.ts/);
+		assert.match(
+			res.stderr,
+			/release-PR exemption does not apply: 1 changed file\(s\)/,
+		);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("fails closed with a diagnostic when the base ref cannot be resolved", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		runGit(dir, ["checkout", "-b", "feat/whatever"]);
+		writeFileSync(
+			join(dir, "packages", "api", "src", "index.ts"),
+			"export const app = 'updated';\n",
+		);
+		runGit(dir, ["commit", "-am", "feat(api): update app"]);
+
+		const res = runValidator(dir, [], ["--base", "refs/heads/no-such-ref"]);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(res.stderr, /Could not determine which files changed/);
+		assert.match(res.stderr, /no-such-ref/);
+		assert.match(res.stderr, /fetch-depth/);
+		assert.doesNotMatch(res.stdout, /no publishable packages modified/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("fails closed when git itself cannot run in the directory", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pl-validate-changesets-nogit-"));
+	try {
+		mkdirSync(join(dir, ".changeset"), { recursive: true });
+		writeFileSync(join(dir, ".changeset", "config.json"), JSON.stringify({}));
+		mkdirSync(join(dir, "scripts"), { recursive: true });
+		writeFileSync(
+			join(dir, "scripts", "validate-changesets.mjs"),
+			execFileSync("cat", [scriptPath], { encoding: "utf8" }),
+		);
+		const res = runValidator(dir, [], ["--base", "main"]);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(res.stderr, /Could not determine which files changed/);
+		assert.doesNotMatch(res.stdout, /no publishable packages modified/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("names the empty-repository case instead of failing closed on it", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pl-validate-changesets-empty-"));
+	try {
+		runGit(dir, ["init", "-b", "main"]);
+		mkdirSync(join(dir, ".changeset"), { recursive: true });
+		writeFileSync(join(dir, ".changeset", "config.json"), JSON.stringify({}));
+		writeFileSync(
+			join(dir, ".changeset", "seed.md"),
+			'---\n"prismalens": patch\n---\n\nSeed.\n',
+		);
+		mkdirSync(join(dir, "packages", "cli"), { recursive: true });
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.1.0" }),
+		);
+		mkdirSync(join(dir, "scripts"), { recursive: true });
+		writeFileSync(
+			join(dir, "scripts", "validate-changesets.mjs"),
+			execFileSync("cat", [scriptPath], { encoding: "utf8" }),
+		);
+
+		const res = runValidator(dir, [], ["--base", "main"]);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /no commits yet/i);
+		assert.doesNotMatch(res.stdout, /no publishable packages modified/);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
 	}
 });

@@ -323,6 +323,12 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
 3. **Escape hatch:** If a change touches publishable code but genuinely requires no
    release note or version bump (e.g. an internal refactor), commit an empty changeset
    using `pnpm changeset --empty` (or `npx changeset --empty`).
+4. **Release PRs are exempt** — the machine-generated "chore: version packages" PR
+   deletes the changesets it consumes and can never add one. See
+   [Release PRs are exempt from the presence check](#release-prs-are-exempt-from-the-presence-check).
+5. **The gate fails closed.** If it cannot compute the diff (a shallow clone, an
+   unresolvable base ref, git unavailable) it exits non-zero with the git error
+   attached. It never reports "no publishable packages modified" on a broken probe.
 
 ### Worked example
 
@@ -364,6 +370,102 @@ $ pnpm changeset
 $ pnpm changeset:check
 changesets OK — 28 changeset(s) validated; publishable set: prismalens.
 ```
+
+### Release PRs are exempt from the presence check
+
+The `changesets/action` release PR (branch `changeset-release/main`, title
+`chore: version packages`) **deletes** every changeset it consumes while bumping
+`version` in the affected `package.json` files. Those manifests are publishable
+files, so without an exemption the presence check would fail on every release —
+on a PR no human can add a changeset to.
+
+The exemption is decided from the **shape of the diff**, not from the branch name or
+the author, both of which any contributor can forge. It applies only when *both* hold:
+
+* the diff **deletes** at least one `.changeset/*.md`, and
+* **every** changed publishable file is a `package.json` whose parsed before/after
+  differ only in `version` and in dependency-range *values*
+  (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`).
+
+Adding or removing a dependency, retargeting one to an `npm:`/`file:`/git specifier,
+touching any other manifest field (`bin`, `exports`, `scripts`, `files`, …), or
+changing a single line of source aborts the exemption. To slip real code past it you
+would have to produce a diff that contains no real code — so the exemption cannot be
+used to bypass the gate, only to skip it on a diff that could not have needed it.
+
+When the exemption fires it says so on stdout, naming the consumed changesets and the
+manifests it accepted:
+
+```console
+$ pnpm changeset:check
+changeset presence check skipped — this is a Version Packages release PR:
+  • it consumes 4 changeset(s): .changeset/dispatch-robustness.md, .changeset/fix-schema-recovery-trigger.md, .changeset/fix-stale-schema-crash.md, .changeset/refuse-listen-leak.md
+  • every changed publishable file is a version-field-only package.json: packages/@prismalens/engine/package.json, packages/cli/package.json
+  • branch: changeset-release/main
+  See CONTRIBUTING.md → "Release PRs are exempt from the presence check".
+
+changesets OK — release PR exempt from the presence check; 0 changeset(s) validated.
+```
+
+A release-shaped diff that smuggles in real source is refused, and the message names
+the files that broke the shape:
+
+```console
+$ pnpm changeset:check
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/@prismalens/engine/package.json
+  • packages/cli/package.json
+  • packages/cli/src/index.ts
+
+This branch deletes 4 changeset(s) the way a release PR does, but the release-PR exemption does not apply: 1 changed file(s) under packages/ are not version-field-only package.json edits:
+  ✗ packages/cli/src/index.ts
+...
+```
+
+### The gate fails closed when it cannot compute the diff
+
+The presence check is only meaningful if the diff is known. A git failure that
+produced an empty file list would read exactly like a branch that changed nothing —
+a silent pass, which is the hole this gate exists to close. So every git invocation
+that feeds the diff (`ls-files`, `merge-base`, `diff`) is fatal on failure, and git's
+own stderr is printed rather than swallowed. This is why the CI `changesets` job
+checks out with `fetch-depth: 0` (`.github/workflows/ci.yml`): a shallow clone has no
+merge-base with the base branch.
+
+```console
+$ git clone --depth 1 … && GITHUB_BASE_REF=main pnpm changeset:check
+Could not determine which files changed — refusing to pass.
+
+  base ref: main
+  git merge-base HEAD main — exit 128
+    fatal: Not a valid object name main
+
+Why this is fatal:
+  This gate is only meaningful if the diff is known. An empty file list from a
+  broken git invocation is indistinguishable from a branch that changed nothing,
+  so it would pass silently forever — the exact hole issue #328 exists to close.
+
+How to fix:
+  1. In CI: check out with full history — `fetch-depth: 0` on actions/checkout.
+     A shallow clone shares no merge-base with the base branch.
+  2. Locally: fetch the base branch (`git fetch origin main`), or name one:
+       node scripts/validate-changesets.mjs --base <ref>
+
+$ echo $?
+1
+```
+
+The one case where no diff is legitimate is a repository with **no commits yet** —
+there is nothing to compare against and every file is untracked. That is handled by
+name, not by the catch-all, and it says so:
+
+```console
+changesets OK — repository has no commits yet, so there is no diff to check; 1 changeset(s) validated.
+```
+
+### How a release reaches npm
 
 On every push to `main` with pending changesets, the release workflow opens/updates a
 **"chore: version packages" PR** (`pnpm changeset:version`); merging that PR publishes
