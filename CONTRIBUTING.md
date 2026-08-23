@@ -308,12 +308,66 @@ it never publishes separately (see
 [#193](https://github.com/prismalens/prismalens/issues/193)).
 Versioning and publishing run through
 [Changesets](https://github.com/changesets/changesets) (`.changeset/config.json`
-+ `.github/workflows/release.yml`): a change anywhere in that closure should come
-with a changeset naming **`prismalens`** — never a `@prismalens/*` package (see
-[`.changeset/README.md`](.changeset/README.md)). On every push to `main` with
-pending changesets, the release workflow opens/updates a **"chore: version
-packages" PR** (`pnpm changeset:version`); merging that PR publishes the bumped
-`prismalens` package to npm with provenance (`pnpm changeset:publish` =
++ `.github/workflows/release.yml`). CI enforces both changeset presence and naming
+via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
+
+### Changeset rules
+
+1. **When a changeset is required:** Any PR modifying publishable runtime code or
+   assets under `packages/` must introduce or update a changeset in `.changeset/`.
+   Changes that only touch documentation (`*.md`), tests (`*.test.*`, `*.spec.*`,
+   `__tests__/`, `e2e/`, `eval/`), test configs (`vitest.config.*`, `playwright.config.*`),
+   or repo tooling outside `packages/` (`scripts/`, `.github/`, `docs/`) do not require a changeset.
+2. **Target package:** Every changeset must name **`prismalens`** — never a `@prismalens/*`
+   package (see [`.changeset/README.md`](.changeset/README.md)).
+3. **Escape hatch:** If a change touches publishable code but genuinely requires no
+   release note or version bump (e.g. an internal refactor), commit an empty changeset
+   using `pnpm changeset --empty` (or `npx changeset --empty`).
+
+### Worked example
+
+When modifying publishable code without a changeset, the gate fails:
+
+```console
+$ git diff --name-only origin/main
+packages/api/src/modules/alerts/alerts.service.ts
+
+$ pnpm changeset:check
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/api/src/modules/alerts/alerts.service.ts
+
+Why this is required:
+  This branch modifies code or assets that ship in the `prismalens` npm package.
+  Every user-facing change to publishable code must carry a release note so the
+  release train (issue #328) can version and publish the package.
+
+How to fix:
+  1. Add a changeset naming "prismalens" (patch for bug fixes, minor for features):
+       pnpm exec changeset
+     (or: npx changeset)
+
+  2. Or if this change genuinely needs no release note (e.g. internal refactor),
+     add an empty changeset escape hatch:
+       pnpm exec changeset --empty
+     (or: npx changeset --empty)
+```
+
+Adding a changeset satisfies the gate:
+
+```console
+$ pnpm changeset
+# Select "prismalens", choose patch/minor, and enter a summary
+🦋  Added changeset .changeset/cool-coder-ship.md
+
+$ pnpm changeset:check
+changesets OK — 28 changeset(s) validated; publishable set: prismalens.
+```
+
+On every push to `main` with pending changesets, the release workflow opens/updates a
+**"chore: version packages" PR** (`pnpm changeset:version`); merging that PR publishes
+the bumped `prismalens` package to npm with provenance (`pnpm changeset:publish` =
 `node scripts/pack-cli.mjs --publish`, then `changeset tag`) and creates a
 GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
 carries the first-party closure as bundled dependencies, and `pnpm pack`

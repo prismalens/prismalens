@@ -19,3 +19,14 @@ even when the actual change lives in engine/config/contracts. A changeset that
 names an ignored package alongside `prismalens` makes `changeset version` fail
 ("Mixed changesets … are not allowed") and stalls the release train; one that
 names only an ignored package is never consumed and lingers forever.
+
+## Presence check and escape hatch
+
+`node scripts/validate-changesets.mjs` enforces in CI that any PR modifying publishable
+code under `packages/` carries a changeset. If a change touches publishable packages
+but requires no release note (e.g. an internal refactor), use the escape hatch:
+
+```bash
+pnpm changeset --empty
+```
+
