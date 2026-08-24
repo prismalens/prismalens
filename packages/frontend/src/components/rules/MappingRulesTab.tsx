@@ -7,6 +7,7 @@ import type { AlertMappingRuleWithService } from "@prismalens/contracts";
 import { formatDistanceToNow } from "date-fns";
 import { AlertCircle, FlaskConical, Plus, Route } from "lucide-react";
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,6 +20,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import {
+	useAlertMappingHealth,
 	useAlertMappingRules,
 	useDeleteAlertMappingRule,
 	useUpdateAlertMappingRule,
@@ -32,6 +34,7 @@ const COLUMNS = [
 	"service",
 	"priority",
 	"enabled",
+	"health",
 	"updated",
 	"rowActions",
 ] as const;
@@ -59,6 +62,7 @@ export function MappingRulesTab() {
 		error,
 		refetch,
 	} = useAlertMappingRules();
+	const { data: health } = useAlertMappingHealth();
 
 	const [formOpen, setFormOpen] = useState(false);
 	const [editingRule, setEditingRule] =
@@ -105,6 +109,32 @@ export function MappingRulesTab() {
 				</div>
 			</div>
 
+			{health && health.summary.unmappedServicesCount > 0 && (
+				<div
+					data-testid="unmapped-services-banner"
+					className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4 text-sm"
+				>
+					<div className="flex items-start gap-3">
+						<AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+						<div className="space-y-1">
+							<p className="font-medium text-foreground">
+								{health.summary.unmappedServicesCount} unmapped{" "}
+								{health.summary.unmappedServicesCount === 1
+									? "service"
+									: "services"}
+							</p>
+							<p className="text-muted-foreground text-xs">
+								{health.issues
+									.filter((i) => i.type === "unmapped_service")
+									.map((i) => i.title)
+									.join(", ")}{" "}
+								— no enabled mapping rules point to these services.
+							</p>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{error ? (
 				<div className="flex flex-col items-center text-center py-8 rounded-md border">
 					<AlertCircle className="h-5 w-5 text-destructive mb-3" />
@@ -126,6 +156,7 @@ export function MappingRulesTab() {
 								<TableHead>Service</TableHead>
 								<TableHead>Priority</TableHead>
 								<TableHead>Enabled</TableHead>
+								<TableHead>Health</TableHead>
 								<TableHead>Updated</TableHead>
 								<TableHead className="text-right">Actions</TableHead>
 							</TableRow>
@@ -148,60 +179,100 @@ export function MappingRulesTab() {
 									}
 								/>
 							) : (
-								rules.map((rule) => (
-									<TableRow key={rule.id}>
-										<TableCell className="font-medium">
-											<div className="flex flex-col gap-1">
-												<span>{rule.name}</span>
-												{rule.description && (
+								rules.map((rule) => {
+									const ruleHealth = health?.rules.find(
+										(r) => r.ruleId === rule.id,
+									);
+									return (
+										<TableRow key={rule.id}>
+											<TableCell className="font-medium">
+												<div className="flex flex-col gap-1">
+													<span>{rule.name}</span>
+													{rule.description && (
+														<span className="text-xs text-muted-foreground">
+															{rule.description}
+														</span>
+													)}
+												</div>
+											</TableCell>
+											<TableCell className="text-muted-foreground">
+												{rule.service?.displayName ?? rule.service?.name ?? "—"}
+											</TableCell>
+											<TableCell className="text-muted-foreground">
+												{rule.priority}
+											</TableCell>
+											<TableCell>
+												<RuleEnabledToggle
+													ruleId={rule.id}
+													ruleName={rule.name}
+													enabled={rule.enabled}
+													disabled={updateRule.isPending}
+													onToggle={(next) =>
+														updateRule.mutate({ id: rule.id, enabled: next })
+													}
+												/>
+											</TableCell>
+											<TableCell>
+												{!rule.enabled || ruleHealth?.status === "disabled" ? (
+													<Badge
+														variant="outline"
+														className="text-xs text-muted-foreground"
+													>
+														Disabled
+													</Badge>
+												) : ruleHealth?.status === "never_matched" ? (
+													<Badge
+														variant="outline"
+														className="text-xs text-amber-500 border-amber-500/30"
+													>
+														Never matched
+													</Badge>
+												) : ruleHealth?.status === "stopped_matching" ? (
+													<Badge
+														variant="outline"
+														className="text-xs text-amber-500 border-amber-500/30"
+													>
+														No matches ({health?.summary.windowHours ?? 168}h)
+													</Badge>
+												) : ruleHealth?.status === "healthy" ? (
+													<Badge
+														variant="outline"
+														className="text-xs text-emerald-600 border-emerald-500/30"
+													>
+														Healthy
+													</Badge>
+												) : (
 													<span className="text-xs text-muted-foreground">
-														{rule.description}
+														—
 													</span>
 												)}
-											</div>
-										</TableCell>
-										<TableCell className="text-muted-foreground">
-											{rule.service?.displayName ?? rule.service?.name ?? "—"}
-										</TableCell>
-										<TableCell className="text-muted-foreground">
-											{rule.priority}
-										</TableCell>
-										<TableCell>
-											<RuleEnabledToggle
-												ruleId={rule.id}
-												ruleName={rule.name}
-												enabled={rule.enabled}
-												disabled={updateRule.isPending}
-												onToggle={(next) =>
-													updateRule.mutate({ id: rule.id, enabled: next })
-												}
-											/>
-										</TableCell>
-										<TableCell className="text-muted-foreground">
-											{formatDistanceToNow(new Date(rule.updatedAt), {
-												addSuffix: true,
-											})}
-										</TableCell>
-										<TableCell className="text-right">
-											<div className="flex items-center justify-end gap-2">
-												<Button
-													variant="outline"
-													size="sm"
-													onClick={() => openEdit(rule)}
-												>
-													Edit
-												</Button>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => setRuleToDelete(rule)}
-												>
-													Delete
-												</Button>
-											</div>
-										</TableCell>
-									</TableRow>
-								))
+											</TableCell>
+											<TableCell className="text-muted-foreground">
+												{formatDistanceToNow(new Date(rule.updatedAt), {
+													addSuffix: true,
+												})}
+											</TableCell>
+											<TableCell className="text-right">
+												<div className="flex items-center justify-end gap-2">
+													<Button
+														variant="outline"
+														size="sm"
+														onClick={() => openEdit(rule)}
+													>
+														Edit
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => setRuleToDelete(rule)}
+													>
+														Delete
+													</Button>
+												</div>
+											</TableCell>
+										</TableRow>
+									);
+								})
 							)}
 						</TableBody>
 					</Table>

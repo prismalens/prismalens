@@ -2,6 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, Logger } from "@nestjs/common";
+import type {
+	AlertMappingHealthIssue,
+	AlertMappingHealthResponse,
+	AlertMappingHealthSummary,
+	RuleMappingHealth,
+	ServiceMappingHealth,
+} from "@prismalens/contracts/schemas";
 import { AlertMappingRule, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CreateMappingRuleDto, UpdateMappingRuleDto } from "./dto/index.js";
@@ -234,5 +241,206 @@ export class AlertMappingService {
 
 		const regex = new RegExp(`^${regexPattern}$`);
 		return regex.test(value);
+	}
+
+	/**
+	 * Evaluate mapping health across all services and rules (#452).
+	 * Dead rules and unmapped services are computed from live evaluation over alerts.
+	 */
+	async getHealth(options?: {
+		windowHours?: number;
+	}): Promise<AlertMappingHealthResponse> {
+		const windowHours = options?.windowHours ?? 168;
+		const now = new Date();
+		const windowStart = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
+
+		const [services, rules, alerts] = await Promise.all([
+			this.prisma.service.findMany({ orderBy: { name: "asc" } }),
+			this.prisma.alertMappingRule.findMany({
+				include: { service: true },
+				orderBy: { priority: "asc" },
+			}),
+			// All-time alert rows are required because rule matching is evaluated in JS
+			// and totalMatches separates stopped_matching from never_matched (#452).
+			this.prisma.alert.findMany({
+				select: {
+					id: true,
+					source: true,
+					labels: true,
+					tags: true,
+					title: true,
+					description: true,
+					triggeredAt: true,
+				},
+				orderBy: { triggeredAt: "desc" },
+			}),
+		]);
+
+		const parsedAlerts = alerts.map((a) => {
+			let labels: Record<string, string> | undefined;
+			let tags: string[] | undefined;
+			try {
+				if (a.labels) labels = JSON.parse(a.labels);
+			} catch {}
+			try {
+				if (a.tags) tags = JSON.parse(a.tags);
+			} catch {}
+			return {
+				id: a.id,
+				title: a.title,
+				description: a.description ?? undefined,
+				source: a.source ?? undefined,
+				labels,
+				tags,
+				triggeredAt: a.triggeredAt,
+			};
+		});
+
+		const enabledRules = rules.filter((r) => r.enabled);
+		const ruleStats = new Map<
+			string,
+			{
+				totalMatches: number;
+				windowMatches: number;
+				lastMatchedAt: Date | null;
+			}
+		>();
+
+		for (const rule of rules) {
+			ruleStats.set(rule.id, {
+				totalMatches: 0,
+				windowMatches: 0,
+				lastMatchedAt: null,
+			});
+		}
+
+		for (const alert of parsedAlerts) {
+			for (const rule of enabledRules) {
+				if (this.matchesRule(alert, rule)) {
+					const stats = ruleStats.get(rule.id);
+					if (stats) {
+						stats.totalMatches += 1;
+						if (alert.triggeredAt >= windowStart) {
+							stats.windowMatches += 1;
+						}
+						if (
+							!stats.lastMatchedAt ||
+							alert.triggeredAt > stats.lastMatchedAt
+						) {
+							stats.lastMatchedAt = alert.triggeredAt;
+						}
+					}
+					break;
+				}
+			}
+		}
+
+		const issues: AlertMappingHealthIssue[] = [];
+
+		const serviceHealthList: ServiceMappingHealth[] = services.map((svc) => {
+			const svcRules = rules.filter((r) => r.serviceId === svc.id);
+			const enabledSvcRules = svcRules.filter((r) => r.enabled);
+			const hasEnabledRules = enabledSvcRules.length > 0;
+
+			if (!hasEnabledRules) {
+				issues.push({
+					id: `service-${svc.id}`,
+					type: "unmapped_service",
+					title: svc.displayName ?? svc.name,
+					description: "Service has no enabled alert mapping rules",
+					serviceId: svc.id,
+					serviceName: svc.name,
+				});
+			}
+
+			return {
+				serviceId: svc.id,
+				serviceName: svc.name,
+				serviceDisplayName: svc.displayName ?? null,
+				hasEnabledRules,
+				ruleCount: svcRules.length,
+				enabledRuleCount: enabledSvcRules.length,
+			};
+		});
+
+		const ruleHealthList: RuleMappingHealth[] = rules.map((rule) => {
+			const stats = ruleStats.get(rule.id) ?? {
+				totalMatches: 0,
+				windowMatches: 0,
+				lastMatchedAt: null,
+			};
+			let status: RuleMappingHealth["status"];
+
+			if (!rule.enabled) {
+				status = "disabled";
+			} else if (stats.totalMatches === 0) {
+				status = "never_matched";
+				issues.push({
+					id: `rule-${rule.id}`,
+					type: "never_matched",
+					title: rule.name,
+					description: "Enabled rule has never matched any alert",
+					ruleId: rule.id,
+					ruleName: rule.name,
+					serviceId: rule.serviceId,
+					serviceName: rule.service?.name ?? null,
+					lastMatchedAt: null,
+				});
+			} else if (stats.windowMatches === 0) {
+				status = "stopped_matching";
+				const lastMatchedIso = stats.lastMatchedAt?.toISOString() ?? null;
+				issues.push({
+					id: `rule-${rule.id}`,
+					type: "stopped_matching",
+					title: rule.name,
+					description: `No matches in the last ${windowHours} hours (last matched ${lastMatchedIso ?? "unknown"})`,
+					ruleId: rule.id,
+					ruleName: rule.name,
+					serviceId: rule.serviceId,
+					serviceName: rule.service?.name ?? null,
+					lastMatchedAt: lastMatchedIso,
+				});
+			} else {
+				status = "healthy";
+			}
+
+			return {
+				ruleId: rule.id,
+				ruleName: rule.name,
+				serviceId: rule.serviceId,
+				serviceName: rule.service?.name ?? null,
+				enabled: rule.enabled,
+				status,
+				totalMatches: stats.totalMatches,
+				windowMatches: stats.windowMatches,
+				lastMatchedAt: stats.lastMatchedAt
+					? stats.lastMatchedAt.toISOString()
+					: null,
+			};
+		});
+
+		const summary: AlertMappingHealthSummary = {
+			totalIssues: issues.length,
+			unmappedServicesCount: issues.filter((i) => i.type === "unmapped_service")
+				.length,
+			neverMatchedRulesCount: issues.filter((i) => i.type === "never_matched")
+				.length,
+			stoppedMatchingRulesCount: issues.filter(
+				(i) => i.type === "stopped_matching",
+			).length,
+			healthyRulesCount: ruleHealthList.filter((r) => r.status === "healthy")
+				.length,
+			disabledRulesCount: rules.filter((r) => !r.enabled).length,
+			totalRules: rules.length,
+			totalServices: services.length,
+			windowHours,
+		};
+
+		return {
+			summary,
+			issues,
+			services: serviceHealthList,
+			rules: ruleHealthList,
+		};
 	}
 }

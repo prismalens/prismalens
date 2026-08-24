@@ -74,6 +74,79 @@ export const AlertMappingQuerySchema = z.object({
 });
 
 // =============================================================================
+// ALERT MAPPING HEALTH SCHEMAS
+// =============================================================================
+
+export const AlertMappingHealthIssueTypeSchema = z.enum([
+	"unmapped_service",
+	"never_matched",
+	"stopped_matching",
+]);
+
+export const AlertMappingHealthIssueSchema = z.object({
+	id: z.string(),
+	type: AlertMappingHealthIssueTypeSchema,
+	title: z.string(),
+	description: z.string(),
+	ruleId: z.string().uuid().optional(),
+	ruleName: z.string().optional(),
+	serviceId: z.string().uuid().optional(),
+	serviceName: z.string().optional(),
+	lastMatchedAt: DateStringSchema.nullable().optional(),
+});
+
+export const ServiceMappingHealthSchema = z.object({
+	serviceId: z.string().uuid(),
+	serviceName: z.string(),
+	serviceDisplayName: z.string().nullable(),
+	hasEnabledRules: z.boolean(),
+	ruleCount: z.number().int(),
+	enabledRuleCount: z.number().int(),
+});
+
+export const RuleMappingHealthStatusSchema = z.enum([
+	"healthy",
+	"never_matched",
+	"stopped_matching",
+	"disabled",
+]);
+
+export const RuleMappingHealthSchema = z.object({
+	ruleId: z.string().uuid(),
+	ruleName: z.string(),
+	serviceId: z.string().uuid(),
+	serviceName: z.string().nullable(),
+	enabled: z.boolean(),
+	status: RuleMappingHealthStatusSchema,
+	totalMatches: z.number().int(),
+	windowMatches: z.number().int(),
+	lastMatchedAt: DateStringSchema.nullable(),
+});
+
+export const AlertMappingHealthSummarySchema = z.object({
+	totalIssues: z.number().int(),
+	unmappedServicesCount: z.number().int(),
+	neverMatchedRulesCount: z.number().int(),
+	stoppedMatchingRulesCount: z.number().int(),
+	healthyRulesCount: z.number().int(),
+	disabledRulesCount: z.number().int(),
+	totalRules: z.number().int(),
+	totalServices: z.number().int(),
+	windowHours: z.number().int(),
+});
+
+export const AlertMappingHealthResponseSchema = z.object({
+	summary: AlertMappingHealthSummarySchema,
+	issues: z.array(AlertMappingHealthIssueSchema),
+	services: z.array(ServiceMappingHealthSchema),
+	rules: z.array(RuleMappingHealthSchema),
+});
+
+export const AlertMappingHealthQuerySchema = z.object({
+	windowHours: z.coerce.number().int().min(1).max(2160).default(168),
+});
+
+// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -86,3 +159,23 @@ export type AlertMappingRuleWithService = z.infer<
 export type TestMappingInput = z.infer<typeof TestMappingSchema>;
 export type TestMappingResponse = z.infer<typeof TestMappingResponseSchema>;
 export type AlertMappingQuery = z.infer<typeof AlertMappingQuerySchema>;
+export type AlertMappingHealthIssueType = z.infer<
+	typeof AlertMappingHealthIssueTypeSchema
+>;
+export type AlertMappingHealthIssue = z.infer<
+	typeof AlertMappingHealthIssueSchema
+>;
+export type ServiceMappingHealth = z.infer<typeof ServiceMappingHealthSchema>;
+export type RuleMappingHealthStatus = z.infer<
+	typeof RuleMappingHealthStatusSchema
+>;
+export type RuleMappingHealth = z.infer<typeof RuleMappingHealthSchema>;
+export type AlertMappingHealthSummary = z.infer<
+	typeof AlertMappingHealthSummarySchema
+>;
+export type AlertMappingHealthResponse = z.infer<
+	typeof AlertMappingHealthResponseSchema
+>;
+export type AlertMappingHealthQuery = z.infer<
+	typeof AlertMappingHealthQuerySchema
+>;

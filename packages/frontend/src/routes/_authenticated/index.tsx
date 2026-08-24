@@ -9,6 +9,7 @@ import {
 	AlertTriangle,
 	ArrowRight,
 	Lightbulb,
+	Route as RouteIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiStatusCheck } from "@/components/ApiStatusCheck";
@@ -30,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
 	incidentKeys,
 	investigationKeys,
+	useAlertMappingHealth,
 	useLlmSettings,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
@@ -76,6 +78,12 @@ function CommandCenter() {
 				input: { status: "pending", limit: 50 },
 			}),
 		);
+
+	// Fetch mapping health for Alert Mapping Issues card (#452)
+	const { data: mappingHealth, isLoading: mappingHealthLoading } =
+		useAlertMappingHealth();
+	const mappingIssues = mappingHealth?.issues ?? [];
+	const mappingIssuesCount = mappingHealth?.summary.totalIssues ?? 0;
 
 	// Calculate stats
 	const activeIncidents = incidents.filter(
@@ -395,6 +403,45 @@ function CommandCenter() {
 									</p>
 								</div>
 								<PriorityBadge priority={rec.priority} />
+							</div>
+						))}
+					</NeedsAttentionCard>
+
+					{/* Alert Mapping Issues (#452) */}
+					<NeedsAttentionCard
+						title="Alert Mapping Issues"
+						count={mappingIssuesCount}
+						icon={<RouteIcon className="h-5 w-5 text-muted-foreground" />}
+						loading={mappingHealthLoading}
+						emptyText="No mapping issues detected"
+						viewAllHref="/rules?tab=mapping"
+						viewAllText="View in Rules"
+					>
+						{mappingIssues.slice(0, 3).map((issue) => (
+							<div
+								key={issue.id}
+								className="flex items-center justify-between py-2"
+							>
+								<div className="flex-1 min-w-0">
+									<p className="text-sm font-medium truncate">{issue.title}</p>
+									<p className="text-xs text-muted-foreground">
+										{issue.type === "unmapped_service"
+											? "Unmapped service"
+											: issue.type === "never_matched"
+												? "Never matched"
+												: "No recent matches"}
+									</p>
+								</div>
+								<Badge
+									variant="outline"
+									className="text-xs text-amber-500 border-amber-500/30"
+								>
+									{issue.type === "unmapped_service"
+										? "Unmapped"
+										: issue.type === "never_matched"
+											? "Never matched"
+											: "Inactive"}
+								</Badge>
 							</div>
 						))}
 					</NeedsAttentionCard>

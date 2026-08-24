@@ -7,6 +7,8 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AlertMappingHealthQuerySchema,
+	AlertMappingHealthResponseSchema,
 	AlertMappingQuerySchema,
 	AlertMappingRuleSchema,
 	AlertMappingRuleWithServiceSchema,
@@ -101,4 +103,18 @@ export const alertMappingContract = {
 		})
 		.input(TestMappingSchema)
 		.output(TestMappingResponseSchema),
+
+	/**
+	 * Get alert mapping health status and issues
+	 * GET /alert-mapping/health
+	 */
+	health: oc
+		.route({
+			method: "GET",
+			path: "/alert-mapping/health",
+			summary: "Get alert mapping health status and detected issues",
+			tags: ["alert-mapping"],
+		})
+		.input(AlertMappingHealthQuerySchema)
+		.output(AlertMappingHealthResponseSchema),
 };

@@ -12,6 +12,7 @@ export { client, orpc } from "../orpc-client";
 // Alert mapping rule hooks
 export {
 	alertMappingKeys,
+	useAlertMappingHealth,
 	useAlertMappingRule,
 	useAlertMappingRules,
 	useCreateAlertMappingRule,

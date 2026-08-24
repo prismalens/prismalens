@@ -18,6 +18,7 @@ const mockAlertMappingService = {
 	delete: vi.fn(),
 	resolveServiceForAlert: vi.fn(),
 	resolveMappingForAlert: vi.fn(),
+	getHealth: vi.fn(),
 };
 
 describe("AlertMappingController (BDD)", () => {
@@ -437,6 +438,53 @@ describe("AlertMappingController (BDD)", () => {
 					tags: alertData.tags,
 				}),
 			);
+		});
+	});
+
+	describe("health", () => {
+		it("should return mapping health summary and issues", async () => {
+			const expectedHealth = {
+				summary: {
+					totalIssues: 1,
+					unmappedServicesCount: 1,
+					neverMatchedRulesCount: 0,
+					stoppedMatchingRulesCount: 0,
+					healthyRulesCount: 0,
+					disabledRulesCount: 0,
+					totalRules: 0,
+					totalServices: 1,
+					windowHours: 168,
+				},
+				issues: [
+					{
+						id: "service-1",
+						type: "unmapped_service",
+						title: "API Gateway",
+						description: "Service has no enabled alert mapping rules",
+						serviceId: "service-1",
+						serviceName: "api-gateway",
+					},
+				],
+				services: [
+					{
+						serviceId: "service-1",
+						serviceName: "api-gateway",
+						serviceDisplayName: "API Gateway",
+						hasEnabledRules: false,
+						ruleCount: 0,
+						enabledRuleCount: 0,
+					},
+				],
+				rules: [],
+			};
+
+			mockAlertMappingService.getHealth.mockResolvedValue(expectedHealth);
+
+			const handlers = getHandlers();
+			const result = await handlers.health({ input: { windowHours: 168 } } as any);
+
+			expect(result).toEqual(expectedHealth);
+			expect(service.getHealth).toHaveBeenCalledWith({ windowHours: 168 });
 		});
 	});
 });
