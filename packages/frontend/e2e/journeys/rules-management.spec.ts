@@ -46,6 +46,17 @@ async function createCorrelationRule(page: Page) {
 	await expect(dialog).toBeHidden();
 }
 
+async function createMappingRule(page: Page) {
+	await page.getByRole("button", { name: "Add rule" }).first().click();
+	const dialog = page.getByRole("dialog");
+	await expect(dialog).toBeVisible();
+	await dialog.locator("#mapping-rule-name").fill(MAPPING_RULE_NAME);
+	await dialog.locator("#mapping-rule-service").click();
+	await page.getByRole("option", { name: MAPPING_SERVICE_LABEL }).click();
+	await dialog.getByRole("button", { name: "Create rule" }).click();
+	await expect(dialog).toBeHidden();
+}
+
 async function createCorrelationRuleExpectingConflict(page: Page) {
 	await page.getByRole("button", { name: "Add rule" }).first().click();
 	const dialog = page.getByRole("dialog");
@@ -209,5 +220,50 @@ test.describe("J15 — correlation & alert-mapping rule management", () => {
 		await setTheme("light");
 		await createCorrelationRuleExpectingConflict(page);
 		await shot("rules-error");
+
+		// MappingRulesTab design evidence (#452): populated table with Health badge + banner
+		await page.goto("/rules?tab=mapping");
+		await expect(page.getByRole("heading", { name: "Rules" })).toBeVisible({
+			timeout: 15_000,
+		});
+		await setTheme("light");
+
+		await createMappingRule(page);
+		const mappingRow = page.getByRole("row", {
+			name: new RegExp(MAPPING_RULE_NAME),
+		});
+		await expect(mappingRow).toBeVisible();
+		await expect(mappingRow.getByText("Never matched")).toBeVisible();
+		await expect(page.getByTestId("unmapped-services-banner")).toBeVisible();
+		await page.waitForLoadState("networkidle");
+		await shot("mapping-rules-tab-default");
+
+		await setTheme("dark");
+		await expect(mappingRow).toBeVisible();
+		await expect(mappingRow.getByText("Never matched")).toBeVisible();
+		await expect(page.getByTestId("unmapped-services-banner")).toBeVisible();
+		await page.waitForLoadState("networkidle");
+		await shot("mapping-rules-tab-dark");
+
+		// Error: mapping-rules query failure renders destructive alert with Retry button
+		await setTheme("light");
+		await page.route(
+			(url) => url.pathname === "/api/alert-mapping/rules",
+			(route) =>
+				route.fulfill({
+					status: 500,
+					contentType: "application/json",
+					body: JSON.stringify({ message: "Failed to load mapping rules" }),
+				}),
+		);
+		await page.reload();
+		await expect(
+			page.getByRole("button", { name: "Retry" }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("mapping-rules-tab-error");
+		await page.unrouteAll({ behavior: "ignoreErrors" });
+
+		await deleteRulesCreatedByThisSpec(page);
 	});
 });
