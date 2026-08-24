@@ -3,7 +3,10 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { transformLiveEventsToCanvas } from "./transform-live-events";
+import {
+	getAgentMiniMapColor,
+	transformLiveEventsToCanvas,
+} from "./transform-live-events";
 
 describe("transformLiveEventsToCanvas", () => {
 	it("returns empty nodes and edges for empty events array", () => {
@@ -219,3 +222,21 @@ describe("transformLiveEventsToCanvas", () => {
 		expect(failed.nodes[2]?.data.status).toBe("failed");
 	});
 });
+
+describe("getAgentMiniMapColor", () => {
+	it("returns light pastel hsl in light mode (85% lightness)", () => {
+		const color = getAgentMiniMapColor("scout", "light");
+		expect(color).toMatch(/^hsl\(\d+,\s*70%,\s*85%\)$/);
+	});
+
+	it("returns darkened hsl in dark mode (40% lightness)", () => {
+		const color = getAgentMiniMapColor("scout", "dark");
+		expect(color).toMatch(/^hsl\(\d+,\s*50%,\s*40%\)$/);
+	});
+
+	it("defaults to light theme when theme is omitted", () => {
+		const color = getAgentMiniMapColor("scout");
+		expect(color).toMatch(/^hsl\(\d+,\s*70%,\s*85%\)$/);
+	});
+});
+

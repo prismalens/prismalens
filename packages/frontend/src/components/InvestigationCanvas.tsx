@@ -37,6 +37,7 @@ import {
 	getAgentMiniMapColor,
 	transformLiveEventsToCanvas,
 } from "@/lib/canvas";
+import { useTheme } from "@/lib/providers/theme-provider";
 import { NodeDetailsPanel } from "./canvas/NodeDetailsPanel";
 
 // Register custom node types
@@ -78,6 +79,7 @@ function InvestigationCanvasInner({
 	streamEvents,
 	streamConnecting,
 }: InvestigationCanvasProps) {
+	const { theme } = useTheme();
 	const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
 	const isMini = variant === "mini";
 
@@ -128,18 +130,21 @@ function InvestigationCanvasInner({
 		setSelectedNode(null);
 	}, []);
 
-	// MiniMap node colors based on agent type (dynamic)
-	const minimapNodeColor = useCallback((node: Node) => {
-		if (node.type === "startEnd") {
-			return node.data.status === "failed"
-				? chartColors.node.error
-				: chartColors.node.default;
-		}
-		if (node.type === "agent" && node.data.agentName) {
-			return getAgentMiniMapColor(node.data.agentName);
-		}
-		return chartColors.node.default;
-	}, []);
+	// MiniMap node colors based on agent type and active theme (#436)
+	const minimapNodeColor = useCallback(
+		(node: Node) => {
+			if (node.type === "startEnd") {
+				return node.data.status === "failed"
+					? chartColors.node.error
+					: chartColors.node.default;
+			}
+			if (node.type === "agent" && node.data.agentName) {
+				return getAgentMiniMapColor(node.data.agentName, theme);
+			}
+			return chartColors.node.default;
+		},
+		[theme],
+	);
 
 	const showConnecting =
 		Boolean(streamConnecting) &&
@@ -206,7 +211,14 @@ function InvestigationCanvasInner({
 					<Background color={chartColors.muted} gap={isMini ? 12 : 16} />
 					{!isMini && <Controls />}
 					{!isMini && (
-						<MiniMap nodeColor={minimapNodeColor} zoomable pannable />
+						<MiniMap
+							nodeColor={minimapNodeColor}
+							maskColor={
+								theme === "dark" ? "rgb(0 0 0 / 0.7)" : "rgb(240 240 240 / 0.6)"
+							}
+							zoomable
+							pannable
+						/>
 					)}
 				</ReactFlow>
 			)}
