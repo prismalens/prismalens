@@ -730,7 +730,15 @@ describe("AlertMappingService (BDD)", () => {
 
 			mockPrismaService.service.findMany.mockResolvedValue(services);
 			mockPrismaService.alertMappingRule.findMany.mockResolvedValue(rules);
-			mockPrismaService.alert.findMany.mockResolvedValue(alerts);
+			mockPrismaService.alert.findMany.mockImplementation(
+				async (args?: { where?: { triggeredAt?: { gte?: Date } } }) => {
+					if (args?.where?.triggeredAt?.gte) {
+						const gte = args.where.triggeredAt.gte;
+						return alerts.filter((a) => a.triggeredAt >= gte);
+					}
+					return alerts;
+				},
+			);
 
 			const health = await service.getHealth({ windowHours: 168 });
 
@@ -817,15 +825,8 @@ describe("AlertMappingService (BDD)", () => {
 			expect(lowRuleHealth?.windowMatches).toBe(0);
 		});
 
-		it("should push the time window into the alert query where clause (#452)", async () => {
-			const now = new Date();
+		it("should query all-time alerts without time window restriction (#452)", async () => {
 			const windowHours = 48;
-			const expectedWindowStartMin = new Date(
-				now.getTime() - windowHours * 60 * 60 * 1000 - 1000,
-			);
-			const expectedWindowStartMax = new Date(
-				now.getTime() - windowHours * 60 * 60 * 1000 + 1000,
-			);
 
 			const services = [
 				{
@@ -851,7 +852,6 @@ describe("AlertMappingService (BDD)", () => {
 				},
 			];
 
-			// Alerts both inside and outside the window
 			const alertsInsideWindow = [
 				{
 					id: "a-inside",
@@ -859,7 +859,7 @@ describe("AlertMappingService (BDD)", () => {
 					source: "api",
 					labels: null,
 					tags: null,
-					triggeredAt: new Date(now.getTime() - 2 * 60 * 60 * 1000), // 2h ago (inside)
+					triggeredAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2h ago (inside)
 				},
 			];
 
@@ -869,13 +869,8 @@ describe("AlertMappingService (BDD)", () => {
 
 			const health = await service.getHealth({ windowHours });
 
-			// Assert query's where carries the time window bound
+			// Assert query is unbounded without where clause so all-time stats are accurate
 			expect(mockPrismaService.alert.findMany).toHaveBeenCalledWith({
-				where: {
-					triggeredAt: {
-						gte: expect.any(Date),
-					},
-				},
 				select: {
 					id: true,
 					source: true,
@@ -887,16 +882,6 @@ describe("AlertMappingService (BDD)", () => {
 				},
 				orderBy: { triggeredAt: "desc" },
 			});
-
-			const callArgs = mockPrismaService.alert.findMany.mock.calls[0]?.[0];
-			const gteDate: Date = callArgs?.where?.triggeredAt?.gte;
-			expect(gteDate).toBeInstanceOf(Date);
-			expect(gteDate.getTime()).toBeGreaterThanOrEqual(
-				expectedWindowStartMin.getTime(),
-			);
-			expect(gteDate.getTime()).toBeLessThanOrEqual(
-				expectedWindowStartMax.getTime(),
-			);
 
 			// Behaviour is unchanged: same issues and same totalIssues as expected
 			expect(health.summary.totalIssues).toBe(0);

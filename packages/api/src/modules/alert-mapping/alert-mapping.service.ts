@@ -260,12 +260,9 @@ export class AlertMappingService {
 				include: { service: true },
 				orderBy: { priority: "asc" },
 			}),
+			// All-time alert rows are required because rule matching is evaluated in JS
+			// and totalMatches separates stopped_matching from never_matched (#452).
 			this.prisma.alert.findMany({
-				where: {
-					triggeredAt: {
-						gte: windowStart,
-					},
-				},
 				select: {
 					id: true,
 					source: true,
