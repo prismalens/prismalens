@@ -482,3 +482,282 @@ test("refuses a dependency bump that also changes a version field", () => {
 		cleanup();
 	}
 });
+
+// --- Release PR exemption correspondence & anti-forgery (#328 review round 3) ---
+
+test("fails when a PR deletes a changeset and bumps a dependency without bumping version (reviewer attack)", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		// Base commit has a changeset and dependency in packages/cli
+		writeFileSync(
+			join(dir, ".changeset", "stale.md"),
+			'---\n"prismalens": patch\n---\n\nStale fix.\n',
+		);
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({
+				name: "prismalens",
+				version: "0.1.0",
+				dependencies: { lodash: "^4.17.20" },
+			}),
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "chore: add dependency and changeset"]);
+
+		// Branch deletes the changeset and bumps lodash with no version change
+		runGit(dir, ["checkout", "-b", "feat/forge-release-exemption"]);
+		rmSync(join(dir, ".changeset", "stale.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({
+				name: "prismalens",
+				version: "0.1.0",
+				dependencies: { lodash: "^4.17.21" },
+			}),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, ["commit", "-m", "chore: bump lodash and delete changeset"]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(
+			res.stderr,
+			/release-PR exemption does not apply: the deleted changeset\(s\) name publishable package\(s\) whose version was not bumped: prismalens/,
+		);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("passes for a genuine release PR with changeset deletion and matching version bump", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		writeFileSync(
+			join(dir, ".changeset", "fix.md"),
+			'---\n"prismalens": minor\n---\n\nNew feature.\n',
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "feat: add feature with changeset"]);
+
+		runGit(dir, ["checkout", "-b", "changeset-release/main"]);
+		rmSync(join(dir, ".changeset", "fix.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.2.0" }),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, ["commit", "-m", "chore: version packages"]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /release PR/i);
+		assert.match(res.stdout, /\.changeset\/fix\.md/);
+		assert.match(res.stdout, /packages\/cli\/package\.json/);
+		assert.doesNotMatch(res.stderr, /No changeset found/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("fails when only a subset of packages named in deleted changesets are version-bumped (partial correspondence)", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		// Add a second publishable package in main
+		mkdirSync(join(dir, "packages", "core"), { recursive: true });
+		writeFileSync(
+			join(dir, "packages", "core", "package.json"),
+			JSON.stringify({ name: "prismalens-core", version: "0.1.0" }),
+		);
+		writeFileSync(
+			join(dir, ".changeset", "cli-fix.md"),
+			'---\n"prismalens": patch\n---\n\nCLI fix.\n',
+		);
+		writeFileSync(
+			join(dir, ".changeset", "core-fix.md"),
+			'---\n"prismalens-core": patch\n---\n\nCore fix.\n',
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "feat: add packages and changesets"]);
+
+		// Branch deletes both changesets, but only bumps prismalens version
+		runGit(dir, ["checkout", "-b", "chore/partial-release"]);
+		rmSync(join(dir, ".changeset", "cli-fix.md"));
+		rmSync(join(dir, ".changeset", "core-fix.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.1.1" }),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, ["commit", "-m", "chore: version only cli"]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(
+			res.stderr,
+			/release-PR exemption does not apply: the deleted changeset\(s\) name publishable package\(s\) whose version was not bumped: prismalens-core/,
+		);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("passes when a release PR consumes an empty changeset alongside a package changeset", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		writeFileSync(
+			join(dir, ".changeset", "empty.md"),
+			"---\n---\n\nEmpty changeset escape hatch.\n",
+		);
+		writeFileSync(
+			join(dir, ".changeset", "fix.md"),
+			'---\n"prismalens": patch\n---\n\nReal patch fix.\n',
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "chore: add empty and fix changesets"]);
+
+		runGit(dir, ["checkout", "-b", "changeset-release/main"]);
+		rmSync(join(dir, ".changeset", "empty.md"));
+		rmSync(join(dir, ".changeset", "fix.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.1.1" }),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, ["commit", "-m", "chore: version packages"]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /release PR/i);
+		assert.match(res.stdout, /\.changeset\/empty\.md/);
+		assert.match(res.stdout, /\.changeset\/fix\.md/);
+		assert.doesNotMatch(res.stderr, /No changeset found/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("denies the release-PR exemption when a deleted changeset has unparseable frontmatter", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		// Changeset file with broken / invalid frontmatter
+		writeFileSync(
+			join(dir, ".changeset", "malformed.md"),
+			"This file is missing frontmatter entirely.\n",
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "chore: add malformed changeset file"]);
+
+		runGit(dir, ["checkout", "-b", "chore/delete-malformed"]);
+		rmSync(join(dir, ".changeset", "malformed.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.1.1" }),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, [
+			"commit",
+			"-m",
+			"chore: delete malformed changeset and bump version",
+		]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(
+			res.stderr,
+			/release-PR exemption does not apply: 1 deleted changeset\(s\) could not be read or parsed at the merge base/,
+		);
+		assert.match(res.stderr, /✗ \.changeset\/malformed\.md/);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("fails when a PR deletes only an empty changeset without bumping any package version", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		writeFileSync(
+			join(dir, ".changeset", "empty.md"),
+			"---\n---\n\nEmpty changeset.\n",
+		);
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({
+				name: "prismalens",
+				version: "0.1.0",
+				dependencies: { lodash: "^4.17.20" },
+			}),
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "chore: add empty changeset and dependency"]);
+
+		runGit(dir, ["checkout", "-b", "feat/delete-empty-no-version-bump"]);
+		rmSync(join(dir, ".changeset", "empty.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({
+				name: "prismalens",
+				version: "0.1.0",
+				dependencies: { lodash: "^4.17.21" },
+			}),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, [
+			"commit",
+			"-m",
+			"chore: delete empty changeset and bump lodash",
+		]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/release-PR exemption does not apply: no publishable package's version field was bumped in this diff\./,
+		);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("ignores non-publishable packages named in deleted changesets during release PR validation", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		writeFileSync(
+			join(dir, ".changeset", "multi.md"),
+			'---\n"prismalens": patch\n"@prismalens/api": patch\n---\n\nMulti package fix.\n',
+		);
+		runGit(dir, ["add", "."]);
+		runGit(dir, ["commit", "-m", "feat: add multi package changeset"]);
+
+		runGit(dir, ["checkout", "-b", "changeset-release/main"]);
+		rmSync(join(dir, ".changeset", "multi.md"));
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.1.1" }),
+		);
+		runGit(dir, ["add", "-A"]);
+		runGit(dir, ["commit", "-m", "chore: version packages"]);
+
+		const res = runValidator(dir);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /release PR/i);
+		assert.doesNotMatch(res.stderr, /No changeset found/);
+	} finally {
+		cleanup();
+	}
+});

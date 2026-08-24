@@ -324,7 +324,8 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
    release note or version bump (e.g. an internal refactor), commit an empty changeset
    using `pnpm changeset --empty` (or `npx changeset --empty`).
 4. **Release PRs are exempt** — the machine-generated "chore: version packages" PR
-   deletes the changesets it consumes and can never add one. See
+   deletes the changesets it consumes, bumps `version` in the corresponding publishable
+   packages, and can never add a changeset. See
    [Release PRs are exempt from the presence check](#release-prs-are-exempt-from-the-presence-check).
 5. **Dependency-range bumps are exempt** — a `package.json` diff that only moves
    dependency *ranges* carries no code and therefore no release note. See
@@ -382,19 +383,33 @@ The `changesets/action` release PR (branch `changeset-release/main`, title
 files, so without an exemption the presence check would fail on every release —
 on a PR no human can add a changeset to.
 
-The exemption is decided from the **shape of the diff**, not from the branch name or
-the author, both of which any contributor can forge. It applies only when *both* hold:
+The exemption is decided from the **shape of the diff** and the **correspondence**
+between deleted changesets and version bumps, not from the branch name or the author,
+both of which any contributor can forge. It applies only when *all* of the following hold:
 
-* the diff **deletes** at least one `.changeset/*.md`, and
+* the diff **deletes** at least one `.changeset/*.md`,
 * **every** changed publishable file is a `package.json` whose parsed before/after
   differ only in `version` and in dependency-range *values*
-  (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`).
+  (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`),
+* **at least one** publishable package's `version` field actually changed in this diff, and
+* **every** publishable package named by any deleted changeset (parsed from its frontmatter
+  at the merge base) has its `version` bumped in this diff (`consumedPackageNames ⊆ bumpedPackages`).
+
+Notes on the correspondence invariant:
+
+* **Empty changesets** (`changeset --empty`) name no packages. A release PR legitimately
+  consumes them alongside regular changesets; they do not defeat the exemption.
+* **Containment is one direction only**: `changeset version` also bumps dependent packages
+  that no changeset explicitly named, so the bumped set may legitimately be larger.
+* **Fails closed**: deleted changesets that cannot be read at the merge base or whose
+  frontmatter fails to parse deny the exemption.
+* **Non-publishable names** (private / `.changeset/config.json` `ignore` entries) in deleted
+  changesets are ignored because they never produce a version bump.
 
 Adding or removing a dependency, retargeting one to an `npm:`/`file:`/git specifier,
-touching any other manifest field (`bin`, `exports`, `scripts`, `files`, …), or
-changing a single line of source aborts the exemption. To slip real code past it you
-would have to produce a diff that contains no real code — so the exemption cannot be
-used to bypass the gate, only to skip it on a diff that could not have needed it.
+touching any other manifest field (`bin`, `exports`, `scripts`, `files`, …), changing a
+single line of source, or deleting changesets without matching version bumps aborts the
+exemption.
 
 When the exemption fires it says so on stdout, naming the consumed changesets and the
 manifests it accepted:
@@ -424,6 +439,20 @@ Changed publishable files:
 
 This branch deletes 4 changeset(s) the way a release PR does, but the release-PR exemption does not apply: 1 changed file(s) under packages/ are not version-field-only package.json edits:
   ✗ packages/cli/src/index.ts
+...
+```
+
+A diff that deletes a changeset but does not bump the corresponding package version
+(e.g., an attempted forge or unrelated changeset cleanup) is likewise refused:
+
+```console
+$ pnpm changeset:check
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/cli/package.json
+
+This branch deletes 1 changeset(s) the way a release PR does, but the release-PR exemption does not apply: the deleted changeset(s) name publishable package(s) whose version was not bumped: prismalens
 ...
 ```
 

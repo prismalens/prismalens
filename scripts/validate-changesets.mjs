@@ -37,10 +37,10 @@ for (const [n, meta] of workspace) {
 }
 
 function packagesIn(md) {
-	const fm = md.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	const fm = md.match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---(?:\r?\n|$)/);
 	if (!fm) return [];
 	const names = [];
-	for (const line of fm[1].split(/\r?\n/)) {
+	for (const line of (fm[1] ?? "").split(/\r?\n/)) {
 		const m = line.match(
 			/^\s*["']?(@?[^"'\s:]+(?:\/[^"'\s:]+)?)["']?\s*:\s*(major|minor|patch)\s*$/,
 		);
@@ -293,7 +293,72 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 		/(^|\/)package\.json$/.test(f),
 	);
 
-	if (consumed.length > 0 && notManifestOnly.length === 0) {
+	// Condition 3: Publishable packages whose version field changed in this diff.
+	const bumpedPackages = new Set();
+	for (const f of changedPublishable) {
+		if (shapes.get(f)?.version) {
+			try {
+				const pkg = readJson(join(repoRoot, f));
+				if (pkg.name && publishable.has(pkg.name)) {
+					bumpedPackages.add(pkg.name);
+				}
+			} catch {}
+		}
+	}
+
+	// Condition 4: Every publishable package named by any deleted changeset is in bumpedPackages.
+	// Fails closed if any deleted changeset is unreadable or has unparseable frontmatter.
+	const unparseableChangesets = [];
+	const consumedPackages = new Set();
+	if (probe.mergeBase) {
+		for (const c of consumed) {
+			let content;
+			try {
+				content = gitOut(["show", `${probe.mergeBase}:${c}`]);
+			} catch {
+				unparseableChangesets.push(c);
+				continue;
+			}
+			const fm = content.match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---(?:\r?\n|$)/);
+			if (!fm) {
+				unparseableChangesets.push(c);
+				continue;
+			}
+			let validFm = true;
+			for (const line of (fm[1] ?? "").split(/\r?\n/)) {
+				if (!line.trim()) continue;
+				const m = line.match(
+					/^\s*["']?(@?[^"'\s:]+(?:\/[^"'\s:]+)?)["']?\s*:\s*(major|minor|patch)\s*$/,
+				);
+				if (!m) {
+					validFm = false;
+					break;
+				}
+			}
+			if (!validFm) {
+				unparseableChangesets.push(c);
+				continue;
+			}
+			for (const name of packagesIn(content)) {
+				if (publishable.has(name)) {
+					consumedPackages.add(name);
+				}
+			}
+		}
+	}
+
+	const unbumpedPackages = [...consumedPackages].filter(
+		(n) => !bumpedPackages.has(n),
+	);
+
+	const releaseExempt =
+		consumed.length > 0 &&
+		notManifestOnly.length === 0 &&
+		unparseableChangesets.length === 0 &&
+		bumpedPackages.size > 0 &&
+		unbumpedPackages.length === 0;
+
+	if (releaseExempt) {
 		exemption = { kind: "release" };
 		console.log(
 			"changeset presence check skipped — this is a Version Packages release PR:",
@@ -338,13 +403,41 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 			console.error(`  ... and ${changedPublishable.length - 10} more`);
 		}
 		if (consumed.length > 0) {
-			console.error(
-				`\nThis branch deletes ${consumed.length} changeset(s) the way a release PR does, but the ` +
-					`release-PR exemption does not apply: ${notManifestOnly.length} changed file(s) under packages/ ` +
-					"are not version-field-only package.json edits:",
-			);
-			for (const f of notManifestOnly.slice(0, 10)) {
-				console.error(`  ✗ ${f}`);
+			if (notManifestOnly.length > 0) {
+				console.error(
+					`\nThis branch deletes ${consumed.length} changeset(s) the way a release PR does, but the ` +
+						`release-PR exemption does not apply: ${notManifestOnly.length} changed file(s) under packages/ ` +
+						"are not version-field-only package.json edits:",
+				);
+				for (const f of notManifestOnly.slice(0, 10)) {
+					console.error(`  ✗ ${f}`);
+				}
+				if (notManifestOnly.length > 10) {
+					console.error(`  ... and ${notManifestOnly.length - 10} more`);
+				}
+			} else if (unparseableChangesets.length > 0) {
+				console.error(
+					`\nThis branch deletes ${consumed.length} changeset(s) the way a release PR does, but the ` +
+						`release-PR exemption does not apply: ${unparseableChangesets.length} deleted changeset(s) ` +
+						"could not be read or parsed at the merge base:",
+				);
+				for (const f of unparseableChangesets.slice(0, 10)) {
+					console.error(`  ✗ ${f}`);
+				}
+				if (unparseableChangesets.length > 10) {
+					console.error(`  ... and ${unparseableChangesets.length - 10} more`);
+				}
+			} else if (unbumpedPackages.length > 0) {
+				console.error(
+					`\nThis branch deletes ${consumed.length} changeset(s) the way a release PR does, but the ` +
+						`release-PR exemption does not apply: the deleted changeset(s) name publishable package(s) ` +
+						`whose version was not bumped: ${unbumpedPackages.sort().join(", ")}`,
+				);
+			} else if (bumpedPackages.size === 0) {
+				console.error(
+					`\nThis branch deletes ${consumed.length} changeset(s) the way a release PR does, but the ` +
+						"release-PR exemption does not apply: no publishable package's version field was bumped in this diff.",
+				);
 			}
 		} else if (touchesManifest) {
 			console.error(
@@ -354,6 +447,9 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 			);
 			for (const f of notRangeOnly.slice(0, 10)) {
 				console.error(`  ✗ ${f}`);
+			}
+			if (notRangeOnly.length > 10) {
+				console.error(`  ... and ${notRangeOnly.length - 10} more`);
 			}
 		}
 		console.error(
