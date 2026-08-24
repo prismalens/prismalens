@@ -3,6 +3,9 @@
 	"concurrency": "20",
 	"globalEnv": ["CI"],
 	"globalPassThroughEnv": [
+		"BASE_REF",
+		"GITHUB_BASE_REF",
+		"GITHUB_HEAD_REF",
 		"PL_UP_E2E",
 		"PL_UP_PORT",
 		"PL_UP_PREFIX",

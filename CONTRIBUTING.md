@@ -308,12 +308,265 @@ it never publishes separately (see
 [#193](https://github.com/prismalens/prismalens/issues/193)).
 Versioning and publishing run through
 [Changesets](https://github.com/changesets/changesets) (`.changeset/config.json`
-+ `.github/workflows/release.yml`): a change anywhere in that closure should come
-with a changeset naming **`prismalens`** — never a `@prismalens/*` package (see
-[`.changeset/README.md`](.changeset/README.md)). On every push to `main` with
-pending changesets, the release workflow opens/updates a **"chore: version
-packages" PR** (`pnpm changeset:version`); merging that PR publishes the bumped
-`prismalens` package to npm with provenance (`pnpm changeset:publish` =
++ `.github/workflows/release.yml`). CI enforces both changeset presence and naming
+via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
+
+### Changeset rules
+
+1. **When a changeset is required:** Any PR modifying publishable runtime code or
+   assets under `packages/` must introduce or update a changeset in `.changeset/`.
+   Changes that only touch documentation (`*.md`), tests (`*.test.*`, `*.spec.*`,
+   `__tests__/`, `e2e/`, `eval/`), test configs (`vitest.config.*`, `playwright.config.*`),
+   or repo tooling outside `packages/` (`scripts/`, `.github/`, `docs/`) do not require a changeset.
+2. **Target package:** Every changeset must name **`prismalens`** — never a `@prismalens/*`
+   package (see [`.changeset/README.md`](.changeset/README.md)).
+3. **Escape hatch:** If a change touches publishable code but genuinely requires no
+   release note or version bump (e.g. an internal refactor), commit an empty changeset
+   using `pnpm changeset --empty` (or `npx changeset --empty`).
+4. **Release PRs are exempt** — the machine-generated "chore: version packages" PR
+   deletes the changesets it consumes, bumps `version` in the corresponding publishable
+   packages, and can never add a changeset. See
+   [Release PRs are exempt from the presence check](#release-prs-are-exempt-from-the-presence-check).
+5. **Dependency-range bumps are exempt** — a `package.json` diff that only moves
+   dependency *ranges* carries no code and therefore no release note. See
+   [Dependency-range bumps are exempt from the presence check](#dependency-range-bumps-are-exempt-from-the-presence-check).
+6. **The gate fails closed.** If it cannot compute the diff (a shallow clone, an
+   unresolvable base ref, git unavailable) it exits non-zero with the git error
+   attached. It never reports "no publishable packages modified" on a broken probe.
+
+### Worked example
+
+When modifying publishable code without a changeset, the gate fails:
+
+```console
+$ git diff --name-only origin/main
+packages/api/src/modules/alerts/alerts.service.ts
+
+$ pnpm changeset:check
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/api/src/modules/alerts/alerts.service.ts
+
+Why this is required:
+  This branch modifies code or assets that ship in the `prismalens` npm package.
+  Every user-facing change to publishable code must carry a release note so the
+  release train (issue #328) can version and publish the package.
+
+How to fix:
+  1. Add a changeset naming "prismalens" (patch for bug fixes, minor for features):
+       pnpm exec changeset
+     (or: npx changeset)
+
+  2. Or if this change genuinely needs no release note (e.g. internal refactor),
+     add an empty changeset escape hatch:
+       pnpm exec changeset --empty
+     (or: npx changeset --empty)
+```
+
+Adding a changeset satisfies the gate:
+
+```console
+$ pnpm changeset
+# Select "prismalens", choose patch/minor, and enter a summary
+🦋  Added changeset .changeset/cool-coder-ship.md
+
+$ pnpm changeset:check
+changesets OK — 28 changeset(s) validated; publishable set: prismalens.
+```
+
+### Release PRs are exempt from the presence check
+
+The `changesets/action` release PR (branch `changeset-release/main`, title
+`chore: version packages`) **deletes** every changeset it consumes while bumping
+`version` in the affected `package.json` files. Those manifests are publishable
+files, so without an exemption the presence check would fail on every release —
+on a PR no human can add a changeset to.
+
+The exemption is decided from the **shape of the diff** and the **correspondence**
+between deleted changesets and version bumps, not from the branch name or the author,
+both of which any contributor can forge. It applies only when *all* of the following hold:
+
+* the diff **deletes** at least one `.changeset/*.md`,
+* **every** changed publishable file is a `package.json` whose parsed before/after
+  differ only in `version` and in dependency-range *values*
+  (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`),
+* **at least one** publishable package's `version` field actually changed in this diff, and
+* **every** publishable package named by any deleted changeset (parsed from its frontmatter
+  at the merge base) has its `version` bumped in this diff (`consumedPackageNames ⊆ bumpedPackages`).
+
+Notes on the correspondence invariant:
+
+* **Empty changesets** (`changeset --empty`) name no packages. A release PR legitimately
+  consumes them alongside regular changesets; they do not defeat the exemption.
+* **Containment is one direction only**: `changeset version` also bumps dependent packages
+  that no changeset explicitly named, so the bumped set may legitimately be larger.
+* **Fails closed**: deleted changesets that cannot be read at the merge base or whose
+  frontmatter fails to parse deny the exemption.
+* **Non-publishable names** (private / `.changeset/config.json` `ignore` entries) in deleted
+  changesets are ignored because they never produce a version bump.
+
+Adding or removing a dependency, retargeting one to an `npm:`/`file:`/git specifier,
+touching any other manifest field (`bin`, `exports`, `scripts`, `files`, …), changing a
+single line of source, or deleting changesets without matching version bumps aborts the
+exemption.
+
+When the exemption fires it says so on stdout, naming the consumed changesets and the
+manifests it accepted:
+
+```console
+$ pnpm changeset:check
+changeset presence check skipped — this is a Version Packages release PR:
+  • it consumes 4 changeset(s): .changeset/dispatch-robustness.md, .changeset/fix-schema-recovery-trigger.md, .changeset/fix-stale-schema-crash.md, .changeset/refuse-listen-leak.md
+  • every changed publishable file is a version-field-only package.json: packages/@prismalens/engine/package.json, packages/cli/package.json
+  • branch: changeset-release/main
+  See CONTRIBUTING.md → "Release PRs are exempt from the presence check".
+
+changesets OK — release PR exempt from the presence check; 0 changeset(s) validated.
+```
+
+A release-shaped diff that smuggles in real source is refused, and the message names
+the files that broke the shape:
+
+```console
+$ pnpm changeset:check
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/@prismalens/engine/package.json
+  • packages/cli/package.json
+  • packages/cli/src/index.ts
+
+This branch deletes 4 changeset(s) the way a release PR does, but the release-PR exemption does not apply: 1 changed file(s) under packages/ are not version-field-only package.json edits:
+  ✗ packages/cli/src/index.ts
+...
+```
+
+A diff that deletes a changeset but does not bump the corresponding package version
+(e.g., an attempted forge or unrelated changeset cleanup) is likewise refused:
+
+```console
+$ pnpm changeset:check
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/cli/package.json
+
+This branch deletes 1 changeset(s) the way a release PR does, but the release-PR exemption does not apply: the deleted changeset(s) name publishable package(s) whose version was not bumped: prismalens
+...
+```
+
+### Dependency-range bumps are exempt from the presence check
+
+A Dependabot group bump — or a maintainer doing the same thing by hand — edits
+`packages/*/package.json` and nothing else. Those manifests are publishable files, so
+the presence check fired on them, and Dependabot cannot author a changeset.
+
+Like the release-PR exemption, this one is decided from the **shape of the diff**. It
+is deliberately **not** keyed on `dependabot[bot]` or any other identity: an author
+check is forgeable in the same way a branch name is, and it would wrongly refuse a
+human doing the identical, equally note-free change. The consequence is accepted —
+**a human doing a pure dependency bump is exempt too.**
+
+The exemption applies only when *all* of these hold:
+
+* at least one changed `package.json` moves a dependency range, and
+* **every** changed publishable file is a `package.json` whose parsed before/after
+  differ *only* in dependency-range **values** under `dependencies`,
+  `devDependencies`, `peerDependencies` or `optionalDependencies`, and
+* no `version` field changed (that is the release-PR case, kept separate), and
+* no changeset was deleted (likewise).
+
+Adding or removing a dependency key, retargeting one away from a version range
+(`npm:`, `file:`, `link:`, `git+…`, a tarball URL), touching any other manifest
+field, or changing one line of source aborts it. `pnpm-lock.yaml` and the root
+`package.json` are outside `packages/` and never counted either way.
+
+```console
+$ node scripts/validate-changesets.mjs --base '44506b6^'   # replaying #444, a Dependabot group bump
+changeset presence check skipped — this is a dependency-range bump:
+  • every changed publishable file is a dependency-range-only package.json: packages/@prismalens/logger/package.json, packages/api/package.json, packages/frontend/package.json
+  • no source file, no other manifest field, no version bump, no changeset consumed
+  • branch: dependabot/npm_and_yarn/dev-minor-patch-…
+  See CONTRIBUTING.md → "Dependency-range bumps are exempt from the presence check".
+
+changesets OK — dependency-range bump exempt from the presence check; 0 changeset(s) validated.
+```
+
+Smuggle anything else into that diff and it is refused, with the offending files named:
+
+```console
+$ node scripts/validate-changesets.mjs --base '44506b6^'
+No changeset found for changes to publishable packages.
+
+Changed publishable files:
+  • packages/@prismalens/logger/package.json
+  • packages/api/package.json
+  • packages/api/src/main.ts
+  • packages/frontend/package.json
+
+This branch edits package.json the way a dependency bump does, but the dependency-bump exemption does not apply: 1 changed file(s) under packages/ are not dependency-range-only package.json edits:
+  ✗ packages/api/src/main.ts
+...
+$ echo $?
+1
+```
+
+**How the two exemptions interact.** Both are `every changed publishable file is …`
+predicates evaluated over the same file list, so OR-ing them can never admit a file
+neither would admit on its own. The dependency-bump file shape (ranges only) is a
+strict subset of the release-PR file shape (ranges *and* `version`), which means the
+union of what they accept is exactly what the release-PR exemption already accepted
+before this rule existed. A diff that both deletes a changeset and edits dependency
+ranges is handled by the release-PR branch, as it was before; add a new dependency key
+or a source file to it and both branches refuse it.
+
+### The gate fails closed when it cannot compute the diff
+
+The presence check is only meaningful if the diff is known. A git failure that
+produced an empty file list would read exactly like a branch that changed nothing —
+a silent pass, which is the hole this gate exists to close. So every git invocation
+that feeds the diff (`ls-files`, `merge-base`, `diff`) is fatal on failure, and git's
+own stderr is printed rather than swallowed. This is why the CI `changesets` job
+checks out with `fetch-depth: 0` (`.github/workflows/ci.yml`): a shallow clone has no
+merge-base with the base branch.
+
+```console
+$ git clone --depth 1 … && GITHUB_BASE_REF=main pnpm changeset:check
+Could not determine which files changed — refusing to pass.
+
+  base ref: main
+  git merge-base HEAD main — exit 128
+    fatal: Not a valid object name main
+
+Why this is fatal:
+  This gate is only meaningful if the diff is known. An empty file list from a
+  broken git invocation is indistinguishable from a branch that changed nothing,
+  so it would pass silently forever — the exact hole issue #328 exists to close.
+
+How to fix:
+  1. In CI: check out with full history — `fetch-depth: 0` on actions/checkout.
+     A shallow clone shares no merge-base with the base branch.
+  2. Locally: fetch the base branch (`git fetch origin main`), or name one:
+       node scripts/validate-changesets.mjs --base <ref>
+
+$ echo $?
+1
+```
+
+The one case where no diff is legitimate is a repository with **no commits yet** —
+there is nothing to compare against and every file is untracked. That is handled by
+name, not by the catch-all, and it says so:
+
+```console
+changesets OK — repository has no commits yet, so there is no diff to check; 1 changeset(s) validated.
+```
+
+### How a release reaches npm
+
+On every push to `main` with pending changesets, the release workflow opens/updates a
+**"chore: version packages" PR** (`pnpm changeset:version`); merging that PR publishes
+the bumped `prismalens` package to npm with provenance (`pnpm changeset:publish` =
 `node scripts/pack-cli.mjs --publish`, then `changeset tag`) and creates a
 GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
 carries the first-party closure as bundled dependencies, and `pnpm pack`
