@@ -73,7 +73,7 @@ export function InvestigationStreamPanel({
 		if (viewport) {
 			viewport.scrollTop = viewport.scrollHeight;
 		}
-	}, [events.length]);
+	}, [events]);
 
 	// Group by branchId (ADR-0016 fan-out seam). A run that did not fan out —
 	// including the first branch of one that is about to — renders as the single
