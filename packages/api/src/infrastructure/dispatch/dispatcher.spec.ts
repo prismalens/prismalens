@@ -10,8 +10,19 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Dispatcher, type JobRunner, type RunOutcome } from "./dispatcher.js";
-import { InProcessEventBus, runCancelTopic, runEventsTopic } from "./event-bus.js";
+import type { CanonicalEvent } from "@prismalens/contracts";
+import {
+	Dispatcher,
+	type JobRunner,
+	type RunOutcome,
+	type RunSink,
+} from "./dispatcher.js";
+import {
+	InProcessEventBus,
+	type RelayMessage,
+	runCancelTopic,
+	runEventsTopic,
+} from "./event-bus.js";
 import type { ClaimedJob, JobFields, JobStore } from "./job-store.js";
 
 /**
@@ -122,9 +133,11 @@ function controllableRunner() {
 	const finish = new Map<string, (outcome: RunOutcome) => void>();
 	const cancelled: string[] = [];
 	const killed: string[] = [];
+	const sinks = new Map<string, RunSink>();
 
 	const runner: JobRunner = (j, sink) => {
 		started.push(j);
+		sinks.set(j.id, sink);
 		let resolve!: (outcome: RunOutcome) => void;
 		const done = new Promise<RunOutcome>((r) => {
 			resolve = r;
@@ -144,7 +157,7 @@ function controllableRunner() {
 		};
 	};
 
-	return { runner, started, finish, cancelled, killed };
+	return { runner, started, finish, cancelled, killed, sinks };
 }
 
 const OPTS = {
@@ -224,19 +237,41 @@ describe("Dispatcher", () => {
 
 	describe("relay + cancel over the EventBus", () => {
 		it("publishes run events on the run's relay topic", async () => {
-			const { runner, started, finish } = controllableRunner();
+			const { runner, started, finish, sinks } = controllableRunner();
 			store.pending = [job(1)];
 			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
-			const received: unknown[] = [];
-			bus.subscribe(runEventsTopic("inv-1"), (m) => received.push(m));
+			const received: RelayMessage[] = [];
+			bus.subscribe<RelayMessage>(runEventsTopic("inv-1"), (m) =>
+				received.push(m),
+			);
 
 			await dispatcher.tick();
 			expect(started).toHaveLength(1);
+
+			const sampleEvent: CanonicalEvent = {
+				kind: "error",
+				runId: "11111111-1111-4111-8111-111111111111",
+				branchId: "main",
+				path: [],
+				seq: 1,
+				ts: new Date(0).toISOString(),
+				message: "test-event",
+			};
+
+			const sink = sinks.get("job-1");
+			expect(sink).toBeDefined();
+			sink?.onEvent(sampleEvent);
+			sink?.onStreamDone();
+
+			expect(received).toEqual([
+				{ kind: "event", event: sampleEvent },
+				{ kind: "done" },
+			]);
+
 			finish.get("job-1")?.({ outcome: "succeeded", retryable: false });
 			await vi.waitFor(() => expect(store.completed).toHaveLength(1));
 
 			await dispatcher.stop();
-			expect(received).toEqual([]);
 		});
 
 		it("forwards a cancel published on the run's topic to the running job", async () => {
