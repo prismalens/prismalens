@@ -21,7 +21,7 @@ one version PR; merging it publishes the bump.
 
 **Not yet wired — planned.** There is no release-candidate track today; every
 release publishes to npm's `latest` dist-tag. Pre-1.0 with no external RC
-consumers, we validate against the packed tarball (`pnpm pack`) — the artifact
+consumers, we validate against the packed tarball (`node scripts/pack-cli.mjs`) — the artifact
 users actually install — and cut the final version directly.
 
 When a phase first genuinely needs live validation before it's final, we'll add

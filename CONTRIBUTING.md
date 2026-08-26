@@ -569,7 +569,7 @@ On every push to `main` with pending changesets, the release workflow opens/upda
 the bumped `prismalens` package to npm with provenance (`pnpm changeset:publish` =
 `node scripts/pack-cli.mjs --publish`, then `changeset tag`) and creates a
 GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
-carries the first-party closure as bundled dependencies, and `pnpm pack`
+carries the first-party closure as bundled dependencies, and pnpm's builtin pack
 produces zero bundled entries — an artifact `pl up` cannot boot. The pack script
 builds it, asserts it, and hands that exact file to `npm publish`, so what ships
 is what the packed smoke verified. The version PR is opened with the
@@ -582,7 +582,7 @@ is no npm token secret to rotate or leak.
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
-pnpm publint` → `pnpm pack && sh scripts/packed-smoke.sh packages/cli/dist-pack`
+pnpm publint` → `node scripts/pack-cli.mjs && sh scripts/packed-smoke.sh packages/cli/dist-pack`
 → `pnpm changeset:publish` → `git push --follow-tags`.
 
 Everything else in `packages/` stays `private: true` and is never published on

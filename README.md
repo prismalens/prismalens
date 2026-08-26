@@ -227,7 +227,7 @@ pnpm install
 pnpm build           # turbo build across the workspace
 pnpm test            # turbo test across the workspace
 pnpm --filter @prismalens/frontend test:e2e # Playwright against the dev stack (needs ports 3000 and 3001 free)
-pnpm pack            # build the published tarball (scripts/pack-cli.mjs)
+node scripts/pack-cli.mjs # build the published tarball
 sh scripts/packed-smoke.sh packages/cli/dist-pack # install it clean and boot `pl up` against it
 pnpm typecheck       # turbo typecheck across the workspace
 pnpm format-and-lint # biome check

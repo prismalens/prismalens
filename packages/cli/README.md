@@ -5,13 +5,15 @@ published on npm as the unscoped [`prismalens`](https://www.npmjs.com/package/pr
 
 Per **ADR-0010**, the engine *is* a CLI: the desktop app and web API drive it
 rather than embedding it. Under ADR-0022's reactive-pull posture (no standing ingestion),
-PrismaLens reacts to pushed webhook events via `listen` as its primary, always-on entry point.
+PrismaLens runs `pl up` as its primary, always-on entry point — booting the API backend,
+embedded SQLite database, and dashboard in a single process that reacts to incoming
+webhook events.
 The CLI is a thin **Tier-1 supervisor** that rents a **Tier-2 agent harness** (ADR-0008) to do the
 investigative legwork, then reduces the harness's canonical event stream into an **ordered-evidence report**
 (ADR-0002 — hypotheses ranked most-to-least plausible, with supporting/contradicting
 evidence; no numeric confidence scores).
 
-- **Tier-1 (supervisor):** seeds the investigation from a firing alert (reactively via `listen` webhooks or ad-hoc via `investigate`), drives the
+- **Tier-1 (supervisor):** seeds the investigation from a firing alert (dispatched reactively by the API booted via `pl up` or ad-hoc via `investigate`), drives the
   rented harness live, and synthesizes the final report (the "reduce" step) using
   an OpenAI-compatible model.
 - **Tier-2 (rented harness):** one of
@@ -101,7 +103,6 @@ binary and an LLM credential are present.
 prismalens <command> [flags]      # alias: pl
 
   up            Run the whole app as one process: API + dashboard on one port, SQLite, no external services.
-  listen        Start the token-authed HTTP listener for reactive Alertmanager webhooks (always-on entry point).
   investigate   Run a manual or one-off root-cause investigation of a firing alert.
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
   doctor        Preflight-check the investigation environment.
@@ -150,6 +151,20 @@ it is the ONLY knob for their location — `DATABASE_URL` is ignored.
 Open the printed URL, create the owner account, and the install is working.
 `pl up` runs in the foreground; Ctrl-C stops it.
 
+#### Boot output
+
+```text
+$ pl up
+[info] Workspace: /home/user/.prismalens
+[info] Dashboard: /usr/local/lib/node_modules/prismalens/node_modules/@prismalens/api/public
+{"level":"info","time":"2026-08-26T18:08:07.976Z","pid":76636,"hostname":"localhost","context":"Bootstrap","msg":"Database migrated: 20260803122809_init, 20260811182203_drop_agent_tool_executions, 20260812180006_alert_dedup_key_not_unique, 20260822161331_alert_external_id_not_unique, 20260823073903_account_issuer"}
+{"level":"info","time":"2026-08-26T18:08:08.359Z","pid":76636,"hostname":"localhost","context":"Bootstrap","msg":"CORS disabled (single-origin serving). Set PRISMALENS_CORS_ORIGIN to allow a specific external origin."}
+{"level":"info","time":"2026-08-26T18:08:08.536Z","pid":76636,"hostname":"localhost","context":"Bootstrap","msg":"PrismaLens API running on http://127.0.0.1:3001"}
+{"level":"info","time":"2026-08-26T18:08:08.537Z","pid":76636,"hostname":"localhost","context":"Bootstrap","msg":"Health check: http://127.0.0.1:3001/health"}
+{"level":"info","time":"2026-08-26T18:08:08.537Z","pid":76636,"hostname":"localhost","context":"Bootstrap","msg":"API endpoints: http://127.0.0.1:3001/api"}
+{"level":"info","time":"2026-08-26T18:08:08.537Z","pid":76636,"hostname":"localhost","context":"Bootstrap","msg":"API documentation: http://127.0.0.1:3001/api/docs"}
+```
+
 #### Access model & trust posture
 
 | Placement | Default bind | Who can reach it | Auth posture | When to use |
@@ -162,20 +177,6 @@ Binding to a non-loopback interface (`--host 0.0.0.0` or LAN IP) puts PrismaLens
 **Known Limitation:** If the target port is already bound by another process (`EADDRINUSE`), `pl up` currently crashes with an unhandled exception stack trace (fix in flight on branch `r1/237-eaddrinuse-handling`).
 
 For the complete single-process topology and packaging spec, see [`docs/runtime-and-packaging.md`](../../docs/runtime-and-packaging.md).
-
-### `listen`
-
-Start the primary, token-authed local HTTP listener for incoming Alertmanager webhooks. Under ADR-0022's reactive-pull posture, PrismaLens does not poll or ingest on a standing basis; `listen` is the primary reactive surface — firing alerts delivered by webhooks are debounced within the configured `grouping_window_ms` window (default 60s) into a single investigation (Phase 1 R1).
-
-```bash
-PRISMALENS_LISTEN_TOKEN=xyz pl listen --host 127.0.0.1 --config my-stack.yaml
-```
-
-Alertmanager must POST to `http://<host>:<port>/webhooks/alertmanager` with an
-`Authorization: Bearer <token>` header matching `PRISMALENS_LISTEN_TOKEN` (or the
-configured `listen.token`).
-
-Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
 
 ### `investigate`
 
@@ -391,10 +392,6 @@ telemetry:
 # Where runs, events, and reports are stored.
 workspace:
   dir: ~/.prismalens
-
-# Token-authed HTTP listener for Alertmanager webhooks.
-listen:
-  host: 127.0.0.1                # opt into 0.0.0.0 for container network exposure
 
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
 # rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over
