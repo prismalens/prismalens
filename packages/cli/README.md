@@ -103,6 +103,7 @@ binary and an LLM credential are present.
 prismalens <command> [flags]      # alias: pl
 
   up            Run the whole app as one process: API + dashboard on one port, SQLite, no external services.
+  listen        Start the token-authed HTTP listener for reactive Alertmanager webhooks.
   investigate   Run a manual or one-off root-cause investigation of a firing alert.
   serve         Run the JSON-RPC 2.0 server over stdio (the LIVE channel for apps).
   doctor        Preflight-check the investigation environment.
@@ -177,6 +178,20 @@ Binding to a non-loopback interface (`--host 0.0.0.0` or LAN IP) puts PrismaLens
 **Known Limitation:** If the target port is already bound by another process (`EADDRINUSE`), `pl up` currently crashes with an unhandled exception stack trace (fix in flight on branch `r1/237-eaddrinuse-handling`).
 
 For the complete single-process topology and packaging spec, see [`docs/runtime-and-packaging.md`](../../docs/runtime-and-packaging.md).
+
+### `listen`
+
+Start a standalone, token-authed local HTTP listener for incoming Alertmanager webhooks. While `pl up` is the primary entry point for running the platform, `listen` provides a dedicated webhook listener for reactive setups — firing alerts delivered by webhooks are debounced within the configured `grouping_window_ms` window (default 60s) into a single investigation (Phase 1 R1). Note that `listen` is superseded by `pl up` as the primary entry point and is tracked for removal by #238 — "Migrate + delete CLI-only state".
+
+```bash
+PRISMALENS_LISTEN_TOKEN=xyz pl listen --host 127.0.0.1 --config my-stack.yaml
+```
+
+Alertmanager must POST to `http://<host>:<port>/webhooks/alertmanager` with an
+`Authorization: Bearer <token>` header matching `PRISMALENS_LISTEN_TOKEN` (or the
+configured `listen.token`).
+
+Unattended runs execute with host settings isolated (`isolateSettings` = true, renting a clean harness without host hooks or session bleed).
 
 ### `investigate`
 
@@ -392,6 +407,10 @@ telemetry:
 # Where runs, events, and reports are stored.
 workspace:
   dir: ~/.prismalens
+
+# Token-authed HTTP listener for Alertmanager webhooks.
+listen:
+  host: 127.0.0.1                # opt into 0.0.0.0 for container network exposure
 
 # Per-harness native passthrough (ADR-0017) — untyped, forwarded straight to the
 # rented harness. For `deepagents` (the npm `deepagents-acp` binary, driven over
