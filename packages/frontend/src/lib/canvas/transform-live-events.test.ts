@@ -4,7 +4,9 @@
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	AGENT_PALETTES,
 	getAgentMiniMapColor,
+	getAgentStyle,
 	transformLiveEventsToCanvas,
 } from "./transform-live-events";
 
@@ -237,6 +239,39 @@ describe("getAgentMiniMapColor", () => {
 	it("defaults to light theme when theme is omitted", () => {
 		const color = getAgentMiniMapColor("scout");
 		expect(color).toMatch(/^hsl\(\d+,\s*70%,\s*85%\)$/);
+	});
+});
+
+describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
+	it("defines statically-written class strings across all palette buckets", () => {
+		expect(AGENT_PALETTES.length).toBeGreaterThanOrEqual(6);
+		for (const palette of AGENT_PALETTES) {
+			expect(palette.bg).toMatch(/^bg-[a-z]+-50 dark:bg-[a-z]+-950/);
+			expect(palette.border).toMatch(/^border-[a-z]+-200 dark:border-[a-z]+-800/);
+			expect(palette.textColor).toMatch(/^text-[a-z]+-900 dark:text-[a-z]+-100/);
+			expect(palette.iconColor).toMatch(/^text-[a-z]+-600 dark:text-[a-z]+-400/);
+		}
+	});
+
+	it("returns deterministic styling for known registered agents", () => {
+		const scoutStyle1 = getAgentStyle("scout");
+		const scoutStyle2 = getAgentStyle("scout");
+
+		expect(scoutStyle1).toEqual(scoutStyle2);
+		expect(scoutStyle1.displayName).toBe("Scout");
+		expect(scoutStyle1.bg).toContain("bg-");
+		expect(scoutStyle1.border).toContain("border-");
+		expect(scoutStyle1.textColor).toContain("text-");
+		expect(scoutStyle1.iconColor).toContain("text-");
+	});
+
+	it("formats unregistered agent names and falls back gracefully", () => {
+		const style = getAgentStyle("custom_pipeline_worker");
+		expect(style.displayName).toBe("Custom Pipeline Worker");
+		expect(style.bg).toContain("bg-");
+		expect(style.border).toContain("border-");
+		expect(style.textColor).toContain("text-");
+		expect(style.iconColor).toContain("text-");
 	});
 });
 

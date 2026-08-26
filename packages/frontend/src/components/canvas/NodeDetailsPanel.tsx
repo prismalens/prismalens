@@ -57,7 +57,7 @@ export function NodeDetailsPanel({ node, onClose }: NodeDetailsPanelProps) {
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3">
 							<StatusIndicator status={data.status} size="lg" />
-							<div style={style.cssVars}>
+							<div>
 								<SheetTitle className={style.textColor}>
 									{style.displayName}
 								</SheetTitle>
