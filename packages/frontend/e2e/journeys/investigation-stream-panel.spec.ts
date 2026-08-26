@@ -328,5 +328,46 @@ test.describe("#280 — the investigation stream panel", () => {
 		).toBeVisible();
 		await page.waitForLoadState("networkidle");
 		await shot("stream-panel-error");
+
+		// SSE failure fallback affordance (#462): default (light) and dark
+		await reloadInto(page, panel, "light");
+		await page.evaluate(() => window.__liveStream.fail());
+		const fallbackLight = page.getByTestId("investigation-fallback-panel");
+		await expect(fallbackLight).toBeVisible({ timeout: 20_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("investigation-progress-error");
+
+		await setTheme(page, "dark");
+		await expect(page.getByTestId("investigation-stream-panel")).toBeVisible({
+			timeout: 20_000,
+		});
+		await page.evaluate(() => window.__liveStream.fail());
+		const fallbackDark = page.getByTestId("investigation-fallback-panel");
+		await expect(fallbackDark).toBeVisible({ timeout: 20_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("investigation-progress-dark");
+	});
+
+	test("swaps to the polling fallback card with explicit affordance when SSE fails (#462)", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const root = eventFactory("root");
+		await deliver(page, root.agentStep("scout", "Mapping services"));
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(1);
+
+		// Trigger SSE failure
+		await page.evaluate(() => window.__liveStream.fail());
+
+		// The stream panel is swapped for the polling fallback card
+		await expect(panel).toHaveCount(0);
+		const fallbackPanel = page.getByTestId("investigation-fallback-panel");
+		await expect(fallbackPanel).toBeVisible({ timeout: 20_000 });
+		await expect(fallbackPanel.getByTestId("stream-fallback-badge")).toHaveText(
+			"Polling",
+		);
+		await expect(
+			fallbackPanel.getByTestId("stream-fallback-message"),
+		).toHaveText("Live stream unavailable — polling for progress");
 	});
 });

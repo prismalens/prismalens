@@ -207,22 +207,33 @@ function InvestigationDetailPage() {
 
 			{/* Polling fallback progress bar when SSE fails */}
 			{isActive && stream.status === "error" && (
-				<Card>
-					<CardContent className="py-4">
-						<div className="flex items-center justify-between mb-2">
-							<span className="text-sm font-medium">
+				<Card data-testid="investigation-fallback-panel">
+					<CardHeader className="pb-3">
+						<div className="flex items-center justify-between">
+							<CardTitle className="text-base flex items-center gap-2">
 								Investigation Progress
-							</span>
+								<span
+									data-testid="stream-fallback-badge"
+									className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+								>
+									Polling
+								</span>
+							</CardTitle>
 							<span className="text-sm text-muted-foreground">
 								{jobProgress}%
 							</span>
 						</div>
+					</CardHeader>
+					<CardContent className="pt-0 space-y-2">
 						<Progress value={jobProgress} className="h-2" />
-						{statusData?.job?.state && (
-							<p className="text-xs text-muted-foreground mt-2">
-								Job state: {statusData.job.state}
+						<div className="flex items-center justify-between text-xs text-muted-foreground">
+							<p data-testid="stream-fallback-message">
+								Live stream unavailable — polling for progress
 							</p>
-						)}
+							{statusData?.job?.state && (
+								<span>Job state: {statusData.job.state}</span>
+							)}
+						</div>
 					</CardContent>
 				</Card>
 			)}
