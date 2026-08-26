@@ -537,251 +537,22 @@ function assertTarball(tarball, copiedNames) {
 	return entries;
 }
 
-// ---------------------------------------------------------------------------
-// main
-// ---------------------------------------------------------------------------
-
-const catalog = loadCatalog();
-const workspace = loadWorkspace();
-const cliPkg = workspace.get("prismalens");
-if (!cliPkg) fail("the published package `prismalens` is not in the workspace");
-
-if (!flag("--skip-build")) {
-	console.log("==> building every package (turbo)");
-	run("pnpm", ["build"]);
-}
-
-// Roots: everything `pl up` needs at runtime, plus the CLI's own first-party
-// closure (declared as devDependencies because it used to be bundled).
-const roots = [
-	"@prismalens/api",
-	"@prismalens/worker",
-	...Object.keys(cliPkg.manifest.devDependencies ?? {}).filter((d) =>
-		d.startsWith("@prismalens/"),
-	),
-];
-const copied = collectCopyClosure(roots, workspace);
-copied.delete("@prismalens/frontend"); // shipped as built static assets, not as a package
-console.log(
-	`==> copy closure (${copied.size}): ${[...copied].sort().join(", ")}`,
-);
-
-const union = computeUnion(copied, workspace, catalog, cliPkg.manifest);
-console.log(
-	`==> generated dependency union: ${union.size} third-party packages`,
-);
-
-// --- stage -----------------------------------------------------------------
-rmSync(STAGING, { recursive: true, force: true });
-mkdirSync(STAGING, { recursive: true });
-
-const cliDist = join(CLI_DIR, "dist");
-if (!existsSync(join(cliDist, "bin", "prismalens.js"))) {
-	fail("packages/cli/dist/bin/prismalens.js is missing — run the build first");
-}
-copyTree(cliDist, join(STAGING, "dist"));
-for (const extra of ["NOTICE", "README.md", "LICENSE"]) {
-	const from = join(CLI_DIR, extra);
-	if (existsSync(from)) cpSync(from, join(STAGING, extra));
-}
-
-const stagedModules = join(STAGING, "node_modules", "@prismalens");
-mkdirSync(stagedModules, { recursive: true });
-
-for (const name of copied) {
-	const { dir, manifest } = workspace.get(name);
-	const target = join(stagedModules, name.replace("@prismalens/", ""));
-	mkdirSync(target, { recursive: true });
-
-	const distDir = join(dir, "dist");
-	if (!existsSync(distDir)) fail(`${name} has no dist/ — it was never built`);
-	// The API's tsc tree also emits `dist/scripts` and `dist/vitest.config.js`;
-	// only `dist/src` is the application.
-	const onlySrc =
-		name === "@prismalens/api"
-			? (src) => {
-					const rel = relative(distDir, src);
-					return rel === "" || rel === "src" || rel.startsWith(`src${sep}`);
-				}
-			: undefined;
-	copyTree(distDir, join(target, "dist"), onlySrc);
-
-	writeFileSync(
-		join(target, "package.json"),
-		`${JSON.stringify(stagedManifest(manifest), null, "\t")}\n`,
-	);
-
-	if (name === "@prismalens/database") {
-		// Migration SQL + schema, applied at first boot through the
-		// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
-		// closure and must never be invoked at user runtime.
-		//
-		// Staged at `dist/prisma/<flavour>/schema` — the first candidate
-		// `src/migrator/migration-source.ts` resolves from its own compiled
-		// location (`dist/src/migrator/` -> `../..`), and the layout
-		// `scripts/copy-migrations.mjs` produces at build time. Restaged here
-		// rather than trusted from the dist copy because tsc emits only JS: a
-		// build that skipped copy-migrations would otherwise pack a tarball with
-		// no SQL in it and fail on a stranger's machine, not on ours.
-		//
-		// This used to be staged at the source layout (`prisma/<flavour>/schema`)
-		// as well, to serve #357's interim `migrate.ts`. That runner is gone
-		// (#335 deduplication) and nothing reads the source layout at runtime.
-		for (const flavour of ["sqlite", "pg"]) {
-			const from = join(dir, "prisma", flavour, "schema");
-			if (!existsSync(from)) continue;
-			copyTree(from, join(target, "dist", "prisma", flavour, "schema"));
-		}
-		// Prisma 7's `prisma-client` generator emits TypeScript, which tsc
-		// compiles into dist/prisma/generated. Any NON-TypeScript asset it
-		// emits (a real `.wasm`, a `.node`, a `.json`) would be invisible to
-		// tsc and silently absent from the copy — assert each one made it.
-		const generated = join(dir, "prisma", "generated");
-		const stagedGenerated = join(target, "dist", "prisma", "generated");
-		if (!existsSync(join(stagedGenerated, "client.js"))) {
-			fail("the Prisma generated client did not survive the copy");
-		}
-		if (existsSync(generated)) {
-			for (const file of walkFiles(generated)) {
-				if (/\.[cm]?tsx?$/.test(file)) continue;
-				const rel = relative(generated, file);
-				const dest = join(stagedGenerated, rel);
-				if (!existsSync(dest)) {
-					mkdirSync(dirname(dest), { recursive: true });
-					cpSync(file, dest);
-					console.log(`    carried Prisma runtime asset: ${rel}`);
-				}
-			}
-		}
-	}
-
-	if (name === "@prismalens/api") {
-		const main = manifest.main;
-		if (!main)
-			fail("@prismalens/api declares no `main` — `pl up` cannot boot it");
-		if (!existsSync(join(target, main))) {
-			fail(
-				`@prismalens/api declares main "${main}" but the copied output has no ` +
-					`such file. nest build's output root moved; fix the manifest.`,
-			);
-		}
-		// The SPA is served single-origin by the API process. Plain filesystem
-		// copy — no bundler is involved in a directory of static assets.
-		const spa = join(ROOT, "packages", "frontend", "dist", "client");
-		if (!existsSync(join(spa, "index.html"))) {
-			fail(
-				`packages/frontend/dist/client/index.html is missing. TanStack Start ` +
-					`only emits an index.html when the Vite config sets ` +
-					`\`spa: { enabled: true }\`; without it you get SSR output and no ` +
-					`SPA entry.`,
-			);
-		}
-		copyTree(spa, join(target, "public"));
-	}
-}
-
-/**
- * Deliberately-optional imports: a package that declares an OPTIONAL peer (or
- * an optionalDependency) is saying "resolve me lazily, refuse gracefully when
- * I'm absent". Read from the declaring manifests, so this is not a list this
- * script maintains.
- */
-const optional = new Set();
-for (const name of copied) {
-	const { manifest } = workspace.get(name);
-	for (const dep of Object.keys(manifest.optionalDependencies ?? {})) {
-		optional.add(dep);
-	}
-	for (const [dep, meta] of Object.entries(
-		manifest.peerDependenciesMeta ?? {},
-	)) {
-		if (meta?.optional) optional.add(dep);
-	}
-}
-
-scanImports(stagedModules, union, new Set(copied), optional);
-console.log(
-	`==> import scan: every bare specifier resolves` +
-		(optional.size > 0
-			? ` (optional: ${[...optional].sort().join(", ")})`
-			: ""),
-);
-
-// --- generated manifest -----------------------------------------------------
-const dependencies = {};
-for (const name of [...union.keys()].sort()) {
-	dependencies[name] = union.get(name).range;
-}
-
-// The first-party packages must appear in BOTH `dependencies` and
-// `bundleDependencies`. Verified against npm 11: a name listed only in
-// `bundleDependencies` is treated as extraneous and its files are silently
-// dropped from the tarball — the pack "succeeds" and the artifact has no
-// application in it. `assertTarball` below is what keeps that honest.
-for (const name of [...copied].sort()) {
-	dependencies[name] = workspace.get(name).manifest.version;
-}
-
-const publishManifest = {
-	...cliPkg.manifest,
-	dependencies,
-	bundleDependencies: [...copied].sort(),
-	files: ["dist", "NOTICE", "node_modules/@prismalens"],
-	engines: {
-		// `packages/cli` alone declares node >=22, but `@prismalens/api` and
-		// `@prismalens/database` both declare >=24 and are now IN this tarball.
-		// One published package gets one floor, and a package that installs on
-		// Node 22 then crashes on `pl up` is worse than a higher floor.
-		...cliPkg.manifest.engines,
-		node: ENGINES_NODE,
-	},
-};
-publishManifest.devDependencies = undefined;
-publishManifest.scripts = undefined;
-
-writeFileSync(
-	join(STAGING, "package.json"),
-	`${JSON.stringify(publishManifest, null, "\t")}\n`,
-);
-
-// --- pack -------------------------------------------------------------------
-mkdirSync(OUT_DIR, { recursive: true });
-for (const stale of readdirSync(OUT_DIR)) {
-	if (stale.endsWith(".tgz")) rmSync(join(OUT_DIR, stale));
-}
-console.log("==> npm pack");
-run(
-	"npm",
-	["pack", "--pack-destination", OUT_DIR, "--loglevel", "warn"],
-	STAGING,
-);
-
-const packed = readdirSync(OUT_DIR).find((f) => f.endsWith(".tgz"));
-if (!packed) {
-	fail(`npm pack produced no tarball in ${OUT_DIR}`);
-}
-const tarball = join(OUT_DIR, packed);
-const entries = assertTarball(tarball, copied);
-const bytes = statSync(tarball).size;
-
-console.log(
-	`\n==> ${relative(ROOT, tarball)}  ` +
-		`${(bytes / 1024 / 1024).toFixed(2)} MB, ${entries.length} entries`,
-);
-console.log("    bundleDependencies survived; no workspace:/catalog: strings");
-writeFileSync(join(OUT_DIR, "tarball.txt"), `${tarball}\n`);
-
 /**
  * Determine which npm dist-tag to publish to.
  * Explicit `--tag <tag>` wins. If omitted, pre mode (.changeset/pre.json
  * with mode === "pre") or a prerelease version string (e.g. `0.5.0-rc.0`)
  * sets the tag (e.g. "rc"); otherwise publishing defaults to "latest".
+ * Fails closed if the version contains a prerelease indicator ('-') but
+ * no tag could be resolved, rather than publishing to "latest".
  */
-function resolvePublishTag() {
-	const explicit = opt("--tag", null);
+export function resolvePublishTag(options = {}) {
+	const explicit =
+		options.tag ??
+		(options.tagArg !== undefined ? options.tagArg : opt("--tag", null));
 	if (explicit) return explicit;
 
-	const prePath = join(ROOT, ".changeset", "pre.json");
+	const rootDir = options.rootDir ?? ROOT;
+	const prePath = join(rootDir, ".changeset", "pre.json");
 	if (existsSync(prePath)) {
 		try {
 			const pre = readJson(prePath);
@@ -791,25 +562,286 @@ function resolvePublishTag() {
 		} catch {}
 	}
 
-	const version = cliPkg?.manifest?.version ?? "";
+	const version =
+		options.version ??
+		(() => {
+			try {
+				const ws = loadWorkspace();
+				return ws.get("prismalens")?.manifest?.version ?? "";
+			} catch {
+				return "";
+			}
+		})();
+
 	if (version.includes("-")) {
 		const prerelease = version.split("-")[1] ?? "";
 		const tagMatch = prerelease.match(/^[a-zA-Z]+/);
 		if (tagMatch) {
 			return tagMatch[0];
 		}
+		throw new Error(
+			`Refusing to publish prerelease version "${version}" to dist-tag "latest". ` +
+				`Could not determine dist-tag from prerelease identifier. ` +
+				`Specify an explicit dist-tag using --tag (e.g. --tag <tag>).`,
+		);
 	}
 
 	return "latest";
 }
 
-if (flag("--publish") || flag("--publish-dry-run")) {
-	// Publish the exact bytes the smoke gate verified. `pnpm publish -r` would
-	// re-pack from the workspace and is NOT guaranteed to reproduce this
-	// tarball's bundleDependencies handling.
-	const tag = resolvePublishTag();
-	const args = ["publish", tarball, "--access", "public", "--tag", tag];
-	if (flag("--publish-dry-run")) args.push("--dry-run");
-	console.log(`==> npm ${args.join(" ")}`);
-	run("npm", args);
+export function packCli() {
+	const catalog = loadCatalog();
+	const workspace = loadWorkspace();
+	const cliPkg = workspace.get("prismalens");
+	if (!cliPkg)
+		fail("the published package `prismalens` is not in the workspace");
+
+	if (!flag("--skip-build")) {
+		console.log("==> building every package (turbo)");
+		run("pnpm", ["build"]);
+	}
+
+	// Roots: everything `pl up` needs at runtime, plus the CLI's own first-party
+	// closure (declared as devDependencies because it used to be bundled).
+	const roots = [
+		"@prismalens/api",
+		"@prismalens/worker",
+		...Object.keys(cliPkg.manifest.devDependencies ?? {}).filter((d) =>
+			d.startsWith("@prismalens/"),
+		),
+	];
+	const copied = collectCopyClosure(roots, workspace);
+	copied.delete("@prismalens/frontend"); // shipped as built static assets, not as a package
+	console.log(
+		`==> copy closure (${copied.size}): ${[...copied].sort().join(", ")}`,
+	);
+
+	const union = computeUnion(copied, workspace, catalog, cliPkg.manifest);
+	console.log(
+		`==> generated dependency union: ${union.size} third-party packages`,
+	);
+
+	// --- stage -----------------------------------------------------------------
+	rmSync(STAGING, { recursive: true, force: true });
+	mkdirSync(STAGING, { recursive: true });
+
+	const cliDist = join(CLI_DIR, "dist");
+	if (!existsSync(join(cliDist, "bin", "prismalens.js"))) {
+		fail(
+			"packages/cli/dist/bin/prismalens.js is missing — run the build first",
+		);
+	}
+	copyTree(cliDist, join(STAGING, "dist"));
+	for (const extra of ["NOTICE", "README.md", "LICENSE"]) {
+		const from = join(CLI_DIR, extra);
+		if (existsSync(from)) cpSync(from, join(STAGING, extra));
+	}
+
+	const stagedModules = join(STAGING, "node_modules", "@prismalens");
+	mkdirSync(stagedModules, { recursive: true });
+
+	for (const name of copied) {
+		const { dir, manifest } = workspace.get(name);
+		const target = join(stagedModules, name.replace("@prismalens/", ""));
+		mkdirSync(target, { recursive: true });
+
+		const distDir = join(dir, "dist");
+		if (!existsSync(distDir)) fail(`${name} has no dist/ — it was never built`);
+		// The API's tsc tree also emits `dist/scripts` and `dist/vitest.config.js`;
+		// only `dist/src` is the application.
+		const onlySrc =
+			name === "@prismalens/api"
+				? (src) => {
+						const rel = relative(distDir, src);
+						return rel === "" || rel === "src" || rel.startsWith(`src${sep}`);
+					}
+				: undefined;
+		copyTree(distDir, join(target, "dist"), onlySrc);
+
+		writeFileSync(
+			join(target, "package.json"),
+			`${JSON.stringify(stagedManifest(manifest), null, "\t")}\n`,
+		);
+
+		if (name === "@prismalens/database") {
+			// Migration SQL + schema, applied at first boot through the
+			// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
+			// closure and must never be invoked at user runtime.
+			//
+			// Staged at `dist/prisma/<flavour>/schema` — the first candidate
+			// `src/migrator/migration-source.ts` resolves from its own compiled
+			// location (`dist/src/migrator/` -> `../..`), and the layout
+			// `scripts/copy-migrations.mjs` produces at build time. Restaged here
+			// rather than trusted from the dist copy because tsc emits only JS: a
+			// build that skipped copy-migrations would otherwise pack a tarball with
+			// no SQL in it and fail on a stranger's machine, not on ours.
+			//
+			// This used to be staged at the source layout (`prisma/<flavour>/schema`)
+			// as well, to serve #357's interim `migrate.ts`. That runner is gone
+			// (#335 deduplication) and nothing reads the source layout at runtime.
+			for (const flavour of ["sqlite", "pg"]) {
+				const from = join(dir, "prisma", flavour, "schema");
+				if (!existsSync(from)) continue;
+				copyTree(from, join(target, "dist", "prisma", flavour, "schema"));
+			}
+			// Prisma 7's `prisma-client` generator emits TypeScript, which tsc
+			// compiles into dist/prisma/generated. Any NON-TypeScript asset it
+			// emits (a real `.wasm`, a `.node`, a `.json`) would be invisible to
+			// tsc and silently absent from the copy — assert each one made it.
+			const generated = join(dir, "prisma", "generated");
+			const stagedGenerated = join(target, "dist", "prisma", "generated");
+			if (!existsSync(join(stagedGenerated, "client.js"))) {
+				fail("the Prisma generated client did not survive the copy");
+			}
+			if (existsSync(generated)) {
+				for (const file of walkFiles(generated)) {
+					if (/\.[cm]?tsx?$/.test(file)) continue;
+					const rel = relative(generated, file);
+					const dest = join(stagedGenerated, rel);
+					if (!existsSync(dest)) {
+						mkdirSync(dirname(dest), { recursive: true });
+						cpSync(file, dest);
+						console.log(`    carried Prisma runtime asset: ${rel}`);
+					}
+				}
+			}
+		}
+
+		if (name === "@prismalens/api") {
+			const main = manifest.main;
+			if (!main)
+				fail("@prismalens/api declares no `main` — `pl up` cannot boot it");
+			if (!existsSync(join(target, main))) {
+				fail(
+					`@prismalens/api declares main "${main}" but the copied output has no ` +
+						`such file. nest build's output root moved; fix the manifest.`,
+				);
+			}
+			// The SPA is served single-origin by the API process. Plain filesystem
+			// copy — no bundler is involved in a directory of static assets.
+			const spa = join(ROOT, "packages", "frontend", "dist", "client");
+			if (!existsSync(join(spa, "index.html"))) {
+				fail(
+					`packages/frontend/dist/client/index.html is missing. TanStack Start ` +
+						`only emits an index.html when the Vite config sets ` +
+						`\`spa: { enabled: true }\`; without it you get SSR output and no ` +
+						`SPA entry.`,
+				);
+			}
+			copyTree(spa, join(target, "public"));
+		}
+	}
+
+	/**
+	 * Deliberately-optional imports: a package that declares an OPTIONAL peer (or
+	 * an optionalDependency) is saying "resolve me lazily, refuse gracefully when
+	 * I'm absent". Read from the declaring manifests, so this is not a list this
+	 * script maintains.
+	 */
+	const optional = new Set();
+	for (const name of copied) {
+		const { manifest } = workspace.get(name);
+		for (const dep of Object.keys(manifest.optionalDependencies ?? {})) {
+			optional.add(dep);
+		}
+		for (const [dep, meta] of Object.entries(
+			manifest.peerDependenciesMeta ?? {},
+		)) {
+			if (meta?.optional) optional.add(dep);
+		}
+	}
+
+	scanImports(stagedModules, union, new Set(copied), optional);
+	console.log(
+		`==> import scan: every bare specifier resolves` +
+			(optional.size > 0
+				? ` (optional: ${[...optional].sort().join(", ")})`
+				: ""),
+	);
+
+	// --- generated manifest -----------------------------------------------------
+	const dependencies = {};
+	for (const name of [...union.keys()].sort()) {
+		dependencies[name] = union.get(name).range;
+	}
+
+	// The first-party packages must appear in BOTH `dependencies` and
+	// `bundleDependencies`. Verified against npm 11: a name listed only in
+	// `bundleDependencies` is treated as extraneous and its files are silently
+	// dropped from the tarball — the pack "succeeds" and the artifact has no
+	// application in it. `assertTarball` below is what keeps that honest.
+	for (const name of [...copied].sort()) {
+		dependencies[name] = workspace.get(name).manifest.version;
+	}
+
+	const publishManifest = {
+		...cliPkg.manifest,
+		dependencies,
+		bundleDependencies: [...copied].sort(),
+		files: ["dist", "NOTICE", "node_modules/@prismalens"],
+		engines: {
+			// `packages/cli` alone declares node >=22, but `@prismalens/api` and
+			// `@prismalens/database` both declare >=24 and are now IN this tarball.
+			// One published package gets one floor, and a package that installs on
+			// Node 22 then crashes on `pl up` is worse than a higher floor.
+			...cliPkg.manifest.engines,
+			node: ENGINES_NODE,
+		},
+	};
+	publishManifest.devDependencies = undefined;
+	publishManifest.scripts = undefined;
+
+	writeFileSync(
+		join(STAGING, "package.json"),
+		`${JSON.stringify(publishManifest, null, "\t")}\n`,
+	);
+
+	// --- pack -------------------------------------------------------------------
+	mkdirSync(OUT_DIR, { recursive: true });
+	for (const stale of readdirSync(OUT_DIR)) {
+		if (stale.endsWith(".tgz")) rmSync(join(OUT_DIR, stale));
+	}
+	console.log("==> npm pack");
+	run(
+		"npm",
+		["pack", "--pack-destination", OUT_DIR, "--loglevel", "warn"],
+		STAGING,
+	);
+
+	const packed = readdirSync(OUT_DIR).find((f) => f.endsWith(".tgz"));
+	if (!packed) {
+		fail(`npm pack produced no tarball in ${OUT_DIR}`);
+	}
+	const tarball = join(OUT_DIR, packed);
+	const entries = assertTarball(tarball, copied);
+	const bytes = statSync(tarball).size;
+
+	console.log(
+		`\n==> ${relative(ROOT, tarball)}  ` +
+			`${(bytes / 1024 / 1024).toFixed(2)} MB, ${entries.length} entries`,
+	);
+	console.log(
+		"    bundleDependencies survived; no workspace:/catalog: strings",
+	);
+	writeFileSync(join(OUT_DIR, "tarball.txt"), `${tarball}\n`);
+
+	if (flag("--publish") || flag("--publish-dry-run")) {
+		// Publish the exact bytes the smoke gate verified. `pnpm publish -r` would
+		// re-pack from the workspace and is NOT guaranteed to reproduce this
+		// tarball's bundleDependencies handling.
+		const tag = resolvePublishTag({ version: cliPkg.manifest.version });
+		const args = ["publish", tarball, "--access", "public", "--tag", tag];
+		if (flag("--publish-dry-run")) args.push("--dry-run");
+		console.log(`==> npm ${args.join(" ")}`);
+		run("npm", args);
+	}
+}
+
+const isDirectExecution =
+	Boolean(process.argv[1]) &&
+	(fileURLToPath(import.meta.url) === resolve(process.argv[1]) ||
+		fileURLToPath(import.meta.url) === process.argv[1]);
+
+if (isDirectExecution) {
+	packCli();
 }

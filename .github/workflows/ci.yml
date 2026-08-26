@@ -81,8 +81,8 @@ jobs:
       - name: Validate changeset names and presence
         run: node scripts/validate-changesets.mjs
 
-      - name: Test validate-changesets script
-        run: node --test scripts/validate-changesets.test.mjs
+      - name: Test script behaviour
+        run: node --test scripts/*.test.mjs
 
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})

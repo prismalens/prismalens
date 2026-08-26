@@ -31,7 +31,7 @@
 		"publint": "pnpm --filter prismalens exec publint --strict",
 		"changeset": "changeset",
 		"changeset:check": "node scripts/validate-changesets.mjs",
-		"changeset:test": "node --test scripts/validate-changesets.test.mjs",
+		"changeset:test": "node --test scripts/*.test.mjs",
 		"changeset:version": "changeset version",
 		"pack": "node scripts/pack-cli.mjs",
 		"changeset:publish": "node scripts/pack-cli.mjs --publish && changeset tag"

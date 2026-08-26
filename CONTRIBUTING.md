@@ -602,15 +602,24 @@ Changesets' **pre mode** (`.changeset/pre.json`). Pre mode allows publishing pre
 (e.g., `0.5.0-rc.0`, `0.5.0-rc.1`) to the npm `rc` dist-tag without moving the `latest` tag used by
 general installs.
 
+> [!IMPORTANT]
+> **Operator-only release train command on `main` — never commit `pre.json` in a feature PR.**
+> Entering and exiting pre mode (`pnpm changeset pre enter <tag>` and `pnpm changeset pre exit`) is an
+> **operator-run action executed directly on `main`, never part of a feature PR**. Committing `.changeset/pre.json`
+> flips the entire repository into prerelease mode the moment it merges, which would force every pending
+> changeset across the repo to bump to prerelease versions (`0.x.y-rc.N`) rather than stable releases.
+> The operator controls the release train on `main`.
+
 #### Lifecycle in pre mode
 
-1. **Entering pre mode:** Run `pnpm changeset pre enter rc`. This writes `.changeset/pre.json` with
-   `"mode": "pre"` and `"tag": "rc"`. Commit this file and land it on `main`.
-2. **The Version Packages PR:** On every push to `main` with pending changesets, the release
-   workflow (`.github/workflows/release.yml`) runs `pnpm changeset:version`. In pre mode, changesets
-   are not deleted from disk; their IDs are appended to `.changeset/pre.json`'s `changesets` array,
-   and `packages/cli/package.json` is bumped to `0.x.y-rc.N`. CI recognizes this shape and exempts
-   the PR from the changeset presence check.
+1. **Operator enters pre mode on `main`:** The repository operator runs `pnpm changeset pre enter rc` directly
+   on `main` (or on a dedicated operator release branch landed to `main`). This writes `.changeset/pre.json` with
+   `"mode": "pre"` and `"tag": "rc"`.
+2. **The Version Packages PR:** On push to `main` with pending changesets, the release workflow
+   (`.github/workflows/release.yml`) runs `pnpm changeset:version`. In pre mode, changesets are not deleted from
+   disk; their IDs are appended to `.changeset/pre.json`'s `changesets` array, and `packages/cli/package.json` is
+   bumped to `0.x.y-rc.N` (e.g., `0.5.0-rc.0`). CI recognizes this shape and exempts the PR from the changeset
+   presence check.
 3. **Publishing to the `rc` dist-tag:** When the Version PR merges to `main`, `release.yml` invokes
    `pnpm changeset:publish` (`node scripts/pack-cli.mjs --publish && changeset tag`). The pack script
    detects pre mode from `.changeset/pre.json` (or the prerelease version) and automatically supplies
@@ -627,11 +636,13 @@ general installs.
    ```
 6. **Subsequent RC iterations:** Any subsequent changesets merged to `main` update the Version PR to
    bump the candidate version (`0.5.0-rc.1`, `0.5.0-rc.2`, etc.).
-7. **Exiting pre mode for the final release:** When the release candidate is ready for general release:
-   - Run `pnpm changeset pre exit` locally on a branch. This updates `.changeset/pre.json` to `"mode": "exit"`.
-   - Commit and merge to `main`.
-   - The subsequent release workflow run executes `pnpm changeset:version`, which bumps the package to the final
-     version (`0.5.0`), deletes all consumed `.changeset/*.md` files, and removes `.changeset/pre.json`.
+7. **Operator exits pre mode for the final release:** When the release candidate cycle is complete and the
+   software is ready for stable release:
+   - The operator runs `pnpm changeset pre exit` directly on `main`. This updates `.changeset/pre.json` to `"mode": "exit"`.
+   - The operator commits and pushes `.changeset/pre.json` to `main`.
+   - The subsequent release workflow run on `main` executes `pnpm changeset:version`, which consumes all queued
+     changesets, bumps `packages/cli/package.json` to the final stable version (`0.5.0`), deletes all consumed
+     `.changeset/*.md` files, and removes `.changeset/pre.json`.
    - Merging that Version PR publishes `0.5.0` to the `latest` dist-tag on npm via `node scripts/pack-cli.mjs --publish`.
 
 #### Worked terminal transcript
@@ -639,7 +650,7 @@ general installs.
 The full transcript of entering pre mode, exercising the RC cycle, and exiting:
 
 ```console
-# --- Step 1: Maintainer enters pre mode on a feature/release branch ---
+# --- Step 1: Operator enters pre mode on main ---
 $ pnpm changeset pre enter rc
 🦋  success Entered pre mode with tag rc
 🦋  info Run `changeset version` to version packages with prerelease versions
@@ -667,8 +678,7 @@ $ cat .changeset/pre.json
 
 $ git add .changeset/pre.json
 $ git commit -m "chore(release): enter rc pre mode"
-$ git push origin feat/rc-pre-mode
-# (PR opened and merged to main)
+$ git push origin main
 
 # --- Step 2: Release workflow on main versions packages for RC ---
 # In CI on main, changesets/action runs `pnpm changeset:version`
@@ -722,7 +732,7 @@ added 42 packages in 3.12s
 $ prismalens --version
 0.5.0-rc.0
 
-# --- Step 6: Exiting pre mode for the final stable release ---
+# --- Step 6: Operator exits pre mode on main for the final stable release ---
 $ pnpm changeset pre exit
 🦋  success Exited pre mode
 🦋  info Run `changeset version` to version packages with normal versions
@@ -753,8 +763,8 @@ $ cat .changeset/pre.json
 
 $ git add .changeset/pre.json
 $ git commit -m "chore(release): exit rc pre mode"
-$ git push origin feat/rc-pre-exit
-# (PR merged to main -> next Version PR bumps packages/cli to 0.5.0, cleans up changesets & pre.json, and publishes to latest tag)
+$ git push origin main
+# (Release workflow on main runs `pnpm changeset:version`, bumping packages/cli to 0.5.0, deleting changesets & pre.json, and publishing to latest tag upon merge)
 ```
 
 ## Reporting bugs and requesting features
