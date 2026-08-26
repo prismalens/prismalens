@@ -87,7 +87,7 @@
  * USAGE
  * ---------------------------------------------------------------------------
  *   node scripts/pack-cli.mjs [--skip-build] [--out <dir>] [--publish]
- *                             [--publish-dry-run]
+ *                             [--publish-dry-run] [--tag <tag>]
  *
  * The repo's manifest at `packages/cli/package.json` is NEVER mutated: the
  * rewritten manifest is materialised in a throwaway staging directory
@@ -771,11 +771,44 @@ console.log(
 console.log("    bundleDependencies survived; no workspace:/catalog: strings");
 writeFileSync(join(OUT_DIR, "tarball.txt"), `${tarball}\n`);
 
+/**
+ * Determine which npm dist-tag to publish to.
+ * Explicit `--tag <tag>` wins. If omitted, pre mode (.changeset/pre.json
+ * with mode === "pre") or a prerelease version string (e.g. `0.5.0-rc.0`)
+ * sets the tag (e.g. "rc"); otherwise publishing defaults to "latest".
+ */
+function resolvePublishTag() {
+	const explicit = opt("--tag", null);
+	if (explicit) return explicit;
+
+	const prePath = join(ROOT, ".changeset", "pre.json");
+	if (existsSync(prePath)) {
+		try {
+			const pre = readJson(prePath);
+			if (pre?.mode === "pre" && pre?.tag) {
+				return pre.tag;
+			}
+		} catch {}
+	}
+
+	const version = cliPkg?.manifest?.version ?? "";
+	if (version.includes("-")) {
+		const prerelease = version.split("-")[1] ?? "";
+		const tagMatch = prerelease.match(/^[a-zA-Z]+/);
+		if (tagMatch) {
+			return tagMatch[0];
+		}
+	}
+
+	return "latest";
+}
+
 if (flag("--publish") || flag("--publish-dry-run")) {
 	// Publish the exact bytes the smoke gate verified. `pnpm publish -r` would
 	// re-pack from the workspace and is NOT guaranteed to reproduce this
 	// tarball's bundleDependencies handling.
-	const args = ["publish", tarball, "--access", "public"];
+	const tag = resolvePublishTag();
+	const args = ["publish", tarball, "--access", "public", "--tag", tag];
 	if (flag("--publish-dry-run")) args.push("--dry-run");
 	console.log(`==> npm ${args.join(" ")}`);
 	run("npm", args);

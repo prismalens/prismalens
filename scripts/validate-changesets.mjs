@@ -271,11 +271,46 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 	// Two diffs no human can attach a changeset to, both recognised by shape and
 	// never by branch/author (forgeable): the release PR, and a dependency-range
 	// bump. See CONTRIBUTING.md → "… exempt from the presence check" (#328).
-	const consumed = probe.mergeBase
+	// Release PR consumes changesets: either by deleting them (normal mode) or by
+	// tracking them in .changeset/pre.json `changesets` array (changesets pre mode).
+	const deletedChangesets = probe.mergeBase
 		? changedFiles.filter(
 				(f) => isChangesetFile(f) && !existsSync(join(repoRoot, f)),
 			)
 		: [];
+
+	const preConsumed = [];
+	const prePath = join(repoRoot, ".changeset", "pre.json");
+	if (existsSync(prePath)) {
+		try {
+			const afterPre = readJson(prePath);
+			if (afterPre?.mode === "pre" && Array.isArray(afterPre?.changesets)) {
+				let beforePreChangesets = [];
+				if (probe.mergeBase) {
+					try {
+						const beforePreRaw = gitOut([
+							"show",
+							`${probe.mergeBase}:.changeset/pre.json`,
+						]);
+						const beforePre = JSON.parse(beforePreRaw);
+						if (Array.isArray(beforePre?.changesets)) {
+							beforePreChangesets = beforePre.changesets;
+						}
+					} catch {
+						// pre.json didn't exist at merge base
+					}
+				}
+				const beforeSet = new Set(beforePreChangesets);
+				for (const id of afterPre.changesets) {
+					if (!beforeSet.has(id)) {
+						preConsumed.push(`.changeset/${id}.md`);
+					}
+				}
+			}
+		} catch {}
+	}
+
+	const consumed = [...new Set([...deletedChangesets, ...preConsumed])];
 	const shapes = new Map(
 		changedPublishable.map((f) => [
 			f,
@@ -314,7 +349,11 @@ if (changedPublishable.length > 0 && !changesetInDiff) {
 		for (const c of consumed) {
 			let content;
 			try {
-				content = gitOut(["show", `${probe.mergeBase}:${c}`]);
+				if (existsSync(join(repoRoot, c))) {
+					content = readFileSync(join(repoRoot, c), "utf8");
+				} else {
+					content = gitOut(["show", `${probe.mergeBase}:${c}`]);
+				}
 			} catch {
 				unparseableChangesets.push(c);
 				continue;

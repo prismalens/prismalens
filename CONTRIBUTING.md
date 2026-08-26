@@ -378,22 +378,26 @@ changesets OK — 28 changeset(s) validated; publishable set: prismalens.
 ### Release PRs are exempt from the presence check
 
 The `changesets/action` release PR (branch `changeset-release/main`, title
-`chore: version packages`) **deletes** every changeset it consumes while bumping
-`version` in the affected `package.json` files. Those manifests are publishable
-files, so without an exemption the presence check would fail on every release —
-on a PR no human can add a changeset to.
+`chore: version packages`) consumes changesets while bumping `version` in the
+affected `package.json` files. In normal release mode, consumed changesets are
+**deleted**; in Changesets **pre mode** (`.changeset/pre.json`), changesets are
+preserved on disk and recorded in `pre.json`'s `changesets` array. Because those
+manifests are publishable files, without an exemption the presence check would
+fail on every release — on a PR no human can add a changeset to.
 
 The exemption is decided from the **shape of the diff** and the **correspondence**
-between deleted changesets and version bumps, not from the branch name or the author,
-both of which any contributor can forge. It applies only when *all* of the following hold:
+between consumed changesets (deleted `.changeset/*.md` files in normal mode, or
+newly recorded IDs in `.changeset/pre.json` in pre mode) and version bumps, not from
+the branch name or the author, both of which any contributor can forge. It applies
+only when *all* of the following hold:
 
-* the diff **deletes** at least one `.changeset/*.md`,
+* the diff **consumes** at least one changeset (deleted `.changeset/*.md` or recorded in `.changeset/pre.json`),
 * **every** changed publishable file is a `package.json` whose parsed before/after
   differ only in `version` and in dependency-range *values*
   (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`),
 * **at least one** publishable package's `version` field actually changed in this diff, and
-* **every** publishable package named by any deleted changeset (parsed from its frontmatter
-  at the merge base) has its `version` bumped in this diff (`consumedPackageNames ⊆ bumpedPackages`).
+* **every** publishable package named by any consumed changeset (parsed from its frontmatter)
+  has its `version` bumped in this diff (`consumedPackageNames ⊆ bumpedPackages`).
 
 Notes on the correspondence invariant:
 
@@ -401,14 +405,14 @@ Notes on the correspondence invariant:
   consumes them alongside regular changesets; they do not defeat the exemption.
 * **Containment is one direction only**: `changeset version` also bumps dependent packages
   that no changeset explicitly named, so the bumped set may legitimately be larger.
-* **Fails closed**: deleted changesets that cannot be read at the merge base or whose
-  frontmatter fails to parse deny the exemption.
-* **Non-publishable names** (private / `.changeset/config.json` `ignore` entries) in deleted
+* **Fails closed**: consumed changesets that cannot be read at the merge base (or from disk in pre mode)
+  or whose frontmatter fails to parse deny the exemption.
+* **Non-publishable names** (private / `.changeset/config.json` `ignore` entries) in consumed
   changesets are ignored because they never produce a version bump.
 
 Adding or removing a dependency, retargeting one to an `npm:`/`file:`/git specifier,
 touching any other manifest field (`bin`, `exports`, `scripts`, `files`, …), changing a
-single line of source, or deleting changesets without matching version bumps aborts the
+single line of source, or deleting/consuming changesets without matching version bumps aborts the
 exemption.
 
 When the exemption fires it says so on stdout, naming the consumed changesets and the
@@ -590,6 +594,168 @@ its own — but since #237 the app-side packages (`@prismalens/api`,
 `@prismalens/worker`) and the shared libraries travel INSIDE the `prismalens`
 tarball as bundled dependencies, which is what makes `pl up` a single install.
 They are still excluded from Changesets: one published package, one version.
+
+### Prerelease (RC) workflow with Changesets pre mode
+
+For major or milestone cuts (such as the v0.5.0 release candidate train), prismalens uses
+Changesets' **pre mode** (`.changeset/pre.json`). Pre mode allows publishing prerelease iterations
+(e.g., `0.5.0-rc.0`, `0.5.0-rc.1`) to the npm `rc` dist-tag without moving the `latest` tag used by
+general installs.
+
+#### Lifecycle in pre mode
+
+1. **Entering pre mode:** Run `pnpm changeset pre enter rc`. This writes `.changeset/pre.json` with
+   `"mode": "pre"` and `"tag": "rc"`. Commit this file and land it on `main`.
+2. **The Version Packages PR:** On every push to `main` with pending changesets, the release
+   workflow (`.github/workflows/release.yml`) runs `pnpm changeset:version`. In pre mode, changesets
+   are not deleted from disk; their IDs are appended to `.changeset/pre.json`'s `changesets` array,
+   and `packages/cli/package.json` is bumped to `0.x.y-rc.N`. CI recognizes this shape and exempts
+   the PR from the changeset presence check.
+3. **Publishing to the `rc` dist-tag:** When the Version PR merges to `main`, `release.yml` invokes
+   `pnpm changeset:publish` (`node scripts/pack-cli.mjs --publish && changeset tag`). The pack script
+   detects pre mode from `.changeset/pre.json` (or the prerelease version) and automatically supplies
+   `--tag rc` to `npm publish`. This publishes `prismalens@0.5.0-rc.0` to the `rc` dist-tag without
+   moving `latest`.
+4. **User installation:** Users install the release candidate explicitly via:
+   ```console
+   $ npm i -g prismalens@rc
+   ```
+5. **Verifying dist-tags:** Confirm on npm that `latest` remains untouched and `rc` points to the candidate:
+   ```console
+   $ npm view prismalens dist-tags
+   { latest: '0.4.0', rc: '0.5.0-rc.0' }
+   ```
+6. **Subsequent RC iterations:** Any subsequent changesets merged to `main` update the Version PR to
+   bump the candidate version (`0.5.0-rc.1`, `0.5.0-rc.2`, etc.).
+7. **Exiting pre mode for the final release:** When the release candidate is ready for general release:
+   - Run `pnpm changeset pre exit` locally on a branch. This updates `.changeset/pre.json` to `"mode": "exit"`.
+   - Commit and merge to `main`.
+   - The subsequent release workflow run executes `pnpm changeset:version`, which bumps the package to the final
+     version (`0.5.0`), deletes all consumed `.changeset/*.md` files, and removes `.changeset/pre.json`.
+   - Merging that Version PR publishes `0.5.0` to the `latest` dist-tag on npm via `node scripts/pack-cli.mjs --publish`.
+
+#### Worked terminal transcript
+
+The full transcript of entering pre mode, exercising the RC cycle, and exiting:
+
+```console
+# --- Step 1: Maintainer enters pre mode on a feature/release branch ---
+$ pnpm changeset pre enter rc
+🦋  success Entered pre mode with tag rc
+🦋  info Run `changeset version` to version packages with prerelease versions
+
+$ cat .changeset/pre.json
+{
+  "mode": "pre",
+  "tag": "rc",
+  "initialVersions": {
+    "@prismalens/api": "0.0.1",
+    "@prismalens/auth": "0.0.1",
+    "@prismalens/config": "0.3.0",
+    "@prismalens/contracts": "0.1.1",
+    "@prismalens/database": "0.0.1",
+    "@prismalens/design-tokens": "0.0.1",
+    "@prismalens/engine": "0.2.1",
+    "@prismalens/frontend": "0.0.1",
+    "@prismalens/integrations": "0.0.1",
+    "@prismalens/logger": "0.0.1",
+    "@prismalens/worker": "0.0.1",
+    "prismalens": "0.4.0"
+  },
+  "changesets": []
+}
+
+$ git add .changeset/pre.json
+$ git commit -m "chore(release): enter rc pre mode"
+$ git push origin feat/rc-pre-mode
+# (PR opened and merged to main)
+
+# --- Step 2: Release workflow on main versions packages for RC ---
+# In CI on main, changesets/action runs `pnpm changeset:version`
+$ pnpm changeset:version
+🦋  warn ===============================IMPORTANT!===============================
+🦋  warn You are in prerelease mode
+🦋  warn If you meant to do a normal release you should revert these changes and run `changeset pre exit`
+🦋  warn You can then run `changeset version` again to do a normal release
+🦋  warn ----------------------------------------------------------------------
+🦋  All files have been updated. Review them and commit at your leisure
+
+$ git status
+On branch changeset-release/main
+Changes not staged for commit:
+	modified:   .changeset/pre.json
+	modified:   packages/cli/CHANGELOG.md
+	modified:   packages/cli/package.json
+
+$ git diff packages/cli/package.json
+-	"version": "0.4.0",
++	"version": "0.5.0-rc.0",
+
+# --- Step 3: Version PR is validated by CI and merged ---
+$ pnpm changeset:check
+changeset presence check skipped — this is a Version Packages release PR:
+  • it consumes 30 changeset(s): .changeset/alert-mapping-health.md, ...
+  • every changed publishable file is a version-field-only package.json: packages/cli/package.json
+  • branch: changeset-release/main
+changesets OK — release PR exempt from the presence check; 30 changeset(s) validated.
+
+# --- Step 4: Release workflow publishes to npm on the rc dist-tag ---
+# Merging the Version PR triggers `release.yml` -> `pnpm changeset:publish`
+$ node scripts/pack-cli.mjs --publish
+==> building every package (turbo)
+...
+==> npm pack
+prismalens-0.5.0-rc.0.tgz
+==> packages/cli/dist-pack/prismalens-0.5.0-rc.0.tgz  1.26 MB, 523 entries
+    bundleDependencies survived; no workspace:/catalog: strings
+==> npm publish /home/runner/work/prismalens/prismalens/packages/cli/dist-pack/prismalens-0.5.0-rc.0.tgz --access public --tag rc
++ prismalens@0.5.0-rc.0
+
+# --- Step 5: User installs and operator verifies dist-tags ---
+$ npm view prismalens dist-tags
+{ latest: '0.4.0', rc: '0.5.0-rc.0' }
+
+$ npm i -g prismalens@rc
++ prismalens@0.5.0-rc.0
+added 42 packages in 3.12s
+
+$ prismalens --version
+0.5.0-rc.0
+
+# --- Step 6: Exiting pre mode for the final stable release ---
+$ pnpm changeset pre exit
+🦋  success Exited pre mode
+🦋  info Run `changeset version` to version packages with normal versions
+
+$ cat .changeset/pre.json
+{
+  "mode": "exit",
+  "tag": "rc",
+  "initialVersions": {
+    "@prismalens/api": "0.0.1",
+    "@prismalens/auth": "0.0.1",
+    "@prismalens/config": "0.3.0",
+    "@prismalens/contracts": "0.1.1",
+    "@prismalens/database": "0.0.1",
+    "@prismalens/design-tokens": "0.0.1",
+    "@prismalens/engine": "0.2.1",
+    "@prismalens/frontend": "0.0.1",
+    "@prismalens/integrations": "0.0.1",
+    "@prismalens/logger": "0.0.1",
+    "@prismalens/worker": "0.0.1",
+    "prismalens": "0.4.0"
+  },
+  "changesets": [
+    "alert-mapping-health",
+    "..."
+  ]
+}
+
+$ git add .changeset/pre.json
+$ git commit -m "chore(release): exit rc pre mode"
+$ git push origin feat/rc-pre-exit
+# (PR merged to main -> next Version PR bumps packages/cli to 0.5.0, cleans up changesets & pre.json, and publishes to latest tag)
+```
 
 ## Reporting bugs and requesting features
 
