@@ -40,6 +40,7 @@ services:
       - prismalens
 
   # NestJS API backend (development mode)
+  # Single replica only: The API runs as a single instance (scale: 1) due to the in-process EventBus.
   api:
     build:
       context: .

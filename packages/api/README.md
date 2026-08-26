@@ -15,6 +15,31 @@ the API asserts the database contains at most one organization and **refuses to 
 finds more. If startup aborts with the single-tenant error, reduce the database to a single
 organization (remove the extras and their memberships) and restart.
 
+## Single-replica deployment constraint (In-Process EventBus)
+
+The API process runs the investigation dispatch loop in-process (`PRISMALENS_DISPATCH_ENABLED=true`, enforced by `assertDispatchTopology` in [`@prismalens/config`](../@prismalens/config/src/env/dispatch.ts)). The dispatch layer's `EventBus` ([`src/infrastructure/dispatch/event-bus.ts:71-129`](src/infrastructure/dispatch/event-bus.ts#L71-L129)) is strictly **in-process** (a `Map` of handler sets with no cross-process transport).
+
+Because of this, the API service must run as a **single replica** (`scale: 1`). Running multiple API replicas behind a load balancer breaks two critical execution paths:
+
+1. **Live SSE event streaming:** The dispatcher on Replica A publishes canonical events (`{ kind: "event" }`) and the completion sentinel (`{ kind: "done" }`) to Replica A's local bus topic (`investigation:events:${id}`) ([`src/infrastructure/dispatch/dispatcher.ts:227-235`](src/infrastructure/dispatch/dispatcher.ts#L227-L235)). An SSE client (`GET /api/investigations/:id/stream`) routed to Replica B ([`src/modules/investigations/stream-relay.service.ts:186-198`](src/modules/investigations/stream-relay.service.ts#L186-L198)) listens to Replica B's bus, receives no frames, and closes in an `UNKNOWN` state.
+2. **Out-of-band cancellation:** A cancellation request (`POST /api/investigations/:id/cancel`) routed to Replica B publishes to Replica B's local bus topic (`investigation:cancel:${id}`) ([`src/modules/investigations/investigations.controller.ts:158-213`](src/modules/investigations/investigations.controller.ts#L158-L213)). Because the running job's cancellation subscriber is on Replica A's bus ([`src/infrastructure/dispatch/dispatcher.ts:258-264`](src/infrastructure/dispatch/dispatcher.ts#L258-L264)), Replica B sees 0 receivers, assumes the job is orphaned, cancels the job row in the database, and marks the investigation cancelled — while Replica A continues executing the investigation unaware, resulting in double writers.
+
+### Worked example: Horizontal Scaling Failure
+
+```text
+       Load Balancer (e.g. Round Robin)
+             /                   \
+            v                     v
+   [Replica A (API)]       [Replica B (API)]
+   ├── Runs Job `inv-1`    ├── Client GET /api/investigations/inv-1/stream
+   │   └── Publishes to    │   └── Listens to Bus B -> 0 events -> UNKNOWN close
+   │       Bus A           └── User POST /api/investigations/inv-1/cancel
+   └── Bus A (has sub)         └── Publishes to Bus B -> 0 receivers heard
+                                   -> marks DB "cancelled" (Job on A keeps running!)
+```
+
+Multi-replica support with a distributed broker/driver is tracked under [#340](https://github.com/prismalens/prismalens/issues/340) — "JobStore: Postgres SKIP LOCKED driver + heartbeat/reclaim for multi-replica placements".
+
 ## Network exposure and the Host/Origin allowlist
 
 The API serves the SPA and the API from one origin (ADR-0029), so its network posture is

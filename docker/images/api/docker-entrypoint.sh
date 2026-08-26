@@ -19,12 +19,6 @@ echo "  - Port: ${PRISMALENS_PORT:-3001}"
 echo "  - Host: ${PRISMALENS_HOST:-0.0.0.0}"
 echo "  - Node Environment: ${NODE_ENV:-production}"
 
-if [ -n "$REDIS_URL" ]; then
-  echo "  - Redis: Connected"
-else
-  echo "  - Redis: Not configured (queue disabled)"
-fi
-
 if [ -n "$DATABASE_URL" ]; then
   echo "  - Database: Configured"
 else

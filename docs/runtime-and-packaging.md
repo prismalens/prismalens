@@ -64,12 +64,39 @@ PrismaLens eliminates external database dependencies by storing all state in an 
 
 - **Port Collisions (`EADDRINUSE`):** Attempting to run `pl up` on a port already bound by another process currently results in an unhandled Node.js exception stack trace rather than a graceful error message. A fix is currently in flight on branch `r1/237-eaddrinuse-handling` and is **not yet landed** on `main`.
 - **Single-Tenant Operating Boundary:** Multi-user isolation and fine-grained permissions/roles are **not yet implemented** (ADR-0011 §6).
+- **Single-API-Replica Constraint (In-Process EventBus):** The PrismaLens API service must run as a **single replica** (`scale: 1`). The dispatch layer's `EventBus` ([`packages/api/src/infrastructure/dispatch/event-bus.ts:71-129`](../packages/api/src/infrastructure/dispatch/event-bus.ts#L71-L129)) is an in-process `Map` of handler sets with no cross-process transport. Running multiple API replicas silently breaks event relay and cancellation:
+  1. **Live SSE Stream Disconnection:** When an investigation runs on Replica A, its events and completion sentinels are published exclusively to Replica A's local `EventBus` topic ([`packages/api/src/infrastructure/dispatch/dispatcher.ts:227-235`](../packages/api/src/infrastructure/dispatch/dispatcher.ts#L227-L235)). A client whose SSE connection (`GET /api/investigations/:id/stream`) lands on Replica B ([`packages/api/src/modules/investigations/stream-relay.service.ts:186-198`](../packages/api/src/modules/investigations/stream-relay.service.ts#L186-L198)) receives no events, and the connection closes with an unclean exit.
+  2. **Ghost Cancellation & Double Writers:** When a cancellation request (`POST /api/investigations/:id/cancel`) is routed to Replica B ([`packages/api/src/modules/investigations/investigations.controller.ts:158-213`](../packages/api/src/modules/investigations/investigations.controller.ts#L158-L213)), Replica B publishes on its local `EventBus`. Because the running job's cancellation handler is registered on Replica A ([`packages/api/src/infrastructure/dispatch/dispatcher.ts:258-264`](../packages/api/src/infrastructure/dispatch/dispatcher.ts#L258-L264)), Replica B observes zero receivers. Replica B concludes the run is orphaned, marks the job cancelled in the database, and overrides the investigation state while Replica A continues executing the investigation — creating double writers and corrupting terminal state.
+
+  #### Worked Example: Multi-Replica Event & Cancel Loss
+
+  ```text
+  Load Balancer (Round Robin)
+       │
+       ├───► [Replica A (API + Dispatch)]
+       │        ├── InProcessEventBus (handlers: [Job-1 Runner])
+       │        └── Running Job-1 (investigation `inv-1`)
+       │               │ publishes events to Replica A bus
+       │               └── listens for cancel on Replica A bus
+       │
+       └───► [Replica B (API + Dispatch)]
+                ├── InProcessEventBus (handlers: [])
+                ├── Client SSE Stream: GET /api/investigations/inv-1/stream
+                │      └── Listens to Replica B bus -> 0 events received -> UNKNOWN close
+                └── User Cancel: POST /api/investigations/inv-1/cancel
+                       └── Publishes to Replica B bus -> 0 receivers heard -> writes DB "cancelled"
+                           (Job-1 on Replica A never receives cancel; continues running)
+  ```
+
+  Multi-replica placements with a distributed transport/driver are tracked in [#340](https://github.com/prismalens/prismalens/issues/340) — "JobStore: Postgres SKIP LOCKED driver + heartbeat/reclaim for multi-replica placements".
 
 ---
 
 ## 5. Architectural References
 
 - **Issue Reference:** [#237](https://github.com/prismalens/prismalens/issues/237) — Single-process application topology and packaging.
+- **Issue Reference:** [#375](https://github.com/prismalens/prismalens/issues/375) — Document the single-API-replica constraint of the in-process EventBus in the deploy docs.
+- **Issue Reference:** [#340](https://github.com/prismalens/prismalens/issues/340) — JobStore: Postgres SKIP LOCKED driver + heartbeat/reclaim for multi-replica placements.
 - **ADR-0008:** Two-tier agent engine architecture (supervisor Tier-1 + rented harness Tier-2).
 - **ADR-0010:** Engine as CLI supervisor.
 - **ADR-0011:** Domain model boundaries & multi-user RBAC (fine-grained RBAC marked not yet implemented).

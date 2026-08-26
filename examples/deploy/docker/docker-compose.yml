@@ -32,6 +32,9 @@ services:
       - prismalens
 
   # NestJS API backend
+  # Single replica only: The API must run as a single instance (scale: 1).
+  # The EventBus is in-process, so multiple API replicas break live SSE event
+  # streaming and cancellation across replicas (multi-replica support tracked in #340).
   api:
     build:
       context: .
