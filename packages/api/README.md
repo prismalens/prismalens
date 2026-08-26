@@ -19,23 +19,38 @@ organization (remove the extras and their memberships) and restart.
 
 The API process runs the investigation dispatch loop in-process (`PRISMALENS_DISPATCH_ENABLED=true`, enforced by `assertDispatchTopology` in [`@prismalens/config`](../@prismalens/config/src/env/dispatch.ts)). The dispatch layer's `EventBus` ([`src/infrastructure/dispatch/event-bus.ts:71-129`](src/infrastructure/dispatch/event-bus.ts#L71-L129)) is strictly **in-process** (a `Map` of handler sets with no cross-process transport).
 
-Because of this, the API service must run as a **single replica** (`scale: 1`). Running multiple API replicas behind a load balancer breaks two critical execution paths:
+Because of this, the API service must run as a **single replica** (operator deployment guidance; multi-instance deployment is unsupported). Running multiple API replicas behind a load balancer breaks two critical execution paths:
 
-1. **Live SSE event streaming:** The dispatcher on Replica A publishes canonical events (`{ kind: "event" }`) and the completion sentinel (`{ kind: "done" }`) to Replica A's local bus topic (`investigation:events:${id}`) ([`src/infrastructure/dispatch/dispatcher.ts:227-235`](src/infrastructure/dispatch/dispatcher.ts#L227-L235)). An SSE client (`GET /api/investigations/:id/stream`) routed to Replica B ([`src/modules/investigations/stream-relay.service.ts:186-198`](src/modules/investigations/stream-relay.service.ts#L186-L198)) listens to Replica B's bus, receives no frames, and closes in an `UNKNOWN` state.
-2. **Out-of-band cancellation:** A cancellation request (`POST /api/investigations/:id/cancel`) routed to Replica B publishes to Replica B's local bus topic (`investigation:cancel:${id}`) ([`src/modules/investigations/investigations.controller.ts:158-213`](src/modules/investigations/investigations.controller.ts#L158-L213)). Because the running job's cancellation subscriber is on Replica A's bus ([`src/infrastructure/dispatch/dispatcher.ts:258-264`](src/infrastructure/dispatch/dispatcher.ts#L258-L264)), Replica B sees 0 receivers, assumes the job is orphaned, cancels the job row in the database, and marks the investigation cancelled — while Replica A continues executing the investigation unaware, resulting in double writers.
+1. **Live SSE event streaming:**
+   - **False clean completion (enqueuing replica):** The replica that handled `POST /investigations` (e.g. Replica A) attaches to the stream relay at enqueue time ([`src/infrastructure/dispatch/dispatch.service.ts:158-160`](src/infrastructure/dispatch/dispatch.service.ts#L158-L160)), opening an `ACTIVE` empty buffer ([`src/modules/investigations/stream-relay.service.ts:167-198`](src/modules/investigations/stream-relay.service.ts#L167-L198)). When a different replica (e.g. Replica B) claims and executes the job, events publish exclusively to Replica B's local bus ([`src/infrastructure/dispatch/dispatcher.ts:227-235`](src/infrastructure/dispatch/dispatcher.ts#L227-L235)). An SSE client (`GET /api/investigations/:id/stream`) routed to Replica A connects to Replica A's stalled `ACTIVE` buffer ([`src/modules/investigations/stream-relay.service.ts:310-324`](src/modules/investigations/stream-relay.service.ts#L310-L324)). After `MAX_IDLE_BUFFER_MS` (10 minutes, [`src/modules/investigations/stream-relay.service.ts:28`](src/modules/investigations/stream-relay.service.ts#L28)), `sweepStaleBuffers()` ([`src/modules/investigations/stream-relay.service.ts:370-381`](src/modules/investigations/stream-relay.service.ts#L370-L381)) invokes `complete()`, sending a clean `{ type: "done" }` sentinel ([`src/modules/investigations/investigation-stream.controller.ts:74-78`](src/modules/investigations/investigation-stream.controller.ts#L74-L78)) — wire-identical to a genuine `FINISHED` run. The client permanently marks a still-running investigation completed (the #388 hazard).
+   - **Unclean disconnection (non-participating replica):** An SSE client routed to a replica that neither enqueued nor claimed the job (e.g. Replica C) encounters an absent buffer (`UNKNOWN` state, [`src/modules/investigations/stream-relay.service.ts:301`](src/modules/investigations/stream-relay.service.ts#L301)), receives zero frames, and the stream terminates with an unclean close and no `done` marker ([`src/modules/investigations/investigation-stream.controller.ts:79-91`](src/modules/investigations/investigation-stream.controller.ts#L79-L91)), raising `onerror` on the client and forcing fallback to database status polling.
+2. **Out-of-band cancellation (Ghost cancellation & double writers):** A cancellation request (`POST /api/investigations/:id/cancel`) routed to Replica C publishes to Replica C's local bus topic (`investigation:cancel:${id}`) ([`src/modules/investigations/investigations.controller.ts:158-213`](src/modules/investigations/investigations.controller.ts#L158-L213)). Because the running job's cancellation subscriber is on Replica B's bus ([`src/infrastructure/dispatch/dispatcher.ts:258-264`](src/infrastructure/dispatch/dispatcher.ts#L258-L264)), Replica C sees 0 receivers, assumes the job is orphaned, cancels the job row in the database, and marks the investigation cancelled — while Replica B continues executing the investigation unaware, resulting in double writers.
 
 ### Worked example: Horizontal Scaling Failure
 
 ```text
-       Load Balancer (e.g. Round Robin)
-             /                   \
-            v                     v
-   [Replica A (API)]       [Replica B (API)]
-   ├── Runs Job `inv-1`    ├── Client GET /api/investigations/inv-1/stream
-   │   └── Publishes to    │   └── Listens to Bus B -> 0 events -> UNKNOWN close
-   │       Bus A           └── User POST /api/investigations/inv-1/cancel
-   └── Bus A (has sub)         └── Publishes to Bus B -> 0 receivers heard
-                                   -> marks DB "cancelled" (Job on A keeps running!)
+  Load Balancer (Round Robin)
+       │
+       ├───► [Replica A (API)] — Enqueued Job `inv-1` (attach called at enqueue)
+       │        ├── InProcessEventBus (handlers: [])
+       │        ├── StreamRelay buffer: ACTIVE (empty, waiting for events on Bus A)
+       │        └── Client 1: GET /api/investigations/inv-1/stream
+       │               └── Listens to Bus A -> 0 events received -> at 10m MAX_IDLE_BUFFER_MS,
+       │                   idle sweep fires complete() -> emits clean `done` (FALSE COMPLETION!)
+       │
+       ├───► [Replica B (API + Dispatch)] — Claimed & Running Job `inv-1`
+       │        ├── InProcessEventBus (handlers: [Job Runner])
+       │        └── Running Job `inv-1`
+       │               ├── Publishes events to Bus B (never received by Replica A or C)
+       │               └── Listens for cancel on Bus B
+       │
+       └───► [Replica C (API)] — Never touched `inv-1`
+                ├── InProcessEventBus (handlers: [])
+                ├── Client 2: GET /api/investigations/inv-1/stream
+                │      └── No buffer (UNKNOWN) -> closes immediately with no `done` (UNCLEAN CLOSE)
+                └── User Cancel: POST /api/investigations/inv-1/cancel
+                       └── Publishes to Bus C -> 0 receivers heard -> writes DB "cancelled"
+                           (Job on Replica B never receives cancel; continues running -> double writers)
 ```
 
 Multi-replica support with a distributed broker/driver is tracked under [#340](https://github.com/prismalens/prismalens/issues/340) — "JobStore: Postgres SKIP LOCKED driver + heartbeat/reclaim for multi-replica placements".
