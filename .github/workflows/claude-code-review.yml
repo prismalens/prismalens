@@ -31,7 +31,10 @@ jobs:
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     permissions:
-      contents: read
+      # write is the ceiling only; the callee's `mutate` job needs it to resolve review
+      # threads with GITHUB_TOKEN. Every job in the callee still declares its own subset,
+      # and `review` stays pinned to read. Story: prismalens/gh-workflows#20.
+      contents: write
       # write is the ceiling for the callee's `announce` liveness job;
       # the callee's `review` job self-restricts to read.
       pull-requests: write
