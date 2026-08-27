@@ -37,12 +37,12 @@
 		"changeset:publish": "node scripts/pack-cli.mjs --publish && changeset tag"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.8",
+		"@biomejs/biome": "2.5.10",
 		"@changesets/cli": "^2.31.1",
 		"@types/node": "catalog:",
-		"publint": "^0.3.23",
+		"publint": "^0.3.24",
 		"tsx": "catalog:",
-		"turbo": "^2.10.10",
+		"turbo": "^2.10.11",
 		"typescript": "catalog:"
 	},
 	"packageManager": "pnpm@10.27.0",
