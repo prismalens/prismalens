@@ -43,13 +43,10 @@ Open the URL and a four-step setup wizard walks you the rest of the way:
 | 3. Code location | An absolute path to a git checkout on this machine, mapped to a service. This is the directory investigations actually read | Yes |
 | 4. First incident | A hand-off into authoring your first incident, or connecting a monitoring tool | Yes |
 
-**The wizard is resumable, and keeps no progress of its own.** Each step's
-"done" is derived on the server from durable state — a user row, a stored
+Each step's "done" is derived on the server from durable state — a user row, a stored
 credential, a service with a checkout path, an incident row — so a reload, a
 sign-in, or coming back tomorrow lands you on the first thing that is genuinely
-still missing. See
-[Setup wizard — the resume rule](docs/capabilities.md#setup-wizard--the-resume-rule)
-for the worked transcript.
+still missing.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
@@ -72,9 +69,7 @@ hand:
    it, then shows the report.
 
 That is the same `incidents.create` and `incidents.investigate` path the
-correlation engine uses, so nothing about the run is a mock. Full journey and
-what it produces at each step:
-[`docs/capabilities.md`](docs/capabilities.md#manual-authorship--demoing-without-an-alert-source).
+correlation engine uses, so nothing about the run is a mock.
 
 ### Or just the CLI
 
@@ -107,40 +102,7 @@ setup (providers, harnesses, configuration, commands) lives at
 npm install -g prismalens@latest
 ```
 
-Your data stays where it is. PrismaLens keeps everything under `~/.prismalens`
-(override with `PRISMALENS_WORKSPACE_DIR`) and never asks you to export, re-import,
-or reset it.
-
-From v0.5.0 — the release that adds the local app (`pl up`) and its database —
-that guarantee has a mechanism behind it. Starting the app applies any pending
-database migrations **in place**, and before it writes to a database that already
-holds data it takes a backup alongside it as `prismalens.db.bak-<timestamp>`.
-Migration history is append-only, so a newer release can advance an older
-database whenever the history that database recorded matches the migrations the
-release ships. If that history has drifted or is incomplete, `pl up` stops and
-tells you how to reconcile it — it does not guess, and it does not write:
-
-```console
-$ pl up
-Backed up /home/you/.prismalens/prismalens.db to /home/you/.prismalens/prismalens.db.bak-1785959532898 before migrating.
-Applying migration 20260910084500_add_postmortem_owner…
-Database migrated: 20260910084500_add_postmortem_owner
-```
-
-The reverse does not hold, and PrismaLens refuses rather than guesses. Downgrade
-onto a database a newer release already migrated and it stops without touching
-your data:
-
-```console
-$ pl up
-Database migration refused [version-skew]
-The database at /home/you/.prismalens/prismalens.db was written by a newer PrismaLens:
-it records a migration this build does not ship (20260910084500_add_postmortem_owner).
-Nothing was applied. Upgrade PrismaLens (`npm install -g prismalens@latest`), or point
-PRISMALENS_WORKSPACE_DIR at a different directory to start fresh.
-```
-
-(Migration names above are illustrative — `pl up` and its database land in v0.5.0.)
+PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructions and database migration details are documented at **[docs.prismalens.io](https://docs.prismalens.io)**.
 
 ## How it works
 
@@ -186,63 +148,16 @@ PRISMALENS_WORKSPACE_DIR at a different directory to start fresh.
 | `packages/worker` | The per-run investigation child the API's dispatch loop forks. |
 
 Only `packages/cli` is published, under the name `prismalens`. Everything else
-is `private: true` and travels INSIDE that one tarball as bundled dependencies:
-`scripts/pack-cli.mjs` copies each built package into
-`node_modules/@prismalens/<name>` and GENERATES the third-party dependency
-union those copies resolve against. Read that script's header before changing
-anything about packaging — it carries the reasoning, the installed layout, and
-the two invariants that fail the pack.
-
-What that actually produces:
-
-```console
-$ node scripts/pack-cli.mjs
-==> copy closure (9): @prismalens/api, @prismalens/auth, @prismalens/config,
-    @prismalens/contracts, @prismalens/database, @prismalens/engine,
-    @prismalens/integrations, @prismalens/logger, @prismalens/worker
-==> generated dependency union: 41 third-party packages
-==> import scan: every bare specifier resolves
-==> packages/cli/dist-pack/prismalens-0.4.0.tgz  1.25 MB, 536 entries
-    bundleDependencies survived; no workspace:/catalog: strings
-
-$ tar -tzf packages/cli/dist-pack/prismalens-0.4.0.tgz
-package/dist/bin/prismalens.js                       # the pl / prismalens bin
-package/node_modules/@prismalens/api/dist/src/main.js # NestJS, imported by pl up
-package/node_modules/@prismalens/api/public/index.html          # the dashboard
-package/node_modules/@prismalens/worker/dist/index.js  # forked per investigation
-package/node_modules/@prismalens/database/prisma/sqlite/schema/20260803122809_init/migration.sql
-package/node_modules/@prismalens/engine/package.json
-...                                                          # 536 entries total
-```
-
-The 9 copied packages are `bundleDependencies`; the 41 third-party packages are
-ordinary `dependencies` that npm installs beside them — which is exactly where
-the copied packages' imports resolve, because Node resolution walks upward.
+is `private: true` and travels INSIDE that one tarball as bundled dependencies.
 
 ## Development
 
-```bash
-pnpm install
-
-pnpm build           # turbo build across the workspace
-pnpm test            # turbo test across the workspace
-pnpm --filter @prismalens/frontend test:e2e # Playwright against the dev stack (needs ports 3000 and 3001 free)
-pnpm pack            # build the published tarball (scripts/pack-cli.mjs)
-sh scripts/packed-smoke.sh packages/cli/dist-pack # install it clean and boot `pl up` against it
-pnpm typecheck       # turbo typecheck across the workspace
-pnpm format-and-lint # biome check
-```
-
-To work on the CLI specifically, see
-[`packages/cli/README.md`](packages/cli/README.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing workflows, and contribution guidelines. To work on the CLI specifically, see [`packages/cli/README.md`](packages/cli/README.md).
 
 ## Links
 
 - Site: [prismalens.io](https://prismalens.io)
 - Docs: [docs.prismalens.io](https://docs.prismalens.io)
-- [Alert correlation & suppression](docs/alert-correlation.md) — the waterfall,
-  rule actions, and how to un-suppress an alert
-- [Capability catalog](docs/capabilities.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [VERSIONING.md](VERSIONING.md)
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
@@ -252,3 +167,4 @@ To work on the CLI specifically, see
 
 [Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). The hosted cloud /
 enterprise edition is a separate, proprietary product.
+
