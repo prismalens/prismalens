@@ -315,9 +315,8 @@ test.describe("#280 — the investigation stream panel", () => {
 		await fanOut();
 		await shot("stream-panel-dark");
 
-		// Error: a canonical `error` row. The detail route swaps the panel for
-		// the polling-fallback card while the stream status IS error, so the row
-		// is only visible once a later event moves the status off it.
+		// Error: a canonical `error` row in the live stream panel. An in-stream
+		// error event over a healthy connection renders as an error row in the stream panel.
 		await reloadInto(page, panel, "dark");
 		const failing = eventFactory("b0");
 		await deliver(page, failing.agentStep("scout", "Mapping payment services"));
@@ -328,5 +327,125 @@ test.describe("#280 — the investigation stream panel", () => {
 		).toBeVisible();
 		await page.waitForLoadState("networkidle");
 		await shot("stream-panel-error");
+
+		// Failed: an in-stream canonical error event followed by done marker
+		// renders the failure indicator in the panel header (default light & dark).
+		await reloadInto(page, panel, "light");
+		const terminalFailLight = eventFactory("b0");
+		await deliver(
+			page,
+			terminalFailLight.agentStep("scout", "Mapping payment services"),
+		);
+		await deliver(
+			page,
+			terminalFailLight.failure("harness lost the tool socket"),
+		);
+		await page.evaluate(
+			(payload) => window.__liveStream.deliver(payload),
+			JSON.stringify({ type: "done" }),
+		);
+		await page.waitForLoadState("networkidle");
+		await shot("stream-panel-failed-default");
+
+		await reloadInto(page, panel, "dark");
+		const terminalFailDark = eventFactory("b0");
+		await deliver(
+			page,
+			terminalFailDark.agentStep("scout", "Mapping payment services"),
+		);
+		await deliver(
+			page,
+			terminalFailDark.failure("harness lost the tool socket"),
+		);
+		await page.evaluate(
+			(payload) => window.__liveStream.deliver(payload),
+			JSON.stringify({ type: "done" }),
+		);
+		await page.waitForLoadState("networkidle");
+		await shot("stream-panel-failed-dark");
+
+		// SSE failure fallback affordance (#462): default (light) and dark
+		await reloadInto(page, panel, "light");
+		await page.evaluate(() => window.__liveStream.fail());
+		const fallbackLight = page.getByTestId("investigation-fallback-panel");
+		await expect(fallbackLight).toBeVisible({ timeout: 20_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("investigation-progress-error");
+
+		await reloadInto(page, panel, "dark");
+		await page.evaluate(() => window.__liveStream.fail());
+		const fallbackDark = page.getByTestId("investigation-fallback-panel");
+		await expect(fallbackDark).toBeVisible({ timeout: 20_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("investigation-progress-dark");
+	});
+
+	test("renders terminal failed state when stream carried error before done marker (#462)", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const root = eventFactory("root");
+		await deliver(page, root.agentStep("scout", "Mapping services"));
+		await deliver(page, root.failure("harness lost the tool socket"));
+		await page.evaluate(
+			(payload) => window.__liveStream.deliver(payload),
+			JSON.stringify({ type: "done" }),
+		);
+
+		await expect(panel).toBeVisible();
+		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(0);
+		await expect(
+			panel.getByText("Error: harness lost the tool socket"),
+		).toBeVisible();
+	});
+
+	test("renders in-stream canonical error events inside the stream panel (#462)", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const root = eventFactory("root");
+		await deliver(page, root.agentStep("scout", "Mapping services"));
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(1);
+
+		// An in-stream error event arrives over the connected stream
+		await deliver(page, root.failure("harness lost the tool socket"));
+
+		// The stream panel stays visible and renders the error event row
+		await expect(panel).toBeVisible();
+		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(0);
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(2);
+		await expect(
+			panel.getByText("Error: harness lost the tool socket"),
+		).toBeVisible();
+
+		// Subsequent events on the same stream continue rendering in the panel
+		await deliver(page, root.agentStep("scout", "Retrying with fallback tool"));
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
+		await expect(
+			panel.getByTestId("stream-event-row").last(),
+		).toContainText("Retrying with fallback tool");
+	});
+
+	test("swaps to the polling fallback card with explicit affordance when SSE transport fails (#462)", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const root = eventFactory("root");
+		await deliver(page, root.agentStep("scout", "Mapping services"));
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(1);
+
+		// Trigger SSE failure
+		await page.evaluate(() => window.__liveStream.fail());
+
+		// The stream panel is swapped for the polling fallback card
+		await expect(panel).toHaveCount(0);
+		const fallbackPanel = page.getByTestId("investigation-fallback-panel");
+		await expect(fallbackPanel).toBeVisible({ timeout: 20_000 });
+		await expect(fallbackPanel.getByTestId("stream-fallback-badge")).toHaveText(
+			"Polling",
+		);
+		await expect(
+			fallbackPanel.getByTestId("stream-fallback-message"),
+		).toHaveText("Live stream unavailable — polling for progress");
 	});
 });

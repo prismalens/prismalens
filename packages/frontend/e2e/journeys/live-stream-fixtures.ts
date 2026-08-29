@@ -51,13 +51,21 @@ export async function serveAsRunning(
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${investigationId}`,
 		async (route) => {
-			const response = await route.fetch();
-			const body = (await response.json()) as Record<string, unknown>;
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({ ...body, status: "running" }),
-			});
+			try {
+				const response = await route.fetch();
+				const body = (await response.json()) as Record<string, unknown>;
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ ...body, status: "running" }),
+				});
+			} catch (error) {
+				if (page.isClosed()) {
+					return;
+				}
+				await route.abort().catch(() => {});
+				throw error;
+			}
 		},
 	);
 }

@@ -33,7 +33,7 @@ import { INITIAL_TAIL_FOLLOW, nextTailFollow } from "@/lib/stream-autoscroll";
 interface InvestigationStreamPanelProps {
 	events: CanonicalEvent[];
 	latestText: string | null;
-	status: "idle" | "connecting" | "streaming" | "completed" | "error";
+	status: "idle" | "connecting" | "streaming" | "completed" | "failed";
 }
 
 /**
@@ -94,8 +94,8 @@ export function InvestigationStreamPanel({
 						{status === "completed" && (
 							<CheckCircle className="h-4 w-4 text-green-500" />
 						)}
-						{status === "error" && (
-							<AlertTriangle className="h-4 w-4 text-amber-500" />
+						{status === "failed" && (
+							<AlertTriangle className="h-4 w-4 text-red-500" />
 						)}
 						Investigation Progress
 						{isMultiBranch && (
