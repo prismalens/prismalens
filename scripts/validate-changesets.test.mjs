@@ -761,3 +761,117 @@ test("ignores non-publishable packages named in deleted changesets during releas
 		cleanup();
 	}
 });
+
+// --- Pre mode release PR tests ---
+
+function makePreReleasePr(
+	dir,
+	{ alsoTouchSource = false, bumpVersion = true } = {},
+) {
+	writeFileSync(
+		join(dir, ".changeset", "pre.json"),
+		JSON.stringify({
+			mode: "pre",
+			tag: "rc",
+			initialVersions: { prismalens: "0.1.0" },
+			changesets: [],
+		}),
+	);
+	writeFileSync(
+		join(dir, ".changeset", "rc-fix.md"),
+		'---\n"prismalens": minor\n---\n\nRC feature.\n',
+	);
+	runGit(dir, ["add", "."]);
+	runGit(dir, ["commit", "-m", "chore: enter pre mode with changeset"]);
+
+	runGit(dir, ["checkout", "-b", "changeset-release/main"]);
+	writeFileSync(
+		join(dir, ".changeset", "pre.json"),
+		JSON.stringify({
+			mode: "pre",
+			tag: "rc",
+			initialVersions: { prismalens: "0.1.0" },
+			changesets: ["rc-fix"],
+		}),
+	);
+	if (bumpVersion) {
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({ name: "prismalens", version: "0.2.0-rc.0" }),
+		);
+		writeFileSync(
+			join(dir, "packages", "cli", "CHANGELOG.md"),
+			"# prismalens\n\n## 0.2.0-rc.0\n\n### Minor Changes\n\n- RC feature.\n",
+		);
+	} else {
+		writeFileSync(
+			join(dir, "packages", "cli", "package.json"),
+			JSON.stringify({
+				name: "prismalens",
+				version: "0.1.0",
+				dependencies: { lodash: "^4.17.21" },
+			}),
+		);
+	}
+	if (alsoTouchSource) {
+		writeFileSync(
+			join(dir, "packages", "api", "src", "index.ts"),
+			"export const app = 'smuggled';\n",
+		);
+	}
+	runGit(dir, ["add", "-A"]);
+	runGit(dir, ["commit", "-m", "chore: version packages (pre mode)"]);
+}
+
+test("exempts a Version Packages release PR in pre mode and says why", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makePreReleasePr(dir);
+		const res = runValidator(dir);
+		assert.equal(res.status, 0, `expected exit 0, stderr: ${res.stderr}`);
+		assert.match(res.stdout, /release PR/i);
+		assert.match(res.stdout, /\.changeset\/rc-fix\.md/);
+		assert.match(res.stdout, /packages\/cli\/package\.json/);
+		assert.doesNotMatch(res.stderr, /No changeset found/);
+	} finally {
+		cleanup();
+	}
+});
+
+test("refuses a pre-mode release PR that also edits real source", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makePreReleasePr(dir, { alsoTouchSource: true });
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(res.stderr, /packages\/api\/src\/index\.ts/);
+		assert.match(
+			res.stderr,
+			/release-PR exemption does not apply: 1 changed file\(s\)/,
+		);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
+
+test("fails when a pre-mode release PR consumes a changeset without bumping version", () => {
+	const { dir, cleanup } = createRepoFixture();
+	try {
+		makePreReleasePr(dir, { bumpVersion: false });
+		const res = runValidator(dir);
+		assert.equal(res.status, 1, "expected non-zero exit code");
+		assert.match(
+			res.stderr,
+			/No changeset found for changes to publishable packages\./,
+		);
+		assert.match(res.stderr, /release-PR exemption does not apply/);
+		assert.doesNotMatch(res.stdout, /release PR/i);
+	} finally {
+		cleanup();
+	}
+});
