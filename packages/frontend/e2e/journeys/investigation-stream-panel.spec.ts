@@ -336,10 +336,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		await page.waitForLoadState("networkidle");
 		await shot("investigation-progress-error");
 
-		await setTheme(page, "dark");
-		await expect(page.getByTestId("investigation-stream-panel")).toBeVisible({
-			timeout: 20_000,
-		});
+		await reloadInto(page, panel, "dark");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackDark = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackDark).toBeVisible({ timeout: 20_000 });
