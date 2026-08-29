@@ -72,7 +72,7 @@ every pull request and on pushes to `main`. It is **not a required check yet** �
 required when the last 20 `main`-branch runs are green *and* none of them consumed a Playwright
 retry, and once the storm-intake spec has landed. The rationale, the promotion trigger, and the
 journey-by-journey coverage matrix live in
-[`docs/ui-flows-and-e2e-strategy.md`](docs/ui-flows-and-e2e-strategy.md).
+[`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md).
 
 Two things to know before running it locally:
 
@@ -586,7 +586,7 @@ is no npm token secret to rotate or leak.
 
 The same steps can be run manually from a local checkout as a fallback:
 `pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
-pnpm publint` → `pnpm pack && sh scripts/packed-smoke.sh packages/cli/dist-pack`
+pnpm publint` → `pnpm run pack && sh scripts/packed-smoke.sh packages/cli/dist-pack`
 → `pnpm changeset:publish` → `git push --follow-tags`.
 
 Everything else in `packages/` stays `private: true` and is never published on

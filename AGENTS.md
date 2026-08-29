@@ -72,7 +72,7 @@ An implementation spec for frontend work that omits these deliverables is incomp
 start implementation until they are added. Requirement 2 replaced an append-to-a-local-file
 ledger on 2026-08-09; that file is frozen, and the operator's side of this — walking a
 milestone, auditing for PRs that forgot the label — is now
-[`docs/ux-review-walkthrough.md`](docs/ux-review-walkthrough.md).
+[`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md).
 
 ### Screenshots
 

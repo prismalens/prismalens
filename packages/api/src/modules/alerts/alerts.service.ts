@@ -123,8 +123,8 @@ export class AlertsService {
 	/**
 	 * Create an alert.
 	 *
-	 * On a `dedupKey` hit the #231 rulings decide between a counter bump, a flap
-	 * reopen, and a brand-new episode row — see `docs/alert-dedup-and-grouping.md`.
+	 * On a `dedupKey` hit, resolves to a counter bump, a flap reopen,
+	 * or a new episode row, per the #231 rulings.
 	 */
 	async create(dto: CreateAlertDto): Promise<Alert> {
 		const dedupKey = this.generateDedupKey(dto);

@@ -1,8 +1,7 @@
 # UI flow inventory & e2e strategy
 
-The app's counterpart to [`capabilities.md`](./capabilities.md). Where the capability catalog
-answers *what can a user accomplish*, this document answers *how do they move through the app to
-do it, what states can that surface be in, and is any of it verified by a test*.
+This document answers *how users move through the app, what states each surface can be in, and what is verified by tests*.
+
 
 Two things live here:
 
@@ -46,7 +45,7 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 ✅-shaped claim the suite could make, it still does not make. See [What the specs actually
 prove](#what-the-specs-actually-prove).
 
-Every capability in [`capabilities.md`](./capabilities.md) has a row above except **C4 (CLI local
+Every capability has a row above except **C4 (CLI local
 investigation loop)**, which is a CLI surface with no frontend journey by definition — it is
 covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwright.
 
@@ -409,7 +408,7 @@ Two further structural facts about the harness:
 - **It binds a frontend and an API port with `reuseExistingServer: false`**, so it cannot share
   them with a running dev stack. Since #286 those ports are overridable — the defaults are still
   3000 and 3001, but `PRISMALENS_FRONTEND_PORT` and `PRISMALENS_PORT` move both the servers and
-  the `baseURL`, so a run no longer has to take down `pnpm dev`:
+  the `baseURL`, so a run does not take down `pnpm dev`:
 
   ```bash
   PRISMALENS_FRONTEND_PORT=3200 PRISMALENS_PORT=3201 \
@@ -629,6 +628,4 @@ One follow-up worth filing, not blocking:
   when `/rules` gave C8 a surface at all.
 - **Coverage is audited at each milestone**, alongside the operator's UX ledger walkthrough
   (AGENTS.md, *Frontend changes carry a design gate*). The matrix is the audit's input.
-- When capabilities move in [`capabilities.md`](./capabilities.md), check whether a journey row
-  moves with them. The two documents describe the same product from different angles and are
-  expected to agree.
+
