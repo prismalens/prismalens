@@ -25,7 +25,6 @@ import type {
 } from "@prismalens/contracts";
 import type { LucideIcon } from "lucide-react";
 import { Brain, Cog, Compass, Wrench } from "lucide-react";
-import type { CSSProperties } from "react";
 import type { Edge, Node } from "reactflow";
 import { MarkerType } from "reactflow";
 
@@ -38,8 +37,6 @@ export interface AgentStyle {
 	border: string;
 	textColor: string;
 	iconColor: string;
-	/** Inline `--agent-*` values the class strings above read; spread onto `style`. */
-	cssVars: CSSProperties;
 	displayName: string;
 	icon: LucideIcon;
 }
@@ -66,6 +63,79 @@ export interface TransformResult {
 // DYNAMIC AGENT STYLING
 // =============================================================================
 
+export interface AgentPalette {
+	bg: string;
+	border: string;
+	textColor: string;
+	iconColor: string;
+	hue: number;
+}
+
+/**
+ * Bounded, statically-written palettes selected by hash bucket (#408).
+ * Every class string appears verbatim in source so Tailwind's scanner finds it.
+ * Colors follow @prismalens/design-tokens vocabulary (indigo, purple, emerald,
+ * amber, sky, rose, cyan, violet) with high contrast in both light and dark modes.
+ */
+export const AGENT_PALETTES: readonly AgentPalette[] = [
+	{
+		bg: "bg-indigo-50 dark:bg-indigo-950/60",
+		border: "border-indigo-200 dark:border-indigo-800",
+		textColor: "text-indigo-900 dark:text-indigo-100",
+		iconColor: "text-indigo-600 dark:text-indigo-400",
+		hue: 235,
+	},
+	{
+		bg: "bg-purple-50 dark:bg-purple-950/60",
+		border: "border-purple-200 dark:border-purple-800",
+		textColor: "text-purple-900 dark:text-purple-100",
+		iconColor: "text-purple-600 dark:text-purple-400",
+		hue: 280,
+	},
+	{
+		bg: "bg-emerald-50 dark:bg-emerald-950/60",
+		border: "border-emerald-200 dark:border-emerald-800",
+		textColor: "text-emerald-900 dark:text-emerald-100",
+		iconColor: "text-emerald-600 dark:text-emerald-400",
+		hue: 160,
+	},
+	{
+		bg: "bg-amber-50 dark:bg-amber-950/60",
+		border: "border-amber-200 dark:border-amber-800",
+		textColor: "text-amber-900 dark:text-amber-100",
+		iconColor: "text-amber-600 dark:text-amber-400",
+		hue: 40,
+	},
+	{
+		bg: "bg-sky-50 dark:bg-sky-950/60",
+		border: "border-sky-200 dark:border-sky-800",
+		textColor: "text-sky-900 dark:text-sky-100",
+		iconColor: "text-sky-600 dark:text-sky-400",
+		hue: 200,
+	},
+	{
+		bg: "bg-rose-50 dark:bg-rose-950/60",
+		border: "border-rose-200 dark:border-rose-800",
+		textColor: "text-rose-900 dark:text-rose-100",
+		iconColor: "text-rose-600 dark:text-rose-400",
+		hue: 350,
+	},
+	{
+		bg: "bg-cyan-50 dark:bg-cyan-950/60",
+		border: "border-cyan-200 dark:border-cyan-800",
+		textColor: "text-cyan-900 dark:text-cyan-100",
+		iconColor: "text-cyan-600 dark:text-cyan-400",
+		hue: 190,
+	},
+	{
+		bg: "bg-violet-50 dark:bg-violet-950/60",
+		border: "border-violet-200 dark:border-violet-800",
+		textColor: "text-violet-900 dark:text-violet-100",
+		iconColor: "text-violet-600 dark:text-violet-400",
+		hue: 260,
+	},
+] as const;
+
 /**
  * Generate a consistent hash from a string
  * Used for deterministic color generation based on agent name
@@ -77,6 +147,19 @@ function hashString(str: string): number {
 		hash |= 0;
 	}
 	return Math.abs(hash);
+}
+
+/**
+ * Select a palette bucket for an agent (#408, #473).
+ * Known roster agents receive distinct static palette entries; dynamic names fall back to hash buckets.
+ */
+export function getAgentPalette(agentName: string): AgentPalette {
+	const rosterIndex = (AGENT_IDS as readonly string[]).indexOf(agentName);
+	if (rosterIndex !== -1) {
+		return AGENT_PALETTES[rosterIndex % AGENT_PALETTES.length];
+	}
+	const hash = hashString(agentName);
+	return AGENT_PALETTES[hash % AGENT_PALETTES.length];
 }
 
 /**
@@ -93,28 +176,14 @@ function formatAgentName(name: string): string {
 }
 
 /**
- * The hue travels as an inline CSS variable — Tailwind extracts class names as
- * static source text, so an interpolated one yields no rule. Plain `dark:` is
- * correct here: `app.css` rebinds the variant to the app's `.dark` class (#423).
+ * Generate agent styling by selecting a static palette bucket based on agent name hash (#408).
+ * All class names are statically declared so Tailwind compiler extracts them to CSS.
  */
 function generateAgentStyle(agentName: string): AgentStyle {
-	const hash = hashString(agentName);
-	const hue = hash % 360;
+	const palette = getAgentPalette(agentName);
 
 	return {
-		bg: "bg-(--agent-bg) dark:bg-(--agent-bg-dark)",
-		border: "border-(--agent-border) dark:border-(--agent-border-dark)",
-		textColor: "text-(--agent-text) dark:text-(--agent-text-dark)",
-		iconColor: "text-(--agent-icon)",
-		cssVars: {
-			"--agent-bg": `hsl(${hue}, 70%, 95%)`,
-			"--agent-bg-dark": `hsl(${hue}, 40%, 15%)`,
-			"--agent-border": `hsl(${hue}, 60%, 60%)`,
-			"--agent-border-dark": `hsl(${hue}, 50%, 40%)`,
-			"--agent-text": `hsl(${hue}, 80%, 30%)`,
-			"--agent-text-dark": `hsl(${hue}, 70%, 70%)`,
-			"--agent-icon": `hsl(${hue}, 70%, 45%)`,
-		} as CSSProperties,
+		...palette,
 		displayName: formatAgentName(agentName),
 		icon: Cog,
 	};
@@ -171,9 +240,10 @@ export function getAgentMiniMapColor(
 	agentName: string,
 	theme: "light" | "dark" = "light",
 ): string {
-	const hash = hashString(agentName);
-	const hue = hash % 360;
-	return theme === "dark" ? `hsl(${hue}, 50%, 40%)` : `hsl(${hue}, 70%, 85%)`;
+	const palette = getAgentPalette(agentName);
+	return theme === "dark"
+		? `hsl(${palette.hue}, 50%, 40%)`
+		: `hsl(${palette.hue}, 70%, 85%)`;
 }
 
 // =============================================================================

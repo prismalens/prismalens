@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { AGENT_IDS } from "@prismalens/config/agents";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	AGENT_PALETTES,
 	getAgentMiniMapColor,
+	getAgentPalette,
+	getAgentStyle,
 	transformLiveEventsToCanvas,
 } from "./transform-live-events";
 
@@ -239,4 +243,86 @@ describe("getAgentMiniMapColor", () => {
 		expect(color).toMatch(/^hsl\(\d+,\s*70%,\s*85%\)$/);
 	});
 });
+
+describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
+	it("defines statically-written class strings across all palette buckets", () => {
+		expect(AGENT_PALETTES.length).toBeGreaterThanOrEqual(6);
+		for (const palette of AGENT_PALETTES) {
+			expect(palette.bg).toMatch(/^bg-[a-z]+-50 dark:bg-[a-z]+-950/);
+			expect(palette.border).toMatch(/^border-[a-z]+-200 dark:border-[a-z]+-800/);
+			expect(palette.textColor).toMatch(/^text-[a-z]+-900 dark:text-[a-z]+-100/);
+			expect(palette.iconColor).toMatch(/^text-[a-z]+-600 dark:text-[a-z]+-400/);
+		}
+	});
+
+	it("returns deterministic styling for known registered agents", () => {
+		const scoutStyle1 = getAgentStyle("scout");
+		const scoutStyle2 = getAgentStyle("scout");
+
+		expect(scoutStyle1).toEqual(scoutStyle2);
+		expect(scoutStyle1.displayName).toBe("Scout");
+		expect(scoutStyle1.bg).toContain("bg-");
+		expect(scoutStyle1.border).toContain("border-");
+		expect(scoutStyle1.textColor).toContain("text-");
+		expect(scoutStyle1.iconColor).toContain("text-");
+	});
+
+	it("formats unregistered agent names and falls back gracefully", () => {
+		const style = getAgentStyle("custom_pipeline_worker");
+		expect(style.displayName).toBe("Custom Pipeline Worker");
+		expect(style.bg).toContain("bg-");
+		expect(style.border).toContain("border-");
+		expect(style.textColor).toContain("text-");
+		expect(style.iconColor).toContain("text-");
+	});
+
+	it("derives MiniMap colour and canvas palette entry from the same bucket", () => {
+		const agentNames = [
+			"scout",
+			"analyst",
+			"resolver",
+			"custom_pipeline_worker",
+			"arbitrary_agent_123",
+		];
+
+		for (const agentName of agentNames) {
+			const palette = getAgentPalette(agentName);
+			const style = getAgentStyle(agentName);
+			const lightMiniMap = getAgentMiniMapColor(agentName, "light");
+			const darkMiniMap = getAgentMiniMapColor(agentName, "dark");
+
+			expect(lightMiniMap).toBe(`hsl(${palette.hue}, 70%, 85%)`);
+			expect(darkMiniMap).toBe(`hsl(${palette.hue}, 50%, 40%)`);
+			expect(style.bg).toBe(palette.bg);
+			expect(style.border).toBe(palette.border);
+			expect(style.textColor).toBe(palette.textColor);
+			expect(style.iconColor).toBe(palette.iconColor);
+		}
+	});
+
+	it("assigns distinct palette entries across the registered agent roster", () => {
+		const palettes = AGENT_IDS.map((id) => getAgentPalette(id));
+		const uniquePalettes = new Set(palettes);
+		expect(uniquePalettes.size).toBe(AGENT_IDS.length);
+	});
+
+	it("assigns distinct MiniMap colors across the registered agent roster", () => {
+		const lightColors = AGENT_IDS.map((id) => getAgentMiniMapColor(id, "light"));
+		const uniqueLightColors = new Set(lightColors);
+		expect(uniqueLightColors.size).toBe(AGENT_IDS.length);
+
+		const darkColors = AGENT_IDS.map((id) => getAgentMiniMapColor(id, "dark"));
+		const uniqueDarkColors = new Set(darkColors);
+		expect(uniqueDarkColors.size).toBe(AGENT_IDS.length);
+	});
+
+	it("resolves unrostered agent names deterministically through hash buckets", () => {
+		const unregisteredName = "custom_dynamic_worker";
+		const palette1 = getAgentPalette(unregisteredName);
+		const palette2 = getAgentPalette(unregisteredName);
+		expect(palette1).toEqual(palette2);
+		expect(AGENT_PALETTES).toContain(palette1);
+	});
+});
+
 
