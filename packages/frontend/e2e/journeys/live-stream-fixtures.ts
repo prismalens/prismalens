@@ -59,8 +59,12 @@ export async function serveAsRunning(
 					contentType: "application/json",
 					body: JSON.stringify({ ...body, status: "running" }),
 				});
-			} catch {
-				// Suppress abort errors if page closes or test ends while fetch is in flight
+			} catch (error) {
+				if (page.isClosed()) {
+					return;
+				}
+				await route.abort().catch(() => {});
+				throw error;
 			}
 		},
 	);
