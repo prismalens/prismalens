@@ -150,9 +150,14 @@ function hashString(str: string): number {
 }
 
 /**
- * Select a palette bucket deterministically from agent name hash (#408, #473).
+ * Select a palette bucket for an agent (#408, #473).
+ * Known roster agents receive distinct static palette entries; dynamic names fall back to hash buckets.
  */
 export function getAgentPalette(agentName: string): AgentPalette {
+	const rosterIndex = (AGENT_IDS as readonly string[]).indexOf(agentName);
+	if (rosterIndex !== -1) {
+		return AGENT_PALETTES[rosterIndex % AGENT_PALETTES.length];
+	}
 	const hash = hashString(agentName);
 	return AGENT_PALETTES[hash % AGENT_PALETTES.length];
 }

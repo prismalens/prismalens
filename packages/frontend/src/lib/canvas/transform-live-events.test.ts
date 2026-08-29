@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { AGENT_IDS } from "@prismalens/config/agents";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
@@ -298,5 +299,30 @@ describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
 			expect(style.iconColor).toBe(palette.iconColor);
 		}
 	});
+
+	it("assigns distinct palette entries across the registered agent roster", () => {
+		const palettes = AGENT_IDS.map((id) => getAgentPalette(id));
+		const uniquePalettes = new Set(palettes);
+		expect(uniquePalettes.size).toBe(AGENT_IDS.length);
+	});
+
+	it("assigns distinct MiniMap colors across the registered agent roster", () => {
+		const lightColors = AGENT_IDS.map((id) => getAgentMiniMapColor(id, "light"));
+		const uniqueLightColors = new Set(lightColors);
+		expect(uniqueLightColors.size).toBe(AGENT_IDS.length);
+
+		const darkColors = AGENT_IDS.map((id) => getAgentMiniMapColor(id, "dark"));
+		const uniqueDarkColors = new Set(darkColors);
+		expect(uniqueDarkColors.size).toBe(AGENT_IDS.length);
+	});
+
+	it("resolves unrostered agent names deterministically through hash buckets", () => {
+		const unregisteredName = "custom_dynamic_worker";
+		const palette1 = getAgentPalette(unregisteredName);
+		const palette2 = getAgentPalette(unregisteredName);
+		expect(palette1).toEqual(palette2);
+		expect(AGENT_PALETTES).toContain(palette1);
+	});
 });
+
 
