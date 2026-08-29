@@ -142,7 +142,7 @@ It never partially applies. Each of these leaves the database exactly as found:
 | `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
 | `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
 | `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore a *validated* `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI |
-| `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below) |
+| `incomplete-migration` | a row is started-but-unfinished on SQLite (reachable only via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below). `prisma migrate resolve --rolled-back` clears the ledger row only without reverting schema changes, and is correct only when confirmed that no schema changes occurred or after manually reverting partial schema changes |
 | `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
 
 Before applying anything to a database that already holds data, the runner takes
@@ -163,6 +163,52 @@ Reject it if any `finished_at` is NULL while `rolled_back_at` is NULL (that is t
 `incomplete-migration` state again), or if the names are not a leading subsequence
 of the migration directories this build ships. Only then copy it over
 `prismalens.db` and start the app.
+
+`prisma migrate resolve --rolled-back` writes `rolled_back_at` into `_prisma_migrations`
+without reverting schema changes. Because the runner computes pending migrations by
+filtering for `rolled_back_at === null`, a rolled-back migration runs again on the
+next start against whatever schema state remains. Using `--rolled-back` is correct only
+when confirmed that the migration failed before applying schema changes, or after
+manually reverting partial schema changes first. Restoring a validated backup is the
+remedy when schema state is not certain.
+
+### Refuse-and-report on duplicate data
+
+When a migration introduces a new unique index on populated tables (such as `account(issuer, accountId)` in `20260826180000_account_issuer_account_id_unique`), pre-existing duplicate records cause the migration to **hard-stop and refuse to apply**. Automatic de-duplication is rejected by policy because deleting auth records unattended is unsafe. Neither lineage constructs a `MigrationError` for duplicate data.
+
+What the operator sees:
+- **PostgreSQL (`prisma migrate deploy`):** The PL/pgSQL pre-flight check raises an exception naming the offending `(issuer, accountId)` pairs, row IDs, and counts:
+  ```
+  Cannot create unique index on "account"("issuer", "accountId"): duplicate records found:
+    - issuer="local:credential", accountId="dup_acc_100" (rows: a_cred_1, a_cred_2, count: 2)
+  ```
+  Prisma records the migration in `_prisma_migrations` with `finished_at` set to NULL. Subsequent runs of `prisma migrate deploy` abort with P3009 until this record is marked as rolled back.
+- **SQLite (`pl up` / embedded runner):** The migration fails with a raw `SqliteError: UNIQUE constraint failed: account.issuer, account.accountId` and rolls back atomically, leaving the database and ledger untouched. Closing that gap in the runner is tracked as #496 ("db: the SQLite migration lineage refuses duplicate Account rows without reporting them").
+
+What to do:
+1. Run the diagnostic query to inspect the duplicate rows:
+   - SQLite:
+     ```console
+     $ sqlite3 ~/.prismalens/prismalens.db \
+         "SELECT issuer, accountId, GROUP_CONCAT(id, ', ') AS ids, COUNT(*) AS count
+          FROM account
+          GROUP BY issuer, accountId
+          HAVING COUNT(*) > 1;"
+     ```
+   - PostgreSQL:
+     ```sql
+     SELECT "issuer", "accountId", string_agg("id"::text, ', ') AS ids, COUNT(*) AS count
+     FROM "account"
+     GROUP BY "issuer", "accountId"
+     HAVING COUNT(*) > 1;
+     ```
+2. Manually resolve the duplicate records (e.g. re-assigning ownership or removing invalid stale accounts after human inspection).
+3. On PostgreSQL, mark the failed migration record as rolled back before re-deploying:
+   ```console
+   $ pnpm exec prisma migrate resolve --rolled-back 20260826180000_account_issuer_account_id_unique --config prisma.config.ts
+   ```
+   SQLite does not require this step because the embedded runner rolls back atomically without recording a failed ledger row.
+4. Re-run `pl up` (SQLite) or `pnpm exec prisma migrate deploy --config prisma.config.ts` (PostgreSQL).
 
 ### Recovering a database that drifted
 
