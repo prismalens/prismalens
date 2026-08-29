@@ -40,9 +40,11 @@ run them.
 
 ## Implementation specs must declare docs impact
 
-Every implementation spec handed to a coding agent must name a **Docs surfaces** deliverable: the specific files (README.md section, docs/ page, CLI --help text, mage note) the change is expected to update — or state explicitly "none affected because …". A spec without either is incomplete; do not start implementation until it's added.
+Every implementation spec handed to a coding agent must name a **Docs surfaces** deliverable: the specific files (README.md section, docs.prismalens.io page, CLI --help text, mage note) the change is expected to update, or state explicitly "none affected because …". A spec without either is incomplete; do not start implementation until it's added.
 
 Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
+
+README files in this repository follow a three-tier model. The root `README.md` is the project's front page for orientation, quick start instructions, and the monorepo layout. As the npm landing page for the published `prismalens` package, `packages/cli/README.md` stands alone with installation steps, a short quick start, a list of commands with a one-line description each, and a link to the website; flags, configuration keys, environment variables, and per-command reference material live on docs.prismalens.io. Every other package README under `packages/` carries only a short description of what the package is and a link to the website. An implementation spec that covers feature detail, configuration keys, or reference material names the corresponding page on docs.prismalens.io instead of a package README.
 
 ## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 

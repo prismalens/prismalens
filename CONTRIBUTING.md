@@ -767,6 +767,34 @@ $ git push origin main
 # (Release workflow on main runs `pnpm changeset:version`, bumping packages/cli to 0.5.0, deleting changesets & pre.json, and publishing to latest tag upon merge)
 ```
 
+## Documentation and milestone exit gates
+
+Product documentation lives on the documentation website at
+[docs.prismalens.io](https://docs.prismalens.io), built from the source repository
+[`prismalens/prismalens.io`](https://github.com/prismalens/prismalens.io). This repository carries
+only the root `README.md`, package `README.md` files, and contributor process
+documentation.
+
+Every release milestone (`R1` through `R5`) carries three standing exit issues
+created when the milestone is created. All three carry the `post-release` label
+and are assigned to that milestone:
+
+- `docs: RN (<Name>) exit criteria`. The milestone does not close until
+  docs.prismalens.io documents every command, flag, and configuration key shipped
+  in the release, with input and output symmetry, validated links on the built
+  site, and an adversarial docs review.
+- `live-test: RN (<Name>) exit gate`. A scripted live test runs against the
+  packed tarball, not the source tree, across incident scenarios relevant to the
+  release.
+- `release: RN (<Name>)`. The release checklist itself, covering changesets,
+  prerelease verification against npm, closure of the docs and live-test exit
+  issues, and narrative release notes.
+
+In these exit issues, "Docs" means the published website at docs.prismalens.io.
+Repository markdown files and package READMEs do not satisfy the documentation
+gate. A release can have a complete repository README and still fail the gate if
+shipped features lack published documentation on the website.
+
 ## Reporting bugs and requesting features
 
 Use the issue templates. For anything security-sensitive, **do not open a public
