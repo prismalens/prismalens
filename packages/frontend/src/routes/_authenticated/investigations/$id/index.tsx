@@ -85,9 +85,9 @@ function InvestigationDetailPage() {
 		).nodes.filter((node) => node.type === "agent").length;
 	}, [events, investigation]);
 
-	// When stream completes, refetch investigation data
+	// When stream completes or fails, refetch investigation data
 	useEffect(() => {
-		if (stream.status === "completed") {
+		if (stream.status === "completed" || stream.status === "failed") {
 			queryClient.invalidateQueries({
 				queryKey: investigationKeys.detail(investigationId),
 			});

@@ -315,7 +315,7 @@ describe("useInvestigationStream", () => {
 		});
 	});
 
-	it("transitions status to completed on { type: 'done' } marker", async () => {
+	it("transitions status to failed on { type: 'done' } marker when error occurred", async () => {
 		let latestHookState: ReturnType<typeof useInvestigationStream> | undefined;
 
 		function TestComponent({
@@ -361,7 +361,138 @@ describe("useInvestigationStream", () => {
 			source.emitMessage({ type: "done" });
 		});
 
+		expect(latestHookState?.status).toBe("failed");
+		expect(source.closed).toBe(true);
+
+		await act(async () => {
+			root.unmount();
+		});
+	});
+
+	it("transitions status to completed on { type: 'done' } marker for a clean stream", async () => {
+		let latestHookState: ReturnType<typeof useInvestigationStream> | undefined;
+
+		function TestComponent({
+			id,
+			enabled,
+		}: { id: string; enabled: boolean }) {
+			const state = useInvestigationStream(id, { enabled });
+			latestHookState = state;
+			return null;
+		}
+
+		const root = createRoot(container as unknown as HTMLElement);
+
+		await act(async () => {
+			root.render(
+				React.createElement(TestComponent, {
+					id: "inv-clean",
+					enabled: true,
+				}),
+			);
+		});
+
+		const source = MockEventSource.instances[0];
+
+		const stepEvent: CanonicalEvent = {
+			kind: "agent_step",
+			runId: "run-clean",
+			branchId: "root",
+			path: [],
+			seq: 0,
+			label: "scout",
+			text: "Mapping services",
+			toolCalls: [],
+			ts: "2026-08-22T00:00:00Z",
+		};
+		await act(async () => {
+			source.emitMessage(stepEvent);
+		});
+		expect(latestHookState?.status).toBe("streaming");
+
+		await act(async () => {
+			source.emitMessage({ type: "done" });
+		});
+
 		expect(latestHookState?.status).toBe("completed");
+		expect(source.closed).toBe(true);
+
+		await act(async () => {
+			root.unmount();
+		});
+	});
+
+	it("transitions status to failed even if the canonical error event was evicted past MAX_EVENTS", async () => {
+		let latestHookState: ReturnType<typeof useInvestigationStream> | undefined;
+
+		function TestComponent({
+			id,
+			enabled,
+		}: { id: string; enabled: boolean }) {
+			const state = useInvestigationStream(id, { enabled });
+			latestHookState = state;
+			return null;
+		}
+
+		const root = createRoot(container as unknown as HTMLElement);
+
+		await act(async () => {
+			root.render(
+				React.createElement(TestComponent, {
+					id: "inv-evict",
+					enabled: true,
+				}),
+			);
+		});
+
+		const source = MockEventSource.instances[0];
+
+		// 1. Deliver an early error event
+		const errorEvent: CanonicalEvent = {
+			kind: "error",
+			runId: "run-evict",
+			branchId: "root",
+			path: [],
+			seq: 0,
+			label: null,
+			message: "early failure in step 0",
+			ts: "2026-08-22T00:00:00Z",
+		};
+		await act(async () => {
+			source.emitMessage(errorEvent);
+		});
+		expect(latestHookState?.status).toBe("streaming");
+
+		// 2. Deliver 205 subsequent steps to exceed MAX_EVENTS (200) and evict the error event
+		for (let i = 1; i <= 205; i++) {
+			await act(async () => {
+				source.emitMessage({
+					kind: "agent_step",
+					runId: "run-evict",
+					branchId: "root",
+					path: [],
+					seq: i,
+					label: "scout",
+					text: `Step ${i}`,
+					toolCalls: [],
+					ts: "2026-08-22T00:00:01Z",
+				});
+			});
+		}
+
+		// Verify that events array is capped at 200 and error event has been evicted from state
+		expect(latestHookState?.events).toHaveLength(200);
+		expect(
+			latestHookState?.events.some((e) => e.kind === "error"),
+		).toBe(false);
+
+		// 3. Deliver done marker
+		await act(async () => {
+			source.emitMessage({ type: "done" });
+		});
+
+		// Sticky error flag ensures status still resolves to "failed"
+		expect(latestHookState?.status).toBe("failed");
 		expect(source.closed).toBe(true);
 
 		await act(async () => {

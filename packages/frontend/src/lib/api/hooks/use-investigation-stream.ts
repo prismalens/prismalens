@@ -9,7 +9,13 @@ const MAX_EVENTS = 200;
 
 interface StreamState {
 	events: CanonicalEvent[];
-	status: "idle" | "connecting" | "streaming" | "completed" | "error";
+	status:
+		| "idle"
+		| "connecting"
+		| "streaming"
+		| "completed"
+		| "failed"
+		| "error";
 	/** Latest agent "thinking" text, for the header summary line. */
 	latestText: string | null;
 }
@@ -45,6 +51,8 @@ export function useInvestigationStream(
 			return;
 		}
 
+		let hadError = false;
+
 		// A new subscription is a new run's stream: anything already in state
 		// belongs to the investigation just navigated away from (#280).
 		setState({ ...INITIAL_STATE, status: "connecting" });
@@ -58,17 +66,20 @@ export function useInvestigationStream(
 			try {
 				const parsed = JSON.parse(e.data) as CanonicalEvent | DoneMarker;
 
-				// Terminal marker — the stream ended cleanly.
+				// Terminal marker: the stream ended cleanly.
 				if ("type" in parsed && parsed.type === "done") {
 					setState((prev) => ({
 						...prev,
-						status: "completed",
+						status: hadError ? "failed" : "completed",
 					}));
 					source.close();
 					return;
 				}
 
 				const event = parsed as CanonicalEvent;
+				if (event.kind === "error") {
+					hadError = true;
+				}
 				setState((prev) => {
 					const events = [...prev.events, event];
 					return {
