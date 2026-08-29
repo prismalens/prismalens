@@ -68,6 +68,7 @@ export interface AgentPalette {
 	border: string;
 	textColor: string;
 	iconColor: string;
+	hue: number;
 }
 
 /**
@@ -82,48 +83,56 @@ export const AGENT_PALETTES: readonly AgentPalette[] = [
 		border: "border-indigo-200 dark:border-indigo-800",
 		textColor: "text-indigo-900 dark:text-indigo-100",
 		iconColor: "text-indigo-600 dark:text-indigo-400",
+		hue: 235,
 	},
 	{
 		bg: "bg-purple-50 dark:bg-purple-950/60",
 		border: "border-purple-200 dark:border-purple-800",
 		textColor: "text-purple-900 dark:text-purple-100",
 		iconColor: "text-purple-600 dark:text-purple-400",
+		hue: 280,
 	},
 	{
 		bg: "bg-emerald-50 dark:bg-emerald-950/60",
 		border: "border-emerald-200 dark:border-emerald-800",
 		textColor: "text-emerald-900 dark:text-emerald-100",
 		iconColor: "text-emerald-600 dark:text-emerald-400",
+		hue: 160,
 	},
 	{
 		bg: "bg-amber-50 dark:bg-amber-950/60",
 		border: "border-amber-200 dark:border-amber-800",
 		textColor: "text-amber-900 dark:text-amber-100",
 		iconColor: "text-amber-600 dark:text-amber-400",
+		hue: 40,
 	},
 	{
 		bg: "bg-sky-50 dark:bg-sky-950/60",
 		border: "border-sky-200 dark:border-sky-800",
 		textColor: "text-sky-900 dark:text-sky-100",
 		iconColor: "text-sky-600 dark:text-sky-400",
+		hue: 200,
 	},
 	{
 		bg: "bg-rose-50 dark:bg-rose-950/60",
 		border: "border-rose-200 dark:border-rose-800",
 		textColor: "text-rose-900 dark:text-rose-100",
 		iconColor: "text-rose-600 dark:text-rose-400",
+		hue: 350,
 	},
 	{
 		bg: "bg-cyan-50 dark:bg-cyan-950/60",
 		border: "border-cyan-200 dark:border-cyan-800",
 		textColor: "text-cyan-900 dark:text-cyan-100",
 		iconColor: "text-cyan-600 dark:text-cyan-400",
+		hue: 190,
 	},
 	{
 		bg: "bg-violet-50 dark:bg-violet-950/60",
 		border: "border-violet-200 dark:border-violet-800",
 		textColor: "text-violet-900 dark:text-violet-100",
 		iconColor: "text-violet-600 dark:text-violet-400",
+		hue: 260,
 	},
 ] as const;
 
@@ -138,6 +147,14 @@ function hashString(str: string): number {
 		hash |= 0;
 	}
 	return Math.abs(hash);
+}
+
+/**
+ * Select a palette bucket deterministically from agent name hash (#408, #473).
+ */
+export function getAgentPalette(agentName: string): AgentPalette {
+	const hash = hashString(agentName);
+	return AGENT_PALETTES[hash % AGENT_PALETTES.length];
 }
 
 /**
@@ -158,8 +175,7 @@ function formatAgentName(name: string): string {
  * All class names are statically declared so Tailwind compiler extracts them to CSS.
  */
 function generateAgentStyle(agentName: string): AgentStyle {
-	const hash = hashString(agentName);
-	const palette = AGENT_PALETTES[hash % AGENT_PALETTES.length];
+	const palette = getAgentPalette(agentName);
 
 	return {
 		...palette,
@@ -219,9 +235,10 @@ export function getAgentMiniMapColor(
 	agentName: string,
 	theme: "light" | "dark" = "light",
 ): string {
-	const hash = hashString(agentName);
-	const hue = hash % 360;
-	return theme === "dark" ? `hsl(${hue}, 50%, 40%)` : `hsl(${hue}, 70%, 85%)`;
+	const palette = getAgentPalette(agentName);
+	return theme === "dark"
+		? `hsl(${palette.hue}, 50%, 40%)`
+		: `hsl(${palette.hue}, 70%, 85%)`;
 }
 
 // =============================================================================

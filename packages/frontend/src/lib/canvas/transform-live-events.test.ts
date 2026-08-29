@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	AGENT_PALETTES,
 	getAgentMiniMapColor,
+	getAgentPalette,
 	getAgentStyle,
 	transformLiveEventsToCanvas,
 } from "./transform-live-events";
@@ -272,6 +273,30 @@ describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
 		expect(style.border).toContain("border-");
 		expect(style.textColor).toContain("text-");
 		expect(style.iconColor).toContain("text-");
+	});
+
+	it("derives MiniMap colour and canvas palette entry from the same bucket", () => {
+		const agentNames = [
+			"scout",
+			"analyst",
+			"resolver",
+			"custom_pipeline_worker",
+			"arbitrary_agent_123",
+		];
+
+		for (const agentName of agentNames) {
+			const palette = getAgentPalette(agentName);
+			const style = getAgentStyle(agentName);
+			const lightMiniMap = getAgentMiniMapColor(agentName, "light");
+			const darkMiniMap = getAgentMiniMapColor(agentName, "dark");
+
+			expect(lightMiniMap).toBe(`hsl(${palette.hue}, 70%, 85%)`);
+			expect(darkMiniMap).toBe(`hsl(${palette.hue}, 50%, 40%)`);
+			expect(style.bg).toBe(palette.bg);
+			expect(style.border).toBe(palette.border);
+			expect(style.textColor).toBe(palette.textColor);
+			expect(style.iconColor).toBe(palette.iconColor);
+		}
 	});
 });
 

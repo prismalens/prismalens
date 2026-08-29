@@ -8,10 +8,12 @@
  */
 
 export {
+	type AgentPalette,
 	type AgentStyle,
 	type CanvasNode,
 	formatExecutionTime,
 	getAgentMiniMapColor,
+	getAgentPalette,
 	getAgentStyle,
 	type TransformResult,
 	transformLiveEventsToCanvas,
