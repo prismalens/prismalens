@@ -8,7 +8,7 @@
  * Correlation nests its predicates under `match` (`alertMatchesRule` in
  * `correlation.service.ts` returns false without it); alert mapping reads a flat
  * object (`matchesRule` in `alert-mapping.service.ts`). Keep them in step with
- * `docs/ui-flows-and-e2e-strategy.md` J15 and `e2e/journeys/rules-management.spec.ts`.
+ * the J15 rules-management journey and `e2e/journeys/rules-management.spec.ts`.
  */
 
 export const CORRELATION_CRITERIA_SAMPLE = JSON.stringify(

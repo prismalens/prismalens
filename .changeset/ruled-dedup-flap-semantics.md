@@ -11,4 +11,5 @@ Before this, the three layers that deduplicate an alert agreed on nothing, and n
 - **The GitHub webhook path gets delivery-GUID idempotency**, matching the generic and Render paths. `processGithubWebhook` now routes through the same `ingestEvent` wrapper keyed on `X-GitHub-Delivery`, which GitHub reuses across redeliveries.
 - **CLI grouping records cross-run flap linkage.** A refire arriving after its investigation completed still starts a new run — nothing is resurrected — but the new run's group record now carries `previousRunId` when a prior run for the same dedupe key finished inside the flap window. Persisted via the CLI store's own additive-migration path; existing `prismalens-cli.db` files gain the column in place.
 
-The semantics, including a worked lifecycle example, are documented in `docs/alert-dedup-and-grouping.md`, and every ruled branch is pinned by regression tests.
+Every ruled branch of these semantics is pinned by regression tests.
+
