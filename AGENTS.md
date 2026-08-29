@@ -44,7 +44,7 @@ Every implementation spec handed to a coding agent must name a **Docs surfaces**
 
 Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
 
-Package README files under `packages/` carry only a short description and a link to the website. They are not valid docs surfaces for feature detail, configuration keys, or reference material. A spec that covers those areas names the corresponding page on docs.prismalens.io instead. The root `README.md` remains valid for front-page-level orientation and quick start material.
+README files in this repository follow a three-tier model. The root `README.md` is the project's front page for orientation, quick start instructions, and the monorepo layout. As the npm landing page for the published `prismalens` package, `packages/cli/README.md` stands alone with installation steps, a short quick start, a list of commands with a one-line description each, and a link to the website; flags, configuration keys, environment variables, and per-command reference material live on docs.prismalens.io. Every other package README under `packages/` carries only a short description of what the package is and a link to the website. An implementation spec that covers feature detail, configuration keys, or reference material names the corresponding page on docs.prismalens.io instead of a package README.
 
 ## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 
