@@ -1,12 +1,12 @@
 # Versioning
 
 prismalens is pre-1.0. Versions use semver's shape, but read against the
-[roadmap](ROADMAP.md) — they track *which phase shipped*, not a stability
+[GitHub milestones](https://github.com/prismalens/prismalens/milestones). They track *which phase shipped*, not a stability
 promise.
 
 ## 0.x
 
-- **Minor (`0.N.0`)** — a phase release from the [roadmap](ROADMAP.md). Each
+- **Minor (`0.N.0`)**, a phase release from the [GitHub milestones](https://github.com/prismalens/prismalens/milestones). Each
   phase ships as one minor: `0.1.0` is Phase 1, "The 3 AM Release". The next
   phase is the next minor.
 - **Patch (`0.N.P`)** — fixes and small corrections landed between phases, in a
