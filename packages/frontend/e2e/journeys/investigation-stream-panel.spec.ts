@@ -315,9 +315,8 @@ test.describe("#280 — the investigation stream panel", () => {
 		await fanOut();
 		await shot("stream-panel-dark");
 
-		// Error: a canonical `error` row. The detail route swaps the panel for
-		// the polling-fallback card while the stream status IS error, so the row
-		// is only visible once a later event moves the status off it.
+		// Error: a canonical `error` row in the live stream panel. An in-stream
+		// error event over a healthy connection renders as an error row in the stream panel.
 		await reloadInto(page, panel, "dark");
 		const failing = eventFactory("b0");
 		await deliver(page, failing.agentStep("scout", "Mapping payment services"));
@@ -348,7 +347,34 @@ test.describe("#280 — the investigation stream panel", () => {
 		await shot("investigation-progress-dark");
 	});
 
-	test("swaps to the polling fallback card with explicit affordance when SSE fails (#462)", async ({
+	test("renders in-stream canonical error events inside the stream panel (#462)", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const root = eventFactory("root");
+		await deliver(page, root.agentStep("scout", "Mapping services"));
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(1);
+
+		// An in-stream error event arrives over the connected stream
+		await deliver(page, root.failure("harness lost the tool socket"));
+
+		// The stream panel stays visible and renders the error event row
+		await expect(panel).toBeVisible();
+		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(0);
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(2);
+		await expect(
+			panel.getByText("Error: harness lost the tool socket"),
+		).toBeVisible();
+
+		// Subsequent events on the same stream continue rendering in the panel
+		await deliver(page, root.agentStep("scout", "Retrying with fallback tool"));
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
+		await expect(
+			panel.getByTestId("stream-event-row").last(),
+		).toContainText("Retrying with fallback tool");
+	});
+
+	test("swaps to the polling fallback card with explicit affordance when SSE transport fails (#462)", async ({
 		page,
 	}) => {
 		const panel = await openConnectedPanel(page);

@@ -62,7 +62,7 @@ export function useInvestigationStream(
 				if ("type" in parsed && parsed.type === "done") {
 					setState((prev) => ({
 						...prev,
-						status: prev.status === "error" ? "error" : "completed",
+						status: "completed",
 					}));
 					source.close();
 					return;
@@ -74,12 +74,7 @@ export function useInvestigationStream(
 					return {
 						events:
 							events.length > MAX_EVENTS ? events.slice(-MAX_EVENTS) : events,
-						status:
-							event.kind === "report"
-								? "completed"
-								: event.kind === "error"
-									? "error"
-									: "streaming",
+						status: event.kind === "report" ? "completed" : "streaming",
 						latestText:
 							event.kind === "agent_step" && event.text.trim()
 								? event.text.trim()
