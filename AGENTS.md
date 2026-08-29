@@ -44,6 +44,8 @@ Every implementation spec handed to a coding agent must name a **Docs surfaces**
 
 Where a named surface explains three or more interacting parts (a resolution order, a topology, a state machine, a pipeline, a precedence rule), the spec must also say which concrete artifact will carry it — a worked example, a terminal transcript, a diagram, or (only if genuinely graphical) a screenshot with a stated invalidation trigger. Prose-only for that kind of surface is an incomplete spec.
 
+Package README files under `packages/` carry only a short description and a link to the website. They are not valid docs surfaces for feature detail, configuration keys, or reference material. A spec that covers those areas names the corresponding page on docs.prismalens.io instead. The root `README.md` remains valid for front-page-level orientation and quick start material.
+
 ## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 
 Every PR touching `packages/frontend` — regardless of which agent or session produces it:
