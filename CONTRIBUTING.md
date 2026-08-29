@@ -142,7 +142,7 @@ It never partially applies. Each of these leaves the database exactly as found:
 | `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
 | `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
 | `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore a *validated* `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI |
-| `incomplete-migration` | a row is started-but-unfinished (only reachable via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below) |
+| `incomplete-migration` | a row is started-but-unfinished on SQLite (reachable only via the Prisma CLI, not this runner) | restore a *validated* `prismalens.db.bak-*` (see below), or mark it rolled back with `pnpm exec prisma migrate resolve --rolled-back <migration-name>` |
 | `locked` | another PrismaLens process held the write lock for the whole retry budget | wait for it and retry |
 | `unique-constraint-violation` (refuse-and-report) | pre-existing duplicate rows violate a new unique index (e.g. `(issuer, accountId)` on `account`) | run the diagnostic query to identify duplicate rows (see *Refuse-and-report on duplicate data* below), resolve them manually, then re-run |
 
@@ -175,7 +175,8 @@ What the operator sees:
   Cannot create unique index on "account"("issuer", "accountId"): duplicate records found:
     - issuer="local:credential", accountId="dup_acc_100" (rows: a_cred_1, a_cred_2, count: 2)
   ```
-- **SQLite (`pl up` / embedded runner):** The migration fails with `SqliteError: UNIQUE constraint failed: account.issuer, account.accountId` and rolls back atomically, leaving the database untouched.
+  Prisma records the migration in `_prisma_migrations` with `finished_at` set to NULL. Subsequent runs of `prisma migrate deploy` abort with P3009 until this record is marked as rolled back.
+- **SQLite (`pl up` / embedded runner):** The migration fails with `SqliteError: UNIQUE constraint failed: account.issuer, account.accountId` and rolls back atomically, leaving the database and ledger untouched.
 
 What to do:
 1. Run the diagnostic query to inspect the duplicate rows:
@@ -195,7 +196,12 @@ What to do:
      HAVING COUNT(*) > 1;
      ```
 2. Manually resolve the duplicate records (e.g. re-assigning ownership or removing invalid stale accounts after human inspection).
-3. Re-run `pl up` or `prisma migrate deploy`.
+3. On PostgreSQL, mark the failed migration record as rolled back before re-deploying:
+   ```console
+   $ pnpm exec prisma migrate resolve --rolled-back 20260826180000_account_issuer_account_id_unique --config prisma.config.ts
+   ```
+   SQLite does not require this step because the embedded runner rolls back atomically without recording a failed ledger row.
+4. Re-run `pl up` (SQLite) or `pnpm exec prisma migrate deploy --config prisma.config.ts` (PostgreSQL).
 
 ### Recovering a database that drifted
 
