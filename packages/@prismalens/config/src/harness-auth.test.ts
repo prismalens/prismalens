@@ -154,11 +154,21 @@ describe("harness-auth resolver (ADR-0031)", () => {
 		it("finds an executable binary on PATH", () => {
 			const binDir = join(tempHome, "bin");
 			mkdirSync(binDir, { recursive: true });
-			const dummyBin = join(binDir, "dummy-test-bin");
-			writeFileSync(dummyBin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+			const binName = "dummy-test-bin";
+			// On win32, isOnPath only probes `bin + ext` for each PATHEXT entry —
+			// never the bare name — so the fixture needs a matching extension there.
+			const isWin = process.platform === "win32";
+			const ext = isWin ? ".CMD" : "";
+			const dummyBin = join(binDir, binName + ext);
+			writeFileSync(
+				dummyBin,
+				isWin ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n",
+				{ mode: 0o755 },
+			);
 			vi.stubEnv("PATH", binDir);
+			if (isWin) vi.stubEnv("PATHEXT", ".EXE;.CMD;.BAT;.COM");
 
-			expect(isOnPath("dummy-test-bin")).toBe(true);
+			expect(isOnPath(binName)).toBe(true);
 		});
 
 		it("returns false for nonexistent binary", () => {

@@ -8,7 +8,7 @@
  * network, no credentials, no real model.
  */
 import { generateObject } from "ai";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { synthesizeReport } from "./synthesize.js";
 
 vi.mock("ai", async (importOriginal) => {
@@ -17,6 +17,13 @@ vi.mock("ai", async (importOriginal) => {
 		...actual,
 		generateObject: vi.fn(),
 	};
+});
+
+// This package's vitest.config.ts sets no clearMocks/mockReset/restoreMocks, so
+// the module-level mock above accumulates calls across tests — without this,
+// the second test's `mock.calls[0]` would read the FIRST test's invocation.
+beforeEach(() => {
+	vi.mocked(generateObject).mockClear();
 });
 
 const CFG = {

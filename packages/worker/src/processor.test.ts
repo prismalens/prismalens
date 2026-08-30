@@ -11,7 +11,9 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { Logger } from "@prismalens/logger";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 
 // `buildRequest` reads the incident (and, for the #331 checkout mapping, the
 // service catalog) over oRPC; stub the client so request construction is
@@ -612,12 +614,20 @@ describe("processInvestigationJob schema validation", () => {
 });
 
 describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
+	beforeEach(() => {
+		// `buildRequest` reads `process.env.PRISMALENS_HARNESS` directly (unlike
+		// the harnessAuth opts, which are injected) — stub it absent by default so
+		// an ambient value on the host running the suite can't change which
+		// codepath a case exercises. Cases 4/5 override it after this runs.
+		vi.stubEnv("PRISMALENS_HARNESS", undefined);
+	});
+
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
 	});
 
-	it("W4 case 1: session-only (signed-in session, no key, no provider) ⇒ harness claude-code, synth.configured === false, no throw", async () => {
+	it("W4 case 1: session-only, credentials file present ⇒ verified, no unverified-session warning", async () => {
 		const tempHome = join(
 			os.tmpdir(),
 			`pl-w4-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -628,6 +638,7 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 			join(claudeDir, ".credentials.json"),
 			JSON.stringify({ token: "fixture-session" }),
 		);
+		const warnSpy = vi.spyOn(Logger.prototype, "warn");
 
 		try {
 			vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
@@ -659,7 +670,62 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 			expect(request.harness).toBe("claude-code");
 			expect(request.synth.configured).toBe(false);
 			expect(request.model).toBeUndefined();
+			// The credentials fixture is what makes `verified` true — this is the
+			// only observable difference the field drives (see case 1b for false).
+			expect(warnSpy).not.toHaveBeenCalledWith(
+				expect.stringContaining("unverified"),
+			);
 		} finally {
+			warnSpy.mockRestore();
+			try {
+				rmSync(tempHome, { recursive: true, force: true });
+			} catch {
+				// ignore cleanup errors
+			}
+		}
+	});
+
+	it("W4 case 1b: session-only, credentials file absent ⇒ unverified session warning", async () => {
+		const tempHome = join(
+			os.tmpdir(),
+			`pl-w4-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(tempHome, { recursive: true });
+		const warnSpy = vi.spyOn(Logger.prototype, "warn");
+
+		try {
+			vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => ({
+					ok: true,
+					json: async () => ({
+						provider: null,
+						model: null,
+						baseUrl: null,
+						credentials: {},
+						harness: "auto",
+					}),
+				})),
+			);
+
+			const { request } = await buildRequest(
+				{ incidentId: "inc-501-1b", investigationId: "inv-501-1b" },
+				"run-501-1b",
+				{
+					harnessAuth: {
+						homeDir: tempHome,
+						isOnPath: (bin) => bin === "claude",
+					},
+				},
+			);
+
+			expect(request.harness).toBe("claude-code");
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("unverified"),
+			);
+		} finally {
+			warnSpy.mockRestore();
 			try {
 				rmSync(tempHome, { recursive: true, force: true });
 			} catch {
