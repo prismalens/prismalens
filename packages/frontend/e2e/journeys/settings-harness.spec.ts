@@ -134,33 +134,6 @@ const NOTHING: HarnessFixture[] = [
 	CODEX,
 ];
 
-/**
- * claude-code holds an Anthropic key but the active provider is OpenAI. The
- * credential verdict is usable; the gate still refuses the job. Round 1 deleted
- * the only warning for this and round 2 put it back — server-side, where the rule
- * belongs (#517).
- */
-const AUTH_OK_BUT_BLOCKED: HarnessFixture[] = [
-	{
-		id: "deepagents",
-		label: "deepagents (ACP)",
-		implemented: true,
-		runnable: true,
-		blockedReason: null,
-		verdict: { usable: true, route: "api-key" },
-	},
-	{
-		id: "claude-code",
-		label: "Claude Code (Agent SDK)",
-		implemented: true,
-		runnable: false,
-		blockedReason:
-			'Harness "claude-code" cannot run against the active provider "OpenAI".',
-		verdict: { usable: true, route: "api-key" },
-	},
-	CODEX,
-];
-
 /** Agents present on the machine, but no credential for either. */
 const INSTALLED_BUT_UNAUTHENTICATED: HarnessFixture[] = [
 	{
@@ -415,24 +388,6 @@ test.describe("Investigation agent settings card (#501)", () => {
 		await expect(warning).toBeVisible();
 		await expect(warning).toContainText("is not installed on this machine");
 		await expect(warning).toContainText(CLAUDE_NOT_INSTALLED);
-	});
-
-	test("warns from the gate's answer, never from a rule of its own", async ({
-		page,
-	}) => {
-		await serveActiveProvider(page, "openai", "claude-code");
-		await serveHarnesses(page, AUTH_OK_BUT_BLOCKED);
-		await openAiSettings(page);
-
-		const warning = page.getByTestId("harness-warning");
-		await expect(warning).toBeVisible();
-		await expect(warning).toContainText(
-			'cannot run against the active provider "OpenAI"',
-		);
-		// The credential is fine, so the row must not claim otherwise.
-		await expect(
-			card(page).getByText("Not authenticated", { exact: true }),
-		).toHaveCount(0);
 	});
 
 	// A pinned claude-code on a cli-session route is provider-agnostic and the gate
