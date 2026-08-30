@@ -130,15 +130,28 @@ echo "==> a machine with no agent is told it is not installed, never to run 'cla
 # The clean-machine falsifier a developer box cannot run: node:24-slim carries no
 # agent binary, so this is the only place the not-installed verdict is real
 # rather than injected. The advice must name the gap the machine actually has.
-VERDICT_OUT=$(node -e "
-	const { createRequire } = require('node:module');
-	const req = createRequire('$SCRATCH/node_modules/prismalens/package.json');
-	const { resolveHarnessAuth } = req('@prismalens/config/harness-auth');
-	for (const id of ['claude-code', 'deepagents']) {
-		const v = resolveHarnessAuth(id, { apiKeyPresent: false });
-		console.log(id + '|' + (v.usable ? 'usable' : v.cause) + '|' + (v.reason ?? ''));
-	}
-" 2>&1) || fail "could not resolve harness verdicts from the packed install:
+#
+# Loaded as a real .mjs INSIDE the packed install, not via createRequire:
+# @prismalens/config is "type": "module" and its ./harness-auth subpath declares
+# only an "import" condition, so the CJS loader cannot reach it
+# (ERR_PACKAGE_PATH_NOT_EXPORTED). Anchoring the file in $PKG keeps the bare
+# specifier resolving through the package's own exports map — the same door the
+# worker goes through — instead of deep-linking past it into dist/.
+PROBE_MJS="$PKG/prismalens-smoke-verdicts.mjs"
+cat > "$PROBE_MJS" <<'VERDICTS'
+import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+
+for (const id of ["claude-code", "deepagents"]) {
+	const v = resolveHarnessAuth(id, { apiKeyPresent: false });
+	console.log(`${id}|${v.usable ? "usable" : v.cause}|${v.reason ?? ""}`);
+}
+VERDICTS
+set +e
+VERDICT_OUT=$(node "$PROBE_MJS" 2>&1)
+VERDICT_EXIT=$?
+set -e
+rm -f "$PROBE_MJS"
+[ "$VERDICT_EXIT" -eq 0 ] || fail "could not resolve harness verdicts from the packed install:
 $VERDICT_OUT"
 
 echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code verdict on a no-agent machine is not 'not-installed':
@@ -151,6 +164,7 @@ if echo "$VERDICT_OUT" | grep -qi "claude /login"; then
 	fail "a machine with no Claude CLI is still being told to run 'claude /login':
 $VERDICT_OUT"
 fi
+echo "    $(echo "$VERDICT_OUT" | head -1)"
 
 echo "==> investigate rejects garbage stdin with a usable error (no crash)"
 set +e
