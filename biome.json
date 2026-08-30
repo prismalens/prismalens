@@ -15,7 +15,8 @@
 			"!**/project.inlang",
 			"!packages/@prismalens/engine/eval/captures",
 			"!packages/frontend/src/app.css",
-			"!packages/@prismalens/design-tokens/css/tailwind-preset.css"
+			"!packages/@prismalens/design-tokens/css/tailwind-preset.css",
+			"!.changeset/pre.json"
 		]
 	},
 	"formatter": {
