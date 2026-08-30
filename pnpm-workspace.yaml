@@ -8,7 +8,7 @@ catalog:
   '@orpc/client': ^1.15.0
   '@orpc/contract': ^1.15.0
   '@orpc/openapi-client': ^1.15.0
-  '@types/node': ^26.1.2
+  '@types/node': ^26.2.0
   ai: ^7.0.68
   better-auth: ^1.7.1
   dotenv: ^17.4.2
