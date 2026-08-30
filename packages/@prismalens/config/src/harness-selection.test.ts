@@ -32,6 +32,7 @@ describe("resolveHarnessSelection — the shared gate (#518)", () => {
 	let tempHome: string;
 
 	beforeEach(() => {
+		vi.stubEnv("CLAUDE_CONFIG_DIR", undefined);
 		tempHome = join(
 			os.tmpdir(),
 			`pl-sel-${Date.now()}-${Math.random().toString(36).slice(2)}`,
