@@ -27,12 +27,7 @@ import {
 	pickServiceLabel,
 	resolveInvestigationCwd,
 } from "@prismalens/config";
-import {
-	HARNESS_AUTO_ORDER,
-	HARNESS_IDS,
-	HARNESS_REGISTRY,
-	type HarnessId,
-} from "@prismalens/config/harness";
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	resolveHarnessSelection,
 	speaksOpenAiProtocol,
