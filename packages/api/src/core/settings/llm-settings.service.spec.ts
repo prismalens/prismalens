@@ -430,5 +430,23 @@ describe("LlmSettingsService — active provider resolution", () => {
 			expect(deepagents?.runnable).toBe(false);
 			expect(deepagents?.blockedReason).not.toBeNull();
 		});
+
+		/**
+		 * Invalid PRISMALENS_HARNESS short-circuits every harness row (#516).
+		 */
+		it("reports invalid-env-harness failure for every row when PRISMALENS_HARNESS is invalid", async () => {
+			process.env.PRISMALENS_HARNESS = "bogus";
+			machine.installed = ["claude"];
+			givenSettings({});
+
+			const response = await service.getHarnessesStatus();
+
+			for (const harness of response.harnesses) {
+				expect(harness.runnable).toBe(false);
+				expect(harness.blockedReason).toContain(
+					'Invalid PRISMALENS_HARNESS="bogus"',
+				);
+			}
+		});
 	});
 });

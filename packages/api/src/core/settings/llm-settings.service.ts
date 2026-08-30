@@ -388,18 +388,22 @@ export class LlmSettingsService {
 	async getHarnessesStatus(): Promise<HarnessesResponse> {
 		const { provider, model } = await this.resolveActiveLlmConfig();
 		const input = this.selectionInput(provider, model);
+		const globalSelection = resolveHarnessSelection(input);
+		const invalidPin = globalSelection.failure === "invalid-env-harness";
 
 		const harnesses = HARNESS_IDS.map((id) => {
 			const descriptor = HARNESS_REGISTRY[id];
 			// Both answers come from the shared gate: `verdict` is why the credential
 			// is or is not there, `runnable` is whether a job pinned to this harness
-			// would actually start. Per-row probe ignores env pin (#516, #517).
+			// would actually start. Per-row probe ignores valid env pin (#516, #517).
 			const verdict = resolveHarnessAuthFor(id, input);
-			const selection = resolveHarnessSelection({
-				...input,
-				harness: id,
-				envHarness: undefined,
-			});
+			const selection = invalidPin
+				? globalSelection
+				: resolveHarnessSelection({
+						...input,
+						harness: id,
+						envHarness: undefined,
+					});
 			return {
 				id: descriptor.id,
 				label: descriptor.label,
