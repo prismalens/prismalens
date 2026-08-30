@@ -57,11 +57,11 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@ai-sdk/anthropic": "^4.0.39",
-		"@ai-sdk/google": "^4.0.45",
-		"@ai-sdk/groq": "^4.0.28",
-		"@ai-sdk/openai": "^4.0.43",
-		"@ai-sdk/openai-compatible": "^3.0.31",
+		"@ai-sdk/anthropic": "^4.0.44",
+		"@ai-sdk/google": "^4.0.54",
+		"@ai-sdk/groq": "^4.0.33",
+		"@ai-sdk/openai": "^4.0.50",
+		"@ai-sdk/openai-compatible": "^3.0.39",
 		"ai": "catalog:",
 		"consola": "^3.4.2",
 		"zod": "catalog:"
