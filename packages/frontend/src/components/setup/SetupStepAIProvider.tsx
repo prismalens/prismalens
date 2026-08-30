@@ -184,16 +184,19 @@ export function SetupStepAIProvider({
 	}
 
 	/**
-	 * No key, so nothing to save and nothing to test — `testConnection` calls the
-	 * provider API directly, which a Claude subscription does not authorize.
-	 * Persist anthropic-without-key and move on; the worker gate is the check.
+	 * Persist anthropic with a default model so the setup step completes (#516).
+	 * No key is saved or tested; the worker gate verifies CLI session auth.
 	 */
 	async function handleUseClaudeSession() {
 		resetFeedback();
 		try {
 			await updateSettings.mutateAsync({
 				activeProvider: "anthropic",
-				providers: { anthropic: {} },
+				providers: {
+					anthropic: {
+						model: model || LLM_PROVIDERS.anthropic.defaultModel,
+					},
+				},
 			});
 			onComplete();
 		} catch (err) {
