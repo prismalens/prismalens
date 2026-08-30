@@ -201,15 +201,28 @@ test.describe("Investigation agent settings card (#501)", () => {
 	test("warns on a harness/provider mismatch instead of rerouting", async ({
 		page,
 	}) => {
-		await serveActiveProvider(page, "openai");
+		await serveActiveProvider(page, "anthropic");
 		await serveHarnesses(page, KEYS_ONLY);
 		await openAiSettings(page);
 
-		await page.getByRole("radio", { name: "Claude Code (Agent SDK)" }).click();
+		await page.getByRole("radio", { name: "deepagents (ACP)" }).click();
 		const warning = page.getByTestId("harness-warning");
 		await expect(warning).toBeVisible();
-		await expect(warning).toContainText("runs against Anthropic");
-		await expect(warning).toContainText("OpenAI");
+		await expect(warning).toContainText("speaks the OpenAI protocol");
+		await expect(warning).toContainText("Anthropic");
+	});
+
+	// A pinned claude-code authenticates through its own cli-session route, so the
+	// Tier-1 provider does not gate it. Warning here would flag a working config.
+	test("stays quiet when claude-code is pinned against a non-Anthropic provider", async ({
+		page,
+	}) => {
+		await serveActiveProvider(page, "openai");
+		await serveHarnesses(page, SESSION_ONLY);
+		await openAiSettings(page);
+
+		await page.getByRole("radio", { name: "Claude Code (Agent SDK)" }).click();
+		await expect(page.getByTestId("harness-warning")).toHaveCount(0);
 	});
 
 	test("keeps the card usable when the status endpoint fails", async ({

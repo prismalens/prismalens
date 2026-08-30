@@ -231,6 +231,45 @@ describe("LlmSettingsService — active provider resolution", () => {
 			});
 		});
 
+		/**
+		 * The headline #501 journey: the wizard's keyless path persists anthropic
+		 * active with neither a key nor a model, and the setup step has to go green
+		 * on it — the worker runs exactly this config through the cli-session route.
+		 */
+		it("is true for a keyless anthropic config with NO model when a CLI session is usable", async () => {
+			mockHarnessAuth.resolveHarnessAuth.mockReturnValue({
+				usable: true,
+				route: "cli-session",
+				verified: true,
+			});
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "" } },
+					harness: "auto",
+				},
+			});
+
+			await expect(service.isActiveProviderUsable()).resolves.toBe(true);
+		});
+
+		it("is false for that config when the harness is pinned away from claude-code", async () => {
+			mockHarnessAuth.resolveHarnessAuth.mockReturnValue({
+				usable: true,
+				route: "cli-session",
+				verified: true,
+			});
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "" } },
+					harness: "deepagents",
+				},
+			});
+
+			await expect(service.isActiveProviderUsable()).resolves.toBe(false);
+		});
+
 		it("is true for a keyless provider with a model and no credential anywhere", async () => {
 			givenSettings({
 				llmSettings: {

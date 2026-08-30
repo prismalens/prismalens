@@ -47,9 +47,9 @@ const IMPLEMENTED_HARNESSES = Object.values(HARNESS_REGISTRY).filter(
 	(descriptor) => descriptor.implemented,
 );
 
-// Mirrors the worker's job-time compatibility gate (processor.ts
-// `speaksOpenAiProtocol` + the claude-code anthropic check). Duplicated because a
-// registry field for it is deferred — ADR-0031 §4; keep the two in step (#501).
+// Mirrors the worker's only job-time compatibility refusal (processor.ts
+// `speaksOpenAiProtocol`). Duplicated because a registry field for it is deferred
+// — ADR-0031 §4; keep the two in step (#501).
 const OPENAI_PROTOCOL_PROVIDERS: readonly LLMProviderId[] = [
 	"openai",
 	"ollama",
@@ -62,16 +62,15 @@ function providerName(provider: LLMProviderId): string {
 
 /**
  * Why an explicitly pinned harness cannot run against the active provider, or
- * null when it can. `auto` never lands here — it picks a compatible harness.
+ * null when it can. Only deepagents can mismatch: a pinned claude-code resolves
+ * through its own cli-session route whatever the Tier-1 provider is, so warning
+ * on that pairing would flag a working configuration (#501).
  */
 function describeMismatch(
 	harness: HarnessId,
 	activeProvider: LLMProviderId | null | undefined,
 ): string | null {
 	if (!activeProvider) return null;
-	if (harness === "claude-code" && activeProvider !== "anthropic") {
-		return `Claude Code runs against Anthropic. The active provider is ${providerName(activeProvider)}.`;
-	}
 	if (
 		harness === "deepagents" &&
 		!OPENAI_PROTOCOL_PROVIDERS.includes(activeProvider)

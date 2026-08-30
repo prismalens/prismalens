@@ -275,8 +275,8 @@ export class LlmSettingsService {
 	}
 
 	/**
-	 * Is the ACTIVE provider genuinely runnable — chosen, given a model, and
-	 * credentialled unless it is keyless or has an authenticated CLI session (ADR-0031)?
+	 * Is the ACTIVE provider genuinely runnable — chosen, and either credentialled
+	 * with a model, or backed by a Claude CLI session that needs neither (ADR-0031).
 	 * A key sitting in the env for some other provider is not configuration (PR #396 thread A).
 	 *
 	 * Deliberately does NOT call `getLlmEnvStatus()`: that pings Ollama over HTTP,
@@ -284,24 +284,25 @@ export class LlmSettingsService {
 	 * must stay cheap reads.
 	 */
 	async isActiveProviderUsable(): Promise<boolean> {
-		const { provider, model } = await this.resolveActiveLlmConfig();
-		if (!provider || !model) return false;
+		const { provider, model, harness } = await this.resolveActiveLlmConfig();
+		if (!provider) return false;
+
+		// A signed-in Claude CLI session runs an investigation with neither a key nor
+		// a model, so it is checked ahead of both guards — this predicate and the
+		// worker's job-time gate must agree on "usable" (ADR-0031, #501).
+		if (
+			provider === "anthropic" &&
+			(harness === "auto" || harness === "claude-code") &&
+			resolveHarnessAuth("claude-code", { apiKeyPresent: false }).usable
+		) {
+			return true;
+		}
+
+		if (!model) return false;
 		if (!providerRequiresApiKey(provider)) return true;
 
 		const credential = (await this.getLlmCredentialStatus())[provider];
-		const hasKey =
-			!!credential && (credential.hasDbKey || credential.hasEnvKey);
-		if (hasKey) return true;
-
-		// If provider is anthropic, check if a CLI session is usable (ADR-0031)
-		if (provider === "anthropic") {
-			const verdict = resolveHarnessAuth("claude-code", {
-				apiKeyPresent: false,
-			});
-			return verdict.usable;
-		}
-
-		return false;
+		return !!credential && (credential.hasDbKey || credential.hasEnvKey);
 	}
 
 	async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
