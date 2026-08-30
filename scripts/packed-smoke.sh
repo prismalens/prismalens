@@ -366,61 +366,67 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 			bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
 		} else {
 			ok("POST /incidents/:id/investigate", `status ${started.status}`);
-			// Evaluate the shared gate directly so copy edits cannot drift the check (#518, #516).
+			// Assumes clean-machine defaults; coupled to setup not storing credentials (#516).
 			const expected = resolveHarnessSelection({
 				provider: null,
 				apiKey: "",
 				model: null,
 				harness: "auto",
 			});
-			const expectedReason = "reason" in expected ? expected.reason : "";
-			// The child logs through pino to the inherited stdout under its own
-			// service name. That line can ONLY come from a process that forked,
-			// resolved its entrypoint and imported its whole dependency closure.
-			let forked = false;
-			let diagnosed = false;
-			for (let i = 0; i < 120 && !forked; i++) {
-				await sleep(1000);
-				const log = fs.readFileSync(bootLog, "utf8");
-				// A terminal credential failure is the EXPECTED verdict in a container
-				// with no credentials, and reaching it proves the whole chain: the
-				// child forked, imported its closure, called the API's internal
-				// endpoint over HTTP, parsed a real JSON answer, and reported back.
-				forked =
-					log.includes('"context":"InvestigationRun"') &&
-					Boolean(expectedReason) &&
-					log.includes(expectedReason);
-				if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
-					bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
-					diagnosed = true;
-					break;
+			if (expected.runnable) {
+				bad(
+					"forked-worker round trip",
+					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
+				);
+			} else {
+				const expectedReason = expected.reason;
+				// The child logs through pino to the inherited stdout under its own
+				// service name. That line can ONLY come from a process that forked,
+				// resolved its entrypoint and imported its whole dependency closure.
+				let forked = false;
+				let diagnosed = false;
+				for (let i = 0; i < 120 && !forked; i++) {
+					await sleep(1000);
+					const log = fs.readFileSync(bootLog, "utf8");
+					// A terminal credential failure is the EXPECTED verdict in a container
+					// with no credentials, and reaching it proves the whole chain: the
+					// child forked, imported its closure, called the API's internal
+					// endpoint over HTTP, parsed a real JSON answer, and reported back.
+					forked =
+						log.includes('"context":"InvestigationRun"') &&
+						log.includes(expectedReason);
+					if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
+						bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
+						diagnosed = true;
+						break;
+					}
+					if (/Cannot locate the investigation child entrypoint/.test(log)) {
+						bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+						diagnosed = true;
+						break;
+					}
+					if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+						const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+						bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
+						diagnosed = true;
+						break;
+					}
+					// A ROUND TRIP, not just a fork: the child calls back into this same
+					// process over oRPC. `fetch failed` means it dialled the wrong port —
+					// which is exactly what a fixed default does under `pl up --port N`.
+					if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
+						bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+						diagnosed = true;
+						break;
+					}
 				}
-				if (/Cannot locate the investigation child entrypoint/.test(log)) {
-					bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
-					diagnosed = true;
-					break;
+				if (forked) {
+					ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
+				} else if (!diagnosed) {
+					// Only when nothing more specific already fired — a diagnosed
+					// failure plus a generic timeout reads as two bugs, not one.
+					bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
 				}
-				if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-					const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-					bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
-					diagnosed = true;
-					break;
-				}
-				// A ROUND TRIP, not just a fork: the child calls back into this same
-				// process over oRPC. `fetch failed` means it dialled the wrong port —
-				// which is exactly what a fixed default does under `pl up --port N`.
-				if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
-					bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
-					diagnosed = true;
-					break;
-				}
-			}
-			if (forked) {
-				ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
-			} else if (!diagnosed) {
-				// Only when nothing more specific already fired — a diagnosed
-				// failure plus a generic timeout reads as two bugs, not one.
-				bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
 			}
 		}
 	}
