@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { LLM_PROVIDERS } from "@prismalens/config/llm";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -230,6 +231,54 @@ async function serveActiveProvider(
 					activeProvider: provider,
 					providers: { [provider]: { model: "seeded-model" } },
 					harness,
+				}),
+			});
+		},
+	);
+}
+
+/**
+ * The two reads the AI-provider tab blocks its whole render on. They are
+ * throttled per endpoint (60/60s per IP, shared by the entire single-worker
+ * run), so a test that loads the tab repeatedly must not spend that budget (#516).
+ */
+async function serveAiTabReads(page: Page): Promise<void> {
+	await page.route(
+		(url) => url.pathname === "/api/settings/llm/config",
+		async (route) => {
+			if (route.request().method() !== "GET") {
+				await route.fallback();
+				return;
+			}
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					activeProvider: null,
+					providers: {},
+					harness: "auto",
+				}),
+			});
+		},
+	);
+	await page.route(
+		(url) => url.pathname === "/api/settings/llm/env-status",
+		async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					providers: Object.fromEntries(
+						Object.values(LLM_PROVIDERS).map((provider) => [
+							provider.id,
+							{
+								hasApiKey: false,
+								envVarName: provider.envVar,
+								isReady: !provider.requiresApiKey,
+							},
+						]),
+					),
+					activeEnvProvider: null,
 				}),
 			});
 		},
@@ -549,17 +598,23 @@ test.describe("Design evidence (#501)", () => {
 	 */
 	test("settings card: default, dark, empty and error states", async ({
 		page,
+		baseURL,
 	}) => {
 		test.setTimeout(120_000);
 
-		// The suite runs authenticated from storageState, and clearCookies would
-		// drop that session — so seed the theme on the existing context instead.
-		await page.goto("/settings?tab=ai");
+		await serveAiTabReads(page);
 
+		// addCookies, not `document.cookie` from a loaded page: the old bootstrap
+		// navigation answered from the real machine and spent throttle budget the
+		// four states need (#516). clearCookies would drop the storageState session.
 		const themeOnly = async (theme: "light" | "dark") => {
-			await page.evaluate((value) => {
-				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
-			}, theme);
+			await page.context().addCookies([
+				{
+					name: "prismalens-theme",
+					value: theme,
+					url: baseURL as string,
+				},
+			]);
 		};
 
 		const shot = async (
