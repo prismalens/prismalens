@@ -414,5 +414,21 @@ describe("LlmSettingsService — active provider resolution", () => {
 			const serialized = JSON.stringify(await service.getHarnessesStatus());
 			expect(serialized).not.toContain("sk-ant-secret-value");
 		});
+
+		/**
+		 * Per-row evaluation must not be overridden by PRISMALENS_HARNESS (#516).
+		 */
+		it("evaluates each harness row independently when PRISMALENS_HARNESS is set", async () => {
+			process.env.PRISMALENS_HARNESS = "claude-code";
+			machine.installed = ["claude"];
+			givenSettings({});
+
+			const response = await service.getHarnessesStatus();
+			const deepagents = response.harnesses.find((h) => h.id === "deepagents");
+
+			expect(deepagents?.verdict.usable).toBe(false);
+			expect(deepagents?.runnable).toBe(false);
+			expect(deepagents?.blockedReason).not.toBeNull();
+		});
 	});
 });
