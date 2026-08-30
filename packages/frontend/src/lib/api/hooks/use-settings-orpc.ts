@@ -85,6 +85,30 @@ export function useTestLlmConnectionWithEnv() {
 }
 
 // =============================================================================
+// HARNESS STATUS
+// =============================================================================
+
+/**
+ * Query key factory for harness auth status
+ */
+export const harnessKeys = {
+	status: () => orpc.settings.harnesses.getHarnesses.key(),
+};
+
+/**
+ * Fetch per-harness auth verdicts (ADR-0031). The server resolves these from
+ * local machine evidence — key presence, binary on PATH, session file — so the
+ * verdicts move with the machine, not with the app (#501).
+ */
+export function useHarnesses() {
+	return useQuery(
+		orpc.settings.harnesses.getHarnesses.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+// =============================================================================
 // LLM CREDENTIAL MANAGEMENT
 // =============================================================================
 
