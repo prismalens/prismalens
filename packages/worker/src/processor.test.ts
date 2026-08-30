@@ -824,7 +824,10 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		expect(request.synth.apiKey).toBe(API_KEY);
 	});
 
-	it("W4 case 3: nothing configured ⇒ throws; message contains 'API key in Settings' and 'claude /login'", async () => {
+	// #518: this machine has no `claude` binary, so the old message's "sign in with
+	// the Claude CLI (claude /login)" named a command it does not have. It now says
+	// the CLI is not installed, and the key remedy stays.
+	it("W4 case 3: nothing configured ⇒ throws naming the missing binary, not a login", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => ({
@@ -850,8 +853,16 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 				},
 			),
 		).rejects.toThrowError(
-			/add an API key in Settings.*claude \/login/i,
+			/not found on PATH.*add an Anthropic API key in Settings/i,
 		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-3", investigationId: "inv-501-3" },
+				"run-501-3",
+				{ harnessAuth: { isOnPath: () => false } },
+			),
+		).rejects.not.toThrowError(/claude \/login/i);
 	});
 
 	it("W4 case 4: PRISMALENS_HARNESS=bogus ⇒ throws naming valid ids", async () => {

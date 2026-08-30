@@ -46,6 +46,8 @@ export const HarnessAuthVerdictSchema = z.union([
 	}),
 	z.object({
 		usable: z.literal(false),
+		/** Branch on this, never on `reason` — the backend owns the words (#518). */
+		cause: z.enum(["not-implemented", "not-installed", "not-authenticated"]),
 		reason: z.string(),
 	}),
 ]);
@@ -55,7 +57,15 @@ export const HarnessStatusSchema = z.object({
 	id: z.string(),
 	label: z.string(),
 	implemented: z.boolean(),
+	/** Why this harness does or does not hold a credential (#518). */
 	verdict: HarnessAuthVerdictSchema,
+	/**
+	 * Would a job pinned to this harness actually start? Answered by the shared
+	 * gate the worker runs, so the UI never re-derives it (#517).
+	 */
+	runnable: z.boolean(),
+	/** The gate's own message when it would not. */
+	blockedReason: z.string().nullable(),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 

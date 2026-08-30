@@ -8,7 +8,9 @@ import type {
 	RunFidelitySandbox,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
+import { FileText } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -224,12 +226,41 @@ function OverlaySection({
 	);
 }
 
+/**
+ * The report is the harness's own output, unsynthesized, because no Tier-1
+ * provider was configured (ADR-0031 R4). A supported free-tier outcome, not a
+ * failure. Keyed off the host-stamped `reportMode` field — never by matching
+ * text in the report body, which the model writes.
+ */
+function RawReportBanner() {
+	return (
+		<Alert className="md:col-span-2" data-testid="raw-report-banner">
+			<FileText className="h-4 w-4" />
+			<AlertTitle>Raw harness output</AlertTitle>
+			<AlertDescription>
+				No Tier-1 provider is configured for synthesis, so this is what the
+				investigation agent wrote, passed through unchanged.{" "}
+				<Link
+					to="/settings"
+					search={{ tab: "ai" }}
+					className="text-primary hover:underline"
+				>
+					Add a provider key in Settings
+				</Link>{" "}
+				to get synthesized reports.
+			</AlertDescription>
+		</Alert>
+	);
+}
+
 export function AnalysisTab({ investigation }: AnalysisTabProps) {
 	const report = investigation.report ?? null;
 	const overlay = investigation.overlay ?? null;
 
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
+			{report?.reportMode === "raw" && <RawReportBanner />}
+
 			{/* Root Cause */}
 			<Card>
 				<CardHeader>

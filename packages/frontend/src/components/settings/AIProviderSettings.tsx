@@ -48,6 +48,7 @@ import {
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import { type AgentMeta, AgentOverrideItem } from "./AgentOverrideItem";
+import { HarnessSettings } from "./HarnessSettings";
 import {
 	type ProviderInfo,
 	ProviderModelSelector,
@@ -680,6 +681,9 @@ export function AIProviderSettings() {
 					</div>
 				</CardContent>
 			</Card>
+
+			{/* Investigation agent (tier-2 harness) — #501 */}
+			<HarnessSettings />
 
 			{/* Per-Agent Overrides Card */}
 			<Card>

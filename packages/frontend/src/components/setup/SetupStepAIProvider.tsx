@@ -20,7 +20,14 @@
  */
 
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
-import { AlertCircle, Bot, CheckCircle, Loader2, Sparkles } from "lucide-react";
+import {
+	AlertCircle,
+	Bot,
+	CheckCircle,
+	Loader2,
+	Sparkles,
+	Terminal,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import {
 	type ProviderInfo,
@@ -40,6 +47,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+	useHarnesses,
 	useLlmCredentialStatus,
 	useLlmEnvStatus,
 	useLlmModels,
@@ -66,6 +74,7 @@ export function SetupStepAIProvider({
 	const { data: settings, isLoading: settingsLoading } = useLlmSettings();
 	const { data: modelsData, isLoading: modelsLoading } = useLlmModels();
 	const { data: credentialStatus } = useLlmCredentialStatus();
+	const { data: harnessData } = useHarnesses();
 
 	const saveCredential = useSaveLlmCredential();
 	const testConnection = useTestLlmConnectionWithEnv();
@@ -147,6 +156,18 @@ export function SetupStepAIProvider({
 		[envStatus?.providers],
 	);
 
+	/**
+	 * A signed-in Claude CLI session is a complete answer to this step — the
+	 * harness authenticates through it, no key involved (ADR-0031, #501). Reports
+	 * come back raw until a Tier-1 key exists, which is a supported free-tier state.
+	 */
+	const claudeSession = harnessData?.harnesses.find(
+		(harness) =>
+			harness.id === "claude-code" &&
+			harness.verdict.usable &&
+			harness.verdict.route === "cli-session",
+	);
+
 	const model = customModel || selectedModel;
 	const busy =
 		saveCredential.isPending ||
@@ -160,6 +181,31 @@ export function SetupStepAIProvider({
 	function resetFeedback() {
 		setError(null);
 		setTested(false);
+	}
+
+	/**
+	 * Persist anthropic with a default model so the setup step completes (#516).
+	 * No key is saved or tested; the worker gate verifies CLI session auth.
+	 */
+	async function handleUseClaudeSession() {
+		resetFeedback();
+		try {
+			await updateSettings.mutateAsync({
+				activeProvider: "anthropic",
+				providers: {
+					anthropic: {
+						model: LLM_PROVIDERS.anthropic.defaultModel,
+					},
+				},
+			});
+			onComplete();
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Could not save the Claude session as the provider. Try again.",
+			);
+		}
 	}
 
 	/**
@@ -257,6 +303,40 @@ export function SetupStepAIProvider({
 								{settings.providers[settings.activeProvider]?.model}
 							</Badge>
 						)}
+					</div>
+				)}
+
+				{claudeSession && (
+					<div
+						className="rounded-lg border border-primary/40 bg-primary/5 p-4 space-y-3"
+						data-testid="wizard-claude-session"
+					>
+						<div className="flex items-start gap-3">
+							<Terminal className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+							<div className="space-y-1">
+								<p className="font-medium">
+									Use your Claude subscription — no API key needed
+								</p>
+								<p className="text-sm text-muted-foreground">
+									PrismaLens found a signed-in Claude Code session on this
+									machine. Investigations run through it. Reports come back as
+									the agent wrote them until you add a provider key, which you
+									can do any time in Settings.
+								</p>
+							</div>
+						</div>
+						<Button
+							variant="outline"
+							onClick={handleUseClaudeSession}
+							disabled={busy}
+						>
+							{busy ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : (
+								<Terminal className="mr-2 h-4 w-4" />
+							)}
+							Use my Claude subscription
+						</Button>
 					</div>
 				)}
 

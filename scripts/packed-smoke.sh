@@ -126,6 +126,46 @@ set -e
 echo "$DOCTOR_OUT" | grep -qi "harness" || fail "doctor output does not mention the missing harness:
 $DOCTOR_OUT"
 
+echo "==> a machine with no agent is told it is not installed, never to run 'claude /login' (#518)"
+# The clean-machine falsifier a developer box cannot run: node:24-slim carries no
+# agent binary, so this is the only place the not-installed verdict is real
+# rather than injected. The advice must name the gap the machine actually has.
+#
+# Loaded as a real .mjs INSIDE the packed install, not via createRequire:
+# @prismalens/config is "type": "module" and its ./harness-auth subpath declares
+# only an "import" condition, so the CJS loader cannot reach it
+# (ERR_PACKAGE_PATH_NOT_EXPORTED). Anchoring the file in $PKG keeps the bare
+# specifier resolving through the package's own exports map — the same door the
+# worker goes through — instead of deep-linking past it into dist/.
+PROBE_MJS="$PKG/prismalens-smoke-verdicts.mjs"
+cat > "$PROBE_MJS" <<'VERDICTS'
+import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+
+for (const id of ["claude-code", "deepagents"]) {
+	const v = resolveHarnessAuth(id, { apiKeyPresent: false });
+	console.log(`${id}|${v.usable ? "usable" : v.cause}|${v.reason ?? ""}`);
+}
+VERDICTS
+set +e
+VERDICT_OUT=$(node "$PROBE_MJS" 2>&1)
+VERDICT_EXIT=$?
+set -e
+rm -f "$PROBE_MJS"
+[ "$VERDICT_EXIT" -eq 0 ] || fail "could not resolve harness verdicts from the packed install:
+$VERDICT_OUT"
+
+echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code verdict on a no-agent machine is not 'not-installed':
+$VERDICT_OUT"
+echo "$VERDICT_OUT" | grep -q "deepagents|not-installed|" || fail "deepagents verdict on a no-agent machine is not 'not-installed':
+$VERDICT_OUT"
+echo "$VERDICT_OUT" | grep -qi "not found on PATH" || fail "verdict does not say the binary is missing:
+$VERDICT_OUT"
+if echo "$VERDICT_OUT" | grep -qi "claude /login"; then
+	fail "a machine with no Claude CLI is still being told to run 'claude /login':
+$VERDICT_OUT"
+fi
+echo "    $(echo "$VERDICT_OUT" | head -1)"
+
 echo "==> investigate rejects garbage stdin with a usable error (no crash)"
 set +e
 INV_OUT=$(echo "not json" | "$BIN/pl" investigate --json 2>&1)
@@ -195,8 +235,11 @@ echo "    mapped routes: $ROUTES"
 
 grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowlist is back — pl up is single-origin"
 
-PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node - "$UP_LOG" <<'PROBE' || fail "the pl up HTTP contract is broken"
-const fs = require("node:fs");
+HTTP_PROBE_MJS="$PKG/prismalens-smoke-http-probe.mjs"
+cat > "$HTTP_PROBE_MJS" <<'PROBE'
+import fs from "node:fs";
+import { resolveHarnessSelection } from "@prismalens/config/harness-selection";
+
 const base = process.env.PRISMALENS_SMOKE_BASE;
 const bootLog = process.argv[2];
 const email = "smoke@prismalens.test";
@@ -323,54 +366,67 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 			bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
 		} else {
 			ok("POST /incidents/:id/investigate", `status ${started.status}`);
-			// The child logs through pino to the inherited stdout under its own
-			// service name. That line can ONLY come from a process that forked,
-			// resolved its entrypoint and imported its whole dependency closure.
-			let forked = false;
-			let diagnosed = false;
-			for (let i = 0; i < 120 && !forked; i++) {
-				await sleep(1000);
-				const log = fs.readFileSync(bootLog, "utf8");
-				// A terminal credential failure is the EXPECTED verdict in a container
-				// with no credentials, and reaching it proves the whole chain: the
-				// child forked, imported its closure, called the API's internal
-				// endpoint over HTTP, parsed a real JSON answer, and reported back.
-				forked =
-					log.includes('"context":"InvestigationRun"') &&
-					(log.includes("LLM not configured") ||
-						log.includes("add an API key in Settings") ||
-						log.includes("No compatible harness found"));
-				if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
-					bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
-					diagnosed = true;
-					break;
+			// Assumes clean-machine defaults; coupled to setup not storing credentials (#516).
+			const expected = resolveHarnessSelection({
+				provider: null,
+				apiKey: "",
+				model: null,
+				harness: "auto",
+			});
+			if (expected.runnable) {
+				bad(
+					"forked-worker round trip",
+					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
+				);
+			} else {
+				const expectedReason = expected.reason;
+				// The child logs through pino to the inherited stdout under its own
+				// service name. That line can ONLY come from a process that forked,
+				// resolved its entrypoint and imported its whole dependency closure.
+				let forked = false;
+				let diagnosed = false;
+				for (let i = 0; i < 120 && !forked; i++) {
+					await sleep(1000);
+					const log = fs.readFileSync(bootLog, "utf8");
+					// A terminal credential failure is the EXPECTED verdict in a container
+					// with no credentials, and reaching it proves the whole chain: the
+					// child forked, imported its closure, called the API's internal
+					// endpoint over HTTP, parsed a real JSON answer, and reported back.
+					forked =
+						log.includes('"context":"InvestigationRun"') &&
+						log.includes(expectedReason);
+					if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
+						bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
+						diagnosed = true;
+						break;
+					}
+					if (/Cannot locate the investigation child entrypoint/.test(log)) {
+						bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+						diagnosed = true;
+						break;
+					}
+					if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+						const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+						bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
+						diagnosed = true;
+						break;
+					}
+					// A ROUND TRIP, not just a fork: the child calls back into this same
+					// process over oRPC. `fetch failed` means it dialled the wrong port —
+					// which is exactly what a fixed default does under `pl up --port N`.
+					if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
+						bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+						diagnosed = true;
+						break;
+					}
 				}
-				if (/Cannot locate the investigation child entrypoint/.test(log)) {
-					bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
-					diagnosed = true;
-					break;
+				if (forked) {
+					ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
+				} else if (!diagnosed) {
+					// Only when nothing more specific already fired — a diagnosed
+					// failure plus a generic timeout reads as two bugs, not one.
+					bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
 				}
-				if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-					const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-					bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
-					diagnosed = true;
-					break;
-				}
-				// A ROUND TRIP, not just a fork: the child calls back into this same
-				// process over oRPC. `fetch failed` means it dialled the wrong port —
-				// which is exactly what a fixed default does under `pl up --port N`.
-				if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
-					bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
-					diagnosed = true;
-					break;
-				}
-			}
-			if (forked) {
-				ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
-			} else if (!diagnosed) {
-				// Only when nothing more specific already fired — a diagnosed
-				// failure plus a generic timeout reads as two bugs, not one.
-				bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
 			}
 		}
 	}
@@ -381,6 +437,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 	process.exit(1);
 });
 PROBE
+PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" || fail "the pl up HTTP contract is broken"
+rm -f "$HTTP_PROBE_MJS"
 
 stop_up
 

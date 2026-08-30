@@ -2,8 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
-import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+import {
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	resolveHarnessAuthFor,
+	resolveHarnessSelection,
+} from "@prismalens/config/harness-selection";
 import {
 	getAllowedHosts,
 	getApiKeyEnvVar,
@@ -275,8 +282,8 @@ export class LlmSettingsService {
 	}
 
 	/**
-	 * Is the ACTIVE provider genuinely runnable — chosen, given a model, and
-	 * credentialled unless it is keyless or has an authenticated CLI session (ADR-0031)?
+	 * Is the ACTIVE provider genuinely runnable — chosen, and either credentialled
+	 * with a model, or backed by a Claude CLI session that needs neither (ADR-0031).
 	 * A key sitting in the env for some other provider is not configuration (PR #396 thread A).
 	 *
 	 * Deliberately does NOT call `getLlmEnvStatus()`: that pings Ollama over HTTP,
@@ -284,24 +291,33 @@ export class LlmSettingsService {
 	 * must stay cheap reads.
 	 */
 	async isActiveProviderUsable(): Promise<boolean> {
-		const { provider, model } = await this.resolveActiveLlmConfig();
-		if (!provider || !model) return false;
-		if (!providerRequiresApiKey(provider)) return true;
+		return (await this.resolveSelection()).runnable;
+	}
 
-		const credential = (await this.getLlmCredentialStatus())[provider];
-		const hasKey =
-			!!credential && (credential.hasDbKey || credential.hasEnvKey);
-		if (hasKey) return true;
+	/**
+	 * The inputs the worker's gate runs on, assembled from the same sources the
+	 * internal credentials endpoint hands it: the ACTIVE provider's key only, its
+	 * model, the harness setting, the env override. Anything that answers "would a
+	 * job start?" goes through here — nothing re-derives it (ADR-0031, #518).
+	 */
+	private async resolveSelection(
+		harnessOverride?: HarnessId,
+	): Promise<ReturnType<typeof resolveHarnessSelection>> {
+		const { provider, model, harness } = await this.resolveActiveLlmConfig();
+		return resolveHarnessSelection({
+			...this.selectionInput(provider, model),
+			harness: harnessOverride ?? harness,
+		});
+	}
 
-		// If provider is anthropic, check if a CLI session is usable (ADR-0031)
-		if (provider === "anthropic") {
-			const verdict = resolveHarnessAuth("claude-code", {
-				apiKeyPresent: false,
-			});
-			return verdict.usable;
-		}
-
-		return false;
+	private selectionInput(provider: LLMProviderId | null, model: string | null) {
+		return {
+			provider,
+			apiKey: provider ? (this.resolveApiKey(provider) ?? "") : "",
+			model,
+			harness: "auto" as const,
+			envHarness: process.env.PRISMALENS_HARNESS,
+		};
 	}
 
 	async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
@@ -370,26 +386,33 @@ export class LlmSettingsService {
 	 * Never exposes API key secrets.
 	 */
 	async getHarnessesStatus(): Promise<HarnessesResponse> {
-		const { provider: activeProvider } = await this.resolveActiveLlmConfig();
+		const { provider, model } = await this.resolveActiveLlmConfig();
+		const input = this.selectionInput(provider, model);
+		const globalSelection = resolveHarnessSelection(input);
+		const invalidPin =
+			!globalSelection.runnable &&
+			globalSelection.failure === "invalid-env-harness";
+
 		const harnesses = HARNESS_IDS.map((id) => {
 			const descriptor = HARNESS_REGISTRY[id];
-			let apiKeyPresent = false;
-			if (id === "claude-code") {
-				apiKeyPresent = Boolean(this.resolveApiKey("anthropic"));
-			} else if (id === "deepagents") {
-				apiKeyPresent =
-					Boolean(this.resolveApiKey("openai")) ||
-					(activeProvider === "custom" &&
-						Boolean(this.resolveApiKey("custom"))) ||
-					(activeProvider === "ollama" &&
-						Boolean(this.resolveApiKey("ollama")));
-			}
-			const verdict = resolveHarnessAuth(id, { apiKeyPresent });
+			// Both answers come from the shared gate: `verdict` is why the credential
+			// is or is not there, `runnable` is whether a job pinned to this harness
+			// would actually start. Per-row probe ignores valid env pin (#516, #517).
+			const verdict = resolveHarnessAuthFor(id, input);
+			const selection = invalidPin
+				? globalSelection
+				: resolveHarnessSelection({
+						...input,
+						harness: id,
+						envHarness: undefined,
+					});
 			return {
 				id: descriptor.id,
 				label: descriptor.label,
 				implemented: descriptor.implemented,
 				verdict,
+				runnable: selection.runnable,
+				blockedReason: selection.runnable ? null : selection.reason,
 			};
 		});
 
