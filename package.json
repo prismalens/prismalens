@@ -34,7 +34,7 @@
 		"changeset:test": "node --test scripts/*.test.mjs",
 		"changeset:version": "changeset version",
 		"pack": "node scripts/pack-cli.mjs",
-		"changeset:publish": "node scripts/pack-cli.mjs --publish && changeset tag"
+		"changeset:publish": "node scripts/pack-cli.mjs --publish && changeset git-tag"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.8",

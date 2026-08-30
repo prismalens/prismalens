@@ -617,7 +617,7 @@ changesets OK — repository has no commits yet, so there is no diff to check; 1
 On every push to `main` with pending changesets, the release workflow opens/updates a
 **"chore: version packages" PR** (`pnpm changeset:version`); merging that PR publishes
 the bumped `prismalens` package to npm with provenance (`pnpm changeset:publish` =
-`node scripts/pack-cli.mjs --publish`, then `changeset tag`) and creates a
+`node scripts/pack-cli.mjs --publish`, then `changeset git-tag`) and creates a
 GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
 carries the first-party closure as bundled dependencies, and `pnpm pack`
 produces zero bundled entries — an artifact `pl up` cannot boot. The pack script
@@ -667,7 +667,7 @@ general installs.
    bumped to `0.x.y-rc.N` (e.g., `0.5.0-rc.0`). CI recognizes this shape and exempts the PR from the changeset
    presence check.
 3. **Publishing to the `rc` dist-tag:** When the Version PR merges to `main`, `release.yml` invokes
-   `pnpm changeset:publish` (`node scripts/pack-cli.mjs --publish && changeset tag`). The pack script
+   `pnpm changeset:publish` (`node scripts/pack-cli.mjs --publish && changeset git-tag`). The pack script
    detects pre mode from `.changeset/pre.json` (or the prerelease version) and automatically supplies
    `--tag rc` to `npm publish`. This publishes `prismalens@0.5.0-rc.0` to the `rc` dist-tag without
    moving `latest`.
