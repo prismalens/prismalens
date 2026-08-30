@@ -246,6 +246,7 @@ export function rawReport(
 		summary,
 		rootCause: null,
 		rootCauseCategory: null,
+		reportMode: "raw",
 		culprit: null,
 		hypotheses: [],
 		ruledOut: [],
@@ -436,7 +437,10 @@ async function runReportModel(
 			outcome: "ok",
 			failureCause: null,
 		});
-		return object;
+		return {
+			...object,
+			reportMode: object.reportMode ?? "synthesized",
+		};
 	} catch (err1) {
 		// Exactly ONE llm_call per provider invocation: record the failed
 		// structured call before attempting the fallback (its tokens were spent
@@ -462,7 +466,11 @@ async function runReportModel(
 			// Parse BEFORE emitting success — a completion that fails schema
 			// validation is an "error" outcome for this invocation, not an "ok"
 			// followed by a contradictory error event.
-			const report = InvestigationReportSchema.parse(extractJsonObject(text));
+			const parsed = InvestigationReportSchema.parse(extractJsonObject(text));
+			const report = {
+				...parsed,
+				reportMode: parsed.reportMode ?? "synthesized",
+			};
 			cfg.onLlmCall?.({
 				phase,
 				provider: cfg.providerId,

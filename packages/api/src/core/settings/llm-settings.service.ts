@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
+import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
 import {
 	getAllowedHosts,
 	getApiKeyEnvVar,
@@ -13,6 +15,8 @@ import {
 } from "@prismalens/config/llm";
 import { pingModel } from "@prismalens/config/model";
 import type {
+	HarnessesResponse,
+	HarnessSetting,
 	LlmSettings,
 	ModelMetadata,
 	ModelsListResponse,
@@ -139,6 +143,7 @@ export class LlmSettingsService {
 			activeProvider: null,
 			providers: {} as Record<LLMProviderId, { model: string }>,
 			agentOverrides: undefined,
+			harness: "auto",
 		};
 	}
 
@@ -230,6 +235,7 @@ export class LlmSettingsService {
 				activeProvider: parsed.activeProvider ?? null,
 				providers: parsed.providers ?? {},
 				agentOverrides: parsed.agentOverrides,
+				harness: parsed.harness ?? "auto",
 			};
 		} catch {
 			return this.getDefaultLlmSettings();
@@ -237,15 +243,16 @@ export class LlmSettingsService {
 	}
 
 	/**
-	 * The provider/model/baseUrl a run will ACTUALLY use: DB settings first, then
+	 * The provider/model/baseUrl/harness a run will ACTUALLY use: DB settings first, then
 	 * `PRISMALENS_LLM_PROVIDER` / `PRISMALENS_LLM_MODEL`. Shared by the worker's
 	 * credential fetch and the setup wizard's step check so the two cannot
-	 * disagree about what is configured (PR #396 thread A).
+	 * disagree about what is configured (PR #396 thread A; ADR-0031).
 	 */
 	async resolveActiveLlmConfig(): Promise<{
 		provider: LLMProviderId | null;
 		model: string | null;
 		baseUrl: string | null;
+		harness: HarnessSetting;
 	}> {
 		const settings = await this.getLlmSettings();
 		const candidate =
@@ -263,13 +270,14 @@ export class LlmSettingsService {
 			baseUrl: provider
 				? (settings.providers[provider]?.baseUrl ?? null)
 				: null,
+			harness: settings.harness ?? "auto",
 		};
 	}
 
 	/**
 	 * Is the ACTIVE provider genuinely runnable — chosen, given a model, and
-	 * credentialled unless it is keyless? A key sitting in the env for some other
-	 * provider is not configuration (PR #396 thread A).
+	 * credentialled unless it is keyless or has an authenticated CLI session (ADR-0031)?
+	 * A key sitting in the env for some other provider is not configuration (PR #396 thread A).
 	 *
 	 * Deliberately does NOT call `getLlmEnvStatus()`: that pings Ollama over HTTP,
 	 * and the unauthenticated setup-status route the app's layout hits on load
@@ -281,7 +289,19 @@ export class LlmSettingsService {
 		if (!providerRequiresApiKey(provider)) return true;
 
 		const credential = (await this.getLlmCredentialStatus())[provider];
-		return !!credential && (credential.hasDbKey || credential.hasEnvKey);
+		const hasKey =
+			!!credential && (credential.hasDbKey || credential.hasEnvKey);
+		if (hasKey) return true;
+
+		// If provider is anthropic, check if a CLI session is usable (ADR-0031)
+		if (provider === "anthropic") {
+			const verdict = resolveHarnessAuth("claude-code", {
+				apiKeyPresent: false,
+			});
+			return verdict.usable;
+		}
+
+		return false;
 	}
 
 	async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
@@ -327,6 +347,8 @@ export class LlmSettingsService {
 			activeProvider: dto.activeProvider ?? current.activeProvider,
 			providers: updatedProviders,
 			agentOverrides: updatedAgentOverrides,
+			harness:
+				dto.harness !== undefined ? dto.harness : (current.harness ?? "auto"),
 		};
 
 		await this.prisma.setting.upsert({
@@ -341,6 +363,37 @@ export class LlmSettingsService {
 		});
 
 		return updated;
+	}
+
+	/**
+	 * Returns auth status and verdicts for all implemented and registered harnesses (ADR-0031).
+	 * Never exposes API key secrets.
+	 */
+	async getHarnessesStatus(): Promise<HarnessesResponse> {
+		const { provider: activeProvider } = await this.resolveActiveLlmConfig();
+		const harnesses = HARNESS_IDS.map((id) => {
+			const descriptor = HARNESS_REGISTRY[id];
+			let apiKeyPresent = false;
+			if (id === "claude-code") {
+				apiKeyPresent = Boolean(this.resolveApiKey("anthropic"));
+			} else if (id === "deepagents") {
+				apiKeyPresent =
+					Boolean(this.resolveApiKey("openai")) ||
+					(activeProvider === "custom" &&
+						Boolean(this.resolveApiKey("custom"))) ||
+					(activeProvider === "ollama" &&
+						Boolean(this.resolveApiKey("ollama")));
+			}
+			const verdict = resolveHarnessAuth(id, { apiKeyPresent });
+			return {
+				id: descriptor.id,
+				label: descriptor.label,
+				implemented: descriptor.implemented,
+				verdict,
+			};
+		});
+
+		return { harnesses };
 	}
 
 	async getAvailableModels(provider?: string): Promise<ModelsListResponse> {

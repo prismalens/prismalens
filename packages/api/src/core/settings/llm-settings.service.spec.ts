@@ -14,6 +14,16 @@ import { CredentialsService } from "../../modules/integrations/crypto/credential
 import { PrismaService } from "../prisma/prisma.service.js";
 import { LlmSettingsService } from "./llm-settings.service.js";
 
+const mockHarnessAuth = vi.hoisted(() => ({
+	resolveHarnessAuth: vi.fn(),
+	isOnPath: vi.fn(),
+}));
+
+vi.mock("@prismalens/config/harness-auth", () => ({
+	resolveHarnessAuth: (...args: unknown[]) => mockHarnessAuth.resolveHarnessAuth(...args),
+	isOnPath: (...args: unknown[]) => mockHarnessAuth.isOnPath(...args),
+}));
+
 const LLM_SETTINGS_KEY = "LLM_SETTINGS";
 const LLM_CREDENTIALS_KEY = "LLM_CREDENTIALS_ENCRYPTED";
 
@@ -21,7 +31,12 @@ describe("LlmSettingsService — active provider resolution", () => {
 	let service: LlmSettingsService;
 	let originalEnv: NodeJS.ProcessEnv;
 
-	const mockPrisma = { setting: { findUnique: vi.fn() } };
+	const mockPrisma = {
+		setting: {
+			findUnique: vi.fn(),
+			upsert: vi.fn(),
+		},
+	};
 	const mockCredentials = { decryptFromBase64: vi.fn() };
 
 	/** Seed the two Setting rows the resolver reads. */
@@ -53,6 +68,10 @@ describe("LlmSettingsService — active provider resolution", () => {
 
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockHarnessAuth.resolveHarnessAuth.mockReturnValue({
+			usable: false,
+			reason: "no auth",
+		});
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
@@ -92,6 +111,7 @@ describe("LlmSettingsService — active provider resolution", () => {
 					providers: {
 						ollama: { model: "gpt-oss:20b", baseUrl: "http://localhost:11434" },
 					},
+					harness: "auto",
 				},
 			});
 
@@ -99,6 +119,7 @@ describe("LlmSettingsService — active provider resolution", () => {
 				provider: "ollama",
 				model: "gpt-oss:20b",
 				baseUrl: "http://localhost:11434",
+				harness: "auto",
 			});
 		});
 
@@ -111,6 +132,7 @@ describe("LlmSettingsService — active provider resolution", () => {
 				provider: "anthropic",
 				model: "claude-sonnet-5",
 				baseUrl: null,
+				harness: "auto",
 			});
 		});
 
@@ -121,6 +143,19 @@ describe("LlmSettingsService — active provider resolution", () => {
 			const resolved = await service.resolveActiveLlmConfig();
 
 			expect(resolved.provider).toBeNull();
+		});
+
+		it("preserves explicit harness selection", async () => {
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "claude-sonnet-5" } },
+					harness: "claude-code",
+				},
+			});
+
+			const resolved = await service.resolveActiveLlmConfig();
+			expect(resolved.harness).toBe("claude-code");
 		});
 	});
 
@@ -177,6 +212,25 @@ describe("LlmSettingsService — active provider resolution", () => {
 			await expect(service.isActiveProviderUsable()).resolves.toBe(true);
 		});
 
+		it("is true for keyless anthropic when CLI session is usable (ADR-0031)", async () => {
+			mockHarnessAuth.resolveHarnessAuth.mockReturnValueOnce({
+				usable: true,
+				route: "cli-session",
+				verified: true,
+			});
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "claude-sonnet-5" } },
+				},
+			});
+
+			await expect(service.isActiveProviderUsable()).resolves.toBe(true);
+			expect(mockHarnessAuth.resolveHarnessAuth).toHaveBeenCalledWith("claude-code", {
+				apiKeyPresent: false,
+			});
+		});
+
 		it("is true for a keyless provider with a model and no credential anywhere", async () => {
 			givenSettings({
 				llmSettings: {
@@ -194,6 +248,53 @@ describe("LlmSettingsService — active provider resolution", () => {
 			givenSettings({});
 
 			await expect(service.isActiveProviderUsable()).resolves.toBe(true);
+		});
+	});
+
+	describe("updateLlmSettings (harness persistence)", () => {
+		it("persists the harness field", async () => {
+			givenSettings({});
+			mockPrisma.setting.upsert.mockResolvedValue({});
+
+			const result = await service.updateLlmSettings({
+				harness: "claude-code",
+			});
+
+			expect(result.harness).toBe("claude-code");
+			expect(mockPrisma.setting.upsert).toHaveBeenCalledWith(
+				expect.objectContaining({
+					update: expect.objectContaining({
+						value: expect.stringContaining('"harness":"claude-code"'),
+					}),
+				}),
+			);
+		});
+	});
+
+	describe("getHarnessesStatus", () => {
+		it("returns status and verdicts for registered harnesses without leaking keys", async () => {
+			mockHarnessAuth.resolveHarnessAuth.mockImplementation((id: string) => {
+				if (id === "claude-code") return { usable: true, route: "cli-session", verified: true };
+				if (id === "deepagents") return { usable: false, reason: "add an API key" };
+				return { usable: false, reason: `${id} harness not implemented` };
+			});
+
+			givenSettings({});
+			const response = await service.getHarnessesStatus();
+
+			expect(response.harnesses).toHaveLength(3);
+			const claude = response.harnesses.find((h) => h.id === "claude-code");
+			expect(claude).toBeDefined();
+			expect(claude?.implemented).toBe(true);
+			expect(claude?.verdict).toEqual({
+				usable: true,
+				route: "cli-session",
+				verified: true,
+			});
+
+			const codex = response.harnesses.find((h) => h.id === "codex");
+			expect(codex?.implemented).toBe(false);
+			expect(codex?.verdict.usable).toBe(false);
 		});
 	});
 });

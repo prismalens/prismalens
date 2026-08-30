@@ -608,4 +608,142 @@ describe("processInvestigationJob schema validation", () => {
 	});
 });
 
+describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+	});
+
+	it("W4 case 1: session-only (signed-in session, no key, no provider) ⇒ harness claude-code, synth.configured === false, no throw", async () => {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: null,
+					model: null,
+					baseUrl: null,
+					credentials: {},
+					harness: "auto",
+				}),
+			})),
+		);
+
+		const { request } = await buildRequest(
+			{ incidentId: "inc-501-1", investigationId: "inv-501-1" },
+			"run-501-1",
+		);
+
+		expect(request.harness).toBe("claude-code");
+		expect(request.synth.configured).toBe(false);
+		expect(request.model).toBeUndefined();
+	});
+
+	it("W4 case 2: anthropic key, no session ⇒ unchanged behavior, synth.configured === true", async () => {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+					harness: "auto",
+				}),
+			})),
+		);
+
+		const { request } = await buildRequest(
+			{ incidentId: "inc-501-2", investigationId: "inv-501-2" },
+			"run-501-2",
+		);
+
+		expect(request.harness).toBe("claude-code");
+		expect(request.synth.configured).toBe(true);
+		expect(request.synth.apiKey).toBe(API_KEY);
+	});
+
+	it("W4 case 3: nothing configured ⇒ throws; message contains 'API key in Settings' and 'claude /login'", async () => {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubEnv("PATH", "");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: null,
+					model: null,
+					baseUrl: null,
+					credentials: {},
+					harness: "claude-code",
+				}),
+			})),
+		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-3", investigationId: "inv-501-3" },
+				"run-501-3",
+			),
+		).rejects.toThrowError(
+			/add an API key in Settings.*claude \/login/i,
+		);
+	});
+
+	it("W4 case 4: PRISMALENS_HARNESS=bogus ⇒ throws naming valid ids", async () => {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubEnv("PRISMALENS_HARNESS", "bogus");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+				}),
+			})),
+		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-4", investigationId: "inv-501-4" },
+				"run-501-4",
+			),
+		).rejects.toThrowError(
+			/Invalid PRISMALENS_HARNESS="bogus"/,
+		);
+	});
+
+	it("W4 case 5: setting deepagents + provider anthropic ⇒ protocol-mismatch error retained", async () => {
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+					harness: "deepagents",
+				}),
+			})),
+		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-5", investigationId: "inv-501-5" },
+				"run-501-5",
+			),
+		).rejects.toThrowError(
+			/Harness "deepagents" only supports OpenAI-protocol providers/,
+		);
+	});
+});
+
 
