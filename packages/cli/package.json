@@ -64,7 +64,7 @@
 		"@prismalens/database": "workspace:*",
 		"@prismalens/engine": "workspace:*",
 		"@types/node": "catalog:",
-		"@vitest/coverage-v8": "^4.1.10",
+		"@vitest/coverage-v8": "^4.1.11",
 		"tsup": "^8.5.1",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
