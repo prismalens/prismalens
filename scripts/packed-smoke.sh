@@ -235,8 +235,11 @@ echo "    mapped routes: $ROUTES"
 
 grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowlist is back — pl up is single-origin"
 
-PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node - "$UP_LOG" <<'PROBE' || fail "the pl up HTTP contract is broken"
-const fs = require("node:fs");
+HTTP_PROBE_MJS="$PKG/prismalens-smoke-http-probe.mjs"
+cat > "$HTTP_PROBE_MJS" <<'PROBE'
+import fs from "node:fs";
+import { resolveHarnessSelection } from "@prismalens/config/harness-selection";
+
 const base = process.env.PRISMALENS_SMOKE_BASE;
 const bootLog = process.argv[2];
 const email = "smoke@prismalens.test";
@@ -363,6 +366,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 			bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
 		} else {
 			ok("POST /incidents/:id/investigate", `status ${started.status}`);
+			// Evaluate the shared gate directly so copy edits cannot drift the check (#518, #516).
+			const expected = resolveHarnessSelection({
+				provider: null,
+				apiKey: "",
+				model: null,
+				harness: "auto",
+			});
+			const expectedReason = "reason" in expected ? expected.reason : "";
 			// The child logs through pino to the inherited stdout under its own
 			// service name. That line can ONLY come from a process that forked,
 			// resolved its entrypoint and imported its whole dependency closure.
@@ -377,9 +388,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 				// endpoint over HTTP, parsed a real JSON answer, and reported back.
 				forked =
 					log.includes('"context":"InvestigationRun"') &&
-					(log.includes("LLM not configured") ||
-						log.includes("add an API key in Settings") ||
-						log.includes("No compatible harness found"));
+					Boolean(expectedReason) &&
+					log.includes(expectedReason);
 				if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
 					bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
 					diagnosed = true;
@@ -421,6 +431,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 	process.exit(1);
 });
 PROBE
+PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" || fail "the pl up HTTP contract is broken"
+rm -f "$HTTP_PROBE_MJS"
 
 stop_up
 
