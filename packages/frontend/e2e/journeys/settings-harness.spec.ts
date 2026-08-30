@@ -541,65 +541,64 @@ test.describe("Design evidence (#501)", () => {
 		await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 	};
 
-	/**
-	 * Each state gets its own navigation with its fixture already in place.
-	 * Chaining `page.reload()` through four different fixtures was flaky under
-	 * parallel load — a fresh goto per state is both stabler and closer to what a
-	 * reader actually opens.
-	 */
 	test("settings card: default, dark, empty and error states", async ({
 		page,
 	}) => {
 		test.setTimeout(120_000);
 
-		// The suite runs authenticated from storageState, and clearCookies would
-		// drop that session — so seed the theme on the existing context instead.
-		await page.goto("/settings?tab=ai");
-
-		const themeOnly = async (theme: "light" | "dark") => {
+		const setTheme = async (theme: "light" | "dark") => {
 			await page.evaluate((value) => {
 				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
 			}, theme);
-		};
-
-		const shot = async (
-			name: string,
-			theme: "light" | "dark",
-			harnesses: HarnessFixture[] | "error",
-			ready: () => Promise<void>,
-		) => {
-			await themeOnly(theme);
-			if (harnesses === "error") await failHarnesses(page);
-			else await serveHarnesses(page, harnesses);
-			await page.goto("/settings?tab=ai");
+			await page.reload();
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
-			await ready();
-			await page.waitForLoadState("networkidle");
-			await card(page).screenshot({ path: `${SHOTS}/${name}.png` });
-			await page.unroute(isHarnessesUrl);
 		};
 
 		const sessionReady = async () => {
 			await expect(
 				card(page).getByText("Signed-in Claude session", { exact: true }),
-			).toBeVisible({ timeout: 15_000 });
+			).toBeVisible({ timeout: 30_000 });
 		};
 
-		await shot("settings-harness-default", "light", SESSION_ONLY, sessionReady);
-		await shot("settings-harness-dark", "dark", SESSION_ONLY, sessionReady);
-
-		// "Empty" for this card is a machine holding no agent at all — the state a
-		// fresh install is in, and the one #501 and #518 were both reported from.
-		await shot("settings-harness-empty", "light", NOTHING, async () => {
-			await expect(page.getByTestId("harness-none-available")).toBeVisible({
-				timeout: 15_000,
-			});
+		// Default state: light theme with active session (#501, #516).
+		await serveHarnesses(page, SESSION_ONLY);
+		await openAiSettings(page);
+		await setTheme("light");
+		await sessionReady();
+		await page.waitForLoadState("networkidle");
+		await card(page).screenshot({
+			path: `${SHOTS}/settings-harness-default.png`,
 		});
 
-		await shot("settings-harness-error", "light", "error", async () => {
-			await expect(page.getByTestId("harness-status-error")).toBeVisible({
-				timeout: 20_000,
-			});
+		// Dark state (#501, #516).
+		await setTheme("dark");
+		await sessionReady();
+		await page.waitForLoadState("networkidle");
+		await card(page).screenshot({
+			path: `${SHOTS}/settings-harness-dark.png`,
+		});
+
+		// Empty state: machine holding no agent (#501, #518).
+		await serveHarnesses(page, NOTHING);
+		await openAiSettings(page);
+		await expect(page.getByTestId("harness-none-available")).toBeVisible({
+			timeout: 30_000,
+		});
+		await page.waitForLoadState("networkidle");
+		await card(page).screenshot({
+			path: `${SHOTS}/settings-harness-empty.png`,
+		});
+
+		// Error state: endpoint failure (#501, #516).
+		await failHarnesses(page);
+		await page.goto("/settings?tab=investigation");
+		await page.goto("/settings?tab=ai");
+		await expect(page.getByTestId("harness-status-error")).toBeVisible({
+			timeout: 30_000,
+		});
+		await page.waitForLoadState("networkidle");
+		await card(page).screenshot({
+			path: `${SHOTS}/settings-harness-error.png`,
 		});
 	});
 
