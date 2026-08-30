@@ -194,7 +194,7 @@ export function SetupStepAIProvider({
 				activeProvider: "anthropic",
 				providers: {
 					anthropic: {
-						model: model || LLM_PROVIDERS.anthropic.defaultModel,
+						model: LLM_PROVIDERS.anthropic.defaultModel,
 					},
 				},
 			});

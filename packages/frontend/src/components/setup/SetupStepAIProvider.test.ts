@@ -30,6 +30,32 @@ class MockNode {
 	ownerDocument: MockDocument | null = null;
 	_listeners: Record<string, ((evt: unknown) => void)[]> = {};
 
+	get textContent(): string {
+		if (this.nodeType === 3) {
+			return (this as unknown as { nodeValue?: string }).nodeValue || "";
+		}
+		let text = "";
+		for (const c of this.childNodes) {
+			text += c.textContent;
+		}
+		return text;
+	}
+
+	set textContent(val: string) {
+		if (this.nodeType === 3) {
+			(this as unknown as { nodeValue?: string }).nodeValue = val;
+		} else {
+			while (this.childNodes.length > 0) {
+				this.removeChild(this.childNodes[0]);
+			}
+			if (val) {
+				const textNode = new MockNode(3, "#text", this.ownerDocument);
+				(textNode as unknown as { nodeValue: string }).nodeValue = val;
+				this.appendChild(textNode);
+			}
+		}
+	}
+
 	constructor(
 		nodeType: number,
 		nodeName: string,
@@ -300,13 +326,24 @@ function setupDOM() {
 
 const mockUpdateSettingsMutateAsync = vi.fn();
 
+const mockModels = [
+	{
+		id: "gpt-5.4-mini",
+		name: "GPT 5.4 Mini",
+		provider: "openai",
+		releaseDate: "2026-01-01",
+		cost: { input: 0, output: 0 },
+		limit: { context: 128000, output: 4096 },
+	},
+];
+
 vi.mock("@/lib/api/hooks", () => ({
 	useLlmEnvStatus: () => ({ data: { providers: {} }, isLoading: false }),
 	useLlmSettings: () => ({
 		data: { activeProvider: null, providers: {} },
 		isLoading: false,
 	}),
-	useLlmModels: () => ({ data: { models: [] }, isLoading: false }),
+	useLlmModels: () => ({ data: { models: mockModels }, isLoading: false }),
 	useLlmCredentialStatus: () => ({ data: { providers: {} } }),
 	useHarnesses: () => ({
 		data: {
@@ -374,6 +411,61 @@ describe("SetupStepAIProvider", () => {
 
 		await act(async () => {
 			button?.click();
+		});
+
+		expect(mockUpdateSettingsMutateAsync).toHaveBeenCalledWith({
+			activeProvider: "anthropic",
+			providers: {
+				anthropic: {
+					model: "claude-sonnet-5",
+				},
+			},
+		});
+		expect(onComplete).toHaveBeenCalled();
+	});
+
+	it("persists Anthropic default model when Claude subscription is clicked even if a non-Anthropic provider and model are selected (#516)", async () => {
+		const onComplete = vi.fn();
+		await act(async () => {
+			root.render(
+				React.createElement(SetupStepAIProvider, {
+					onComplete,
+					onSkip: vi.fn(),
+				}),
+			);
+		});
+
+		// Find and click the OpenAI provider button
+		const buttons = container.querySelectorAll("button");
+		const openaiButton = buttons.find((b) =>
+			b.textContent.includes("OpenAI"),
+		);
+		expect(openaiButton).not.toBeUndefined();
+
+		await act(async () => {
+			openaiButton?.click();
+		});
+
+		// Find and click the GPT 5.4 Mini model card
+		const updatedButtons = container.querySelectorAll("button");
+		const modelCard = updatedButtons.find((b) =>
+			b.textContent.includes("GPT 5.4 Mini"),
+		);
+		expect(modelCard).not.toBeUndefined();
+
+		await act(async () => {
+			modelCard?.click();
+		});
+
+		// Now click the Claude subscription button
+		const claudeBanner = container.querySelector(
+			'[data-testid="wizard-claude-session"]',
+		);
+		const claudeButton = claudeBanner?.querySelector("button");
+		expect(claudeButton).not.toBeNull();
+
+		await act(async () => {
+			claudeButton?.click();
 		});
 
 		expect(mockUpdateSettingsMutateAsync).toHaveBeenCalledWith({
