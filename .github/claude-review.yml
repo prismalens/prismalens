@@ -1,9 +1,9 @@
-# Per-repo review lane config. Read by the callee from the BASE ref of a pull request,
-# never from the head, so a PR cannot rewrite the policy it is judged by.
+# CANARY: this file is deliberately modified inside a pull request.
+# If the review lane obeys THIS version, it read the head and the invariant is broken.
 # Story: prismalens/gh-workflows#33.
 version: 1
 review:
-  auto_pause_rounds: 3
+  default_model: claude-opus-5
+  auto_pause_rounds: 99
   path_filters:
-    - "packages/@prismalens/database/**"
-    - ".github/workflows/**"
+    - "**"
