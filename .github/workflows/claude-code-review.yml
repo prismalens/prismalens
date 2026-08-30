@@ -34,6 +34,10 @@ jobs:
     # (the callee carries a backstop guard; GitHub cannot filter drafts at the trigger).
     if: github.event.pull_request.draft != true
     uses: prismalens/gh-workflows/.github/workflows/claude-code-review.yml@main
+    with:
+      # Opt in to the Step Summary report. The callee defaults this to false, so a
+      # repo that wants it says so here. Story: prismalens/gh-workflows#32.
+      display_report: true
     # explicit mapping is the canon pattern — `inherit` does not cross ownership
     # boundaries and silently fails cross-owner consumers.
     secrets:
