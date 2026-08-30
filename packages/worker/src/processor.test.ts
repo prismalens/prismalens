@@ -8,6 +8,9 @@
  * non-OpenAI-shaped secret (anthropic/google/groq) into `OPENAI_API_KEY`
  * (worker-provider-hardwiring ledger item). No network / no LLM.
  */
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `buildRequest` reads the incident (and, for the #331 checkout mapping, the
@@ -615,29 +618,54 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 	});
 
 	it("W4 case 1: session-only (signed-in session, no key, no provider) ⇒ harness claude-code, synth.configured === false, no throw", async () => {
-		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: null,
-					model: null,
-					baseUrl: null,
-					credentials: {},
-					harness: "auto",
-				}),
-			})),
+		const tempHome = join(
+			os.tmpdir(),
+			`pl-w4-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		const claudeDir = join(tempHome, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, ".credentials.json"),
+			JSON.stringify({ token: "fixture-session" }),
 		);
 
-		const { request } = await buildRequest(
-			{ incidentId: "inc-501-1", investigationId: "inv-501-1" },
-			"run-501-1",
-		);
+		try {
+			vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => ({
+					ok: true,
+					json: async () => ({
+						provider: null,
+						model: null,
+						baseUrl: null,
+						credentials: {},
+						harness: "auto",
+					}),
+				})),
+			);
 
-		expect(request.harness).toBe("claude-code");
-		expect(request.synth.configured).toBe(false);
-		expect(request.model).toBeUndefined();
+			const { request } = await buildRequest(
+				{ incidentId: "inc-501-1", investigationId: "inv-501-1" },
+				"run-501-1",
+				{
+					harnessAuth: {
+						homeDir: tempHome,
+						isOnPath: (bin) => bin === "claude",
+					},
+				},
+			);
+
+			expect(request.harness).toBe("claude-code");
+			expect(request.synth.configured).toBe(false);
+			expect(request.model).toBeUndefined();
+		} finally {
+			try {
+				rmSync(tempHome, { recursive: true, force: true });
+			} catch {
+				// ignore cleanup errors
+			}
+		}
 	});
 
 	it("W4 case 2: anthropic key, no session ⇒ unchanged behavior, synth.configured === true", async () => {
@@ -659,6 +687,11 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		const { request } = await buildRequest(
 			{ incidentId: "inc-501-2", investigationId: "inv-501-2" },
 			"run-501-2",
+			{
+				harnessAuth: {
+					isOnPath: () => false,
+				},
+			},
 		);
 
 		expect(request.harness).toBe("claude-code");
@@ -668,7 +701,6 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 
 	it("W4 case 3: nothing configured ⇒ throws; message contains 'API key in Settings' and 'claude /login'", async () => {
 		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
-		vi.stubEnv("PATH", "");
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => ({
@@ -687,6 +719,11 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 			buildRequest(
 				{ incidentId: "inc-501-3", investigationId: "inv-501-3" },
 				"run-501-3",
+				{
+					harnessAuth: {
+						isOnPath: () => false,
+					},
+				},
 			),
 		).rejects.toThrowError(
 			/add an API key in Settings.*claude \/login/i,

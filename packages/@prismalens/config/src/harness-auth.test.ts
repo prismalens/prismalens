@@ -112,6 +112,7 @@ describe("harness-auth resolver (ADR-0031)", () => {
 			const verdict = resolveHarnessAuth("deepagents", {
 				apiKeyPresent: true,
 				homeDir: tempHome,
+				isOnPath: () => false,
 			});
 
 			expect(verdict).toEqual({
@@ -124,6 +125,7 @@ describe("harness-auth resolver (ADR-0031)", () => {
 			const verdict = resolveHarnessAuth("deepagents", {
 				apiKeyPresent: false,
 				homeDir: tempHome,
+				isOnPath: () => false,
 			});
 
 			expect(verdict.usable).toBe(false);
@@ -138,6 +140,7 @@ describe("harness-auth resolver (ADR-0031)", () => {
 			const verdict = resolveHarnessAuth("codex", {
 				apiKeyPresent: true,
 				homeDir: tempHome,
+				isOnPath: () => false,
 			});
 
 			expect(verdict).toEqual({
@@ -148,11 +151,18 @@ describe("harness-auth resolver (ADR-0031)", () => {
 	});
 
 	describe("isOnPath", () => {
-		it("finds a common system binary like node or sh", () => {
-			expect(isOnPath("node") || isOnPath("sh") || isOnPath("bash")).toBe(true);
+		it("finds an executable binary on PATH", () => {
+			const binDir = join(tempHome, "bin");
+			mkdirSync(binDir, { recursive: true });
+			const dummyBin = join(binDir, "dummy-test-bin");
+			writeFileSync(dummyBin, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+			vi.stubEnv("PATH", binDir);
+
+			expect(isOnPath("dummy-test-bin")).toBe(true);
 		});
 
 		it("returns false for nonexistent binary", () => {
+			vi.stubEnv("PATH", tempHome);
 			expect(isOnPath("nonexistent_binary_xyz_12345")).toBe(false);
 		});
 	});

@@ -612,6 +612,7 @@ export function workerProbeUrl(): string | undefined {
 function pickAuto(
 	synthProvider: LLMProviderId | null,
 	apiKey: string,
+	authOpts?: BuildRequestOpts["harnessAuth"],
 ): HarnessId {
 	for (const harnessId of HARNESS_AUTO_ORDER) {
 		const descriptor = HARNESS_REGISTRY[harnessId];
@@ -622,6 +623,8 @@ function pickAuto(
 			const keyPresent = Boolean(apiKey) && synthProvider === "anthropic";
 			const verdict = resolveHarnessAuth(harnessId, {
 				apiKeyPresent: keyPresent,
+				homeDir: authOpts?.homeDir,
+				isOnPath: authOpts?.isOnPath,
 			});
 			if (verdict.usable) return harnessId;
 		} else if (harnessId === "deepagents") {
@@ -629,6 +632,8 @@ function pickAuto(
 			const keyPresent = Boolean(apiKey);
 			const verdict = resolveHarnessAuth(harnessId, {
 				apiKeyPresent: keyPresent,
+				homeDir: authOpts?.homeDir,
+				isOnPath: authOpts?.isOnPath,
 			});
 			if (verdict.usable) return harnessId;
 		}
@@ -637,12 +642,21 @@ function pickAuto(
 	const isAnthropicKey = Boolean(apiKey) && synthProvider === "anthropic";
 	const claudeVerdict = resolveHarnessAuth("claude-code", {
 		apiKeyPresent: isAnthropicKey,
+		homeDir: authOpts?.homeDir,
+		isOnPath: authOpts?.isOnPath,
 	});
 	throw new Error(
 		claudeVerdict.usable
 			? "No compatible harness found."
 			: claudeVerdict.reason,
 	);
+}
+
+export interface BuildRequestOpts {
+	harnessAuth?: {
+		homeDir?: string;
+		isOnPath?: (bin: string) => boolean;
+	};
 }
 
 /**
@@ -656,6 +670,7 @@ function pickAuto(
 export async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
+	opts?: BuildRequestOpts,
 ): Promise<{
 	request: InvestigationRequest;
 	sandbox?: Sandbox;
@@ -681,7 +696,7 @@ export async function buildRequest(
 		envHarness ??
 		(settingHarness !== "auto"
 			? (settingHarness as HarnessId)
-			: pickAuto(synthProvider, apiKey));
+			: pickAuto(synthProvider, apiKey, opts?.harnessAuth));
 
 	// deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): fail
 	// the job with a clear reason up front instead of dispatching a run that dies
@@ -714,6 +729,8 @@ export async function buildRequest(
 
 	const verdict = resolveHarnessAuth(harness, {
 		apiKeyPresent: harnessKeyPresent,
+		homeDir: opts?.harnessAuth?.homeDir,
+		isOnPath: opts?.harnessAuth?.isOnPath,
 	});
 	if (!verdict.usable) {
 		throw new Error(verdict.reason);
