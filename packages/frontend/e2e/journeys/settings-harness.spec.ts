@@ -16,40 +16,68 @@ import { expect, type Page, test } from "@playwright/test";
 
 const SHOTS = "e2e/journeys/screenshots";
 
-/** The exact remedy text the server's resolver returns for claude-code. */
-const CLAUDE_REMEDY =
-	"add an API key in Settings → AI provider, or sign in with the Claude CLI (claude /login)";
-const DEEPAGENTS_REMEDY = "add an API key in Settings → AI provider";
+/**
+ * The exact remedy strings the server's resolver returns. #518: a missing binary
+ * and a missing key are different problems, so they carry different `cause`
+ * values and different words — and neither mentions `claude /login`, which is
+ * unrunnable on a machine that has no Claude CLI.
+ */
+const CLAUDE_NOT_INSTALLED =
+	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
+const DEEPAGENTS_NOT_INSTALLED =
+	"deepagents-acp was not found on PATH — install the deepagents harness, and add an API key in Settings → AI provider";
+const DEEPAGENTS_NOT_AUTHENTICATED = "add an API key in Settings → AI provider";
 
 type HarnessFixture = {
 	id: string;
 	label: string;
 	implemented: boolean;
+	/** Would a job pinned to this harness start? Answered by the shared gate. */
+	runnable: boolean;
+	blockedReason: string | null;
 	verdict:
 		| { usable: true; route: "api-key" }
 		| { usable: true; route: "cli-session"; verified: boolean }
-		| { usable: false; reason: string };
+		| {
+				usable: false;
+				cause: "not-implemented" | "not-installed" | "not-authenticated";
+				reason: string;
+		  };
 };
 
 const CODEX: HarnessFixture = {
 	id: "codex",
 	label: "Codex",
 	implemented: false,
-	verdict: { usable: false, reason: "codex harness not implemented" },
+	runnable: false,
+	blockedReason: "codex harness not implemented",
+	verdict: {
+		usable: false,
+		cause: "not-implemented",
+		reason: "codex harness not implemented",
+	},
 };
 
-/** A machine with a signed-in Claude CLI session and no keys at all. */
+/** A machine with a signed-in Claude CLI session, no keys, no deepagents. */
 const SESSION_ONLY: HarnessFixture[] = [
 	{
 		id: "deepagents",
 		label: "deepagents (ACP)",
 		implemented: true,
-		verdict: { usable: false, reason: DEEPAGENTS_REMEDY },
+		runnable: false,
+		blockedReason: DEEPAGENTS_NOT_INSTALLED,
+		verdict: {
+			usable: false,
+			cause: "not-installed",
+			reason: DEEPAGENTS_NOT_INSTALLED,
+		},
 	},
 	{
 		id: "claude-code",
 		label: "Claude Code (Agent SDK)",
 		implemented: true,
+		runnable: true,
+		blockedReason: null,
 		verdict: { usable: true, route: "cli-session", verified: true },
 	},
 	CODEX,
@@ -61,30 +89,98 @@ const KEYS_ONLY: HarnessFixture[] = [
 		id: "deepagents",
 		label: "deepagents (ACP)",
 		implemented: true,
+		runnable: true,
+		blockedReason: null,
 		verdict: { usable: true, route: "api-key" },
 	},
 	{
 		id: "claude-code",
 		label: "Claude Code (Agent SDK)",
 		implemented: true,
+		runnable: true,
+		blockedReason: null,
 		verdict: { usable: true, route: "api-key" },
 	},
 	CODEX,
 ];
 
-/** A fresh machine: nothing signed in, no keys. */
+/** The #518 falsifier machine: no agent binary anywhere, no keys. */
 const NOTHING: HarnessFixture[] = [
 	{
 		id: "deepagents",
 		label: "deepagents (ACP)",
 		implemented: true,
-		verdict: { usable: false, reason: DEEPAGENTS_REMEDY },
+		runnable: false,
+		blockedReason: DEEPAGENTS_NOT_INSTALLED,
+		verdict: {
+			usable: false,
+			cause: "not-installed",
+			reason: DEEPAGENTS_NOT_INSTALLED,
+		},
 	},
 	{
 		id: "claude-code",
 		label: "Claude Code (Agent SDK)",
 		implemented: true,
-		verdict: { usable: false, reason: CLAUDE_REMEDY },
+		runnable: false,
+		blockedReason: CLAUDE_NOT_INSTALLED,
+		verdict: {
+			usable: false,
+			cause: "not-installed",
+			reason: CLAUDE_NOT_INSTALLED,
+		},
+	},
+	CODEX,
+];
+
+/**
+ * claude-code holds an Anthropic key but the active provider is OpenAI. The
+ * credential verdict is usable; the gate still refuses the job. Round 1 deleted
+ * the only warning for this and round 2 put it back — server-side, where the rule
+ * belongs (#517).
+ */
+const AUTH_OK_BUT_BLOCKED: HarnessFixture[] = [
+	{
+		id: "deepagents",
+		label: "deepagents (ACP)",
+		implemented: true,
+		runnable: true,
+		blockedReason: null,
+		verdict: { usable: true, route: "api-key" },
+	},
+	{
+		id: "claude-code",
+		label: "Claude Code (Agent SDK)",
+		implemented: true,
+		runnable: false,
+		blockedReason:
+			'Harness "claude-code" cannot run against the active provider "OpenAI".',
+		verdict: { usable: true, route: "api-key" },
+	},
+	CODEX,
+];
+
+/** Agents present on the machine, but no credential for either. */
+const INSTALLED_BUT_UNAUTHENTICATED: HarnessFixture[] = [
+	{
+		id: "deepagents",
+		label: "deepagents (ACP)",
+		implemented: true,
+		runnable: false,
+		blockedReason: DEEPAGENTS_NOT_AUTHENTICATED,
+		verdict: {
+			usable: false,
+			cause: "not-authenticated",
+			reason: DEEPAGENTS_NOT_AUTHENTICATED,
+		},
+	},
+	{
+		id: "claude-code",
+		label: "Claude Code (Agent SDK)",
+		implemented: true,
+		runnable: true,
+		blockedReason: null,
+		verdict: { usable: true, route: "cli-session", verified: false },
 	},
 	CODEX,
 ];
@@ -118,6 +214,7 @@ async function failHarnesses(page: Page): Promise<void> {
 async function serveActiveProvider(
 	page: Page,
 	provider: string,
+	harness = "auto",
 ): Promise<void> {
 	await page.route(
 		(url) => url.pathname === "/api/settings/llm/config",
@@ -132,7 +229,7 @@ async function serveActiveProvider(
 				body: JSON.stringify({
 					activeProvider: provider,
 					providers: { [provider]: { model: "seeded-model" } },
-					harness: "auto",
+					harness,
 				}),
 			});
 		},
@@ -142,7 +239,7 @@ async function serveActiveProvider(
 async function openAiSettings(page: Page): Promise<void> {
 	await page.goto("/settings?tab=ai");
 	await expect(
-		page.getByRole("heading", { name: "Investigation agent" }),
+		page.getByRole("heading", { name: "Investigation agent", exact: true }),
 	).toBeVisible({ timeout: 15_000 });
 }
 
@@ -161,8 +258,14 @@ test.describe("Investigation agent settings card (#501)", () => {
 		// Reserved, unimplemented — it must not be offerable.
 		await expect(page.getByRole("radio", { name: "Codex" })).toHaveCount(0);
 
-		await expect(card(page).getByText("Signed-in Claude session", { exact: true })).toBeVisible();
-		await expect(card(page).getByText("Not authenticated", { exact: true })).toBeVisible();
+		await expect(
+			card(page).getByText("Signed-in Claude session", { exact: true }),
+		).toBeVisible();
+		// deepagents-acp is absent on this fixture machine, so the badge names the
+		// gap it actually has (#518) rather than a credential it does not need yet.
+		await expect(
+			card(page).getByText("Not installed", { exact: true }),
+		).toBeVisible();
 	});
 
 	test("badges an API-key route as such", async ({ page }) => {
@@ -179,41 +282,112 @@ test.describe("Investigation agent settings card (#501)", () => {
 		await serveHarnesses(page, NOTHING);
 		await openAiSettings(page);
 
-		await expect(card(page).getByText(CLAUDE_REMEDY)).toBeVisible();
-		await expect(card(page).getByText(DEEPAGENTS_REMEDY).first()).toBeVisible();
+		await expect(card(page).getByText(CLAUDE_NOT_INSTALLED)).toBeVisible();
+		await expect(card(page).getByText(DEEPAGENTS_NOT_INSTALLED)).toBeVisible();
+		// #518: the advice a machine with no Claude CLI must never be given.
+		await expect(card(page).getByText("claude /login")).toHaveCount(0);
 	});
 
-	test("warns when the pinned harness has no usable credential", async ({
+	test("distinguishes a missing binary from a missing key (#518)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, INSTALLED_BUT_UNAUTHENTICATED);
+		await openAiSettings(page);
+
+		await expect(
+			card(page).getByText("Not authenticated", { exact: true }),
+		).toBeVisible();
+		await expect(
+			card(page).getByText("Not installed", { exact: true }),
+		).toHaveCount(0);
+		await expect(
+			card(page).getByText(DEEPAGENTS_NOT_AUTHENTICATED, { exact: true }),
+		).toBeVisible();
+	});
+
+	test("badges a missing binary as not installed (#518)", async ({ page }) => {
+		await serveHarnesses(page, NOTHING);
+		await openAiSettings(page);
+
+		await expect(
+			card(page).getByText("Not installed", { exact: true }),
+		).toHaveCount(2);
+	});
+
+	test("disables an agent that cannot run, and keeps its reason on screen", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, SESSION_ONLY);
+		await openAiSettings(page);
+
+		await expect(
+			page.getByRole("radio", { name: "deepagents (ACP)" }),
+		).toBeDisabled();
+		await expect(
+			page.getByRole("radio", { name: "Claude Code (Agent SDK)" }),
+		).toBeEnabled();
+		await expect(page.getByRole("radio", { name: "Auto (recommended)" })).toBeEnabled();
+		await expect(card(page).getByText(DEEPAGENTS_NOT_INSTALLED)).toBeVisible();
+	});
+
+	test("states plainly at the surface when no agent is available", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING);
 		await openAiSettings(page);
 
-		await expect(page.getByTestId("harness-warning")).toHaveCount(0);
-		await page.getByRole("radio", { name: "Claude Code (Agent SDK)" }).click();
-
-		const warning = page.getByTestId("harness-warning");
-		await expect(warning).toBeVisible();
-		await expect(warning).toContainText("is not authenticated");
-		await expect(warning).toContainText(CLAUDE_REMEDY);
+		const banner = page.getByTestId("harness-none-available");
+		await expect(banner).toBeVisible();
+		await expect(banner).toContainText(
+			"No investigation agent is available on this machine",
+		);
+		// A statement, not a nudge — an install prompt is an operator decision.
+		await expect(banner.getByRole("link")).toHaveCount(0);
+		await expect(banner.getByRole("button")).toHaveCount(0);
 	});
 
-	test("warns on a harness/provider mismatch instead of rerouting", async ({
+	test("says nothing at the surface while an agent can still run", async ({
 		page,
 	}) => {
-		await serveActiveProvider(page, "anthropic");
-		await serveHarnesses(page, KEYS_ONLY);
+		await serveHarnesses(page, SESSION_ONLY);
 		await openAiSettings(page);
 
-		await page.getByRole("radio", { name: "deepagents (ACP)" }).click();
-		const warning = page.getByTestId("harness-warning");
-		await expect(warning).toBeVisible();
-		await expect(warning).toContainText("speaks the OpenAI protocol");
-		await expect(warning).toContainText("Anthropic");
+		await expect(page.getByTestId("harness-none-available")).toHaveCount(0);
 	});
 
-	// A pinned claude-code authenticates through its own cli-session route, so the
-	// Tier-1 provider does not gate it. Warning here would flag a working config.
+	// The row is disabled, so this state is only reachable by an agent that was
+	// pinned while it worked and has since gone away — exactly when it matters.
+	test("warns when the SAVED harness can no longer run", async ({ page }) => {
+		await serveActiveProvider(page, "anthropic", "claude-code");
+		await serveHarnesses(page, NOTHING);
+		await openAiSettings(page);
+
+		const warning = page.getByTestId("harness-warning");
+		await expect(warning).toBeVisible();
+		await expect(warning).toContainText("is not installed on this machine");
+		await expect(warning).toContainText(CLAUDE_NOT_INSTALLED);
+	});
+
+	test("warns from the gate's answer, never from a rule of its own", async ({
+		page,
+	}) => {
+		await serveActiveProvider(page, "openai", "claude-code");
+		await serveHarnesses(page, AUTH_OK_BUT_BLOCKED);
+		await openAiSettings(page);
+
+		const warning = page.getByTestId("harness-warning");
+		await expect(warning).toBeVisible();
+		await expect(warning).toContainText(
+			'cannot run against the active provider "OpenAI"',
+		);
+		// The credential is fine, so the row must not claim otherwise.
+		await expect(
+			card(page).getByText("Not authenticated", { exact: true }),
+		).toHaveCount(0);
+	});
+
+	// A pinned claude-code on a cli-session route is provider-agnostic and the gate
+	// says so, so the card must stay quiet. Round 1's false warning lived here.
 	test("stays quiet when claude-code is pinned against a non-Anthropic provider", async ({
 		page,
 	}) => {
@@ -367,42 +541,66 @@ test.describe("Design evidence (#501)", () => {
 		await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 	};
 
+	/**
+	 * Each state gets its own navigation with its fixture already in place.
+	 * Chaining `page.reload()` through four different fixtures was flaky under
+	 * parallel load — a fresh goto per state is both stabler and closer to what a
+	 * reader actually opens.
+	 */
 	test("settings card: default, dark, empty and error states", async ({
 		page,
 	}) => {
-		await serveHarnesses(page, SESSION_ONLY);
-		await openAiSettings(page);
+		test.setTimeout(120_000);
 
-		await setTheme(page, "light");
-		await expect(card(page)).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await card(page).screenshot({ path: `${SHOTS}/settings-harness-default.png` });
+		// The suite runs authenticated from storageState, and clearCookies would
+		// drop that session — so seed the theme on the existing context instead.
+		await page.goto("/settings?tab=ai");
 
-		await setTheme(page, "dark");
-		await expect(card(page)).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await card(page).screenshot({ path: `${SHOTS}/settings-harness-dark.png` });
+		const themeOnly = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+		};
 
-		// "Empty" for this card is a machine holding no credential at all — the
-		// state a fresh install is in, and the one #501 was reported from.
-		await setTheme(page, "light");
-		await page.unroute(isHarnessesUrl);
-		await serveHarnesses(page, NOTHING);
-		await page.reload();
-		await expect(card(page).getByText(CLAUDE_REMEDY)).toBeVisible({
-			timeout: 15_000,
+		const shot = async (
+			name: string,
+			theme: "light" | "dark",
+			harnesses: HarnessFixture[] | "error",
+			ready: () => Promise<void>,
+		) => {
+			await themeOnly(theme);
+			if (harnesses === "error") await failHarnesses(page);
+			else await serveHarnesses(page, harnesses);
+			await page.goto("/settings?tab=ai");
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+			await ready();
+			await page.waitForLoadState("networkidle");
+			await card(page).screenshot({ path: `${SHOTS}/${name}.png` });
+			await page.unroute(isHarnessesUrl);
+		};
+
+		const sessionReady = async () => {
+			await expect(
+				card(page).getByText("Signed-in Claude session", { exact: true }),
+			).toBeVisible({ timeout: 15_000 });
+		};
+
+		await shot("settings-harness-default", "light", SESSION_ONLY, sessionReady);
+		await shot("settings-harness-dark", "dark", SESSION_ONLY, sessionReady);
+
+		// "Empty" for this card is a machine holding no agent at all — the state a
+		// fresh install is in, and the one #501 and #518 were both reported from.
+		await shot("settings-harness-empty", "light", NOTHING, async () => {
+			await expect(page.getByTestId("harness-none-available")).toBeVisible({
+				timeout: 15_000,
+			});
 		});
-		await page.waitForLoadState("networkidle");
-		await card(page).screenshot({ path: `${SHOTS}/settings-harness-empty.png` });
 
-		await page.unroute(isHarnessesUrl);
-		await failHarnesses(page);
-		await page.reload();
-		await expect(page.getByTestId("harness-status-error")).toBeVisible({
-			timeout: 15_000,
+		await shot("settings-harness-error", "light", "error", async () => {
+			await expect(page.getByTestId("harness-status-error")).toBeVisible({
+				timeout: 20_000,
+			});
 		});
-		await page.waitForLoadState("networkidle");
-		await card(page).screenshot({ path: `${SHOTS}/settings-harness-error.png` });
 	});
 
 	test("raw-report banner: default and dark", async ({ page }) => {

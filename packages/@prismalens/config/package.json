@@ -32,6 +32,10 @@
 			"types": "./dist/harness-auth.d.ts",
 			"import": "./dist/harness-auth.js"
 		},
+		"./harness-selection": {
+			"types": "./dist/harness-selection.d.ts",
+			"import": "./dist/harness-selection.js"
+		},
 		"./mcp": {
 			"types": "./dist/mcp.d.ts",
 			"import": "./dist/mcp.js"

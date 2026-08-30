@@ -2,8 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
-import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+import {
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	resolveHarnessAuthFor,
+	resolveHarnessSelection,
+} from "@prismalens/config/harness-selection";
 import {
 	getAllowedHosts,
 	getApiKeyEnvVar,
@@ -284,25 +291,33 @@ export class LlmSettingsService {
 	 * must stay cheap reads.
 	 */
 	async isActiveProviderUsable(): Promise<boolean> {
+		return (await this.resolveSelection()).runnable;
+	}
+
+	/**
+	 * The inputs the worker's gate runs on, assembled from the same sources the
+	 * internal credentials endpoint hands it: the ACTIVE provider's key only, its
+	 * model, the harness setting, the env override. Anything that answers "would a
+	 * job start?" goes through here — nothing re-derives it (ADR-0031, #518).
+	 */
+	private async resolveSelection(
+		harnessOverride?: HarnessId,
+	): Promise<ReturnType<typeof resolveHarnessSelection>> {
 		const { provider, model, harness } = await this.resolveActiveLlmConfig();
-		if (!provider) return false;
+		return resolveHarnessSelection({
+			...this.selectionInput(provider, model),
+			harness: harnessOverride ?? harness,
+		});
+	}
 
-		// A signed-in Claude CLI session runs an investigation with neither a key nor
-		// a model, so it is checked ahead of both guards — this predicate and the
-		// worker's job-time gate must agree on "usable" (ADR-0031, #501).
-		if (
-			provider === "anthropic" &&
-			(harness === "auto" || harness === "claude-code") &&
-			resolveHarnessAuth("claude-code", { apiKeyPresent: false }).usable
-		) {
-			return true;
-		}
-
-		if (!model) return false;
-		if (!providerRequiresApiKey(provider)) return true;
-
-		const credential = (await this.getLlmCredentialStatus())[provider];
-		return !!credential && (credential.hasDbKey || credential.hasEnvKey);
+	private selectionInput(provider: LLMProviderId | null, model: string | null) {
+		return {
+			provider,
+			apiKey: provider ? (this.resolveApiKey(provider) ?? "") : "",
+			model,
+			harness: "auto" as const,
+			envHarness: process.env.PRISMALENS_HARNESS,
+		};
 	}
 
 	async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
@@ -371,26 +386,23 @@ export class LlmSettingsService {
 	 * Never exposes API key secrets.
 	 */
 	async getHarnessesStatus(): Promise<HarnessesResponse> {
-		const { provider: activeProvider } = await this.resolveActiveLlmConfig();
+		const { provider, model } = await this.resolveActiveLlmConfig();
+		const input = this.selectionInput(provider, model);
+
 		const harnesses = HARNESS_IDS.map((id) => {
 			const descriptor = HARNESS_REGISTRY[id];
-			let apiKeyPresent = false;
-			if (id === "claude-code") {
-				apiKeyPresent = Boolean(this.resolveApiKey("anthropic"));
-			} else if (id === "deepagents") {
-				apiKeyPresent =
-					Boolean(this.resolveApiKey("openai")) ||
-					(activeProvider === "custom" &&
-						Boolean(this.resolveApiKey("custom"))) ||
-					(activeProvider === "ollama" &&
-						Boolean(this.resolveApiKey("ollama")));
-			}
-			const verdict = resolveHarnessAuth(id, { apiKeyPresent });
+			// Both answers come from the shared gate: `verdict` is why the credential
+			// is or is not there, `runnable` is whether a job pinned to this harness
+			// would actually start. Re-deriving either here is what caused #517.
+			const verdict = resolveHarnessAuthFor(id, input);
+			const selection = resolveHarnessSelection({ ...input, harness: id });
 			return {
 				id: descriptor.id,
 				label: descriptor.label,
 				implemented: descriptor.implemented,
 				verdict,
+				runnable: selection.runnable,
+				blockedReason: selection.runnable ? null : selection.reason,
 			};
 		});
 

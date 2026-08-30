@@ -16,11 +16,21 @@ import {
 	type HarnessId,
 } from "./providers/harness.js";
 
+/**
+ * Why a harness cannot run. Structured so a caller can branch on the cause
+ * instead of parsing `reason` — telling someone to sign into a CLI they never
+ * installed is the defect this exists to prevent (#518).
+ */
+export type HarnessUnusableCause =
+	| "not-implemented"
+	| "not-installed"
+	| "not-authenticated";
+
 /** Outcome of resolving authentication for a harness (ADR-0031). */
 export type HarnessAuthVerdict =
 	| { usable: true; route: "api-key" }
 	| { usable: true; route: "cli-session"; verified: boolean }
-	| { usable: false; reason: string };
+	| { usable: false; cause: HarnessUnusableCause; reason: string };
 
 export interface ResolveHarnessAuthOpts {
 	apiKeyPresent: boolean;
@@ -59,7 +69,11 @@ export function resolveHarnessAuth(
 ): HarnessAuthVerdict {
 	const descriptor = HARNESS_REGISTRY[harnessId];
 	if (!descriptor?.implemented) {
-		return { usable: false, reason: `${harnessId} harness not implemented` };
+		return {
+			usable: false,
+			cause: "not-implemented",
+			reason: `${harnessId} harness not implemented`,
+		};
 	}
 
 	const checkPath = opts.isOnPath ?? isOnPath;
@@ -84,16 +98,31 @@ export function resolveHarnessAuth(
 		}
 	}
 
+	// No route resolved. Which gap to name is decided by the binary, not guessed:
+	// `pl doctor` already words a missing one as "install the harness" and names
+	// no install command, so neither does this (#518).
 	if (harnessId === "claude-code") {
+		// Reaching here means no key AND no binary — a binary on PATH would have
+		// resolved the cli-session route above, signed in or not.
 		return {
 			usable: false,
+			cause: "not-installed",
 			reason:
-				"add an API key in Settings → AI provider, or sign in with the Claude CLI (claude /login)",
+				"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider",
+		};
+	}
+
+	if (!checkPath(HARNESS_BINARY[harnessId])) {
+		return {
+			usable: false,
+			cause: "not-installed",
+			reason: `${HARNESS_BINARY[harnessId]} was not found on PATH — install the ${harnessId} harness, and add an API key in Settings → AI provider`,
 		};
 	}
 
 	return {
 		usable: false,
+		cause: "not-authenticated",
 		reason: "add an API key in Settings → AI provider",
 	};
 }

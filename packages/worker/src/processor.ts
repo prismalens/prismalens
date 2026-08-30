@@ -33,7 +33,10 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 } from "@prismalens/config/harness";
-import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+import {
+	resolveHarnessSelection,
+	speaksOpenAiProtocol,
+} from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import {
@@ -467,19 +470,10 @@ function cancelledResult(data: InvestigationJobData): InvestigationResult {
 }
 
 /**
- * Derive the `deepagents` harness env from the active Tier-1 provider (ADR-0013
- * scope boundary: deepagents only speaks the OpenAI protocol via `OPENAI_*` env,
- * so both vars must be gated the same way — leaking `apiKey` into `OPENAI_API_KEY`
- * for a non-OpenAI-shaped provider (anthropic/google/groq) would hand the harness a
- * secret it can't use and silently mis-wire it (worker-provider-hardwiring ledger
- * item). `openai` itself always qualifies; ollama/custom qualify because they speak
- * the OpenAI protocol too (and additionally need the base URL to leave localhost).
+ * Re-exported from `@prismalens/config/harness-selection`, which owns the
+ * deepagents protocol rule now that the API needs the same answer (#518).
  */
-export function speaksOpenAiProtocol(provider: LLMProviderId): boolean {
-	return (
-		provider === "openai" || provider === "ollama" || provider === "custom"
-	);
-}
+export { speaksOpenAiProtocol };
 
 export function buildHarnessEnv(
 	synthProvider: LLMProviderId,
@@ -606,52 +600,6 @@ export function workerProbeUrl(): string | undefined {
 	return undefined;
 }
 
-/**
- * Auto-select an implemented, compatible harness whose authentication is usable (ADR-0021; ADR-0031).
- */
-function pickAuto(
-	synthProvider: LLMProviderId | null,
-	apiKey: string,
-	authOpts?: BuildRequestOpts["harnessAuth"],
-): HarnessId {
-	for (const harnessId of HARNESS_AUTO_ORDER) {
-		const descriptor = HARNESS_REGISTRY[harnessId];
-		if (!descriptor?.implemented) continue;
-
-		if (harnessId === "claude-code") {
-			if (synthProvider && synthProvider !== "anthropic") continue;
-			const keyPresent = Boolean(apiKey) && synthProvider === "anthropic";
-			const verdict = resolveHarnessAuth(harnessId, {
-				apiKeyPresent: keyPresent,
-				homeDir: authOpts?.homeDir,
-				isOnPath: authOpts?.isOnPath,
-			});
-			if (verdict.usable) return harnessId;
-		} else if (harnessId === "deepagents") {
-			if (!synthProvider || !speaksOpenAiProtocol(synthProvider)) continue;
-			const keyPresent = Boolean(apiKey);
-			const verdict = resolveHarnessAuth(harnessId, {
-				apiKeyPresent: keyPresent,
-				homeDir: authOpts?.homeDir,
-				isOnPath: authOpts?.isOnPath,
-			});
-			if (verdict.usable) return harnessId;
-		}
-	}
-
-	const isAnthropicKey = Boolean(apiKey) && synthProvider === "anthropic";
-	const claudeVerdict = resolveHarnessAuth("claude-code", {
-		apiKeyPresent: isAnthropicKey,
-		homeDir: authOpts?.homeDir,
-		isOnPath: authOpts?.isOnPath,
-	});
-	throw new Error(
-		claudeVerdict.usable
-			? "No compatible harness found."
-			: claudeVerdict.reason,
-	);
-}
-
 export interface BuildRequestOpts {
 	harnessAuth?: {
 		homeDir?: string;
@@ -680,82 +628,34 @@ export async function buildRequest(
 	const synthProvider = (llmConfig?.provider as LLMProviderId | null) ?? null;
 	const apiKey = Object.values(llmConfig?.credentials ?? {})[0] ?? "";
 
-	const rawEnvHarness = process.env.PRISMALENS_HARNESS;
-	if (
-		rawEnvHarness !== undefined &&
-		!(HARNESS_IDS as readonly string[]).includes(rawEnvHarness)
-	) {
-		throw new Error(
-			`Invalid PRISMALENS_HARNESS="${rawEnvHarness}" — expected one of ${HARNESS_IDS.join("|")}.`,
-		);
-	}
-	const envHarness = rawEnvHarness as HarnessId | undefined;
-	const settingHarness = llmConfig?.harness ?? "auto";
-
-	const harness: HarnessId =
-		envHarness ??
-		(settingHarness !== "auto"
-			? (settingHarness as HarnessId)
-			: pickAuto(synthProvider, apiKey, opts?.harnessAuth));
-
-	// deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): fail
-	// the job with a clear reason up front instead of dispatching a run that dies
-	// deep in the harness with an opaque missing-credential error.
-	if (
-		harness === "deepagents" &&
-		(!synthProvider || !speaksOpenAiProtocol(synthProvider))
-	) {
-		throw new Error(
-			`Harness "deepagents" only supports OpenAI-protocol providers ` +
-				`(openai/ollama/custom); active provider is "${synthProvider}". ` +
-				`Switch provider or set PRISMALENS_HARNESS to a harness that ` +
-				`supports it (e.g. claude-code for anthropic).`,
-		);
-	}
-
-	let harnessKeyPresent = false;
-	if (harness === "deepagents") {
-		harnessKeyPresent =
-			Boolean(apiKey) &&
-			synthProvider !== null &&
-			speaksOpenAiProtocol(synthProvider);
-	} else if (harness === "claude-code") {
-		harnessKeyPresent =
-			Boolean(apiKey) &&
-			(synthProvider === "anthropic" || synthProvider === null);
-	} else {
-		harnessKeyPresent = Boolean(apiKey);
-	}
-
-	const verdict = resolveHarnessAuth(harness, {
-		apiKeyPresent: harnessKeyPresent,
-		homeDir: opts?.harnessAuth?.homeDir,
-		isOnPath: opts?.harnessAuth?.isOnPath,
+	// One predicate, shared with the API (ADR-0031, #518). The worker used to own
+	// this logic inline and the API re-derived it; four defects came out of the
+	// two copies disagreeing. Behaviour of record still lives here — it just lives
+	// in a function both callers use.
+	const selection = resolveHarnessSelection({
+		provider: synthProvider,
+		apiKey,
+		model: llmConfig?.model ?? null,
+		harness: (llmConfig?.harness ?? "auto") as "auto" | HarnessId,
+		envHarness: process.env.PRISMALENS_HARNESS,
+		auth: opts?.harnessAuth,
 	});
-	if (!verdict.usable) {
-		throw new Error(verdict.reason);
+	if (!selection.runnable) {
+		throw new Error(selection.reason);
 	}
+	const harness = selection.harness;
 
-	if (verdict.route === "cli-session" && !verdict.verified) {
+	if (selection.route === "cli-session" && !selection.verified) {
 		logger.warn(
 			"Harness session is unverified (no credentials file found) — in-run auth failure may occur if not logged in via CLI",
 		);
 	}
 
-	const isSessionRoute = verdict.route === "cli-session";
-	if (!llmConfig?.provider || !llmConfig?.model) {
-		if (!isSessionRoute) {
-			throw new Error(
-				"LLM not configured: no active provider/model. Configure via Settings " +
-					"or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
-			);
-		}
-	}
-
-	const isAuto = !envHarness && settingHarness === "auto";
 	const routeLabel =
-		verdict.route === "cli-session" ? "signed-in session" : "api-key";
-	logger.info(`harness: ${harness} (${isAuto ? "auto — " : ""}${routeLabel})`);
+		selection.route === "cli-session" ? "signed-in session" : "api-key";
+	logger.info(
+		`harness: ${harness} (${selection.auto ? "auto — " : ""}${routeLabel})`,
+	);
 
 	let incident: Record<string, unknown> | null = null;
 	try {

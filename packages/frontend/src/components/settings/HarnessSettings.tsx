@@ -15,8 +15,11 @@
  */
 
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
-import type { HarnessSetting, HarnessStatus } from "@prismalens/contracts";
+import type {
+	HarnessAuthVerdict,
+	HarnessSetting,
+	HarnessStatus,
+} from "@prismalens/contracts";
 import { AlertTriangle, Loader2, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -42,43 +45,24 @@ import {
 	useLlmSettings,
 	useUpdateLlmSettings,
 } from "@/lib/api/hooks";
+import { cn } from "@/lib/utils";
 
 const IMPLEMENTED_HARNESSES = Object.values(HARNESS_REGISTRY).filter(
 	(descriptor) => descriptor.implemented,
 );
 
-// Mirrors the worker's only job-time compatibility refusal (processor.ts
-// `speaksOpenAiProtocol`). Duplicated because a registry field for it is deferred
-// — ADR-0031 §4; keep the two in step (#501).
-const OPENAI_PROTOCOL_PROVIDERS: readonly LLMProviderId[] = [
-	"openai",
-	"ollama",
-	"custom",
-];
-
-function providerName(provider: LLMProviderId): string {
-	return LLM_PROVIDERS[provider]?.name ?? provider;
-}
-
 /**
- * Why an explicitly pinned harness cannot run against the active provider, or
- * null when it can. Only deepagents can mismatch: a pinned claude-code resolves
- * through its own cli-session route whatever the Tier-1 provider is, so warning
- * on that pairing would flag a working configuration (#501).
+ * "Not installed" and "not authenticated" are different problems with different
+ * fixes, so the label is read off the verdict's `cause` and never off its
+ * wording — the backend owns the words (#518).
  */
-function describeMismatch(
-	harness: HarnessId,
-	activeProvider: LLMProviderId | null | undefined,
-): string | null {
-	if (!activeProvider) return null;
-	if (
-		harness === "deepagents" &&
-		!OPENAI_PROTOCOL_PROVIDERS.includes(activeProvider)
-	) {
-		return `deepagents speaks the OpenAI protocol. The active provider is ${providerName(activeProvider)}.`;
-	}
-	return null;
-}
+type UnusableCause = Extract<HarnessAuthVerdict, { usable: false }>["cause"];
+
+const UNUSABLE_LABEL: Record<UnusableCause, string> = {
+	"not-implemented": "Not available",
+	"not-installed": "Not installed",
+	"not-authenticated": "Not authenticated",
+};
 
 function VerdictBadge({ status }: { status: HarnessStatus }) {
 	const { verdict } = status;
@@ -89,7 +73,7 @@ function VerdictBadge({ status }: { status: HarnessStatus }) {
 				variant="outline"
 				className="border-amber-600 text-amber-700 dark:text-amber-400"
 			>
-				Not authenticated
+				{UNUSABLE_LABEL[verdict.cause]}
 			</Badge>
 		);
 	}
@@ -135,14 +119,33 @@ export function HarnessSettings() {
 		selected === "auto" ? undefined : statusById.get(selected);
 	const selectedDescriptor =
 		selected === "auto" ? undefined : HARNESS_REGISTRY[selected];
-	const mismatch =
-		selected === "auto"
-			? null
-			: describeMismatch(selected, settings?.activeProvider);
-	const unusableReason =
-		selectedStatus && !selectedStatus.verdict.usable
-			? selectedStatus.verdict.reason
+	// Why a pinned harness cannot run — computed by the shared gate on the server,
+	// never re-derived here. The UI owning a second copy of that rule is what put a
+	// false warning on a working config and none on a broken one (#517, #518).
+	const blockedReason =
+		selectedStatus && !selectedStatus.runnable
+			? selectedStatus.blockedReason
 			: null;
+	// Surface-level, not per row: with every agent unusable the step as a whole
+	// cannot run, and a reader should not have to compose that from three badges.
+	// Statement only — an install prompt is a product decision (#518).
+	const statuses = harnessData?.harnesses ?? [];
+	const noAgentAvailable =
+		!harnessError &&
+		statuses.length > 0 &&
+		IMPLEMENTED_HARNESSES.every(
+			(descriptor) => statusById.get(descriptor.id)?.runnable === false,
+		);
+
+	const unusableVerdict =
+		selectedStatus && !selectedStatus.verdict.usable
+			? selectedStatus.verdict
+			: null;
+	const blockedTitle = unusableVerdict
+		? unusableVerdict.cause === "not-installed"
+			? "is not installed on this machine"
+			: "is not authenticated"
+		: "cannot run with the current settings";
 
 	async function handleSave() {
 		setSaveError(null);
@@ -197,6 +200,19 @@ export function HarnessSettings() {
 						</Alert>
 					)}
 
+					{noAgentAvailable && (
+						<Alert data-testid="harness-none-available">
+							<AlertTriangle className="h-4 w-4" />
+							<AlertTitle>
+								No investigation agent is available on this machine
+							</AlertTitle>
+							<AlertDescription>
+								Investigations cannot run until one of the agents below is
+								available. Each row states what is missing.
+							</AlertDescription>
+						</Alert>
+					)}
+
 					<RadioGroup
 						value={selected}
 						onValueChange={(value) => setSelected(value as HarnessSetting)}
@@ -217,21 +233,31 @@ export function HarnessSettings() {
 
 						{IMPLEMENTED_HARNESSES.map((descriptor) => {
 							const status = statusById.get(descriptor.id);
+							// Unknown status (the check failed) stays selectable — only a
+							// gate actually saying "would not start" disables the option.
+							const unusable = status ? !status.runnable : false;
 							return (
 								<div
 									key={descriptor.id}
-									className="flex items-start gap-3 rounded-lg border p-3"
+									className={cn(
+										"flex items-start gap-3 rounded-lg border p-3",
+										unusable && "bg-muted/40",
+									)}
 								>
 									<RadioGroupItem
 										value={descriptor.id}
 										id={`harness-${descriptor.id}`}
 										className="mt-1"
+										disabled={unusable}
 									/>
 									<div className="min-w-0 flex-1">
 										<div className="flex flex-wrap items-center gap-2">
 											<Label
 												htmlFor={`harness-${descriptor.id}`}
-												className="font-medium"
+												className={cn(
+													"font-medium",
+													unusable && "text-muted-foreground",
+												)}
 											>
 												{descriptor.label}
 											</Label>
@@ -250,9 +276,11 @@ export function HarnessSettings() {
 												{descriptor.readOnlyMechanism}
 											</TooltipContent>
 										</Tooltip>
-										{status && !status.verdict.usable && (
+										{status && !status.runnable && (
 											<p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-												{status.verdict.reason}
+												{status.verdict.usable
+													? status.blockedReason
+													: status.verdict.reason}
 											</p>
 										)}
 									</div>
@@ -261,16 +289,12 @@ export function HarnessSettings() {
 						})}
 					</RadioGroup>
 
-					{(unusableReason || mismatch) && selectedDescriptor && (
+					{blockedReason && selectedDescriptor && (
 						<Alert data-testid="harness-warning">
 							<AlertTriangle className="h-4 w-4" />
-							<AlertTitle>
-								{mismatch
-									? `${selectedDescriptor.label} does not match the active provider`
-									: `${selectedDescriptor.label} is not authenticated`}
-							</AlertTitle>
+							<AlertTitle>{`${selectedDescriptor.label} ${blockedTitle}`}</AlertTitle>
 							<AlertDescription className="space-y-1">
-								<p>{mismatch ?? unusableReason}</p>
+								<p>{blockedReason}</p>
 								<p>
 									Investigations pinned to this agent fail when they start.
 									PrismaLens will not quietly run a different agent — each one

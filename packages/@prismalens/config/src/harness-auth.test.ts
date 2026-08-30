@@ -92,7 +92,13 @@ describe("harness-auth resolver (ADR-0031)", () => {
 			});
 		});
 
-		it("returns unusable with both remedies when binary is not on PATH and apiKeyPresent is false", () => {
+		/**
+		 * #518: this path is only reachable with NO key and NO binary, so the old
+		 * "sign in with the Claude CLI (claude /login)" named a command the machine
+		 * does not have. A signed-out but installed CLI is a usable, unverified
+		 * cli-session verdict — asserted above — never this one.
+		 */
+		it("reports not-installed, not a login problem, when the binary is absent", () => {
 			const verdict = resolveHarnessAuth("claude-code", {
 				apiKeyPresent: false,
 				homeDir: tempHome,
@@ -101,9 +107,25 @@ describe("harness-auth resolver (ADR-0031)", () => {
 
 			expect(verdict.usable).toBe(false);
 			if (!verdict.usable) {
+				expect(verdict.cause).toBe("not-installed");
+				expect(verdict.reason).toContain("not found on PATH");
 				expect(verdict.reason).toContain("Settings → AI provider");
-				expect(verdict.reason).toContain("claude /login");
+				expect(verdict.reason).not.toContain("claude /login");
 			}
+		});
+
+		it("does not claim not-installed when the binary is present but signed out", () => {
+			const verdict = resolveHarnessAuth("claude-code", {
+				apiKeyPresent: false,
+				homeDir: tempHome,
+				isOnPath: (bin) => bin === "claude",
+			});
+
+			expect(verdict).toEqual({
+				usable: true,
+				route: "cli-session",
+				verified: false,
+			});
 		});
 	});
 
@@ -121,7 +143,7 @@ describe("harness-auth resolver (ADR-0031)", () => {
 			});
 		});
 
-		it("returns unusable with remedy when apiKeyPresent is false", () => {
+		it("reports not-installed when neither the binary nor a key is there (#518)", () => {
 			const verdict = resolveHarnessAuth("deepagents", {
 				apiKeyPresent: false,
 				homeDir: tempHome,
@@ -130,7 +152,24 @@ describe("harness-auth resolver (ADR-0031)", () => {
 
 			expect(verdict.usable).toBe(false);
 			if (!verdict.usable) {
-				expect(verdict.reason).toContain("Settings → AI provider");
+				expect(verdict.cause).toBe("not-installed");
+				expect(verdict.reason).toContain("deepagents-acp");
+				expect(verdict.reason).toContain("not found on PATH");
+			}
+		});
+
+		it("reports not-authenticated when the binary is installed but no key is set", () => {
+			const verdict = resolveHarnessAuth("deepagents", {
+				apiKeyPresent: false,
+				homeDir: tempHome,
+				isOnPath: (bin) => bin === "deepagents-acp",
+			});
+
+			expect(verdict.usable).toBe(false);
+			if (!verdict.usable) {
+				expect(verdict.cause).toBe("not-authenticated");
+				expect(verdict.reason).toBe("add an API key in Settings → AI provider");
+				expect(verdict.reason).not.toContain("not found on PATH");
 			}
 		});
 	});
@@ -145,6 +184,7 @@ describe("harness-auth resolver (ADR-0031)", () => {
 
 			expect(verdict).toEqual({
 				usable: false,
+				cause: "not-implemented",
 				reason: "codex harness not implemented",
 			});
 		});
