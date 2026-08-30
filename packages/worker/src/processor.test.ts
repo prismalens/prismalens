@@ -8,7 +8,13 @@
  * non-OpenAI-shaped secret (anthropic/google/groq) into `OPENAI_API_KEY`
  * (worker-provider-hardwiring ledger item). No network / no LLM.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Logger } from "@prismalens/logger";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 
 // `buildRequest` reads the incident (and, for the #331 checkout mapping, the
 // service catalog) over oRPC; stub the client so request construction is
@@ -608,4 +614,293 @@ describe("processInvestigationJob schema validation", () => {
 	});
 });
 
+describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
+	// Everything `buildRequest` and `resolveHarnessAuth` can read from the real
+	// process environment, keyed to the value this block gives it by default.
+	// This map IS the enumeration: the completeness test right below parses
+	// both source files and fails if either references an env var (or
+	// `os.homedir()`) that isn't a key here — so a future ambient read can't
+	// slip past this block unnoticed the way PRISMALENS_HARNESS and then
+	// CLAUDE_CONFIG_DIR each did (three review rounds on this one PR, #507).
+	// Add the new key here FIRST; the completeness test is what will tell you
+	// whether you also need one.
+	const AMBIENT_ENV_DEFAULTS: Record<string, string | undefined> = {
+		// buildRequest (packages/worker/src/processor.ts)
+		PRISMALENS_INTERNAL_SECRET: "internal-secret",
+		PRISMALENS_HARNESS: undefined,
+		PRISMALENS_SANDBOX: undefined,
+		PRISMALENS_INVESTIGATION_CWD: undefined,
+		// resolveHarnessAuth / isOnPath (packages/@prismalens/config/src/harness-auth.ts)
+		CLAUDE_CONFIG_DIR: undefined,
+		PATH: "",
+		PATHEXT: undefined,
+		// The last fallback in `join(opts.homeDir ?? os.homedir(), ".claude")` —
+		// not a `process.env.HOME` literal, so the regex scan below can't see
+		// it; asserted separately in the completeness test.
+		HOME: join(os.tmpdir(), "pl-w4-ambient-home-should-not-be-read"),
+	};
 
+	beforeEach(() => {
+		for (const [name, value] of Object.entries(AMBIENT_ENV_DEFAULTS)) {
+			vi.stubEnv(name, value);
+		}
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+	});
+
+	it("ambient-env enumeration above is complete (guards against a 4th leak)", () => {
+		const processorSrc = readFileSync(
+			fileURLToPath(new URL("./processor.ts", import.meta.url)),
+			"utf8",
+		);
+		const harnessAuthSrc = readFileSync(
+			fileURLToPath(
+				new URL(
+					"../../@prismalens/config/src/harness-auth.ts",
+					import.meta.url,
+				),
+			),
+			"utf8",
+		);
+
+		const envRefs = new Set<string>();
+		for (const src of [processorSrc, harnessAuthSrc]) {
+			for (const m of src.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g)) {
+				envRefs.add(m[1]);
+			}
+		}
+		const missing = [...envRefs].filter(
+			(name) => !(name in AMBIENT_ENV_DEFAULTS),
+		);
+		expect(missing).toEqual([]);
+
+		// os.homedir() isn't a `process.env.X` literal, so the scan above can't
+		// find it — assert directly that the source still calls it and that
+		// HOME is still in the map, so either drifting away from the other
+		// goes noticed.
+		expect(harnessAuthSrc).toContain("os.homedir()");
+		expect(AMBIENT_ENV_DEFAULTS.HOME).toBeDefined();
+	});
+
+	it("W4 case 1: session-only, credentials file present ⇒ verified, no unverified-session warning", async () => {
+		const tempHome = join(
+			os.tmpdir(),
+			`pl-w4-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		const claudeDir = join(tempHome, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, ".credentials.json"),
+			JSON.stringify({ token: "fixture-session" }),
+		);
+		const warnSpy = vi.spyOn(Logger.prototype, "warn");
+
+		try {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => ({
+					ok: true,
+					json: async () => ({
+						provider: null,
+						model: null,
+						baseUrl: null,
+						credentials: {},
+						harness: "auto",
+					}),
+				})),
+			);
+
+			const { request } = await buildRequest(
+				{ incidentId: "inc-501-1", investigationId: "inv-501-1" },
+				"run-501-1",
+				{
+					harnessAuth: {
+						homeDir: tempHome,
+						isOnPath: (bin) => bin === "claude",
+					},
+				},
+			);
+
+			expect(request.harness).toBe("claude-code");
+			expect(request.synth.configured).toBe(false);
+			expect(request.model).toBeUndefined();
+			// The credentials fixture is what makes `verified` true — this is the
+			// only observable difference the field drives (see case 1b for false).
+			// It only holds because CLAUDE_CONFIG_DIR is neutralised above: that
+			// env var wins over the injected `homeDir` inside resolveHarnessAuth,
+			// so an ambient value would have pointed this at a real directory
+			// instead of `tempHome` (review round 3, #507).
+			expect(warnSpy).not.toHaveBeenCalledWith(
+				expect.stringContaining("unverified"),
+			);
+		} finally {
+			warnSpy.mockRestore();
+			try {
+				rmSync(tempHome, { recursive: true, force: true });
+			} catch {
+				// ignore cleanup errors
+			}
+		}
+	});
+
+	it("W4 case 1b: session-only, credentials file absent ⇒ unverified session warning", async () => {
+		const tempHome = join(
+			os.tmpdir(),
+			`pl-w4-home-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(tempHome, { recursive: true });
+		const warnSpy = vi.spyOn(Logger.prototype, "warn");
+
+		try {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => ({
+					ok: true,
+					json: async () => ({
+						provider: null,
+						model: null,
+						baseUrl: null,
+						credentials: {},
+						harness: "auto",
+					}),
+				})),
+			);
+
+			const { request } = await buildRequest(
+				{ incidentId: "inc-501-1b", investigationId: "inv-501-1b" },
+				"run-501-1b",
+				{
+					harnessAuth: {
+						homeDir: tempHome,
+						isOnPath: (bin) => bin === "claude",
+					},
+				},
+			);
+
+			expect(request.harness).toBe("claude-code");
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("unverified"),
+			);
+		} finally {
+			warnSpy.mockRestore();
+			try {
+				rmSync(tempHome, { recursive: true, force: true });
+			} catch {
+				// ignore cleanup errors
+			}
+		}
+	});
+
+	it("W4 case 2: anthropic key, no session ⇒ unchanged behavior, synth.configured === true", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+					harness: "auto",
+				}),
+			})),
+		);
+
+		const { request } = await buildRequest(
+			{ incidentId: "inc-501-2", investigationId: "inv-501-2" },
+			"run-501-2",
+			{
+				harnessAuth: {
+					isOnPath: () => false,
+				},
+			},
+		);
+
+		expect(request.harness).toBe("claude-code");
+		expect(request.synth.configured).toBe(true);
+		expect(request.synth.apiKey).toBe(API_KEY);
+	});
+
+	it("W4 case 3: nothing configured ⇒ throws; message contains 'API key in Settings' and 'claude /login'", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: null,
+					model: null,
+					baseUrl: null,
+					credentials: {},
+					harness: "claude-code",
+				}),
+			})),
+		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-3", investigationId: "inv-501-3" },
+				"run-501-3",
+				{
+					harnessAuth: {
+						isOnPath: () => false,
+					},
+				},
+			),
+		).rejects.toThrowError(
+			/add an API key in Settings.*claude \/login/i,
+		);
+	});
+
+	it("W4 case 4: PRISMALENS_HARNESS=bogus ⇒ throws naming valid ids", async () => {
+		vi.stubEnv("PRISMALENS_HARNESS", "bogus");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+				}),
+			})),
+		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-4", investigationId: "inv-501-4" },
+				"run-501-4",
+			),
+		).rejects.toThrowError(
+			/Invalid PRISMALENS_HARNESS="bogus"/,
+		);
+	});
+
+	it("W4 case 5: setting deepagents + provider anthropic ⇒ protocol-mismatch error retained", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "anthropic",
+					model: "claude-sonnet-4-5",
+					baseUrl: null,
+					credentials: { anthropic: API_KEY },
+					harness: "deepagents",
+				}),
+			})),
+		);
+
+		await expect(
+			buildRequest(
+				{ incidentId: "inc-501-5", investigationId: "inv-501-5" },
+				"run-501-5",
+			),
+		).rejects.toThrowError(
+			/Harness "deepagents" only supports OpenAI-protocol providers/,
+		);
+	});
+});

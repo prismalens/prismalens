@@ -51,12 +51,13 @@ export class InternalSettingsController {
 		model: string | null;
 		baseUrl: string | null;
 		credentials: Record<string, string>;
+		harness: string;
 	}> {
 		// `baseUrl` is the user-configured one (validated against the provider
 		// allowlist on save) — without it the worker can only ever use the
 		// hardcoded default, which mis-points ollama-local and `custom`
 		// deployments (ledger: worker-provider-hardwiring).
-		const { provider, model, baseUrl } =
+		const { provider, model, baseUrl, harness } =
 			await this.llmSettingsService.resolveActiveLlmConfig();
 
 		const credentials: Record<string, string> = {};
@@ -68,6 +69,6 @@ export class InternalSettingsController {
 			}
 		}
 
-		return { provider, model, baseUrl, credentials };
+		return { provider, model, baseUrl, credentials, harness };
 	}
 }

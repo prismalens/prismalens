@@ -139,6 +139,8 @@ export const InvestigationReportSchema = z.object({
 	summary: z.string().min(1),
 	rootCause: z.string().nullable(),
 	rootCauseCategory: RootCauseCategorySchema.nullable(),
+	/** Synthesis mode: synthesized by Tier-1 LLM vs raw harness output (ADR-0031). */
+	reportMode: z.enum(["synthesized", "raw"]).optional(),
 	/** Structured culprit sub-object (ADR-0026). All fields nullable; whole object optional. */
 	culprit: CulpritSchema.nullable().optional(),
 	/** Ordered most → least plausible (array order is the ordering). */

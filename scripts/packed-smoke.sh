@@ -331,13 +331,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 			for (let i = 0; i < 120 && !forked; i++) {
 				await sleep(1000);
 				const log = fs.readFileSync(bootLog, "utf8");
-				// "LLM not configured" is the CORRECT terminal verdict in a container
+				// A terminal credential failure is the EXPECTED verdict in a container
 				// with no credentials, and reaching it proves the whole chain: the
 				// child forked, imported its closure, called the API's internal
 				// endpoint over HTTP, parsed a real JSON answer, and reported back.
 				forked =
 					log.includes('"context":"InvestigationRun"') &&
-					log.includes("LLM not configured");
+					(log.includes("LLM not configured") ||
+						log.includes("add an API key in Settings") ||
+						log.includes("No compatible harness found"));
+				if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
+					bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
+					diagnosed = true;
+					break;
+				}
 				if (/Cannot locate the investigation child entrypoint/.test(log)) {
 					bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
 					diagnosed = true;

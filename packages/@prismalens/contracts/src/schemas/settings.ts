@@ -9,6 +9,7 @@ import {
 	type AgentId as AgentIdType,
 	agentIdSchema,
 } from "@prismalens/config/agents";
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import {
 	type LLMProviderId,
 	llmProviderIdSchema,
@@ -23,6 +24,45 @@ import { z } from "zod";
  * Provider ID schema - canonical re-export from @prismalens/config
  */
 export const LlmProviderIdSchema = llmProviderIdSchema;
+
+/**
+ * Harness setting schema ("auto" or an explicit harness ID)
+ */
+export const HarnessSettingSchema = z.enum(["auto", ...HARNESS_IDS]);
+export type HarnessSetting = z.infer<typeof HarnessSettingSchema>;
+
+/**
+ * Harness authentication verdict schema (ADR-0031)
+ */
+export const HarnessAuthVerdictSchema = z.union([
+	z.object({
+		usable: z.literal(true),
+		route: z.literal("api-key"),
+	}),
+	z.object({
+		usable: z.literal(true),
+		route: z.literal("cli-session"),
+		verified: z.boolean(),
+	}),
+	z.object({
+		usable: z.literal(false),
+		reason: z.string(),
+	}),
+]);
+export type HarnessAuthVerdict = z.infer<typeof HarnessAuthVerdictSchema>;
+
+export const HarnessStatusSchema = z.object({
+	id: z.string(),
+	label: z.string(),
+	implemented: z.boolean(),
+	verdict: HarnessAuthVerdictSchema,
+});
+export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
+
+export const HarnessesResponseSchema = z.object({
+	harnesses: z.array(HarnessStatusSchema),
+});
+export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
 export type LlmProviderId = LLMProviderId;
 
 // Test connection result
@@ -283,6 +323,7 @@ export const LlmSettingsSchema = z.object({
 	agentOverrides: z
 		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
 		.optional(),
+	harness: HarnessSettingSchema.optional().default("auto"),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
 
@@ -316,6 +357,7 @@ export const UpdateLlmSettingsSchema = z.object({
 	agentOverrides: z
 		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
 		.optional(),
+	harness: HarnessSettingSchema.optional(),
 });
 export type UpdateLlmSettings = z.infer<typeof UpdateLlmSettingsSchema>;
 

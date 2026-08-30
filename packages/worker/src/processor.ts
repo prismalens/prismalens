@@ -27,7 +27,13 @@ import {
 	pickServiceLabel,
 	resolveInvestigationCwd,
 } from "@prismalens/config";
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import {
+	HARNESS_AUTO_ORDER,
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
 import {
@@ -93,6 +99,7 @@ async function fetchLlmConfig(): Promise<{
 	model: string | null;
 	baseUrl: string | null;
 	credentials: Record<string, string>;
+	harness?: "auto" | HarnessId;
 }> {
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
 	if (!internalSecret) {
@@ -125,6 +132,7 @@ async function fetchLlmConfig(): Promise<{
 		model: string | null;
 		baseUrl: string | null;
 		credentials: Record<string, string>;
+		harness?: "auto" | HarnessId;
 	}>;
 }
 
@@ -599,6 +607,59 @@ export function workerProbeUrl(): string | undefined {
 }
 
 /**
+ * Auto-select an implemented, compatible harness whose authentication is usable (ADR-0021; ADR-0031).
+ */
+function pickAuto(
+	synthProvider: LLMProviderId | null,
+	apiKey: string,
+	authOpts?: BuildRequestOpts["harnessAuth"],
+): HarnessId {
+	for (const harnessId of HARNESS_AUTO_ORDER) {
+		const descriptor = HARNESS_REGISTRY[harnessId];
+		if (!descriptor?.implemented) continue;
+
+		if (harnessId === "claude-code") {
+			if (synthProvider && synthProvider !== "anthropic") continue;
+			const keyPresent = Boolean(apiKey) && synthProvider === "anthropic";
+			const verdict = resolveHarnessAuth(harnessId, {
+				apiKeyPresent: keyPresent,
+				homeDir: authOpts?.homeDir,
+				isOnPath: authOpts?.isOnPath,
+			});
+			if (verdict.usable) return harnessId;
+		} else if (harnessId === "deepagents") {
+			if (!synthProvider || !speaksOpenAiProtocol(synthProvider)) continue;
+			const keyPresent = Boolean(apiKey);
+			const verdict = resolveHarnessAuth(harnessId, {
+				apiKeyPresent: keyPresent,
+				homeDir: authOpts?.homeDir,
+				isOnPath: authOpts?.isOnPath,
+			});
+			if (verdict.usable) return harnessId;
+		}
+	}
+
+	const isAnthropicKey = Boolean(apiKey) && synthProvider === "anthropic";
+	const claudeVerdict = resolveHarnessAuth("claude-code", {
+		apiKeyPresent: isAnthropicKey,
+		homeDir: authOpts?.homeDir,
+		isOnPath: authOpts?.isOnPath,
+	});
+	throw new Error(
+		claudeVerdict.usable
+			? "No compatible harness found."
+			: claudeVerdict.reason,
+	);
+}
+
+export interface BuildRequestOpts {
+	harnessAuth?: {
+		homeDir?: string;
+		isOnPath?: (bin: string) => boolean;
+	};
+}
+
+/**
  * Build the engine investigation request from the job + LLM settings.
  * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
  * stopgap); connectors are Phase D. BYO-key (ADR-0006) from the LLM settings.
@@ -609,24 +670,92 @@ export function workerProbeUrl(): string | undefined {
 export async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
+	opts?: BuildRequestOpts,
 ): Promise<{
 	request: InvestigationRequest;
 	sandbox?: Sandbox;
 	checkout: InvestigationCwdResolution;
 }> {
 	const llmConfig = await fetchLlmConfig();
+	const synthProvider = (llmConfig?.provider as LLMProviderId | null) ?? null;
+	const apiKey = Object.values(llmConfig?.credentials ?? {})[0] ?? "";
+
+	const rawEnvHarness = process.env.PRISMALENS_HARNESS;
+	if (
+		rawEnvHarness !== undefined &&
+		!(HARNESS_IDS as readonly string[]).includes(rawEnvHarness)
+	) {
+		throw new Error(
+			`Invalid PRISMALENS_HARNESS="${rawEnvHarness}" — expected one of ${HARNESS_IDS.join("|")}.`,
+		);
+	}
+	const envHarness = rawEnvHarness as HarnessId | undefined;
+	const settingHarness = llmConfig?.harness ?? "auto";
+
+	const harness: HarnessId =
+		envHarness ??
+		(settingHarness !== "auto"
+			? (settingHarness as HarnessId)
+			: pickAuto(synthProvider, apiKey, opts?.harnessAuth));
+
+	// deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): fail
+	// the job with a clear reason up front instead of dispatching a run that dies
+	// deep in the harness with an opaque missing-credential error.
+	if (
+		harness === "deepagents" &&
+		(!synthProvider || !speaksOpenAiProtocol(synthProvider))
+	) {
+		throw new Error(
+			`Harness "deepagents" only supports OpenAI-protocol providers ` +
+				`(openai/ollama/custom); active provider is "${synthProvider}". ` +
+				`Switch provider or set PRISMALENS_HARNESS to a harness that ` +
+				`supports it (e.g. claude-code for anthropic).`,
+		);
+	}
+
+	let harnessKeyPresent = false;
+	if (harness === "deepagents") {
+		harnessKeyPresent =
+			Boolean(apiKey) &&
+			synthProvider !== null &&
+			speaksOpenAiProtocol(synthProvider);
+	} else if (harness === "claude-code") {
+		harnessKeyPresent =
+			Boolean(apiKey) &&
+			(synthProvider === "anthropic" || synthProvider === null);
+	} else {
+		harnessKeyPresent = Boolean(apiKey);
+	}
+
+	const verdict = resolveHarnessAuth(harness, {
+		apiKeyPresent: harnessKeyPresent,
+		homeDir: opts?.harnessAuth?.homeDir,
+		isOnPath: opts?.harnessAuth?.isOnPath,
+	});
+	if (!verdict.usable) {
+		throw new Error(verdict.reason);
+	}
+
+	if (verdict.route === "cli-session" && !verdict.verified) {
+		logger.warn(
+			"Harness session is unverified (no credentials file found) — in-run auth failure may occur if not logged in via CLI",
+		);
+	}
+
+	const isSessionRoute = verdict.route === "cli-session";
 	if (!llmConfig?.provider || !llmConfig?.model) {
-		throw new Error(
-			"LLM not configured: no active provider/model. Configure via Settings " +
-				"or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
-		);
+		if (!isSessionRoute) {
+			throw new Error(
+				"LLM not configured: no active provider/model. Configure via Settings " +
+					"or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
+			);
+		}
 	}
-	const apiKey = Object.values(llmConfig.credentials ?? {})[0] ?? "";
-	if (!apiKey) {
-		throw new Error(
-			`LLM API key not configured for provider "${llmConfig.provider}".`,
-		);
-	}
+
+	const isAuto = !envHarness && settingHarness === "auto";
+	const routeLabel =
+		verdict.route === "cli-session" ? "signed-in session" : "api-key";
+	logger.info(`harness: ${harness} (${isAuto ? "auto — " : ""}${routeLabel})`);
 
 	let incident: Record<string, unknown> | null = null;
 	try {
@@ -641,24 +770,11 @@ export async function buildRequest(
 	// allowlist) wins; the hardcoded default is only the last resort for an
 	// unconfigured ollama-cloud setup. Without this, `custom` and ollama-local
 	// deployments were silently pointed at the default endpoint.
-	const baseURL = llmConfig.baseUrl ?? INVESTIGATION_DEFAULTS.synth.baseURL;
+	const baseURL = llmConfig?.baseUrl ?? INVESTIGATION_DEFAULTS.synth.baseURL;
 	// Tier-1 reduce runs on the user's chosen provider (ADR-0013 resolver); a base
 	// URL is only needed for the OpenAI-compatible providers (ollama/custom).
-	const synthProvider = llmConfig.provider as LLMProviderId;
 	const synthIsOpenAiCompat =
 		synthProvider === "ollama" || synthProvider === "custom";
-	const harness = process.env.PRISMALENS_HARNESS ?? "deepagents";
-	// deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): fail
-	// the job with a clear reason up front instead of dispatching a run that dies
-	// deep in the harness with an opaque missing-credential error.
-	if (harness === "deepagents" && !speaksOpenAiProtocol(synthProvider)) {
-		throw new Error(
-			`Harness "deepagents" only supports OpenAI-protocol providers ` +
-				`(openai/ollama/custom); active provider is "${synthProvider}". ` +
-				`Switch provider or set PRISMALENS_HARNESS to a harness that ` +
-				`supports it (e.g. claude-code for anthropic).`,
-		);
-	}
 
 	// Isolation boundary (ADR-0020 B.1.3): the PRISMALENS_SANDBOX knob selects it; the
 	// server default is now `auto` — srt when its egress bridge is healthy (self-check,
@@ -668,12 +784,12 @@ export async function buildRequest(
 	// an allowlist derived from the LLM + telemetry hosts. The resolved sandbox is
 	// CALLER-OWNED — processJobInternal destroys it after the run.
 	const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
-	const takesSandbox = harnessTakesSandbox(harness as HarnessId, sandboxMode);
+	const takesSandbox = harnessTakesSandbox(harness, sandboxMode);
 	let sandbox: Sandbox | undefined;
 	if (takesSandbox) {
 		const allowedDomains = deriveWorkerAllowedHosts(
-			synthProvider,
-			synthIsOpenAiCompat ? [baseURL] : [],
+			synthProvider ?? "openai",
+			synthIsOpenAiCompat && baseURL ? [baseURL] : [],
 		);
 		// ASYNC: `auto` runs an egress self-check (B.1.1) before trusting srt for this
 		// egress-needing run. Log the honest reason on a degrade (ADR-0017) so an
@@ -719,6 +835,10 @@ export async function buildRequest(
 		logger.warn(checkout.note);
 	}
 
+	const isSynthConfigured =
+		Boolean(apiKey) ||
+		(synthProvider !== null && !LLM_PROVIDERS[synthProvider].requiresApiKey);
+
 	return {
 		checkout,
 		request: {
@@ -727,16 +847,18 @@ export async function buildRequest(
 			// The single posture dial (ADR-0017): the worker is always read-only in
 			// Phase A — no per-run override, no native passthrough.
 			permissionMode: "read-only",
-			model: llmConfig.model,
+			...(llmConfig?.model ? { model: llmConfig.model } : {}),
 			cwd: checkout.cwd,
 			synth: {
-				providerId: synthProvider,
-				model: llmConfig.model,
-				apiKey,
-				...(synthIsOpenAiCompat ? { baseURL } : {}),
-				configured: true,
+				providerId: synthProvider ?? "ollama",
+				model: llmConfig?.model ?? "",
+				...(apiKey ? { apiKey } : {}),
+				...(synthIsOpenAiCompat && baseURL ? { baseURL } : {}),
+				configured: isSynthConfigured,
 			},
-			harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
+			harnessEnv: synthProvider
+				? buildHarnessEnv(synthProvider, apiKey, baseURL)
+				: {},
 			initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 			// Resource limits (ADR-0020): unattended server runs get a wall-clock cap so a
 			// wedged harness cannot pin a worker slot forever. Memory/cpu are left unset —

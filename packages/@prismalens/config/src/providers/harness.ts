@@ -16,6 +16,9 @@ export const HARNESS_IDS = ["deepagents", "claude-code", "codex"] as const;
 
 export type HarnessId = (typeof HARNESS_IDS)[number];
 
+/** Credential route kinds a harness can authenticate through (ADR-0031). */
+export type HarnessAuthRoute = "api-key" | "cli-session";
+
 /** How prismalens drives the harness. */
 export type HarnessTransport = "acp" | "agent-sdk" | "subprocess-jsonl";
 
@@ -55,6 +58,8 @@ export interface HarnessDescriptor {
 	 * without a per-tool list (deepagents cooperative auto-approve; codex OS sandbox).
 	 */
 	readOnlyDeny?: readonly string[];
+	/** Credential routes this harness can use, in precedence order (ADR-0031). */
+	authRoutes: readonly HarnessAuthRoute[];
 	/** Wired end-to-end today? (codex is a reserved slot — ADR-0017 §5.) */
 	implemented: boolean;
 }
@@ -70,6 +75,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP session/request_permission auto-approved (prompt-only); OS enforcement arrives with the Sandbox port (ADR-0020/B.1)",
+		authRoutes: ["api-key"],
 		implemented: true,
 	},
 	"claude-code": {
@@ -83,6 +89,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// here to drift from what the runner enforces (ADR-0017 Amendment 2).
 		readOnlyMechanism: "Agent SDK disallowedTools + permissionMode",
 		readOnlyDeny: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
+		authRoutes: ["api-key", "cli-session"],
 		implemented: true,
 	},
 	codex: {
@@ -93,9 +100,16 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modelPrefix: null,
 		readOnlyFidelity: "enforced",
 		readOnlyMechanism: "OS sandbox (seccomp/landlock) — not yet wired",
+		authRoutes: ["api-key", "cli-session"],
 		implemented: false,
 	},
 };
+
+/**
+ * Auto-selection order for unconfigured or auto harness mode (ADR-0031).
+ * Claude Code hero lane first (ADR-0021).
+ */
+export const HARNESS_AUTO_ORDER = ["claude-code", "deepagents"] as const;
 
 /** Harness backend -> the CLI binary it shells out to (derived from the registry). */
 export const HARNESS_BINARY: Record<HarnessId, string> = {

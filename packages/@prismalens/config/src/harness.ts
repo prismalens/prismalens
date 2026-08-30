@@ -8,9 +8,11 @@
  */
 
 export {
+	HARNESS_AUTO_ORDER,
 	HARNESS_BINARY,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
+	type HarnessAuthRoute,
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessTransport,

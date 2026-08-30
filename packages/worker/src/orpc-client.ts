@@ -2,12 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
-import type { Contract } from "@prismalens/contracts";
+import { OpenAPILink } from "@orpc/openapi-client/fetch";
+import { type Contract, contract } from "@prismalens/contracts";
 import { config } from "./config.js";
 
-const link = new RPCLink({
+// Must speak OpenAPI REST routes matching the Nest API's @Implement routes,
+// not oRPC's default RPC procedure paths (#511).
+const link = new OpenAPILink(contract, {
 	url: config.PRISMALENS_WORKER_API_URL,
 	headers: () => ({
 		"Content-Type": "application/json",
