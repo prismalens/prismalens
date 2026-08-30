@@ -389,7 +389,9 @@ export class LlmSettingsService {
 		const { provider, model } = await this.resolveActiveLlmConfig();
 		const input = this.selectionInput(provider, model);
 		const globalSelection = resolveHarnessSelection(input);
-		const invalidPin = globalSelection.failure === "invalid-env-harness";
+		const invalidPin =
+			!globalSelection.runnable &&
+			globalSelection.failure === "invalid-env-harness";
 
 		const harnesses = HARNESS_IDS.map((id) => {
 			const descriptor = HARNESS_REGISTRY[id];
