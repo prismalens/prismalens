@@ -176,4 +176,77 @@ describe("IncidentsController - storm path alert serialization", () => {
 		expect(result.alerts?.[0]).not.toHaveProperty("tenantId");
 		expect(result.alerts?.[0]).not.toHaveProperty("internalNotes");
 	});
+
+	// Task #532: serializeIncidentWithRelations previously spread `incident.service`,
+	// leaking `tenantId`, `discoveryMetadata`, and any raw Prisma columns.
+	it("never leaks tenantId, discoveryMetadata, or extra database columns on incident.service via get handler", async () => {
+		const incidentsService = {
+			findById: vi.fn().mockResolvedValue({
+				id: "123e4567-e89b-12d3-a456-426614174000",
+				number: 1,
+				title: "Storm Incident",
+				severity: "critical",
+				status: "triggered",
+				priority: "p1",
+				triggeredAt: new Date("2026-07-31T10:00:00Z"),
+				createdAt: new Date("2026-07-31T10:00:00Z"),
+				updatedAt: new Date("2026-07-31T10:00:00Z"),
+				alertCount: 0,
+				service: {
+					id: "22222222-2222-4222-8222-222222222222",
+					name: "checkout-service",
+					displayName: "Checkout Service",
+					description: "Processes checkout transactions",
+					type: "service",
+					tier: "tier_1",
+					team: "payments",
+					slackChannel: "#payments-alerts",
+					tags: JSON.stringify(["tier1", "pci"]),
+					metadata: JSON.stringify({ repo: "org/checkout" }),
+					localCheckoutPath: "/home/user/checkout",
+					createdAt: new Date("2026-07-31T10:00:00Z"),
+					updatedAt: new Date("2026-07-31T10:00:00Z"),
+					// Internal / unwhitelisted columns
+					tenantId: "tenant-secret-service-456",
+					discoveryMetadata: JSON.stringify({ autoDiscovered: true }),
+					internalSecret: "do-not-leak-service-secret",
+				},
+			}),
+			update: vi.fn().mockResolvedValue({}),
+		};
+
+		const controller = new IncidentsController(
+			incidentsService as any,
+			{} as any,
+			{} as any,
+			{} as any,
+		);
+
+		const handlers = getHandlers(controller);
+		const result = await handlers.get({
+			input: { id: "123e4567-e89b-12d3-a456-426614174000" },
+		});
+
+		expect(result.service).toBeDefined();
+		expect(result.service).not.toHaveProperty("tenantId");
+		expect(result.service).not.toHaveProperty("discoveryMetadata");
+		expect(result.service).not.toHaveProperty("internalSecret");
+		expect(Object.keys(result.service!).sort()).toEqual(
+			[
+				"createdAt",
+				"description",
+				"displayName",
+				"id",
+				"localCheckoutPath",
+				"metadata",
+				"name",
+				"slackChannel",
+				"tags",
+				"team",
+				"tier",
+				"type",
+				"updatedAt",
+			].sort(),
+		);
+	});
 });
