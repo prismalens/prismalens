@@ -300,7 +300,7 @@ export class LlmSettingsService {
 	 * model, the harness setting, the env override. Anything that answers "would a
 	 * job start?" goes through here — nothing re-derives it (ADR-0031, #518).
 	 */
-	private async resolveSelection(
+	async resolveSelection(
 		harnessOverride?: HarnessId,
 	): Promise<ReturnType<typeof resolveHarnessSelection>> {
 		const { provider, model, harness } = await this.resolveActiveLlmConfig();

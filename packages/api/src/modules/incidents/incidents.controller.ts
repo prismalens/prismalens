@@ -13,6 +13,7 @@ import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
+import { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -26,6 +27,7 @@ export class IncidentsController {
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly llmSettingsService: LlmSettingsService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -134,6 +136,19 @@ export class IncidentsController {
 					if (!incident) {
 						throw new ORPCError("NOT_FOUND", {
 							message: `Incident ${input.id} not found`,
+						});
+					}
+
+					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
+					const selection = await this.llmSettingsService.resolveSelection();
+					if (!selection.runnable) {
+						throw new ORPCError("PRECONDITION_FAILED", {
+							message: selection.reason,
+							data: {
+								failure: selection.failure,
+								reason: selection.reason,
+								harness: selection.harness,
+							},
 						});
 					}
 
@@ -263,118 +278,137 @@ export class IncidentsController {
 		} as Incident;
 	}
 
-	private serializeAlert(alert: PrismaAlert | Record<string, any>): Alert {
+	private serializeAlert(alert: PrismaAlert | Record<string, unknown>): Alert {
 		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
 		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns
 		// must stay out of the API response. oRPC output validation strips unknowns,
 		// but defense-in-depth applies.
+		const a = alert as Record<string, unknown>;
 		return {
-			id: alert.id,
-			dedupKey: alert.dedupKey,
-			fingerprint: alert.fingerprint ?? null,
-			externalId: alert.externalId ?? null,
-			title: alert.title,
-			description: alert.description ?? null,
-			severity: alert.severity,
-			status: alert.status,
-			source: alert.source ?? null,
-			sourceUrl: alert.sourceUrl ?? null,
-			serviceId: alert.serviceId ?? null,
-			incidentId: alert.incidentId ?? null,
-			rawPayload: alert.rawPayload ?? null,
-			tags: alert.tags
-				? typeof alert.tags === "string"
-					? JSON.parse(alert.tags)
-					: alert.tags
+			id: a.id as string,
+			dedupKey: a.dedupKey as string,
+			fingerprint: (a.fingerprint as string) ?? null,
+			externalId: (a.externalId as string) ?? null,
+			title: a.title as string,
+			description: (a.description as string) ?? null,
+			severity: a.severity as Alert["severity"],
+			status: a.status as Alert["status"],
+			source: (a.source as string) ?? null,
+			sourceUrl: (a.sourceUrl as string) ?? null,
+			serviceId: (a.serviceId as string) ?? null,
+			incidentId: (a.incidentId as string) ?? null,
+			rawPayload: (a.rawPayload as string) ?? null,
+			tags: a.tags
+				? typeof a.tags === "string"
+					? JSON.parse(a.tags)
+					: a.tags
 				: null,
-			labels: alert.labels
-				? typeof alert.labels === "string"
-					? JSON.parse(alert.labels)
-					: alert.labels
+			labels: a.labels
+				? typeof a.labels === "string"
+					? JSON.parse(a.labels)
+					: a.labels
 				: null,
-			occurrenceCount: alert.occurrenceCount,
+			occurrenceCount: a.occurrenceCount as number,
 			triggeredAt:
-				alert.triggeredAt instanceof Date
-					? alert.triggeredAt.toISOString()
-					: alert.triggeredAt,
+				a.triggeredAt instanceof Date
+					? a.triggeredAt.toISOString()
+					: (a.triggeredAt as string),
 			acknowledgedAt:
-				alert.acknowledgedAt instanceof Date
-					? alert.acknowledgedAt.toISOString()
-					: (alert.acknowledgedAt ?? null),
+				a.acknowledgedAt instanceof Date
+					? a.acknowledgedAt.toISOString()
+					: ((a.acknowledgedAt as string) ?? null),
 			resolvedAt:
-				alert.resolvedAt instanceof Date
-					? alert.resolvedAt.toISOString()
-					: (alert.resolvedAt ?? null),
+				a.resolvedAt instanceof Date
+					? a.resolvedAt.toISOString()
+					: ((a.resolvedAt as string) ?? null),
 			lastOccurrence:
-				alert.lastOccurrence instanceof Date
-					? alert.lastOccurrence.toISOString()
-					: alert.lastOccurrence,
+				a.lastOccurrence instanceof Date
+					? a.lastOccurrence.toISOString()
+					: (a.lastOccurrence as string),
 			createdAt:
-				alert.createdAt instanceof Date
-					? alert.createdAt.toISOString()
-					: alert.createdAt,
+				a.createdAt instanceof Date
+					? a.createdAt.toISOString()
+					: (a.createdAt as string),
 			updatedAt:
-				alert.updatedAt instanceof Date
-					? alert.updatedAt.toISOString()
-					: alert.updatedAt,
+				a.updatedAt instanceof Date
+					? a.updatedAt.toISOString()
+					: (a.updatedAt as string),
 		} as Alert;
 	}
 
 	private serializeIncidentWithRelations(
-		incident: Record<string, any>,
+		incident: Record<string, unknown>,
 	): IncidentWithRelations {
 		const serialized = this.serializeIncident(
-			incident as PrismaIncident,
-		) as any;
+			incident as unknown as PrismaIncident,
+		) as unknown as IncidentWithRelations;
 
 		if (incident.service) {
+			const svc = incident.service as Record<string, unknown>;
 			serialized.service = {
-				...incident.service,
-				displayName: incident.service.displayName ?? null,
-				description: incident.service.description ?? null,
-				team: incident.service.team ?? null,
-				slackChannel: incident.service.slackChannel ?? null,
-				tags: incident.service.tags
-					? typeof incident.service.tags === "string"
-						? JSON.parse(incident.service.tags)
-						: incident.service.tags
+				id: svc.id as string,
+				name: svc.name as string,
+				type:
+					(svc.type as
+						| "database"
+						| "external"
+						| "service"
+						| "infrastructure"
+						| "queue"
+						| "cache"
+						| "gateway") ?? "service",
+				tier:
+					(svc.tier as "tier_1" | "tier_2" | "tier_3" | "tier_4") ?? "tier_3",
+				displayName: (svc.displayName as string) ?? null,
+				description: (svc.description as string) ?? null,
+				team: (svc.team as string) ?? null,
+				slackChannel: (svc.slackChannel as string) ?? null,
+				localCheckoutPath: (svc.localCheckoutPath as string) ?? null,
+				tags: svc.tags
+					? typeof svc.tags === "string"
+						? JSON.parse(svc.tags)
+						: (svc.tags as string[])
 					: null,
-				metadata: incident.service.metadata
-					? typeof incident.service.metadata === "string"
-						? JSON.parse(incident.service.metadata)
-						: incident.service.metadata
+				metadata: svc.metadata
+					? typeof svc.metadata === "string"
+						? JSON.parse(svc.metadata)
+						: (svc.metadata as Record<string, unknown>)
 					: null,
 				createdAt:
-					incident.service.createdAt instanceof Date
-						? incident.service.createdAt.toISOString()
-						: incident.service.createdAt,
+					svc.createdAt instanceof Date
+						? svc.createdAt.toISOString()
+						: (svc.createdAt as string),
 				updatedAt:
-					incident.service.updatedAt instanceof Date
-						? incident.service.updatedAt.toISOString()
-						: incident.service.updatedAt,
+					svc.updatedAt instanceof Date
+						? svc.updatedAt.toISOString()
+						: (svc.updatedAt as string),
 			};
 		}
 
-		if (incident.alerts) {
-			serialized.alerts = incident.alerts.map((a: any) =>
+		if (incident.alerts && Array.isArray(incident.alerts)) {
+			serialized.alerts = incident.alerts.map((a: Record<string, unknown>) =>
 				this.serializeAlert(a),
 			);
 		}
 
-		if (incident.investigations) {
-			serialized.investigations = incident.investigations.map((i: any) => ({
-				id: i.id,
-				status: i.status,
-				rootCause: i.rootCause ?? null,
-				createdAt:
-					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
-				completedAt:
-					i.completedAt instanceof Date
-						? i.completedAt.toISOString()
-						: (i.completedAt ?? null),
-			}));
+		if (incident.investigations && Array.isArray(incident.investigations)) {
+			serialized.investigations = incident.investigations.map(
+				(i: Record<string, unknown>) => ({
+					id: i.id as string,
+					status: i.status as string,
+					rootCause: (i.rootCause as string) ?? null,
+					createdAt:
+						i.createdAt instanceof Date
+							? i.createdAt.toISOString()
+							: (i.createdAt as string),
+					completedAt:
+						i.completedAt instanceof Date
+							? i.completedAt.toISOString()
+							: ((i.completedAt as string) ?? null),
+				}),
+			);
 		}
 
-		return serialized as IncidentWithRelations;
+		return serialized;
 	}
 }

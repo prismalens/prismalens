@@ -4,6 +4,7 @@
 /**
  * Incident schemas
  */
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import { AlertSchema } from "./alert.js";
 import {
@@ -127,6 +128,24 @@ export const InvestigateIncidentResponseSchema = z.object({
 });
 
 // =============================================================================
+// INVESTIGATION REFUSAL (ADR-0031, #520)
+// =============================================================================
+
+export const HarnessSelectionFailureSchema = z.enum([
+	"invalid-env-harness",
+	"no-compatible-harness",
+	"protocol-mismatch",
+	"harness-unauthenticated",
+	"llm-not-configured",
+]);
+
+export const InvestigationRefusalSchema = z.object({
+	failure: HarnessSelectionFailureSchema,
+	reason: z.string(),
+	harness: z.enum(HARNESS_IDS).optional(),
+});
+
+// =============================================================================
 // INCIDENT STATS
 // =============================================================================
 
@@ -153,4 +172,8 @@ export type AddAlertToIncidentInput = z.infer<typeof AddAlertToIncidentSchema>;
 export type InvestigateIncidentResponse = z.infer<
 	typeof InvestigateIncidentResponseSchema
 >;
+export type HarnessSelectionFailure = z.infer<
+	typeof HarnessSelectionFailureSchema
+>;
+export type InvestigationRefusal = z.infer<typeof InvestigationRefusalSchema>;
 export type IncidentStats = z.infer<typeof IncidentStatsSchema>;
