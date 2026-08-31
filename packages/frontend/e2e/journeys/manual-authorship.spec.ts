@@ -22,9 +22,16 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	}) => {
 		const title = `Checkout latency spike ${Date.now()}`;
 
-		// 0. Precondition: an investigation cannot start without a provider.
+		// 0. Precondition: configure a runnable keyless provider (#520).
 		const configured = await page.request.patch("/api/settings/llm/config", {
-			data: { activeProvider: "anthropic" },
+			data: {
+				activeProvider: "custom",
+				providers: {
+					custom: {
+						model: "smoke-test-stub",
+					},
+				},
+			},
 		});
 		expect(configured.ok()).toBeTruthy();
 

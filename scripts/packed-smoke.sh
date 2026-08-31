@@ -342,6 +342,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		? ok("authenticated GET /api/incidents 200")
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
+	let partBLogOffset = 0;
+
 	// --- unrunnable investigation refused server-side (Part A, #520) -----------
 	const created1 = await json("/api/incidents", {
 		method: "POST",
@@ -395,6 +397,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		} else {
 			ok("no child forked on unrunnable investigation");
 		}
+		try {
+			partBLogOffset = fs.statSync(bootLog).size;
+		} catch {
+			partBLogOffset = 0;
+		}
 	}
 
 	// --- forked-worker round trip (Part B, #520) -------------------------------
@@ -435,33 +442,84 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 				bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
 			} else {
 				ok("POST /incidents/:id/investigate", `status ${started.status}`);
-				let forked = false;
-				let diagnosed = false;
-				for (let i = 0; i < 120 && !forked; i++) {
-					await sleep(1000);
-					const log = fs.readFileSync(bootLog, "utf8");
-					forked = log.includes('"context":"InvestigationRun"');
-					if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
-						bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
-						diagnosed = true;
-						break;
-					}
-					if (/Cannot locate the investigation child entrypoint/.test(log)) {
-						bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
-						diagnosed = true;
-						break;
-					}
-					if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-						const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-						bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
-						diagnosed = true;
-						break;
-					}
+				let startedJson = null;
+				try {
+					startedJson = JSON.parse(startedBody);
+				} catch {
+					startedJson = null;
 				}
-				if (forked) {
-					ok("forked-worker round trip", "child forked, resolved entrypoint, started run");
-				} else if (!diagnosed) {
-					bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
+				const investigationId = startedJson?.investigationId;
+				if (!investigationId) {
+					bad("forked-worker round trip", `no investigationId in response: ${startedBody.slice(0, 200)}`);
+				} else {
+					let roundTripSucceeded = false;
+					let diagnosed = false;
+					for (let i = 0; i < 120 && !roundTripSucceeded && !diagnosed; i++) {
+						await sleep(1000);
+						const invRes = await fetch(`${base}/api/investigations/${investigationId}`, {
+							headers: { cookie },
+						});
+						const timelineRes = await fetch(`${base}/api/timeline?incidentId=${incidentId2}`, {
+							headers: { cookie },
+						});
+						if (invRes.status === 200 && timelineRes.status === 200) {
+							let inv = null;
+							let timeline = null;
+							try {
+								inv = await invRes.json();
+								timeline = await timelineRes.json();
+							} catch {
+								inv = null;
+								timeline = null;
+							}
+							const hasWorkerTimeline =
+								Array.isArray(timeline) &&
+								timeline.some((t) => t.source === "ai_worker");
+							if (inv && inv.status !== "pending" && inv.startedAt && hasWorkerTimeline) {
+								roundTripSucceeded = true;
+								break;
+							}
+						}
+						let log = "";
+						try {
+							const logBuf = fs.readFileSync(bootLog);
+							log = partBLogOffset > 0 ? logBuf.subarray(partBLogOffset).toString("utf8") : logBuf.toString("utf8");
+						} catch {
+							log = "";
+						}
+						if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
+							bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
+							diagnosed = true;
+							break;
+						}
+						if (/Cannot locate the investigation child entrypoint/.test(log)) {
+							bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+							diagnosed = true;
+							break;
+						}
+						if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+							const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+							bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
+							diagnosed = true;
+							break;
+						}
+						if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
+							bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+							diagnosed = true;
+							break;
+						}
+					}
+					if (roundTripSucceeded) {
+						ok(
+							"forked-worker round trip",
+							"investigation left pending, startedAt set, ai_worker timeline recorded",
+						);
+					} else if (!diagnosed) {
+						bad(
+							"forked-worker round trip",
+							"investigation never completed an ai_worker round trip within 120s",
+						);
+					}
 				}
 			}
 		}
