@@ -112,4 +112,61 @@ describe("InternalInvestigationsController.clearEvents (retry fresh-record)", ()
 
 		expect(result).toEqual({ deleted: 0 });
 	});
+
+	it("processes PATCH :id/status with ValidationPipe through NestJS app", async () => {
+		const { Test } = await import("@nestjs/testing");
+		const { ValidationPipe } = await import("@nestjs/common");
+		const { InvestigationsService } = await import(
+			"../../modules/investigations/investigations.service.js"
+		);
+		const { ConfigService } = await import("@nestjs/config");
+		const service = {
+			updateStatusInternal: vi
+				.fn()
+				.mockResolvedValue({ id: INV_ID, status: "running" }),
+		};
+		const moduleRef = await Test.createTestingModule({
+			controllers: [InternalInvestigationsController],
+			providers: [
+				{ provide: InvestigationsService, useValue: service },
+				{
+					provide: ConfigService,
+					useValue: { get: vi.fn().mockReturnValue("test-secret") },
+				},
+			],
+		}).compile();
+		const app = moduleRef.createNestApplication();
+		app.useGlobalPipes(
+			new ValidationPipe({
+				whitelist: true,
+				transform: true,
+				forbidNonWhitelisted: true,
+			}),
+		);
+		await app.init();
+		const server = app.getHttpServer();
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		const addr = server.address();
+		const port = typeof addr === "object" && addr ? addr.port : 0;
+
+		const response = await fetch(
+			`http://127.0.0.1:${port}/internal/investigations/${INV_ID}/status`,
+			{
+				method: "PATCH",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Internal-Secret": "test-secret",
+				},
+				body: JSON.stringify({
+					status: "running",
+					harnessThreadId: RUN_ID,
+				}),
+			},
+		);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toEqual({ id: INV_ID, status: "running" });
+		await app.close();
+	});
 });
