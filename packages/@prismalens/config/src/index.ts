@@ -62,6 +62,18 @@ import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 // Re-export env readers and all env schemas
 export * from "./env/index.js";
 export type {
+	HarnessSelection,
+	HarnessSelectionFailure,
+	HarnessSelectionInput,
+} from "./harness-selection.js";
+// Re-export harness selection gate (ADR-0031 R2)
+export {
+	harnessSpeaksProvider,
+	resolveHarnessAuthFor,
+	resolveHarnessSelection,
+	speaksOpenAiProtocol,
+} from "./harness-selection.js";
+export type {
 	CheckoutRejection,
 	CheckoutValidation,
 	InvestigationCwdResolution,

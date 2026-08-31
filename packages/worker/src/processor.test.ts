@@ -60,42 +60,71 @@ const {
 const API_KEY = "secret-key";
 const BASE_URL = "http://localhost:11434/v1";
 
-describe("buildHarnessEnv (worker-provider-hardwiring)", () => {
-	it("openai: sends OPENAI_API_KEY, no OPENAI_BASE_URL override", () => {
-		expect(buildHarnessEnv("openai", API_KEY, BASE_URL)).toEqual({
+describe("buildHarnessEnv (ADR-0031 R7 harness-scoped injection)", () => {
+	it("deepagents + openai: sends OPENAI_API_KEY, no OPENAI_BASE_URL override", () => {
+		expect(
+			buildHarnessEnv("deepagents", "api-key", "openai", API_KEY, BASE_URL),
+		).toEqual({
 			OPENAI_API_KEY: API_KEY,
 		});
 	});
 
-	it("ollama: sends both OPENAI_API_KEY and OPENAI_BASE_URL (OpenAI-compatible)", () => {
-		expect(buildHarnessEnv("ollama", API_KEY, BASE_URL)).toEqual({
-			OPENAI_API_KEY: API_KEY,
-			OPENAI_BASE_URL: BASE_URL,
-		});
-	});
-
-	it("custom: sends both OPENAI_API_KEY and OPENAI_BASE_URL (OpenAI-compatible)", () => {
-		expect(buildHarnessEnv("custom", API_KEY, BASE_URL)).toEqual({
+	it("deepagents + ollama: sends both OPENAI_API_KEY and OPENAI_BASE_URL", () => {
+		expect(
+			buildHarnessEnv("deepagents", "api-key", "ollama", API_KEY, BASE_URL),
+		).toEqual({
 			OPENAI_API_KEY: API_KEY,
 			OPENAI_BASE_URL: BASE_URL,
 		});
 	});
 
-	it("anthropic: sends ANTHROPIC_API_KEY only — never OPENAI_API_KEY", () => {
-		// The claude-code harness reads its credential from ANTHROPIC_API_KEY; a plain
-		// BYO key previously had no route in at all. Leaking it into OPENAI_API_KEY would
-		// hand a harness a secret it cannot use.
-		expect(buildHarnessEnv("anthropic", API_KEY, BASE_URL)).toEqual({
+	it("deepagents + keyless ollama: sends OPENAI_BASE_URL without OPENAI_API_KEY (#519)", () => {
+		expect(
+			buildHarnessEnv("deepagents", "api-key", "ollama", "", BASE_URL),
+		).toEqual({
+			OPENAI_BASE_URL: BASE_URL,
+		});
+	});
+
+	it("deepagents + custom: sends both OPENAI_API_KEY and OPENAI_BASE_URL", () => {
+		expect(
+			buildHarnessEnv("deepagents", "api-key", "custom", API_KEY, BASE_URL),
+		).toEqual({
+			OPENAI_API_KEY: API_KEY,
+			OPENAI_BASE_URL: BASE_URL,
+		});
+	});
+
+	it("claude-code + anthropic (api-key): sends ANTHROPIC_API_KEY only", () => {
+		expect(
+			buildHarnessEnv("claude-code", "api-key", "anthropic", API_KEY, BASE_URL),
+		).toEqual({
 			ANTHROPIC_API_KEY: API_KEY,
 		});
 	});
 
-	it("google: does NOT leak the google key into OPENAI_API_KEY", () => {
-		expect(buildHarnessEnv("google", API_KEY, BASE_URL)).toEqual({});
+	it("claude-code + cli-session: injects NO credential env (#525)", () => {
+		expect(
+			buildHarnessEnv(
+				"claude-code",
+				"cli-session",
+				"openai",
+				API_KEY,
+				BASE_URL,
+			),
+		).toEqual({});
 	});
 
-	it("groq: does NOT leak the groq key into OPENAI_API_KEY", () => {
-		expect(buildHarnessEnv("groq", API_KEY, BASE_URL)).toEqual({});
+	it("deepagents + google: does NOT leak google key", () => {
+		expect(
+			buildHarnessEnv("deepagents", "api-key", "google", API_KEY, BASE_URL),
+		).toEqual({});
+	});
+
+	it("deepagents + groq: does NOT leak groq key", () => {
+		expect(
+			buildHarnessEnv("deepagents", "api-key", "groq", API_KEY, BASE_URL),
+		).toEqual({});
 	});
 });
 
@@ -913,5 +942,73 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		).rejects.toThrowError(
 			/Harness "deepagents" only supports OpenAI-protocol providers/,
 		);
+	});
+
+	it("pinned claude-code with OpenAI synthesis does not receive foreign model id (#525)", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "openai",
+					model: "gpt-5.4-mini",
+					baseUrl: null,
+					credentials: { openai: "sk-openai-key" },
+					harness: "claude-code",
+				}),
+			})),
+		);
+
+		const { request } = await buildRequest(
+			{ incidentId: "inc-525-2", investigationId: "inv-525-2" },
+			"run-525-2",
+			{
+				harnessAuth: {
+					isOnPath: (bin) => bin === "claude",
+				},
+			},
+		);
+
+		expect(request.harness).toBe("claude-code");
+		// Foreign model is omitted from top-level request.model
+		expect(request.model).toBeUndefined();
+		// Synthesis block retains the OpenAI model for Tier-1 reduce
+		expect(request.synth.model).toBe("gpt-5.4-mini");
+		expect(request.synth.providerId).toBe("openai");
+		expect(request.harnessEnv).toEqual({});
+	});
+
+	it("pinned deepagents with OpenAI synthesis receives compatible model id (#525)", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				json: async () => ({
+					provider: "openai",
+					model: "gpt-5.4-mini",
+					baseUrl: null,
+					credentials: { openai: "sk-openai-key" },
+					harness: "deepagents",
+				}),
+			})),
+		);
+
+		const { request } = await buildRequest(
+			{ incidentId: "inc-525-3", investigationId: "inv-525-3" },
+			"run-525-3",
+			{
+				harnessAuth: {
+					isOnPath: (bin) => bin === "deepagents-acp",
+				},
+			},
+		);
+
+		expect(request.harness).toBe("deepagents");
+		expect(request.model).toBe("gpt-5.4-mini");
+		expect(request.synth.model).toBe("gpt-5.4-mini");
+		expect(request.synth.providerId).toBe("openai");
+		expect(request.harnessEnv).toEqual({
+			OPENAI_API_KEY: "sk-openai-key",
+		});
 	});
 });

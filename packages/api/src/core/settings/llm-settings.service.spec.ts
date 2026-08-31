@@ -303,17 +303,24 @@ describe("LlmSettingsService — active provider resolution", () => {
 		});
 
 		/**
-		 * Behaviour change on the API side, deliberate: this used to go green on the
-		 * provider alone. The worker demands the harness binary AND a key for
-		 * deepagents whatever the provider, so reporting it usable was the
-		 * setup-goes-green-then-every-job-fails defect in another costume. The worker
-		 * is unchanged; see the PR body's note on keyless ollama.
+		 * #519: keyless providers (ollama/custom) with a model are admitted by the shared gate.
 		 */
-		it("is false for a keyless provider whose harness cannot start", async () => {
+		it("is true for a keyless provider with a model (#519)", async () => {
 			givenSettings({
 				llmSettings: {
 					activeProvider: "ollama",
 					providers: { ollama: { model: "gpt-oss:20b" } },
+				},
+			});
+
+			await expect(service.isActiveProviderUsable()).resolves.toBe(true);
+		});
+
+		it("is false for a keyless provider with no model", async () => {
+			givenSettings({
+				llmSettings: {
+					activeProvider: "ollama",
+					providers: { ollama: { model: "" } },
 				},
 			});
 

@@ -27,13 +27,22 @@ import {
 	pickServiceLabel,
 	resolveInvestigationCwd,
 } from "@prismalens/config";
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
+	HARNESS_REGISTRY,
+	type HarnessAuthRoute,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	harnessSpeaksProvider,
 	resolveHarnessSelection,
 	speaksOpenAiProtocol,
 } from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	LLM_PROVIDERS,
+	type LLMProviderId,
+	providerRequiresApiKey,
+} from "@prismalens/config/llm";
 import {
 	type CanonicalEvent,
 	correlatedAlertsContext,
@@ -470,23 +479,34 @@ function cancelledResult(data: InvestigationJobData): InvestigationResult {
  */
 export { speaksOpenAiProtocol };
 
+/**
+ * Assemble harness env vars scoped to the harness and auth route (ADR-0031 R7).
+ * cli-session runs inject no credentials; keyless providers omit api key (#519, #525).
+ */
 export function buildHarnessEnv(
-	synthProvider: LLMProviderId,
+	harness: HarnessId,
+	route: HarnessAuthRoute,
+	synthProvider: LLMProviderId | null,
 	apiKey: string,
 	baseURL: string,
 ): Record<string, string> {
+	if (route === "cli-session" || !synthProvider) {
+		return {};
+	}
 	const isOpenAiCompat =
 		synthProvider === "ollama" || synthProvider === "custom";
-	return {
-		...(speaksOpenAiProtocol(synthProvider) ? { OPENAI_API_KEY: apiKey } : {}),
-		...(isOpenAiCompat ? { OPENAI_BASE_URL: baseURL } : {}),
-		// The claude-code harness reads `ANTHROPIC_API_KEY` from its own process env.
-		// Subscription auth already had a per-run route in (an isolated 0600
-		// CLAUDE_CONFIG_DIR); a plain API key had none, so a BYO-key anthropic setup
-		// reached the harness unauthenticated. Gated on the provider for the same reason
-		// OPENAI_API_KEY is: handing a harness a secret it cannot use mis-wires it.
-		...(synthProvider === "anthropic" ? { ANTHROPIC_API_KEY: apiKey } : {}),
-	};
+	if (harness === "deepagents" && speaksOpenAiProtocol(synthProvider)) {
+		return {
+			...(apiKey ? { OPENAI_API_KEY: apiKey } : {}),
+			...(isOpenAiCompat && baseURL ? { OPENAI_BASE_URL: baseURL } : {}),
+		};
+	}
+	if (harness === "claude-code" && synthProvider === "anthropic" && apiKey) {
+		return {
+			ANTHROPIC_API_KEY: apiKey,
+		};
+	}
+	return {};
 }
 
 /**
@@ -732,7 +752,12 @@ export async function buildRequest(
 
 	const isSynthConfigured =
 		Boolean(apiKey) ||
-		(synthProvider !== null && !LLM_PROVIDERS[synthProvider].requiresApiKey);
+		(synthProvider !== null && !providerRequiresApiKey(synthProvider));
+
+	const isModelCompatible =
+		Boolean(llmConfig?.model) &&
+		synthProvider !== null &&
+		harnessSpeaksProvider(harness, synthProvider);
 
 	return {
 		checkout,
@@ -742,7 +767,9 @@ export async function buildRequest(
 			// The single posture dial (ADR-0017): the worker is always read-only in
 			// Phase A — no per-run override, no native passthrough.
 			permissionMode: "read-only",
-			...(llmConfig?.model ? { model: llmConfig.model } : {}),
+			...(isModelCompatible && llmConfig?.model
+				? { model: llmConfig.model }
+				: {}),
 			cwd: checkout.cwd,
 			synth: {
 				providerId: synthProvider ?? "ollama",
@@ -751,9 +778,13 @@ export async function buildRequest(
 				...(synthIsOpenAiCompat && baseURL ? { baseURL } : {}),
 				configured: isSynthConfigured,
 			},
-			harnessEnv: synthProvider
-				? buildHarnessEnv(synthProvider, apiKey, baseURL)
-				: {},
+			harnessEnv: buildHarnessEnv(
+				harness,
+				selection.route,
+				synthProvider,
+				apiKey,
+				baseURL,
+			),
 			initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 			// Resource limits (ADR-0020): unattended server runs get a wall-clock cap so a
 			// wedged harness cannot pin a worker slot forever. Memory/cpu are left unset —
