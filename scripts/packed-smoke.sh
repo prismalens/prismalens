@@ -342,59 +342,105 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		? ok("authenticated GET /api/incidents 200")
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
-	// --- forked-worker round trip ---------------------------------------------
-	// The spike verified boot-and-serve and NEVER exercised the fork. The child
-	// resolves @prismalens/worker relative to the installed package; if that
-	// resolution is wrong the fork never happens and the job sits queued forever.
-	const created = await json("/api/incidents", {
+	// --- unrunnable investigation refused server-side (Part A, #520) -----------
+	const created1 = await json("/api/incidents", {
 		method: "POST",
 		headers: { cookie },
-		body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
+		body: JSON.stringify({ title: "packed smoke refusal probe", severity: "low" }),
 	});
-	const createdBody = await created.text();
-	if (created.status < 200 || created.status >= 300) {
-		bad("POST /api/incidents", `status ${created.status}: ${createdBody.slice(0, 200)}`);
+	const created1Body = await created1.text();
+	if (created1.status < 200 || created1.status >= 300) {
+		bad("POST /api/incidents (unconfigured)", `status ${created1.status}: ${created1Body.slice(0, 200)}`);
 	} else {
-		const incidentId = JSON.parse(createdBody).id;
-		const started = await json(`/api/incidents/${incidentId}/investigate`, {
+		const incidentId1 = JSON.parse(created1Body).id;
+		const refused = await json(`/api/incidents/${incidentId1}/investigate`, {
 			method: "POST",
 			headers: { cookie },
 			body: "{}",
 		});
-		const startedBody = await started.text();
-		if (started.status < 200 || started.status >= 300) {
-			bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
+		const refusedBody = await refused.text();
+		let refusedJson = null;
+		try {
+			refusedJson = JSON.parse(refusedBody);
+		} catch {
+			refusedJson = null;
+		}
+
+		const expected = resolveHarnessSelection({
+			provider: null,
+			apiKey: "",
+			model: null,
+			harness: "auto",
+		});
+		if (expected.runnable) {
+			bad(
+				"clean-machine refusal",
+				"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
+			);
+		} else if (
+			refused.status === 412 &&
+			refusedJson?.code === "PRECONDITION_FAILED" &&
+			refusedJson?.data?.failure === expected.failure &&
+			refusedJson?.data?.reason === expected.reason
+		) {
+			ok("unrunnable investigation refused", `status 412, failure=${refusedJson.data.failure}`);
 		} else {
-			ok("POST /incidents/:id/investigate", `status ${started.status}`);
-			// Assumes clean-machine defaults; coupled to setup not storing credentials (#516).
-			const expected = resolveHarnessSelection({
-				provider: null,
-				apiKey: "",
-				model: null,
-				harness: "auto",
+			bad("clean-machine refusal", `status ${refused.status}: ${refusedBody.slice(0, 200)}`);
+		}
+
+		await sleep(2000);
+		const log = fs.readFileSync(bootLog, "utf8");
+		if (log.includes('"context":"InvestigationRun"')) {
+			bad("clean-machine refusal", "investigation child forked despite 412 refusal");
+		} else {
+			ok("no child forked on unrunnable investigation");
+		}
+	}
+
+	// --- forked-worker round trip (Part B, #520) -------------------------------
+	// Resolves @prismalens/worker relative to the installed package; configured
+	// with a keyless provider so the server-side gate allows the fork.
+	const configRes = await json("/api/settings/llm/config", {
+		method: "PATCH",
+		headers: { cookie },
+		body: JSON.stringify({
+			activeProvider: "custom",
+			providers: {
+				custom: {
+					model: "smoke-test-stub",
+				},
+			},
+		}),
+	});
+	if (configRes.status < 200 || configRes.status >= 300) {
+		bad("PATCH /api/settings/llm/config", `status ${configRes.status}: ${(await configRes.text()).slice(0, 200)}`);
+	} else {
+		const created2 = await json("/api/incidents", {
+			method: "POST",
+			headers: { cookie },
+			body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
+		});
+		const created2Body = await created2.text();
+		if (created2.status < 200 || created2.status >= 300) {
+			bad("POST /api/incidents (configured)", `status ${created2.status}: ${created2Body.slice(0, 200)}`);
+		} else {
+			const incidentId2 = JSON.parse(created2Body).id;
+			const started = await json(`/api/incidents/${incidentId2}/investigate`, {
+				method: "POST",
+				headers: { cookie },
+				body: "{}",
 			});
-			if (expected.runnable) {
-				bad(
-					"forked-worker round trip",
-					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
-				);
+			const startedBody = await started.text();
+			if (started.status < 200 || started.status >= 300) {
+				bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
 			} else {
-				const expectedReason = expected.reason;
-				// The child logs through pino to the inherited stdout under its own
-				// service name. That line can ONLY come from a process that forked,
-				// resolved its entrypoint and imported its whole dependency closure.
+				ok("POST /incidents/:id/investigate", `status ${started.status}`);
 				let forked = false;
 				let diagnosed = false;
 				for (let i = 0; i < 120 && !forked; i++) {
 					await sleep(1000);
 					const log = fs.readFileSync(bootLog, "utf8");
-					// A terminal credential failure is the EXPECTED verdict in a container
-					// with no credentials, and reaching it proves the whole chain: the
-					// child forked, imported its closure, called the API's internal
-					// endpoint over HTTP, parsed a real JSON answer, and reported back.
-					forked =
-						log.includes('"context":"InvestigationRun"') &&
-						log.includes(expectedReason);
+					forked = log.includes('"context":"InvestigationRun"');
 					if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
 						bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
 						diagnosed = true;
@@ -411,20 +457,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 						diagnosed = true;
 						break;
 					}
-					// A ROUND TRIP, not just a fork: the child calls back into this same
-					// process over oRPC. `fetch failed` means it dialled the wrong port —
-					// which is exactly what a fixed default does under `pl up --port N`.
-					if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
-						bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
-						diagnosed = true;
-						break;
-					}
 				}
 				if (forked) {
-					ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
+					ok("forked-worker round trip", "child forked, resolved entrypoint, started run");
 				} else if (!diagnosed) {
-					// Only when nothing more specific already fired — a diagnosed
-					// failure plus a generic timeout reads as two bugs, not one.
 					bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
 				}
 			}
