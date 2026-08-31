@@ -289,11 +289,21 @@ child.on("exit", (code, signal) => {
 });
 child.on("error", (error) => die(`failed to start ${binJs}: ${error.message}`));
 
-const readLog = () => {
+const readLog = (offset = 0) => {
 	try {
-		return readFileSync(logPath, "utf8");
+		const buf = readFileSync(logPath);
+		return offset > 0
+			? buf.subarray(offset).toString("utf8")
+			: buf.toString("utf8");
 	} catch {
 		return "";
+	}
+};
+const getLogOffset = () => {
+	try {
+		return readFileSync(logPath).length;
+	} catch {
+		return 0;
 	}
 };
 const dumpLog = (lines = 60) => {
@@ -709,6 +719,7 @@ if (
 // Configured with a keyless provider, it forks an investigation child per run.
 // Without one there is nothing for the shutdown assertion to catch leaking.
 
+let partBLogOffset = 0;
 console.log(
 	"==> pl up refuses unrunnable investigation on a clean machine (#520)",
 );
@@ -782,6 +793,7 @@ if (!cookie) {
 			} else {
 				ok("no child forked on unrunnable investigation");
 			}
+			partBLogOffset = getLogOffset();
 		}
 	}
 }
@@ -853,7 +865,7 @@ if (!cookie) {
 					for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
 						await sleep(1000);
 						sample();
-						const log = readLog();
+						const log = readLog(partBLogOffset);
 						forked = /"context"\s*:\s*"InvestigationRun"/.test(log);
 						if (/Cannot locate the investigation child entrypoint/.test(log)) {
 							bad(
