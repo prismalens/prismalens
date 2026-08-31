@@ -328,10 +328,16 @@ export class IncidentsController {
 		) as any;
 
 		if (incident.service) {
+			// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
+			// (ADR-0011 §6 dormant multi-tenancy hedge), `discoveryMetadata`, and any
+			// future internal columns must stay out of the API response.
 			serialized.service = {
-				...incident.service,
+				id: incident.service.id,
+				name: incident.service.name,
 				displayName: incident.service.displayName ?? null,
 				description: incident.service.description ?? null,
+				type: incident.service.type,
+				tier: incident.service.tier,
 				team: incident.service.team ?? null,
 				slackChannel: incident.service.slackChannel ?? null,
 				tags: incident.service.tags
@@ -344,6 +350,7 @@ export class IncidentsController {
 						? JSON.parse(incident.service.metadata)
 						: incident.service.metadata
 					: null,
+				localCheckoutPath: incident.service.localCheckoutPath ?? null,
 				createdAt:
 					incident.service.createdAt instanceof Date
 						? incident.service.createdAt.toISOString()
