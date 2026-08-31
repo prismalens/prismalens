@@ -163,6 +163,13 @@ test.describe("C10 — manual authorship without an alert source", () => {
 			}
 			await route.fallback();
 		});
+		await page.route("**/api/settings/harnesses", async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ harnesses: [] }),
+			});
+		});
 
 		const created = await page.request.post("/api/incidents", {
 			data: { title: `Gate check ${Date.now()}` },
