@@ -785,7 +785,11 @@ if (!cookie) {
 
 			await sleep(2000);
 			sample();
-			if (/"context"\s*:\s*"InvestigationRun"/.test(readLog())) {
+			if (
+				/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(
+					readLog(),
+				)
+			) {
 				bad(
 					"refusal fork gate",
 					"investigation child forked despite 412 refusal",
@@ -855,18 +859,27 @@ if (!cookie) {
 					headers: { cookie },
 					body: "{}",
 				});
+				const startedBody = await started.text();
 				if (!started.ok) {
 					bad(
 						"POST /api/incidents/:id/investigate",
-						`status ${started.status}: ${(await started.text()).slice(0, 200)}`,
+						`status ${started.status}: ${startedBody.slice(0, 200)}`,
 					);
 				} else {
+					let investigationId = null;
+					try {
+						investigationId = JSON.parse(startedBody)?.investigationId ?? null;
+					} catch {
+						investigationId = null;
+					}
 					let diagnosed = false;
 					for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
 						await sleep(1000);
 						sample();
 						const log = readLog(partBLogOffset);
-						forked = /"context"\s*:\s*"InvestigationRun"/.test(log);
+						forked =
+							/"context"\s*:\s*"InvestigationProcessor"/.test(log) &&
+							(investigationId ? log.includes(investigationId) : true);
 						if (/Cannot locate the investigation child entrypoint/.test(log)) {
 							bad(
 								"fork",
