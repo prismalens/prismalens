@@ -67,7 +67,12 @@ import {
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { config as workerConfig } from "./config.js";
-import { createDbInvestigationStore } from "./db-investigation-store.js";
+import {
+	createDbInvestigationStore,
+	createTimelineEntry,
+	fetchInvestigation,
+	updateInvestigationStatus,
+} from "./db-investigation-store.js";
 import { internalUrl } from "./internal-url.js";
 import { api } from "./orpc-client.js";
 import { UnrecoverableJobError } from "./protocol.js";
@@ -247,14 +252,15 @@ async function processJobInternal(
 			},
 		});
 
-		// Cancelled is sticky (CANCEL slice): a stalled-job retry, or a job whose cancel
-		// the API already fallback-wrote, must not rerun the investigation. Best-effort —
-		// on an API hiccup the run proceeds, and the API's status writers still refuse
-		// any terminal overwrite of "cancelled".
+		// Cancelled is sticky (#537): a stalled-job retry or a job already marked
+		// cancelled must not rerun. Best-effort — on an API read error the run proceeds,
+		// and the API's status writers still refuse any terminal overwrite of "cancelled".
 		try {
-			const current = await api.investigations.get({
-				id: data.investigationId,
-			});
+			const current = await fetchInvestigation(
+				workerConfig.PRISMALENS_WORKER_API_URL,
+				process.env.PRISMALENS_INTERNAL_SECRET,
+				data.investigationId,
+			);
 			if (current?.status === "cancelled") {
 				logger.info(
 					`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
@@ -262,7 +268,10 @@ async function processJobInternal(
 				return cancelledResult(data);
 			}
 		} catch (e) {
-			logger.warn("Could not check investigation status before run", e);
+			logger.warn(
+				"Could not check investigation status before run — cancellation will not be honoured for this run",
+				e,
+			);
 		}
 
 		// RERUN (attempt 2+ — a retry, or a reclaim of an abandoned claim): the prior
@@ -372,26 +381,37 @@ async function processJobInternal(
 		// schema parse itself was what threw.
 		if (rawInvestigationId) {
 			try {
-				await api.investigations.updateStatus({
-					id: rawInvestigationId,
-					status: "failed",
-					error: errorMessage,
-				});
+				await updateInvestigationStatus(
+					workerConfig.PRISMALENS_WORKER_API_URL,
+					process.env.PRISMALENS_INTERNAL_SECRET,
+					rawInvestigationId,
+					{
+						status: "failed",
+						error: errorMessage,
+					},
+				);
 				if (rawIncidentId) {
-					await api.timeline.create({
-						incidentId: rawIncidentId,
-						type: "investigation_completed",
-						title: "AI Investigation Failed",
-						description: errorMessage,
-						source: "ai_worker",
-						metadata: {
-							investigationId: rawInvestigationId,
-							error: errorMessage,
+					await createTimelineEntry(
+						workerConfig.PRISMALENS_WORKER_API_URL,
+						process.env.PRISMALENS_INTERNAL_SECRET,
+						{
+							incidentId: rawIncidentId,
+							type: "investigation_completed",
+							title: "AI Investigation Failed",
+							description: errorMessage,
+							source: "ai_worker",
+							metadata: {
+								investigationId: rawInvestigationId,
+								error: errorMessage,
+							},
 						},
-					});
+					);
 				}
 			} catch (e) {
-				logger.error("Failed to update failure status", e);
+				logger.error(
+					"Failed to update failure status — failure will not be persisted to database or timeline",
+					e,
+				);
 			}
 		}
 		throw error;
@@ -418,21 +438,25 @@ async function recordWorkspace(
 	checkout: InvestigationCwdResolution,
 ): Promise<void> {
 	try {
-		await api.timeline.create({
-			incidentId: data.incidentId,
-			type: "investigation_started",
-			title: checkout.mapped
-				? "Investigating the mapped local checkout"
-				: "Investigating WITHOUT a mapped local checkout",
-			description: checkout.note,
-			source: "ai_worker",
-			metadata: {
-				investigationId: data.investigationId,
-				cwd: checkout.cwd,
-				cwdSource: checkout.source,
-				mapped: checkout.mapped,
+		await createTimelineEntry(
+			workerConfig.PRISMALENS_WORKER_API_URL,
+			process.env.PRISMALENS_INTERNAL_SECRET,
+			{
+				incidentId: data.incidentId,
+				type: "investigation_started",
+				title: checkout.mapped
+					? "Investigating the mapped local checkout"
+					: "Investigating WITHOUT a mapped local checkout",
+				description: checkout.note,
+				source: "ai_worker",
+				metadata: {
+					investigationId: data.investigationId,
+					cwd: checkout.cwd,
+					cwdSource: checkout.source,
+					mapped: checkout.mapped,
+				},
 			},
-		});
+		);
 	} catch (e) {
 		logger.error("Failed to record the investigation workspace", e);
 	}
@@ -445,19 +469,27 @@ async function recordWorkspace(
  * dedicated cancelled type in the contract) with a distinguishing title.
  */
 async function persistCancelled(data: InvestigationJobData): Promise<void> {
-	await api.investigations.updateStatus({
-		id: data.investigationId,
-		status: "cancelled",
-		error: "Investigation cancelled",
-	});
-	await api.timeline.create({
-		incidentId: data.incidentId,
-		type: "investigation_completed",
-		title: "Investigation cancelled",
-		description: "The investigation was cancelled before it completed.",
-		source: "ai_worker",
-		metadata: { investigationId: data.investigationId },
-	});
+	await updateInvestigationStatus(
+		workerConfig.PRISMALENS_WORKER_API_URL,
+		process.env.PRISMALENS_INTERNAL_SECRET,
+		data.investigationId,
+		{
+			status: "cancelled",
+			error: "Investigation cancelled",
+		},
+	);
+	await createTimelineEntry(
+		workerConfig.PRISMALENS_WORKER_API_URL,
+		process.env.PRISMALENS_INTERNAL_SECRET,
+		{
+			incidentId: data.incidentId,
+			type: "investigation_completed",
+			title: "Investigation cancelled",
+			description: "The investigation was cancelled before it completed.",
+			source: "ai_worker",
+			metadata: { investigationId: data.investigationId },
+		},
+	);
 }
 
 /** A cancelled job result — returned (not thrown) so the host marks the job done, no rerun. */

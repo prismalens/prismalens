@@ -28,14 +28,20 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./orpc-client.js", () => ({ api: mocks.api }));
 
-vi.mock("./db-investigation-store.js", () => ({
-	createDbInvestigationStore: vi.fn(() => ({
-		create: vi.fn(async () => {}),
-		append: vi.fn(async () => {}),
-		finish: vi.fn(async () => {}),
-		fail: vi.fn(async () => {}),
-	})),
-}));
+vi.mock("./db-investigation-store.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("./db-investigation-store.js")>();
+	return {
+		...actual,
+		createDbInvestigationStore: vi.fn(() => ({
+			create: vi.fn(async () => {}),
+			append: vi.fn(async () => {}),
+			finish: vi.fn(async () => {}),
+			fail: vi.fn(async () => {}),
+			flush: vi.fn(async () => {}),
+		})),
+	};
+});
 
 vi.mock("@prismalens/engine", () => ({
 	conductRun: mocks.conductRun,
@@ -68,18 +74,32 @@ vi.mock("@prismalens/logger/standalone", () => ({
 }));
 
 process.env.PRISMALENS_INTERNAL_SECRET = "test-secret";
-vi.stubGlobal(
-	"fetch",
-	vi.fn(async () => ({
-		ok: true,
-		json: async () => ({
+const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+	const urlStr = String(url);
+	if (urlStr.includes("/internal/investigations/inv-1/status")) {
+		return new Response(JSON.stringify({ ok: true }), { status: 200 });
+	}
+	if (urlStr.includes("/internal/investigations/inv-1")) {
+		return new Response(
+			JSON.stringify({ id: "inv-1", status: "running" }),
+			{ status: 200 },
+		);
+	}
+	if (urlStr.includes("/internal/timeline")) {
+		return new Response(JSON.stringify({ ok: true }), { status: 201 });
+	}
+	// LLM config
+	return new Response(
+		JSON.stringify({
 			provider: "openai",
 			model: "gpt-4",
 			baseUrl: null,
 			credentials: { key: "sk-test" },
 		}),
-	})),
-);
+		{ status: 200 },
+	);
+});
+vi.stubGlobal("fetch", fetchMock);
 
 const { default: processInvestigationJob } = await import("./processor.js");
 
@@ -112,14 +132,31 @@ function makeIo(signal: AbortSignal) {
 
 describe("processor CANCEL path (ADR-0018)", () => {
 	beforeEach(() => {
-		mocks.api.investigations.updateStatus.mockClear();
-		mocks.api.investigations.updateStatus.mockResolvedValue({});
-		mocks.api.investigations.get.mockClear();
-		mocks.api.investigations.get.mockResolvedValue({
-			id: "inv-1",
-			status: "running",
+		fetchMock.mockClear();
+		fetchMock.mockImplementation(async (url: string | URL, init?: RequestInit) => {
+			const urlStr = String(url);
+			if (urlStr.includes("/internal/investigations/inv-1/status")) {
+				return new Response(JSON.stringify({ ok: true }), { status: 200 });
+			}
+			if (urlStr.includes("/internal/investigations/inv-1")) {
+				return new Response(
+					JSON.stringify({ id: "inv-1", status: "running" }),
+					{ status: 200 },
+				);
+			}
+			if (urlStr.includes("/internal/timeline")) {
+				return new Response(JSON.stringify({ ok: true }), { status: 201 });
+			}
+			return new Response(
+				JSON.stringify({
+					provider: "openai",
+					model: "gpt-4",
+					baseUrl: null,
+					credentials: { key: "sk-test" },
+				}),
+				{ status: 200 },
+			);
 		});
-		mocks.api.timeline.create.mockClear();
 		mocks.conductRun.mockReset();
 	});
 
@@ -164,14 +201,40 @@ describe("processor CANCEL path (ADR-0018)", () => {
 
 		// The signal the engine received actually aborted.
 		expect(sawSignal?.aborted).toBe(true);
-		// Terminal "cancelled" status write is owned by the run (conductRun left the
-		// store untouched).
-		expect(mocks.api.investigations.updateStatus).toHaveBeenCalledWith(
-			expect.objectContaining({ id: "inv-1", status: "cancelled" }),
+		// Terminal "cancelled" status write is owned by the run via internal PATCH
+		const statusCall = fetchMock.mock.calls.find((c) =>
+			String(c[0]).includes("/internal/investigations/inv-1/status"),
 		);
-		expect(mocks.api.timeline.create).toHaveBeenCalledWith(
-			expect.objectContaining({ title: "Investigation cancelled" }),
+		expect(statusCall).toBeDefined();
+		const [, statusInit] = statusCall!;
+		expect(statusInit?.method).toBe("PATCH");
+		expect(
+			(statusInit?.headers as Record<string, string>)["X-Internal-Secret"],
+		).toBe("test-secret");
+		expect(JSON.parse(statusInit?.body as string)).toMatchObject({
+			status: "cancelled",
+			error: "Investigation cancelled",
+		});
+
+		// Timeline entry is persisted via internal POST with source "ai_worker"
+		const timelineCall = fetchMock.mock.calls.find((c) =>
+			String(c[0]).includes("/internal/timeline") &&
+			(c[1]?.body ? JSON.parse(c[1].body as string).title === "Investigation cancelled" : false),
 		);
+		expect(timelineCall).toBeDefined();
+		const [, timelineInit] = timelineCall!;
+		expect(timelineInit?.method).toBe("POST");
+		expect(
+			(timelineInit?.headers as Record<string, string>)["X-Internal-Secret"],
+		).toBe("test-secret");
+		expect(JSON.parse(timelineInit?.body as string)).toMatchObject({
+			incidentId: "inc-1",
+			type: "investigation_completed",
+			title: "Investigation cancelled",
+			source: "ai_worker",
+			metadata: { investigationId: "inv-1" },
+		});
+
 		// Returned (not thrown), distinguishably cancelled — the host settles it, no rerun.
 		expect(io.streamDone).toHaveBeenCalled();
 		expect(result.success).toBe(false);
@@ -185,11 +248,35 @@ describe("processor CANCEL path (ADR-0018)", () => {
 			error: CANCELLED_MESSAGE,
 			failureKind: "cancelled",
 		});
-		// Transient API failure on the terminal write: must not escape to the outer
+		// Transient internal API failure on the terminal write: must not escape to the outer
 		// catch (which would mark the run "failed" and rethrow into a retry).
-		mocks.api.investigations.updateStatus.mockRejectedValue(
-			new Error("502 upstream"),
-		);
+		fetchMock.mockImplementation(async (url: string | URL) => {
+			const urlStr = String(url);
+			if (urlStr.includes("/internal/investigations/inv-1/status")) {
+				return new Response("502 upstream", {
+					status: 502,
+					statusText: "Bad Gateway",
+				});
+			}
+			if (urlStr.includes("/internal/investigations/inv-1")) {
+				return new Response(
+					JSON.stringify({ id: "inv-1", status: "running" }),
+					{ status: 200 },
+				);
+			}
+			if (urlStr.includes("/internal/timeline")) {
+				return new Response(JSON.stringify({ ok: true }), { status: 201 });
+			}
+			return new Response(
+				JSON.stringify({
+					provider: "openai",
+					model: "gpt-4",
+					baseUrl: null,
+					credentials: { key: "sk-test" },
+				}),
+				{ status: 200 },
+			);
+		});
 
 		const result = await processInvestigationJob(
 			makeJob("inv-1"),
@@ -202,9 +289,23 @@ describe("processor CANCEL path (ADR-0018)", () => {
 	});
 
 	it("skips the run entirely when the investigation is already cancelled (sticky cancel)", async () => {
-		mocks.api.investigations.get.mockResolvedValue({
-			id: "inv-1",
-			status: "cancelled",
+		fetchMock.mockImplementation(async (url: string | URL) => {
+			const urlStr = String(url);
+			if (urlStr.includes("/internal/investigations/inv-1")) {
+				return new Response(
+					JSON.stringify({ id: "inv-1", status: "cancelled" }),
+					{ status: 200 },
+				);
+			}
+			return new Response(
+				JSON.stringify({
+					provider: "openai",
+					model: "gpt-4",
+					baseUrl: null,
+					credentials: { key: "sk-test" },
+				}),
+				{ status: 200 },
+			);
 		});
 
 		const result = await processInvestigationJob(

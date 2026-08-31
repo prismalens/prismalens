@@ -593,19 +593,19 @@ describe("processInvestigationJob schema validation", () => {
 		).not.toThrow();
 	});
 
-	// Follow-up 4, issue #302: the schema parse lives INSIDE the failure-persisting
-	// try/catch. A payload that carries usable identifiers but fails validation must
-	// still leave a terminal "failed" investigation row and a timeline entry — never a
-	// row dangling at "pending" because the parse threw past the handler. Post-#350 the
-	// payload arrives over IPC from the host's dispatch loop rather than off a BullMQ
-	// job, so the identifiers are read from the `rawData` argument; the behaviour under
-	// test is unchanged.
+	// Follow-up 4, issue #302 / #537: the schema parse lives INSIDE the
+	// failure-persisting try/catch. A payload that carries usable identifiers but fails
+	// validation must still leave a terminal "failed" investigation row and a timeline
+	// entry via the internal endpoints — never a row dangling at "pending" because the
+	// parse threw past the handler.
 	it("parse failure still persists a failed status and timeline entry from the raw identifiers", async () => {
-		const { api } = await import("./orpc-client.js");
-		const updateStatus = vi.mocked(api.investigations.updateStatus);
-		const timelineCreate = vi.mocked(api.timeline.create);
-		updateStatus.mockClear();
-		timelineCreate.mockClear();
+		const fetchMock = vi.fn(async (_url: string | URL, _init?: RequestInit) => ({
+			ok: true,
+			text: async () => JSON.stringify({ ok: true }),
+			json: async () => ({ ok: true }),
+		}));
+		vi.stubGlobal("fetch", fetchMock);
+		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "test-secret");
 
 		const job = {
 			id: "job-parse-fail",
@@ -627,19 +627,39 @@ describe("processInvestigationJob schema validation", () => {
 			}),
 		).rejects.toThrow();
 
-		expect(updateStatus).toHaveBeenCalledWith(
-			expect.objectContaining({
-				id: "inv-parse-fail",
-				status: "failed",
-			}),
+		const statusCall = fetchMock.mock.calls.find((c) =>
+			String(c[0]).includes("/internal/investigations/inv-parse-fail/status"),
 		);
-		expect(timelineCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				incidentId: "inc-parse-fail",
-				type: "investigation_completed",
-				title: "AI Investigation Failed",
-			}),
+		expect(statusCall).toBeDefined();
+		const [, statusInit] = statusCall!;
+		expect(statusInit?.method).toBe("PATCH");
+		expect(
+			(statusInit?.headers as Record<string, string>)["X-Internal-Secret"],
+		).toBe("test-secret");
+		const statusBody = JSON.parse(statusInit?.body as string);
+		expect(statusBody).toMatchObject({
+			status: "failed",
+		});
+		expect(statusBody.error).toContain("priority");
+
+		const timelineCall = fetchMock.mock.calls.find((c) =>
+			String(c[0]).includes("/internal/timeline"),
 		);
+		expect(timelineCall).toBeDefined();
+		const [, timelineInit] = timelineCall!;
+		expect(timelineInit?.method).toBe("POST");
+		expect(
+			(timelineInit?.headers as Record<string, string>)["X-Internal-Secret"],
+		).toBe("test-secret");
+		expect(JSON.parse(timelineInit?.body as string)).toMatchObject({
+			incidentId: "inc-parse-fail",
+			type: "investigation_completed",
+			title: "AI Investigation Failed",
+			source: "ai_worker",
+			metadata: {
+				investigationId: "inv-parse-fail",
+			},
+		});
 	});
 });
 

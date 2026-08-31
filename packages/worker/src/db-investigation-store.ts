@@ -119,10 +119,49 @@ function createEventPoster(
 }
 
 /**
+ * Fetch investigation record via the internal API endpoint (#537).
+ * Public route is session-guarded; worker uses X-Internal-Secret.
+ */
+export async function fetchInvestigation(
+	apiBaseUrl: string,
+	internalSecret: string | undefined,
+	investigationId: string,
+): Promise<{ id: string; status: string; [key: string]: unknown }> {
+	if (!internalSecret) {
+		throw new Error(
+			"PRISMALENS_INTERNAL_SECRET not set — cannot check investigation status",
+		);
+	}
+	const url = internalUrl(
+		apiBaseUrl,
+		`internal/investigations/${investigationId}`,
+	);
+	const response = await fetch(url, {
+		method: "GET",
+		headers: {
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		const body = await response.text();
+		throw new Error(
+			`fetch-investigation failed: ${response.status} ${response.statusText} — ${body}`,
+		);
+	}
+	return response.json() as Promise<{
+		id: string;
+		status: string;
+		[key: string]: unknown;
+	}>;
+}
+
+/**
  * Update investigation status via the internal API endpoint (#535).
  * Public route is session-guarded; worker uses X-Internal-Secret.
  */
-async function updateInvestigationStatus(
+export async function updateInvestigationStatus(
 	apiBaseUrl: string,
 	internalSecret: string | undefined,
 	investigationId: string,
@@ -164,7 +203,7 @@ async function updateInvestigationStatus(
  * Create a timeline entry via the internal API endpoint (#535).
  * Public route is session-guarded; worker uses X-Internal-Secret.
  */
-async function createTimelineEntry(
+export async function createTimelineEntry(
 	apiBaseUrl: string,
 	internalSecret: string | undefined,
 	dto: {
