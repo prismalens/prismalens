@@ -38,7 +38,11 @@ import {
 	speaksOpenAiProtocol,
 } from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	LLM_PROVIDERS,
+	type LLMProviderId,
+	providerRequiresApiKey,
+} from "@prismalens/config/llm";
 import {
 	type CanonicalEvent,
 	correlatedAlertsContext,
@@ -748,7 +752,7 @@ export async function buildRequest(
 
 	const isSynthConfigured =
 		Boolean(apiKey) ||
-		(synthProvider !== null && !LLM_PROVIDERS[synthProvider].requiresApiKey);
+		(synthProvider !== null && !providerRequiresApiKey(synthProvider));
 
 	const isModelCompatible =
 		Boolean(llmConfig?.model) &&
