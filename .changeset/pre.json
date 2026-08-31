@@ -30,6 +30,9 @@
     "fix-incidents-serialization",
     "fix-storm-followups",
     "frontend-dead-code-sweep",
+    "harness-auth-routes-and-session",
+    "harness-picker-and-raw-report-banner",
+    "harness-predicate-keyless-session-model",
     "host-origin-allowlist-helmet",
     "integrations-crypto-core-tests",
     "jobstore-eventbus-dispatch-seam",
@@ -50,6 +53,7 @@
     "stream-relay-reattach",
     "stream-relay-topic-states",
     "unsuppression-names-the-rule",
-    "ux-study-alerts-tab-rootcause-progress"
+    "ux-study-alerts-tab-rootcause-progress",
+    "worker-openapi-link"
   ]
 }
