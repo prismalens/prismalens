@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createDbInvestigationStore,
 	type DbInvestigationStoreParams,
+	fetchInvestigation,
 } from "./db-investigation-store.js";
 
 const INVESTIGATION_ID = "11111111-1111-4111-8111-111111111111";
@@ -385,5 +386,58 @@ describe("createDbInvestigationStore — internal endpoints write-back (#535)", 
 		await expect(store.create()).rejects.toThrow(
 			/update-status failed: 401 Unauthorized/,
 		);
+	});
+});
+
+describe("fetchInvestigation (#537)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("fetches investigation via internal endpoint with X-Internal-Secret", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({ id: INVESTIGATION_ID, status: "cancelled" }),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchInvestigation(
+			"http://api.test",
+			"test-secret",
+			INVESTIGATION_ID,
+		);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe(
+			`http://api.test/internal/investigations/${INVESTIGATION_ID}`,
+		);
+		expect(init.method).toBe("GET");
+		expect(init.headers).toMatchObject({
+			"X-Internal-Secret": "test-secret",
+		});
+		expect(result).toEqual({ id: INVESTIGATION_ID, status: "cancelled" });
+	});
+
+	it("throws when PRISMALENS_INTERNAL_SECRET is missing", async () => {
+		await expect(
+			fetchInvestigation("http://api.test", undefined, INVESTIGATION_ID),
+		).rejects.toThrow(/PRISMALENS_INTERNAL_SECRET not set/);
+	});
+
+	it("throws when internal endpoint returns non-2xx status", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response("Not Found", {
+				status: 404,
+				statusText: "Not Found",
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			fetchInvestigation("http://api.test", "test-secret", INVESTIGATION_ID),
+		).rejects.toThrow(/fetch-investigation failed: 404 Not Found/);
 	});
 });

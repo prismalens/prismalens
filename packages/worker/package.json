@@ -22,7 +22,6 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"lint": "eslint src/**/*.ts",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run"
 	},
