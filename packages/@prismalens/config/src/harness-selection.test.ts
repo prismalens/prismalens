@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type HarnessSelectionInput,
+	harnessSpeaksProvider,
 	resolveHarnessAuthFor,
 	resolveHarnessSelection,
 	speaksOpenAiProtocol,
@@ -202,6 +203,56 @@ describe("resolveHarnessSelection — the shared gate (#518)", () => {
 			});
 		});
 
+		/**
+		 * #519: keyless providers like local ollama satisfy deepagents without an API key.
+		 */
+		it("keyless ollama config with a model ⇒ admitted on deepagents (#519)", () => {
+			const out = resolveHarnessSelection(
+				input({
+					provider: "ollama",
+					apiKey: "",
+					model: "gpt-oss:20b-cloud",
+					auth: { homeDir: tempHome, isOnPath: DEEPAGENTS_INSTALLED },
+				}),
+			);
+
+			expect(out).toEqual({
+				runnable: true,
+				harness: "deepagents",
+				route: "api-key",
+				verified: true,
+				auto: true,
+			});
+		});
+
+		/**
+		 * #525 defect 1: claude-code with a cli-session route is auto-selected when
+		 * the synthesis provider is OpenAI (ADR-0031 R4).
+		 */
+		it("auto-selects claude-code via cli-session when synthesis provider is openai (#525)", () => {
+			signIn();
+			const out = resolveHarnessSelection(
+				input({
+					provider: "openai",
+					apiKey: "sk-openai-live",
+					model: "gpt-5.4-mini",
+					harness: "auto",
+					auth: {
+						homeDir: tempHome,
+						isOnPath: (bin) => bin === "claude" || bin === "deepagents-acp",
+					},
+				}),
+			);
+
+			expect(out).toEqual({
+				runnable: true,
+				harness: "claude-code",
+				route: "cli-session",
+				verified: true,
+				auto: true,
+			});
+		});
+
 		it("an unverified session still runs — the run is the honest probe (ADR-0031 R3)", () => {
 			const out = resolveHarnessSelection(
 				input({ auth: { homeDir: tempHome, isOnPath: CLAUDE_INSTALLED } }),
@@ -245,6 +296,19 @@ describe("resolveHarnessSelection — the shared gate (#518)", () => {
 			expect(speaksOpenAiProtocol("custom")).toBe(true);
 			expect(speaksOpenAiProtocol("anthropic")).toBe(false);
 			expect(speaksOpenAiProtocol("google")).toBe(false);
+		});
+	});
+
+	describe("harnessSpeaksProvider (#525 model gating)", () => {
+		it("matches harnesses to the providers they speak", () => {
+			expect(harnessSpeaksProvider("claude-code", "anthropic")).toBe(true);
+			expect(harnessSpeaksProvider("claude-code", "openai")).toBe(false);
+			expect(harnessSpeaksProvider("claude-code", null)).toBe(false);
+			expect(harnessSpeaksProvider("deepagents", "openai")).toBe(true);
+			expect(harnessSpeaksProvider("deepagents", "ollama")).toBe(true);
+			expect(harnessSpeaksProvider("deepagents", "custom")).toBe(true);
+			expect(harnessSpeaksProvider("deepagents", "anthropic")).toBe(false);
+			expect(harnessSpeaksProvider("deepagents", null)).toBe(false);
 		});
 	});
 });

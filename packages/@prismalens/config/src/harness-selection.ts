@@ -25,7 +25,7 @@ import {
 	type HarnessAuthRoute,
 	type HarnessId,
 } from "./providers/harness.js";
-import type { LLMProviderId } from "./providers/llm.js";
+import { type LLMProviderId, providerRequiresApiKey } from "./providers/llm.js";
 
 /**
  * deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): it is
@@ -36,6 +36,25 @@ export function speaksOpenAiProtocol(provider: LLMProviderId): boolean {
 	return (
 		provider === "openai" || provider === "ollama" || provider === "custom"
 	);
+}
+
+/**
+ * Does this harness natively speak the given provider's protocol?
+ * Used to gate model id injection (ADR-0031 R7, #525) so foreign model ids are not
+ * passed to a harness that cannot run them.
+ */
+export function harnessSpeaksProvider(
+	harness: HarnessId,
+	provider: LLMProviderId | null,
+): boolean {
+	if (!provider) return false;
+	if (harness === "deepagents") {
+		return speaksOpenAiProtocol(provider);
+	}
+	if (harness === "claude-code") {
+		return provider === "anthropic";
+	}
+	return false;
 }
 
 /** Why no investigation would start. */
@@ -66,7 +85,7 @@ export type HarnessSelection =
 	  };
 
 export interface HarnessSelectionInput {
-	/** The ACTIVE Tier-1 provider, or null when none is configured. */
+	/** The active synthesis provider, or null when none is configured. */
 	provider: LLMProviderId | null;
 	/**
 	 * The ACTIVE provider's resolved credential — never a key stored for some
@@ -85,38 +104,22 @@ export interface HarnessSelectionInput {
 }
 
 /**
- * Is a harness allowed to serve this provider at all? Separate from whether it
- * has a credential — a compatible harness with no key and an incompatible one
- * with a key fail for different reasons and get different messages.
+ * Does the active provider config satisfy this harness's api-key route (ADR-0031 R5)?
+ * Keyless providers (ollama/custom) satisfy deepagents without an API key (#519).
  */
-function providerCompatible(
-	harness: HarnessId,
-	provider: LLMProviderId | null,
-): boolean {
-	if (harness === "deepagents") {
-		return provider !== null && speaksOpenAiProtocol(provider);
-	}
-	if (harness === "claude-code") {
-		return provider === "anthropic" || provider === null;
-	}
-	return true;
-}
-
-/**
- * Does this harness hold a key it can actually use? Scoped to the active
- * provider, because that is the only credential the worker ever hands over.
- */
-function harnessKeyPresent(
+function modelCredentialSatisfied(
 	harness: HarnessId,
 	provider: LLMProviderId | null,
 	apiKey: string,
 ): boolean {
-	if (!apiKey) return false;
+	if (!provider) return false;
+	const hasKey = Boolean(apiKey) || !providerRequiresApiKey(provider);
+	if (!hasKey) return false;
 	if (harness === "deepagents") {
-		return provider !== null && speaksOpenAiProtocol(provider);
+		return speaksOpenAiProtocol(provider);
 	}
 	if (harness === "claude-code") {
-		return provider === "anthropic" || provider === null;
+		return provider === "anthropic";
 	}
 	return true;
 }
@@ -131,40 +134,31 @@ export function resolveHarnessAuthFor(
 	input: HarnessSelectionInput,
 ): HarnessAuthVerdict {
 	return resolveHarnessAuth(harness, {
-		apiKeyPresent: harnessKeyPresent(harness, input.provider, input.apiKey),
-		homeDir: input.auth?.homeDir,
-		isOnPath: input.auth?.isOnPath,
-	});
-}
-
-/** Walk `HARNESS_AUTO_ORDER` for the first harness that could run (ADR-0021). */
-function pickAuto(
-	input: HarnessSelectionInput,
-): { harness: HarnessId } | { reason: string } {
-	for (const harnessId of HARNESS_AUTO_ORDER) {
-		const descriptor = HARNESS_REGISTRY[harnessId];
-		if (!descriptor?.implemented) continue;
-		if (!providerCompatible(harnessId, input.provider)) continue;
-
-		const verdict = resolveHarnessAuth(harnessId, {
-			apiKeyPresent: harnessKeyPresent(harnessId, input.provider, input.apiKey),
-			homeDir: input.auth?.homeDir,
-			isOnPath: input.auth?.isOnPath,
-		});
-		if (verdict.usable) return { harness: harnessId };
-	}
-
-	// claude-code's remedy is the most actionable, so it is what the user sees
-	// when nothing at all resolved.
-	const claudeVerdict = resolveHarnessAuth("claude-code", {
-		apiKeyPresent: harnessKeyPresent(
-			"claude-code",
+		apiKeyPresent: modelCredentialSatisfied(
+			harness,
 			input.provider,
 			input.apiKey,
 		),
 		homeDir: input.auth?.homeDir,
 		isOnPath: input.auth?.isOnPath,
 	});
+}
+
+/** Walk `HARNESS_AUTO_ORDER` for the first harness that could run (ADR-0021, ADR-0031 R4). */
+function pickAuto(
+	input: HarnessSelectionInput,
+): { harness: HarnessId } | { reason: string } {
+	for (const harnessId of HARNESS_AUTO_ORDER) {
+		const descriptor = HARNESS_REGISTRY[harnessId];
+		if (!descriptor?.implemented) continue;
+
+		const verdict = resolveHarnessAuthFor(harnessId, input);
+		if (verdict.usable) return { harness: harnessId };
+	}
+
+	// claude-code's remedy is the most actionable, so it is what the user sees
+	// when nothing at all resolved.
+	const claudeVerdict = resolveHarnessAuthFor("claude-code", input);
 	return {
 		reason: claudeVerdict.usable
 			? "No compatible harness found."
@@ -224,11 +218,7 @@ export function resolveHarnessSelection(
 		};
 	}
 
-	const verdict = resolveHarnessAuth(harness, {
-		apiKeyPresent: harnessKeyPresent(harness, input.provider, input.apiKey),
-		homeDir: input.auth?.homeDir,
-		isOnPath: input.auth?.isOnPath,
-	});
+	const verdict = resolveHarnessAuthFor(harness, input);
 	if (!verdict.usable) {
 		return {
 			runnable: false,
