@@ -278,137 +278,118 @@ export class IncidentsController {
 		} as Incident;
 	}
 
-	private serializeAlert(alert: PrismaAlert | Record<string, unknown>): Alert {
+	private serializeAlert(alert: PrismaAlert | Record<string, any>): Alert {
 		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
 		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns
 		// must stay out of the API response. oRPC output validation strips unknowns,
 		// but defense-in-depth applies.
-		const a = alert as Record<string, unknown>;
 		return {
-			id: a.id as string,
-			dedupKey: a.dedupKey as string,
-			fingerprint: (a.fingerprint as string) ?? null,
-			externalId: (a.externalId as string) ?? null,
-			title: a.title as string,
-			description: (a.description as string) ?? null,
-			severity: a.severity as Alert["severity"],
-			status: a.status as Alert["status"],
-			source: (a.source as string) ?? null,
-			sourceUrl: (a.sourceUrl as string) ?? null,
-			serviceId: (a.serviceId as string) ?? null,
-			incidentId: (a.incidentId as string) ?? null,
-			rawPayload: (a.rawPayload as string) ?? null,
-			tags: a.tags
-				? typeof a.tags === "string"
-					? JSON.parse(a.tags)
-					: a.tags
+			id: alert.id,
+			dedupKey: alert.dedupKey,
+			fingerprint: alert.fingerprint ?? null,
+			externalId: alert.externalId ?? null,
+			title: alert.title,
+			description: alert.description ?? null,
+			severity: alert.severity,
+			status: alert.status,
+			source: alert.source ?? null,
+			sourceUrl: alert.sourceUrl ?? null,
+			serviceId: alert.serviceId ?? null,
+			incidentId: alert.incidentId ?? null,
+			rawPayload: alert.rawPayload ?? null,
+			tags: alert.tags
+				? typeof alert.tags === "string"
+					? JSON.parse(alert.tags)
+					: alert.tags
 				: null,
-			labels: a.labels
-				? typeof a.labels === "string"
-					? JSON.parse(a.labels)
-					: a.labels
+			labels: alert.labels
+				? typeof alert.labels === "string"
+					? JSON.parse(alert.labels)
+					: alert.labels
 				: null,
-			occurrenceCount: a.occurrenceCount as number,
+			occurrenceCount: alert.occurrenceCount,
 			triggeredAt:
-				a.triggeredAt instanceof Date
-					? a.triggeredAt.toISOString()
-					: (a.triggeredAt as string),
+				alert.triggeredAt instanceof Date
+					? alert.triggeredAt.toISOString()
+					: alert.triggeredAt,
 			acknowledgedAt:
-				a.acknowledgedAt instanceof Date
-					? a.acknowledgedAt.toISOString()
-					: ((a.acknowledgedAt as string) ?? null),
+				alert.acknowledgedAt instanceof Date
+					? alert.acknowledgedAt.toISOString()
+					: (alert.acknowledgedAt ?? null),
 			resolvedAt:
-				a.resolvedAt instanceof Date
-					? a.resolvedAt.toISOString()
-					: ((a.resolvedAt as string) ?? null),
+				alert.resolvedAt instanceof Date
+					? alert.resolvedAt.toISOString()
+					: (alert.resolvedAt ?? null),
 			lastOccurrence:
-				a.lastOccurrence instanceof Date
-					? a.lastOccurrence.toISOString()
-					: (a.lastOccurrence as string),
+				alert.lastOccurrence instanceof Date
+					? alert.lastOccurrence.toISOString()
+					: alert.lastOccurrence,
 			createdAt:
-				a.createdAt instanceof Date
-					? a.createdAt.toISOString()
-					: (a.createdAt as string),
+				alert.createdAt instanceof Date
+					? alert.createdAt.toISOString()
+					: alert.createdAt,
 			updatedAt:
-				a.updatedAt instanceof Date
-					? a.updatedAt.toISOString()
-					: (a.updatedAt as string),
+				alert.updatedAt instanceof Date
+					? alert.updatedAt.toISOString()
+					: alert.updatedAt,
 		} as Alert;
 	}
 
 	private serializeIncidentWithRelations(
-		incident: Record<string, unknown>,
+		incident: Record<string, any>,
 	): IncidentWithRelations {
 		const serialized = this.serializeIncident(
-			incident as unknown as PrismaIncident,
-		) as unknown as IncidentWithRelations;
+			incident as PrismaIncident,
+		) as any;
 
 		if (incident.service) {
-			const svc = incident.service as Record<string, unknown>;
 			serialized.service = {
-				id: svc.id as string,
-				name: svc.name as string,
-				type:
-					(svc.type as
-						| "database"
-						| "external"
-						| "service"
-						| "infrastructure"
-						| "queue"
-						| "cache"
-						| "gateway") ?? "service",
-				tier:
-					(svc.tier as "tier_1" | "tier_2" | "tier_3" | "tier_4") ?? "tier_3",
-				displayName: (svc.displayName as string) ?? null,
-				description: (svc.description as string) ?? null,
-				team: (svc.team as string) ?? null,
-				slackChannel: (svc.slackChannel as string) ?? null,
-				localCheckoutPath: (svc.localCheckoutPath as string) ?? null,
-				tags: svc.tags
-					? typeof svc.tags === "string"
-						? JSON.parse(svc.tags)
-						: (svc.tags as string[])
+				...incident.service,
+				displayName: incident.service.displayName ?? null,
+				description: incident.service.description ?? null,
+				team: incident.service.team ?? null,
+				slackChannel: incident.service.slackChannel ?? null,
+				tags: incident.service.tags
+					? typeof incident.service.tags === "string"
+						? JSON.parse(incident.service.tags)
+						: incident.service.tags
 					: null,
-				metadata: svc.metadata
-					? typeof svc.metadata === "string"
-						? JSON.parse(svc.metadata)
-						: (svc.metadata as Record<string, unknown>)
+				metadata: incident.service.metadata
+					? typeof incident.service.metadata === "string"
+						? JSON.parse(incident.service.metadata)
+						: incident.service.metadata
 					: null,
 				createdAt:
-					svc.createdAt instanceof Date
-						? svc.createdAt.toISOString()
-						: (svc.createdAt as string),
+					incident.service.createdAt instanceof Date
+						? incident.service.createdAt.toISOString()
+						: incident.service.createdAt,
 				updatedAt:
-					svc.updatedAt instanceof Date
-						? svc.updatedAt.toISOString()
-						: (svc.updatedAt as string),
+					incident.service.updatedAt instanceof Date
+						? incident.service.updatedAt.toISOString()
+						: incident.service.updatedAt,
 			};
 		}
 
-		if (incident.alerts && Array.isArray(incident.alerts)) {
-			serialized.alerts = incident.alerts.map((a: Record<string, unknown>) =>
+		if (incident.alerts) {
+			serialized.alerts = incident.alerts.map((a: any) =>
 				this.serializeAlert(a),
 			);
 		}
 
-		if (incident.investigations && Array.isArray(incident.investigations)) {
-			serialized.investigations = incident.investigations.map(
-				(i: Record<string, unknown>) => ({
-					id: i.id as string,
-					status: i.status as string,
-					rootCause: (i.rootCause as string) ?? null,
-					createdAt:
-						i.createdAt instanceof Date
-							? i.createdAt.toISOString()
-							: (i.createdAt as string),
-					completedAt:
-						i.completedAt instanceof Date
-							? i.completedAt.toISOString()
-							: ((i.completedAt as string) ?? null),
-				}),
-			);
+		if (incident.investigations) {
+			serialized.investigations = incident.investigations.map((i: any) => ({
+				id: i.id,
+				status: i.status,
+				rootCause: i.rootCause ?? null,
+				createdAt:
+					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
+				completedAt:
+					i.completedAt instanceof Date
+						? i.completedAt.toISOString()
+						: (i.completedAt ?? null),
+			}));
 		}
 
-		return serialized;
+		return serialized as IncidentWithRelations;
 	}
 }
