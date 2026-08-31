@@ -15,12 +15,15 @@ import {
 } from "@/components/incidents";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 import {
 	useCreateTimelineEntry,
+	useHarnesses,
 	useLlmSettings,
 	useTimeline,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/")({
 	component: IncidentDetailPage,
@@ -30,10 +33,14 @@ function IncidentDetailPage() {
 	const { id } = Route.useParams();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const { toast } = useToast();
 
-	// Check if LLM is configured
+	// Check if LLM / harness is runnable (#520)
 	const { data: llmSettings } = useLlmSettings();
-	const isLlmConfigured = !!llmSettings?.activeProvider;
+	const { data: harnessData } = useHarnesses();
+	const hasRunnableHarness =
+		harnessData?.harnesses?.some((h) => h.runnable) ?? false;
+	const isLlmConfigured = !!llmSettings?.activeProvider || hasRunnableHarness;
 
 	// Fetch incident details
 	const {
@@ -76,6 +83,13 @@ function IncidentDetailPage() {
 					params: { id: data.investigationId },
 				});
 			}
+		},
+		onError: (error) => {
+			toast({
+				title: "Investigation refused",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			});
 		},
 	});
 

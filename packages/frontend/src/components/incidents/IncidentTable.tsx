@@ -43,6 +43,8 @@ export interface IncidentTableProps {
 	isLoading?: boolean;
 	onAcknowledge?: (id: string) => void;
 	onInvestigate?: (id: string) => void;
+	investigateDisabled?: boolean;
+	investigateDisabledReason?: string;
 }
 
 const priorityColors: Record<string, string> = {
@@ -82,6 +84,8 @@ export function IncidentTable({
 	isLoading,
 	onAcknowledge,
 	onInvestigate,
+	investigateDisabled,
+	investigateDisabledReason,
 }: IncidentTableProps) {
 	if (isLoading) {
 		return <IncidentTableSkeleton />;
@@ -223,15 +227,29 @@ export function IncidentTable({
 											onInvestigate && (
 												<Tooltip>
 													<TooltipTrigger asChild>
-														<Button
-															variant="ghost"
-															size="icon"
-															onClick={() => onInvestigate(incident.id)}
-														>
-															<Search className="h-4 w-4" />
-														</Button>
+														<span data-testid="incident-investigate-trigger">
+															<Button
+																variant="ghost"
+																size="icon"
+																disabled={investigateDisabled}
+																onClick={() => onInvestigate(incident.id)}
+																aria-label={
+																	investigateDisabled &&
+																	investigateDisabledReason
+																		? investigateDisabledReason
+																		: "Start Investigation"
+																}
+																data-testid="incident-investigate-button"
+															>
+																<Search className="h-4 w-4" />
+															</Button>
+														</span>
 													</TooltipTrigger>
-													<TooltipContent>Start Investigation</TooltipContent>
+													<TooltipContent>
+														{investigateDisabled && investigateDisabledReason
+															? investigateDisabledReason
+															: "Start Investigation"}
+													</TooltipContent>
 												</Tooltip>
 											)}
 									</div>

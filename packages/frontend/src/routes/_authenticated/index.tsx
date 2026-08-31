@@ -28,13 +28,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import {
 	incidentKeys,
 	investigationKeys,
 	useAlertMappingHealth,
+	useHarnesses,
 	useLlmSettings,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
 // Setup check is handled by parent _authenticated layout route
@@ -45,13 +48,17 @@ export const Route = createFileRoute("/_authenticated/")({
 function CommandCenter() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const { toast } = useToast();
 	const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(
 		null,
 	);
 
-	// Check if LLM is configured
+	// Check if LLM / harness is runnable (#520)
 	const { data: llmSettings } = useLlmSettings();
-	const isLlmConfigured = !!llmSettings?.activeProvider;
+	const { data: harnessData } = useHarnesses();
+	const hasRunnableHarness =
+		harnessData?.harnesses?.some((h) => h.runnable) ?? false;
+	const isLlmConfigured = !!llmSettings?.activeProvider || hasRunnableHarness;
 
 	// Fetch active incidents (not resolved)
 	const { data: incidentsResponse, isLoading: incidentsLoading } = useQuery(
@@ -144,6 +151,13 @@ function CommandCenter() {
 					params: { id: data.investigationId },
 				});
 			}
+		},
+		onError: (error) => {
+			toast({
+				title: "Investigation refused",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			});
 		},
 	});
 
