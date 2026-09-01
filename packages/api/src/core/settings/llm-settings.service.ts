@@ -3,6 +3,15 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import {
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	resolveHarnessAuthFor,
+	resolveHarnessSelection,
+} from "@prismalens/config/harness-selection";
+import {
 	getAllowedHosts,
 	getApiKeyEnvVar,
 	isLLMProviderId,
@@ -13,6 +22,8 @@ import {
 } from "@prismalens/config/llm";
 import { pingModel } from "@prismalens/config/model";
 import type {
+	HarnessesResponse,
+	HarnessSetting,
 	LlmSettings,
 	ModelMetadata,
 	ModelsListResponse,
@@ -138,7 +149,7 @@ export class LlmSettingsService {
 		return {
 			activeProvider: null,
 			providers: {} as Record<LLMProviderId, { model: string }>,
-			agentOverrides: undefined,
+			harness: "auto",
 		};
 	}
 
@@ -229,7 +240,7 @@ export class LlmSettingsService {
 			return {
 				activeProvider: parsed.activeProvider ?? null,
 				providers: parsed.providers ?? {},
-				agentOverrides: parsed.agentOverrides,
+				harness: parsed.harness ?? "auto",
 			};
 		} catch {
 			return this.getDefaultLlmSettings();
@@ -237,15 +248,16 @@ export class LlmSettingsService {
 	}
 
 	/**
-	 * The provider/model/baseUrl a run will ACTUALLY use: DB settings first, then
+	 * The provider/model/baseUrl/harness a run will ACTUALLY use: DB settings first, then
 	 * `PRISMALENS_LLM_PROVIDER` / `PRISMALENS_LLM_MODEL`. Shared by the worker's
 	 * credential fetch and the setup wizard's step check so the two cannot
-	 * disagree about what is configured (PR #396 thread A).
+	 * disagree about what is configured (PR #396 thread A; ADR-0031).
 	 */
 	async resolveActiveLlmConfig(): Promise<{
 		provider: LLMProviderId | null;
 		model: string | null;
 		baseUrl: string | null;
+		harness: HarnessSetting;
 	}> {
 		const settings = await this.getLlmSettings();
 		const candidate =
@@ -263,25 +275,47 @@ export class LlmSettingsService {
 			baseUrl: provider
 				? (settings.providers[provider]?.baseUrl ?? null)
 				: null,
+			harness: settings.harness ?? "auto",
 		};
 	}
 
 	/**
-	 * Is the ACTIVE provider genuinely runnable — chosen, given a model, and
-	 * credentialled unless it is keyless? A key sitting in the env for some other
-	 * provider is not configuration (PR #396 thread A).
+	 * Is the ACTIVE provider genuinely runnable — chosen, and either credentialled
+	 * with a model, or backed by a Claude CLI session that needs neither (ADR-0031).
+	 * A key sitting in the env for some other provider is not configuration (PR #396 thread A).
 	 *
 	 * Deliberately does NOT call `getLlmEnvStatus()`: that pings Ollama over HTTP,
 	 * and the unauthenticated setup-status route the app's layout hits on load
 	 * must stay cheap reads.
 	 */
 	async isActiveProviderUsable(): Promise<boolean> {
-		const { provider, model } = await this.resolveActiveLlmConfig();
-		if (!provider || !model) return false;
-		if (!providerRequiresApiKey(provider)) return true;
+		return (await this.resolveSelection()).runnable;
+	}
 
-		const credential = (await this.getLlmCredentialStatus())[provider];
-		return !!credential && (credential.hasDbKey || credential.hasEnvKey);
+	/**
+	 * The inputs the worker's gate runs on, assembled from the same sources the
+	 * internal credentials endpoint hands it: the ACTIVE provider's key only, its
+	 * model, the harness setting, the env override. Anything that answers "would a
+	 * job start?" goes through here — nothing re-derives it (ADR-0031, #518).
+	 */
+	async resolveSelection(
+		harnessOverride?: HarnessId,
+	): Promise<ReturnType<typeof resolveHarnessSelection>> {
+		const { provider, model, harness } = await this.resolveActiveLlmConfig();
+		return resolveHarnessSelection({
+			...this.selectionInput(provider, model),
+			harness: harnessOverride ?? harness,
+		});
+	}
+
+	private selectionInput(provider: LLMProviderId | null, model: string | null) {
+		return {
+			provider,
+			apiKey: provider ? (this.resolveApiKey(provider) ?? "") : "",
+			model,
+			harness: "auto" as const,
+			envHarness: process.env.PRISMALENS_HARNESS,
+		};
 	}
 
 	async updateLlmSettings(dto: UpdateLlmSettings): Promise<LlmSettings> {
@@ -313,20 +347,11 @@ export class LlmSettingsService {
 			}
 		}
 
-		let updatedAgentOverrides = current.agentOverrides;
-		if (dto.agentOverrides !== undefined) {
-			updatedAgentOverrides = dto.agentOverrides
-				? {
-						...current.agentOverrides,
-						...dto.agentOverrides,
-					}
-				: undefined;
-		}
-
 		const updated: LlmSettings = {
 			activeProvider: dto.activeProvider ?? current.activeProvider,
 			providers: updatedProviders,
-			agentOverrides: updatedAgentOverrides,
+			harness:
+				dto.harness !== undefined ? dto.harness : (current.harness ?? "auto"),
 		};
 
 		await this.prisma.setting.upsert({
@@ -341,6 +366,44 @@ export class LlmSettingsService {
 		});
 
 		return updated;
+	}
+
+	/**
+	 * Returns auth status and verdicts for all implemented and registered harnesses (ADR-0031).
+	 * Never exposes API key secrets.
+	 */
+	async getHarnessesStatus(): Promise<HarnessesResponse> {
+		const { provider, model } = await this.resolveActiveLlmConfig();
+		const input = this.selectionInput(provider, model);
+		const globalSelection = resolveHarnessSelection(input);
+		const invalidPin =
+			!globalSelection.runnable &&
+			globalSelection.failure === "invalid-env-harness";
+
+		const harnesses = HARNESS_IDS.map((id) => {
+			const descriptor = HARNESS_REGISTRY[id];
+			// Both answers come from the shared gate: `verdict` is why the credential
+			// is or is not there, `runnable` is whether a job pinned to this harness
+			// would actually start. Per-row probe ignores valid env pin (#516, #517).
+			const verdict = resolveHarnessAuthFor(id, input);
+			const selection = invalidPin
+				? globalSelection
+				: resolveHarnessSelection({
+						...input,
+						harness: id,
+						envHarness: undefined,
+					});
+			return {
+				id: descriptor.id,
+				label: descriptor.label,
+				implemented: descriptor.implemented,
+				verdict,
+				runnable: selection.runnable,
+				blockedReason: selection.runnable ? null : selection.reason,
+			};
+		});
+
+		return { harnesses };
 	}
 
 	async getAvailableModels(provider?: string): Promise<ModelsListResponse> {

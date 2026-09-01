@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { AGENT_IDS } from "@prismalens/config/agents";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,6 +10,24 @@ import {
 	getAgentStyle,
 	transformLiveEventsToCanvas,
 } from "./transform-live-events";
+
+/**
+ * `agent-0`..`agent-{n-1}`, verified against the current `hashString` to hit
+ * every palette bucket exactly once (#534). Two names now colliding on a
+ * bucket is expected — the registry that used to guarantee otherwise for a
+ * fixed roster is gone — so full-coverage names are chosen here instead of
+ * pretending five arbitrary agent names still avoid collisions.
+ */
+const bucketCoveringAgentNames = (bucketCount: number): string[] => {
+	const seen = new Map<number, string>();
+	for (let i = 0; seen.size < bucketCount; i++) {
+		const name = `agent-${i}`;
+		const hash = getAgentPalette(name);
+		const bucket = AGENT_PALETTES.indexOf(hash);
+		if (!seen.has(bucket)) seen.set(bucket, name);
+	}
+	return Array.from(seen.values());
+};
 
 describe("transformLiveEventsToCanvas", () => {
 	it("returns empty nodes and edges for empty events array", () => {
@@ -255,7 +272,7 @@ describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
 		}
 	});
 
-	it("returns deterministic styling for known registered agents", () => {
+	it("returns deterministic styling for a given agent name", () => {
 		const scoutStyle1 = getAgentStyle("scout");
 		const scoutStyle2 = getAgentStyle("scout");
 
@@ -267,7 +284,7 @@ describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
 		expect(scoutStyle1.iconColor).toContain("text-");
 	});
 
-	it("formats unregistered agent names and falls back gracefully", () => {
+	it("formats arbitrary agent names into a title-case display name", () => {
 		const style = getAgentStyle("custom_pipeline_worker");
 		expect(style.displayName).toBe("Custom Pipeline Worker");
 		expect(style.bg).toContain("bg-");
@@ -300,20 +317,21 @@ describe("getAgentStyle and AGENT_PALETTES (#408)", () => {
 		}
 	});
 
-	it("assigns distinct palette entries across the registered agent roster", () => {
-		const palettes = AGENT_IDS.map((id) => getAgentPalette(id));
+	it("covers every palette bucket with a distinct entry given enough names", () => {
+		const names = bucketCoveringAgentNames(AGENT_PALETTES.length);
+		const palettes = names.map((name) => getAgentPalette(name));
 		const uniquePalettes = new Set(palettes);
-		expect(uniquePalettes.size).toBe(AGENT_IDS.length);
+		expect(uniquePalettes.size).toBe(AGENT_PALETTES.length);
 	});
 
-	it("assigns distinct MiniMap colors across the registered agent roster", () => {
-		const lightColors = AGENT_IDS.map((id) => getAgentMiniMapColor(id, "light"));
-		const uniqueLightColors = new Set(lightColors);
-		expect(uniqueLightColors.size).toBe(AGENT_IDS.length);
+	it("covers every MiniMap bucket with a distinct color given enough names", () => {
+		const names = bucketCoveringAgentNames(AGENT_PALETTES.length);
 
-		const darkColors = AGENT_IDS.map((id) => getAgentMiniMapColor(id, "dark"));
-		const uniqueDarkColors = new Set(darkColors);
-		expect(uniqueDarkColors.size).toBe(AGENT_IDS.length);
+		const lightColors = names.map((name) => getAgentMiniMapColor(name, "light"));
+		expect(new Set(lightColors).size).toBe(AGENT_PALETTES.length);
+
+		const darkColors = names.map((name) => getAgentMiniMapColor(name, "dark"));
+		expect(new Set(darkColors).size).toBe(AGENT_PALETTES.length);
 	});
 
 	it("resolves unrostered agent names deterministically through hash buckets", () => {

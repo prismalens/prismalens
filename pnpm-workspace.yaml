@@ -7,16 +7,17 @@ catalog:
   '@nestjs/core': ^11.2.1
   '@orpc/client': ^1.15.0
   '@orpc/contract': ^1.15.0
+  '@orpc/openapi-client': ^1.15.0
   '@types/node': ^26.2.0
-  ai: ^7.0.68
-  better-auth: ^1.7.1
+  ai: ^7.0.84
+  better-auth: ^1.7.2
   dotenv: ^17.4.2
-  eslint: ^10.8.1
+  eslint: ^10.9.1
   rxjs: ^7.8.2
   tsx: ^4.23.12
   typescript: ^5.9.3
   vitest: ^4.1.11
-  zod: ^4.4.3
+  zod: ^4.5.1
 
 onlyBuiltDependencies:
   - '@nestjs/core'

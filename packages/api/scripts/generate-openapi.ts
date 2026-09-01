@@ -11,7 +11,9 @@ import { writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenAPIGenerator } from "@orpc/openapi";
-import { ZodToJsonSchemaConverter } from "@orpc/zod";
+// zod4 subpath required: the root "@orpc/zod" export targets zod v3 and silently
+// no-ops on this repo's zod v4 schemas (#547).
+import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { contract } from "@prismalens/contracts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

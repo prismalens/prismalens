@@ -118,6 +118,7 @@ function makeController(): IncidentsController {
 		null as never,
 		null as never,
 		null as never,
+		null as never,
 	);
 }
 
@@ -326,5 +327,91 @@ describe("incidents serialization contract conformance", () => {
 		expect(serialized.investigations[1].rootCause).toBe(
 			"Connection pool size in auth-service was misconfigured and capped at 10 pool connections after release v2.4.1.",
 		);
+	});
+
+	it("serializes service with exact whitelist field set, dropping unwhitelisted and internal columns", () => {
+		const incidentWithExtraServiceColumns = {
+			...seededIncidentRow,
+			service: {
+				...seededIncidentRow.service,
+				// Internal & non-whitelisted columns
+				tenantId: "tenant-secret-xyz",
+				discoveryMetadata: '{"cluster":"us-east-1"}',
+				unknownFutureColumn: "sensitive-internal-value",
+				internalFlag: true,
+			},
+		};
+
+		const serialized = serialize(incidentWithExtraServiceColumns) as {
+			service: Record<string, unknown>;
+		};
+
+		const expectedWhitelist = [
+			"id",
+			"name",
+			"displayName",
+			"description",
+			"type",
+			"tier",
+			"team",
+			"slackChannel",
+			"tags",
+			"metadata",
+			"localCheckoutPath",
+			"createdAt",
+			"updatedAt",
+		];
+
+		// Assert exact key set — both extra keys (leaks) and missing keys (drops) fail this.
+		expect(Object.keys(serialized.service).sort()).toEqual(
+			expectedWhitelist.sort(),
+		);
+
+		// Assert specific sensitive / unwhitelisted columns are absent from output.
+		expect(serialized.service).not.toHaveProperty("tenantId");
+		expect(serialized.service).not.toHaveProperty("discoveryMetadata");
+		expect(serialized.service).not.toHaveProperty("unknownFutureColumn");
+		expect(serialized.service).not.toHaveProperty("internalFlag");
+	});
+
+	it("normalizes service fields: parses JSON strings, converts Date objects to ISO strings, and defaults absent optionals to null", () => {
+		const incidentWithUnnormalizedService = {
+			...seededIncidentRow,
+			service: {
+				id: "11111111-1111-4111-8111-111111111111",
+				name: "billing-service",
+				type: "service",
+				tier: "tier_2",
+				// Optional fields omitted / undefined
+				displayName: undefined,
+				description: undefined,
+				team: undefined,
+				slackChannel: undefined,
+				localCheckoutPath: undefined,
+				// JSON string fields to be parsed
+				tags: '["billing","payments"]',
+				metadata: '{"env":"production","owner":"billing-team"}',
+				// Date objects to be converted to ISO strings
+				createdAt: new Date("2026-08-01T12:00:00.000Z"),
+				updatedAt: new Date("2026-08-02T15:30:00.000Z"),
+			},
+		};
+
+		const serialized = serialize(incidentWithUnnormalizedService) as {
+			service: Record<string, unknown>;
+		};
+
+		expect(serialized.service.displayName).toBeNull();
+		expect(serialized.service.description).toBeNull();
+		expect(serialized.service.team).toBeNull();
+		expect(serialized.service.slackChannel).toBeNull();
+		expect(serialized.service.localCheckoutPath).toBeNull();
+		expect(serialized.service.tags).toEqual(["billing", "payments"]);
+		expect(serialized.service.metadata).toEqual({
+			env: "production",
+			owner: "billing-team",
+		});
+		expect(serialized.service.createdAt).toBe("2026-08-01T12:00:00.000Z");
+		expect(serialized.service.updatedAt).toBe("2026-08-02T15:30:00.000Z");
 	});
 });

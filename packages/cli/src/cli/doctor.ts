@@ -16,11 +16,11 @@
  * Prints pass/fail per check; exits non-zero iff a HARD check fails. No tinyexec /
  * check-tool helper here — availability is a dependency-free PATH scan.
  */
-import { accessSync, constants as fsConstants } from "node:fs";
+import { constants as fsConstants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
-import { delimiter, join } from "node:path";
 import { resolveCredentials } from "@prismalens/config/credentials";
 import { HARNESS_BINARY } from "@prismalens/config/harness";
+import { isOnPath, resolveHarnessAuth } from "@prismalens/config/harness-auth";
 import {
 	AUTO_SELECT_PROVIDER_IDS,
 	LLM_PROVIDERS,
@@ -43,34 +43,24 @@ interface Check {
 	hard: boolean;
 }
 
-function isOnPath(bin: string): boolean {
-	const pathEnv = process.env.PATH ?? "";
-	const exts =
-		process.platform === "win32"
-			? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";")
-			: [""];
-	for (const dir of pathEnv.split(delimiter)) {
-		if (dir.length === 0) continue;
-		for (const ext of exts) {
-			try {
-				accessSync(join(dir, bin + ext), fsConstants.X_OK);
-				return true;
-			} catch {
-				// keep looking
-			}
-		}
-	}
-	return false;
-}
-
 function checkHarness(harness: Harness): Check {
 	const binary = HARNESS_BINARY[harness];
 	const pass = isOnPath(binary);
+	const sessionVerdict =
+		harness === "claude-code"
+			? resolveHarnessAuth("claude-code", { apiKeyPresent: false })
+			: null;
+	const sessionSuffix =
+		sessionVerdict?.usable &&
+		sessionVerdict.route === "cli-session" &&
+		sessionVerdict.verified
+			? ", verified session"
+			: "";
 	return {
 		name: "Harness binary",
 		pass,
 		detail: pass
-			? `${binary} found on PATH (harness: ${harness})`
+			? `${binary} found on PATH (harness: ${harness}${sessionSuffix})`
 			: `${binary} not found on PATH — install the "${harness}" harness`,
 		hard: true,
 	};

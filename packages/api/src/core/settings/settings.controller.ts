@@ -148,4 +148,18 @@ export class SettingsController {
 			),
 		};
 	}
+
+	/**
+	 * Implement harness status routes
+	 */
+	@Implement(settingsContract.harnesses)
+	harnesses() {
+		return {
+			getHarnesses: implement(settingsContract.harnesses.getHarnesses).handler(
+				async () => {
+					return this.llmSettingsService.getHarnessesStatus();
+				},
+			),
+		};
+	}
 }

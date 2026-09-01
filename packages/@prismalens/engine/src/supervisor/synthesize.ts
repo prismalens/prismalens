@@ -246,6 +246,7 @@ export function rawReport(
 		summary,
 		rootCause: null,
 		rootCauseCategory: null,
+		reportMode: "raw",
 		culprit: null,
 		hypotheses: [],
 		ruledOut: [],
@@ -422,9 +423,13 @@ async function runReportModel(
 	try {
 		const { object, usage } = await generateObject({
 			model,
-			// fidelity is run-metadata, attached deterministically AFTER synthesis
-			// (ADR-0017) — the LLM must NOT generate it, so omit it from the schema.
-			schema: InvestigationReportSchema.omit({ fidelity: true }),
+			// fidelity and reportMode are host-stamped run-metadata, attached
+			// deterministically AFTER synthesis (ADR-0017) — the LLM must NOT
+			// generate either, so both are omitted from the generation schema.
+			schema: InvestigationReportSchema.omit({
+				fidelity: true,
+				reportMode: true,
+			}),
 			prompt,
 		});
 		cfg.onLlmCall?.({
@@ -436,7 +441,10 @@ async function runReportModel(
 			outcome: "ok",
 			failureCause: null,
 		});
-		return object;
+		return {
+			...object,
+			reportMode: "synthesized" as const,
+		};
 	} catch (err1) {
 		// Exactly ONE llm_call per provider invocation: record the failed
 		// structured call before attempting the fallback (its tokens were spent
@@ -462,7 +470,11 @@ async function runReportModel(
 			// Parse BEFORE emitting success — a completion that fails schema
 			// validation is an "error" outcome for this invocation, not an "ok"
 			// followed by a contradictory error event.
-			const report = InvestigationReportSchema.parse(extractJsonObject(text));
+			const parsed = InvestigationReportSchema.parse(extractJsonObject(text));
+			const report = {
+				...parsed,
+				reportMode: "synthesized" as const,
+			};
 			cfg.onLlmCall?.({
 				phase,
 				provider: cfg.providerId,

@@ -58,6 +58,17 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # packages/api/openapi.json is a committed, generated artifact (#547) — catch
+      # hand-drift here instead of the next contributor discovering it months later.
+      - name: OpenAPI spec drift check
+        run: |
+          pnpm --filter @prismalens/api openapi:generate
+          if ! git diff --quiet -- packages/api/openapi.json; then
+            echo "::error::packages/api/openapi.json is out of date. Run 'pnpm --filter @prismalens/api openapi:generate' and commit the result."
+            git diff -- packages/api/openapi.json | head -200
+            exit 1
+          fi
+
       # Manifest/exports sanity for the packages that publish to npm (R0.c).
       - name: publint (publishable packages)
         run: pnpm publint
@@ -168,7 +179,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: scripts/packed-smoke.sh
+          # Deliberately narrow, so an unrelated repo change cannot fail this
+          # job. refusal-gate-check.mjs is the Part A assertion sequence this
+          # script shares with cross-os-app-boot.mjs (#551) — it is imported at
+          # runtime, so leaving it out fails here, not at build time.
+          sparse-checkout: |
+            scripts/packed-smoke.sh
+            scripts/lib/refusal-gate-check.mjs
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v8

@@ -46,14 +46,20 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./orpc-client.js", () => ({ api: mocks.api }));
 
-vi.mock("./db-investigation-store.js", () => ({
-	createDbInvestigationStore: vi.fn(() => ({
-		create: vi.fn(async () => {}),
-		append: vi.fn(async () => {}),
-		finish: vi.fn(async () => {}),
-		fail: vi.fn(async () => {}),
-	})),
-}));
+vi.mock("./db-investigation-store.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("./db-investigation-store.js")>();
+	return {
+		...actual,
+		createDbInvestigationStore: vi.fn(() => ({
+			create: vi.fn(async () => {}),
+			append: vi.fn(async () => {}),
+			finish: vi.fn(async () => {}),
+			fail: vi.fn(async () => {}),
+			flush: vi.fn(async () => {}),
+		})),
+	};
+});
 
 vi.mock("@prismalens/engine", () => ({
 	conductRun: mocks.conductRun,
@@ -86,18 +92,28 @@ vi.mock("@prismalens/logger/standalone", () => ({
 }));
 
 process.env.PRISMALENS_INTERNAL_SECRET = "test-secret";
-vi.stubGlobal(
-	"fetch",
-	vi.fn(async () => ({
-		ok: true,
-		json: async () => ({
+const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+	const urlStr = String(url);
+	if (urlStr.includes("/internal/investigations/inv-1")) {
+		return new Response(
+			JSON.stringify({ id: "inv-1", status: "running" }),
+			{ status: 200 },
+		);
+	}
+	if (urlStr.includes("/internal/timeline")) {
+		return new Response(JSON.stringify({ ok: true }), { status: 201 });
+	}
+	return new Response(
+		JSON.stringify({
 			provider: "openai",
 			model: "gpt-4",
 			baseUrl: null,
 			credentials: { key: "sk-test" },
 		}),
-	})),
-);
+		{ status: 200 },
+	);
+});
+vi.stubGlobal("fetch", fetchMock);
 
 const { default: processInvestigationJob } = await import("./processor.js");
 
@@ -128,8 +144,9 @@ function makeIo() {
 
 /** The timeline call this feature owns, isolated from the run's other writes. */
 function workspaceEntry() {
-	return mocks.api.timeline.create.mock.calls
-		.map(([entry]) => entry)
+	return fetchMock.mock.calls
+		.filter(([url]) => String(url).includes("/internal/timeline"))
+		.map(([, init]) => (init?.body ? JSON.parse(init.body as string) : null))
 		.find((entry) => entry?.type === "investigation_started");
 }
 
@@ -137,9 +154,27 @@ describe("#331 workspace record (post-#350 forked-child run)", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		delete process.env.PRISMALENS_INVESTIGATION_CWD;
-		mocks.api.investigations.get.mockResolvedValue({
-			id: "inv-1",
-			status: "running",
+		fetchMock.mockClear();
+		fetchMock.mockImplementation(async (url: string | URL, init?: RequestInit) => {
+			const urlStr = String(url);
+			if (urlStr.includes("/internal/investigations/inv-1")) {
+				return new Response(
+					JSON.stringify({ id: "inv-1", status: "running" }),
+					{ status: 200 },
+				);
+			}
+			if (urlStr.includes("/internal/timeline")) {
+				return new Response(JSON.stringify({ ok: true }), { status: 201 });
+			}
+			return new Response(
+				JSON.stringify({
+					provider: "openai",
+					model: "gpt-4",
+					baseUrl: null,
+					credentials: { key: "sk-test" },
+				}),
+				{ status: 200 },
+			);
 		});
 		mocks.api.services.list.mockResolvedValue({ data: [], total: 0 });
 		mocks.conductRun.mockResolvedValue({
@@ -192,8 +227,12 @@ describe("#331 workspace record (post-#350 forked-child run)", () => {
 
 		// A record written after the fact cannot warn anyone reading a run in
 		// flight, which is the whole point — assert the ordering, not just presence.
-		const recordedAt = mocks.api.timeline.create.mock.invocationCallOrder[0];
+		const timelineCallIndices = fetchMock.mock.calls
+			.map(([url], idx) => (String(url).includes("/internal/timeline") ? idx : -1))
+			.filter((idx) => idx !== -1);
+		const recordedAt = fetchMock.mock.invocationCallOrder[timelineCallIndices[0]];
 		const conductedAt = mocks.conductRun.mock.invocationCallOrder[0];
+		expect(recordedAt).toBeDefined();
 		expect(recordedAt).toBeLessThan(conductedAt);
 	});
 
@@ -203,7 +242,27 @@ describe("#331 workspace record (post-#350 forked-child run)", () => {
 			title: "Checkout 5xx",
 			service: { name: "api-gateway", localCheckoutPath: MAPPED },
 		});
-		mocks.api.timeline.create.mockRejectedValue(new Error("timeline down"));
+		fetchMock.mockImplementation(async (url: string | URL) => {
+			const urlStr = String(url);
+			if (urlStr.includes("/internal/timeline")) {
+				return new Response("timeline down", { status: 500 });
+			}
+			if (urlStr.includes("/internal/investigations/inv-1")) {
+				return new Response(
+					JSON.stringify({ id: "inv-1", status: "running" }),
+					{ status: 200 },
+				);
+			}
+			return new Response(
+				JSON.stringify({
+					provider: "openai",
+					model: "gpt-4",
+					baseUrl: null,
+					credentials: { key: "sk-test" },
+				}),
+				{ status: 200 },
+			);
+		});
 
 		const result = await processInvestigationJob(makeJob(), data, makeIo());
 

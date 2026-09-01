@@ -24,15 +24,20 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./orpc-client.js", () => ({ api: mocks.api }));
 
-vi.mock("./db-investigation-store.js", () => ({
-	createDbInvestigationStore: vi.fn(() => ({
-		create: vi.fn(async () => {}),
-		append: vi.fn(async () => {}),
-		finish: vi.fn(async () => {}),
-		fail: vi.fn(async () => {}),
-		flush: vi.fn(async () => {}),
-	})),
-}));
+vi.mock("./db-investigation-store.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("./db-investigation-store.js")>();
+	return {
+		...actual,
+		createDbInvestigationStore: vi.fn(() => ({
+			create: vi.fn(async () => {}),
+			append: vi.fn(async () => {}),
+			finish: vi.fn(async () => {}),
+			fail: vi.fn(async () => {}),
+			flush: vi.fn(async () => {}),
+		})),
+	};
+});
 
 vi.mock("@prismalens/engine", () => ({
 	conductRun: mocks.conductRun,

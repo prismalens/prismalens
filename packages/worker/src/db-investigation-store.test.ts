@@ -16,7 +16,11 @@ import type {
 } from "@prismalens/contracts";
 import { Logger } from "@prismalens/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDbInvestigationStore } from "./db-investigation-store.js";
+import {
+	createDbInvestigationStore,
+	type DbInvestigationStoreParams,
+	fetchInvestigation,
+} from "./db-investigation-store.js";
 
 const INVESTIGATION_ID = "11111111-1111-4111-8111-111111111111";
 const INCIDENT_ID = "22222222-2222-4222-8222-222222222222";
@@ -65,6 +69,7 @@ function makeApi() {
 function makeStore(
 	appendEvents: (events: CanonicalEvent[]) => Promise<void>,
 	api = makeApi(),
+	options: Partial<DbInvestigationStoreParams> = {},
 ) {
 	const store = createDbInvestigationStore(api, {
 		investigationId: INVESTIGATION_ID,
@@ -73,6 +78,7 @@ function makeStore(
 		apiBaseUrl: "http://api.test",
 		internalSecret: "test-secret",
 		appendEvents,
+		...options,
 	});
 	return { store, api };
 }
@@ -161,19 +167,23 @@ describe("createDbInvestigationStore — batched durable append", () => {
 
 	it("drains buffered events on fail BEFORE writing the failed status", async () => {
 		const appendEvents = vi.fn().mockResolvedValue(undefined);
-		const { store, api } = makeStore(appendEvents);
+		const updateStatus = vi.fn().mockResolvedValue(undefined);
+		const createTimeline = vi.fn().mockResolvedValue(undefined);
+		const { store } = makeStore(appendEvents, makeApi(), {
+			updateStatus,
+			createTimeline,
+		});
 
 		await store.append(evt(1));
 		await store.fail("boom");
 
 		expect(appendEvents).toHaveBeenCalledTimes(1);
-		expect(api.investigations.updateStatus).toHaveBeenCalledWith(
+		expect(updateStatus).toHaveBeenCalledWith(
 			expect.objectContaining({ status: "failed", error: "boom" }),
 		);
-		expect(api.timeline.create).toHaveBeenCalledTimes(1);
+		expect(createTimeline).toHaveBeenCalledTimes(1);
 		expect(appendEvents.mock.invocationCallOrder[0]).toBeLessThan(
-			(api.investigations.updateStatus as ReturnType<typeof vi.fn>).mock
-				.invocationCallOrder[0],
+			updateStatus.mock.invocationCallOrder[0],
 		);
 	});
 
@@ -237,5 +247,197 @@ describe("createDbInvestigationStore — batched durable append", () => {
 		expect(warnSpy).toHaveBeenCalled();
 		const logged = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
 		expect(logged).toMatch(/dropped 25 event\(s\)/);
+	});
+});
+
+describe("createDbInvestigationStore — internal endpoints write-back (#535)", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("create() writes running status and started timeline via internal endpoints with X-Internal-Secret", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), { status: 200 }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { store } = makeStore(vi.fn());
+		await store.create();
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+
+		// First call: PATCH /internal/investigations/:id/status
+		const [statusUrl, statusInit] = fetchMock.mock.calls[0];
+		expect(statusUrl).toBe(
+			`http://api.test/internal/investigations/${INVESTIGATION_ID}/status`,
+		);
+		expect(statusInit.method).toBe("PATCH");
+		expect(statusInit.headers).toMatchObject({
+			"Content-Type": "application/json",
+			"X-Internal-Secret": "test-secret",
+		});
+		expect(JSON.parse(statusInit.body as string)).toEqual({
+			status: "running",
+			harnessThreadId: RUN_ID,
+		});
+
+		// Second call: POST /internal/timeline
+		const [timelineUrl, timelineInit] = fetchMock.mock.calls[1];
+		expect(timelineUrl).toBe("http://api.test/internal/timeline");
+		expect(timelineInit.method).toBe("POST");
+		expect(timelineInit.headers).toMatchObject({
+			"Content-Type": "application/json",
+			"X-Internal-Secret": "test-secret",
+		});
+		expect(JSON.parse(timelineInit.body as string)).toEqual({
+			incidentId: INCIDENT_ID,
+			type: "investigation_started",
+			title: "AI Investigation Started",
+			description: "Starting the two-tier engine investigation",
+			source: "ai_worker",
+			metadata: { investigationId: INVESTIGATION_ID },
+		});
+	});
+
+	it("fail() writes failed status and failure timeline via internal endpoints with X-Internal-Secret", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), { status: 200 }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { store } = makeStore(vi.fn());
+		await store.fail("disk full");
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+
+		// First call: PATCH /internal/investigations/:id/status
+		const [statusUrl, statusInit] = fetchMock.mock.calls[0];
+		expect(statusUrl).toBe(
+			`http://api.test/internal/investigations/${INVESTIGATION_ID}/status`,
+		);
+		expect(statusInit.method).toBe("PATCH");
+		expect(statusInit.headers).toMatchObject({
+			"Content-Type": "application/json",
+			"X-Internal-Secret": "test-secret",
+		});
+		expect(JSON.parse(statusInit.body as string)).toEqual({
+			status: "failed",
+			error: "disk full",
+		});
+
+		// Second call: POST /internal/timeline
+		const [timelineUrl, timelineInit] = fetchMock.mock.calls[1];
+		expect(timelineUrl).toBe("http://api.test/internal/timeline");
+		expect(timelineInit.method).toBe("POST");
+		expect(timelineInit.headers).toMatchObject({
+			"Content-Type": "application/json",
+			"X-Internal-Secret": "test-secret",
+		});
+		expect(JSON.parse(timelineInit.body as string)).toEqual({
+			incidentId: INCIDENT_ID,
+			type: "investigation_completed",
+			title: "AI Investigation Failed",
+			description: "disk full",
+			source: "ai_worker",
+			metadata: { investigationId: INVESTIGATION_ID, error: "disk full" },
+		});
+	});
+
+	it("create() throws when PRISMALENS_INTERNAL_SECRET is missing", async () => {
+		const store = createDbInvestigationStore(makeApi(), {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			apiBaseUrl: "http://api.test",
+			internalSecret: undefined,
+			appendEvents: vi.fn(),
+		});
+
+		await expect(store.create()).rejects.toThrow(
+			/PRISMALENS_INTERNAL_SECRET not set/,
+		);
+	});
+
+	it("fail() throws when PRISMALENS_INTERNAL_SECRET is missing", async () => {
+		const store = createDbInvestigationStore(makeApi(), {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			apiBaseUrl: "http://api.test",
+			internalSecret: undefined,
+			appendEvents: vi.fn(),
+		});
+
+		await expect(store.fail("boom")).rejects.toThrow(
+			/PRISMALENS_INTERNAL_SECRET not set/,
+		);
+	});
+
+	it("throws when internal endpoint returns non-2xx status", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response("Unauthorized", {
+				status: 401,
+				statusText: "Unauthorized",
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { store } = makeStore(vi.fn());
+		await expect(store.create()).rejects.toThrow(
+			/update-status failed: 401 Unauthorized/,
+		);
+	});
+});
+
+describe("fetchInvestigation (#537)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("fetches investigation via internal endpoint with X-Internal-Secret", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({ id: INVESTIGATION_ID, status: "cancelled" }),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const result = await fetchInvestigation(
+			"http://api.test",
+			"test-secret",
+			INVESTIGATION_ID,
+		);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe(
+			`http://api.test/internal/investigations/${INVESTIGATION_ID}`,
+		);
+		expect(init.method).toBe("GET");
+		expect(init.headers).toMatchObject({
+			"X-Internal-Secret": "test-secret",
+		});
+		expect(result).toEqual({ id: INVESTIGATION_ID, status: "cancelled" });
+	});
+
+	it("throws when PRISMALENS_INTERNAL_SECRET is missing", async () => {
+		await expect(
+			fetchInvestigation("http://api.test", undefined, INVESTIGATION_ID),
+		).rejects.toThrow(/PRISMALENS_INTERNAL_SECRET not set/);
+	});
+
+	it("throws when internal endpoint returns non-2xx status", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response("Not Found", {
+				status: 404,
+				statusText: "Not Found",
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			fetchInvestigation("http://api.test", "test-secret", INVESTIGATION_ID),
+		).rejects.toThrow(/fetch-investigation failed: 404 Not Found/);
 	});
 });

@@ -169,10 +169,12 @@ export {
 } from "./use-services-orpc";
 // Settings hooks
 export {
+	harnessKeys,
 	llmCredentialKeys,
 	llmSettingsKeys,
 	useDeleteLlmCredential,
 	useFactoryReset,
+	useHarnesses,
 	useInvestigationLimits,
 	useInvestigationPolicies,
 	useLlmCredentialStatus,
