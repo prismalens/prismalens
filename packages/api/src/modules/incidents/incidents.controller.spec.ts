@@ -540,7 +540,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as any,
 			{} as any,
 			{} as any,
-			{} as any,
+			{} as unknown as LlmSettingsService,
 		);
 
 		const handlers = getHandlers(controller);
