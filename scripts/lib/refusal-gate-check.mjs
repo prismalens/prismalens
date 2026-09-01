@@ -20,6 +20,12 @@
  * the INSTALLED package's own copy of the harness gate; the caller resolves the
  * verdict and passes it in. The assertion sequence over that verdict is the part
  * that is shared, and it is the only part that has ever been intended to match.
+ *
+ * THIS PATH IS NAMED IN THREE PLACES, and all three must keep naming it: both
+ * jobs' `sparse-checkout` lists, and cross-os-smoke.yml's `on.pull_request.paths`
+ * / `on.push.paths`. Drop it from a sparse list and the job fails loudly; drop it
+ * from the paths triggers and the cross-OS jobs simply never run for a change to
+ * this file, which is the failure that says nothing at all.
  */
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -42,6 +42,7 @@ on:
       - ".github/workflows/cross-os-smoke.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
+      - "scripts/lib/refusal-gate-check.mjs"
   push:
     branches: [main]
     paths:
@@ -49,6 +50,7 @@ on:
       - ".github/workflows/cross-os-smoke.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
+      - "scripts/lib/refusal-gate-check.mjs"
   release:
     types: [published]
   workflow_dispatch:
