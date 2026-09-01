@@ -211,11 +211,14 @@ async function serveActiveProvider(
 }
 
 /**
- * The two reads the AI-provider tab blocks its whole render on. They are
- * throttled per endpoint (60/60s per IP, shared by the entire single-worker
- * run), so a test that loads the tab repeatedly must not spend that budget (#516).
+ * `HarnessSettings` and `AIProviderSettings` mount together under the AI tab
+ * (and `SetupStepAIProvider` mirrors the same reads in the wizard) and between
+ * them fire five GETs — harnesses, llm/config, llm/env-status, llm/models,
+ * llm/credential-status — that all share one ThrottlerGuard bucket (60/60s per
+ * IP, class-level guard on SettingsController). A test that loads either
+ * surface repeatedly must not spend that budget unmocked (#516, #552).
  */
-async function serveAiTabReads(page: Page): Promise<void> {
+async function serveDefaultLlmConfig(page: Page): Promise<void> {
 	await page.route(
 		(url) => url.pathname === "/api/settings/llm/config",
 		async (route) => {
@@ -234,6 +237,9 @@ async function serveAiTabReads(page: Page): Promise<void> {
 			});
 		},
 	);
+}
+
+async function serveEnvStatus(page: Page): Promise<void> {
 	await page.route(
 		(url) => url.pathname === "/api/settings/llm/env-status",
 		async (route) => {
@@ -258,7 +264,55 @@ async function serveAiTabReads(page: Page): Promise<void> {
 	);
 }
 
-async function openAiSettings(page: Page): Promise<void> {
+async function serveLlmModels(page: Page): Promise<void> {
+	await page.route(
+		(url) => url.pathname === "/api/settings/llm/models",
+		async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ models: [] }),
+			});
+		},
+	);
+}
+
+async function serveLlmCredentialStatus(page: Page): Promise<void> {
+	await page.route(
+		(url) => url.pathname === "/api/settings/llm/credential-status",
+		async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ providers: {} }),
+			});
+		},
+	);
+}
+
+/** The default set: every AI-tab read except harnesses, which varies per test. */
+async function serveAiTabReads(page: Page): Promise<void> {
+	await serveDefaultLlmConfig(page);
+	await serveEnvStatus(page);
+	await serveLlmModels(page);
+	await serveLlmCredentialStatus(page);
+}
+
+/**
+ * `skipConfigMock` lets a caller that already routed `llm/config` (e.g. via
+ * `serveActiveProvider`, registered after this would otherwise win and clobber
+ * it) keep its own response.
+ */
+async function openAiSettings(
+	page: Page,
+	options: { skipConfigMock?: boolean } = {},
+): Promise<void> {
+	if (!options.skipConfigMock) {
+		await serveDefaultLlmConfig(page);
+	}
+	await serveEnvStatus(page);
+	await serveLlmModels(page);
+	await serveLlmCredentialStatus(page);
 	await page.goto("/settings?tab=ai");
 	await expect(
 		page.getByRole("heading", { name: "Investigation agent", exact: true }),
@@ -382,7 +436,7 @@ test.describe("Investigation agent settings card (#501)", () => {
 	test("warns when the SAVED harness can no longer run", async ({ page }) => {
 		await serveActiveProvider(page, "anthropic", "claude-code");
 		await serveHarnesses(page, NOTHING);
-		await openAiSettings(page);
+		await openAiSettings(page, { skipConfigMock: true });
 
 		const warning = page.getByTestId("harness-warning");
 		await expect(warning).toBeVisible();
@@ -397,7 +451,7 @@ test.describe("Investigation agent settings card (#501)", () => {
 	}) => {
 		await serveActiveProvider(page, "openai");
 		await serveHarnesses(page, SESSION_ONLY);
-		await openAiSettings(page);
+		await openAiSettings(page, { skipConfigMock: true });
 
 		await page.getByRole("radio", { name: "Claude Code (Agent SDK)" }).click();
 		await expect(page.getByTestId("harness-warning")).toHaveCount(0);
@@ -428,7 +482,7 @@ test.describe("AI provider settings — per-agent overrides withdrawn (#534)", (
 	}) => {
 		await serveActiveProvider(page, "anthropic");
 		await serveHarnesses(page, SESSION_ONLY);
-		await openAiSettings(page);
+		await openAiSettings(page, { skipConfigMock: true });
 
 		await expect(
 			aiProviderCard(page).getByText("AI Provider Configuration", {
@@ -477,7 +531,7 @@ test.describe("AI provider settings — per-agent overrides withdrawn (#534)", (
 			},
 		);
 
-		await openAiSettings(page);
+		await openAiSettings(page, { skipConfigMock: true });
 		await page.getByRole("button", { name: "Save & Set Active" }).click();
 
 		await expect.poll(() => savedBody).toBeTruthy();
@@ -569,6 +623,9 @@ async function serveSetupOnAiProviderStep(page: Page): Promise<void> {
 }
 
 async function openWizardAiStep(page: Page): Promise<void> {
+	// SetupStepAIProvider mirrors AIProviderSettings' reads (#552) — same
+	// unmocked-request, same shared bucket.
+	await serveAiTabReads(page);
 	await page.goto("/setup");
 	await expect(
 		page.getByRole("heading", { name: "Connect an AI provider" }),
@@ -725,6 +782,9 @@ test.describe("Design evidence (#501)", () => {
 		};
 
 		await serveActiveProvider(page, "anthropic");
+		await serveEnvStatus(page);
+		await serveLlmModels(page);
+		await serveLlmCredentialStatus(page);
 		await serveHarnesses(page, SESSION_ONLY);
 		await shotProviderCard("ai-provider-settings-default", "light", providerReady);
 		await shotProviderCard("ai-provider-settings-dark", "dark", providerReady);
