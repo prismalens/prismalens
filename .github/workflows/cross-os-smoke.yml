@@ -270,8 +270,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # Deliberately narrow, so an unrelated repo change cannot fail this
+          # job. refusal-gate-check.mjs is the Part A assertion sequence this
+          # script shares with packed-smoke.sh (#551) — it is a static import,
+          # so leaving it out fails at startup on all three OSes.
           sparse-checkout: |
             scripts/cross-os-app-boot.mjs
+            scripts/lib/refusal-gate-check.mjs
             .nvmrc
           sparse-checkout-cone-mode: false
 
