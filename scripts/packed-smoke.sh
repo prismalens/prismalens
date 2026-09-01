@@ -386,18 +386,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 			refusedJson?.data?.reason === expected.reason
 		) {
 			ok("unrunnable investigation refused", `status 412, failure=${refusedJson.data.failure}`);
+
+			// Only meaningful once a refusal genuinely happened (#531 review, same
+			// fix as cross-os-app-boot.mjs): on a clean-machine precondition
+			// failure, or an unexpected response shape, nothing was refused, so a
+			// forked child there is not this regression.
+			await sleep(2000);
+			const log = fs.readFileSync(bootLog, "utf8");
+			// InvestigationRun is error-path-only; InvestigationProcessor is the
+			// unconditional child-start context (matches cross-os-app-boot.mjs).
+			if (/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(log)) {
+				bad("clean-machine refusal", "investigation child forked despite 412 refusal");
+			} else {
+				ok("no child forked on unrunnable investigation");
+			}
 		} else {
 			bad("clean-machine refusal", `status ${refused.status}: ${refusedBody.slice(0, 200)}`);
-		}
-
-		await sleep(2000);
-		const log = fs.readFileSync(bootLog, "utf8");
-		// InvestigationRun is error-path-only; InvestigationProcessor is the
-		// unconditional child-start context (matches cross-os-app-boot.mjs).
-		if (/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(log)) {
-			bad("clean-machine refusal", "investigation child forked despite 412 refusal");
-		} else {
-			ok("no child forked on unrunnable investigation");
 		}
 		try {
 			partBLogOffset = fs.statSync(bootLog).size;
