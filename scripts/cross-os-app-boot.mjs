@@ -101,6 +101,7 @@ import {
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);
@@ -766,7 +767,34 @@ if (!cookie) {
 			} catch {
 				refusedJson = null;
 			}
-			if (
+			// Clean-machine precondition (matches packed-smoke.sh's Part A): this
+			// job's checkout is sparse (only this script), so the harness gate is
+			// imported straight from the installed package's own node_modules
+			// rather than the repo's, which is not present here at all.
+			const { resolveHarnessSelection } = await import(
+				pathToFileURL(
+					join(
+						pkgDir,
+						"node_modules",
+						"@prismalens",
+						"config",
+						"dist",
+						"harness-selection.js",
+					),
+				)
+			);
+			const expected = resolveHarnessSelection({
+				provider: null,
+				apiKey: "",
+				model: null,
+				harness: "auto",
+			});
+			if (expected.runnable) {
+				bad(
+					"clean-machine refusal",
+					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
+				);
+			} else if (
 				refused.status === 412 &&
 				refusedJson?.code === "PRECONDITION_FAILED" &&
 				refusedJson?.data?.failure &&
