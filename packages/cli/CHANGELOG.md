@@ -1,5 +1,29 @@
 # prismalens
 
+## 0.5.0-rc.2
+
+### Minor Changes
+
+- f4fd672: Withdraw the per-agent LLM override capability: the `INVESTIGATION_AGENTS` roster, its
+  settings UI, and the `agentOverrides` settings field are removed, not relocated. A
+  two-tier-native successor is tracked separately (#130).
+
+### Patch Changes
+
+- 3084991: Enforce an explicit field whitelist when serializing the joined `service` relation on incidents in `serializeIncidentWithRelations`, preventing raw Prisma database columns (such as `tenantId` and `discoveryMetadata`) from leaking into API responses (#532).
+- ea1ed30: Fix the `openapi:generate` script and the live `/api/openapi.json` endpoint, both of which used `@orpc/zod`'s zod-v3 `ZodToJsonSchemaConverter` against this repo's zod v4 contracts. The converter silently failed to recognize the schemas, producing an empty JSON schema for every route input and an `OpenAPIGeneratorError` for any route with dynamic path params (#547). Import `ZodToJsonSchemaConverter` from `@orpc/zod/zod4` instead.
+- e38dd45: Fix worker child-process 401 errors when writing investigation status and timeline entries (#535). The worker's `create()` and `fail()` calls now reach the internal REST endpoints (`PATCH /internal/investigations/:id/status` and `POST /internal/timeline`) using `X-Internal-Secret`, instead of the session-guarded oRPC routes that always returned 401 for the unauthenticated child process. A second pre-existing defect is also corrected: the internal controllers' request bodies were silently undefined because the app boots with `bodyParser: false` (required for oRPC) and no body-parsing middleware was scoped to the internal routes; `InternalModule` now applies `express.json()` for those four controllers.
+- 11c109e: ui: gate incidents list investigate buttons on harness readiness and render refusal reason (issue #520)
+  
+  - The Investigate buttons on the incidents list (`IncidentTable` and `IncidentDataTable`) now consume the same harness readiness and AI provider status as the detail page and picker. When no harness or provider is usable, the button is disabled and displays the remedy in a tooltip on hover.
+  - Handled HTTP 412 server refusals when initiating investigations across the incidents list, incident detail page, and command center dashboard by rendering the specific server-provided refusal reason in the error toast rather than a generic error.
+- ab0f098: Refuse unrunnable investigations server-side (#520, ADR-0031).
+  
+  - `POST /api/incidents/:id/investigate` evaluates `resolveHarnessSelection` before modifying status or enqueueing a job.
+  - Returns HTTP 412 (`PRECONDITION_FAILED`) with typed refusal payload (`InvestigationRefusalSchema`) containing `failure`, `reason`, and `harness`.
+  - Incident status remains unchanged and no worker job is enqueued when the selection is unrunnable.
+- 3e89aab: Route worker investigation cancellation check and failure-handling writebacks through internal REST endpoints authenticated with `X-Internal-Secret` instead of session-guarded oRPC routes (#537). Add internal `GET /internal/investigations/:id` endpoint for the worker to verify investigation cancellation status before run execution. Remove dead `worker#lint` script from packages/worker (#529).
+
 ## 0.5.0-rc.1
 
 ### Patch Changes
