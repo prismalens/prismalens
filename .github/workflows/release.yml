@@ -6,7 +6,7 @@
 # `prismalens`, the CLI, which CARRIES the first-party @prismalens/* closure in
 # its own node_modules as bundleDependencies (issue #237, superseding #193's
 # bundling; the scoped packages are private:true and never published) — via
-# `pnpm changeset:publish` + `changeset tag`, and creates one GitHub Release.
+# `pnpm changeset:publish` + `changeset git-tag`, and creates one GitHub Release.
 #
 # `changeset:publish` is `node scripts/pack-cli.mjs --publish`, NOT
 # `pnpm publish -r`. That is deliberate: `pnpm publish` re-packs from the
