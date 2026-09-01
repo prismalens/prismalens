@@ -4,7 +4,9 @@
 import { Controller, Get, Header, Res } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config/dist/index.js";
 import { OpenAPIGenerator } from "@orpc/openapi";
-import { ZodToJsonSchemaConverter } from "@orpc/zod";
+// zod4 subpath required: the root "@orpc/zod" export targets zod v3 and silently
+// no-ops on this repo's zod v4 schemas (#547).
+import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { EnvironmentVariables } from "@prismalens/config";
 import { contract } from "@prismalens/contracts";
 import type { Response } from "express";
