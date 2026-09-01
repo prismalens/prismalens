@@ -124,8 +124,26 @@ describe("SqliteSessionManager", () => {
 		const runId = "test-run-3";
 		await sessions.create({ runId });
 
-		const ev1 = { kind: "started", runId } as CanonicalEvent;
-		const ev2 = { kind: "completed", runId } as CanonicalEvent;
+		const eventRunId = randomUUID();
+		const ev1: CanonicalEvent = {
+			kind: "agent_step",
+			runId: eventRunId,
+			branchId: "main",
+			path: [],
+			seq: 0,
+			ts: new Date(0).toISOString(),
+			text: "Investigating...",
+			toolCalls: [],
+		};
+		const ev2: CanonicalEvent = {
+			kind: "branch_done",
+			runId: eventRunId,
+			branchId: "main",
+			path: [],
+			seq: 1,
+			ts: new Date(1).toISOString(),
+			reason: "submitted",
+		};
 
 		await sessions.appendEvent(runId, ev1);
 		await sessions.appendEvent(runId, ev2);
@@ -211,13 +229,25 @@ describe("SqliteSessionManager", () => {
 		// Append concurrently
 		await Promise.all([
 			s1.appendEvent(runId1, {
-				kind: "started",
-				runId: runId1,
-			} as CanonicalEvent),
+				kind: "agent_step",
+				runId: randomUUID(),
+				branchId: "main",
+				path: [],
+				seq: 0,
+				ts: new Date().toISOString(),
+				text: "Investigating...",
+				toolCalls: [],
+			} satisfies CanonicalEvent),
 			s2.appendEvent(runId2, {
-				kind: "started",
-				runId: runId2,
-			} as CanonicalEvent),
+				kind: "agent_step",
+				runId: randomUUID(),
+				branchId: "main",
+				path: [],
+				seq: 0,
+				ts: new Date().toISOString(),
+				text: "Investigating...",
+				toolCalls: [],
+			} satisfies CanonicalEvent),
 		]);
 
 		const ev1 = await s1.readEvents(runId1);
@@ -232,22 +262,24 @@ describe("SqliteSessionManager", () => {
 		await sessions.create({ runId });
 
 		const report: InvestigationReport = {
-			title: "R",
 			summary: "S",
-			findings: [],
-			timeline: [],
-			related_alerts: [],
+			rootCause: null,
+			rootCauseCategory: null,
+			hypotheses: [],
+			ruledOut: [],
+			coverage: { queried: [], notQueried: [] },
+			nextSteps: [],
 		};
 		await sessions.writeReport(runId, report);
 
 		let read = await sessions.readReport(runId);
-		expect(read?.title).toBe("R");
+		expect(read?.summary).toBe("S");
 
-		report.title = "Updated";
+		report.summary = "Updated";
 		await sessions.writeReport(runId, report);
 
 		read = await sessions.readReport(runId);
-		expect(read?.title).toBe("Updated");
+		expect(read?.summary).toBe("Updated");
 	});
 
 	it("12. group round-trip: persists group_key, formed_by, and formative alert order", async () => {
