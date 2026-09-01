@@ -797,33 +797,37 @@ if (!cookie) {
 			} else if (
 				refused.status === 412 &&
 				refusedJson?.code === "PRECONDITION_FAILED" &&
-				refusedJson?.data?.failure &&
-				refusedJson?.data?.reason
+				refusedJson?.data?.failure === expected.failure &&
+				refusedJson?.data?.reason === expected.reason
 			) {
 				ok(
 					"unrunnable investigation refused",
 					`status 412, failure=${refusedJson.data.failure}`,
 				);
+
+				// Only meaningful once a refusal genuinely happened (#531 review):
+				// on a clean-machine precondition failure, or an unexpected
+				// response shape, nothing was refused, so a forked child there is
+				// not this regression.
+				await sleep(2000);
+				sample();
+				if (
+					/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(
+						readLog(),
+					)
+				) {
+					bad(
+						"refusal fork gate",
+						"investigation child forked despite 412 refusal",
+					);
+				} else {
+					ok("no child forked on unrunnable investigation");
+				}
 			} else {
 				bad(
 					"POST /api/incidents/:id/investigate refusal",
 					`status ${refused.status}: ${refusedBody.slice(0, 200)}`,
 				);
-			}
-
-			await sleep(2000);
-			sample();
-			if (
-				/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(
-					readLog(),
-				)
-			) {
-				bad(
-					"refusal fork gate",
-					"investigation child forked despite 412 refusal",
-				);
-			} else {
-				ok("no child forked on unrunnable investigation");
 			}
 			partBLogOffset = getLogOffset();
 		}
