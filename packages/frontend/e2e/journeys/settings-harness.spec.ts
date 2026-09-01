@@ -284,7 +284,18 @@ async function serveLlmCredentialStatus(page: Page): Promise<void> {
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
-				body: JSON.stringify({ providers: {} }),
+				body: JSON.stringify({
+					providers: Object.fromEntries(
+						Object.values(LLM_PROVIDERS).map((provider) => [
+							provider.id,
+							{
+								hasDbKey: false,
+								hasEnvKey: false,
+								activeSource: "none",
+							},
+						]),
+					),
+				}),
 			});
 		},
 	);
