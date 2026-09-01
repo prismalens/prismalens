@@ -20,6 +20,9 @@ const NEW_CODE_THRESHOLD = {
 export default defineConfig({
 	test: {
 		exclude: ["**/node_modules/**", "**/dist/**"],
+		// demo-data.test.ts's beforeAll shells out to a cold-start `prisma migrate
+		// deploy`; the 10s default races that subprocess on a contended CI runner (#542).
+		hookTimeout: 30000,
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.ts"],
