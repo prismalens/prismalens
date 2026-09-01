@@ -13,7 +13,6 @@ import {
 	RecommendationsList,
 	TimelineTab,
 } from "@/components/incidents";
-import { MutationError } from "@/components/shared/MutationError";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -177,11 +176,6 @@ function IncidentDetailPage() {
 						: undefined
 				}
 			/>
-
-			{/* Server-side investigate refusal (#520): the client's own gate can
-			    pass while the server's still refuses, so this is the only place
-			    that reason reaches the user. */}
-			<MutationError error={investigateMutation.error} className="mt-2" />
 
 			{/* Tabs */}
 			<Tabs defaultValue="overview" className="space-y-4">
