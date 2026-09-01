@@ -40,10 +40,6 @@
 			"types": "./dist/mcp.d.ts",
 			"import": "./dist/mcp.js"
 		},
-		"./agents": {
-			"types": "./dist/agents.d.ts",
-			"import": "./dist/agents.js"
-		},
 		"./integrations": {
 			"types": "./dist/integrations.d.ts",
 			"import": "./dist/integrations.js"
