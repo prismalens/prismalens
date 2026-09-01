@@ -7473,6 +7473,96 @@
                 }
               }
             }
+          },
+          "412": {
+            "description": "412",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "PRECONDITION_FAILED"
+                        },
+                        "status": {
+                          "const": 412
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Investigation cannot be started"
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "failure": {
+                              "enum": [
+                                "invalid-env-harness",
+                                "no-compatible-harness",
+                                "protocol-mismatch",
+                                "harness-unauthenticated",
+                                "llm-not-configured"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "harness": {
+                              "enum": [
+                                "deepagents",
+                                "claude-code",
+                                "codex"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "failure",
+                            "reason"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
