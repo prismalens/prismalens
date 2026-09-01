@@ -5,10 +5,7 @@
  * Settings schemas for LLM configuration
  */
 
-import {
-	type AgentId as AgentIdType,
-	agentIdSchema,
-} from "@prismalens/config/agents";
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import {
 	type LLMProviderId,
 	llmProviderIdSchema,
@@ -23,6 +20,55 @@ import { z } from "zod";
  * Provider ID schema - canonical re-export from @prismalens/config
  */
 export const LlmProviderIdSchema = llmProviderIdSchema;
+
+/**
+ * Harness setting schema ("auto" or an explicit harness ID)
+ */
+export const HarnessSettingSchema = z.enum(["auto", ...HARNESS_IDS]);
+export type HarnessSetting = z.infer<typeof HarnessSettingSchema>;
+
+/**
+ * Harness authentication verdict schema (ADR-0031)
+ */
+export const HarnessAuthVerdictSchema = z.union([
+	z.object({
+		usable: z.literal(true),
+		route: z.literal("api-key"),
+	}),
+	z.object({
+		usable: z.literal(true),
+		route: z.literal("cli-session"),
+		verified: z.boolean(),
+	}),
+	z.object({
+		usable: z.literal(false),
+		/** Branch on this, never on `reason` — the backend owns the words (#518). */
+		cause: z.enum(["not-implemented", "not-installed", "not-authenticated"]),
+		reason: z.string(),
+	}),
+]);
+export type HarnessAuthVerdict = z.infer<typeof HarnessAuthVerdictSchema>;
+
+export const HarnessStatusSchema = z.object({
+	id: z.string(),
+	label: z.string(),
+	implemented: z.boolean(),
+	/** Why this harness does or does not hold a credential (#518). */
+	verdict: HarnessAuthVerdictSchema,
+	/**
+	 * Would a job pinned to this harness actually start? Answered by the shared
+	 * gate the worker runs, so the UI never re-derives it (#517).
+	 */
+	runnable: z.boolean(),
+	/** The gate's own message when it would not. */
+	blockedReason: z.string().nullable(),
+});
+export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
+
+export const HarnessesResponseSchema = z.object({
+	harnesses: z.array(HarnessStatusSchema),
+});
+export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
 export type LlmProviderId = LLMProviderId;
 
 // Test connection result
@@ -245,12 +291,6 @@ export type DangerOperationResult = z.infer<typeof DangerOperationResultSchema>;
 // =============================================================================
 
 /**
- * Agent IDs for per-agent overrides - imported from @prismalens/config/agents
- */
-export const AgentIdSchema = agentIdSchema;
-export type AgentId = AgentIdType;
-
-/**
  * Per-provider configuration stored in DB
  * API keys are stored encrypted (AES-256-GCM) or provided via env vars
  */
@@ -265,24 +305,12 @@ export const LlmProviderConfigSchema = z.object({
 export type LlmProviderConfig = z.infer<typeof LlmProviderConfigSchema>;
 
 /**
- * Per-agent override configuration
- */
-export const AgentOverrideConfigSchema = z.object({
-	model: z.string().optional(),
-	temperature: z.number().min(0).max(2).optional(),
-	advancedOptions: z.record(z.string(), z.unknown()).optional(),
-});
-export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
-
-/**
  * Full LLM settings structure stored in DB
  */
 export const LlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.nullable(),
 	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema),
-	agentOverrides: z
-		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
-		.optional(),
+	harness: HarnessSettingSchema.optional().default("auto"),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
 
@@ -313,9 +341,7 @@ export const UpdateLlmSettingsSchema = z.object({
 	providers: z
 		.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
 		.optional(),
-	agentOverrides: z
-		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
-		.optional(),
+	harness: HarnessSettingSchema.optional(),
 });
 export type UpdateLlmSettings = z.infer<typeof UpdateLlmSettingsSchema>;
 

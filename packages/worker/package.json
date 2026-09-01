@@ -22,13 +22,13 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"lint": "eslint src/**/*.ts",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run"
 	},
 	"dependencies": {
 		"@orpc/client": "catalog:",
 		"@orpc/contract": "catalog:",
+		"@orpc/openapi-client": "catalog:",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"@prismalens/engine": "workspace:*",

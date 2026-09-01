@@ -39,7 +39,7 @@ Open the URL and a four-step setup wizard walks you the rest of the way:
 | Step | What it asks for | Skippable? |
 |---|---|---|
 | 1. Account | Owner email and password | No — it is the only thing that gates the app |
-| 2. AI provider | A provider and model, plus an API key if that provider needs one. The key is encrypted (AES-256-GCM) into this instance's database — never written to a file | Yes |
+| 2. AI provider | A provider and model, plus an API key if that provider needs one. The key is encrypted (AES-256-GCM) into this instance's database — never written to a file. A signed-in Claude Code session on the machine is offered here as a keyless alternative | Yes |
 | 3. Code location | An absolute path to a git checkout on this machine, mapped to a service. This is the directory investigations actually read | Yes |
 | 4. First incident | A hand-off into authoring your first incident, or connecting a monitoring tool | Yes |
 
@@ -113,13 +113,17 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 - **Bring your own harness.** By default, `claude-code` is used (driven over the
   Claude Agent SDK). `deepagents` (driven over ACP) is available as a long-tail
   harness — switch to it with `--harness deepagents` or `agent.default: deepagents`
-  in `prismalens.config.yaml`. `codex` is stubbed.
+  in `prismalens.config.yaml`. `codex` is stubbed. In the app, Settings → AI
+  Provider → Investigation agent picks the harness and shows which credential
+  each one has on this machine.
 - **Bring your own model key.** Tier-1 and the `deepagents` harness talk to
   any OpenAI-compatible provider (Ollama, OpenAI, Groq, ...); `claude-code`
   uses your signed-in Claude Code session or an Anthropic key. Keys resolve
   env (`PROVIDER_API_KEY`) → `_FILE` (`PROVIDER_API_KEY_FILE`) → stored, where
   stored is opt-in local storage via `pl auth login` (`auth.json` in the app
-  data dir, mode `0600`).
+  data dir, mode `0600`). With no Tier-1 key at all, investigations still run and
+  the report is the harness's own output, passed through unsynthesized — a
+  supported outcome, labelled as such in the app.
 - **Tool guardrails, not read-only.** Edit tools are removed by default as a
   guardrail — `Bash` can still write. The real boundary is an enforced
   `--sandbox`, which confines writes and allowlists egress.

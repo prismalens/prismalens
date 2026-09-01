@@ -5,6 +5,7 @@ import {
 	BadRequestException,
 	Body,
 	Controller,
+	Get,
 	HttpCode,
 	HttpStatus,
 	Logger,
@@ -118,6 +119,23 @@ export class InternalInvestigationsController {
 			dto.error,
 			dto.harnessThreadId,
 		);
+
+		if (!investigation) {
+			throw new NotFoundException(`Investigation ${id} not found`);
+		}
+
+		return investigation;
+	}
+
+	/**
+	 * Get investigation by ID (#537).
+	 * Used by the worker to check investigation status (e.g. cancellation check).
+	 * Protected by InternalGuard (requires X-Internal-Secret header).
+	 */
+	@Get(":id")
+	@HttpCode(HttpStatus.OK)
+	async get(@Param("id") id: string) {
+		const investigation = await this.investigationsService.findById(id);
 
 		if (!investigation) {
 			throw new NotFoundException(`Investigation ${id} not found`);

@@ -27,9 +27,22 @@ import {
 	pickServiceLabel,
 	resolveInvestigationCwd,
 } from "@prismalens/config";
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import {
+	HARNESS_REGISTRY,
+	type HarnessAuthRoute,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	harnessSpeaksProvider,
+	resolveHarnessSelection,
+	speaksOpenAiProtocol,
+} from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
-import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
+import {
+	LLM_PROVIDERS,
+	type LLMProviderId,
+	providerRequiresApiKey,
+} from "@prismalens/config/llm";
 import {
 	type CanonicalEvent,
 	correlatedAlertsContext,
@@ -54,7 +67,12 @@ import {
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { config as workerConfig } from "./config.js";
-import { createDbInvestigationStore } from "./db-investigation-store.js";
+import {
+	createDbInvestigationStore,
+	createTimelineEntry,
+	fetchInvestigation,
+	updateInvestigationStatus,
+} from "./db-investigation-store.js";
 import { internalUrl } from "./internal-url.js";
 import { api } from "./orpc-client.js";
 import { UnrecoverableJobError } from "./protocol.js";
@@ -93,6 +111,7 @@ async function fetchLlmConfig(): Promise<{
 	model: string | null;
 	baseUrl: string | null;
 	credentials: Record<string, string>;
+	harness?: "auto" | HarnessId;
 }> {
 	const internalSecret = process.env.PRISMALENS_INTERNAL_SECRET;
 	if (!internalSecret) {
@@ -125,6 +144,7 @@ async function fetchLlmConfig(): Promise<{
 		model: string | null;
 		baseUrl: string | null;
 		credentials: Record<string, string>;
+		harness?: "auto" | HarnessId;
 	}>;
 }
 
@@ -232,14 +252,15 @@ async function processJobInternal(
 			},
 		});
 
-		// Cancelled is sticky (CANCEL slice): a stalled-job retry, or a job whose cancel
-		// the API already fallback-wrote, must not rerun the investigation. Best-effort —
-		// on an API hiccup the run proceeds, and the API's status writers still refuse
-		// any terminal overwrite of "cancelled".
+		// Cancelled is sticky (#537): a stalled-job retry or a job already marked
+		// cancelled must not rerun. Best-effort — on an API read error the run proceeds,
+		// and the API's status writers still refuse any terminal overwrite of "cancelled".
 		try {
-			const current = await api.investigations.get({
-				id: data.investigationId,
-			});
+			const current = await fetchInvestigation(
+				workerConfig.PRISMALENS_WORKER_API_URL,
+				process.env.PRISMALENS_INTERNAL_SECRET,
+				data.investigationId,
+			);
 			if (current?.status === "cancelled") {
 				logger.info(
 					`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
@@ -247,7 +268,10 @@ async function processJobInternal(
 				return cancelledResult(data);
 			}
 		} catch (e) {
-			logger.warn("Could not check investigation status before run", e);
+			logger.warn(
+				"Could not check investigation status before run — cancellation will not be honoured for this run",
+				e,
+			);
 		}
 
 		// RERUN (attempt 2+ — a retry, or a reclaim of an abandoned claim): the prior
@@ -357,26 +381,37 @@ async function processJobInternal(
 		// schema parse itself was what threw.
 		if (rawInvestigationId) {
 			try {
-				await api.investigations.updateStatus({
-					id: rawInvestigationId,
-					status: "failed",
-					error: errorMessage,
-				});
+				await updateInvestigationStatus(
+					workerConfig.PRISMALENS_WORKER_API_URL,
+					process.env.PRISMALENS_INTERNAL_SECRET,
+					rawInvestigationId,
+					{
+						status: "failed",
+						error: errorMessage,
+					},
+				);
 				if (rawIncidentId) {
-					await api.timeline.create({
-						incidentId: rawIncidentId,
-						type: "investigation_completed",
-						title: "AI Investigation Failed",
-						description: errorMessage,
-						source: "ai_worker",
-						metadata: {
-							investigationId: rawInvestigationId,
-							error: errorMessage,
+					await createTimelineEntry(
+						workerConfig.PRISMALENS_WORKER_API_URL,
+						process.env.PRISMALENS_INTERNAL_SECRET,
+						{
+							incidentId: rawIncidentId,
+							type: "investigation_completed",
+							title: "AI Investigation Failed",
+							description: errorMessage,
+							source: "ai_worker",
+							metadata: {
+								investigationId: rawInvestigationId,
+								error: errorMessage,
+							},
 						},
-					});
+					);
 				}
 			} catch (e) {
-				logger.error("Failed to update failure status", e);
+				logger.error(
+					"Failed to update failure status — failure will not be persisted to database or timeline",
+					e,
+				);
 			}
 		}
 		throw error;
@@ -403,21 +438,25 @@ async function recordWorkspace(
 	checkout: InvestigationCwdResolution,
 ): Promise<void> {
 	try {
-		await api.timeline.create({
-			incidentId: data.incidentId,
-			type: "investigation_started",
-			title: checkout.mapped
-				? "Investigating the mapped local checkout"
-				: "Investigating WITHOUT a mapped local checkout",
-			description: checkout.note,
-			source: "ai_worker",
-			metadata: {
-				investigationId: data.investigationId,
-				cwd: checkout.cwd,
-				cwdSource: checkout.source,
-				mapped: checkout.mapped,
+		await createTimelineEntry(
+			workerConfig.PRISMALENS_WORKER_API_URL,
+			process.env.PRISMALENS_INTERNAL_SECRET,
+			{
+				incidentId: data.incidentId,
+				type: "investigation_started",
+				title: checkout.mapped
+					? "Investigating the mapped local checkout"
+					: "Investigating WITHOUT a mapped local checkout",
+				description: checkout.note,
+				source: "ai_worker",
+				metadata: {
+					investigationId: data.investigationId,
+					cwd: checkout.cwd,
+					cwdSource: checkout.source,
+					mapped: checkout.mapped,
+				},
 			},
-		});
+		);
 	} catch (e) {
 		logger.error("Failed to record the investigation workspace", e);
 	}
@@ -430,19 +469,27 @@ async function recordWorkspace(
  * dedicated cancelled type in the contract) with a distinguishing title.
  */
 async function persistCancelled(data: InvestigationJobData): Promise<void> {
-	await api.investigations.updateStatus({
-		id: data.investigationId,
-		status: "cancelled",
-		error: "Investigation cancelled",
-	});
-	await api.timeline.create({
-		incidentId: data.incidentId,
-		type: "investigation_completed",
-		title: "Investigation cancelled",
-		description: "The investigation was cancelled before it completed.",
-		source: "ai_worker",
-		metadata: { investigationId: data.investigationId },
-	});
+	await updateInvestigationStatus(
+		workerConfig.PRISMALENS_WORKER_API_URL,
+		process.env.PRISMALENS_INTERNAL_SECRET,
+		data.investigationId,
+		{
+			status: "cancelled",
+			error: "Investigation cancelled",
+		},
+	);
+	await createTimelineEntry(
+		workerConfig.PRISMALENS_WORKER_API_URL,
+		process.env.PRISMALENS_INTERNAL_SECRET,
+		{
+			incidentId: data.incidentId,
+			type: "investigation_completed",
+			title: "Investigation cancelled",
+			description: "The investigation was cancelled before it completed.",
+			source: "ai_worker",
+			metadata: { investigationId: data.investigationId },
+		},
+	);
 }
 
 /** A cancelled job result — returned (not thrown) so the host marks the job done, no rerun. */
@@ -459,37 +506,39 @@ function cancelledResult(data: InvestigationJobData): InvestigationResult {
 }
 
 /**
- * Derive the `deepagents` harness env from the active Tier-1 provider (ADR-0013
- * scope boundary: deepagents only speaks the OpenAI protocol via `OPENAI_*` env,
- * so both vars must be gated the same way — leaking `apiKey` into `OPENAI_API_KEY`
- * for a non-OpenAI-shaped provider (anthropic/google/groq) would hand the harness a
- * secret it can't use and silently mis-wire it (worker-provider-hardwiring ledger
- * item). `openai` itself always qualifies; ollama/custom qualify because they speak
- * the OpenAI protocol too (and additionally need the base URL to leave localhost).
+ * Re-exported from `@prismalens/config/harness-selection`, which owns the
+ * deepagents protocol rule now that the API needs the same answer (#518).
  */
-export function speaksOpenAiProtocol(provider: LLMProviderId): boolean {
-	return (
-		provider === "openai" || provider === "ollama" || provider === "custom"
-	);
-}
+export { speaksOpenAiProtocol };
 
+/**
+ * Assemble harness env vars scoped to the harness and auth route (ADR-0031 R7).
+ * cli-session runs inject no credentials; keyless providers omit api key (#519, #525).
+ */
 export function buildHarnessEnv(
-	synthProvider: LLMProviderId,
+	harness: HarnessId,
+	route: HarnessAuthRoute,
+	synthProvider: LLMProviderId | null,
 	apiKey: string,
 	baseURL: string,
 ): Record<string, string> {
+	if (route === "cli-session" || !synthProvider) {
+		return {};
+	}
 	const isOpenAiCompat =
 		synthProvider === "ollama" || synthProvider === "custom";
-	return {
-		...(speaksOpenAiProtocol(synthProvider) ? { OPENAI_API_KEY: apiKey } : {}),
-		...(isOpenAiCompat ? { OPENAI_BASE_URL: baseURL } : {}),
-		// The claude-code harness reads `ANTHROPIC_API_KEY` from its own process env.
-		// Subscription auth already had a per-run route in (an isolated 0600
-		// CLAUDE_CONFIG_DIR); a plain API key had none, so a BYO-key anthropic setup
-		// reached the harness unauthenticated. Gated on the provider for the same reason
-		// OPENAI_API_KEY is: handing a harness a secret it cannot use mis-wires it.
-		...(synthProvider === "anthropic" ? { ANTHROPIC_API_KEY: apiKey } : {}),
-	};
+	if (harness === "deepagents" && speaksOpenAiProtocol(synthProvider)) {
+		return {
+			...(apiKey ? { OPENAI_API_KEY: apiKey } : {}),
+			...(isOpenAiCompat && baseURL ? { OPENAI_BASE_URL: baseURL } : {}),
+		};
+	}
+	if (harness === "claude-code" && synthProvider === "anthropic" && apiKey) {
+		return {
+			ANTHROPIC_API_KEY: apiKey,
+		};
+	}
+	return {};
 }
 
 /**
@@ -598,6 +647,13 @@ export function workerProbeUrl(): string | undefined {
 	return undefined;
 }
 
+export interface BuildRequestOpts {
+	harnessAuth?: {
+		homeDir?: string;
+		isOnPath?: (bin: string) => boolean;
+	};
+}
+
 /**
  * Build the engine investigation request from the job + LLM settings.
  * Shell-first (ADR-0005): telemetry + cwd from INVESTIGATION_DEFAULTS/env (Phase A
@@ -609,24 +665,44 @@ export function workerProbeUrl(): string | undefined {
 export async function buildRequest(
 	data: InvestigationJobData,
 	_runId: string,
+	opts?: BuildRequestOpts,
 ): Promise<{
 	request: InvestigationRequest;
 	sandbox?: Sandbox;
 	checkout: InvestigationCwdResolution;
 }> {
 	const llmConfig = await fetchLlmConfig();
-	if (!llmConfig?.provider || !llmConfig?.model) {
-		throw new Error(
-			"LLM not configured: no active provider/model. Configure via Settings " +
-				"or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
+	const synthProvider = (llmConfig?.provider as LLMProviderId | null) ?? null;
+	const apiKey = Object.values(llmConfig?.credentials ?? {})[0] ?? "";
+
+	// One predicate, shared with the API (ADR-0031, #518). The worker used to own
+	// this logic inline and the API re-derived it; four defects came out of the
+	// two copies disagreeing. Behaviour of record still lives here — it just lives
+	// in a function both callers use.
+	const selection = resolveHarnessSelection({
+		provider: synthProvider,
+		apiKey,
+		model: llmConfig?.model ?? null,
+		harness: (llmConfig?.harness ?? "auto") as "auto" | HarnessId,
+		envHarness: process.env.PRISMALENS_HARNESS,
+		auth: opts?.harnessAuth,
+	});
+	if (!selection.runnable) {
+		throw new Error(selection.reason);
+	}
+	const harness = selection.harness;
+
+	if (selection.route === "cli-session" && !selection.verified) {
+		logger.warn(
+			"Harness session is unverified (no credentials file found) — in-run auth failure may occur if not logged in via CLI",
 		);
 	}
-	const apiKey = Object.values(llmConfig.credentials ?? {})[0] ?? "";
-	if (!apiKey) {
-		throw new Error(
-			`LLM API key not configured for provider "${llmConfig.provider}".`,
-		);
-	}
+
+	const routeLabel =
+		selection.route === "cli-session" ? "signed-in session" : "api-key";
+	logger.info(
+		`harness: ${harness} (${selection.auto ? "auto — " : ""}${routeLabel})`,
+	);
 
 	let incident: Record<string, unknown> | null = null;
 	try {
@@ -641,24 +717,11 @@ export async function buildRequest(
 	// allowlist) wins; the hardcoded default is only the last resort for an
 	// unconfigured ollama-cloud setup. Without this, `custom` and ollama-local
 	// deployments were silently pointed at the default endpoint.
-	const baseURL = llmConfig.baseUrl ?? INVESTIGATION_DEFAULTS.synth.baseURL;
+	const baseURL = llmConfig?.baseUrl ?? INVESTIGATION_DEFAULTS.synth.baseURL;
 	// Tier-1 reduce runs on the user's chosen provider (ADR-0013 resolver); a base
 	// URL is only needed for the OpenAI-compatible providers (ollama/custom).
-	const synthProvider = llmConfig.provider as LLMProviderId;
 	const synthIsOpenAiCompat =
 		synthProvider === "ollama" || synthProvider === "custom";
-	const harness = process.env.PRISMALENS_HARNESS ?? "deepagents";
-	// deepagents only speaks the OpenAI protocol (ADR-0013 scope boundary): fail
-	// the job with a clear reason up front instead of dispatching a run that dies
-	// deep in the harness with an opaque missing-credential error.
-	if (harness === "deepagents" && !speaksOpenAiProtocol(synthProvider)) {
-		throw new Error(
-			`Harness "deepagents" only supports OpenAI-protocol providers ` +
-				`(openai/ollama/custom); active provider is "${synthProvider}". ` +
-				`Switch provider or set PRISMALENS_HARNESS to a harness that ` +
-				`supports it (e.g. claude-code for anthropic).`,
-		);
-	}
 
 	// Isolation boundary (ADR-0020 B.1.3): the PRISMALENS_SANDBOX knob selects it; the
 	// server default is now `auto` — srt when its egress bridge is healthy (self-check,
@@ -668,12 +731,12 @@ export async function buildRequest(
 	// an allowlist derived from the LLM + telemetry hosts. The resolved sandbox is
 	// CALLER-OWNED — processJobInternal destroys it after the run.
 	const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
-	const takesSandbox = harnessTakesSandbox(harness as HarnessId, sandboxMode);
+	const takesSandbox = harnessTakesSandbox(harness, sandboxMode);
 	let sandbox: Sandbox | undefined;
 	if (takesSandbox) {
 		const allowedDomains = deriveWorkerAllowedHosts(
-			synthProvider,
-			synthIsOpenAiCompat ? [baseURL] : [],
+			synthProvider ?? "openai",
+			synthIsOpenAiCompat && baseURL ? [baseURL] : [],
 		);
 		// ASYNC: `auto` runs an egress self-check (B.1.1) before trusting srt for this
 		// egress-needing run. Log the honest reason on a degrade (ADR-0017) so an
@@ -719,6 +782,15 @@ export async function buildRequest(
 		logger.warn(checkout.note);
 	}
 
+	const isSynthConfigured =
+		Boolean(apiKey) ||
+		(synthProvider !== null && !providerRequiresApiKey(synthProvider));
+
+	const isModelCompatible =
+		Boolean(llmConfig?.model) &&
+		synthProvider !== null &&
+		harnessSpeaksProvider(harness, synthProvider);
+
 	return {
 		checkout,
 		request: {
@@ -727,16 +799,24 @@ export async function buildRequest(
 			// The single posture dial (ADR-0017): the worker is always read-only in
 			// Phase A — no per-run override, no native passthrough.
 			permissionMode: "read-only",
-			model: llmConfig.model,
+			...(isModelCompatible && llmConfig?.model
+				? { model: llmConfig.model }
+				: {}),
 			cwd: checkout.cwd,
 			synth: {
-				providerId: synthProvider,
-				model: llmConfig.model,
-				apiKey,
-				...(synthIsOpenAiCompat ? { baseURL } : {}),
-				configured: true,
+				providerId: synthProvider ?? "ollama",
+				model: llmConfig?.model ?? "",
+				...(apiKey ? { apiKey } : {}),
+				...(synthIsOpenAiCompat && baseURL ? { baseURL } : {}),
+				configured: isSynthConfigured,
 			},
-			harnessEnv: buildHarnessEnv(synthProvider, apiKey, baseURL),
+			harnessEnv: buildHarnessEnv(
+				harness,
+				selection.route,
+				synthProvider,
+				apiKey,
+				baseURL,
+			),
 			initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 			// Resource limits (ADR-0020): unattended server runs get a wall-clock cap so a
 			// wedged harness cannot pin a worker slot forever. Memory/cpu are left unset —

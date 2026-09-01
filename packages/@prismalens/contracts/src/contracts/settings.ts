@@ -12,6 +12,7 @@ import {
 	DangerOperationResultSchema,
 	DeleteLlmCredentialSchema,
 	FactoryResetInputSchema,
+	HarnessesResponseSchema,
 	InvestigationLimitsSchema,
 	InvestigationPolicySchema,
 	LlmCredentialStatusResponseSchema,
@@ -228,5 +229,21 @@ export const settingsContract = {
 			})
 			.input(FactoryResetInputSchema)
 			.output(DangerOperationResultSchema),
+	},
+
+	harnesses: {
+		/**
+		 * Get harness status and auth verdicts
+		 * GET /settings/harnesses
+		 */
+		getHarnesses: oc
+			.route({
+				method: "GET",
+				path: "/settings/harnesses",
+				summary: "Get harness status and auth verdicts",
+				tags: ["settings"],
+			})
+			.input(z.object({}))
+			.output(HarnessesResponseSchema),
 	},
 };

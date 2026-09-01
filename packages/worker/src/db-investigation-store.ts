@@ -61,6 +61,22 @@ export interface DbInvestigationStoreParams {
 	 * behaviour without touching the network.
 	 */
 	appendEvents?: (events: CanonicalEvent[]) => Promise<void>;
+	/** Test seam: override status updater (#535). Defaults to internal PATCH. */
+	updateStatus?: (dto: {
+		status: "running" | "failed" | "completed" | "cancelled";
+		error?: string;
+		harnessThreadId?: string;
+		startedAt?: string;
+	}) => Promise<void>;
+	/** Test seam: override timeline creator (#535). Defaults to internal POST. */
+	createTimeline?: (dto: {
+		incidentId: string;
+		type: string;
+		title: string;
+		description?: string;
+		source?: string;
+		metadata?: Record<string, unknown>;
+	}) => Promise<void>;
 }
 
 /**
@@ -102,6 +118,127 @@ function createEventPoster(
 	};
 }
 
+/**
+ * Fetch investigation record via the internal API endpoint (#537).
+ * Public route is session-guarded; worker uses X-Internal-Secret.
+ */
+export async function fetchInvestigation(
+	apiBaseUrl: string,
+	internalSecret: string | undefined,
+	investigationId: string,
+): Promise<{ id: string; status: string; [key: string]: unknown }> {
+	if (!internalSecret) {
+		throw new Error(
+			"PRISMALENS_INTERNAL_SECRET not set — cannot check investigation status",
+		);
+	}
+	const url = internalUrl(
+		apiBaseUrl,
+		`internal/investigations/${investigationId}`,
+	);
+	const response = await fetch(url, {
+		method: "GET",
+		headers: {
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		const body = await response.text();
+		throw new Error(
+			`fetch-investigation failed: ${response.status} ${response.statusText} — ${body}`,
+		);
+	}
+	return response.json() as Promise<{
+		id: string;
+		status: string;
+		[key: string]: unknown;
+	}>;
+}
+
+/**
+ * Update investigation status via the internal API endpoint (#535).
+ * Public route is session-guarded; worker uses X-Internal-Secret.
+ */
+export async function updateInvestigationStatus(
+	apiBaseUrl: string,
+	internalSecret: string | undefined,
+	investigationId: string,
+	dto: {
+		status: "running" | "failed" | "completed" | "cancelled";
+		error?: string;
+		harnessThreadId?: string;
+		startedAt?: string;
+	},
+): Promise<void> {
+	if (!internalSecret) {
+		throw new Error(
+			"PRISMALENS_INTERNAL_SECRET not set — cannot update investigation status",
+		);
+	}
+	const url = internalUrl(
+		apiBaseUrl,
+		`internal/investigations/${investigationId}/status`,
+	);
+	const response = await fetch(url, {
+		method: "PATCH",
+		headers: {
+			"Content-Type": "application/json",
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		body: JSON.stringify(dto),
+		signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		const body = await response.text();
+		throw new Error(
+			`update-status failed: ${response.status} ${response.statusText} — ${body}`,
+		);
+	}
+}
+
+/**
+ * Create a timeline entry via the internal API endpoint (#535).
+ * Public route is session-guarded; worker uses X-Internal-Secret.
+ */
+export async function createTimelineEntry(
+	apiBaseUrl: string,
+	internalSecret: string | undefined,
+	dto: {
+		incidentId: string;
+		type: string;
+		title: string;
+		description?: string;
+		source?: string;
+		metadata?: Record<string, unknown>;
+	},
+): Promise<void> {
+	if (!internalSecret) {
+		throw new Error(
+			"PRISMALENS_INTERNAL_SECRET not set — cannot create timeline entry",
+		);
+	}
+	const url = internalUrl(apiBaseUrl, "internal/timeline");
+	const response = await fetch(url, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"X-Internal-Secret": internalSecret,
+			"User-Agent": "prismalens-worker/0.1.0",
+		},
+		body: JSON.stringify(dto),
+		signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		const body = await response.text();
+		throw new Error(
+			`create-timeline failed: ${response.status} ${response.statusText} — ${body}`,
+		);
+	}
+}
+
 export function createDbInvestigationStore(
 	api: ContractRouterClient<Contract>,
 	{
@@ -111,11 +248,37 @@ export function createDbInvestigationStore(
 		apiBaseUrl,
 		internalSecret,
 		appendEvents,
+		updateStatus,
+		createTimeline,
 	}: DbInvestigationStoreParams,
 ): InvestigationStore {
 	const post =
 		appendEvents ??
 		createEventPoster(apiBaseUrl, internalSecret, investigationId);
+	const patchStatus =
+		updateStatus ??
+		((dto: {
+			status: "running" | "failed" | "completed" | "cancelled";
+			error?: string;
+			harnessThreadId?: string;
+			startedAt?: string;
+		}) =>
+			updateInvestigationStatus(
+				apiBaseUrl,
+				internalSecret,
+				investigationId,
+				dto,
+			));
+	const postTimeline =
+		createTimeline ??
+		((dto: {
+			incidentId: string;
+			type: string;
+			title: string;
+			description?: string;
+			source?: string;
+			metadata?: Record<string, unknown>;
+		}) => createTimelineEntry(apiBaseUrl, internalSecret, dto));
 
 	let buffer: CanonicalEvent[] = [];
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -160,12 +323,11 @@ export function createDbInvestigationStore(
 
 	return {
 		async create() {
-			await api.investigations.updateStatus({
-				id: investigationId,
+			await patchStatus({
 				status: "running",
 				harnessThreadId: runId,
 			});
-			await api.timeline.create({
+			await postTimeline({
 				incidentId,
 				type: "investigation_started",
 				title: "AI Investigation Started",
@@ -233,12 +395,11 @@ export function createDbInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			await api.investigations.updateStatus({
-				id: investigationId,
+			await patchStatus({
 				status: "failed",
 				error,
 			});
-			await api.timeline.create({
+			await postTimeline({
 				incidentId,
 				type: "investigation_completed",
 				title: "AI Investigation Failed",

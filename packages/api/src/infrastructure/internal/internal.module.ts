@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Module } from "@nestjs/common";
+import {
+	type MiddlewareConsumer,
+	Module,
+	type NestModule,
+} from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import express from "express";
 import { SettingsModule } from "../../core/settings/settings.module.js";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
@@ -29,4 +34,15 @@ import { InternalTimelineController } from "./internal-timeline.controller.js";
 	],
 	providers: [InternalGuard],
 })
-export class InternalModule {}
+export class InternalModule implements NestModule {
+	configure(consumer: MiddlewareConsumer) {
+		consumer
+			.apply(express.json({ limit: "10mb" }))
+			.forRoutes(
+				InternalInvestigationsController,
+				InternalTimelineController,
+				InternalIntegrationsController,
+				InternalSettingsController,
+			);
+	}
+}

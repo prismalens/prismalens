@@ -7,7 +7,7 @@
  * 500), valid ones forwarded to the idempotent service insert. A malformed envelope
  * is a 400. The service is a spy — no DB.
  */
-import { BadRequestException, Logger } from "@nestjs/common";
+import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import type { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { InternalInvestigationsController } from "./internal-investigations.controller.js";
@@ -32,6 +32,7 @@ function makeController() {
 	const service = {
 		appendEvents: vi.fn().mockResolvedValue({ inserted: 0, duplicates: 0 }),
 		clearEvents: vi.fn().mockResolvedValue(0),
+		findById: vi.fn().mockResolvedValue(null),
 	};
 	const controller = new InternalInvestigationsController(
 		service as unknown as InvestigationsService,
@@ -111,5 +112,143 @@ describe("InternalInvestigationsController.clearEvents (retry fresh-record)", ()
 		const result = await controller.clearEvents(INV_ID);
 
 		expect(result).toEqual({ deleted: 0 });
+	});
+
+	it("processes PATCH :id/status with ValidationPipe through NestJS app", async () => {
+		const { Test } = await import("@nestjs/testing");
+		const { ValidationPipe } = await import("@nestjs/common");
+		const { InvestigationsService } = await import(
+			"../../modules/investigations/investigations.service.js"
+		);
+		const { ConfigService } = await import("@nestjs/config");
+		const service = {
+			updateStatusInternal: vi
+				.fn()
+				.mockResolvedValue({ id: INV_ID, status: "running" }),
+		};
+		const moduleRef = await Test.createTestingModule({
+			controllers: [InternalInvestigationsController],
+			providers: [
+				{ provide: InvestigationsService, useValue: service },
+				{
+					provide: ConfigService,
+					useValue: { get: vi.fn().mockReturnValue("test-secret") },
+				},
+			],
+		}).compile();
+		const app = moduleRef.createNestApplication();
+		app.useGlobalPipes(
+			new ValidationPipe({
+				whitelist: true,
+				transform: true,
+				forbidNonWhitelisted: true,
+			}),
+		);
+		await app.init();
+		const server = app.getHttpServer();
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		const addr = server.address();
+		const port = typeof addr === "object" && addr ? addr.port : 0;
+
+		const response = await fetch(
+			`http://127.0.0.1:${port}/internal/investigations/${INV_ID}/status`,
+			{
+				method: "PATCH",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Internal-Secret": "test-secret",
+				},
+				body: JSON.stringify({
+					status: "running",
+					harnessThreadId: RUN_ID,
+				}),
+			},
+		);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toEqual({ id: INV_ID, status: "running" });
+		await app.close();
+	});
+});
+
+describe("InternalInvestigationsController.get (cancellation / status check)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("returns investigation when found", async () => {
+		const { controller, service } = makeController();
+		const mockInv = { id: INV_ID, status: "cancelled" };
+		service.findById.mockResolvedValue(mockInv as never);
+
+		const result = await controller.get(INV_ID);
+
+		expect(service.findById).toHaveBeenCalledWith(INV_ID);
+		expect(result).toEqual(mockInv);
+	});
+
+	it("throws NotFoundException when investigation does not exist", async () => {
+		const { controller, service } = makeController();
+		service.findById.mockResolvedValue(null);
+
+		await expect(controller.get(INV_ID)).rejects.toBeInstanceOf(
+			NotFoundException,
+		);
+	});
+
+	it("processes GET :id through NestJS app with X-Internal-Secret", async () => {
+		const { Test } = await import("@nestjs/testing");
+		const { InvestigationsService } = await import(
+			"../../modules/investigations/investigations.service.js"
+		);
+		const { ConfigService } = await import("@nestjs/config");
+		const service = {
+			findById: vi
+				.fn()
+				.mockResolvedValue({ id: INV_ID, status: "cancelled" }),
+		};
+		const moduleRef = await Test.createTestingModule({
+			controllers: [InternalInvestigationsController],
+			providers: [
+				{ provide: InvestigationsService, useValue: service },
+				{
+					provide: ConfigService,
+					useValue: { get: vi.fn().mockReturnValue("test-secret") },
+				},
+			],
+		}).compile();
+		const app = moduleRef.createNestApplication();
+		await app.init();
+		const server = app.getHttpServer();
+		await new Promise<void>((resolve) => server.listen(0, resolve));
+		const addr = server.address();
+		const port = typeof addr === "object" && addr ? addr.port : 0;
+
+		// Happy path: with valid secret
+		const response = await fetch(
+			`http://127.0.0.1:${port}/internal/investigations/${INV_ID}`,
+			{
+				method: "GET",
+				headers: {
+					"X-Internal-Secret": "test-secret",
+				},
+			},
+		);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toEqual({ id: INV_ID, status: "cancelled" });
+
+		// Failure path: without secret -> 401
+		const unauthResponse = await fetch(
+			`http://127.0.0.1:${port}/internal/investigations/${INV_ID}`,
+			{
+				method: "GET",
+			},
+		);
+		expect(unauthResponse.status).toBe(401);
+
+		await app.close();
 	});
 });

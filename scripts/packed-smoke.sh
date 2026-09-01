@@ -26,6 +26,16 @@
 set -eu
 
 TARBALLS=$(cd "${1:?usage: packed-smoke.sh <dir-with-tarball>}" && pwd)
+# Resolved BEFORE the cd below, and absolute: the HTTP probe is written into the
+# installed package (see PROBE_MJS) and runs with cwd inside $SCRATCH, so it can
+# only reach the shared Part A module (#551) by absolute path. This is the second
+# entry in this job's sparse-checkout list in .github/workflows/ci.yml.
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REFUSAL_GATE_LIB="$SCRIPT_DIR/lib/refusal-gate-check.mjs"
+[ -f "$REFUSAL_GATE_LIB" ] || {
+	echo "SMOKE FAIL: $REFUSAL_GATE_LIB is missing — widen the job's sparse-checkout" >&2
+	exit 1
+}
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
 cd "$SCRATCH"
@@ -126,6 +136,46 @@ set -e
 echo "$DOCTOR_OUT" | grep -qi "harness" || fail "doctor output does not mention the missing harness:
 $DOCTOR_OUT"
 
+echo "==> a machine with no agent is told it is not installed, never to run 'claude /login' (#518)"
+# The clean-machine falsifier a developer box cannot run: node:24-slim carries no
+# agent binary, so this is the only place the not-installed verdict is real
+# rather than injected. The advice must name the gap the machine actually has.
+#
+# Loaded as a real .mjs INSIDE the packed install, not via createRequire:
+# @prismalens/config is "type": "module" and its ./harness-auth subpath declares
+# only an "import" condition, so the CJS loader cannot reach it
+# (ERR_PACKAGE_PATH_NOT_EXPORTED). Anchoring the file in $PKG keeps the bare
+# specifier resolving through the package's own exports map — the same door the
+# worker goes through — instead of deep-linking past it into dist/.
+PROBE_MJS="$PKG/prismalens-smoke-verdicts.mjs"
+cat > "$PROBE_MJS" <<'VERDICTS'
+import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+
+for (const id of ["claude-code", "deepagents"]) {
+	const v = resolveHarnessAuth(id, { apiKeyPresent: false });
+	console.log(`${id}|${v.usable ? "usable" : v.cause}|${v.reason ?? ""}`);
+}
+VERDICTS
+set +e
+VERDICT_OUT=$(node "$PROBE_MJS" 2>&1)
+VERDICT_EXIT=$?
+set -e
+rm -f "$PROBE_MJS"
+[ "$VERDICT_EXIT" -eq 0 ] || fail "could not resolve harness verdicts from the packed install:
+$VERDICT_OUT"
+
+echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code verdict on a no-agent machine is not 'not-installed':
+$VERDICT_OUT"
+echo "$VERDICT_OUT" | grep -q "deepagents|not-installed|" || fail "deepagents verdict on a no-agent machine is not 'not-installed':
+$VERDICT_OUT"
+echo "$VERDICT_OUT" | grep -qi "not found on PATH" || fail "verdict does not say the binary is missing:
+$VERDICT_OUT"
+if echo "$VERDICT_OUT" | grep -qi "claude /login"; then
+	fail "a machine with no Claude CLI is still being told to run 'claude /login':
+$VERDICT_OUT"
+fi
+echo "    $(echo "$VERDICT_OUT" | head -1)"
+
 echo "==> investigate rejects garbage stdin with a usable error (no crash)"
 set +e
 INV_OUT=$(echo "not json" | "$BIN/pl" investigate --json 2>&1)
@@ -195,10 +245,21 @@ echo "    mapped routes: $ROUTES"
 
 grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowlist is back — pl up is single-origin"
 
-PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node - "$UP_LOG" <<'PROBE' || fail "the pl up HTTP contract is broken"
-const fs = require("node:fs");
+HTTP_PROBE_MJS="$PKG/prismalens-smoke-http-probe.mjs"
+cat > "$HTTP_PROBE_MJS" <<'PROBE'
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+import { resolveHarnessSelection } from "@prismalens/config/harness-selection";
+
 const base = process.env.PRISMALENS_SMOKE_BASE;
 const bootLog = process.argv[2];
+// The Part A assertion sequence, shared with scripts/cross-os-app-boot.mjs
+// (#551). This file lives inside the installed package so that the bare
+// specifier above resolves, which puts the repo checkout out of relative reach —
+// hence the absolute path handed in by the shell.
+const { assertRefusalGate } = await import(
+	pathToFileURL(process.argv[3]).href
+);
 const email = "smoke@prismalens.test";
 const password = "smoke-password-12345";
 let failed = 0;
@@ -299,71 +360,156 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		? ok("authenticated GET /api/incidents 200")
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
-	// --- forked-worker round trip ---------------------------------------------
-	// The spike verified boot-and-serve and NEVER exercised the fork. The child
-	// resolves @prismalens/worker relative to the installed package; if that
-	// resolution is wrong the fork never happens and the job sits queued forever.
-	const created = await json("/api/incidents", {
-		method: "POST",
-		headers: { cookie },
-		body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
+	// --- unrunnable investigation refused server-side (Part A, #520) -----------
+	// The sequence itself lives in scripts/lib/refusal-gate-check.mjs (#551);
+	// what stays here is what is genuinely container-specific — a bare specifier
+	// that resolves through the installed package, and a log that is a file.
+	const { partBLogOffset } = await assertRefusalGate({
+		json,
+		cookie,
+		resolveExpected: () =>
+			resolveHarnessSelection({
+				provider: null,
+				apiKey: "",
+				model: null,
+				harness: "auto",
+			}),
+		readLog: () => {
+			try {
+				return fs.readFileSync(bootLog, "utf8");
+			} catch {
+				return "";
+			}
+		},
+		getLogOffset: () => {
+			try {
+				return fs.statSync(bootLog).size;
+			} catch {
+				return 0;
+			}
+		},
+		ok,
+		bad,
+		incidentTitle: "packed smoke refusal probe",
 	});
-	const createdBody = await created.text();
-	if (created.status < 200 || created.status >= 300) {
-		bad("POST /api/incidents", `status ${created.status}: ${createdBody.slice(0, 200)}`);
+
+	// --- forked-worker round trip (Part B, #520) -------------------------------
+	// Resolves @prismalens/worker relative to the installed package; configured
+	// with a keyless provider so the server-side gate allows the fork.
+	const configRes = await json("/api/settings/llm/config", {
+		method: "PATCH",
+		headers: { cookie },
+		body: JSON.stringify({
+			activeProvider: "custom",
+			providers: {
+				custom: {
+					model: "smoke-test-stub",
+				},
+			},
+		}),
+	});
+	if (configRes.status < 200 || configRes.status >= 300) {
+		bad("PATCH /api/settings/llm/config", `status ${configRes.status}: ${(await configRes.text()).slice(0, 200)}`);
 	} else {
-		const incidentId = JSON.parse(createdBody).id;
-		const started = await json(`/api/incidents/${incidentId}/investigate`, {
+		const created2 = await json("/api/incidents", {
 			method: "POST",
 			headers: { cookie },
-			body: "{}",
+			body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
 		});
-		const startedBody = await started.text();
-		if (started.status < 200 || started.status >= 300) {
-			bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
+		const created2Body = await created2.text();
+		if (created2.status < 200 || created2.status >= 300) {
+			bad("POST /api/incidents (configured)", `status ${created2.status}: ${created2Body.slice(0, 200)}`);
 		} else {
-			ok("POST /incidents/:id/investigate", `status ${started.status}`);
-			// The child logs through pino to the inherited stdout under its own
-			// service name. That line can ONLY come from a process that forked,
-			// resolved its entrypoint and imported its whole dependency closure.
-			let forked = false;
-			let diagnosed = false;
-			for (let i = 0; i < 120 && !forked; i++) {
-				await sleep(1000);
-				const log = fs.readFileSync(bootLog, "utf8");
-				// "LLM not configured" is the CORRECT terminal verdict in a container
-				// with no credentials, and reaching it proves the whole chain: the
-				// child forked, imported its closure, called the API's internal
-				// endpoint over HTTP, parsed a real JSON answer, and reported back.
-				forked =
-					log.includes('"context":"InvestigationRun"') &&
-					log.includes("LLM not configured");
-				if (/Cannot locate the investigation child entrypoint/.test(log)) {
-					bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
-					diagnosed = true;
-					break;
+			const incidentId2 = JSON.parse(created2Body).id;
+			const started = await json(`/api/incidents/${incidentId2}/investigate`, {
+				method: "POST",
+				headers: { cookie },
+				body: "{}",
+			});
+			const startedBody = await started.text();
+			if (started.status < 200 || started.status >= 300) {
+				bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
+			} else {
+				ok("POST /incidents/:id/investigate", `status ${started.status}`);
+				let startedJson = null;
+				try {
+					startedJson = JSON.parse(startedBody);
+				} catch {
+					startedJson = null;
 				}
-				if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-					const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-					bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
-					diagnosed = true;
-					break;
+				const investigationId = startedJson?.investigationId;
+				if (!investigationId) {
+					bad("forked-worker round trip", `no investigationId in response: ${startedBody.slice(0, 200)}`);
+				} else {
+					let roundTripSucceeded = false;
+					let diagnosed = false;
+					for (let i = 0; i < 120 && !roundTripSucceeded && !diagnosed; i++) {
+						await sleep(1000);
+						const invRes = await fetch(`${base}/api/investigations/${investigationId}`, {
+							headers: { cookie },
+						});
+						const timelineRes = await fetch(`${base}/api/timeline?incidentId=${incidentId2}`, {
+							headers: { cookie },
+						});
+						if (invRes.status === 200 && timelineRes.status === 200) {
+							let inv = null;
+							let timeline = null;
+							try {
+								inv = await invRes.json();
+								timeline = await timelineRes.json();
+							} catch {
+								inv = null;
+								timeline = null;
+							}
+							const hasWorkerTimeline =
+								Array.isArray(timeline) &&
+								timeline.some((t) => t.source === "ai_worker");
+							if (inv && inv.status !== "pending" && inv.startedAt && hasWorkerTimeline) {
+								roundTripSucceeded = true;
+								break;
+							}
+						}
+						let log = "";
+						try {
+							const logBuf = fs.readFileSync(bootLog);
+							log = partBLogOffset > 0 ? logBuf.subarray(partBLogOffset).toString("utf8") : logBuf.toString("utf8");
+						} catch {
+							log = "";
+						}
+						if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
+							bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
+							diagnosed = true;
+							break;
+						}
+						if (/Cannot locate the investigation child entrypoint/.test(log)) {
+							bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+							diagnosed = true;
+							break;
+						}
+						if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+							const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+							bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
+							diagnosed = true;
+							break;
+						}
+						if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
+							bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+							diagnosed = true;
+							break;
+						}
+					}
+					if (roundTripSucceeded) {
+						ok(
+							"forked-worker round trip",
+							"investigation left pending, startedAt set, ai_worker timeline recorded",
+						);
+					} else if (!diagnosed) {
+						bad(
+							"forked-worker round trip",
+							"investigation never completed an ai_worker round trip within 120s",
+						);
+					}
 				}
-				// A ROUND TRIP, not just a fork: the child calls back into this same
-				// process over oRPC. `fetch failed` means it dialled the wrong port —
-				// which is exactly what a fixed default does under `pl up --port N`.
-				if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
-					bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
-					diagnosed = true;
-					break;
-				}
-			}
-			if (forked) {
-				ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
-			} else if (!diagnosed) {
-				// Only when nothing more specific already fired — a diagnosed
-				// failure plus a generic timeout reads as two bugs, not one.
-				bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
 			}
 		}
 	}
@@ -374,6 +520,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 	process.exit(1);
 });
 PROBE
+PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" "$REFUSAL_GATE_LIB" || fail "the pl up HTTP contract is broken"
+rm -f "$HTTP_PROBE_MJS"
 
 stop_up
 
