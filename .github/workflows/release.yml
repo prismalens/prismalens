@@ -74,19 +74,12 @@ jobs:
         run: pnpm publint
 
       - name: Version PR or publish
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: pnpm changeset:version
-          publish: pnpm changeset:publish
-          commit: "chore: version packages"
-          # `title` is v1's input; `pr-title` is what v2 renamed it to. v1
-          # ignores unknown inputs, so both can be set at once — this line
-          # stays correct across the v1 -> v2 bump (#477) without a second
-          # coordinated edit. Drop `title` once v2 lands.
-          title: "chore: version packages"
+          version-script: pnpm changeset:version
+          publish-script: pnpm changeset:publish
+          commit-message: "chore: version packages"
           pr-title: "chore: version packages"
-          # v2 requires this explicit input; GITHUB_TOKEN / checkout creds
-          # are no longer accepted as substitutes. v1 ignores it. See #477.
+          # v2 renamed these inputs and throws on any old name (#477); the
+          # rename and the v1->v2 bump must land together.
           github-token: ${{ secrets.RELEASE_PAT || github.token }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
