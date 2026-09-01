@@ -24,7 +24,7 @@ copies of sources) — navigable as an Obsidian graph.
    current code before relying on it.
 
 **After you learn something durable** — an interface detail, a gotcha, how two
-services couple, a faster path to a source — capture it with `/mage-learn` into
+services couple, a faster path to a source — capture it with `mage:learn` into
 the hub. Capture the reusable *insight + procedure + pointers*, never a copy.
 
 **Cross-link, don't just file.** A standalone note is write-only — it won't be
@@ -144,6 +144,6 @@ manual verification), is orchestrator territory: only the orchestrator switches 
 branch or restarts its stack, and only deliberately. An agent that finds itself pointed
 at the main checkout stops and reports rather than proceeding — a prior incident had an
 agent "restore" the main repo to a stale branch, which cascaded into compile failures and
-an invalid-data DB reseed. This does not affect the external mage hub: `/mage-learn` and
+an invalid-data DB reseed. This does not affect the external mage hub: `mage:learn` and
 `mage index` write to `~/.mage/hubs/...`, outside this repo's git state, and remain
 required regardless of which checkout an agent is reasoning from.
