@@ -40,7 +40,7 @@ import {
 	Plus,
 	Search,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { SetupNextStepHint } from "@/components/setup";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -76,6 +76,8 @@ export interface IncidentDataTableProps {
 	onInvestigate?: (id: string) => void;
 	/** When provided, the empty state offers a way out of it. */
 	onCreate?: () => void;
+	investigateDisabled?: boolean;
+	investigateDisabledReason?: string;
 }
 
 const priorityColors: Record<string, string> = {
@@ -168,6 +170,8 @@ function InvestigationsBadge({
 const createColumns = (
 	onAcknowledge?: (id: string) => void,
 	onInvestigate?: (id: string) => void,
+	investigateDisabled?: boolean,
+	investigateDisabledReason?: string,
 ): ColumnDef<IncidentWithRelations>[] => [
 	{
 		accessorKey: "number",
@@ -320,15 +324,28 @@ const createColumns = (
 					onInvestigate && (
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<Button
-									variant="ghost"
-									size="icon"
-									onClick={() => onInvestigate(row.original.id)}
-								>
-									<Search className="h-4 w-4" />
-								</Button>
+								<span data-testid="incident-investigate-trigger">
+									<Button
+										variant="ghost"
+										size="icon"
+										disabled={investigateDisabled}
+										onClick={() => onInvestigate(row.original.id)}
+										aria-label={
+											investigateDisabled && investigateDisabledReason
+												? investigateDisabledReason
+												: "Start Investigation"
+										}
+										data-testid="incident-investigate-button"
+									>
+										<Search className="h-4 w-4" />
+									</Button>
+								</span>
 							</TooltipTrigger>
-							<TooltipContent>Start Investigation</TooltipContent>
+							<TooltipContent>
+								{investigateDisabled && investigateDisabledReason
+									? investigateDisabledReason
+									: "Start Investigation"}
+							</TooltipContent>
 						</Tooltip>
 					)}
 			</div>
@@ -343,6 +360,8 @@ export function IncidentDataTable({
 	onAcknowledge,
 	onInvestigate,
 	onCreate,
+	investigateDisabled,
+	investigateDisabledReason,
 }: IncidentDataTableProps) {
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: "triggeredAt", desc: true },
@@ -352,7 +371,21 @@ export function IncidentDataTable({
 		pageSize: 10,
 	});
 
-	const columns = createColumns(onAcknowledge, onInvestigate);
+	const columns = useMemo(
+		() =>
+			createColumns(
+				onAcknowledge,
+				onInvestigate,
+				investigateDisabled,
+				investigateDisabledReason,
+			),
+		[
+			onAcknowledge,
+			onInvestigate,
+			investigateDisabled,
+			investigateDisabledReason,
+		],
+	);
 
 	const table = useReactTable({
 		data: incidents,
