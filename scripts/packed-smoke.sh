@@ -342,90 +342,190 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		? ok("authenticated GET /api/incidents 200")
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
-	// --- forked-worker round trip ---------------------------------------------
-	// The spike verified boot-and-serve and NEVER exercised the fork. The child
-	// resolves @prismalens/worker relative to the installed package; if that
-	// resolution is wrong the fork never happens and the job sits queued forever.
-	const created = await json("/api/incidents", {
+	let partBLogOffset = 0;
+
+	// --- unrunnable investigation refused server-side (Part A, #520) -----------
+	const created1 = await json("/api/incidents", {
 		method: "POST",
 		headers: { cookie },
-		body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
+		body: JSON.stringify({ title: "packed smoke refusal probe", severity: "low" }),
 	});
-	const createdBody = await created.text();
-	if (created.status < 200 || created.status >= 300) {
-		bad("POST /api/incidents", `status ${created.status}: ${createdBody.slice(0, 200)}`);
+	const created1Body = await created1.text();
+	if (created1.status < 200 || created1.status >= 300) {
+		bad("POST /api/incidents (unconfigured)", `status ${created1.status}: ${created1Body.slice(0, 200)}`);
 	} else {
-		const incidentId = JSON.parse(createdBody).id;
-		const started = await json(`/api/incidents/${incidentId}/investigate`, {
+		const incidentId1 = JSON.parse(created1Body).id;
+		const refused = await json(`/api/incidents/${incidentId1}/investigate`, {
 			method: "POST",
 			headers: { cookie },
 			body: "{}",
 		});
-		const startedBody = await started.text();
-		if (started.status < 200 || started.status >= 300) {
-			bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
-		} else {
-			ok("POST /incidents/:id/investigate", `status ${started.status}`);
-			// Assumes clean-machine defaults; coupled to setup not storing credentials (#516).
-			const expected = resolveHarnessSelection({
-				provider: null,
-				apiKey: "",
-				model: null,
-				harness: "auto",
-			});
-			if (expected.runnable) {
-				bad(
-					"forked-worker round trip",
-					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
-				);
+		const refusedBody = await refused.text();
+		let refusedJson = null;
+		try {
+			refusedJson = JSON.parse(refusedBody);
+		} catch {
+			refusedJson = null;
+		}
+
+		const expected = resolveHarnessSelection({
+			provider: null,
+			apiKey: "",
+			model: null,
+			harness: "auto",
+		});
+		if (expected.runnable) {
+			bad(
+				"clean-machine refusal",
+				"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
+			);
+		} else if (
+			refused.status === 412 &&
+			refusedJson?.code === "PRECONDITION_FAILED" &&
+			refusedJson?.data?.failure === expected.failure &&
+			refusedJson?.data?.reason === expected.reason
+		) {
+			ok("unrunnable investigation refused", `status 412, failure=${refusedJson.data.failure}`);
+
+			// Only meaningful once a refusal genuinely happened (#531 review, same
+			// fix as cross-os-app-boot.mjs): on a clean-machine precondition
+			// failure, or an unexpected response shape, nothing was refused, so a
+			// forked child there is not this regression.
+			await sleep(2000);
+			const log = fs.readFileSync(bootLog, "utf8");
+			// InvestigationRun is error-path-only; InvestigationProcessor is the
+			// unconditional child-start context (matches cross-os-app-boot.mjs).
+			if (/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(log)) {
+				bad("clean-machine refusal", "investigation child forked despite 412 refusal");
 			} else {
-				const expectedReason = expected.reason;
-				// The child logs through pino to the inherited stdout under its own
-				// service name. That line can ONLY come from a process that forked,
-				// resolved its entrypoint and imported its whole dependency closure.
-				let forked = false;
-				let diagnosed = false;
-				for (let i = 0; i < 120 && !forked; i++) {
-					await sleep(1000);
-					const log = fs.readFileSync(bootLog, "utf8");
-					// A terminal credential failure is the EXPECTED verdict in a container
-					// with no credentials, and reaching it proves the whole chain: the
-					// child forked, imported its closure, called the API's internal
-					// endpoint over HTTP, parsed a real JSON answer, and reported back.
-					forked =
-						log.includes('"context":"InvestigationRun"') &&
-						log.includes(expectedReason);
-					if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
-						bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
-						diagnosed = true;
-						break;
-					}
-					if (/Cannot locate the investigation child entrypoint/.test(log)) {
-						bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
-						diagnosed = true;
-						break;
-					}
-					if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-						const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-						bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
-						diagnosed = true;
-						break;
-					}
-					// A ROUND TRIP, not just a fork: the child calls back into this same
-					// process over oRPC. `fetch failed` means it dialled the wrong port —
-					// which is exactly what a fixed default does under `pl up --port N`.
-					if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
-						bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
-						diagnosed = true;
-						break;
-					}
+				ok("no child forked on unrunnable investigation");
+			}
+		} else {
+			bad("clean-machine refusal", `status ${refused.status}: ${refusedBody.slice(0, 200)}`);
+		}
+		try {
+			partBLogOffset = fs.statSync(bootLog).size;
+		} catch {
+			partBLogOffset = 0;
+		}
+	}
+
+	// --- forked-worker round trip (Part B, #520) -------------------------------
+	// Resolves @prismalens/worker relative to the installed package; configured
+	// with a keyless provider so the server-side gate allows the fork.
+	const configRes = await json("/api/settings/llm/config", {
+		method: "PATCH",
+		headers: { cookie },
+		body: JSON.stringify({
+			activeProvider: "custom",
+			providers: {
+				custom: {
+					model: "smoke-test-stub",
+				},
+			},
+		}),
+	});
+	if (configRes.status < 200 || configRes.status >= 300) {
+		bad("PATCH /api/settings/llm/config", `status ${configRes.status}: ${(await configRes.text()).slice(0, 200)}`);
+	} else {
+		const created2 = await json("/api/incidents", {
+			method: "POST",
+			headers: { cookie },
+			body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
+		});
+		const created2Body = await created2.text();
+		if (created2.status < 200 || created2.status >= 300) {
+			bad("POST /api/incidents (configured)", `status ${created2.status}: ${created2Body.slice(0, 200)}`);
+		} else {
+			const incidentId2 = JSON.parse(created2Body).id;
+			const started = await json(`/api/incidents/${incidentId2}/investigate`, {
+				method: "POST",
+				headers: { cookie },
+				body: "{}",
+			});
+			const startedBody = await started.text();
+			if (started.status < 200 || started.status >= 300) {
+				bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
+			} else {
+				ok("POST /incidents/:id/investigate", `status ${started.status}`);
+				let startedJson = null;
+				try {
+					startedJson = JSON.parse(startedBody);
+				} catch {
+					startedJson = null;
 				}
-				if (forked) {
-					ok("forked-worker round trip", "child forked, called the API back, reported over IPC");
-				} else if (!diagnosed) {
-					// Only when nothing more specific already fired — a diagnosed
-					// failure plus a generic timeout reads as two bugs, not one.
-					bad("forked-worker round trip", "no investigation child reached a terminal verdict within 120s");
+				const investigationId = startedJson?.investigationId;
+				if (!investigationId) {
+					bad("forked-worker round trip", `no investigationId in response: ${startedBody.slice(0, 200)}`);
+				} else {
+					let roundTripSucceeded = false;
+					let diagnosed = false;
+					for (let i = 0; i < 120 && !roundTripSucceeded && !diagnosed; i++) {
+						await sleep(1000);
+						const invRes = await fetch(`${base}/api/investigations/${investigationId}`, {
+							headers: { cookie },
+						});
+						const timelineRes = await fetch(`${base}/api/timeline?incidentId=${incidentId2}`, {
+							headers: { cookie },
+						});
+						if (invRes.status === 200 && timelineRes.status === 200) {
+							let inv = null;
+							let timeline = null;
+							try {
+								inv = await invRes.json();
+								timeline = await timelineRes.json();
+							} catch {
+								inv = null;
+								timeline = null;
+							}
+							const hasWorkerTimeline =
+								Array.isArray(timeline) &&
+								timeline.some((t) => t.source === "ai_worker");
+							if (inv && inv.status !== "pending" && inv.startedAt && hasWorkerTimeline) {
+								roundTripSucceeded = true;
+								break;
+							}
+						}
+						let log = "";
+						try {
+							const logBuf = fs.readFileSync(bootLog);
+							log = partBLogOffset > 0 ? logBuf.subarray(partBLogOffset).toString("utf8") : logBuf.toString("utf8");
+						} catch {
+							log = "";
+						}
+						if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
+							bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
+							diagnosed = true;
+							break;
+						}
+						if (/Cannot locate the investigation child entrypoint/.test(log)) {
+							bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+							diagnosed = true;
+							break;
+						}
+						if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+							const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+							bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
+							diagnosed = true;
+							break;
+						}
+						if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
+							bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+							diagnosed = true;
+							break;
+						}
+					}
+					if (roundTripSucceeded) {
+						ok(
+							"forked-worker round trip",
+							"investigation left pending, startedAt set, ai_worker timeline recorded",
+						);
+					} else if (!diagnosed) {
+						bad(
+							"forked-worker round trip",
+							"investigation never completed an ai_worker round trip within 120s",
+						);
+					}
 				}
 			}
 		}

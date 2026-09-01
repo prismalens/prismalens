@@ -13,6 +13,7 @@ import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
+import { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -26,6 +27,7 @@ export class IncidentsController {
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly llmSettingsService: LlmSettingsService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -134,6 +136,19 @@ export class IncidentsController {
 					if (!incident) {
 						throw new ORPCError("NOT_FOUND", {
 							message: `Incident ${input.id} not found`,
+						});
+					}
+
+					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
+					const selection = await this.llmSettingsService.resolveSelection();
+					if (!selection.runnable) {
+						throw new ORPCError("PRECONDITION_FAILED", {
+							message: selection.reason,
+							data: {
+								failure: selection.failure,
+								reason: selection.reason,
+								harness: selection.harness,
+							},
 						});
 					}
 

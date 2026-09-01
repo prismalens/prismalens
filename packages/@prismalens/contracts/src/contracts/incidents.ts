@@ -15,6 +15,7 @@ import {
 	IncidentStatsSchema,
 	IncidentWithRelationsSchema,
 	InvestigateIncidentResponseSchema,
+	InvestigationRefusalSchema,
 	paginatedResponseSchema,
 	SuccessResponseSchema,
 	UpdateIncidentSchema,
@@ -131,7 +132,13 @@ export const incidentsContract = {
 			tags: ["incidents"],
 		})
 		.input(IdParamSchema)
-		.output(InvestigateIncidentResponseSchema),
+		.output(InvestigateIncidentResponseSchema)
+		.errors({
+			PRECONDITION_FAILED: {
+				data: InvestigationRefusalSchema,
+				message: "Investigation cannot be started",
+			},
+		}),
 
 	/**
 	 * Resolve an incident

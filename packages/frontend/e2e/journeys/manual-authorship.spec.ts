@@ -22,9 +22,16 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	}) => {
 		const title = `Checkout latency spike ${Date.now()}`;
 
-		// 0. Precondition: an investigation cannot start without a provider.
+		// 0. Precondition: configure a runnable keyless provider (#520).
 		const configured = await page.request.patch("/api/settings/llm/config", {
-			data: { activeProvider: "anthropic" },
+			data: {
+				activeProvider: "custom",
+				providers: {
+					custom: {
+						model: "smoke-test-stub",
+					},
+				},
+			},
 		});
 		expect(configured.ok()).toBeTruthy();
 
@@ -66,6 +73,98 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// 5. An investigation exists and the app routed to it.
 		await expect(page).toHaveURL(/\/investigations\/[0-9a-f-]{36}$/, {
 			timeout: 20_000,
+		});
+	});
+
+	/**
+	 * The server refuses a broader set of unrunnable states than the client's
+	 * own `isLlmConfigured` check anticipates (#520, #531). Stub the client
+	 * gate open and the investigate call refused, so the mismatch is
+	 * reproducible without a real unrunnable harness, and assert the server's
+	 * refusal reason actually renders — not just that the request 412s.
+	 */
+	test("surfaces the server's refusal reason when it refuses an investigation the client thinks is runnable", async ({
+		page,
+	}) => {
+		await page.route("**/api/settings/llm/config", async (route) => {
+			if (route.request().method() === "GET") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						activeProvider: "anthropic",
+						providers: { anthropic: { model: "claude-sonnet" } },
+					}),
+				});
+				return;
+			}
+			await route.fallback();
+		});
+
+		const refusalReason =
+			"No runnable AI provider: the configured model has no credentials on this host.";
+		await page.route("**/api/incidents/*/investigate", async (route) => {
+			await route.fulfill({
+				status: 412,
+				contentType: "application/json",
+				body: JSON.stringify({
+					defined: true,
+					code: "PRECONDITION_FAILED",
+					status: 412,
+					message: refusalReason,
+					data: { failure: "llm-not-configured", reason: refusalReason },
+				}),
+			});
+		});
+
+		const created = await page.request.post("/api/incidents", {
+			data: { title: `Refusal probe ${Date.now()}` },
+		});
+		expect(created.ok()).toBeTruthy();
+		const incident: { id: string } = await created.json();
+
+		await page.goto(`/incidents/${incident.id}`);
+		await page.evaluate(() => {
+			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
+		});
+		await page.reload();
+		await expect(page.locator("html")).toHaveClass(/light/);
+		await page.getByRole("tab", { name: "Investigation" }).click();
+
+		// The client's own gate is open — this is the surface #531 fixes: a
+		// server refusal the client didn't anticipate must not be a silent no-op.
+		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+			timeout: 15_000,
+		});
+		await page.getByTestId("start-investigation").click();
+
+		await expect(page.getByText(refusalReason).first()).toBeVisible({
+			timeout: 15_000,
+		});
+
+		await page.waitForLoadState("networkidle");
+		await page.screenshot({
+			path: "e2e/journeys/screenshots/investigate-refusal-default.png",
+			fullPage: true,
+		});
+
+		await page.evaluate(() => {
+			document.cookie = "prismalens-theme=dark; path=/; max-age=31536000";
+		});
+		await page.reload();
+		await expect(page.locator("html")).toHaveClass(/dark/);
+		await page.getByRole("tab", { name: "Investigation" }).click();
+		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+			timeout: 15_000,
+		});
+		await page.getByTestId("start-investigation").click();
+		await expect(page.getByText(refusalReason).first()).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.waitForLoadState("networkidle");
+		await page.screenshot({
+			path: "e2e/journeys/screenshots/investigate-refusal-dark.png",
+			fullPage: true,
 		});
 	});
 

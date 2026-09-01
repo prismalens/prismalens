@@ -101,6 +101,7 @@ import {
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);
@@ -289,11 +290,21 @@ child.on("exit", (code, signal) => {
 });
 child.on("error", (error) => die(`failed to start ${binJs}: ${error.message}`));
 
-const readLog = () => {
+const readLog = (offset = 0) => {
 	try {
-		return readFileSync(logPath, "utf8");
+		const buf = readFileSync(logPath);
+		return offset > 0
+			? buf.subarray(offset).toString("utf8")
+			: buf.toString("utf8");
 	} catch {
 		return "";
+	}
+};
+const getLogOffset = () => {
+	try {
+		return readFileSync(logPath).length;
+	} catch {
+		return 0;
 	}
 };
 const dumpLog = (lines = 60) => {
@@ -703,34 +714,35 @@ if (
 }
 
 // ---------------------------------------------------------------------------
-// The fork, and then a clean shutdown
+// The refusal (Part A), the fork (Part B), and then a clean shutdown
 // ---------------------------------------------------------------------------
-// `pl up` forks an investigation child per run. Without one there is nothing
-// for the shutdown assertion to catch leaking, so one is started here — which
-// also makes this the first coverage of the fork path on macOS and Windows.
+// `pl up` refuses unrunnable investigations server-side (412, #520).
+// Configured with a keyless provider, it forks an investigation child per run.
+// Without one there is nothing for the shutdown assertion to catch leaking.
 
-console.log("==> pl up forks an investigation child");
+let partBLogOffset = 0;
+console.log(
+	"==> pl up refuses unrunnable investigation on a clean machine (#520)",
+);
 sample();
-let forked = false;
 if (!cookie) {
-	bad("fork", "no session — cannot trigger an investigation");
+	bad("refusal", "no session — cannot trigger an investigation");
 } else {
 	const created = await json("/api/incidents", {
 		method: "POST",
 		headers: { cookie },
-		body: JSON.stringify({ title: "cross-os app boot", severity: "low" }),
+		body: JSON.stringify({
+			title: "cross-os app boot refusal probe",
+			severity: "low",
+		}),
 	});
 	const createdBody = await created.text();
 	if (!created.ok) {
 		bad(
-			"POST /api/incidents",
+			"POST /api/incidents (unconfigured)",
 			`status ${created.status}: ${createdBody.slice(0, 200)}`,
 		);
 	} else {
-		// Parse defensively. A 2xx whose body is not the expected shape — a proxy
-		// page, a changed contract — would otherwise throw out of top-level await
-		// and take the teardown, orphan, port and failure-summary assertions with
-		// it, turning a specific regression into an unhandled rejection.
 		let incidentId = null;
 		try {
 			incidentId = JSON.parse(createdBody).id ?? null;
@@ -739,55 +751,190 @@ if (!cookie) {
 		}
 		if (!incidentId) {
 			bad(
-				"POST /api/incidents",
+				"POST /api/incidents (unconfigured)",
 				`2xx with no usable id in the body: ${createdBody.slice(0, 200)}`,
 			);
 		} else {
-			startSampling();
-			const started = await json(`/api/incidents/${incidentId}/investigate`, {
+			const refused = await json(`/api/incidents/${incidentId}/investigate`, {
 				method: "POST",
 				headers: { cookie },
 				body: "{}",
 			});
-			if (!started.ok) {
+			const refusedBody = await refused.text();
+			let refusedJson = null;
+			try {
+				refusedJson = JSON.parse(refusedBody);
+			} catch {
+				refusedJson = null;
+			}
+			// Clean-machine precondition (matches packed-smoke.sh's Part A): this
+			// job's checkout is sparse (only this script), so the harness gate is
+			// imported straight from the installed package's own node_modules
+			// rather than the repo's, which is not present here at all.
+			const { resolveHarnessSelection } = await import(
+				pathToFileURL(
+					join(
+						pkgDir,
+						"node_modules",
+						"@prismalens",
+						"config",
+						"dist",
+						"harness-selection.js",
+					),
+				)
+			);
+			const expected = resolveHarnessSelection({
+				provider: null,
+				apiKey: "",
+				model: null,
+				harness: "auto",
+			});
+			if (expected.runnable) {
 				bad(
-					"POST /api/incidents/:id/investigate",
-					`status ${started.status}: ${(await started.text()).slice(0, 200)}`,
+					"clean-machine refusal",
+					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
+				);
+			} else if (
+				refused.status === 412 &&
+				refusedJson?.code === "PRECONDITION_FAILED" &&
+				refusedJson?.data?.failure === expected.failure &&
+				refusedJson?.data?.reason === expected.reason
+			) {
+				ok(
+					"unrunnable investigation refused",
+					`status 412, failure=${refusedJson.data.failure}`,
+				);
+
+				// Only meaningful once a refusal genuinely happened (#531 review):
+				// on a clean-machine precondition failure, or an unexpected
+				// response shape, nothing was refused, so a forked child there is
+				// not this regression.
+				await sleep(2000);
+				sample();
+				if (
+					/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(
+						readLog(),
+					)
+				) {
+					bad(
+						"refusal fork gate",
+						"investigation child forked despite 412 refusal",
+					);
+				} else {
+					ok("no child forked on unrunnable investigation");
+				}
+			} else {
+				bad(
+					"POST /api/incidents/:id/investigate refusal",
+					`status ${refused.status}: ${refusedBody.slice(0, 200)}`,
+				);
+			}
+			partBLogOffset = getLogOffset();
+		}
+	}
+}
+
+console.log("==> pl up forks an investigation child");
+sample();
+let forked = false;
+if (!cookie) {
+	bad("fork", "no session — cannot trigger an investigation");
+} else {
+	const configureLlm = await json("/api/settings/llm/config", {
+		method: "PATCH",
+		headers: { cookie },
+		body: JSON.stringify({
+			activeProvider: "custom",
+			providers: {
+				custom: {
+					model: "smoke-test-stub",
+				},
+			},
+		}),
+	});
+	if (!configureLlm.ok) {
+		bad(
+			"PATCH /api/settings/llm/config",
+			`status ${configureLlm.status}: ${(await configureLlm.text()).slice(0, 200)}`,
+		);
+	} else {
+		const created = await json("/api/incidents", {
+			method: "POST",
+			headers: { cookie },
+			body: JSON.stringify({
+				title: "cross-os app boot fork probe",
+				severity: "low",
+			}),
+		});
+		const createdBody = await created.text();
+		if (!created.ok) {
+			bad(
+				"POST /api/incidents (configured)",
+				`status ${created.status}: ${createdBody.slice(0, 200)}`,
+			);
+		} else {
+			let incidentId = null;
+			try {
+				incidentId = JSON.parse(createdBody).id ?? null;
+			} catch {
+				incidentId = null;
+			}
+			if (!incidentId) {
+				bad(
+					"POST /api/incidents (configured)",
+					`2xx with no usable id in the body: ${createdBody.slice(0, 200)}`,
 				);
 			} else {
-				// The child's own log line is the only fork signal available: with no LLM
-				// configured the run throws before it writes any investigation status, so
-				// nothing observable ever reaches the API. `context` is the JSON logger's
-				// structured field, not message text (PR #394). The pid poll only RECORDS
-				// pids for the orphan assertion; it never decides whether the fork happened.
-				let diagnosed = false;
-				for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
-					await sleep(1000);
-					sample();
-					const log = readLog();
-					forked = /"context"\s*:\s*"InvestigationRun"/.test(log);
-					if (/Cannot locate the investigation child entrypoint/.test(log)) {
-						bad(
-							"fork",
-							"the worker entrypoint did not resolve inside the install",
-						);
-						diagnosed = true;
-					} else if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-						const line = log
-							.split("\n")
-							.find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-						bad("fork", `the child could not resolve a dependency: ${line}`);
-						diagnosed = true;
-					}
-				}
-				if (forked) {
-					ok(
-						"investigation child forked",
-						`${seenDescendants.size} pid(s) observed`,
+				startSampling();
+				const started = await json(`/api/incidents/${incidentId}/investigate`, {
+					method: "POST",
+					headers: { cookie },
+					body: "{}",
+				});
+				const startedBody = await started.text();
+				if (!started.ok) {
+					bad(
+						"POST /api/incidents/:id/investigate",
+						`status ${started.status}: ${startedBody.slice(0, 200)}`,
 					);
-				} else if (!diagnosed) {
-					dumpLog();
-					bad("fork", `no investigation child within ${FORK_TIMEOUT_S}s`);
+				} else {
+					let investigationId = null;
+					try {
+						investigationId = JSON.parse(startedBody)?.investigationId ?? null;
+					} catch {
+						investigationId = null;
+					}
+					let diagnosed = false;
+					for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
+						await sleep(1000);
+						sample();
+						const log = readLog(partBLogOffset);
+						forked =
+							/"context"\s*:\s*"InvestigationProcessor"/.test(log) &&
+							(investigationId ? log.includes(investigationId) : true);
+						if (/Cannot locate the investigation child entrypoint/.test(log)) {
+							bad(
+								"fork",
+								"the worker entrypoint did not resolve inside the install",
+							);
+							diagnosed = true;
+						} else if (/ERR_MODULE_NOT_FOUND/.test(log)) {
+							const line = log
+								.split("\n")
+								.find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
+							bad("fork", `the child could not resolve a dependency: ${line}`);
+							diagnosed = true;
+						}
+					}
+					if (forked) {
+						ok(
+							"investigation child forked",
+							`${seenDescendants.size} pid(s) observed`,
+						);
+					} else if (!diagnosed) {
+						dumpLog();
+						bad("fork", `no investigation child within ${FORK_TIMEOUT_S}s`);
+					}
 				}
 			}
 		}
