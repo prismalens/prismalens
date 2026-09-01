@@ -23,6 +23,10 @@ export default defineConfig({
 		// demo-data.test.ts's beforeAll shells out to a cold-start `prisma migrate
 		// deploy`; the 10s default races that subprocess on a contended CI runner (#542).
 		hookTimeout: 30000,
+		// Same test's body does real seed writes + read-back assertions, which raced
+		// the 5s default too (#548). Measured 5.4-5.8s under artificial 8x CPU
+		// oversubscription (vs. ~0.5s idle); 20s keeps 3x+ headroom.
+		testTimeout: 20000,
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.ts"],
