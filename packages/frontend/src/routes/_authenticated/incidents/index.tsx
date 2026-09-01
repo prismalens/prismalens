@@ -29,7 +29,10 @@ import {
 import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { useHarnesses, useLlmSettings } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
 
 // Search params type
 interface IncidentSearchParams {
@@ -57,6 +60,18 @@ function IncidentsPage() {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate({ from: "/incidents/" });
 	const searchParams = useSearch({ from: "/_authenticated/incidents/" });
+	const { toast } = useToast();
+
+	// Check if LLM / harness is runnable (#520)
+	const { data: llmSettings } = useLlmSettings();
+	const { data: harnessData } = useHarnesses();
+	const hasRunnableHarness =
+		harnessData?.harnesses?.some((h) => h.runnable) ?? false;
+	const isLlmConfigured = !!llmSettings?.activeProvider || hasRunnableHarness;
+	const investigateDisabled = !isLlmConfigured;
+	const investigateDisabledReason = !isLlmConfigured
+		? "Configure an AI provider in Settings to enable investigations"
+		: undefined;
 
 	// Local state for filters
 	const [statusFilter, setStatusFilter] = useState<IncidentStatus | "all">(
@@ -114,9 +129,22 @@ function IncidentsPage() {
 	// Investigate mutation
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
-		onSuccess: () => {
+		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: ["incidents"] });
 			queryClient.invalidateQueries({ queryKey: ["investigations"] });
+			if (data?.investigationId) {
+				navigate({
+					to: "/investigations/$id",
+					params: { id: data.investigationId },
+				});
+			}
+		},
+		onError: (error) => {
+			toast({
+				title: "Investigation refused",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			});
 		},
 	});
 
@@ -287,6 +315,8 @@ function IncidentsPage() {
 						onAcknowledge={handleAcknowledge}
 						onInvestigate={handleInvestigate}
 						onCreate={() => setIsCreateOpen(true)}
+						investigateDisabled={investigateDisabled}
+						investigateDisabledReason={investigateDisabledReason}
 					/>
 				</TabsContent>
 
