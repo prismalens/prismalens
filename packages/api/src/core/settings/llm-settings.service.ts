@@ -149,7 +149,6 @@ export class LlmSettingsService {
 		return {
 			activeProvider: null,
 			providers: {} as Record<LLMProviderId, { model: string }>,
-			agentOverrides: undefined,
 			harness: "auto",
 		};
 	}
@@ -241,7 +240,6 @@ export class LlmSettingsService {
 			return {
 				activeProvider: parsed.activeProvider ?? null,
 				providers: parsed.providers ?? {},
-				agentOverrides: parsed.agentOverrides,
 				harness: parsed.harness ?? "auto",
 			};
 		} catch {
@@ -349,20 +347,9 @@ export class LlmSettingsService {
 			}
 		}
 
-		let updatedAgentOverrides = current.agentOverrides;
-		if (dto.agentOverrides !== undefined) {
-			updatedAgentOverrides = dto.agentOverrides
-				? {
-						...current.agentOverrides,
-						...dto.agentOverrides,
-					}
-				: undefined;
-		}
-
 		const updated: LlmSettings = {
 			activeProvider: dto.activeProvider ?? current.activeProvider,
 			providers: updatedProviders,
-			agentOverrides: updatedAgentOverrides,
 			harness:
 				dto.harness !== undefined ? dto.harness : (current.harness ?? "auto"),
 		};

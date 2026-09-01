@@ -414,6 +414,77 @@ test.describe("Investigation agent settings card (#501)", () => {
 	});
 });
 
+const aiProviderCard = (page: Page) => page.getByTestId("ai-provider-settings");
+
+/**
+ * Withdrawn capability (#534): `INVESTIGATION_AGENTS` and the per-agent LLM
+ * override section that read/wrote it are gone, with no replacement in this
+ * repo — the re-keyed successor is #130. This proves the surrounding AI
+ * provider card still renders and saves correctly with that section absent.
+ */
+test.describe("AI provider settings — per-agent overrides withdrawn (#534)", () => {
+	test("renders the provider card with no per-agent override section", async ({
+		page,
+	}) => {
+		await serveActiveProvider(page, "anthropic");
+		await serveHarnesses(page, SESSION_ONLY);
+		await openAiSettings(page);
+
+		await expect(
+			aiProviderCard(page).getByText("AI Provider Configuration", {
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByText("Per-Agent Overrides")).toHaveCount(0);
+		await expect(page.getByText("Optionally customize model settings")).toHaveCount(0);
+	});
+
+	test("saves the active provider with no agentOverrides in the payload", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, SESSION_ONLY);
+
+		let savedBody: Record<string, unknown> | undefined;
+		await page.route(
+			(url) => url.pathname === "/api/settings/llm/config",
+			async (route) => {
+				if (route.request().method() === "GET") {
+					await route.fulfill({
+						status: 200,
+						contentType: "application/json",
+						body: JSON.stringify({
+							activeProvider: "anthropic",
+							providers: { anthropic: { model: "seeded-model" } },
+							harness: "auto",
+						}),
+					});
+					return;
+				}
+				if (route.request().method() === "PATCH") {
+					savedBody = route.request().postDataJSON();
+					await route.fulfill({
+						status: 200,
+						contentType: "application/json",
+						body: JSON.stringify({
+							activeProvider: "anthropic",
+							providers: { anthropic: { model: "seeded-model" } },
+							harness: "auto",
+						}),
+					});
+					return;
+				}
+				await route.fallback();
+			},
+		);
+
+		await openAiSettings(page);
+		await page.getByRole("button", { name: "Save & Set Active" }).click();
+
+		await expect.poll(() => savedBody).toBeTruthy();
+		expect(savedBody).not.toHaveProperty("agentOverrides");
+	});
+});
+
 /**
  * The banner is keyed on the host-stamped `reportMode`, so the fixture patches
  * exactly that field on the seeded investigation and changes nothing else.
@@ -611,6 +682,58 @@ test.describe("Design evidence (#501)", () => {
 				timeout: 20_000,
 			});
 		});
+	});
+
+	/**
+	 * #534 design evidence: the per-agent override section is withdrawn, not
+	 * relocated, so this card is the whole remaining surface. "Error" is
+	 * dropped — the only error-shaped state here is the Test Connection
+	 * banner, a transient result of a user action rather than a load state,
+	 * and it is untouched by this removal (see PR Judgment calls).
+	 */
+	test("AI provider card: default, dark and empty states (#534)", async ({
+		page,
+		baseURL,
+	}) => {
+		test.setTimeout(90_000);
+
+		const themeOnly = async (theme: "light" | "dark") => {
+			await page.context().addCookies([
+				{ name: "prismalens-theme", value: theme, url: baseURL as string },
+			]);
+		};
+
+		const shotProviderCard = async (
+			name: string,
+			theme: "light" | "dark",
+			ready: () => Promise<void>,
+		) => {
+			await themeOnly(theme);
+			await page.goto("/settings?tab=ai");
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+			await ready();
+			await page.waitForLoadState("networkidle");
+			await aiProviderCard(page).screenshot({ path: `${SHOTS}/${name}.png` });
+		};
+
+		const providerReady = async () => {
+			await expect(
+				aiProviderCard(page).getByText("AI Provider Configuration", {
+					exact: true,
+				}),
+			).toBeVisible({ timeout: 15_000 });
+		};
+
+		await serveActiveProvider(page, "anthropic");
+		await serveHarnesses(page, SESSION_ONLY);
+		await shotProviderCard("ai-provider-settings-default", "light", providerReady);
+		await shotProviderCard("ai-provider-settings-dark", "dark", providerReady);
+
+		// "Empty" is no active provider chosen — the "Active provider:" summary
+		// banner this card renders is absent, unlike the two states above.
+		await serveAiTabReads(page);
+		await serveHarnesses(page, SESSION_ONLY);
+		await shotProviderCard("ai-provider-settings-empty", "light", providerReady);
 	});
 
 	test("raw-report banner: default and dark", async ({ page }) => {

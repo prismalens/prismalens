@@ -12,19 +12,13 @@
  * AgentExecution/ToolExecution — #417).
  */
 
-import {
-	AGENT_IDS,
-	type AgentId,
-	type AgentRole,
-	INVESTIGATION_AGENTS,
-} from "@prismalens/config/agents";
 import type {
 	CanonicalEvent,
 	ExecutionStatus,
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import type { LucideIcon } from "lucide-react";
-import { Brain, Cog, Compass, Wrench } from "lucide-react";
+import { Cog } from "lucide-react";
 import type { Edge, Node } from "reactflow";
 import { MarkerType } from "reactflow";
 
@@ -150,14 +144,10 @@ function hashString(str: string): number {
 }
 
 /**
- * Select a palette bucket for an agent (#408, #473).
- * Known roster agents receive distinct static palette entries; dynamic names fall back to hash buckets.
+ * Select a palette bucket for an agent by name hash (#408, #534 — the
+ * fixed-roster registry that used to shortcut this is gone).
  */
 export function getAgentPalette(agentName: string): AgentPalette {
-	const rosterIndex = (AGENT_IDS as readonly string[]).indexOf(agentName);
-	if (rosterIndex !== -1) {
-		return AGENT_PALETTES[rosterIndex % AGENT_PALETTES.length];
-	}
 	const hash = hashString(agentName);
 	return AGENT_PALETTES[hash % AGENT_PALETTES.length];
 }
@@ -190,46 +180,12 @@ function generateAgentStyle(agentName: string): AgentStyle {
 }
 
 /**
- * Icon per agent *role* (`entry` / `worker` / `orchestrator`), not per agent
- * name. Nothing here names an individual agent, so adding, renaming, or
- * retiring an entry in the `@prismalens/config/agents` SSOT needs no change
- * in this file — a previous version hardcoded one entry per agent name and
- * silently kept `cartographer`/`detective`/`surgeon` around for a month after
- * the roster moved on.
- */
-const ROLE_ICONS: Record<AgentRole, LucideIcon> = {
-	entry: Compass,
-	worker: Wrench,
-	orchestrator: Brain,
-};
-
-function isRegisteredAgentId(agentName: string): agentName is AgentId {
-	return (AGENT_IDS as readonly string[]).includes(agentName);
-}
-
-/**
- * Get agent style (dynamic with optional overrides for known agents)
- * Supports ANY agent name - new agents automatically get styled
- *
- * `agent_step.label` on the stream is intentionally free text (it can name a
- * dynamically spawned subagent outside the registry), so any name not in
- * `INVESTIGATION_AGENTS` still gets a usable style via `generateAgentStyle`
- * below — the registry only sharpens the look of the fixed roster, it does
- * not gate which names are valid.
+ * Get agent style for any agent name (#534 — the fixed-roster registry
+ * that used to sharpen a handful of names is gone; every name, known or
+ * dynamically spawned, takes this same hash-generated path).
  */
 export function getAgentStyle(agentName: string): AgentStyle {
-	const generated = generateAgentStyle(agentName);
-
-	if (!isRegisteredAgentId(agentName)) {
-		return generated;
-	}
-
-	const agent = INVESTIGATION_AGENTS[agentName];
-	return {
-		...generated,
-		displayName: agent.name,
-		icon: ROLE_ICONS[agent.role],
-	};
+	return generateAgentStyle(agentName);
 }
 
 /**

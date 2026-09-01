@@ -18,10 +18,6 @@
  * - `llmProviderIdSchema` - Zod schema for provider IDs
  * - Provider-specific config schemas
  *
- * ### Agent Identity (`@prismalens/config/agents`)
- * - `INVESTIGATION_AGENTS` - Agent identity registry
- * - `agentIdSchema` - Zod schema for agent IDs
- *
  * @example
  * ```typescript
  * // Environment config
@@ -30,9 +26,6 @@
  *
  * // LLM metadata
  * import { LLM_PROVIDERS } from '@prismalens/config/llm';
- *
- * // Agent identity
- * import { agentIdSchema } from '@prismalens/config/agents';
  * ```
  */
 

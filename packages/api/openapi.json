@@ -26622,39 +26622,6 @@
 												},
 												"required": ["model"]
 											}
-										},
-										"agentOverrides": {
-											"type": "object",
-											"propertyNames": {
-												"enum": [
-													"scout",
-													"gatherer",
-													"analyst",
-													"resolver",
-													"supervisor"
-												],
-												"type": "string"
-											},
-											"additionalProperties": {
-												"type": "object",
-												"properties": {
-													"model": {
-														"type": "string"
-													},
-													"temperature": {
-														"type": "number",
-														"minimum": 0,
-														"maximum": 2
-													},
-													"advancedOptions": {
-														"type": "object",
-														"propertyNames": {
-															"type": "string"
-														},
-														"additionalProperties": {}
-													}
-												}
-											}
 										}
 									},
 									"required": ["activeProvider", "providers"]
@@ -26717,39 +26684,6 @@
 												},
 												"baseUrl": {
 													"type": "string"
-												},
-												"advancedOptions": {
-													"type": "object",
-													"propertyNames": {
-														"type": "string"
-													},
-													"additionalProperties": {}
-												}
-											}
-										}
-									},
-									"agentOverrides": {
-										"type": "object",
-										"propertyNames": {
-											"enum": [
-												"scout",
-												"gatherer",
-												"analyst",
-												"resolver",
-												"supervisor"
-											],
-											"type": "string"
-										},
-										"additionalProperties": {
-											"type": "object",
-											"properties": {
-												"model": {
-													"type": "string"
-												},
-												"temperature": {
-													"type": "number",
-													"minimum": 0,
-													"maximum": 2
 												},
 												"advancedOptions": {
 													"type": "object",
@@ -26833,39 +26767,6 @@
 													}
 												},
 												"required": ["model"]
-											}
-										},
-										"agentOverrides": {
-											"type": "object",
-											"propertyNames": {
-												"enum": [
-													"scout",
-													"gatherer",
-													"analyst",
-													"resolver",
-													"supervisor"
-												],
-												"type": "string"
-											},
-											"additionalProperties": {
-												"type": "object",
-												"properties": {
-													"model": {
-														"type": "string"
-													},
-													"temperature": {
-														"type": "number",
-														"minimum": 0,
-														"maximum": 2
-													},
-													"advancedOptions": {
-														"type": "object",
-														"propertyNames": {
-															"type": "string"
-														},
-														"additionalProperties": {}
-													}
-												}
 											}
 										}
 									},

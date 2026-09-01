@@ -184,6 +184,27 @@ describe("LlmSettingsService — active provider resolution", () => {
 		});
 	});
 
+	describe("getLlmSettings", () => {
+		// #534: agentOverrides left the schema; a blob written before that must
+		// still load, with the orphan key silently dropped, not throw a 500.
+		it("tolerates a stored blob carrying an orphan agentOverrides key", async () => {
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "claude-sonnet-5" } },
+					agentOverrides: { scout: { model: "gpt-4o", temperature: 0.2 } },
+					harness: "auto",
+				},
+			});
+
+			await expect(service.getLlmSettings()).resolves.toEqual({
+				activeProvider: "anthropic",
+				providers: { anthropic: { model: "claude-sonnet-5" } },
+				harness: "auto",
+			});
+		});
+	});
+
 	describe("isActiveProviderUsable", () => {
 		it("is false when a key sits in the env but no provider was ever chosen", async () => {
 			process.env.ANTHROPIC_API_KEY = "sk-ant-from-the-shell";

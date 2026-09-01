@@ -4,7 +4,6 @@
 "use client";
 
 import { LLM_PROVIDERS, type LLMProviderId } from "@prismalens/config/llm";
-import type { AgentId } from "@prismalens/contracts/schemas";
 import {
 	AlertCircle,
 	Bot,
@@ -22,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
-	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
@@ -47,7 +45,6 @@ import {
 	useUpdateLlmSettings,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-import { type AgentMeta, AgentOverrideItem } from "./AgentOverrideItem";
 import { HarnessSettings } from "./HarnessSettings";
 import {
 	type ProviderInfo,
@@ -63,40 +60,6 @@ const PROVIDERS = Object.values(LLM_PROVIDERS).map((provider) => ({
 	noApiKey: provider.envVar === null,
 	free: "free" in provider ? provider.free : false,
 }));
-
-// Agent metadata for per-agent overrides
-const AGENTS: AgentMeta[] = [
-	{
-		id: "supervisor",
-		name: "Supervisor",
-		description: "Orchestrates the investigation workflow",
-		defaultTemp: 0.1,
-	},
-	{
-		id: "scout",
-		name: "Scout",
-		description: "Initial alert validation and triage",
-		defaultTemp: 0,
-	},
-	{
-		id: "gatherer",
-		name: "Gatherer",
-		description: "Deep data collection from integrations",
-		defaultTemp: 0,
-	},
-	{
-		id: "analyst",
-		name: "Analyst",
-		description: "Root cause analysis and hypothesis generation",
-		defaultTemp: 0.2,
-	},
-	{
-		id: "resolver",
-		name: "Resolver",
-		description: "Remediation recommendations and fix suggestions",
-		defaultTemp: 0.1,
-	},
-];
 
 export function AIProviderSettings() {
 	const { data: envStatus, isLoading: envLoading } = useLlmEnvStatus();
@@ -121,13 +84,6 @@ export function AIProviderSettings() {
 	const [advancedOptionsError, setAdvancedOptionsError] = useState<
 		string | null
 	>(null);
-	const [agentOverridesOpen, setAgentOverridesOpen] = useState(false);
-
-	// Per-agent state - track which agent's selector is expanded and their provider selection
-	const [expandedAgent, setExpandedAgent] = useState<AgentId | null>(null);
-	const [agentProviders, setAgentProviders] = useState<
-		Partial<Record<AgentId, string>>
-	>({});
 
 	// Credential management state
 	const [apiKeyInput, setApiKeyInput] = useState("");
@@ -343,7 +299,7 @@ export function AIProviderSettings() {
 			</Alert>
 
 			{/* Main Configuration Card */}
-			<Card>
+			<Card data-testid="ai-provider-settings">
 				<CardHeader>
 					<div className="flex items-center gap-2">
 						<Bot className="h-5 w-5 text-muted-foreground" />
@@ -684,99 +640,6 @@ export function AIProviderSettings() {
 
 			{/* Investigation agent (tier-2 harness) — #501 */}
 			<HarnessSettings />
-
-			{/* Per-Agent Overrides Card */}
-			<Card>
-				<Collapsible
-					open={agentOverridesOpen}
-					onOpenChange={setAgentOverridesOpen}
-				>
-					<CardHeader
-						className="cursor-pointer"
-						onClick={() => setAgentOverridesOpen(!agentOverridesOpen)}
-					>
-						<CollapsibleTrigger asChild>
-							<div className="flex items-center justify-between">
-								<div>
-									<CardTitle className="text-base">
-										Per-Agent Overrides
-									</CardTitle>
-									<CardDescription>
-										Optionally customize model settings for each agent type
-									</CardDescription>
-								</div>
-								{agentOverridesOpen ? (
-									<ChevronUp className="h-5 w-5 text-muted-foreground" />
-								) : (
-									<ChevronDown className="h-5 w-5 text-muted-foreground" />
-								)}
-							</div>
-						</CollapsibleTrigger>
-					</CardHeader>
-					<CollapsibleContent>
-						<CardContent className="pt-0">
-							<div className="space-y-3">
-								{AGENTS.map((agent) => {
-									const override = settings?.agentOverrides?.[agent.id];
-									const agentProvider =
-										agentProviders[agent.id] ||
-										settings?.activeProvider ||
-										"anthropic";
-
-									return (
-										<AgentOverrideItem
-											key={agent.id}
-											agent={agent}
-											override={override}
-											isExpanded={expandedAgent === agent.id}
-											onToggle={(open) =>
-												setExpandedAgent(open ? agent.id : null)
-											}
-											agentProvider={agentProvider}
-											onProviderChange={(p) =>
-												setAgentProviders((prev) => ({
-													...prev,
-													[agent.id]: p,
-												}))
-											}
-											onModelChange={(model) => {
-												updateSettings.mutate({
-													agentOverrides: {
-														[agent.id]: {
-															...override,
-															model: model || undefined,
-														},
-													},
-												});
-											}}
-											onTemperatureChange={(temp) => {
-												updateSettings.mutate({
-													agentOverrides: {
-														[agent.id]: {
-															...override,
-															temperature: temp,
-														},
-													},
-												});
-											}}
-											onReset={() => {
-												updateSettings.mutate({
-													agentOverrides: {
-														[agent.id]: undefined,
-													},
-												});
-											}}
-											providers={providerInfos}
-											models={allModels}
-											envStatus={envStatusMap}
-										/>
-									);
-								})}
-							</div>
-						</CardContent>
-					</CollapsibleContent>
-				</Collapsible>
-			</Card>
 		</div>
 	);
 }

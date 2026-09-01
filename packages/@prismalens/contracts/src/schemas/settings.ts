@@ -5,10 +5,6 @@
  * Settings schemas for LLM configuration
  */
 
-import {
-	type AgentId as AgentIdType,
-	agentIdSchema,
-} from "@prismalens/config/agents";
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import {
 	type LLMProviderId,
@@ -295,12 +291,6 @@ export type DangerOperationResult = z.infer<typeof DangerOperationResultSchema>;
 // =============================================================================
 
 /**
- * Agent IDs for per-agent overrides - imported from @prismalens/config/agents
- */
-export const AgentIdSchema = agentIdSchema;
-export type AgentId = AgentIdType;
-
-/**
  * Per-provider configuration stored in DB
  * API keys are stored encrypted (AES-256-GCM) or provided via env vars
  */
@@ -315,24 +305,11 @@ export const LlmProviderConfigSchema = z.object({
 export type LlmProviderConfig = z.infer<typeof LlmProviderConfigSchema>;
 
 /**
- * Per-agent override configuration
- */
-export const AgentOverrideConfigSchema = z.object({
-	model: z.string().optional(),
-	temperature: z.number().min(0).max(2).optional(),
-	advancedOptions: z.record(z.string(), z.unknown()).optional(),
-});
-export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>;
-
-/**
  * Full LLM settings structure stored in DB
  */
 export const LlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.nullable(),
 	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema),
-	agentOverrides: z
-		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
-		.optional(),
 	harness: HarnessSettingSchema.optional().default("auto"),
 });
 export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
@@ -363,9 +340,6 @@ export const UpdateLlmSettingsSchema = z.object({
 	activeProvider: LlmProviderIdSchema.optional(),
 	providers: z
 		.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
-		.optional(),
-	agentOverrides: z
-		.partialRecord(AgentIdSchema, AgentOverrideConfigSchema)
 		.optional(),
 	harness: HarnessSettingSchema.optional(),
 });
