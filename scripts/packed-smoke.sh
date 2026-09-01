@@ -26,6 +26,16 @@
 set -eu
 
 TARBALLS=$(cd "${1:?usage: packed-smoke.sh <dir-with-tarball>}" && pwd)
+# Resolved BEFORE the cd below, and absolute: the HTTP probe is written into the
+# installed package (see PROBE_MJS) and runs with cwd inside $SCRATCH, so it can
+# only reach the shared Part A module (#551) by absolute path. This is the second
+# entry in this job's sparse-checkout list in .github/workflows/ci.yml.
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REFUSAL_GATE_LIB="$SCRIPT_DIR/lib/refusal-gate-check.mjs"
+[ -f "$REFUSAL_GATE_LIB" ] || {
+	echo "SMOKE FAIL: $REFUSAL_GATE_LIB is missing — widen the job's sparse-checkout" >&2
+	exit 1
+}
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
 cd "$SCRATCH"
@@ -238,10 +248,18 @@ grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowli
 HTTP_PROBE_MJS="$PKG/prismalens-smoke-http-probe.mjs"
 cat > "$HTTP_PROBE_MJS" <<'PROBE'
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 import { resolveHarnessSelection } from "@prismalens/config/harness-selection";
 
 const base = process.env.PRISMALENS_SMOKE_BASE;
 const bootLog = process.argv[2];
+// The Part A assertion sequence, shared with scripts/cross-os-app-boot.mjs
+// (#551). This file lives inside the installed package so that the bare
+// specifier above resolves, which puts the repo checkout out of relative reach —
+// hence the absolute path handed in by the shell.
+const { assertRefusalGate } = await import(
+	pathToFileURL(process.argv[3]).href
+);
 const email = "smoke@prismalens.test";
 const password = "smoke-password-12345";
 let failed = 0;
@@ -342,73 +360,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		? ok("authenticated GET /api/incidents 200")
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
-	let partBLogOffset = 0;
-
 	// --- unrunnable investigation refused server-side (Part A, #520) -----------
-	const created1 = await json("/api/incidents", {
-		method: "POST",
-		headers: { cookie },
-		body: JSON.stringify({ title: "packed smoke refusal probe", severity: "low" }),
-	});
-	const created1Body = await created1.text();
-	if (created1.status < 200 || created1.status >= 300) {
-		bad("POST /api/incidents (unconfigured)", `status ${created1.status}: ${created1Body.slice(0, 200)}`);
-	} else {
-		const incidentId1 = JSON.parse(created1Body).id;
-		const refused = await json(`/api/incidents/${incidentId1}/investigate`, {
-			method: "POST",
-			headers: { cookie },
-			body: "{}",
-		});
-		const refusedBody = await refused.text();
-		let refusedJson = null;
-		try {
-			refusedJson = JSON.parse(refusedBody);
-		} catch {
-			refusedJson = null;
-		}
-
-		const expected = resolveHarnessSelection({
-			provider: null,
-			apiKey: "",
-			model: null,
-			harness: "auto",
-		});
-		if (expected.runnable) {
-			bad(
-				"clean-machine refusal",
-				"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
-			);
-		} else if (
-			refused.status === 412 &&
-			refusedJson?.code === "PRECONDITION_FAILED" &&
-			refusedJson?.data?.failure === expected.failure &&
-			refusedJson?.data?.reason === expected.reason
-		) {
-			ok("unrunnable investigation refused", `status 412, failure=${refusedJson.data.failure}`);
-
-			// Only meaningful once a refusal genuinely happened (#531 review, same
-			// fix as cross-os-app-boot.mjs): on a clean-machine precondition
-			// failure, or an unexpected response shape, nothing was refused, so a
-			// forked child there is not this regression.
-			await sleep(2000);
-			const log = fs.readFileSync(bootLog, "utf8");
-			// InvestigationRun is error-path-only; InvestigationProcessor is the
-			// unconditional child-start context (matches cross-os-app-boot.mjs).
-			if (/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(log)) {
-				bad("clean-machine refusal", "investigation child forked despite 412 refusal");
-			} else {
-				ok("no child forked on unrunnable investigation");
+	// The sequence itself lives in scripts/lib/refusal-gate-check.mjs (#551);
+	// what stays here is what is genuinely container-specific — a bare specifier
+	// that resolves through the installed package, and a log that is a file.
+	const { partBLogOffset } = await assertRefusalGate({
+		json,
+		cookie,
+		resolveExpected: () =>
+			resolveHarnessSelection({
+				provider: null,
+				apiKey: "",
+				model: null,
+				harness: "auto",
+			}),
+		readLog: () => {
+			try {
+				return fs.readFileSync(bootLog, "utf8");
+			} catch {
+				return "";
 			}
-		} else {
-			bad("clean-machine refusal", `status ${refused.status}: ${refusedBody.slice(0, 200)}`);
-		}
-		try {
-			partBLogOffset = fs.statSync(bootLog).size;
-		} catch {
-			partBLogOffset = 0;
-		}
-	}
+		},
+		getLogOffset: () => {
+			try {
+				return fs.statSync(bootLog).size;
+			} catch {
+				return 0;
+			}
+		},
+		ok,
+		bad,
+		incidentTitle: "packed smoke refusal probe",
+	});
 
 	// --- forked-worker round trip (Part B, #520) -------------------------------
 	// Resolves @prismalens/worker relative to the installed package; configured
@@ -537,7 +520,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 	process.exit(1);
 });
 PROBE
-PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" || fail "the pl up HTTP contract is broken"
+PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" "$REFUSAL_GATE_LIB" || fail "the pl up HTTP contract is broken"
 rm -f "$HTTP_PROBE_MJS"
 
 stop_up

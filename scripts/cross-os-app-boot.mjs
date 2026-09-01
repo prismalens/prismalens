@@ -102,6 +102,10 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+// The Part A assertion sequence, shared with scripts/packed-smoke.sh (#551).
+// Relative to this module's own URL, so it resolves whatever the cwd is — and
+// it is why this job's sparse-checkout list carries a second entry.
+import { assertRefusalGate } from "./lib/refusal-gate-check.mjs";
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);
@@ -720,119 +724,43 @@ if (
 // Configured with a keyless provider, it forks an investigation child per run.
 // Without one there is nothing for the shutdown assertion to catch leaking.
 
-let partBLogOffset = 0;
 console.log(
 	"==> pl up refuses unrunnable investigation on a clean machine (#520)",
 );
-sample();
-if (!cookie) {
-	bad("refusal", "no session — cannot trigger an investigation");
-} else {
-	const created = await json("/api/incidents", {
-		method: "POST",
-		headers: { cookie },
-		body: JSON.stringify({
-			title: "cross-os app boot refusal probe",
-			severity: "low",
-		}),
-	});
-	const createdBody = await created.text();
-	if (!created.ok) {
-		bad(
-			"POST /api/incidents (unconfigured)",
-			`status ${created.status}: ${createdBody.slice(0, 200)}`,
+const { partBLogOffset } = await assertRefusalGate({
+	json,
+	cookie,
+	// The environment-specific half, which stays here: this job's checkout is
+	// sparse, so the harness gate is imported straight from the INSTALLED
+	// package's own node_modules rather than the repo's, which is not present
+	// here at all. The assertion sequence over the verdict is shared (#551).
+	resolveExpected: async () => {
+		const { resolveHarnessSelection } = await import(
+			pathToFileURL(
+				join(
+					pkgDir,
+					"node_modules",
+					"@prismalens",
+					"config",
+					"dist",
+					"harness-selection.js",
+				),
+			)
 		);
-	} else {
-		let incidentId = null;
-		try {
-			incidentId = JSON.parse(createdBody).id ?? null;
-		} catch {
-			incidentId = null;
-		}
-		if (!incidentId) {
-			bad(
-				"POST /api/incidents (unconfigured)",
-				`2xx with no usable id in the body: ${createdBody.slice(0, 200)}`,
-			);
-		} else {
-			const refused = await json(`/api/incidents/${incidentId}/investigate`, {
-				method: "POST",
-				headers: { cookie },
-				body: "{}",
-			});
-			const refusedBody = await refused.text();
-			let refusedJson = null;
-			try {
-				refusedJson = JSON.parse(refusedBody);
-			} catch {
-				refusedJson = null;
-			}
-			// Clean-machine precondition (matches packed-smoke.sh's Part A): this
-			// job's checkout is sparse (only this script), so the harness gate is
-			// imported straight from the installed package's own node_modules
-			// rather than the repo's, which is not present here at all.
-			const { resolveHarnessSelection } = await import(
-				pathToFileURL(
-					join(
-						pkgDir,
-						"node_modules",
-						"@prismalens",
-						"config",
-						"dist",
-						"harness-selection.js",
-					),
-				)
-			);
-			const expected = resolveHarnessSelection({
-				provider: null,
-				apiKey: "",
-				model: null,
-				harness: "auto",
-			});
-			if (expected.runnable) {
-				bad(
-					"clean-machine refusal",
-					"harness gate reports machine is runnable — clean-machine precondition failed (check PATH and credentials)",
-				);
-			} else if (
-				refused.status === 412 &&
-				refusedJson?.code === "PRECONDITION_FAILED" &&
-				refusedJson?.data?.failure === expected.failure &&
-				refusedJson?.data?.reason === expected.reason
-			) {
-				ok(
-					"unrunnable investigation refused",
-					`status 412, failure=${refusedJson.data.failure}`,
-				);
-
-				// Only meaningful once a refusal genuinely happened (#531 review):
-				// on a clean-machine precondition failure, or an unexpected
-				// response shape, nothing was refused, so a forked child there is
-				// not this regression.
-				await sleep(2000);
-				sample();
-				if (
-					/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(
-						readLog(),
-					)
-				) {
-					bad(
-						"refusal fork gate",
-						"investigation child forked despite 412 refusal",
-					);
-				} else {
-					ok("no child forked on unrunnable investigation");
-				}
-			} else {
-				bad(
-					"POST /api/incidents/:id/investigate refusal",
-					`status ${refused.status}: ${refusedBody.slice(0, 200)}`,
-				);
-			}
-			partBLogOffset = getLogOffset();
-		}
-	}
-}
+		return resolveHarnessSelection({
+			provider: null,
+			apiKey: "",
+			model: null,
+			harness: "auto",
+		});
+	},
+	readLog: () => readLog(),
+	getLogOffset,
+	ok,
+	bad,
+	incidentTitle: "cross-os app boot refusal probe",
+	sample,
+});
 
 console.log("==> pl up forks an investigation child");
 sample();
