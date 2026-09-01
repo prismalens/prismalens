@@ -392,7 +392,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 		await sleep(2000);
 		const log = fs.readFileSync(bootLog, "utf8");
-		if (log.includes('"context":"InvestigationRun"')) {
+		// InvestigationRun is error-path-only; InvestigationProcessor is the
+		// unconditional child-start context (matches cross-os-app-boot.mjs).
+		if (/"context"\s*:\s*"(?:InvestigationRun|InvestigationProcessor)"/.test(log)) {
 			bad("clean-machine refusal", "investigation child forked despite 412 refusal");
 		} else {
 			ok("no child forked on unrunnable investigation");

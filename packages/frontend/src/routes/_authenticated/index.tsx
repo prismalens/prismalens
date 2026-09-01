@@ -23,6 +23,7 @@ import { NeedsAttentionCard } from "@/components/dashboard/NeedsAttentionCard";
 import { PriorityBadge } from "@/components/investigation/investigation.utils";
 import { PageHeader } from "@/components/layout";
 import { LLMWarningBanner } from "@/components/shared/LLMWarningBanner";
+import { MutationError } from "@/components/shared/MutationError";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -216,6 +217,11 @@ function CommandCenter() {
 			{!isLlmConfigured && activeIncidents.length > 0 && (
 				<LLMWarningBanner incidentCount={activeIncidents.length} />
 			)}
+
+			{/* Server-side investigate refusal (#520): the client's own gate can
+			    pass while the server's still refuses, so this is the only place
+			    that reason reaches the user. */}
+			<MutationError error={investigateMutation.error} className="mb-2" />
 
 			{/* Quick Stats Summary */}
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">

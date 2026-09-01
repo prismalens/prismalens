@@ -27,6 +27,7 @@ import {
 	IncidentStatsBar,
 } from "@/components/incidents";
 import { PageHeader } from "@/components/layout";
+import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -265,6 +266,10 @@ function IncidentsPage() {
 				onOpenChange={setIsCreateOpen}
 				onCreated={handleIncidentCreated}
 			/>
+
+			{/* Server-side investigate refusal (#520): shared across every row's
+			    Investigate action since one mutation instance serves the table. */}
+			<MutationError error={investigateMutation.error} className="mb-2" />
 
 			{/* Tabs */}
 			<Tabs value={currentTab} onValueChange={handleTabChange}>
