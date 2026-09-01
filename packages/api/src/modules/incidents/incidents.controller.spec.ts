@@ -540,6 +540,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as any,
 			{} as any,
 			{} as any,
+			{} as any,
 		);
 
 		const handlers = getHandlers(controller);
