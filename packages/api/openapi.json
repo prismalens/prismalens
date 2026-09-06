@@ -29756,10 +29756,44 @@
                           "blockedReason"
                         ]
                       }
+                    },
+                    "selection": {
+                      "type": "object",
+                      "properties": {
+                        "runnable": {
+                          "type": "boolean"
+                        },
+                        "harness": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "blockedReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "runnable",
+                        "harness",
+                        "blockedReason"
+                      ]
                     }
                   },
                   "required": [
-                    "harnesses"
+                    "harnesses",
+                    "selection"
                   ]
                 }
               }

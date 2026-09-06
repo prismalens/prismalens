@@ -33,8 +33,7 @@ import {
 	incidentKeys,
 	investigationKeys,
 	useAlertMappingHealth,
-	useHarnesses,
-	useLlmSettings,
+	useInvestigationReadiness,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -53,12 +52,9 @@ function CommandCenter() {
 		null,
 	);
 
-	// Check if LLM / harness is runnable (#520)
-	const { data: llmSettings } = useLlmSettings();
-	const { data: harnessData } = useHarnesses();
-	const hasRunnableHarness =
-		harnessData?.harnesses?.some((h) => h.runnable) ?? false;
-	const isLlmConfigured = !!llmSettings?.activeProvider || hasRunnableHarness;
+	// Would an investigation actually start? Server's gate, not a local guess (#521).
+	const { isReady: canRunInvestigation, blockedReason } =
+		useInvestigationReadiness();
 
 	// Fetch active incidents (not resolved)
 	const { data: incidentsResponse, isLoading: incidentsLoading } = useQuery(
@@ -213,8 +209,11 @@ function CommandCenter() {
 			/>
 
 			{/* LLM Warning Banner - only show when there are incidents to analyze */}
-			{!isLlmConfigured && activeIncidents.length > 0 && (
-				<LLMWarningBanner incidentCount={activeIncidents.length} />
+			{!canRunInvestigation && activeIncidents.length > 0 && (
+				<LLMWarningBanner
+					incidentCount={activeIncidents.length}
+					reason={blockedReason}
+				/>
 			)}
 
 			{/* Quick Stats Summary */}
@@ -332,7 +331,8 @@ function CommandCenter() {
 						) : selectedIncident ? (
 							<IncidentDetailPanel
 								incident={selectedIncident}
-								isLlmConfigured={isLlmConfigured}
+								canRunInvestigation={canRunInvestigation}
+								investigateDisabledReason={blockedReason}
 								onAcknowledge={handleAcknowledge}
 								onInvestigate={handleInvestigate}
 								onResolve={handleResolve}

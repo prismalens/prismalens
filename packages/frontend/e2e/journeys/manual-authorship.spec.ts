@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * J17 / C10 — manual authorship.
@@ -16,6 +16,28 @@ import { expect, test } from "@playwright/test";
  * the spec idempotent under Playwright retries (`activeProvider` is global
  * state that survives a retry against the same database).
  */
+/** The shared gate's own words when `auto` resolves to nothing (#521). */
+const NO_HARNESS_REASON =
+	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
+
+/** Hold the client gate open so a test can drive the server's refusal path. */
+async function serveRunnableSelection(page: Page): Promise<void> {
+	await page.route("**/api/settings/harnesses", async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				harnesses: [],
+				selection: {
+					runnable: true,
+					harness: "claude-code",
+					blockedReason: null,
+				},
+			}),
+		});
+	});
+}
+
 test.describe("C10 — manual authorship without an alert source", () => {
 	test("creates an incident by hand and starts an investigation from it", async ({
 		page,
@@ -77,29 +99,16 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	});
 
 	/**
-	 * The server refuses a broader set of unrunnable states than the client's
-	 * own `isLlmConfigured` check anticipates (#520, #531). Stub the client
-	 * gate open and the investigate call refused, so the mismatch is
+	 * The server can still refuse a run the readiness gate reported as runnable —
+	 * the gate reads settings, the run reaches the harness (#520, #531). Stub the
+	 * client gate open and the investigate call refused, so the mismatch is
 	 * reproducible without a real unrunnable harness, and assert the server's
 	 * refusal reason actually renders — not just that the request 412s.
 	 */
 	test("surfaces the server's refusal reason when it refuses an investigation the client thinks is runnable", async ({
 		page,
 	}) => {
-		await page.route("**/api/settings/llm/config", async (route) => {
-			if (route.request().method() === "GET") {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						activeProvider: "anthropic",
-						providers: { anthropic: { model: "claude-sonnet" } },
-					}),
-				});
-				return;
-			}
-			await route.fallback();
-		});
+		await serveRunnableSelection(page);
 
 		const refusalReason =
 			"No runnable AI provider: the configured model has no credentials on this host.";
@@ -266,7 +275,14 @@ test.describe("C10 — manual authorship without an alert source", () => {
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
-				body: JSON.stringify({ harnesses: [] }),
+				body: JSON.stringify({
+					harnesses: [],
+					selection: {
+						runnable: false,
+						harness: null,
+						blockedReason: NO_HARNESS_REASON,
+					},
+				}),
 			});
 		});
 
@@ -279,15 +295,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.goto(`/incidents/${incident.id}`);
 		await page.getByRole("tab", { name: "Investigation" }).click();
 
-		// Both affordances for the same procedure must agree that it is blocked.
+		// Both affordances for the same procedure must agree that it is blocked,
+		// and the gate's own words say why (#521).
 		await expect(page.getByTestId("start-investigation")).toBeDisabled();
-		await expect(
-			page
-				.getByText(
-					"Configure an AI provider in Settings to enable investigations",
-				)
-				.first(),
-		).toBeVisible();
+		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
 		await expect(
 			page.getByRole("button", { name: "Investigate", exact: true }),
 		).toBeDisabled();

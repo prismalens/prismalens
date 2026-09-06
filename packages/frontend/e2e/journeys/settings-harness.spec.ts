@@ -165,11 +165,23 @@ async function serveHarnesses(
 	page: Page,
 	harnesses: HarnessFixture[],
 ): Promise<void> {
+	// `auto` picks the first runnable row, which is what the real gate reports as
+	// the current selection (#521). This page renders the rows, not the selection.
+	const picked = harnesses.find((h) => h.runnable);
 	await page.route(isHarnessesUrl, async (route) => {
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
-			body: JSON.stringify({ harnesses }),
+			body: JSON.stringify({
+				harnesses,
+				selection: picked
+					? { runnable: true, harness: picked.id, blockedReason: null }
+					: {
+							runnable: false,
+							harness: null,
+							blockedReason: "No compatible harness found.",
+						},
+			}),
 		});
 	});
 }

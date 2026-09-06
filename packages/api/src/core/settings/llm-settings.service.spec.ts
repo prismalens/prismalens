@@ -475,6 +475,72 @@ describe("LlmSettingsService — active provider resolution", () => {
 					'Invalid PRISMALENS_HARNESS="bogus"',
 				);
 			}
+			expect(response.selection.runnable).toBe(false);
+			expect(response.selection.blockedReason).toContain(
+				'Invalid PRISMALENS_HARNESS="bogus"',
+			);
+		});
+	});
+
+	/**
+	 * #521: the three incident surfaces gated on `activeProvider`, then on
+	 * `harnesses.some((h) => h.runnable)`. Neither is "would a run start" — the
+	 * rows answer "if you PINNED this one", so a runnable row next to an
+	 * unrunnable pin reads as ready. `selection` is the run's own verdict.
+	 */
+	describe("getHarnessesStatus — selection", () => {
+		it("agrees with isActiveProviderUsable when the selection runs", async () => {
+			machine.installed = ["claude"];
+			givenSettings({});
+
+			const response = await service.getHarnessesStatus();
+
+			expect(response.selection).toEqual({
+				runnable: true,
+				harness: "claude-code",
+				blockedReason: null,
+			});
+			expect(await service.isActiveProviderUsable()).toBe(true);
+		});
+
+		it("is unrunnable with a reason when a provider is picked but has no key", async () => {
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "claude-sonnet-4" } },
+					harness: "auto",
+				},
+			});
+
+			const response = await service.getHarnessesStatus();
+
+			expect(response.selection.runnable).toBe(false);
+			expect(response.selection.blockedReason).toBeTruthy();
+			expect(await service.isActiveProviderUsable()).toBe(false);
+		});
+
+		it("is unrunnable when the pinned harness cannot run a provider another harness could", async () => {
+			process.env.ANTHROPIC_API_KEY = "sk-ant-live";
+			machine.installed = ["deepagents-acp"];
+			givenSettings({
+				llmSettings: {
+					activeProvider: "anthropic",
+					providers: { anthropic: { model: "claude-sonnet-4" } },
+					harness: "deepagents",
+				},
+			});
+
+			const response = await service.getHarnessesStatus();
+
+			// The old predicate: a runnable row exists, so the UI said ready.
+			expect(response.harnesses.some((h) => h.runnable)).toBe(true);
+			// The run's own verdict disagrees, and says why.
+			expect(response.selection.runnable).toBe(false);
+			expect(response.selection.harness).toBe("deepagents");
+			expect(response.selection.blockedReason).toContain(
+				"only supports OpenAI-protocol providers",
+			);
+			expect(await service.isActiveProviderUsable()).toBe(false);
 		});
 	});
 });

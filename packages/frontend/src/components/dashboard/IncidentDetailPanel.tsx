@@ -31,7 +31,10 @@ export interface IncidentDetailPanelProps {
 			createdAt: string;
 		}>;
 	};
-	isLlmConfigured: boolean;
+	/** The server gate's verdict for the current selection (#521). */
+	canRunInvestigation: boolean;
+	/** Why it would not run, worded by that gate. */
+	investigateDisabledReason?: string;
 	onAcknowledge?: () => void;
 	onInvestigate?: () => void;
 	onResolve?: () => void;
@@ -45,7 +48,8 @@ export interface IncidentDetailPanelProps {
 
 export function IncidentDetailPanel({
 	incident,
-	isLlmConfigured,
+	canRunInvestigation,
+	investigateDisabledReason,
 	onAcknowledge,
 	onInvestigate,
 	onResolve,
@@ -198,7 +202,7 @@ export function IncidentDetailPanel({
 								<p className="text-sm text-muted-foreground mb-3">
 									No investigation yet
 								</p>
-								{isLlmConfigured && canInvestigate && onInvestigate ? (
+								{canRunInvestigation && canInvestigate && onInvestigate ? (
 									<Button
 										size="sm"
 										onClick={onInvestigate}
@@ -207,9 +211,13 @@ export function IncidentDetailPanel({
 										<Brain className="h-4 w-4 mr-2" />
 										{isInvestigating ? "Starting..." : "Start Investigation"}
 									</Button>
-								) : !isLlmConfigured ? (
-									<p className="text-xs text-muted-foreground">
-										Configure LLM in settings to enable AI investigations
+								) : !canRunInvestigation ? (
+									<p
+										className="text-xs text-muted-foreground max-w-sm text-center"
+										data-testid="panel-investigate-blocked-reason"
+									>
+										{investigateDisabledReason ??
+											"Configure an AI provider in Settings to enable investigations"}
 									</p>
 								) : null}
 							</div>

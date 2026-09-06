@@ -13,15 +13,22 @@ export interface LLMWarningBannerProps {
 	className?: string;
 	/** Optional count of active incidents to show contextual message */
 	incidentCount?: number;
+	/** The server gate's own words for why no investigation would start (#521). */
+	reason?: string;
 }
 
 export function LLMWarningBanner({
 	className,
 	incidentCount,
+	reason,
 }: LLMWarningBannerProps) {
-	const message = incidentCount
-		? `You have ${incidentCount} active incident${incidentCount > 1 ? "s" : ""} that could benefit from AI investigation. Configure an AI provider to get started.`
-		: "Configure an AI provider to enable automated incident investigation and recommendations.";
+	const context = incidentCount
+		? `You have ${incidentCount} active incident${incidentCount > 1 ? "s" : ""} that could benefit from AI investigation.`
+		: null;
+	const remedy =
+		reason ??
+		"Configure an AI provider to enable automated incident investigation and recommendations.";
+	const message = [context, remedy].filter(Boolean).join(" ");
 
 	return (
 		<Alert
@@ -33,10 +40,15 @@ export function LLMWarningBanner({
 		>
 			<AlertTriangle className="h-4 w-4 text-amber-600" />
 			<AlertTitle className="text-amber-900 dark:text-amber-200">
-				AI Provider Not Configured
+				AI Investigations Unavailable
 			</AlertTitle>
 			<AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-				<span className="text-amber-800 dark:text-amber-300">{message}</span>
+				<span
+					className="text-amber-800 dark:text-amber-300"
+					data-testid="llm-warning-reason"
+				>
+					{message}
+				</span>
 				<Button variant="outline" size="sm" asChild className="w-fit">
 					<Link to="/settings" search={{ tab: "ai" }}>
 						<Settings className="h-4 w-4 mr-2" />
