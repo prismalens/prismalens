@@ -128,6 +128,8 @@ const ENGINES_NODE = ">=24";
  */
 const PINNED = {
 	"better-sqlite3": "12.11.1",
+	// Better Auth 1.7.3 dropped the required issuer column our schema requires (#580).
+	"better-auth": "1.7.2",
 };
 
 const argv = process.argv.slice(2);

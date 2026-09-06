@@ -54,6 +54,7 @@ describe("SetupController", () => {
 		vi.clearAllMocks();
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+		vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
 
 		res = { append: vi.fn() };
 
@@ -192,5 +193,19 @@ describe("SetupController", () => {
 			code: "FORBIDDEN",
 		});
 		expect(mockAuthService.createSessionCookies).not.toHaveBeenCalled();
+	});
+
+	it("logs server-side and rethrows on unexpected setup error (#580)", async () => {
+		const errorSpy = vi.spyOn(Logger.prototype, "error");
+		const failure = new Error("Database constraint violated");
+		mockUsersService.setupOwner.mockRejectedValue(failure);
+
+		await expect(callCreateOwner()).rejects.toThrow("Database constraint violated");
+		expect(errorSpy).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"Failed to create owner during setup: Database constraint violated",
+			),
+			failure.stack,
+		);
 	});
 });
