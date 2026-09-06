@@ -373,9 +373,11 @@ export class LlmSettingsService {
 	 * Never exposes API key secrets.
 	 */
 	async getHarnessesStatus(): Promise<HarnessesResponse> {
-		const { provider, model } = await this.resolveActiveLlmConfig();
+		const { provider, model, harness } = await this.resolveActiveLlmConfig();
 		const input = this.selectionInput(provider, model);
-		const globalSelection = resolveHarnessSelection(input);
+		// The persisted harness setting is part of the current selection, so the
+		// `selection` field below is the same verdict a run would get (#521).
+		const globalSelection = resolveHarnessSelection({ ...input, harness });
 		const invalidPin =
 			!globalSelection.runnable &&
 			globalSelection.failure === "invalid-env-harness";
@@ -403,7 +405,20 @@ export class LlmSettingsService {
 			};
 		});
 
-		return { harnesses };
+		return {
+			harnesses,
+			selection: globalSelection.runnable
+				? {
+						runnable: true,
+						harness: globalSelection.harness,
+						blockedReason: null,
+					}
+				: {
+						runnable: false,
+						harness: globalSelection.harness ?? null,
+						blockedReason: globalSelection.reason,
+					},
+		};
 	}
 
 	async getAvailableModels(provider?: string): Promise<ModelsListResponse> {

@@ -30,7 +30,7 @@ import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useHarnesses, useLlmSettings } from "@/lib/api/hooks";
+import { useInvestigationReadiness } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 
@@ -62,16 +62,11 @@ function IncidentsPage() {
 	const searchParams = useSearch({ from: "/_authenticated/incidents/" });
 	const { toast } = useToast();
 
-	// Check if LLM / harness is runnable (#520)
-	const { data: llmSettings } = useLlmSettings();
-	const { data: harnessData } = useHarnesses();
-	const hasRunnableHarness =
-		harnessData?.harnesses?.some((h) => h.runnable) ?? false;
-	const isLlmConfigured = !!llmSettings?.activeProvider || hasRunnableHarness;
-	const investigateDisabled = !isLlmConfigured;
-	const investigateDisabledReason = !isLlmConfigured
-		? "Configure an AI provider in Settings to enable investigations"
-		: undefined;
+	// Would an investigation actually start? Server's gate, not a local guess (#521).
+	const { isReady: canRunInvestigation, blockedReason } =
+		useInvestigationReadiness();
+	const investigateDisabled = !canRunInvestigation;
+	const investigateDisabledReason = blockedReason;
 
 	// Local state for filters
 	const [statusFilter, setStatusFilter] = useState<IncidentStatus | "all">(

@@ -87,6 +87,14 @@ const RUNNABLE_HARNESSES = [
 	},
 ];
 
+/**
+ * What `pickAuto` returns when nothing resolves: claude-code's remedy, because it
+ * is the most actionable. The button's tooltip renders the gate's words verbatim
+ * now, not a generic frontend string (#521).
+ */
+const UNUSABLE_SELECTION_REASON =
+	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
+
 async function serveUnusableLlmAndHarnesses(page: Page) {
 	await page.route("**/api/settings/llm/config", async (route) => {
 		if (route.request().method() === "GET") {
@@ -107,7 +115,14 @@ async function serveUnusableLlmAndHarnesses(page: Page) {
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
-			body: JSON.stringify({ harnesses: NOTHING_HARNESSES }),
+			body: JSON.stringify({
+				harnesses: NOTHING_HARNESSES,
+				selection: {
+					runnable: false,
+					harness: null,
+					blockedReason: UNUSABLE_SELECTION_REASON,
+				},
+			}),
 		});
 	});
 }
@@ -132,7 +147,14 @@ async function serveRunnableLlmAndHarnesses(page: Page) {
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
-			body: JSON.stringify({ harnesses: RUNNABLE_HARNESSES }),
+			body: JSON.stringify({
+				harnesses: RUNNABLE_HARNESSES,
+				selection: {
+					runnable: true,
+					harness: "deepagents",
+					blockedReason: null,
+				},
+			}),
 		});
 	});
 }
@@ -162,7 +184,7 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 		await expect(
 			page
 				.getByText(
-					"Configure an AI provider in Settings to enable investigations",
+					UNUSABLE_SELECTION_REASON,
 				)
 				.first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -268,7 +290,7 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 		await expect(
 			page
 				.getByText(
-					"Configure an AI provider in Settings to enable investigations",
+					UNUSABLE_SELECTION_REASON,
 				)
 				.first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -294,7 +316,7 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 		await expect(
 			page
 				.getByText(
-					"Configure an AI provider in Settings to enable investigations",
+					UNUSABLE_SELECTION_REASON,
 				)
 				.first(),
 		).toBeVisible({ timeout: 15_000 });

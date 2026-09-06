@@ -108,6 +108,40 @@ export function useHarnesses() {
 	);
 }
 
+export interface InvestigationReadiness {
+	/** Would an investigation start right now? */
+	isReady: boolean;
+	/** Why it would not, worded by the server's gate. Undefined when ready. */
+	blockedReason: string | undefined;
+	isLoading: boolean;
+}
+
+/**
+ * The ONE client-side answer to "can an investigation run, and if not why" —
+ * the server's gate verdict for the current selection, never re-derived here.
+ * Deriving it from `activeProvider` or `harnesses.some(runnable)` is #521.
+ */
+export function useInvestigationReadiness(): InvestigationReadiness {
+	const { data, isLoading, isError } = useHarnesses();
+	const selection = data?.selection;
+
+	if (selection?.runnable) {
+		return { isReady: true, blockedReason: undefined, isLoading: false };
+	}
+
+	const fallback = isLoading
+		? "Checking whether an AI provider is usable…"
+		: isError
+			? "Could not check AI provider status — retry from Settings → AI provider."
+			: "Configure an AI provider in Settings to enable investigations";
+
+	return {
+		isReady: false,
+		blockedReason: selection?.blockedReason ?? fallback,
+		isLoading,
+	};
+}
+
 // =============================================================================
 // LLM CREDENTIAL MANAGEMENT
 // =============================================================================

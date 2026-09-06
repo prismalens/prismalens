@@ -65,8 +65,25 @@ export const HarnessStatusSchema = z.object({
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
+/**
+ * Would an investigation start RIGHT NOW, under the persisted harness setting and
+ * the env override? The per-harness rows answer "if you pinned this one" instead,
+ * so `harnesses.some((h) => h.runnable)` is not this answer (#521).
+ */
+export const HarnessSelectionStatusSchema = z.object({
+	runnable: z.boolean(),
+	/** The harness a run would use, or the one the failure is about. */
+	harness: z.string().nullable(),
+	/** The gate's own message when it would not. Callers render it; none rewrite it. */
+	blockedReason: z.string().nullable(),
+});
+export type HarnessSelectionStatus = z.infer<
+	typeof HarnessSelectionStatusSchema
+>;
+
 export const HarnessesResponseSchema = z.object({
 	harnesses: z.array(HarnessStatusSchema),
+	selection: HarnessSelectionStatusSchema,
 });
 export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
 export type LlmProviderId = LLMProviderId;

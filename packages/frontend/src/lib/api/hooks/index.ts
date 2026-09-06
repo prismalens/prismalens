@@ -177,6 +177,7 @@ export {
 	useHarnesses,
 	useInvestigationLimits,
 	useInvestigationPolicies,
+	useInvestigationReadiness,
 	useLlmCredentialStatus,
 	useLlmEnvStatus,
 	useLlmModels,

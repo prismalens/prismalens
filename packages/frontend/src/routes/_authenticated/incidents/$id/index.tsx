@@ -18,8 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useCreateTimelineEntry,
-	useHarnesses,
-	useLlmSettings,
+	useInvestigationReadiness,
 	useTimeline,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
@@ -35,12 +34,9 @@ function IncidentDetailPage() {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
 
-	// Check if LLM / harness is runnable (#520)
-	const { data: llmSettings } = useLlmSettings();
-	const { data: harnessData } = useHarnesses();
-	const hasRunnableHarness =
-		harnessData?.harnesses?.some((h) => h.runnable) ?? false;
-	const isLlmConfigured = !!llmSettings?.activeProvider || hasRunnableHarness;
+	// Would an investigation actually start? Server's gate, not a local guess (#521).
+	const { isReady: canRunInvestigation, blockedReason } =
+		useInvestigationReadiness();
 
 	// Fetch incident details
 	const {
@@ -169,12 +165,8 @@ function IncidentDetailPage() {
 				onInvestigate={handleInvestigate}
 				onResolve={handleResolve}
 				isInvestigating={investigateMutation.isPending}
-				investigateDisabled={!isLlmConfigured}
-				investigateDisabledReason={
-					!isLlmConfigured
-						? "Configure an AI provider in Settings to enable investigations"
-						: undefined
-				}
+				investigateDisabled={!canRunInvestigation}
+				investigateDisabledReason={blockedReason}
 			/>
 
 			{/* Tabs */}
@@ -211,12 +203,8 @@ function IncidentDetailPage() {
 						investigations={incident.investigations || []}
 						onStartInvestigation={handleInvestigate}
 						isStarting={investigateMutation.isPending}
-						startDisabled={!isLlmConfigured}
-						startDisabledReason={
-							!isLlmConfigured
-								? "Configure an AI provider in Settings to enable investigations"
-								: undefined
-						}
+						startDisabled={!canRunInvestigation}
+						startDisabledReason={blockedReason}
 					/>
 				</TabsContent>
 
