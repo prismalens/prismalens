@@ -58,6 +58,9 @@ export function useUpdateLlmSettings() {
 		...orpc.settings.llm.updateSettings.mutationOptions(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.settings() });
+			// Readiness reads only harnessKeys.status(), which has a 60s staleTime, so
+			// without this a fixed provider stays reported as unusable (#521).
+			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
 		},
 	});
 }
@@ -176,6 +179,7 @@ export function useSaveLlmCredential() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: llmCredentialKeys.status() });
 			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.envStatus() });
+			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
 		},
 	});
 }
@@ -191,6 +195,7 @@ export function useDeleteLlmCredential() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: llmCredentialKeys.status() });
 			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.envStatus() });
+			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
 		},
 	});
 }
