@@ -520,7 +520,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 	process.exit(1);
 });
 PROBE
-PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" "$REFUSAL_GATE_LIB" || fail "the pl up HTTP contract is broken"
+PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" "$REFUSAL_GATE_LIB" || {
+	echo "----- pl up log -----" >&2
+	tail -60 "$UP_LOG" >&2
+	fail "the pl up HTTP contract is broken"
+}
 rm -f "$HTTP_PROBE_MJS"
 
 stop_up

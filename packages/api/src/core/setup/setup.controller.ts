@@ -146,6 +146,10 @@ export class SetupController {
 								message: "Instance already set up. Admin account exists.",
 							});
 						}
+						this.logger.error(
+							`Failed to create owner during setup: ${error instanceof Error ? error.message : String(error)}`,
+							error instanceof Error ? error.stack : undefined,
+						);
 						throw error;
 					}
 				},
