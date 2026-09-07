@@ -389,7 +389,7 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
    upgrade, an `Action:` paragraph follows it and does not repeat the number. If the
    change is a security property, state the limit of the mechanism too — what it does
    not do — or the note reads as a promise to cover everything. See `.changeset/README.md` → *What goes in the body*
-   for the full rule and two calibration rewrites.
+   for the full rule and three calibration rewrites.
 
 ### Worked example
 

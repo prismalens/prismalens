@@ -87,7 +87,7 @@ A security note keeps its limit. The fencing change was written twice without
 one and was wrong both times — first as "potential prompt injections are
 neutralised", which promises the attack is blocked, then as "nothing is filtered
 or truncated" across four surfaces, two of which are length-capped. What it
-needed was eight words:
+needed was one clause, eighteen words:
 
 > Alert labels, annotations, tool-output previews and agent transcripts now
 > render inside fences when they reach an investigation prompt, so text an
