@@ -352,11 +352,17 @@ describe("WebhooksService", () => {
 		it("ignores a resolved delivery for a fingerprint never seen firing", async () => {
 			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce(null);
 
-			const result = await service.resolvePrometheusAlert("fp-unknown");
+			const result = await service.resolvePrometheusAlert(
+				"fp-unknown",
+				"delivery-9:fp-unknown",
+			);
 
 			expect(result).toBeNull();
 			expect(alertsService.resolve).not.toHaveBeenCalled();
 			expect(alertsService.create).not.toHaveBeenCalled();
+			// No Event row: one created here would never reach markProcessed, and a
+			// retry inside the grace window would then throw CONFLICT.
+			expect(eventsService.create).not.toHaveBeenCalled();
 		});
 
 		it("ignores a resolved delivery carrying no fingerprint", async () => {

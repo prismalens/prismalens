@@ -163,9 +163,21 @@ export class WebhooksService {
 			return null;
 		}
 
-		// Every other webhook path opens with an immutable Event row and honours
-		// the delivery's idempotency key; a resolution is a delivery too, so it
-		// gets the same audit trail and replay handling (#593).
+		// The lookup comes before ingestEvent on purpose. An Event row that never
+		// reaches markProcessed keeps a null alertId, and resolveIdempotentDelivery
+		// reads that as in-flight and throws CONFLICT on a retry inside the grace
+		// window — so ingesting for a fingerprint we cannot act on would break the
+		// idempotency it was added to provide.
+		const existing = await this.alertsService.findBySourceAlertId(fingerprint);
+		if (!existing) {
+			this.logger.log(
+				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,
+			);
+			return null;
+		}
+
+		// From here a resolution will happen, so the delivery gets the same
+		// immutable Event row and idempotency handling as every other path (#593).
 		const ingested = await this.ingestEvent(idempotencyKey, () =>
 			this.eventsService.create({
 				source: "prometheus",
@@ -177,14 +189,6 @@ export class WebhooksService {
 		);
 		if ("replay" in ingested) return ingested.replay.alert;
 		const event = ingested.event;
-
-		const existing = await this.alertsService.findBySourceAlertId(fingerprint);
-		if (!existing) {
-			this.logger.log(
-				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,
-			);
-			return null;
-		}
 
 		const resolved =
 			existing.status === "resolved"
