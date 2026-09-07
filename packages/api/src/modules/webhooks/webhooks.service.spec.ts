@@ -81,6 +81,7 @@ describe("WebhooksService", () => {
 						create: vi.fn().mockResolvedValue(mockAlert),
 						findById: vi.fn().mockResolvedValue(mockAlert),
 						findBySourceAlertId: vi.fn().mockResolvedValue(null),
+						findAlertBySourceAlert: vi.fn().mockResolvedValue(null),
 						resolve: vi.fn().mockResolvedValue({
 							...mockAlert,
 							status: "resolved",
@@ -338,14 +339,14 @@ describe("WebhooksService", () => {
 
 	describe("resolvePrometheusAlert (#593)", () => {
 		it("resolves the existing alert instead of creating a new one", async () => {
-			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
 				...mockAlert,
 				status: "triggered",
 			});
 
 			const result = await service.resolvePrometheusAlert("fp-abc");
 
-			expect(alertsService.findBySourceAlertId).toHaveBeenCalledWith("fp-abc");
+			expect(alertsService.findAlertBySourceAlert).toHaveBeenCalledWith("fp-abc");
 			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-abc");
 			// The bug this guards: a resolved delivery must never reach create(),
 			// where dedup would read it as a refire and reopen the alert.
@@ -354,7 +355,7 @@ describe("WebhooksService", () => {
 		});
 
 		it("ignores a resolved delivery for a fingerprint never seen firing", async () => {
-			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce(null);
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
 
 			const result = await service.resolvePrometheusAlert(
 				"fp-unknown",
@@ -378,7 +379,7 @@ describe("WebhooksService", () => {
 		});
 
 		it("writes an Event row for the resolved delivery, like every other path", async () => {
-			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
 				...mockAlert,
 				status: "triggered",
 			});
@@ -397,7 +398,7 @@ describe("WebhooksService", () => {
 		});
 
 		it("does not re-resolve an already resolved alert", async () => {
-			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
 				...mockAlert,
 				status: "resolved",
 			});

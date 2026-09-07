@@ -168,9 +168,12 @@ export class WebhooksService {
 		// reads that as in-flight and throws CONFLICT on a retry inside the grace
 		// window — so ingesting for a fingerprint we cannot act on would break the
 		// idempotency it was added to provide.
-		// Resolves one member of the deduped group; the alert itself only reaches
-		// `resolved` when the last member does (#595).
-		const existing = await this.alertsService.findBySourceAlertId(fingerprint);
+		// Membership-aware: `Alert.externalId` only holds the id of the source
+		// alert that created the row, so keying the guard on it would miss every
+		// other member of a deduped group and never reach resolveSourceAlert,
+		// leaving the group stuck triggered (#595).
+		const existing =
+			await this.alertsService.findAlertBySourceAlert(fingerprint);
 		if (!existing) {
 			this.logger.log(
 				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,

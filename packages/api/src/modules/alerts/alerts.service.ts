@@ -269,10 +269,26 @@ export class AlertsService {
 		}
 	}
 
+	private async findSourceAlertMember(sourceAlertId: string) {
+		return this.prisma.alertSourceAlert.findFirst({
+			where: { sourceAlertId },
+			orderBy: { lastSeenAt: "desc" },
+		});
+	}
+
 	/**
-	 * Find the newest alert episode for a dedupKey (#231 R2b — the key is no
-	 * longer unique, so this reads the latest row rather than the only one).
+	 * Does this source alert id belong to any alert we know about?
+	 *
+	 * Must consult membership first: `Alert.externalId` only ever holds the id of
+	 * the source alert that CREATED the row, so a caller keying on it alone
+	 * cannot see any other member of a deduped group (#595).
 	 */
+	async findAlertBySourceAlert(sourceAlertId: string): Promise<Alert | null> {
+		const member = await this.findSourceAlertMember(sourceAlertId);
+		if (member) return this.findById(member.alertId);
+		return this.findBySourceAlertId(sourceAlertId);
+	}
+
 	/**
 	 * `dedupKey` excludes the source alert id, so several source alerts fold into
 	 * one row. Without a member record only the first id survives on
@@ -309,10 +325,7 @@ export class AlertsService {
 	 * members remain, and null when the source alert id belongs to no group.
 	 */
 	async resolveSourceAlert(sourceAlertId: string): Promise<Alert | null> {
-		const member = await this.prisma.alertSourceAlert.findFirst({
-			where: { sourceAlertId },
-			orderBy: { lastSeenAt: "desc" },
-		});
+		const member = await this.findSourceAlertMember(sourceAlertId);
 
 		if (!member) {
 			// Pre-#595 rows have no member records; fall back to the single-alert
@@ -347,6 +360,10 @@ export class AlertsService {
 		return this.resolve(alert.id);
 	}
 
+	/**
+	 * Find the newest alert episode for a dedupKey (#231 R2b — the key is no
+	 * longer unique, so this reads the latest row rather than the only one).
+	 */
 	async findByDedupKey(dedupKey: string): Promise<Alert | null> {
 		return this.prisma.alert.findFirst({
 			where: { dedupKey },

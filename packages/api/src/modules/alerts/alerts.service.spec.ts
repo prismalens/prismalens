@@ -752,6 +752,41 @@ describe("AlertsService (BDD)", () => {
 		});
 	});
 
+	describe("findAlertBySourceAlert — membership before externalId (#595)", () => {
+		it("finds a non-first group member, which externalId alone cannot", async () => {
+			// externalId holds only the id of the source alert that CREATED the row,
+			// so a lookup keying on it returns null for every other member. The
+			// guard that used it made the whole per-member path unreachable.
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue({
+				id: "mem-B",
+				alertId: "alt-group",
+				sourceAlertId: "fp-B",
+			});
+			mockPrismaService.alert.findUnique.mockResolvedValue({
+				id: "alt-group",
+				externalId: "fp-A",
+				status: "triggered",
+			});
+
+			const found = await service.findAlertBySourceAlert("fp-B");
+
+			expect(found?.id).toBe("alt-group");
+			expect(mockPrismaService.alert.findFirst).not.toHaveBeenCalled();
+		});
+
+		it("falls back to externalId when no membership row exists", async () => {
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.findFirst.mockResolvedValue({
+				id: "alt-legacy",
+				externalId: "fp-old",
+			});
+
+			const found = await service.findAlertBySourceAlert("fp-old");
+
+			expect(found?.id).toBe("alt-legacy");
+		});
+	});
+
 	describe("resolveSourceAlert — deduped group membership (#595)", () => {
 		const groupAlert = {
 			id: "alt-group",
