@@ -380,6 +380,15 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
    unresolvable base ref, git unavailable) it exits non-zero with the git error
    attached. It never reports "no publishable packages modified" on a broken probe.
 
+7. **What goes in the body.** One paragraph, at most three sentences and 60 words,
+   written for someone running `prismalens` who is deciding whether to upgrade — not
+   for the reviewer and not for a future maintainer. No headings, bullets, bold, or
+   `fix(scope):` prefix. Say what changed in the terms the user sees, not the
+   mechanism, the design reason, what the tests assert, or which RFC or ADR applies.
+   If the user must act on upgrade, add one line starting `Action:`. End with the
+   issue number in parentheses. See `.changeset/README.md` → *What goes in the body*
+   for the full rule and two calibration rewrites.
+
 ### Worked example
 
 When modifying publishable code without a changeset, the gate fails:
