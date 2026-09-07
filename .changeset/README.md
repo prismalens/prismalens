@@ -57,17 +57,18 @@ message and on docs.prismalens.io, the guarantees in the tests.
 
 ### Calibration
 
-A 231-word entry about the migration runner became:
+A 236-word entry about the migration runner became:
 
 > `pl up` now applies database migrations itself at start, from SQL inside the
 > installed package. A current database is left alone, a partial one advances in
 > place, and a backup is taken before any write. Migration history is
 > append-only from here on. (#335)
 >
-> Action: a database created before 0.5.0-rc.0 stops with `checksum-mismatch` on
-> first boot. The message prints the repair. Do not delete `prismalens.db`.
+> Action: a database created before `init` was last edited stops with
+> `checksum-mismatch` on first boot. Do not delete it. See CONTRIBUTING.md,
+> *Recovering a database that drifted*.
 
-A 231-word entry about a credential leak became:
+A 235-word entry about a credential leak became:
 
 > Provider error responses are no longer copied into thrown errors, so a token
 > or client secret echoed back by a provider cannot reach the logs or the
