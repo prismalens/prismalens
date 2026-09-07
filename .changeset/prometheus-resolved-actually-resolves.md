@@ -2,4 +2,4 @@
 "prismalens": patch
 ---
 
-A Prometheus alert that resolves now actually resolves. Alertmanager's `resolved` notification was processed as a new firing, which since the flap window landed could reopen the very alert it was closing. Prometheus alerts also now carry a link back to the firing expression. (#593)
+A Prometheus alert that resolves now actually resolves. When several instances of the same rule are deduplicated into one alert, it closes only once the last instance clears. Prometheus alerts also carry a link back to the firing expression. (#593)

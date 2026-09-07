@@ -471,6 +471,7 @@ model Alert {
 
   // Relations
   service    Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  members    AlertSourceAlert[]
   incidentId String? // The Incident this alert is correlated to
   incident   Incident? @relation(fields: [incidentId], references: [id])
   events     Event[] // Raw events that created/updated this alert
@@ -978,4 +979,27 @@ model Job {
   @@index([status, runAt, priority])
   @@index([status, heartbeatAt])
   @@map("jobs")
+}
+
+/// One Alertmanager alert (one fingerprint) folded into an Alert row by dedup.
+/// `dedupKey` deliberately excludes the fingerprint, so several source alerts
+/// share one row; without this table only the first fingerprint survives and the
+/// others can never resolve themselves (#595).
+model AlertSourceAlert {
+  id            String    @id @default(uuid())
+  alertId       String
+  /// The SOURCE system's alert id (Alertmanager `fingerprint`), matching
+  /// `Alert.externalId`. Not `Alert.fingerprint`, which is our own similarity
+  /// hash — the two are unrelated despite the upstream name.
+  sourceAlertId String
+  firstSeenAt   DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@unique([alertId, sourceAlertId])
+  @@index([sourceAlertId])
+  @@index([alertId, resolvedAt])
+  @@map("alert_source_alerts")
 }

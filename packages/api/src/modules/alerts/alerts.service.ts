@@ -156,6 +156,8 @@ export class AlertsService {
 					},
 				});
 
+				await this.rememberSourceAlert(existing.id, dto.sourceAlertId, now);
+
 				if (outcome === "reopened") {
 					await this.recordFlapReopen(updated, existing.resolvedAt ?? now);
 					this.logger.log(
@@ -194,6 +196,8 @@ export class AlertsService {
 				lastOccurrence: new Date(),
 			},
 		});
+
+		await this.rememberSourceAlert(alert.id, dto.sourceAlertId, new Date());
 
 		this.logger.log(`Created alert ${alert.id}: ${alert.title}`);
 		return alert;
@@ -269,6 +273,80 @@ export class AlertsService {
 	 * Find the newest alert episode for a dedupKey (#231 R2b — the key is no
 	 * longer unique, so this reads the latest row rather than the only one).
 	 */
+	/**
+	 * `dedupKey` excludes the source alert id, so several source alerts fold into
+	 * one row. Without a member record only the first id survives on
+	 * `externalId`, and the others can never resolve themselves (#595).
+	 *
+	 * A refire of a known member reopens its membership: the group is firing
+	 * again on that instance.
+	 */
+	private async rememberSourceAlert(
+		alertId: string,
+		sourceAlertId: string | undefined,
+		now: Date,
+	): Promise<void> {
+		if (!sourceAlertId) return;
+
+		await this.prisma.alertSourceAlert.upsert({
+			where: { alertId_sourceAlertId: { alertId, sourceAlertId } },
+			create: {
+				alertId,
+				sourceAlertId,
+				firstSeenAt: now,
+				lastSeenAt: now,
+			},
+			update: { lastSeenAt: now, resolvedAt: null },
+		});
+	}
+
+	/**
+	 * Resolve one member of a deduped group. The alert itself resolves only when
+	 * the last member does — while any member is still firing the condition is
+	 * still live, so resolving the row would be a lie (#595).
+	 *
+	 * Returns the alert when it reached `resolved`, the untouched alert when
+	 * members remain, and null when the source alert id belongs to no group.
+	 */
+	async resolveSourceAlert(sourceAlertId: string): Promise<Alert | null> {
+		const member = await this.prisma.alertSourceAlert.findFirst({
+			where: { sourceAlertId },
+			orderBy: { lastSeenAt: "desc" },
+		});
+
+		if (!member) {
+			// Pre-#595 rows have no member records; fall back to the single-alert
+			// reading so an alert created before this shipped can still resolve.
+			const legacy = await this.findBySourceAlertId(sourceAlertId);
+			if (!legacy) return null;
+			return legacy.status === AlertStatus.resolved
+				? legacy
+				: this.resolve(legacy.id);
+		}
+
+		await this.prisma.alertSourceAlert.update({
+			where: { id: member.id },
+			data: { resolvedAt: new Date() },
+		});
+
+		const stillFiring = await this.prisma.alertSourceAlert.count({
+			where: { alertId: member.alertId, resolvedAt: null },
+		});
+
+		const alert = await this.findById(member.alertId);
+		if (!alert) return null;
+
+		if (stillFiring > 0) {
+			this.logger.log(
+				`Source alert ${sourceAlertId} resolved; ${stillFiring} member(s) of alert ${member.alertId} still firing`,
+			);
+			return alert;
+		}
+
+		if (alert.status === AlertStatus.resolved) return alert;
+		return this.resolve(alert.id);
+	}
+
 	async findByDedupKey(dedupKey: string): Promise<Alert | null> {
 		return this.prisma.alert.findFirst({
 			where: { dedupKey },

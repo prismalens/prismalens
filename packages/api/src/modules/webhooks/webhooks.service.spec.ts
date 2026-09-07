@@ -85,6 +85,10 @@ describe("WebhooksService", () => {
 							...mockAlert,
 							status: "resolved",
 						}),
+						resolveSourceAlert: vi.fn().mockResolvedValue({
+							...mockAlert,
+							status: "resolved",
+						}),
 					},
 				},
 				{
@@ -342,7 +346,7 @@ describe("WebhooksService", () => {
 			const result = await service.resolvePrometheusAlert("fp-abc");
 
 			expect(alertsService.findBySourceAlertId).toHaveBeenCalledWith("fp-abc");
-			expect(alertsService.resolve).toHaveBeenCalledWith(mockAlert.id);
+			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-abc");
 			// The bug this guards: a resolved delivery must never reach create(),
 			// where dedup would read it as a refire and reopen the alert.
 			expect(alertsService.create).not.toHaveBeenCalled();
@@ -401,7 +405,8 @@ describe("WebhooksService", () => {
 			const result = await service.resolvePrometheusAlert("fp-abc");
 
 			expect(result?.status).toBe("resolved");
-			expect(alertsService.resolve).not.toHaveBeenCalled();
+			// Group membership decides this now, inside resolveSourceAlert (#595).
+			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-abc");
 		});
 	});
 

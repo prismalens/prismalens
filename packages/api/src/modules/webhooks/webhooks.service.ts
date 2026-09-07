@@ -168,6 +168,8 @@ export class WebhooksService {
 		// reads that as in-flight and throws CONFLICT on a retry inside the grace
 		// window — so ingesting for a fingerprint we cannot act on would break the
 		// idempotency it was added to provide.
+		// Resolves one member of the deduped group; the alert itself only reaches
+		// `resolved` when the last member does (#595).
 		const existing = await this.alertsService.findBySourceAlertId(fingerprint);
 		if (!existing) {
 			this.logger.log(
@@ -190,10 +192,7 @@ export class WebhooksService {
 		if ("replay" in ingested) return ingested.replay.alert;
 		const event = ingested.event;
 
-		const resolved =
-			existing.status === "resolved"
-				? existing
-				: await this.alertsService.resolve(existing.id);
+		const resolved = await this.alertsService.resolveSourceAlert(fingerprint);
 
 		if (resolved) await this.eventsService.markProcessed(event.id, resolved.id);
 		return resolved;
