@@ -62,9 +62,10 @@ export class WebhooksController {
 							// the dedup layer, which would read it as a refire and reopen
 							// the alert inside the flap window (#593).
 							if (alert.status === "resolved") {
-								const resolved = await this.webhooksService.resolvePrometheusAlert(
-									alert.fingerprint,
-								);
+								const resolved =
+									await this.webhooksService.resolvePrometheusAlert(
+										alert.fingerprint,
+									);
 								if (resolved) alertIds.push(resolved.id);
 								continue;
 							}
