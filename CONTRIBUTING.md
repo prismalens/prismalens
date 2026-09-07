@@ -385,8 +385,8 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
    for the reviewer and not for a future maintainer. No headings, bullets, bold, or
    `fix(scope):` prefix. Say what changed in the terms the user sees, not the
    mechanism, the design reason, what the tests assert, or which RFC or ADR applies.
-   If the user must act on upgrade, add one line starting `Action:`. End with the
-   issue number in parentheses. See `.changeset/README.md` → *What goes in the body*
+   End that paragraph with the issue number in parentheses; if the user must act on
+   upgrade, an `Action:` paragraph follows it and does not repeat the number. See `.changeset/README.md` → *What goes in the body*
    for the full rule and two calibration rewrites.
 
 ### Worked example

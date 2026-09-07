@@ -44,10 +44,10 @@ and maintainers read the issue and the code. Write for neither of them here.
 - Say what changed for the user in the terms the user sees: a screen, a
   command, a flag, a symptom that is gone. Not the mechanism, not the design
   reason, not what the tests assert, not which RFC or ADR applies.
-- If the user must do something on upgrade, add one more line starting
-  `Action:` with the exact command, variable, or page. This is the only
-  permitted second paragraph.
-- End with the issue number in parentheses.
+- End that paragraph with the issue number in parentheses.
+- If the user must do something on upgrade, add one more paragraph starting
+  `Action:` with the exact command, variable, or page. It goes after the issue
+  number and does not repeat it. This is the only permitted second paragraph.
 - If a user could not notice the change, run `pnpm changeset --empty` and
   write nothing.
 
