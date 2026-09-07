@@ -2,4 +2,4 @@
 "prismalens": patch
 ---
 
-frontend: remove unrendered stubs, unused hooks, and hardcoded card (issue #284)
+Removed unrendered placeholder cards, unused hooks, and stub components from the frontend interface. (#284)

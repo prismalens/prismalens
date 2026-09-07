@@ -2,6 +2,4 @@
 "prismalens": minor
 ---
 
-Withdraw the per-agent LLM override capability: the `INVESTIGATION_AGENTS` roster, its
-settings UI, and the `agentOverrides` settings field are removed, not relocated. A
-two-tier-native successor is tracked separately (#130).
+Per-agent LLM override settings and the agent roster UI have been retired from settings. Investigations now use the single active provider configuration. (#130)
