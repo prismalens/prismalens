@@ -386,7 +386,9 @@ via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
    `fix(scope):` prefix. Say what changed in the terms the user sees, not the
    mechanism, the design reason, what the tests assert, or which RFC or ADR applies.
    End that paragraph with the issue number in parentheses; if the user must act on
-   upgrade, an `Action:` paragraph follows it and does not repeat the number. See `.changeset/README.md` → *What goes in the body*
+   upgrade, an `Action:` paragraph follows it and does not repeat the number. If the
+   change is a security property, state the limit of the mechanism too — what it does
+   not do — or the note reads as a promise to cover everything. See `.changeset/README.md` → *What goes in the body*
    for the full rule and two calibration rewrites.
 
 ### Worked example

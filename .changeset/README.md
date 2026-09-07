@@ -50,6 +50,11 @@ and maintainers read the issue and the code. Write for neither of them here.
   number and does not repeat it. This is the only permitted second paragraph.
 - If a user could not notice the change, run `pnpm changeset --empty` and
   write nothing.
+- **If the change is a security property, say what it does NOT do.** State the
+  limit of the mechanism in the same paragraph, in the user's terms. A note that
+  says only what a defence covers reads as a promise that it covers everything.
+  This is the one place where being brief has made a note wrong twice, in
+  opposite directions, so it is a requirement and not a style preference.
 
 Everything cut from a changeset already has a home: the reason in the PR
 description, the design in the ADR, the hazard and its repair in the error
@@ -77,3 +82,15 @@ A 235-word entry about a credential leak became:
 
 In both, the mechanism, the file paths and the "tests pin this" sentence went
 away. What a user would notice stayed.
+
+A security note keeps its limit. The fencing change was written twice without
+one and was wrong both times — first as "potential prompt injections are
+neutralised", which promises the attack is blocked, then as "nothing is filtered
+or truncated" across four surfaces, two of which are length-capped. What it
+needed was eight words:
+
+> Alert labels, annotations, tool-output previews and agent transcripts now
+> render inside fences when they reach an investigation prompt, so text an
+> attacker controls cannot address the model directly. Fencing itself removes
+> nothing but the sentinels, and an injection attempt still reaches the model to
+> be reported. (#229)
