@@ -2,4 +2,4 @@
 "prismalens": patch
 ---
 
-All untrusted text reaching investigation prompts—including alert labels, annotations, tool output previews, and transcripts—is now escaped inside defensive fences. Potential prompt injections are neutralised without filtering or truncating the underlying alert data. (#229)
+Alert labels, annotations, tool-output previews and agent transcripts now render inside fences when they reach an investigation prompt, so text an attacker controls cannot address the model directly. Nothing is filtered or truncated, and an injection attempt still reaches the model to be reported. (#229)
