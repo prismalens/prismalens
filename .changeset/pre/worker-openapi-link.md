@@ -2,4 +2,4 @@
 "prismalens": patch
 ---
 
-Fix worker oRPC client to speak OpenAPI REST routes instead of oRPC RPC procedure paths, matching NestJS `@Implement` endpoints (#511).
+Worker API clients now route calls through REST endpoints matching backend route implementations. (#511)

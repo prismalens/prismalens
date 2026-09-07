@@ -2,28 +2,6 @@
 "prismalens": minor
 ---
 
-Ship a migration runner and retire the squash-`init` policy (SQLite app-data).
+`pl up` now applies database migrations itself at start, from SQL inside the installed package. A current database is left alone, a partial one advances in place, and a backup is taken before any write. Migration history is append-only from here on. (#335)
 
-The app now applies pending database migrations **programmatically at start**,
-from SQL packed inside the installed artifact — no `prisma` CLI, no `pnpm`, no
-schema source, none of which exist on a machine that ran `npm i -g prismalens`.
-A current database is a no-op; a partially-migrated one advances in place.
-
-Applying and recording are one `BEGIN IMMEDIATE` transaction, so concurrent or
-repeated runs converge and a crash mid-apply leaves nothing half-done. An
-existing populated database is backed up (`prismalens.db.bak-<epoch-ms>`) before
-any write, and a database whose history this build cannot account for — a
-downgrade, or an edited/squashed migration — is a hard stop with instructions
-rather than a partial apply.
-
-Migration history is **append-only from here on**. The development-phase rule
-that said to squash `init` and delete `prismalens.db` is removed from the repo's
-own instructions: following it once an installed database exists in the wild is
-data loss.
-
-**Upgrading an existing database:** `init` was edited in place three times before
-this rule existed, so a database created before those changes will stop with
-`checksum-mismatch` on first boot of this version. It is repairable in place —
-**do not delete the database.** The error message prints both checksums and the
-exact `UPDATE` to run; `CONTRIBUTING.md` → *Recovering a database that drifted*
-walks the whole procedure, including the DDL that must be applied alongside it.
+Action: a database created before `init` was last edited stops with `checksum-mismatch` on first boot. Do not delete it. See CONTRIBUTING.md, *Recovering a database that drifted*.

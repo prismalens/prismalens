@@ -2,4 +2,4 @@
 "prismalens": patch
 ---
 
-Provider layer: one exact-templateId registry with segmented adapters (#446).
+The provider integration layer now resolves external templates through a unified exact-template registry with segmented adapters. (#446)

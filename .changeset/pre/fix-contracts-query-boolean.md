@@ -2,4 +2,4 @@
 "prismalens": patch
 ---
 
-Query-string boolean filters no longer invert: "false" now parses to false.
+Query-string boolean filters in API requests no longer invert: `"false"` now correctly parses to `false`.
