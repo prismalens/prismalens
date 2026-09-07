@@ -30,3 +30,50 @@ but requires no release note (e.g. an internal refactor), use the escape hatch:
 pnpm changeset --empty
 ```
 
+
+## What goes in the body
+
+The body becomes one bullet on the GitHub release page and in
+`packages/cli/CHANGELOG.md`. Its reader is someone running `prismalens` who is
+deciding whether to upgrade and what to do afterwards. Reviewers read the PR
+and maintainers read the issue and the code. Write for neither of them here.
+
+- One paragraph. At most three sentences and 60 words. No headings, bullets,
+  bold, or blank-line sections, and no `fix(scope):` prefix; the changelog is
+  not `git log`.
+- Say what changed for the user in the terms the user sees: a screen, a
+  command, a flag, a symptom that is gone. Not the mechanism, not the design
+  reason, not what the tests assert, not which RFC or ADR applies.
+- End that paragraph with the issue number in parentheses.
+- If the user must do something on upgrade, add one more paragraph starting
+  `Action:` with the exact command, variable, or page. It goes after the issue
+  number and does not repeat it. This is the only permitted second paragraph.
+- If a user could not notice the change, run `pnpm changeset --empty` and
+  write nothing.
+
+Everything cut from a changeset already has a home: the reason in the PR
+description, the design in the ADR, the hazard and its repair in the error
+message and on docs.prismalens.io, the guarantees in the tests.
+
+### Calibration
+
+A 236-word entry about the migration runner became:
+
+> `pl up` now applies database migrations itself at start, from SQL inside the
+> installed package. A current database is left alone, a partial one advances in
+> place, and a backup is taken before any write. Migration history is
+> append-only from here on. (#335)
+>
+> Action: a database created before `init` was last edited stops with
+> `checksum-mismatch` on first boot. Do not delete it. See CONTRIBUTING.md,
+> *Recovering a database that drifted*.
+
+A 235-word entry about a credential leak became:
+
+> Provider error responses are no longer copied into thrown errors, so a token
+> or client secret echoed back by a provider cannot reach the logs or the
+> connection row. Errors still name the provider, the operation and the HTTP
+> status. (#347)
+
+In both, the mechanism, the file paths and the "tests pin this" sentence went
+away. What a user would notice stayed.
