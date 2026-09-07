@@ -143,6 +143,37 @@ export class WebhooksService {
 		}
 	}
 
+	/**
+	 * Alertmanager sends a `resolved` delivery for an alert that has just
+	 * stopped firing. Routing it through `processGenericWebhook` would hand a
+	 * resolution to the dedup layer as if it were a firing, and #231's flap
+	 * window would reopen the very alert being resolved (#593).
+	 *
+	 * An unknown fingerprint resolves nothing: we never saw it fire, so there is
+	 * no episode to close.
+	 */
+	async resolvePrometheusAlert(
+		fingerprint: string | undefined,
+	): Promise<Alert | null> {
+		if (!fingerprint) {
+			this.logger.warn(
+				"Prometheus resolved delivery carried no fingerprint; nothing to resolve",
+			);
+			return null;
+		}
+
+		const existing = await this.alertsService.findBySourceAlertId(fingerprint);
+		if (!existing) {
+			this.logger.log(
+				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,
+			);
+			return null;
+		}
+		if (existing.status === "resolved") return existing;
+
+		return this.alertsService.resolve(existing.id);
+	}
+
 	async processGenericWebhook(
 		dto: GenericWebhookDto,
 		idempotencyKey?: string,

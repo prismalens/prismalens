@@ -80,6 +80,11 @@ describe("WebhooksService", () => {
 					useValue: {
 						create: vi.fn().mockResolvedValue(mockAlert),
 						findById: vi.fn().mockResolvedValue(mockAlert),
+						findBySourceAlertId: vi.fn().mockResolvedValue(null),
+						resolve: vi.fn().mockResolvedValue({
+							...mockAlert,
+							status: "resolved",
+						}),
 					},
 				},
 				{
@@ -326,4 +331,53 @@ describe("WebhooksService", () => {
 			expect(result.alert.id).toBe("alt-123");
 		});
 	});
+
+	describe("resolvePrometheusAlert (#593)", () => {
+		it("resolves the existing alert instead of creating a new one", async () => {
+			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+
+			const result = await service.resolvePrometheusAlert("fp-abc");
+
+			expect(alertsService.findBySourceAlertId).toHaveBeenCalledWith("fp-abc");
+			expect(alertsService.resolve).toHaveBeenCalledWith(mockAlert.id);
+			// The bug this guards: a resolved delivery must never reach create(),
+			// where dedup would read it as a refire and reopen the alert.
+			expect(alertsService.create).not.toHaveBeenCalled();
+			expect(result?.status).toBe("resolved");
+		});
+
+		it("ignores a resolved delivery for a fingerprint never seen firing", async () => {
+			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce(null);
+
+			const result = await service.resolvePrometheusAlert("fp-unknown");
+
+			expect(result).toBeNull();
+			expect(alertsService.resolve).not.toHaveBeenCalled();
+			expect(alertsService.create).not.toHaveBeenCalled();
+		});
+
+		it("ignores a resolved delivery carrying no fingerprint", async () => {
+			const result = await service.resolvePrometheusAlert(undefined);
+
+			expect(result).toBeNull();
+			expect(alertsService.findBySourceAlertId).not.toHaveBeenCalled();
+			expect(alertsService.resolve).not.toHaveBeenCalled();
+		});
+
+		it("does not re-resolve an already resolved alert", async () => {
+			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+			});
+
+			const result = await service.resolvePrometheusAlert("fp-abc");
+
+			expect(result?.status).toBe("resolved");
+			expect(alertsService.resolve).not.toHaveBeenCalled();
+		});
+	});
+
 });
