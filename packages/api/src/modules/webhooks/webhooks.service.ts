@@ -143,6 +143,64 @@ export class WebhooksService {
 		}
 	}
 
+	/**
+	 * Alertmanager sends a `resolved` delivery for an alert that has just
+	 * stopped firing. Routing it through `processGenericWebhook` would hand a
+	 * resolution to the dedup layer as if it were a firing, and #231's flap
+	 * window would reopen the very alert being resolved (#593).
+	 *
+	 * An unknown fingerprint resolves nothing: we never saw it fire, so there is
+	 * no episode to close.
+	 */
+	async resolvePrometheusAlert(
+		fingerprint: string | undefined,
+		idempotencyKey?: string,
+	): Promise<Alert | null> {
+		if (!fingerprint) {
+			this.logger.warn(
+				"Prometheus resolved delivery carried no fingerprint; nothing to resolve",
+			);
+			return null;
+		}
+
+		// The lookup comes before ingestEvent on purpose. An Event row that never
+		// reaches markProcessed keeps a null alertId, and resolveIdempotentDelivery
+		// reads that as in-flight and throws CONFLICT on a retry inside the grace
+		// window — so ingesting for a fingerprint we cannot act on would break the
+		// idempotency it was added to provide.
+		// Membership-aware: `Alert.externalId` only holds the id of the source
+		// alert that created the row, so keying the guard on it would miss every
+		// other member of a deduped group and never reach resolveSourceAlert,
+		// leaving the group stuck triggered (#595).
+		const existing =
+			await this.alertsService.findAlertBySourceAlert(fingerprint);
+		if (!existing) {
+			this.logger.log(
+				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,
+			);
+			return null;
+		}
+
+		// From here a resolution will happen, so the delivery gets the same
+		// immutable Event row and idempotency handling as every other path (#593).
+		const ingested = await this.ingestEvent(idempotencyKey, () =>
+			this.eventsService.create({
+				source: "prometheus",
+				sourceEventId: fingerprint,
+				idempotencyKey,
+				eventType: "alert",
+				payload: { status: "resolved", fingerprint },
+			}),
+		);
+		if ("replay" in ingested) return ingested.replay.alert;
+		const event = ingested.event;
+
+		const resolved = await this.alertsService.resolveSourceAlert(fingerprint);
+
+		if (resolved) await this.eventsService.markProcessed(event.id, resolved.id);
+		return resolved;
+	}
+
 	async processGenericWebhook(
 		dto: GenericWebhookDto,
 		idempotencyKey?: string,

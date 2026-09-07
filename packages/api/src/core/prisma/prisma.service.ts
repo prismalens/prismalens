@@ -35,6 +35,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.alert;
 	}
 
+	get alertSourceAlert() {
+		return prisma.alertSourceAlert;
+	}
+
 	get recommendation() {
 		return prisma.recommendation;
 	}

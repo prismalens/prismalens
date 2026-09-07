@@ -58,6 +58,21 @@ export class WebhooksController {
 					const alerts = input.alerts ?? [];
 					for (const [index, alert] of alerts.entries()) {
 						try {
+							// A `resolved` delivery closes an episode; it must never reach
+							// the dedup layer, which would read it as a refire and reopen
+							// the alert inside the flap window (#593).
+							if (alert.status === "resolved") {
+								const resolved =
+									await this.webhooksService.resolvePrometheusAlert(
+										alert.fingerprint,
+										idempotencyKey === undefined
+											? undefined
+											: `${idempotencyKey}:${alert.fingerprint ?? index}`,
+									);
+								if (resolved) alertIds.push(resolved.id);
+								continue;
+							}
+
 							const genericDto: GenericWebhookDto = {
 								title: alert.labels?.alertname ?? "Prometheus Alert",
 								description:
@@ -66,6 +81,8 @@ export class WebhooksController {
 									alert.labels?.severity,
 								),
 								source: "prometheus",
+								// Alertmanager's link back to the firing expression (#592).
+								sourceUrl: alert.generatorURL,
 								labels: alert.labels,
 								sourceEventId: alert.fingerprint,
 							};

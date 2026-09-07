@@ -80,6 +80,16 @@ describe("WebhooksService", () => {
 					useValue: {
 						create: vi.fn().mockResolvedValue(mockAlert),
 						findById: vi.fn().mockResolvedValue(mockAlert),
+						findBySourceAlertId: vi.fn().mockResolvedValue(null),
+						findAlertBySourceAlert: vi.fn().mockResolvedValue(null),
+						resolve: vi.fn().mockResolvedValue({
+							...mockAlert,
+							status: "resolved",
+						}),
+						resolveSourceAlert: vi.fn().mockResolvedValue({
+							...mockAlert,
+							status: "resolved",
+						}),
 					},
 				},
 				{
@@ -326,4 +336,79 @@ describe("WebhooksService", () => {
 			expect(result.alert.id).toBe("alt-123");
 		});
 	});
+
+	describe("resolvePrometheusAlert (#593)", () => {
+		it("resolves the existing alert instead of creating a new one", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+
+			const result = await service.resolvePrometheusAlert("fp-abc");
+
+			expect(alertsService.findAlertBySourceAlert).toHaveBeenCalledWith("fp-abc");
+			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-abc");
+			// The bug this guards: a resolved delivery must never reach create(),
+			// where dedup would read it as a refire and reopen the alert.
+			expect(alertsService.create).not.toHaveBeenCalled();
+			expect(result?.status).toBe("resolved");
+		});
+
+		it("ignores a resolved delivery for a fingerprint never seen firing", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
+
+			const result = await service.resolvePrometheusAlert(
+				"fp-unknown",
+				"delivery-9:fp-unknown",
+			);
+
+			expect(result).toBeNull();
+			expect(alertsService.resolve).not.toHaveBeenCalled();
+			expect(alertsService.create).not.toHaveBeenCalled();
+			// No Event row: one created here would never reach markProcessed, and a
+			// retry inside the grace window would then throw CONFLICT.
+			expect(eventsService.create).not.toHaveBeenCalled();
+		});
+
+		it("ignores a resolved delivery carrying no fingerprint", async () => {
+			const result = await service.resolvePrometheusAlert(undefined);
+
+			expect(result).toBeNull();
+			expect(alertsService.findBySourceAlertId).not.toHaveBeenCalled();
+			expect(alertsService.resolve).not.toHaveBeenCalled();
+		});
+
+		it("writes an Event row for the resolved delivery, like every other path", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+
+			await service.resolvePrometheusAlert("fp-abc", "delivery-1:fp-abc");
+
+			expect(eventsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					source: "prometheus",
+					sourceEventId: "fp-abc",
+					idempotencyKey: "delivery-1:fp-abc",
+					payload: { status: "resolved", fingerprint: "fp-abc" },
+				}),
+			);
+			expect(eventsService.markProcessed).toHaveBeenCalled();
+		});
+
+		it("does not re-resolve an already resolved alert", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+			});
+
+			const result = await service.resolvePrometheusAlert("fp-abc");
+
+			expect(result?.status).toBe("resolved");
+			// Group membership decides this now, inside resolveSourceAlert (#595).
+			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-abc");
+		});
+	});
+
 });

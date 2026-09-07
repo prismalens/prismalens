@@ -23,6 +23,12 @@ const mockPrismaService = {
 		count: vi.fn(),
 		groupBy: vi.fn(),
 	},
+	alertSourceAlert: {
+		upsert: vi.fn(),
+		findFirst: vi.fn(),
+		update: vi.fn(),
+		count: vi.fn(),
+	},
 	timelineEntry: {
 		create: vi.fn(),
 	},
@@ -745,4 +751,107 @@ describe("AlertsService (BDD)", () => {
 			});
 		});
 	});
+
+	describe("findAlertBySourceAlert — membership before externalId (#595)", () => {
+		it("finds a non-first group member, which externalId alone cannot", async () => {
+			// externalId holds only the id of the source alert that CREATED the row,
+			// so a lookup keying on it returns null for every other member. The
+			// guard that used it made the whole per-member path unreachable.
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue({
+				id: "mem-B",
+				alertId: "alt-group",
+				sourceAlertId: "fp-B",
+			});
+			mockPrismaService.alert.findUnique.mockResolvedValue({
+				id: "alt-group",
+				externalId: "fp-A",
+				status: "triggered",
+			});
+
+			const found = await service.findAlertBySourceAlert("fp-B");
+
+			expect(found?.id).toBe("alt-group");
+			expect(mockPrismaService.alert.findFirst).not.toHaveBeenCalled();
+		});
+
+		it("falls back to externalId when no membership row exists", async () => {
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.findFirst.mockResolvedValue({
+				id: "alt-legacy",
+				externalId: "fp-old",
+			});
+
+			const found = await service.findAlertBySourceAlert("fp-old");
+
+			expect(found?.id).toBe("alt-legacy");
+		});
+	});
+
+	describe("resolveSourceAlert — deduped group membership (#595)", () => {
+		const groupAlert = {
+			id: "alt-group",
+			status: "triggered",
+			dedupKey: "k",
+			externalId: "fp-A",
+		};
+
+		it("does NOT resolve the alert while another member is still firing", async () => {
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue({
+				id: "mem-A",
+				alertId: "alt-group",
+				sourceAlertId: "fp-A",
+			});
+			mockPrismaService.alertSourceAlert.update.mockResolvedValue({});
+			mockPrismaService.alertSourceAlert.count.mockResolvedValue(1);
+			mockPrismaService.alert.findUnique.mockResolvedValue(groupAlert);
+
+			const result = await service.resolveSourceAlert("fp-A");
+
+			// The condition is still live on the other instance, so resolving the
+			// row would be a lie — this is the bug #595 was filed for.
+			expect(mockPrismaService.alert.update).not.toHaveBeenCalled();
+			expect(result?.status).toBe("triggered");
+		});
+
+		it("resolves the alert when the last member resolves", async () => {
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue({
+				id: "mem-B",
+				alertId: "alt-group",
+				sourceAlertId: "fp-B",
+			});
+			mockPrismaService.alertSourceAlert.update.mockResolvedValue({});
+			mockPrismaService.alertSourceAlert.count.mockResolvedValue(0);
+			mockPrismaService.alert.findUnique.mockResolvedValue(groupAlert);
+			mockPrismaService.alert.update.mockResolvedValue({
+				...groupAlert,
+				status: "resolved",
+			});
+
+			const result = await service.resolveSourceAlert("fp-B");
+
+			expect(mockPrismaService.alert.update).toHaveBeenCalled();
+			expect(result?.status).toBe("resolved");
+		});
+
+		it("resolves a member whose id is only on the alert row (pre-#595 data)", async () => {
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.findFirst.mockResolvedValue(groupAlert);
+			mockPrismaService.alert.update.mockResolvedValue({
+				...groupAlert,
+				status: "resolved",
+			});
+
+			const result = await service.resolveSourceAlert("fp-A");
+
+			expect(result?.status).toBe("resolved");
+		});
+
+		it("returns null for a source alert id belonging to no group", async () => {
+			mockPrismaService.alertSourceAlert.findFirst.mockResolvedValue(null);
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+
+			expect(await service.resolveSourceAlert("fp-nobody")).toBeNull();
+		});
+	});
+
 });
