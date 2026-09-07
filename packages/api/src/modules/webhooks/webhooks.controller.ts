@@ -65,6 +65,9 @@ export class WebhooksController {
 								const resolved =
 									await this.webhooksService.resolvePrometheusAlert(
 										alert.fingerprint,
+										idempotencyKey === undefined
+											? undefined
+											: `${idempotencyKey}:${alert.fingerprint ?? index}`,
 									);
 								if (resolved) alertIds.push(resolved.id);
 								continue;

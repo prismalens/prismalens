@@ -154,6 +154,7 @@ export class WebhooksService {
 	 */
 	async resolvePrometheusAlert(
 		fingerprint: string | undefined,
+		idempotencyKey?: string,
 	): Promise<Alert | null> {
 		if (!fingerprint) {
 			this.logger.warn(
@@ -162,6 +163,21 @@ export class WebhooksService {
 			return null;
 		}
 
+		// Every other webhook path opens with an immutable Event row and honours
+		// the delivery's idempotency key; a resolution is a delivery too, so it
+		// gets the same audit trail and replay handling (#593).
+		const ingested = await this.ingestEvent(idempotencyKey, () =>
+			this.eventsService.create({
+				source: "prometheus",
+				sourceEventId: fingerprint,
+				idempotencyKey,
+				eventType: "alert",
+				payload: { status: "resolved", fingerprint },
+			}),
+		);
+		if ("replay" in ingested) return ingested.replay.alert;
+		const event = ingested.event;
+
 		const existing = await this.alertsService.findBySourceAlertId(fingerprint);
 		if (!existing) {
 			this.logger.log(
@@ -169,9 +185,14 @@ export class WebhooksService {
 			);
 			return null;
 		}
-		if (existing.status === "resolved") return existing;
 
-		return this.alertsService.resolve(existing.id);
+		const resolved =
+			existing.status === "resolved"
+				? existing
+				: await this.alertsService.resolve(existing.id);
+
+		if (resolved) await this.eventsService.markProcessed(event.id, resolved.id);
+		return resolved;
 	}
 
 	async processGenericWebhook(

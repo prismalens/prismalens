@@ -367,6 +367,25 @@ describe("WebhooksService", () => {
 			expect(alertsService.resolve).not.toHaveBeenCalled();
 		});
 
+		it("writes an Event row for the resolved delivery, like every other path", async () => {
+			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+
+			await service.resolvePrometheusAlert("fp-abc", "delivery-1:fp-abc");
+
+			expect(eventsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					source: "prometheus",
+					sourceEventId: "fp-abc",
+					idempotencyKey: "delivery-1:fp-abc",
+					payload: { status: "resolved", fingerprint: "fp-abc" },
+				}),
+			);
+			expect(eventsService.markProcessed).toHaveBeenCalled();
+		});
+
 		it("does not re-resolve an already resolved alert", async () => {
 			vi.mocked(alertsService.findBySourceAlertId).mockResolvedValueOnce({
 				...mockAlert,
