@@ -815,6 +815,17 @@ function assembleInvestigationContext(
 	});
 }
 
+/**
+ * `getIncident` now hands back the raw Prisma row (0005 §2 — no more JSON
+ * round trip through an HTTP call, which used to stringify dates for free).
+ * Every date field read off it goes through here.
+ */
+function toIsoString(value: unknown): string | null {
+	if (value instanceof Date) return value.toISOString();
+	if (typeof value === "string") return value;
+	return null;
+}
+
 /** Degenerate no-alerts case: project the incident itself into a single alert. */
 function incidentAsAlert(
 	incident: Record<string, unknown> | null,
@@ -826,21 +837,20 @@ function incidentAsAlert(
 		annotations: incident?.description
 			? { description: String(incident.description) }
 			: {},
-		startsAt: (incident?.triggeredAt as string) ?? null,
+		startsAt: toIsoString(incident?.triggeredAt),
 	};
 }
 
 /** Project incident meta (framing only — no lifecycle fields, ADR-0015). */
 function incidentMeta(incident: Record<string, unknown>): IncidentContext {
+	const startedAt = toIsoString(incident.triggeredAt);
 	return {
 		...(incident.title ? { title: String(incident.title) } : {}),
 		...(incident.description
 			? { description: String(incident.description) }
 			: {}),
 		...(incident.severity ? { severity: String(incident.severity) } : {}),
-		...(incident.triggeredAt
-			? { startedAt: String(incident.triggeredAt) }
-			: {}),
+		...(startedAt ? { startedAt } : {}),
 	};
 }
 

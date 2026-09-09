@@ -454,6 +454,37 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	});
 });
 
+/**
+ * 0005 §2 regression: `getIncident` hands back the raw Prisma row now, not a
+ * JSON-round-tripped one — `triggeredAt` is a real `Date`, not a string. The
+ * degenerate no-alerts path used to cast it straight to `string`, which built
+ * a `FiringAlert` the contract schema then rejected downstream.
+ */
+describe("buildRequest degenerate no-alerts path (Date-typed incident fields)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("does not throw when the incident's date fields are real Date instances", async () => {
+		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
+		vi.stubEnv("PRISMALENS_SANDBOX", "process");
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({
+				title: "No alerts here",
+				triggeredAt: new Date("2026-07-31T10:00:00.000Z"),
+			})),
+		});
+
+		const { request } = await buildRequest(
+			{ incidentId: "inc-no-alerts", investigationId: "inv-no-alerts" },
+			ports,
+		);
+
+		expect(request.context?.alerts).toHaveLength(1);
+		expect(request.context?.alerts[0].startsAt).toBe("2026-07-31T10:00:00.000Z");
+	});
+});
+
 describe("runInvestigationJob schema validation", () => {
 	it("malformed job payload -> throws, not silent degradation", async () => {
 		const job = { id: "job-malformed", investigationId: "inv-malformed", attempts: 1 };
