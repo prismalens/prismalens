@@ -529,28 +529,17 @@ function assertTarball(tarball, copiedNames) {
 
 /**
  * Determine which npm dist-tag to publish to.
- * Explicit `--tag <tag>` wins. If omitted, pre mode (.changeset/pre.json
- * with mode === "pre") or a prerelease version string (e.g. `0.5.0-rc.0`)
- * sets the tag (e.g. "rc"); otherwise publishing defaults to "latest".
- * Fails closed if the version contains a prerelease indicator ('-') but
- * no tag could be resolved, rather than publishing to "latest".
+ * Explicit `--tag <tag>` wins. If omitted, a prerelease version string
+ * (e.g. `0.5.0-rc.0`) sets the tag (e.g. "rc"); otherwise publishing
+ * defaults to "latest". Fails closed if the version contains a prerelease
+ * indicator ('-') but no tag could be resolved, rather than publishing to
+ * "latest".
  */
 export function resolvePublishTag(options = {}) {
 	const explicit =
 		options.tag ??
 		(options.tagArg !== undefined ? options.tagArg : opt("--tag", null));
 	if (explicit) return explicit;
-
-	const rootDir = options.rootDir ?? ROOT;
-	const prePath = join(rootDir, ".changeset", "pre.json");
-	if (existsSync(prePath)) {
-		try {
-			const pre = readJson(prePath);
-			if (pre?.mode === "pre" && pre?.tag) {
-				return pre.tag;
-			}
-		} catch {}
-	}
 
 	const version =
 		options.version ??

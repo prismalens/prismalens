@@ -494,7 +494,7 @@ describe("AlertsService (BDD)", () => {
 	describe("findAll with the unassigned filter", () => {
 		// The row window has to apply to the unassigned set itself; filtering a
 		// page of 100 in the browser instead hides every triggered alert behind
-		// newer resolved ones (.changeset/ux-study-alerts-tab-rootcause-progress.md).
+		// newer resolved ones.
 		type StatusFilter = string | { in: readonly string[] } | undefined;
 		type AlertWhere = {
 			incidentId?: string | null;
