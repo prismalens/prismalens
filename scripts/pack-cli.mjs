@@ -487,11 +487,7 @@ function assertTarball(tarball, copiedNames) {
 			"the tarball has no SPA entry at node_modules/@prismalens/api/public/index.html",
 		);
 	}
-	// The migration runner reads `dist/prisma/<flavour>/schema` and nothing else,
-	// and `pl up` is always the SQLITE placement — so assert that lineage by name.
-	// A flavour-agnostic pattern would be satisfied by the `pg` copy alone, which
-	// `pl up` never reads: the tarball would pass here and then fail to create a
-	// database on a stranger's machine.
+	// The migration runner reads `dist/prisma/sqlite/schema` and nothing else.
 	if (
 		!has((e) =>
 			/node_modules\/@prismalens\/database\/dist\/prisma\/sqlite\/schema\/[^/]+\/migration\.sql$/.test(
@@ -668,23 +664,12 @@ export function packCli() {
 		if (name === "@prismalens/database") {
 			// Migration SQL + schema, applied at first boot through the
 			// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
-			// closure and must never be invoked at user runtime.
-			//
-			// Staged at `dist/prisma/<flavour>/schema` — the first candidate
-			// `src/migrator/migration-source.ts` resolves from its own compiled
-			// location (`dist/src/migrator/` -> `../..`), and the layout
-			// `scripts/copy-migrations.mjs` produces at build time. Restaged here
-			// rather than trusted from the dist copy because tsc emits only JS: a
-			// build that skipped copy-migrations would otherwise pack a tarball with
-			// no SQL in it and fail on a stranger's machine, not on ours.
-			//
-			// This used to be staged at the source layout (`prisma/<flavour>/schema`)
-			// as well, to serve #357's interim `migrate.ts`. That runner is gone
-			// (#335 deduplication) and nothing reads the source layout at runtime.
-			for (const flavour of ["sqlite", "pg"]) {
-				const from = join(dir, "prisma", flavour, "schema");
-				if (!existsSync(from)) continue;
-				copyTree(from, join(target, "dist", "prisma", flavour, "schema"));
+			// closure and must never be invoked at user runtime. Restaged here
+			// (not trusted from the dist copy) because tsc emits only JS: a build
+			// that skipped copy-migrations would pack a tarball with no SQL in it.
+			const from = join(dir, "prisma", "sqlite", "schema");
+			if (existsSync(from)) {
+				copyTree(from, join(target, "dist", "prisma", "sqlite", "schema"));
 			}
 			// Prisma 7's `prisma-client` generator emits TypeScript, which tsc
 			// compiles into dist/prisma/generated. Any NON-TypeScript asset it

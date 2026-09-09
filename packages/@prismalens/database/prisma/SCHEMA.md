@@ -573,16 +573,3 @@ ORDER BY triggered_at DESC;
 ```
 
 ---
-
-## Edition Differences
-
-### Community Edition
-- Single organization (no multi-tenancy)
-- No on-call schedules (AI workers handle everything)
-- Simple user model: Owner + Members
-
-### Enterprise Edition (Future)
-- Add `organizationId` to key models
-- Add `Schedule`, `EscalationPolicy` models
-- Full RBAC for users
-- SSO/SAML support

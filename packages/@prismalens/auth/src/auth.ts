@@ -47,7 +47,7 @@ export async function assertOrganizationCreatable(
 export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
 		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
-			provider: options.databaseProvider,
+			provider: "sqlite",
 		}),
 
 		// Base URL for auth endpoints
@@ -131,9 +131,6 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
  * Options for creating the auth instance
  */
 export interface AuthOptions {
-	/** Database provider: "postgresql" or "sqlite" */
-	databaseProvider: "postgresql" | "sqlite";
-
 	/** Base URL for the API (e.g., "http://localhost:3001") */
 	baseURL: string;
 

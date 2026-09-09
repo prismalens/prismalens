@@ -114,7 +114,7 @@ export default defineCommand({
 		//
 		// What `pl up` still depends on is the migration SQL being present in the
 		// tarball: `scripts/pack-cli.mjs` stages it at
-		// `@prismalens/database/dist/prisma/<flavour>/schema` and asserts it.
+		// `@prismalens/database/dist/prisma/sqlite/schema` and asserts it.
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Dashboard: ${app.staticDir}`);
 

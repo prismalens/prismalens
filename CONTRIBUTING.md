@@ -104,8 +104,8 @@ schema source. Four stages, and what carries each:
 
 | Stage | Who does it | Where it lives | How to see it |
 |---|---|---|---|
-| **Author** | you, once per schema change | `packages/@prismalens/database/prisma/sqlite/schema/<timestamp>_<name>/migration.sql` (+ the `pg` twin) | `pnpm db:migrate` |
-| **Ship** | `pnpm build` | `dist/prisma/<flavour>/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
+| **Author** | you, once per schema change | `packages/@prismalens/database/prisma/sqlite/schema/<timestamp>_<name>/migration.sql` | `pnpm db:migrate` |
+| **Ship** | `pnpm build` | `dist/prisma/sqlite/schema/…` — `scripts/copy-migrations.mjs` stages the SQL next to the compiled runner, because `tsc` emits only JS | `ls packages/@prismalens/database/dist/prisma/sqlite/schema` |
 | **Detect** | the runner, on every app start | shipped migrations minus the rows in `_prisma_migrations` | `pnpm db:init` prints what it will apply |
 | **Apply + record** | the runner, in one `BEGIN IMMEDIATE` transaction | the SQL runs and its `_prisma_migrations` row is written **in the same transaction** — there is no half-applied state to repair | `pnpm exec prisma migrate status` agrees with it |
 
@@ -174,41 +174,21 @@ remedy when schema state is not certain.
 
 ### Refuse-and-report on duplicate data
 
-When a migration introduces a new unique index on populated tables (such as `account(issuer, accountId)` in `20260826180000_account_issuer_account_id_unique`), pre-existing duplicate records cause the migration to **hard-stop and refuse to apply**. Automatic de-duplication is rejected by policy because deleting auth records unattended is unsafe. Neither lineage constructs a `MigrationError` for duplicate data.
+When a migration introduces a new unique index on populated tables (such as `account(issuer, accountId)` in `20260826180000_account_issuer_account_id_unique`), pre-existing duplicate records cause the migration to **hard-stop and refuse to apply**. Automatic de-duplication is rejected by policy because deleting auth records unattended is unsafe. The runner does not construct a `MigrationError` for duplicate data.
 
-What the operator sees:
-- **PostgreSQL (`prisma migrate deploy`):** The PL/pgSQL pre-flight check raises an exception naming the offending `(issuer, accountId)` pairs, row IDs, and counts:
-  ```
-  Cannot create unique index on "account"("issuer", "accountId"): duplicate records found:
-    - issuer="local:credential", accountId="dup_acc_100" (rows: a_cred_1, a_cred_2, count: 2)
-  ```
-  Prisma records the migration in `_prisma_migrations` with `finished_at` set to NULL. Subsequent runs of `prisma migrate deploy` abort with P3009 until this record is marked as rolled back.
-- **SQLite (`pl up` / embedded runner):** The migration fails with a raw `SqliteError: UNIQUE constraint failed: account.issuer, account.accountId` and rolls back atomically, leaving the database and ledger untouched. Closing that gap in the runner is tracked as #496 ("db: the SQLite migration lineage refuses duplicate Account rows without reporting them").
+What the operator sees: the migration fails with a raw `SqliteError: UNIQUE constraint failed: account.issuer, account.accountId` and rolls back atomically, leaving the database and ledger untouched. Closing that gap in the runner is tracked as #496 ("db: the SQLite migration lineage refuses duplicate Account rows without reporting them").
 
 What to do:
 1. Run the diagnostic query to inspect the duplicate rows:
-   - SQLite:
-     ```console
-     $ sqlite3 ~/.prismalens/prismalens.db \
-         "SELECT issuer, accountId, GROUP_CONCAT(id, ', ') AS ids, COUNT(*) AS count
-          FROM account
-          GROUP BY issuer, accountId
-          HAVING COUNT(*) > 1;"
-     ```
-   - PostgreSQL:
-     ```sql
-     SELECT "issuer", "accountId", string_agg("id"::text, ', ') AS ids, COUNT(*) AS count
-     FROM "account"
-     GROUP BY "issuer", "accountId"
-     HAVING COUNT(*) > 1;
-     ```
-2. Manually resolve the duplicate records (e.g. re-assigning ownership or removing invalid stale accounts after human inspection).
-3. On PostgreSQL, mark the failed migration record as rolled back before re-deploying:
    ```console
-   $ pnpm exec prisma migrate resolve --rolled-back 20260826180000_account_issuer_account_id_unique --config prisma.config.ts
+   $ sqlite3 ~/.prismalens/prismalens.db \
+       "SELECT issuer, accountId, GROUP_CONCAT(id, ', ') AS ids, COUNT(*) AS count
+        FROM account
+        GROUP BY issuer, accountId
+        HAVING COUNT(*) > 1;"
    ```
-   SQLite does not require this step because the embedded runner rolls back atomically without recording a failed ledger row.
-4. Re-run `pl up` (SQLite) or `pnpm exec prisma migrate deploy --config prisma.config.ts` (PostgreSQL).
+2. Manually resolve the duplicate records (e.g. re-assigning ownership or removing invalid stale accounts after human inspection).
+3. Re-run `pl up`.
 
 ### Recovering a database that drifted
 
@@ -291,9 +271,6 @@ with the error text — do not delete the database.
 
 A database repaired this way is schema-identical to a fresh one; only the ordinal
 position of an `ALTER TABLE`-added column differs, which Prisma does not depend on.
-
-PostgreSQL (the server placement) is out of the runner's scope and keeps using
-`prisma migrate deploy` — a server deploy has the CLI.
 
 ## Making a change
 

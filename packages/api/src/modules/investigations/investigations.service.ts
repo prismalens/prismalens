@@ -403,10 +403,8 @@ export class InvestigationsService {
 	 * `branchId`, so it lands under the {@link INVESTIGATION_REPORT_BRANCH} sentinel.
 	 *
 	 * Insert strategy — SQLite's `createMany` has no `skipDuplicates` (the generated
-	 * client omits it), so a per-row insert that swallows the unique violation is the
-	 * dialect-agnostic idempotency path. PostgreSQL could use
-	 * `createMany({ skipDuplicates: true })`, but keeping ONE path avoids a
-	 * dialect branch and behaves identically on retry. Batches are small (≤25).
+	 * client omits it), so a per-row insert that swallows the unique violation is
+	 * the idempotency path. Batches are small (≤25).
 	 *
 	 * @returns how many rows were newly inserted vs skipped as duplicates.
 	 */

@@ -199,7 +199,7 @@ describe("runMigrations — fresh database", () => {
 
 		const result = await runMigrations({
 			databaseFile: file,
-			migrationsDir: resolveMigrationsDir("sqlite"),
+			migrationsDir: resolveMigrationsDir(),
 		});
 
 		expect(result.applied).toContain(SHIPPED_INIT);
@@ -524,20 +524,5 @@ describe("runMigrations — default database location", () => {
 			if (previous === undefined) delete process.env.PRISMALENS_WORKSPACE_DIR;
 			else process.env.PRISMALENS_WORKSPACE_DIR = previous;
 		}
-	});
-});
-
-describe("runMigrations — non-SQLite placements", () => {
-	it("skips without touching anything when the database type is postgresql", async () => {
-		const file = dbFile();
-
-		const result = await runMigrations({
-			databaseFile: file,
-			dbType: "postgresql",
-		});
-
-		expect(result.status).toBe("skipped-non-sqlite");
-		expect(result.applied).toEqual([]);
-		expect(existsSync(file)).toBe(false);
 	});
 });

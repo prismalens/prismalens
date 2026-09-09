@@ -53,9 +53,6 @@ export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 	}
 
 	onModuleInit() {
-		const databaseUrl = this.configService.get<string>("DATABASE_URL", "");
-		const isPostgres = databaseUrl.startsWith("postgres");
-
 		// The origin this process actually serves on. This used to default to the
 		// literal `http://localhost:3001`, which made `pl up --port 8080` — or any
 		// bind other than the dev stack's — reject every sign-in with
@@ -137,7 +134,6 @@ export class AuthService implements OnModuleInit, OnApplicationBootstrap {
 		);
 
 		this._auth = createAuth(prisma, {
-			databaseProvider: isPostgres ? "postgresql" : "sqlite",
 			baseURL: publicUrl,
 			trustedOrigins,
 			secret,
