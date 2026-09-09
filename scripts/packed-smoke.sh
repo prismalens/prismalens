@@ -101,14 +101,13 @@ BIN="$SCRATCH/node_modules/.bin"
 
 echo "==> the copied first-party closure survived install"
 # The mirror image of the pre-#237 assertion. `pl up` resolves @prismalens/api
-# and @prismalens/worker from HERE; if npm pruned them, the CLI still installs
-# and `pl up` fails at the first user's first command.
+# from HERE; if npm pruned it, the CLI still installs and `pl up` fails at the
+# first user's first command.
 PKG="$SCRATCH/node_modules/prismalens"
-for p in api worker database engine config contracts logger auth integrations; do
+for p in api database engine config contracts logger auth integrations; do
 	[ -d "$PKG/node_modules/@prismalens/$p" ] || fail "@prismalens/$p is missing from the installed package"
 done
 [ -f "$PKG/node_modules/@prismalens/api/public/index.html" ] || fail "the SPA is missing from the installed package"
-[ -f "$PKG/node_modules/@prismalens/worker/dist/index.js" ] || fail "the forked investigation child is missing from the installed package"
 
 echo "==> --version matches the packed package.json"
 EXPECTED=$(node -p "require('$SCRATCH/node_modules/prismalens/package.json').version")
@@ -145,8 +144,8 @@ echo "==> a machine with no agent is told it is not installed, never to run 'cla
 # @prismalens/config is "type": "module" and its ./harness-auth subpath declares
 # only an "import" condition, so the CJS loader cannot reach it
 # (ERR_PACKAGE_PATH_NOT_EXPORTED). Anchoring the file in $PKG keeps the bare
-# specifier resolving through the package's own exports map — the same door the
-# worker goes through — instead of deep-linking past it into dist/.
+# specifier resolving through the package's own exports map — the same door
+# the API process goes through — instead of deep-linking past it into dist/.
 PROBE_MJS="$PKG/prismalens-smoke-verdicts.mjs"
 cat > "$PROBE_MJS" <<'VERDICTS'
 import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
@@ -393,9 +392,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		incidentTitle: "packed smoke refusal probe",
 	});
 
-	// --- forked-worker round trip (Part B, #520) -------------------------------
-	// Resolves @prismalens/worker relative to the installed package; configured
-	// with a keyless provider so the server-side gate allows the fork.
+	// --- in-process investigation run (Part B, #520; 0005 §2) ------------------
+	// Configured with a keyless provider so the server-side gate lets the run start.
 	const configRes = await json("/api/settings/llm/config", {
 		method: "PATCH",
 		headers: { cookie },
@@ -439,7 +437,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 				}
 				const investigationId = startedJson?.investigationId;
 				if (!investigationId) {
-					bad("forked-worker round trip", `no investigationId in response: ${startedBody.slice(0, 200)}`);
+					bad("in-process run", `no investigationId in response: ${startedBody.slice(0, 200)}`);
 				} else {
 					let roundTripSucceeded = false;
 					let diagnosed = false;
@@ -461,6 +459,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 								inv = null;
 								timeline = null;
 							}
+							// `TimelineSourceSchema`'s "ai_worker" enum value is stored data —
+							// it names where the entry came from, not that a worker forked it.
 							const hasWorkerTimeline =
 								Array.isArray(timeline) &&
 								timeline.some((t) => t.source === "ai_worker");
@@ -477,35 +477,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 							log = "";
 						}
 						if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
-							bad("forked-worker round trip", "the worker API calls 404d (#511 wire protocol mismatch)");
-							diagnosed = true;
-							break;
-						}
-						if (/Cannot locate the investigation child entrypoint/.test(log)) {
-							bad("forked-worker round trip", "the worker entrypoint did not resolve inside the install");
+							bad("in-process run", "an internal lookup 404d (#511 wire protocol mismatch)");
 							diagnosed = true;
 							break;
 						}
 						if (/ERR_MODULE_NOT_FOUND/.test(log)) {
 							const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-							bad("forked-worker round trip", `the child could not resolve a dependency: ${line}`);
-							diagnosed = true;
-							break;
-						}
-						if (/"context":"InvestigationRun".*fetch failed/.test(log)) {
-							bad("forked-worker round trip", "the child forked but could not call the API back (fetch failed)");
+							bad("in-process run", `the run could not resolve a dependency: ${line}`);
 							diagnosed = true;
 							break;
 						}
 					}
 					if (roundTripSucceeded) {
 						ok(
-							"forked-worker round trip",
+							"in-process run",
 							"investigation left pending, startedAt set, ai_worker timeline recorded",
 						);
 					} else if (!diagnosed) {
 						bad(
-							"forked-worker round trip",
+							"in-process run",
 							"investigation never completed an ai_worker round trip within 120s",
 						);
 					}

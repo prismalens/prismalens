@@ -13,10 +13,9 @@ import type {
 import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
-import type { RecommendationDto } from "../../infrastructure/internal/dto/recommendation.dto.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import type { InternalInvestigationResultDto, RecommendationDto } from "./dto/index.js";
 import {
 	InvestigationsService,
 	type InvestigationWithRelations,
@@ -193,10 +192,9 @@ export class InvestigationsController {
 					}
 					if (receivers === 0) {
 						// Nobody holds the run, so the job row is orphaned too. Cancel it
-						// before writing the investigation record: `reclaimStale` selects on
-						// `status: "running"` alone, so a row left running here goes stale,
-						// returns to `pending`, and reruns the investigation the user just
-						// cancelled — overwriting its terminal state.
+						// before writing the investigation record: a row left `running` would
+						// otherwise sit there until the next restart, when `failRunning`
+						// marks it failed instead of the cancellation the user asked for.
 						await this.dispatchService.cancelOrphanedRun(input.id);
 						const cancelled = await this.investigationsService.cancelPending(
 							input.id,

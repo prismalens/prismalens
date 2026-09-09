@@ -11,7 +11,7 @@ import {
 import { WorkflowStatus } from "../../../shared/enums/index.js";
 
 /**
- * DTO for updating investigation status (real-time updates from worker)
+ * DTO for updating investigation status
  */
 export class UpdateInvestigationStatusDto {
 	@IsEnum(WorkflowStatus)

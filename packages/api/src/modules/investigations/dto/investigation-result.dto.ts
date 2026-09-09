@@ -29,8 +29,8 @@ const ResultStatusEnum = {
 } as const;
 
 /**
- * DTO for full investigation result (sent by worker when complete)
- * This is used by the internal API to write all results atomically
+ * DTO for full investigation result (written when a run completes). Also the
+ * shape passed in-process through {@link RunPorts.writeResult} — 0005 §2.
  */
 export class InternalInvestigationResultDto {
 	@IsEnum(ResultStatusEnum)

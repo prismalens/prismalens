@@ -2,50 +2,20 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Hermetic tests for `buildHarnessEnv` (ADR-0013 scope boundary): the `deepagents`
- * harness only speaks the OpenAI protocol via `OPENAI_*` env, so both
- * `OPENAI_API_KEY` and `OPENAI_BASE_URL` must be gated by provider — never leak a
- * non-OpenAI-shaped secret (anthropic/google/groq) into `OPENAI_API_KEY`
- * (worker-provider-hardwiring ledger item). No network / no LLM.
+ * Hermetic tests for `buildHarnessEnv` (ADR-0013 scope boundary), the sandbox/
+ * harness guards, and `buildRequest` — ported from `packages/worker/src/processor.test.ts`
+ * (0005 §2: the run is in-process, driven through {@link RunPorts} instead of
+ * fetch + oRPC mocks). No network / no LLM.
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CanonicalEvent } from "@prismalens/contracts";
 import { Logger } from "@prismalens/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-
-// `buildRequest` reads the incident (and, for the #331 checkout mapping, the
-// service catalog) over oRPC; stub the client so request construction is
-// exercised without a live API (a rejection is a caught no-incident path in the
-// processor, which would silently weaken the assertion).
-//
-// The stub is mutable via `apiState` so a test can say "this incident's service
-// has THIS checkout mapped" and then assert the request carries it.
-const apiState = vi.hoisted(() => ({
-	incident: { title: "Checkout 5xx" } as Record<string, unknown>,
-	services: [] as Array<{ name: string; localCheckoutPath: string | null }>,
-}));
-
-vi.mock("./orpc-client.js", () => ({
-	api: {
-		incidents: { get: vi.fn(async () => apiState.incident) },
-		services: {
-			list: vi.fn(async ({ search }: { search?: string }) => ({
-				data: apiState.services.filter((s) =>
-					search ? s.name.includes(search) : true,
-				),
-				total: apiState.services.length,
-			})),
-		},
-		// The #302 follow-up asserts the failure-persisting catch writes a terminal
-		// status when the schema parse itself throws, so the status writer has to be
-		// stubbed alongside the timeline writer.
-		investigations: { updateStatus: vi.fn(async () => ({})) },
-		timeline: { create: vi.fn(async () => ({})) },
-	},
-}));
+import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+import type { RunPorts } from "./run-ports.js";
 
 const {
 	buildHarnessEnv,
@@ -54,11 +24,34 @@ const {
 	harnessTakesSandbox,
 	deriveWorkerAllowedHosts,
 	buildRequest,
-	default: processInvestigationJob,
-} = await import("./processor.js");
+	default: runInvestigationJob,
+} = await import("./investigation-run.js");
 
 const API_KEY = "secret-key";
 const BASE_URL = "http://localhost:11434/v1";
+
+/** A `RunPorts` double covering exactly what `buildRequest`/the run makes. */
+function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
+	return {
+		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running" })),
+		updateStatus: vi.fn(async () => {}),
+		appendEvents: vi.fn(async (_id: string, _events: CanonicalEvent[]) => {}),
+		clearEvents: vi.fn(async () => {}),
+		writeResult: vi.fn(async () => {}),
+		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
+		resolveLlm: vi.fn(async () => ({
+			provider: "anthropic",
+			model: "claude-sonnet-4-5",
+			baseUrl: null,
+			credentials: { anthropic: API_KEY },
+			harness: "auto",
+		})),
+		integrationCredentials: vi.fn(async () => []),
+		getIncident: vi.fn(async () => ({ title: "Checkout 5xx" })),
+		listServices: vi.fn(async () => []),
+		...overrides,
+	};
+}
 
 describe("buildHarnessEnv (ADR-0031 R7 harness-scoped injection)", () => {
 	it("deepagents + openai: sends OPENAI_API_KEY, no OPENAI_BASE_URL override", () => {
@@ -161,7 +154,7 @@ describe("parseSandboxMode (PRISMALENS_SANDBOX knob, ADR-0020 B.1.3)", () => {
 	});
 });
 
-describe("harnessTakesSandbox (CLI-mirrored worker guard, ADR-0020/0017)", () => {
+describe("harnessTakesSandbox (CLI-mirrored guard, ADR-0020/0017)", () => {
 	it("ACP harness (deepagents) takes a sandbox in any mode", () => {
 		expect(harnessTakesSandbox("deepagents", "process")).toBe(true);
 		expect(harnessTakesSandbox("deepagents", "auto")).toBe(true);
@@ -204,7 +197,6 @@ describe("deriveWorkerAllowedHosts (egress allowlist, ADR-0020)", () => {
 
 	it("a null provider allowlist (custom) contributes no provider host, no hole", () => {
 		const hosts = deriveWorkerAllowedHosts("custom");
-		// custom's allowedHosts is null → only telemetry hosts, deduped.
 		expect(hosts).toContain("localhost");
 		expect(new Set(hosts).size).toBe(hosts.length);
 	});
@@ -218,55 +210,35 @@ describe("deriveWorkerAllowedHosts (egress allowlist, ADR-0020)", () => {
 describe("buildRequest settings isolation (ADR-0020 server placement)", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
-		vi.unstubAllGlobals();
 	});
 
-	/**
-	 * Arm the two out-of-process reads `buildRequest` makes before it assembles the
-	 * request: the internal LLM-credentials fetch and the harness/sandbox env knobs.
-	 * `claude-code` + `process` is the combination that actually consumes
-	 * `isolateSettings` (the ACP builder ignores it) and resolves no sandbox.
-	 */
-	function armWorkerEnv(): void {
-		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+	function armEnv(): void {
 		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
 		vi.stubEnv("PRISMALENS_SANDBOX", "process");
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "anthropic",
-					model: "claude-sonnet-4-5",
-					baseUrl: null,
-					credentials: { anthropic: API_KEY },
-				}),
-			})),
-		);
 	}
 
 	// The regression this guards: an unattended server run that inherits the host
 	// account's `~/.claude` executes its hooks and plugins ON THE HOST, outside the
-	// boundary the worker resolved — and behaves unlike the CLI and unlike every eval.
+	// boundary the run resolved — and behaves unlike the CLI and unlike every eval.
 	it("isolates host settings/hooks/plugins/MCP on the unattended server path", async () => {
-		armWorkerEnv();
+		armEnv();
 		const { request } = await buildRequest(
 			{ incidentId: "inc-1", investigationId: "inv-1" },
-			"run-1",
+			fakePorts(),
 		);
 		expect(request.isolateSettings).toBe(true);
 	});
 
 	// Isolation is a placement property, not a per-job one: no job payload may opt out.
 	it("isolates regardless of the job payload", async () => {
-		armWorkerEnv();
+		armEnv();
 		const { request } = await buildRequest(
 			{
 				incidentId: "inc-2",
 				investigationId: "inv-2",
 				alerts: [{ alertname: "HighLatency", severity: "critical", labels: {}, annotations: {}, startsAt: null }],
 			},
-			"run-2",
+			fakePorts(),
 		);
 		expect(request.isolateSettings).toBe(true);
 	});
@@ -275,29 +247,15 @@ describe("buildRequest settings isolation (ADR-0020 server placement)", () => {
 describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
-		vi.unstubAllGlobals();
 	});
 
-	function armWorkerEnv(): void {
-		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+	function armEnv(): void {
 		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
 		vi.stubEnv("PRISMALENS_SANDBOX", "process");
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "anthropic",
-					model: "claude-sonnet-4-5",
-					baseUrl: null,
-					credentials: { anthropic: API_KEY },
-				}),
-			})),
-		);
 	}
 
 	it("preserves M>1 alerts crossing via job payload data.alerts", async () => {
-		armWorkerEnv();
+		armEnv();
 		const { request } = await buildRequest(
 			{
 				incidentId: "inc-storm-1",
@@ -308,7 +266,7 @@ describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 					{ alertname: "LatencySpike", severity: "medium", labels: { service: "checkout" }, annotations: {}, startsAt: null },
 				],
 			},
-			"run-storm-1",
+			fakePorts(),
 		);
 		expect(request.context?.alerts).toHaveLength(3);
 		expect(request.context?.alerts[0].alertname).toBe("HighCPU");
@@ -317,51 +275,24 @@ describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 	});
 
 	it("preserves M>1 alerts fetched from correlated incident DB rows when job alerts are omitted", async () => {
-		armWorkerEnv();
-		const { api } = await import("./orpc-client.js");
-		type IncidentGetResult = Awaited<ReturnType<typeof api.incidents.get>>;
-		vi.spyOn(api.incidents, "get").mockResolvedValueOnce({
-			id: "inc-storm-2",
-			title: "Database Degradation Storm",
-			severity: "critical",
-			alerts: [
-				{
-					id: "a1",
-					title: "DB Connection Timeout",
-					severity: "critical",
-					labels: { service: "db" },
-					triggeredAt: "2026-07-31T10:00:00Z",
-				},
-				{
-					id: "a2",
-					title: "DB Lock Contention",
-					severity: "high",
-					labels: { service: "db" },
-					triggeredAt: "2026-07-31T10:01:00Z",
-				},
-				{
-					id: "a3",
-					title: "Disk I/O Saturated",
-					severity: "critical",
-					labels: { service: "db" },
-					triggeredAt: "2026-07-31T10:02:00Z",
-				},
-				{
-					id: "a4",
-					title: "Replica Lag High",
-					severity: "medium",
-					labels: { service: "db" },
-					triggeredAt: "2026-07-31T10:03:00Z",
-				},
-			],
-		} as unknown as IncidentGetResult);
+		armEnv();
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({
+				id: "inc-storm-2",
+				title: "Database Degradation Storm",
+				severity: "critical",
+				alerts: [
+					{ id: "a1", title: "DB Connection Timeout", severity: "critical", labels: { service: "db" }, triggeredAt: "2026-07-31T10:00:00Z" },
+					{ id: "a2", title: "DB Lock Contention", severity: "high", labels: { service: "db" }, triggeredAt: "2026-07-31T10:01:00Z" },
+					{ id: "a3", title: "Disk I/O Saturated", severity: "critical", labels: { service: "db" }, triggeredAt: "2026-07-31T10:02:00Z" },
+					{ id: "a4", title: "Replica Lag High", severity: "medium", labels: { service: "db" }, triggeredAt: "2026-07-31T10:03:00Z" },
+				],
+			})),
+		});
 
 		const { request } = await buildRequest(
-			{
-				incidentId: "inc-storm-2",
-				investigationId: "inv-storm-2",
-			},
-			"run-storm-2",
+			{ incidentId: "inc-storm-2", investigationId: "inv-storm-2" },
+			ports,
 		);
 
 		expect(request.context?.alerts).toHaveLength(4);
@@ -384,32 +315,14 @@ describe("storm path fan-out context assembly (issue #243 falsifier)", () => {
 describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
-		vi.unstubAllGlobals();
-		apiState.incident = { title: "Checkout 5xx" };
-		apiState.services = [];
 	});
 
-	function armWorkerEnv(): void {
-		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "internal-secret");
+	function armEnv(): void {
 		vi.stubEnv("PRISMALENS_HARNESS", "claude-code");
 		vi.stubEnv("PRISMALENS_SANDBOX", "process");
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "anthropic",
-					model: "claude-sonnet-4-5",
-					baseUrl: null,
-					credentials: { anthropic: API_KEY },
-				}),
-			})),
-		);
 	}
 
-	// `annotations` and `startsAt` are REQUIRED on `FiringAlert`, not optional —
-	// they are spelled out here because this branch drops the worker tsconfig's
-	// test exclusion (#302 follow-up 3), so these literals are now type-checked.
+	// `annotations` and `startsAt` are REQUIRED on `FiringAlert`, not optional.
 	const CHECKOUT_ALERT = {
 		alertname: "HighCPU",
 		severity: "critical",
@@ -419,19 +332,17 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	};
 
 	it("THE POINT OF #331: the investigation runs in the service's mapped checkout", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
-		apiState.incident = {
-			title: "Checkout 5xx",
-			service: { name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
-		};
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({
+				title: "Checkout 5xx",
+				service: { name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+			})),
+		});
 		const { request, checkout } = await buildRequest(
-			{
-				incidentId: "inc-cwd-1",
-				investigationId: "inv-cwd-1",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-1",
+			{ incidentId: "inc-cwd-1", investigationId: "inv-cwd-1", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe("/home/dev/code/checkout");
 		expect(checkout.source).toBe("service-mapping");
@@ -439,62 +350,56 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	});
 
 	it("the mapping BEATS PRISMALENS_INVESTIGATION_CWD (the env var is no longer primary)", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", "/srv/legacy-global");
-		apiState.incident = {
-			title: "Checkout 5xx",
-			service: { name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
-		};
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({
+				title: "Checkout 5xx",
+				service: { name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+			})),
+		});
 		const { request } = await buildRequest(
-			{
-				incidentId: "inc-cwd-2",
-				investigationId: "inv-cwd-2",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-2",
+			{ incidentId: "inc-cwd-2", investigationId: "inv-cwd-2", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe("/home/dev/code/checkout");
 	});
 
 	it("per-alert parity: an incident with no service resolves via the alert's service label", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
-		apiState.incident = { title: "Checkout 5xx" };
-		apiState.services = [
-			{ name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
-		];
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({ title: "Checkout 5xx" })),
+			listServices: vi.fn(async () => [
+				{ name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+			]),
+		});
 		const { request, checkout } = await buildRequest(
-			{
-				incidentId: "inc-cwd-3",
-				investigationId: "inv-cwd-3",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-3",
+			{ incidentId: "inc-cwd-3", investigationId: "inv-cwd-3", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe("/home/dev/code/checkout");
 		expect(checkout.mapped).toBe(true);
 	});
 
 	it("the incident's own service outranks a disagreeing alert label", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
 		// The correlator assigned this incident to "billing"; the alert is labelled
 		// "checkout". Borrowing checkout's tree would be a silent wrong-dir run.
-		apiState.incident = {
-			title: "Billing 5xx",
-			service: { name: "billing", localCheckoutPath: null },
-		};
-		apiState.services = [
-			{ name: "billing", localCheckoutPath: null },
-			{ name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
-		];
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({
+				title: "Billing 5xx",
+				service: { name: "billing", localCheckoutPath: null },
+			})),
+			listServices: vi.fn(async () => [
+				{ name: "billing", localCheckoutPath: null },
+				{ name: "checkout", localCheckoutPath: "/home/dev/code/checkout" },
+			]),
+		});
 		const { request, checkout } = await buildRequest(
-			{
-				incidentId: "inc-cwd-7",
-				investigationId: "inv-cwd-7",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-7",
+			{ incidentId: "inc-cwd-7", investigationId: "inv-cwd-7", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe(process.cwd());
 		expect(checkout.mapped).toBe(false);
@@ -502,36 +407,31 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	});
 
 	it("a CONTAINS match on another service must not lend its checkout", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
-		apiState.incident = { title: "Checkout 5xx" };
-		// `list({ search })` is a contains match — "checkout-legacy" contains
+		// `listServices(search)` is a contains match — "checkout-legacy" contains
 		// "checkout", and borrowing its tree would silently investigate the wrong code.
-		apiState.services = [
-			{ name: "checkout-legacy", localCheckoutPath: "/home/dev/code/legacy" },
-		];
+		const ports = fakePorts({
+			getIncident: vi.fn(async () => ({ title: "Checkout 5xx" })),
+			listServices: vi.fn(async () => [
+				{ name: "checkout-legacy", localCheckoutPath: "/home/dev/code/legacy" },
+			]),
+		});
 		const { request, checkout } = await buildRequest(
-			{
-				incidentId: "inc-cwd-4",
-				investigationId: "inv-cwd-4",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-4",
+			{ incidentId: "inc-cwd-4", investigationId: "inv-cwd-4", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe(process.cwd());
 		expect(checkout.mapped).toBe(false);
 	});
 
 	it("unmapped: falls back to PRISMALENS_INVESTIGATION_CWD and SAYS it ran unmapped", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", "/srv/checkouts/checkout");
+		const ports = fakePorts({ getIncident: vi.fn(async () => ({ title: "Checkout 5xx" })) });
 		const { request, checkout } = await buildRequest(
-			{
-				incidentId: "inc-cwd-5",
-				investigationId: "inv-cwd-5",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-5",
+			{ incidentId: "inc-cwd-5", investigationId: "inv-cwd-5", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe("/srv/checkouts/checkout");
 		expect(checkout.source).toBe("env-override");
@@ -540,15 +440,12 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	});
 
 	it("unmapped with no override: the worker's own cwd, still labelled unmapped", async () => {
-		armWorkerEnv();
+		armEnv();
 		vi.stubEnv("PRISMALENS_INVESTIGATION_CWD", undefined);
+		const ports = fakePorts({ getIncident: vi.fn(async () => ({ title: "Checkout 5xx" })) });
 		const { request, checkout } = await buildRequest(
-			{
-				incidentId: "inc-cwd-6",
-				investigationId: "inv-cwd-6",
-				alerts: [CHECKOUT_ALERT],
-			},
-			"run-cwd-6",
+			{ incidentId: "inc-cwd-6", investigationId: "inv-cwd-6", alerts: [CHECKOUT_ALERT] },
+			ports,
 		);
 		expect(request.cwd).toBe(process.cwd());
 		expect(checkout.source).toBe("worker-cwd");
@@ -557,14 +454,9 @@ describe("buildRequest harness cwd (#331 service → local checkout)", () => {
 	});
 });
 
-describe("processInvestigationJob schema validation", () => {
-	it("malformed job payload -> processor throws, not silent degradation", async () => {
-		const job = {
-			id: "job-malformed",
-			name: "investigation",
-			attemptsMade: 0,
-			updateProgress: vi.fn(async () => {}),
-		};
+describe("runInvestigationJob schema validation", () => {
+	it("malformed job payload -> throws, not silent degradation", async () => {
+		const job = { id: "job-malformed", investigationId: "inv-malformed", attempts: 1 };
 		const malformedData = {
 			// Missing required incidentId and investigationId
 			priority: "invalid-priority",
@@ -572,11 +464,11 @@ describe("processInvestigationJob schema validation", () => {
 
 		await expect(
 			// biome-ignore lint/suspicious/noExplicitAny: the point is an invalid payload.
-			processInvestigationJob(job, malformedData as any, {
+			runInvestigationJob(job, malformedData as any, {
 				emit: vi.fn(),
 				streamDone: vi.fn(),
 				signal: new AbortController().signal,
-			}),
+			}, fakePorts()),
 		).rejects.toThrow();
 	});
 
@@ -585,9 +477,7 @@ describe("processInvestigationJob schema validation", () => {
 			incidentId: "inc-123",
 			investigationId: "inv-123",
 		};
-		const { InvestigationJobDataSchema } = await import(
-			"@prismalens/contracts"
-		);
+		const { InvestigationJobDataSchema } = await import("@prismalens/contracts");
 		expect(() =>
 			InvestigationJobDataSchema.parse(validJobWithoutAlerts),
 		).not.toThrow();
@@ -596,23 +486,23 @@ describe("processInvestigationJob schema validation", () => {
 	// Follow-up 4, issue #302 / #537: the schema parse lives INSIDE the
 	// failure-persisting try/catch. A payload that carries usable identifiers but fails
 	// validation must still leave a terminal "failed" investigation row and a timeline
-	// entry via the internal endpoints — never a row dangling at "pending" because the
-	// parse threw past the handler.
+	// entry — never a row dangling at "pending" because the parse threw past the handler.
 	it("parse failure still persists a failed status and timeline entry from the raw identifiers", async () => {
-		const fetchMock = vi.fn(async (_url: string | URL, _init?: RequestInit) => ({
-			ok: true,
-			text: async () => JSON.stringify({ ok: true }),
-			json: async () => ({ ok: true }),
-		}));
-		vi.stubGlobal("fetch", fetchMock);
-		vi.stubEnv("PRISMALENS_INTERNAL_SECRET", "test-secret");
+		const updateStatus = vi.fn(
+			async (
+				_id: string,
+				_dto: {
+					status: "running" | "failed" | "completed" | "cancelled";
+					error?: string;
+					harnessThreadId?: string;
+					startedAt?: Date;
+				},
+			) => {},
+		);
+		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
+		const ports = fakePorts({ updateStatus, createTimelineEntry });
 
-		const job = {
-			id: "job-parse-fail",
-			name: "investigation",
-			attemptsMade: 0,
-			updateProgress: vi.fn(async () => {}),
-		};
+		const job = { id: "job-parse-fail", investigationId: "inv-parse-fail", attempts: 1 };
 		const malformedDataWithIds = {
 			investigationId: "inv-parse-fail",
 			incidentId: "inc-parse-fail",
@@ -620,46 +510,29 @@ describe("processInvestigationJob schema validation", () => {
 		};
 
 		await expect(
-			processInvestigationJob(job, malformedDataWithIds as never, {
+			runInvestigationJob(job, malformedDataWithIds as never, {
 				emit: vi.fn(),
 				streamDone: vi.fn(),
 				signal: new AbortController().signal,
-			}),
+			}, ports),
 		).rejects.toThrow();
 
-		const statusCall = fetchMock.mock.calls.find((c) =>
-			String(c[0]).includes("/internal/investigations/inv-parse-fail/status"),
+		expect(updateStatus).toHaveBeenCalledWith(
+			"inv-parse-fail",
+			expect.objectContaining({ status: "failed" }),
 		);
-		expect(statusCall).toBeDefined();
-		const [, statusInit] = statusCall!;
-		expect(statusInit?.method).toBe("PATCH");
-		expect(
-			(statusInit?.headers as Record<string, string>)["X-Internal-Secret"],
-		).toBe("test-secret");
-		const statusBody = JSON.parse(statusInit?.body as string);
-		expect(statusBody).toMatchObject({
-			status: "failed",
-		});
-		expect(statusBody.error).toContain("priority");
+		const [, statusDto] = updateStatus.mock.calls[0];
+		expect((statusDto as { error?: string }).error).toContain("priority");
 
-		const timelineCall = fetchMock.mock.calls.find((c) =>
-			String(c[0]).includes("/internal/timeline"),
+		expect(createTimelineEntry).toHaveBeenCalledWith(
+			expect.objectContaining({
+				incidentId: "inc-parse-fail",
+				type: "investigation_completed",
+				title: "AI Investigation Failed",
+				source: "ai_worker",
+				metadata: expect.objectContaining({ investigationId: "inv-parse-fail" }),
+			}),
 		);
-		expect(timelineCall).toBeDefined();
-		const [, timelineInit] = timelineCall!;
-		expect(timelineInit?.method).toBe("POST");
-		expect(
-			(timelineInit?.headers as Record<string, string>)["X-Internal-Secret"],
-		).toBe("test-secret");
-		expect(JSON.parse(timelineInit?.body as string)).toMatchObject({
-			incidentId: "inc-parse-fail",
-			type: "investigation_completed",
-			title: "AI Investigation Failed",
-			source: "ai_worker",
-			metadata: {
-				investigationId: "inv-parse-fail",
-			},
-		});
 	});
 });
 
@@ -668,14 +541,9 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 	// process environment, keyed to the value this block gives it by default.
 	// This map IS the enumeration: the completeness test right below parses
 	// both source files and fails if either references an env var (or
-	// `os.homedir()`) that isn't a key here — so a future ambient read can't
-	// slip past this block unnoticed the way PRISMALENS_HARNESS and then
-	// CLAUDE_CONFIG_DIR each did (three review rounds on this one PR, #507).
-	// Add the new key here FIRST; the completeness test is what will tell you
-	// whether you also need one.
+	// `os.homedir()`) that isn't a key here.
 	const AMBIENT_ENV_DEFAULTS: Record<string, string | undefined> = {
-		// buildRequest (packages/worker/src/processor.ts)
-		PRISMALENS_INTERNAL_SECRET: "internal-secret",
+		// buildRequest (packages/api/src/infrastructure/dispatch/investigation-run.ts)
 		PRISMALENS_HARNESS: undefined,
 		PRISMALENS_SANDBOX: undefined,
 		PRISMALENS_INVESTIGATION_CWD: undefined,
@@ -697,18 +565,17 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 
 	afterEach(() => {
 		vi.unstubAllEnvs();
-		vi.unstubAllGlobals();
 	});
 
-	it("ambient-env enumeration above is complete (guards against a 4th leak)", () => {
-		const processorSrc = readFileSync(
-			fileURLToPath(new URL("./processor.ts", import.meta.url)),
+	it("ambient-env enumeration above is complete (guards against a leak)", () => {
+		const runSrc = readFileSync(
+			fileURLToPath(new URL("./investigation-run.ts", import.meta.url)),
 			"utf8",
 		);
 		const harnessAuthSrc = readFileSync(
 			fileURLToPath(
 				new URL(
-					"../../@prismalens/config/src/harness-auth.ts",
+					"../../../../@prismalens/config/src/harness-auth.ts",
 					import.meta.url,
 				),
 			),
@@ -716,7 +583,7 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		);
 
 		const envRefs = new Set<string>();
-		for (const src of [processorSrc, harnessAuthSrc]) {
+		for (const src of [runSrc, harnessAuthSrc]) {
 			for (const m of src.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g)) {
 				envRefs.add(m[1]);
 			}
@@ -726,10 +593,6 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		);
 		expect(missing).toEqual([]);
 
-		// os.homedir() isn't a `process.env.X` literal, so the scan above can't
-		// find it — assert directly that the source still calls it and that
-		// HOME is still in the map, so either drifting away from the other
-		// goes noticed.
 		expect(harnessAuthSrc).toContain("os.homedir()");
 		expect(AMBIENT_ENV_DEFAULTS.HOME).toBeDefined();
 	});
@@ -748,40 +611,25 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		const warnSpy = vi.spyOn(Logger.prototype, "warn");
 
 		try {
-			vi.stubGlobal(
-				"fetch",
-				vi.fn(async () => ({
-					ok: true,
-					json: async () => ({
-						provider: null,
-						model: null,
-						baseUrl: null,
-						credentials: {},
-						harness: "auto",
-					}),
+			const ports = fakePorts({
+				resolveLlm: vi.fn(async () => ({
+					provider: null,
+					model: null,
+					baseUrl: null,
+					credentials: {},
+					harness: "auto",
 				})),
-			);
+			});
 
 			const { request } = await buildRequest(
 				{ incidentId: "inc-501-1", investigationId: "inv-501-1" },
-				"run-501-1",
-				{
-					harnessAuth: {
-						homeDir: tempHome,
-						isOnPath: (bin) => bin === "claude",
-					},
-				},
+				ports,
+				{ harnessAuth: { homeDir: tempHome, isOnPath: (bin) => bin === "claude" } },
 			);
 
 			expect(request.harness).toBe("claude-code");
 			expect(request.synth.configured).toBe(false);
 			expect(request.model).toBeUndefined();
-			// The credentials fixture is what makes `verified` true — this is the
-			// only observable difference the field drives (see case 1b for false).
-			// It only holds because CLAUDE_CONFIG_DIR is neutralised above: that
-			// env var wins over the injected `homeDir` inside resolveHarnessAuth,
-			// so an ambient value would have pointed this at a real directory
-			// instead of `tempHome` (review round 3, #507).
 			expect(warnSpy).not.toHaveBeenCalledWith(
 				expect.stringContaining("unverified"),
 			);
@@ -804,29 +652,20 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		const warnSpy = vi.spyOn(Logger.prototype, "warn");
 
 		try {
-			vi.stubGlobal(
-				"fetch",
-				vi.fn(async () => ({
-					ok: true,
-					json: async () => ({
-						provider: null,
-						model: null,
-						baseUrl: null,
-						credentials: {},
-						harness: "auto",
-					}),
+			const ports = fakePorts({
+				resolveLlm: vi.fn(async () => ({
+					provider: null,
+					model: null,
+					baseUrl: null,
+					credentials: {},
+					harness: "auto",
 				})),
-			);
+			});
 
 			const { request } = await buildRequest(
 				{ incidentId: "inc-501-1b", investigationId: "inv-501-1b" },
-				"run-501-1b",
-				{
-					harnessAuth: {
-						homeDir: tempHome,
-						isOnPath: (bin) => bin === "claude",
-					},
-				},
+				ports,
+				{ harnessAuth: { homeDir: tempHome, isOnPath: (bin) => bin === "claude" } },
 			);
 
 			expect(request.harness).toBe("claude-code");
@@ -844,28 +683,11 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 	});
 
 	it("W4 case 2: anthropic key, no session ⇒ unchanged behavior, synth.configured === true", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "anthropic",
-					model: "claude-sonnet-4-5",
-					baseUrl: null,
-					credentials: { anthropic: API_KEY },
-					harness: "auto",
-				}),
-			})),
-		);
-
+		const ports = fakePorts();
 		const { request } = await buildRequest(
 			{ incidentId: "inc-501-2", investigationId: "inv-501-2" },
-			"run-501-2",
-			{
-				harnessAuth: {
-					isOnPath: () => false,
-				},
-			},
+			ports,
+			{ harnessAuth: { isOnPath: () => false } },
 		);
 
 		expect(request.harness).toBe("claude-code");
@@ -873,33 +695,24 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		expect(request.synth.apiKey).toBe(API_KEY);
 	});
 
-	// #518: this machine has no `claude` binary, so the old message's "sign in with
-	// the Claude CLI (claude /login)" named a command it does not have. It now says
-	// the CLI is not installed, and the key remedy stays.
+	// #518: this machine has no `claude` binary, so the message names the missing
+	// binary, not a login.
 	it("W4 case 3: nothing configured ⇒ throws naming the missing binary, not a login", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: null,
-					model: null,
-					baseUrl: null,
-					credentials: {},
-					harness: "claude-code",
-				}),
+		const ports = fakePorts({
+			resolveLlm: vi.fn(async () => ({
+				provider: null,
+				model: null,
+				baseUrl: null,
+				credentials: {},
+				harness: "claude-code",
 			})),
-		);
+		});
 
 		await expect(
 			buildRequest(
 				{ incidentId: "inc-501-3", investigationId: "inv-501-3" },
-				"run-501-3",
-				{
-					harnessAuth: {
-						isOnPath: () => false,
-					},
-				},
+				ports,
+				{ harnessAuth: { isOnPath: () => false } },
 			),
 		).rejects.toThrowError(
 			/not found on PATH.*add an Anthropic API key in Settings/i,
@@ -908,7 +721,7 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 		await expect(
 			buildRequest(
 				{ incidentId: "inc-501-3", investigationId: "inv-501-3" },
-				"run-501-3",
+				ports,
 				{ harnessAuth: { isOnPath: () => false } },
 			),
 		).rejects.not.toThrowError(/claude \/login/i);
@@ -916,48 +729,31 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 
 	it("W4 case 4: PRISMALENS_HARNESS=bogus ⇒ throws naming valid ids", async () => {
 		vi.stubEnv("PRISMALENS_HARNESS", "bogus");
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "anthropic",
-					model: "claude-sonnet-4-5",
-					baseUrl: null,
-					credentials: { anthropic: API_KEY },
-				}),
-			})),
-		);
+		const ports = fakePorts();
 
 		await expect(
 			buildRequest(
 				{ incidentId: "inc-501-4", investigationId: "inv-501-4" },
-				"run-501-4",
+				ports,
 			),
-		).rejects.toThrowError(
-			/Invalid PRISMALENS_HARNESS="bogus"/,
-		);
+		).rejects.toThrowError(/Invalid PRISMALENS_HARNESS="bogus"/);
 	});
 
 	it("W4 case 5: setting deepagents + provider anthropic ⇒ protocol-mismatch error retained", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "anthropic",
-					model: "claude-sonnet-4-5",
-					baseUrl: null,
-					credentials: { anthropic: API_KEY },
-					harness: "deepagents",
-				}),
+		const ports = fakePorts({
+			resolveLlm: vi.fn(async () => ({
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+				baseUrl: null,
+				credentials: { anthropic: API_KEY },
+				harness: "deepagents",
 			})),
-		);
+		});
 
 		await expect(
 			buildRequest(
 				{ incidentId: "inc-501-5", investigationId: "inv-501-5" },
-				"run-501-5",
+				ports,
 			),
 		).rejects.toThrowError(
 			/Harness "deepagents" only supports OpenAI-protocol providers/,
@@ -965,62 +761,44 @@ describe("issue #501 — harness auth routes & selection (W4 tests)", () => {
 	});
 
 	it("pinned claude-code with OpenAI synthesis does not receive foreign model id (#525)", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "openai",
-					model: "gpt-5.4-mini",
-					baseUrl: null,
-					credentials: { openai: "sk-openai-key" },
-					harness: "claude-code",
-				}),
+		const ports = fakePorts({
+			resolveLlm: vi.fn(async () => ({
+				provider: "openai",
+				model: "gpt-5.4-mini",
+				baseUrl: null,
+				credentials: { openai: "sk-openai-key" },
+				harness: "claude-code",
 			})),
-		);
+		});
 
 		const { request } = await buildRequest(
 			{ incidentId: "inc-525-2", investigationId: "inv-525-2" },
-			"run-525-2",
-			{
-				harnessAuth: {
-					isOnPath: (bin) => bin === "claude",
-				},
-			},
+			ports,
+			{ harnessAuth: { isOnPath: (bin) => bin === "claude" } },
 		);
 
 		expect(request.harness).toBe("claude-code");
-		// Foreign model is omitted from top-level request.model
 		expect(request.model).toBeUndefined();
-		// Synthesis block retains the OpenAI model for Tier-1 reduce
 		expect(request.synth.model).toBe("gpt-5.4-mini");
 		expect(request.synth.providerId).toBe("openai");
 		expect(request.harnessEnv).toEqual({});
 	});
 
 	it("pinned deepagents with OpenAI synthesis receives compatible model id (#525)", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => ({
-				ok: true,
-				json: async () => ({
-					provider: "openai",
-					model: "gpt-5.4-mini",
-					baseUrl: null,
-					credentials: { openai: "sk-openai-key" },
-					harness: "deepagents",
-				}),
+		const ports = fakePorts({
+			resolveLlm: vi.fn(async () => ({
+				provider: "openai",
+				model: "gpt-5.4-mini",
+				baseUrl: null,
+				credentials: { openai: "sk-openai-key" },
+				harness: "deepagents",
 			})),
-		);
+		});
 
 		const { request } = await buildRequest(
 			{ incidentId: "inc-525-3", investigationId: "inv-525-3" },
-			"run-525-3",
-			{
-				harnessAuth: {
-					isOnPath: (bin) => bin === "deepagents-acp",
-				},
-			},
+			ports,
+			{ harnessAuth: { isOnPath: (bin) => bin === "deepagents-acp" } },
 		);
 
 		expect(request.harness).toBe("deepagents");

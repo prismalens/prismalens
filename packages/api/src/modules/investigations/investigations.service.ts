@@ -13,12 +13,11 @@ import {
 	type Recommendation,
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import { CreateInvestigationDto } from "./dto/index.js";
+import { CreateInvestigationDto, type InternalInvestigationResultDto } from "./dto/index.js";
 
 export type { Investigation };
 

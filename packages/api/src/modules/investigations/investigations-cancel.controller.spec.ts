@@ -111,7 +111,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		expect(result.status).toBe("cancelled");
 	});
 
-	it("running run nobody hears: also cancels the orphaned job row, so the sweeper cannot rerun it", async () => {
+	it("running run nobody hears: also cancels the orphaned job row, so a restart cannot mark it failed instead", async () => {
 		const run = investigation("inv-7", "running");
 		mockInvestigationsService.findById.mockResolvedValue(run);
 		mockDispatchService.requestCancel.mockResolvedValue(0);
@@ -121,8 +121,6 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 
 		await cancelHandler()({ input: { id: "inv-7" } });
 
-		// The row would otherwise stay `running`, go stale, and be returned to `pending`
-		// by reclaimStale — rerunning an investigation the user explicitly cancelled.
 		expect(mockDispatchService.cancelOrphanedRun).toHaveBeenCalledWith("inv-7");
 	});
 

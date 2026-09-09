@@ -75,7 +75,6 @@ import { UsersModule } from "./core/users/users.module.js";
 import { DevSeedModule } from "./infrastructure/dev-seed/dev-seed.module.js";
 import { DispatchModule } from "./infrastructure/dispatch/dispatch.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
-import { InternalModule } from "./infrastructure/internal/internal.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
@@ -166,7 +165,6 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		// Infrastructure
 		HealthModule,
 		DispatchModule,
-		InternalModule,
 		DevSeedModule,
 
 		// Single-origin SPA serving (issue #237). `pl up` runs ONE process on ONE

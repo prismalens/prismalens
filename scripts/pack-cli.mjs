@@ -66,7 +66,6 @@
  *       |   +-- api/
  *       |   |   +-- dist/src/main.js ......... NestJS entry, imported by `pl up`
  *       |   |   +-- public/index.html ........ the SPA, served single-origin
- *       |   +-- worker/dist/index.js ......... forked once per investigation
  *       |   +-- database/
  *       |   |   +-- dist/prisma/generated/ ... Prisma 7 generated client
  *       |   |   +-- dist/prisma/sqlite/schema/ migration SQL, applied at boot
@@ -507,13 +506,6 @@ function assertTarball(tarball, copiedNames) {
 			"the tarball has no API entry at node_modules/@prismalens/api/dist/src/main.js",
 		);
 	}
-	if (
-		!has((e) => e === "package/node_modules/@prismalens/worker/dist/index.js")
-	) {
-		fail(
-			"the tarball has no worker entry — the forked investigation cannot start",
-		);
-	}
 	const noise = entries.filter((e) => /\.tsbuildinfo$|\.map$/.test(e));
 	if (noise.length > 0) {
 		fail(`the tarball carries build noise: ${noise.slice(0, 5).join(", ")}`);
@@ -603,7 +595,6 @@ export function packCli() {
 	// closure (declared as devDependencies because it used to be bundled).
 	const roots = [
 		"@prismalens/api",
-		"@prismalens/worker",
 		...Object.keys(cliPkg.manifest.devDependencies ?? {}).filter((d) =>
 			d.startsWith("@prismalens/"),
 		),

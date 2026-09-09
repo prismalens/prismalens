@@ -101,14 +101,6 @@ export function getOrCreateEncryptionKey(): string {
 }
 
 /**
- * Get or create the internal API secret.
- * Used for worker-to-API communication via X-Internal-Secret header.
- */
-export function getOrCreateInternalSecret(): string {
-	return getOrCreateSecret(SecretEnvVars.INTERNAL_SECRET);
-}
-
-/**
  * Get or create the auth session secret.
  * Used by Better Auth for session signing.
  */

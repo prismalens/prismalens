@@ -118,9 +118,7 @@ export default defineCommand({
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Dashboard: ${app.staticDir}`);
 
-		// Import, not fork: `pl up` is ONE process. The API forks its own child
-		// per investigation, and that child resolves @prismalens/worker from this
-		// same install.
+		// One process (0005 §1-2): the API runs each investigation in-process.
 		await import(pathToFileURL(app.main).href);
 	},
 });

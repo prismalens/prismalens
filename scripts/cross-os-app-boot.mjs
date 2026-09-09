@@ -832,34 +832,20 @@ if (!cookie) {
 					} catch {
 						investigationId = null;
 					}
-					let diagnosed = false;
-					for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
+					for (let i = 0; i < FORK_TIMEOUT_S && !forked; i++) {
 						await sleep(1000);
 						sample();
 						const log = readLog(partBLogOffset);
 						forked =
 							/"context"\s*:\s*"InvestigationProcessor"/.test(log) &&
 							(investigationId ? log.includes(investigationId) : true);
-						if (/Cannot locate the investigation child entrypoint/.test(log)) {
-							bad(
-								"fork",
-								"the worker entrypoint did not resolve inside the install",
-							);
-							diagnosed = true;
-						} else if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-							const line = log
-								.split("\n")
-								.find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-							bad("fork", `the child could not resolve a dependency: ${line}`);
-							diagnosed = true;
-						}
 					}
 					if (forked) {
 						ok(
 							"investigation child forked",
 							`${seenDescendants.size} pid(s) observed`,
 						);
-					} else if (!diagnosed) {
+					} else {
 						dumpLog();
 						bad("fork", `no investigation child within ${FORK_TIMEOUT_S}s`);
 					}

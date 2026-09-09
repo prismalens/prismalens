@@ -216,22 +216,6 @@ export class LicenseService implements OnModuleInit {
 		this.logger.log("License deactivated, reverted to Community Edition");
 	}
 
-	/**
-	 * Get license state for internal API (worker consumption)
-	 */
-	async getLicenseStateForWorker(): Promise<{
-		tier: string;
-		features: string[];
-		isValid: boolean;
-	}> {
-		const state = await this.getLicenseState();
-		return {
-			tier: state.tier,
-			features: state.features,
-			isValid: state.isValid,
-		};
-	}
-
 	// ===========================================================================
 	// PRIVATE METHODS
 	// ===========================================================================

@@ -16,7 +16,7 @@ import {
 } from "../../../shared/enums/index.js";
 
 /**
- * DTO for recommendation data from worker
+ * DTO for recommendation data on an investigation result
  */
 export class RecommendationDto {
 	@IsString()
