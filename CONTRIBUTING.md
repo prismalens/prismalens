@@ -354,9 +354,9 @@ and are assigned to that milestone:
 - `live-test: RN (<Name>) exit gate`. A scripted live test runs against the
   packed tarball, not the source tree, across incident scenarios relevant to the
   release.
-- `release: RN (<Name>)`. The release checklist itself, covering changesets,
-  prerelease verification against npm, closure of the docs and live-test exit
-  issues, and narrative release notes.
+- `release: RN (<Name>)`. The release checklist itself, covering the
+  release-please PR, verification against npm, closure of the docs and
+  live-test exit issues, and narrative release notes.
 
 In these exit issues, "Docs" means the published website at docs.prismalens.io.
 Repository markdown files and package READMEs do not satisfy the documentation

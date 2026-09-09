@@ -199,8 +199,8 @@ export class InvestigationsService {
 	}
 
 	/**
-	 * Update investigation status (internal API version with more control)
-	 * Used by Python worker via internal API
+	 * Update investigation status — more control than `updateStatus`. Called
+	 * from the in-process run through `RunPorts.updateStatus` (0005 §2).
 	 */
 	async updateStatusInternal(
 		id: string,
@@ -264,8 +264,8 @@ export class InvestigationsService {
 	}
 
 	/**
-	 * Write full investigation result with all relations (atomic transaction)
-	 * Used by Python worker via internal API
+	 * Write full investigation result with all relations (atomic transaction).
+	 * Called from the in-process run through `RunPorts.writeResult` (0005 §2).
 	 * Writes: investigation, agent_executions, tool_executions, recommendations, incident update, timeline
 	 */
 	async writeResultWithRelations(

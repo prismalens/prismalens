@@ -9,9 +9,7 @@
  * Every path below is resolved from the INSTALLED package, never from a repo
  * checkout: `scripts/pack-cli.mjs` copies each first-party package into this
  * package's own `node_modules/@prismalens/<name>`, so `require.resolve` finds
- * exactly the copy that shipped. That matters most for the forked investigation
- * child — `@prismalens/worker` must resolve inside the install, not against a
- * developer's monorepo.
+ * exactly the copy that shipped, not a developer's monorepo.
  */
 
 import { existsSync, mkdirSync } from "node:fs";
