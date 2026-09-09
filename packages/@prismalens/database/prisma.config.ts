@@ -9,7 +9,7 @@ export default defineConfig({
 	schema: "prisma/sqlite/schema",
 	migrations: {
 		path: "prisma/sqlite/schema",
-		seed: "tsx prisma/seed.ts",
+		seed: "tsx ../../api/scripts/seed.ts",
 	},
 	datasource: {
 		url: getConfig().PRISMALENS_DB_URL,

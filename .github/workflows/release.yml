@@ -1,85 +1,35 @@
-# Release via changesets (work-005 R0.c).
-#
-# On every push to main: if unreleased .changeset/*.md files exist, the action
-# opens/updates a "Version Packages" PR (runs `pnpm changeset:version`). When
-# that PR merges, the action publishes the single published package —
-# `prismalens`, the CLI, which CARRIES the first-party @prismalens/* closure in
-# its own node_modules as bundleDependencies (issue #237, superseding #193's
-# bundling; the scoped packages are private:true and never published) — via
-# `pnpm changeset:publish` + `changeset git-tag`, and creates one GitHub Release.
-#
-# `changeset:publish` is `node scripts/pack-cli.mjs --publish`, NOT
-# `pnpm publish -r`. That is deliberate: `pnpm publish` re-packs from the
-# workspace, and pnpm's bundleDependencies handling has historically diverged
-# from npm's — it would not reproduce the tarball the packed-smoke gate
-# verified. The pack script builds the artifact, asserts it, and hands that
-# exact file to `npm publish <tarball>`, so what ships is what was smoked.
-#
-# Publishing authenticates via npm TRUSTED PUBLISHING (OIDC): id-token:write
-# lets the npm CLI (>=11.5.1; Node 24 ships 11.6.x) exchange the runner's OIDC
-# token for a short-lived npm credential — no npm token secret exists or is
-# needed.
-# The prismalens package has this repo + workflow registered as a trusted
-# publisher on npmjs.com, and provenance attestations are generated
-# automatically. Requirement: the publishing package must already exist on
-# npm (bootstrap 0.0.1 was published manually by the maintainer).
-#
-# The Version-Packages PR is created with the RELEASE_PAT repo secret (a
-# fine-grained PAT: this repo, Contents + Pull requests read/write), NOT the
-# default GITHUB_TOKEN, for two reasons: this repo forbids Actions from
-# creating PRs, and PRs pushed/opened with GITHUB_TOKEN never trigger CI
-# (GitHub anti-recursion) — the required checks would never report and the
-# version PR could not merge.
 name: Release
-
 on:
   push:
     branches: [main]
-
+  release:
+    types: [published]
 permissions:
   contents: write
   pull-requests: write
   id-token: write
-
 concurrency: release-${{ github.ref }}
-
 jobs:
-  release:
-    name: Version or publish
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PAT || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+  publish:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          # PAT so the changeset-release branch push comes from a user, not
-          # github-actions — see the RELEASE_PAT note in the header.
-          token: ${{ secrets.RELEASE_PAT || github.token }}
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: publint (publishable packages)
-        run: pnpm publint
-
-      - name: Version PR or publish
-        uses: changesets/action@v2
-        with:
-          version-script: pnpm changeset:version
-          publish-script: pnpm changeset:publish
-          commit-message: "chore: version packages"
-          pr-title: "chore: version packages"
-          # v2 renamed these inputs and throws on any old name (#477); the
-          # rename and the v1->v2 bump must land together.
-          github-token: ${{ secrets.RELEASE_PAT || github.token }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm publint
+      - run: node scripts/pack-cli.mjs --publish

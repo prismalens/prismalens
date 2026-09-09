@@ -9,8 +9,8 @@
  */
 
 import type { CanonicalEvent } from "@prismalens/contracts";
-import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
+import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 
 export interface RunPorts {
 	findInvestigation(id: string): Promise<{ id: string; status: string } | null>;

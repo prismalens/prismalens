@@ -105,7 +105,7 @@ import { pathToFileURL } from "node:url";
 // The Part A assertion sequence, shared with scripts/packed-smoke.sh (#551).
 // Relative to this module's own URL, so it resolves whatever the cwd is — and
 // it is why this job's sparse-checkout list carries a second entry.
-import { assertRefusalGate } from "./lib/refusal-gate-check.mjs";
+import { assertRefusalGate } from "../packages/@prismalens/engine/scripts/refusal-gate-check.mjs";
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);

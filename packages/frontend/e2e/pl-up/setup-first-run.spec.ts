@@ -91,6 +91,9 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	// explicit light one is the only evidence the other theme still renders.
 	// Dropping either would leave a theme uncovered.
 	await clearTheme(page);
+	// The Community Edition footer line is gone (#601) — no capability tier
+	// stamp on the wizard, since capability tiers are not a thing this repo ships.
+	await expect(page.getByText("Community Edition")).toHaveCount(0);
 	await page.screenshot({ path: `${SHOTS}/setup-wizard-default.png`, fullPage: true });
 	await setTheme(page, "light");
 	await page.screenshot({ path: `${SHOTS}/setup-wizard-light.png`, fullPage: true });

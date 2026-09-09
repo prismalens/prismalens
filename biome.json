@@ -88,10 +88,7 @@
 								},
 								"patterns": [
 									{
-										"group": [
-											"../**/api/**",
-											"../**/frontend/**"
-										],
+										"group": ["../**/api/**", "../**/frontend/**"],
 										"message": "engine/cli must not reach into packages/api or packages/frontend via relative import — that breaks the extraction seam."
 									}
 								]

@@ -17,7 +17,10 @@ import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import { CreateInvestigationDto, type InternalInvestigationResultDto } from "./dto/index.js";
+import {
+	CreateInvestigationDto,
+	type InternalInvestigationResultDto,
+} from "./dto/index.js";
 
 export type { Investigation };
 

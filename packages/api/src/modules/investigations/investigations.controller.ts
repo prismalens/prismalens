@@ -15,7 +15,10 @@ import type { Investigation, Recommendation } from "@prismalens/database";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
-import type { InternalInvestigationResultDto, RecommendationDto } from "./dto/index.js";
+import type {
+	InternalInvestigationResultDto,
+	RecommendationDto,
+} from "./dto/index.js";
 import {
 	InvestigationsService,
 	type InvestigationWithRelations,

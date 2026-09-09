@@ -29,4 +29,6 @@ cpSync(from, to, {
 	filter: (src) => !src.endsWith(".prisma"),
 });
 
-console.log("copy-migrations: staged the sqlite migration lineage into dist/prisma");
+console.log(
+	"copy-migrations: staged the sqlite migration lineage into dist/prisma",
+);

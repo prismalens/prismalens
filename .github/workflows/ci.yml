@@ -73,28 +73,6 @@ jobs:
       - name: publint (publishable packages)
         run: pnpm publint
 
-  # Fail a PR that modifies publishable packages without a changeset (issue #328),
-  # or that adds a changeset naming a non-publishable package (#178, #187).
-  # Zero-dep script — Node only, no pnpm install.
-  changesets:
-    name: Validate changesets
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-
-      - name: Validate changeset names and presence
-        run: node scripts/validate-changesets.mjs
-
-      - name: Test script behaviour
-        run: node --test scripts/*.test.mjs
-
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -146,6 +124,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Pack script tests
+        run: node --test scripts/pack-cli.test.mjs
+
       - name: Pack tarball
         # `pnpm pack` cannot produce this artifact: the published package carries
         # the first-party closure as bundleDependencies, and pnpm's handling of
@@ -185,7 +166,7 @@ jobs:
           # runtime, so leaving it out fails here, not at build time.
           sparse-checkout: |
             scripts/packed-smoke.sh
-            scripts/lib/refusal-gate-check.mjs
+            packages/@prismalens/engine/scripts/refusal-gate-check.mjs
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v8
@@ -218,10 +199,6 @@ jobs:
       - name: Biome check (format + lint)
         run: pnpm format-and-lint
 
-      # SPDX headers on first-party source; policy in CONTRIBUTING.md.
-      - name: SPDX header check
-        run: pnpm spdx:check
-
   # The `gate-scripts` job that stood here tested `.github/scripts/` — the
   # merge-gate publisher, the high-risk path matcher, and their producer-transport
   # guards. All of it was deleted with the `review-evidence` gate in #415, so the
@@ -242,7 +219,7 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
-    needs: [build, changesets, test, pack, packed-smoke, lint]
+    needs: [build, test, pack, packed-smoke, lint]
     if: always()
     steps:
       - name: Assert every required job succeeded

@@ -72,7 +72,6 @@ import { SetupModule } from "./core/setup/setup.module.js";
 import { UsersModule } from "./core/users/users.module.js";
 
 // Infrastructure modules
-import { DevSeedModule } from "./infrastructure/dev-seed/dev-seed.module.js";
 import { DispatchModule } from "./infrastructure/dispatch/dispatch.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
@@ -165,7 +164,6 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		// Infrastructure
 		HealthModule,
 		DispatchModule,
-		DevSeedModule,
 
 		// Single-origin SPA serving (issue #237). `pl up` runs ONE process on ONE
 		// port, so the API also serves the built frontend — there is no Caddy and

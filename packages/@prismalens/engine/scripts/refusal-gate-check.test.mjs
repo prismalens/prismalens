@@ -4,15 +4,11 @@
 // Contract for the Part A refusal-gate sequence that packed-smoke.sh and
 // cross-os-app-boot.mjs both call (#551). Extracting the sequence stops the two
 // copies drifting; this stops the one remaining copy drifting silently.
-//
-// Lives at scripts/*.test.mjs, not beside the module, because that is the glob
-// CI's `changesets` job runs (`node --test scripts/*.test.mjs`) — a zero-dep
-// step with no pnpm install, which this test must stay compatible with.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { assertRefusalGate } from "./lib/refusal-gate-check.mjs";
+import { assertRefusalGate } from "./refusal-gate-check.mjs";
 
 const VERDICT = {
 	runnable: false,

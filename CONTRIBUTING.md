@@ -38,8 +38,7 @@ required of you until then.
 
 Requirements: **Node >= 22** and **pnpm** (this repo pins pnpm via the
 `packageManager` field; `corepack enable` will select the right version). It is
-a Turborepo monorepo (NestJS API + TanStack Start UI + a per-run investigation child, with
-Prisma/SQLite).
+a Turborepo monorepo (NestJS API + TanStack Start UI, with Prisma/SQLite).
 
 ```bash
 git clone https://github.com/prismalens/prismalens.git
@@ -61,9 +60,7 @@ pnpm db:init      # initialise the local SQLite database
 pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 ```
 
-The dev login is `admin@prismalens.dev` / `admin123`. On first boot against an empty database, the owner account and demo data (~60 alerts, incidents, investigations) are provisioned automatically.
-
-Auto-seeding only runs when `NODE_ENV=development`. To force the same seed outside development — e.g. in e2e tests or CI, where the API runs against an empty database with `NODE_ENV` unset or set to something else — set `PRISMALENS_SEED_DEMO=1`. It is an explicit opt-in: the flag is never set implicitly, and seeding still only happens once, against an empty database.
+The dev login is `admin@prismalens.dev` / `admin123`. `pnpm db:init` on an empty database seeds the owner account and demo data (~60 alerts, incidents, investigations) when `NODE_ENV=development` or `PRISMALENS_SEED_DEMO=1` — the same gate e2e tests and CI use to force it outside development. `pnpm --filter @prismalens/database db:seed` reruns the seed directly.
 
 ### Browser e2e tier
 
@@ -300,19 +297,9 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
 
 ## License headers (SPDX)
 
-Every first-party source file (`*.ts`, `*.tsx`, `*.mts`, `*.cts`, `*.mjs`,
-`*.cjs`) starts with:
-
-```
-// SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Sumit Patel
-```
-
-(after the shebang, for executables). CI enforces this via `pnpm spdx:check`.
-Headers are automatically inserted when you commit; `pnpm spdx:fix` remains
-available for manual runs. Generated code is excluded — paraglide
-output, generated clients, anything under `dist/` — see the `EXCLUDE` list in
-`scripts/spdx-headers.mjs`.
+New source files carry the same two-line SPDX header as their neighbours
+(`// SPDX-License-Identifier: Apache-2.0` / `// Copyright 2026 Sumit Patel`).
+Nothing enforces it.
 
 ## Knowledge base (mage)
 
@@ -325,481 +312,28 @@ than letting it evaporate.
 ## Releases and package publishing
 
 One package publishes to npm: `prismalens` (the CLI). Its first-party library
-closure — `@prismalens/engine`, `@prismalens/contracts`, `@prismalens/config` —
-is `private: true` and **bundled into the CLI tarball at build time** (tsup), so
-it never publishes separately (see
-[#193](https://github.com/prismalens/prismalens/issues/193)).
+closure is `private: true` and bundled into the CLI tarball at build time, so
+it never publishes separately (issue #193).
+
 Versioning and publishing run through
-[Changesets](https://github.com/changesets/changesets) (`.changeset/config.json`
-+ `.github/workflows/release.yml`). CI enforces both changeset presence and naming
-via `node scripts/validate-changesets.mjs` (`pnpm changeset:check`).
-
-### Changeset rules
-
-1. **When a changeset is required:** Any PR modifying publishable runtime code or
-   assets under `packages/` must introduce or update a changeset in `.changeset/`.
-   Changes that only touch documentation (`*.md`), tests (`*.test.*`, `*.spec.*`,
-   `__tests__/`, `e2e/`, `eval/`), test configs (`vitest.config.*`, `playwright.config.*`),
-   or repo tooling outside `packages/` (`scripts/`, `.github/`, `docs/`) do not require a changeset.
-2. **Target package:** Every changeset must name **`prismalens`** — never a `@prismalens/*`
-   package (see [`.changeset/README.md`](.changeset/README.md)).
-3. **Escape hatch:** If a change touches publishable code but genuinely requires no
-   release note or version bump (e.g. an internal refactor), commit an empty changeset
-   using `pnpm changeset --empty` (or `npx changeset --empty`).
-4. **Release PRs are exempt** — the machine-generated "chore: version packages" PR
-   deletes the changesets it consumes, bumps `version` in the corresponding publishable
-   packages, and can never add a changeset. See
-   [Release PRs are exempt from the presence check](#release-prs-are-exempt-from-the-presence-check).
-5. **Dependency-range bumps are exempt** — a `package.json` diff that only moves
-   dependency *ranges* carries no code and therefore no release note. See
-   [Dependency-range bumps are exempt from the presence check](#dependency-range-bumps-are-exempt-from-the-presence-check).
-6. **The gate fails closed.** If it cannot compute the diff (a shallow clone, an
-   unresolvable base ref, git unavailable) it exits non-zero with the git error
-   attached. It never reports "no publishable packages modified" on a broken probe.
-
-7. **What goes in the body.** One paragraph, at most three sentences and 60 words,
-   written for someone running `prismalens` who is deciding whether to upgrade — not
-   for the reviewer and not for a future maintainer. No headings, bullets, bold, or
-   `fix(scope):` prefix. Say what changed in the terms the user sees, not the
-   mechanism, the design reason, what the tests assert, or which RFC or ADR applies.
-   End that paragraph with the issue number in parentheses; if the user must act on
-   upgrade, an `Action:` paragraph follows it and does not repeat the number. If the
-   change is a security property, state the limit of the mechanism too — what it does
-   not do — or the note reads as a promise to cover everything. See `.changeset/README.md` → *What goes in the body*
-   for the full rule and three calibration rewrites.
-
-### Worked example
-
-When modifying publishable code without a changeset, the gate fails:
-
-```console
-$ git diff --name-only origin/main
-packages/api/src/modules/alerts/alerts.service.ts
-
-$ pnpm changeset:check
-No changeset found for changes to publishable packages.
-
-Changed publishable files:
-  • packages/api/src/modules/alerts/alerts.service.ts
-
-Why this is required:
-  This branch modifies code or assets that ship in the `prismalens` npm package.
-  Every user-facing change to publishable code must carry a release note so the
-  release train (issue #328) can version and publish the package.
-
-How to fix:
-  1. Add a changeset naming "prismalens" (patch for bug fixes, minor for features):
-       pnpm exec changeset
-     (or: npx changeset)
-
-  2. Or if this change genuinely needs no release note (e.g. internal refactor),
-     add an empty changeset escape hatch:
-       pnpm exec changeset --empty
-     (or: npx changeset --empty)
-```
-
-Adding a changeset satisfies the gate:
-
-```console
-$ pnpm changeset
-# Select "prismalens", choose patch/minor, and enter a summary
-🦋  Added changeset .changeset/cool-coder-ship.md
-
-$ pnpm changeset:check
-changesets OK — 28 changeset(s) validated; publishable set: prismalens.
-```
-
-### Release PRs are exempt from the presence check
-
-The `changesets/action` release PR (branch `changeset-release/main`, title
-`chore: version packages`) consumes changesets while bumping `version` in the
-affected `package.json` files. In normal release mode, consumed changesets are
-**deleted**; in Changesets **pre mode** (`.changeset/pre.json`), changesets are
-preserved on disk and recorded in `pre.json`'s `changesets` array. Because those
-manifests are publishable files, without an exemption the presence check would
-fail on every release — on a PR no human can add a changeset to.
-
-The exemption is decided from the **shape of the diff** and the **correspondence**
-between consumed changesets (deleted `.changeset/*.md` files in normal mode, or
-newly recorded IDs in `.changeset/pre.json` in pre mode) and version bumps, not from
-the branch name or the author, both of which any contributor can forge. It applies
-only when *all* of the following hold:
-
-* the diff **consumes** at least one changeset (deleted `.changeset/*.md` or recorded in `.changeset/pre.json`),
-* **every** changed publishable file is a `package.json` whose parsed before/after
-  differ only in `version` and in dependency-range *values*
-  (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`),
-* **at least one** publishable package's `version` field actually changed in this diff, and
-* **every** publishable package named by any consumed changeset (parsed from its frontmatter)
-  has its `version` bumped in this diff (`consumedPackageNames ⊆ bumpedPackages`).
-
-Notes on the correspondence invariant:
-
-* **Empty changesets** (`changeset --empty`) name no packages. A release PR legitimately
-  consumes them alongside regular changesets; they do not defeat the exemption.
-* **Containment is one direction only**: `changeset version` also bumps dependent packages
-  that no changeset explicitly named, so the bumped set may legitimately be larger.
-* **Fails closed**: consumed changesets that cannot be read at the merge base (or from disk in pre mode)
-  or whose frontmatter fails to parse deny the exemption.
-* **Non-publishable names** (private / `.changeset/config.json` `ignore` entries) in consumed
-  changesets are ignored because they never produce a version bump.
-
-Adding or removing a dependency, retargeting one to an `npm:`/`file:`/git specifier,
-touching any other manifest field (`bin`, `exports`, `scripts`, `files`, …), changing a
-single line of source, or deleting/consuming changesets without matching version bumps aborts the
-exemption.
-
-When the exemption fires it says so on stdout, naming the consumed changesets and the
-manifests it accepted:
-
-```console
-$ pnpm changeset:check
-changeset presence check skipped — this is a Version Packages release PR:
-  • it consumes 4 changeset(s): .changeset/dispatch-robustness.md, .changeset/fix-schema-recovery-trigger.md, .changeset/fix-stale-schema-crash.md, .changeset/refuse-listen-leak.md
-  • every changed publishable file is a version-field-only package.json: packages/@prismalens/engine/package.json, packages/cli/package.json
-  • branch: changeset-release/main
-  See CONTRIBUTING.md → "Release PRs are exempt from the presence check".
-
-changesets OK — release PR exempt from the presence check; 0 changeset(s) validated.
-```
-
-A release-shaped diff that smuggles in real source is refused, and the message names
-the files that broke the shape:
-
-```console
-$ pnpm changeset:check
-No changeset found for changes to publishable packages.
-
-Changed publishable files:
-  • packages/@prismalens/engine/package.json
-  • packages/cli/package.json
-  • packages/cli/src/index.ts
-
-This branch deletes 4 changeset(s) the way a release PR does, but the release-PR exemption does not apply: 1 changed file(s) under packages/ are not version-field-only package.json edits:
-  ✗ packages/cli/src/index.ts
-...
-```
-
-A diff that deletes a changeset but does not bump the corresponding package version
-(e.g., an attempted forge or unrelated changeset cleanup) is likewise refused:
-
-```console
-$ pnpm changeset:check
-No changeset found for changes to publishable packages.
-
-Changed publishable files:
-  • packages/cli/package.json
-
-This branch deletes 1 changeset(s) the way a release PR does, but the release-PR exemption does not apply: the deleted changeset(s) name publishable package(s) whose version was not bumped: prismalens
-...
-```
-
-### Dependency-range bumps are exempt from the presence check
-
-A Dependabot group bump — or a maintainer doing the same thing by hand — edits
-`packages/*/package.json` and nothing else. Those manifests are publishable files, so
-the presence check fired on them, and Dependabot cannot author a changeset.
-
-Like the release-PR exemption, this one is decided from the **shape of the diff**. It
-is deliberately **not** keyed on `dependabot[bot]` or any other identity: an author
-check is forgeable in the same way a branch name is, and it would wrongly refuse a
-human doing the identical, equally note-free change. The consequence is accepted —
-**a human doing a pure dependency bump is exempt too.**
-
-The exemption applies only when *all* of these hold:
-
-* at least one changed `package.json` moves a dependency range, and
-* **every** changed publishable file is a `package.json` whose parsed before/after
-  differ *only* in dependency-range **values** under `dependencies`,
-  `devDependencies`, `peerDependencies` or `optionalDependencies`, and
-* no `version` field changed (that is the release-PR case, kept separate), and
-* no changeset was deleted (likewise).
-
-Adding or removing a dependency key, retargeting one away from a version range
-(`npm:`, `file:`, `link:`, `git+…`, a tarball URL), touching any other manifest
-field, or changing one line of source aborts it. `pnpm-lock.yaml` and the root
-`package.json` are outside `packages/` and never counted either way.
-
-```console
-$ node scripts/validate-changesets.mjs --base '44506b6^'   # replaying #444, a Dependabot group bump
-changeset presence check skipped — this is a dependency-range bump:
-  • every changed publishable file is a dependency-range-only package.json: packages/@prismalens/logger/package.json, packages/api/package.json, packages/frontend/package.json
-  • no source file, no other manifest field, no version bump, no changeset consumed
-  • branch: dependabot/npm_and_yarn/dev-minor-patch-…
-  See CONTRIBUTING.md → "Dependency-range bumps are exempt from the presence check".
-
-changesets OK — dependency-range bump exempt from the presence check; 0 changeset(s) validated.
-```
-
-Smuggle anything else into that diff and it is refused, with the offending files named:
-
-```console
-$ node scripts/validate-changesets.mjs --base '44506b6^'
-No changeset found for changes to publishable packages.
-
-Changed publishable files:
-  • packages/@prismalens/logger/package.json
-  • packages/api/package.json
-  • packages/api/src/main.ts
-  • packages/frontend/package.json
-
-This branch edits package.json the way a dependency bump does, but the dependency-bump exemption does not apply: 1 changed file(s) under packages/ are not dependency-range-only package.json edits:
-  ✗ packages/api/src/main.ts
-...
-$ echo $?
-1
-```
-
-**How the two exemptions interact.** Both are `every changed publishable file is …`
-predicates evaluated over the same file list, so OR-ing them can never admit a file
-neither would admit on its own. The dependency-bump file shape (ranges only) is a
-strict subset of the release-PR file shape (ranges *and* `version`), which means the
-union of what they accept is exactly what the release-PR exemption already accepted
-before this rule existed. A diff that both deletes a changeset and edits dependency
-ranges is handled by the release-PR branch, as it was before; add a new dependency key
-or a source file to it and both branches refuse it.
-
-### The gate fails closed when it cannot compute the diff
-
-The presence check is only meaningful if the diff is known. A git failure that
-produced an empty file list would read exactly like a branch that changed nothing —
-a silent pass, which is the hole this gate exists to close. So every git invocation
-that feeds the diff (`ls-files`, `merge-base`, `diff`) is fatal on failure, and git's
-own stderr is printed rather than swallowed. This is why the CI `changesets` job
-checks out with `fetch-depth: 0` (`.github/workflows/ci.yml`): a shallow clone has no
-merge-base with the base branch.
-
-```console
-$ git clone --depth 1 … && GITHUB_BASE_REF=main pnpm changeset:check
-Could not determine which files changed — refusing to pass.
-
-  base ref: main
-  git merge-base HEAD main — exit 128
-    fatal: Not a valid object name main
-
-Why this is fatal:
-  This gate is only meaningful if the diff is known. An empty file list from a
-  broken git invocation is indistinguishable from a branch that changed nothing,
-  so it would pass silently forever — the exact hole issue #328 exists to close.
-
-How to fix:
-  1. In CI: check out with full history — `fetch-depth: 0` on actions/checkout.
-     A shallow clone shares no merge-base with the base branch.
-  2. Locally: fetch the base branch (`git fetch origin main`), or name one:
-       node scripts/validate-changesets.mjs --base <ref>
-
-$ echo $?
-1
-```
-
-The one case where no diff is legitimate is a repository with **no commits yet** —
-there is nothing to compare against and every file is untracked. That is handled by
-name, not by the catch-all, and it says so:
-
-```console
-changesets OK — repository has no commits yet, so there is no diff to check; 1 changeset(s) validated.
-```
-
-### How a release reaches npm
-
-On every push to `main` with pending changesets, the release workflow opens/updates a
-**"chore: version packages" PR** (`pnpm changeset:version`); merging that PR publishes
-the bumped `prismalens` package to npm with provenance (`pnpm changeset:publish` =
-`node scripts/pack-cli.mjs --publish`, then `changeset git-tag`) and creates a
-GitHub Release for its tag. That is NOT `pnpm publish -r`: the published tarball
-carries the first-party closure as bundled dependencies, and `pnpm pack`
-produces zero bundled entries — an artifact `pl up` cannot boot. The pack script
-builds it, asserts it, and hands that exact file to `npm publish`, so what ships
-is what the packed smoke verified. The version PR is opened with the
-`RELEASE_PAT` repo secret (fine-grained PAT, Contents + Pull requests read/write
-— the PR must come from a user so CI triggers on it). npm publishing uses
-**trusted publishing** (OIDC): `prismalens` registers this repo's `release.yml`
-as a trusted publisher on npmjs.com, the npm CLI exchanges the workflow's OIDC
-token for a short-lived credential, and provenance is attested automatically — there
-is no npm token secret to rotate or leak.
-
-The same steps can be run manually from a local checkout as a fallback:
-`pnpm changeset:version` → review/commit → `pnpm build && pnpm test &&
-pnpm publint` → `pnpm run pack && sh scripts/packed-smoke.sh packages/cli/dist-pack`
-→ `pnpm changeset:publish` → `git push --follow-tags`.
-
-Everything else in `packages/` stays `private: true` and is never published on
-its own — but since #237 the app-side packages (`@prismalens/api`,
-`@prismalens/worker`) and the shared libraries travel INSIDE the `prismalens`
-tarball as bundled dependencies, which is what makes `pl up` a single install.
-They are still excluded from Changesets: one published package, one version.
-
-### Prerelease (RC) workflow with Changesets pre mode
-
-For major or milestone cuts (such as the v0.5.0 release candidate train), prismalens uses
-Changesets' **pre mode** (`.changeset/pre.json`). Pre mode allows publishing prerelease iterations
-(e.g., `0.5.0-rc.0`, `0.5.0-rc.1`) to the npm `rc` dist-tag without moving the `latest` tag used by
-general installs.
-
-> [!IMPORTANT]
-> **Operator-only release train command on `main` — never commit `pre.json` in a feature PR.**
-> Entering and exiting pre mode (`pnpm changeset pre enter <tag>` and `pnpm changeset pre exit`) is an
-> **operator-run action executed directly on `main`, never part of a feature PR**. Committing `.changeset/pre.json`
-> flips the entire repository into prerelease mode the moment it merges, which would force every pending
-> changeset across the repo to bump to prerelease versions (`0.x.y-rc.N`) rather than stable releases.
-> The operator controls the release train on `main`.
-
-#### Lifecycle in pre mode
-
-1. **Operator enters pre mode on `main`:** The repository operator runs `pnpm changeset pre enter rc` directly
-   on `main` (or on a dedicated operator release branch landed to `main`). This writes `.changeset/pre.json` with
-   `"mode": "pre"` and `"tag": "rc"`.
-2. **The Version Packages PR:** On push to `main` with pending changesets, the release workflow
-   (`.github/workflows/release.yml`) runs `pnpm changeset:version`. In pre mode, changesets are not deleted from
-   disk; their IDs are appended to `.changeset/pre.json`'s `changesets` array, and `packages/cli/package.json` is
-   bumped to `0.x.y-rc.N` (e.g., `0.5.0-rc.0`). CI recognizes this shape and exempts the PR from the changeset
-   presence check.
-3. **Publishing to the `rc` dist-tag:** When the Version PR merges to `main`, `release.yml` invokes
-   `pnpm changeset:publish` (`node scripts/pack-cli.mjs --publish && changeset git-tag`). The pack script
-   detects pre mode from `.changeset/pre.json` (or the prerelease version) and automatically supplies
-   `--tag rc` to `npm publish`. This publishes `prismalens@0.5.0-rc.0` to the `rc` dist-tag without
-   moving `latest`.
-4. **User installation:** Users install the release candidate explicitly via:
-   ```console
-   $ npm i -g prismalens@rc
-   ```
-5. **Verifying dist-tags:** Confirm on npm that `latest` remains untouched and `rc` points to the candidate:
-   ```console
-   $ npm view prismalens dist-tags
-   { latest: '0.4.0', rc: '0.5.0-rc.0' }
-   ```
-6. **Subsequent RC iterations:** Any subsequent changesets merged to `main` update the Version PR to
-   bump the candidate version (`0.5.0-rc.1`, `0.5.0-rc.2`, etc.).
-7. **Operator exits pre mode for the final release:** When the release candidate cycle is complete and the
-   software is ready for stable release:
-   - The operator runs `pnpm changeset pre exit` directly on `main`. This updates `.changeset/pre.json` to `"mode": "exit"`.
-   - The operator commits and pushes `.changeset/pre.json` to `main`.
-   - The subsequent release workflow run on `main` executes `pnpm changeset:version`, which consumes all queued
-     changesets, bumps `packages/cli/package.json` to the final stable version (`0.5.0`), deletes all consumed
-     `.changeset/*.md` files, and removes `.changeset/pre.json`.
-   - Merging that Version PR publishes `0.5.0` to the `latest` dist-tag on npm via `node scripts/pack-cli.mjs --publish`.
-
-#### Worked terminal transcript
-
-The full transcript of entering pre mode, exercising the RC cycle, and exiting:
-
-```console
-# --- Step 1: Operator enters pre mode on main ---
-$ pnpm changeset pre enter rc
-🦋  success Entered pre mode with tag rc
-🦋  info Run `changeset version` to version packages with prerelease versions
-
-$ cat .changeset/pre.json
-{
-  "mode": "pre",
-  "tag": "rc",
-  "initialVersions": {
-    "@prismalens/api": "0.0.1",
-    "@prismalens/auth": "0.0.1",
-    "@prismalens/config": "0.3.0",
-    "@prismalens/contracts": "0.1.1",
-    "@prismalens/database": "0.0.1",
-    "@prismalens/design-tokens": "0.0.1",
-    "@prismalens/engine": "0.2.1",
-    "@prismalens/frontend": "0.0.1",
-    "@prismalens/integrations": "0.0.1",
-    "@prismalens/logger": "0.0.1",
-    "@prismalens/worker": "0.0.1",
-    "prismalens": "0.4.0"
-  },
-  "changesets": []
-}
-
-$ git add .changeset/pre.json
-$ git commit -m "chore(release): enter rc pre mode"
-$ git push origin main
-
-# --- Step 2: Release workflow on main versions packages for RC ---
-# In CI on main, changesets/action runs `pnpm changeset:version`
-$ pnpm changeset:version
-🦋  warn ===============================IMPORTANT!===============================
-🦋  warn You are in prerelease mode
-🦋  warn If you meant to do a normal release you should revert these changes and run `changeset pre exit`
-🦋  warn You can then run `changeset version` again to do a normal release
-🦋  warn ----------------------------------------------------------------------
-🦋  All files have been updated. Review them and commit at your leisure
-
-$ git status
-On branch changeset-release/main
-Changes not staged for commit:
-	modified:   .changeset/pre.json
-	modified:   packages/cli/CHANGELOG.md
-	modified:   packages/cli/package.json
-
-$ git diff packages/cli/package.json
--	"version": "0.4.0",
-+	"version": "0.5.0-rc.0",
-
-# --- Step 3: Version PR is validated by CI and merged ---
-$ pnpm changeset:check
-changeset presence check skipped — this is a Version Packages release PR:
-  • it consumes 30 changeset(s): .changeset/alert-mapping-health.md, ...
-  • every changed publishable file is a version-field-only package.json: packages/cli/package.json
-  • branch: changeset-release/main
-changesets OK — release PR exempt from the presence check; 30 changeset(s) validated.
-
-# --- Step 4: Release workflow publishes to npm on the rc dist-tag ---
-# Merging the Version PR triggers `release.yml` -> `pnpm changeset:publish`
-$ node scripts/pack-cli.mjs --publish
-==> building every package (turbo)
-...
-==> npm pack
-prismalens-0.5.0-rc.0.tgz
-==> packages/cli/dist-pack/prismalens-0.5.0-rc.0.tgz  1.26 MB, 523 entries
-    bundleDependencies survived; no workspace:/catalog: strings
-==> npm publish /home/runner/work/prismalens/prismalens/packages/cli/dist-pack/prismalens-0.5.0-rc.0.tgz --access public --tag rc
-+ prismalens@0.5.0-rc.0
-
-# --- Step 5: User installs and operator verifies dist-tags ---
-$ npm view prismalens dist-tags
-{ latest: '0.4.0', rc: '0.5.0-rc.0' }
-
-$ npm i -g prismalens@rc
-+ prismalens@0.5.0-rc.0
-added 42 packages in 3.12s
-
-$ prismalens --version
-0.5.0-rc.0
-
-# --- Step 6: Operator exits pre mode on main for the final stable release ---
-$ pnpm changeset pre exit
-🦋  success Exited pre mode
-🦋  info Run `changeset version` to version packages with normal versions
-
-$ cat .changeset/pre.json
-{
-  "mode": "exit",
-  "tag": "rc",
-  "initialVersions": {
-    "@prismalens/api": "0.0.1",
-    "@prismalens/auth": "0.0.1",
-    "@prismalens/config": "0.3.0",
-    "@prismalens/contracts": "0.1.1",
-    "@prismalens/database": "0.0.1",
-    "@prismalens/design-tokens": "0.0.1",
-    "@prismalens/engine": "0.2.1",
-    "@prismalens/frontend": "0.0.1",
-    "@prismalens/integrations": "0.0.1",
-    "@prismalens/logger": "0.0.1",
-    "@prismalens/worker": "0.0.1",
-    "prismalens": "0.4.0"
-  },
-  "changesets": [
-    "alert-mapping-health",
-    "..."
-  ]
-}
-
-$ git add .changeset/pre.json
-$ git commit -m "chore(release): exit rc pre mode"
-$ git push origin main
-# (Release workflow on main runs `pnpm changeset:version`, bumping packages/cli to 0.5.0, deleting changesets & pre.json, and publishing to latest tag upon merge)
-```
+[release-please](https://github.com/googleapis/release-please)
+(`release-please-config.json` + `.release-please-manifest.json` +
+`.github/workflows/release.yml`), driven by conventional-commit titles on
+`main` — there are no changesets and no pre-release tags (0001 §7, §9).
+
+1. Every commit to `main` needs a conventional-commit title (`fix:`, `feat:`,
+   `chore:`, …); release-please reads these to compute the next version.
+2. On push to `main`, release-please opens or updates a release PR proposing
+   the next version and a changelog.
+3. Merging that PR creates the GitHub Release and tag, which triggers the
+   `publish` job: build, `publint`, then pack + publish via npm trusted
+   publishing (OIDC) — no npm token secret.
+4. Override the computed version with a `Release-As: 0.5.0`-style footer on a
+   commit to `main`.
+
+The release PR is created with the `RELEASE_PAT` repo secret, not the default
+`GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened
+with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
 ## Documentation and milestone exit gates
 

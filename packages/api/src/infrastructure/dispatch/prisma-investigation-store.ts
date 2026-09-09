@@ -22,7 +22,10 @@
  * `cancelled` outcome calls neither finish nor fail, so it invokes {@link flush}
  * directly to drain the same buffered tail before it resolves.
  */
-import type { CanonicalEvent, InvestigationReport } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	InvestigationReport,
+} from "@prismalens/contracts";
 import type { InvestigationStore } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
 import type { RunPorts } from "./run-ports.js";

@@ -18,7 +18,7 @@
 		}
 	},
 	"prisma": {
-		"seed": "tsx prisma/seed.ts"
+		"seed": "tsx ../../api/scripts/seed.ts"
 	},
 	"scripts": {
 		"build": "tsc && node scripts/copy-migrations.mjs",

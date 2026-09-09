@@ -31,7 +31,7 @@ TARBALLS=$(cd "${1:?usage: packed-smoke.sh <dir-with-tarball>}" && pwd)
 # only reach the shared Part A module (#551) by absolute path. This is the second
 # entry in this job's sparse-checkout list in .github/workflows/ci.yml.
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REFUSAL_GATE_LIB="$SCRIPT_DIR/lib/refusal-gate-check.mjs"
+REFUSAL_GATE_LIB="$SCRIPT_DIR/../packages/@prismalens/engine/scripts/refusal-gate-check.mjs"
 [ -f "$REFUSAL_GATE_LIB" ] || {
 	echo "SMOKE FAIL: $REFUSAL_GATE_LIB is missing — widen the job's sparse-checkout" >&2
 	exit 1
@@ -360,7 +360,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
 	// --- unrunnable investigation refused server-side (Part A, #520) -----------
-	// The sequence itself lives in scripts/lib/refusal-gate-check.mjs (#551);
+	// The sequence itself lives in packages/@prismalens/engine/scripts/refusal-gate-check.mjs (#551);
 	// what stays here is what is genuinely container-specific — a bare specifier
 	// that resolves through the installed package, and a log that is a file.
 	const { partBLogOffset } = await assertRefusalGate({
