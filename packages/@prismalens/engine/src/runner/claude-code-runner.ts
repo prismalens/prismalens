@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
 /**
  * Claude Code harness runner (Tier-2 deep path, ADR-0008). Drives the Claude Agent
  * SDK (`query()` — which spawns the user's Claude Code CLI + subscription) and
@@ -14,6 +11,9 @@ import { join } from "node:path";
  * `canUseTool` programmatic gate is the cleaner HITL seam for the act phase later
  * (ADR-0009); for Phase-1 read-only diagnosis the deny-list + bypass is enough.
  * The stream ALWAYS terminates (result → branch_done/error, or a thrown failure).
+ *
+ * Runs the user's own `claude` login and config dir; prismalens never reads or
+ * copies harness credentials (0003 §2).
  */
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import {
@@ -29,43 +29,6 @@ import {
 import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
 import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 import { sandboxSpawnClaudeCodeProcess } from "./claude-code-sandbox-spawn.js";
-
-/**
- * Carries the operator's Claude credentials into an isolated config dir.
- *
- * `isolateSettings` exists to keep host *configuration* — settings, hooks, plugins
- * — out of a run. It does that by pointing `CLAUDE_CONFIG_DIR` at an empty temp
- * dir, which also relocates where the CLI looks for `.credentials.json`. Identity
- * is not configuration: without this, every isolated run on a subscription dies
- * with `Not logged in · Please run /login` and never reaches a model.
- *
- * Absence is normal (API-key auth, or a keychain-backed platform), so a missing
- * or unreadable file is not an error — the SDK resolves auth on its own.
- */
-async function carryCredentialsInto(configDir: string): Promise<void> {
-	let secret: string;
-	try {
-		secret = await readFile(
-			join(homedir(), ".claude", ".credentials.json"),
-			"utf8",
-		);
-	} catch {
-		return; // nothing to carry — see above
-	}
-
-	// Written 0600 at CREATE time rather than copied and then chmod'ed: that order
-	// has a window where the file exists with default permissions, and a chmod
-	// failure would strand readable credentials on disk.
-	const target = join(configDir, ".credentials.json");
-	try {
-		await writeFile(target, secret, { mode: 0o600, flag: "wx" });
-	} catch (err) {
-		// Never leave a partial or unhardened copy behind. Failing loudly beats a
-		// run that silently proceeds unauthenticated.
-		await rm(target, { force: true });
-		throw err;
-	}
-}
 
 export interface ClaudeCodeConfig {
 	/** Working directory the agent runs in (it reads the app source here). */
@@ -104,10 +67,8 @@ export interface ClaudeCodeConfig {
 	 * Per-run environment for the harness child (ADR-0006 BYO-key).
 	 *
 	 * The claude-code CLI reads its credential from `ANTHROPIC_API_KEY` in its own
-	 * process env. Subscription auth already had a per-run route in (the isolated 0600
-	 * `CLAUDE_CONFIG_DIR` below); a plain API key had none, so a BYO-key run reached the
-	 * harness unauthenticated. Threaded through the sandbox spawn so the value is scoped
-	 * to this child and never assigned to the host's `process.env`.
+	 * process env. Threaded through the sandbox spawn so the value is scoped to this
+	 * child and never assigned to the host's `process.env`.
 	 */
 	env?: Record<string, string | undefined>;
 }
@@ -141,15 +102,7 @@ export async function* runClaudeCodeBranch(
 	const sandbox = config.sandbox ?? createProcessFloorSandbox();
 	const ownsSandbox = config.sandbox === undefined;
 
-	let configDir: string | undefined;
 	try {
-		if (config.isolateSettings) {
-			// Note: Endpoint-managed policy settings are org-enforced by design — we do NOT attempt to bypass them.
-			// This isolates only the global user/host configuration (~/.claude.json).
-			configDir = await mkdtemp(join(tmpdir(), "claude-config-"));
-			await carryCredentialsInto(configDir);
-		}
-
 		const response = query({
 			prompt: config.prompt,
 			options: {
@@ -172,17 +125,7 @@ export async function* runClaudeCodeBranch(
 				spawnClaudeCodeProcess: sandboxSpawnClaudeCodeProcess(sandbox, {
 					cwd: config.cwd,
 					...(config.limits ? { limits: config.limits } : {}),
-					// The per-run credential env and the isolated config dir ride the SAME
-					// `opts.env`. `CLAUDE_CONFIG_DIR` is spread last: the isolation boundary
-					// this run resolved is not overridable by a caller-supplied env.
-					...(config.env || configDir
-						? {
-								env: {
-									...(config.env ?? {}),
-									...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
-								},
-							}
-						: {}),
+					...(config.env ? { env: config.env } : {}),
 				}),
 			},
 		});
@@ -199,8 +142,5 @@ export async function* runClaudeCodeBranch(
 		yield adapter.error(err instanceof Error ? err.message : String(err));
 	} finally {
 		if (ownsSandbox) await sandbox.destroy();
-		if (configDir) {
-			await rm(configDir, { recursive: true, force: true });
-		}
 	}
 }

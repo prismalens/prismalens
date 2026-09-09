@@ -13,31 +13,39 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => {
 	};
 });
 
+function stubSandbox() {
+	const sandbox = createProcessFloorSandbox();
+	const spawnSpy = vi.spyOn(sandbox, "spawn");
+	spawnSpy.mockImplementation(() => {
+		return {
+			stdin: {},
+			stdout: {},
+			stderr: {},
+			killed: false,
+			kill: () => true,
+			on: () => {},
+			once: () => {},
+			off: () => {},
+		} as unknown as SandboxProcess;
+	});
+	return { sandbox, spawnSpy };
+}
+
 describe("runClaudeCodeBranch isolateSettings", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
-	it("sets CLAUDE_CONFIG_DIR and clears settingSources when isolateSettings is true", async () => {
+	// prismalens runs the user's own `claude` login and config dir (0003 §2) — it
+	// never reads or copies harness credentials, so isolateSettings only clears
+	// settingSources; it must never inject CLAUDE_CONFIG_DIR into the child env.
+	it("clears settingSources and injects no CLAUDE_CONFIG_DIR when isolateSettings is true", async () => {
 		const queryMock = vi.mocked(query);
 		queryMock.mockImplementation(async function* () {
 			yield { type: "result", result: "ok" };
 		} as unknown as typeof query);
 
-		const sandbox = createProcessFloorSandbox();
-		const spawnSpy = vi.spyOn(sandbox, "spawn");
-		spawnSpy.mockImplementation(() => {
-			return {
-				stdin: {},
-				stdout: {},
-				stderr: {},
-				killed: false,
-				kill: () => true,
-				on: () => {},
-				once: () => {},
-				off: () => {},
-			} as unknown as SandboxProcess;
-		});
+		const { sandbox, spawnSpy } = stubSandbox();
 
 		const gen = runClaudeCodeBranch(
 			{
@@ -55,8 +63,8 @@ describe("runClaudeCodeBranch isolateSettings", () => {
 
 		expect(queryMock).toHaveBeenCalledTimes(1);
 		const options = queryMock.mock.calls[0][0].options;
+		expect(options.settingSources).toEqual([]);
 
-		// The spawnClaudeCodeProcess factory from options should pass CLAUDE_CONFIG_DIR
 		const spawnProcessFn = options.spawnClaudeCodeProcess;
 		expect(spawnProcessFn).toBeDefined();
 
@@ -69,36 +77,19 @@ describe("runClaudeCodeBranch isolateSettings", () => {
 		});
 
 		expect(spawnSpy).toHaveBeenCalledTimes(1);
-		const spawnCallArgs = spawnSpy.mock.calls[0];
-		const envPassed = spawnCallArgs[2].env;
+		const envPassed = spawnSpy.mock.calls[0][2].env;
 
-		expect(envPassed).toHaveProperty("CLAUDE_CONFIG_DIR");
-		expect(envPassed?.CLAUDE_CONFIG_DIR).toMatch(/claude-config-/);
+		expect(envPassed).not.toHaveProperty("CLAUDE_CONFIG_DIR");
 		expect(envPassed?.FOO).toBe("bar");
-
-		expect(options.settingSources).toEqual([]);
 	});
 
-	it("does not set CLAUDE_CONFIG_DIR and leaves default settingSources when isolateSettings is false", async () => {
+	it("leaves default settingSources when isolateSettings is false", async () => {
 		const queryMock = vi.mocked(query);
 		queryMock.mockImplementation(async function* () {
 			yield { type: "result", result: "ok" };
 		} as unknown as typeof query);
 
-		const sandbox = createProcessFloorSandbox();
-		const spawnSpy = vi.spyOn(sandbox, "spawn");
-		spawnSpy.mockImplementation(() => {
-			return {
-				stdin: {},
-				stdout: {},
-				stderr: {},
-				killed: false,
-				kill: () => true,
-				on: () => {},
-				once: () => {},
-				off: () => {},
-			} as unknown as SandboxProcess;
-		});
+		const { sandbox, spawnSpy } = stubSandbox();
 
 		const gen = runClaudeCodeBranch(
 			{
@@ -129,8 +120,7 @@ describe("runClaudeCodeBranch isolateSettings", () => {
 		});
 
 		expect(spawnSpy).toHaveBeenCalledTimes(1);
-		const spawnCallArgs = spawnSpy.mock.calls[0];
-		const envPassed = spawnCallArgs[2].env;
+		const envPassed = spawnSpy.mock.calls[0][2].env;
 
 		expect(envPassed).not.toHaveProperty("CLAUDE_CONFIG_DIR");
 		expect(envPassed?.FOO).toBe("bar");
