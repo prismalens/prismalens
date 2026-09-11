@@ -37,8 +37,8 @@
 		"changeset:publish": "node scripts/pack-cli.mjs --publish && changeset git-tag"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.10",
-		"@changesets/cli": "^3.0.1",
+		"@biomejs/biome": "2.5.12",
+		"@changesets/cli": "^3.0.2",
 		"@types/node": "catalog:",
 		"publint": "^0.3.24",
 		"tsx": "catalog:",
