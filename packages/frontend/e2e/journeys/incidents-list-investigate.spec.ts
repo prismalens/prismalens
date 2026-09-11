@@ -96,21 +96,6 @@ const UNUSABLE_SELECTION_REASON =
 	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
 
 async function serveUnusableLlmAndHarnesses(page: Page) {
-	await page.route("**/api/settings/llm/config", async (route) => {
-		if (route.request().method() === "GET") {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					activeProvider: null,
-					providers: {},
-					harness: "auto",
-				}),
-			});
-			return;
-		}
-		await route.fallback();
-	});
 	await page.route("**/api/settings/harnesses", async (route) => {
 		await route.fulfill({
 			status: 200,
@@ -128,21 +113,6 @@ async function serveUnusableLlmAndHarnesses(page: Page) {
 }
 
 async function serveRunnableLlmAndHarnesses(page: Page) {
-	await page.route("**/api/settings/llm/config", async (route) => {
-		if (route.request().method() === "GET") {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					activeProvider: "custom",
-					providers: { custom: { model: "smoke-test-stub" } },
-					harness: "auto",
-				}),
-			});
-			return;
-		}
-		await route.fallback();
-	});
 	await page.route("**/api/settings/harnesses", async (route) => {
 		await route.fulfill({
 			status: 200,

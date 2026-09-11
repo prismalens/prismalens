@@ -6,7 +6,7 @@ import { Prisma } from "@prismalens/database";
 import { Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import { AlertsService } from "../alerts/alerts.service.js";
-import { CorrelationService } from "../correlation/correlation.service.js";
+import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import { EventsService } from "../events/events.service.js";
 import { WebhooksService } from "./webhooks.service.js";
 
@@ -14,7 +14,7 @@ describe("WebhooksService", () => {
 	let service: WebhooksService;
 	let eventsService: EventsService;
 	let alertsService: AlertsService;
-	let correlationService: CorrelationService;
+	let incidentCorrelationService: IncidentCorrelationService;
 	let alertMappingService: AlertMappingService;
 
 	const mockEvent = {
@@ -93,7 +93,7 @@ describe("WebhooksService", () => {
 					},
 				},
 				{
-					provide: CorrelationService,
+					provide: IncidentCorrelationService,
 					useValue: {
 						correlateAlert: vi.fn().mockResolvedValue({
 							incidentId: "inc-123",
@@ -101,6 +101,7 @@ describe("WebhooksService", () => {
 							reason: "Correlated to existing incident",
 							isNewIncident: false,
 						}),
+						resolveIncidentIfNoFiringAlerts: vi.fn().mockResolvedValue(undefined),
 					},
 				},
 				{
@@ -115,7 +116,9 @@ describe("WebhooksService", () => {
 		service = module.get<WebhooksService>(WebhooksService);
 		eventsService = module.get<EventsService>(EventsService);
 		alertsService = module.get<AlertsService>(AlertsService);
-		correlationService = module.get<CorrelationService>(CorrelationService);
+		incidentCorrelationService = module.get<IncidentCorrelationService>(
+			IncidentCorrelationService,
+		);
 		alertMappingService = module.get<AlertMappingService>(AlertMappingService);
 	});
 
@@ -161,7 +164,7 @@ describe("WebhooksService", () => {
 		);
 		expect(eventsService.create).not.toHaveBeenCalled();
 		expect(alertsService.create).not.toHaveBeenCalled();
-		expect(correlationService.correlateAlert).not.toHaveBeenCalled();
+		expect(incidentCorrelationService.correlateAlert).not.toHaveBeenCalled();
 		expect(result.alert.id).toBe("alt-123");
 		expect(result.incidentId).toBe("inc-123");
 		expect(result.incidentNumber).toBe(42);
@@ -193,7 +196,7 @@ describe("WebhooksService", () => {
 
 		expect(eventsService.create).toHaveBeenCalledTimes(1);
 		expect(alertsService.create).not.toHaveBeenCalled();
-		expect(correlationService.correlateAlert).not.toHaveBeenCalled();
+		expect(incidentCorrelationService.correlateAlert).not.toHaveBeenCalled();
 		expect(result.alert.id).toBe("alt-123");
 		expect(result.correlationReason).toContain("Idempotent replay");
 	});
@@ -302,7 +305,7 @@ describe("WebhooksService", () => {
 
 			expect(eventsService.create).not.toHaveBeenCalled();
 			expect(alertsService.create).not.toHaveBeenCalled();
-			expect(correlationService.correlateAlert).not.toHaveBeenCalled();
+			expect(incidentCorrelationService.correlateAlert).not.toHaveBeenCalled();
 			expect(result.alert.id).toBe("alt-123");
 			expect(result.correlationReason).toContain("Idempotent replay");
 		});
@@ -408,6 +411,39 @@ describe("WebhooksService", () => {
 			expect(result?.status).toBe("resolved");
 			// Group membership decides this now, inside resolveSourceAlert (#595).
 			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-abc");
+		});
+
+		// #608, C5 on #337: a resolved delivery resolves the alert and, when no
+		// firing alert remains on its incident, the incident too.
+		it("asks IncidentCorrelationService to close the incident once the alert resolves", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+
+			await service.resolvePrometheusAlert("fp-abc");
+
+			expect(
+				incidentCorrelationService.resolveIncidentIfNoFiringAlerts,
+			).toHaveBeenCalledWith("inc-123");
+		});
+
+		it("does not ask to close an incident when the resolved alert carries none", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+				incidentId: null,
+			});
+
+			await service.resolvePrometheusAlert("fp-abc");
+
+			expect(
+				incidentCorrelationService.resolveIncidentIfNoFiringAlerts,
+			).not.toHaveBeenCalled();
 		});
 	});
 

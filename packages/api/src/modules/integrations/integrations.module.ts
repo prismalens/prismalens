@@ -7,19 +7,12 @@ import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { OAuthController } from "./oauth/oauth.controller.js";
-import { OAuthService } from "./oauth/oauth.service.js";
 import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 @Module({
 	imports: [PrismaModule, ConfigModule],
-	controllers: [IntegrationsController, OAuthController],
-	providers: [
-		IntegrationsService,
-		CredentialsService,
-		OAuthService,
-		TokenRefreshProcessor,
-	],
-	exports: [IntegrationsService, CredentialsService, OAuthService],
+	controllers: [IntegrationsController],
+	providers: [IntegrationsService, CredentialsService, TokenRefreshProcessor],
+	exports: [IntegrationsService, CredentialsService],
 })
 export class IntegrationsModule {}

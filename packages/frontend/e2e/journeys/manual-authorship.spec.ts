@@ -11,10 +11,10 @@ import { expect, type Page, test } from "@playwright/test";
  * page. This is the first spec in the suite that drives a *write* path on the
  * incidents surface — `incidents.create` followed by `incidents.investigate`.
  *
- * The AI-provider precondition is set through the API, not the settings UI:
- * it belongs to C6's gate, not to this journey, and setting it up front keeps
- * the spec idempotent under Playwright retries (`activeProvider` is global
- * state that survives a retry against the same database).
+ * The harness precondition is stubbed at the route level, not through the
+ * settings UI: it belongs to C6's gate, not to this journey, and there is no
+ * settings write left to drive it through the API — a runnable harness is
+ * detected from PATH, not configured (#337/#609).
  */
 /** The shared gate's own words when `auto` resolves to nothing (#521). */
 const NO_HARNESS_REASON =
@@ -44,18 +44,8 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	}) => {
 		const title = `Checkout latency spike ${Date.now()}`;
 
-		// 0. Precondition: configure a runnable keyless provider (#520).
-		const configured = await page.request.patch("/api/settings/llm/config", {
-			data: {
-				activeProvider: "custom",
-				providers: {
-					custom: {
-						model: "smoke-test-stub",
-					},
-				},
-			},
-		});
-		expect(configured.ok()).toBeTruthy();
+		// 0. Precondition: the gate reports a runnable harness (#520).
+		await serveRunnableSelection(page);
 
 		// 1. The incidents page offers the authorship affordance.
 		await page.goto("/incidents");
@@ -257,20 +247,9 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	 * independent of whatever the other tests have configured — and of whether
 	 * this is a first run or a Playwright retry against the same database.
 	 */
-	test("offers no way to investigate while no AI provider is configured", async ({
+	test("offers no way to investigate while no harness is usable", async ({
 		page,
 	}) => {
-		await page.route("**/api/settings/llm/config", async (route) => {
-			if (route.request().method() === "GET") {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({ activeProvider: null, providers: {} }),
-				});
-				return;
-			}
-			await route.fallback();
-		});
 		await page.route("**/api/settings/harnesses", async (route) => {
 			await route.fulfill({
 				status: 200,

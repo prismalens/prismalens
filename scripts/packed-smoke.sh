@@ -115,16 +115,7 @@ GOT=$("$BIN/prismalens" --version)
 [ "$GOT" = "$EXPECTED" ] || fail "--version printed '$GOT', package.json says '$EXPECTED'"
 echo "    $GOT"
 
-echo "==> init scaffolds a config and leaves an existing one untouched"
-INIT_DIR=$(mktemp -d)
-( cd "$INIT_DIR" && "$BIN/pl" init >/dev/null ) || fail "pl init exited nonzero"
-[ -f "$INIT_DIR/prismalens.config.yaml" ] || fail "init did not create prismalens.config.yaml"
-echo "sentinel: keep" >> "$INIT_DIR/prismalens.config.yaml"
-( cd "$INIT_DIR" && "$BIN/pl" init >/dev/null 2>&1 ) || true
-grep -q "sentinel: keep" "$INIT_DIR/prismalens.config.yaml" || fail "second init overwrote the existing config"
-rm -rf "$INIT_DIR"
-
-echo "==> doctor fails LOUDLY on a machine with no harness and no credentials"
+echo "==> doctor fails LOUDLY on a machine with no harness"
 # This is the first command a real user runs on a broken setup: the failure
 # mode is part of the contract. Expect a nonzero exit and an actionable report.
 set +e
@@ -148,11 +139,10 @@ echo "==> a machine with no agent is told it is not installed, never to run 'cla
 # the API process goes through — instead of deep-linking past it into dist/.
 PROBE_MJS="$PKG/prismalens-smoke-verdicts.mjs"
 cat > "$PROBE_MJS" <<'VERDICTS'
-import { resolveHarnessAuth } from "@prismalens/config/harness-auth";
+import { listHarnessStatus } from "@prismalens/config/harness-selection";
 
-for (const id of ["claude-code", "deepagents"]) {
-	const v = resolveHarnessAuth(id, { apiKeyPresent: false });
-	console.log(`${id}|${v.usable ? "usable" : v.cause}|${v.reason ?? ""}`);
+for (const h of listHarnessStatus()) {
+	console.log(`${h.id}|${h.installed ? "installed" : "not-installed"}|${h.install}`);
 }
 VERDICTS
 set +e
@@ -163,29 +153,13 @@ rm -f "$PROBE_MJS"
 [ "$VERDICT_EXIT" -eq 0 ] || fail "could not resolve harness verdicts from the packed install:
 $VERDICT_OUT"
 
-echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code verdict on a no-agent machine is not 'not-installed':
+echo "$VERDICT_OUT" | grep -q "opencode|not-installed|" || fail "opencode status on a no-agent machine is not 'not-installed':
 $VERDICT_OUT"
-echo "$VERDICT_OUT" | grep -q "deepagents|not-installed|" || fail "deepagents verdict on a no-agent machine is not 'not-installed':
+echo "$VERDICT_OUT" | grep -q "claude-code|not-installed|" || fail "claude-code status on a no-agent machine is not 'not-installed':
 $VERDICT_OUT"
-echo "$VERDICT_OUT" | grep -qi "not found on PATH" || fail "verdict does not say the binary is missing:
+echo "$VERDICT_OUT" | grep -qi "opencode.ai/install" || fail "status does not carry the install hint:
 $VERDICT_OUT"
-if echo "$VERDICT_OUT" | grep -qi "claude /login"; then
-	fail "a machine with no Claude CLI is still being told to run 'claude /login':
-$VERDICT_OUT"
-fi
 echo "    $(echo "$VERDICT_OUT" | head -1)"
-
-echo "==> investigate rejects garbage stdin with a usable error (no crash)"
-set +e
-INV_OUT=$(echo "not json" | "$BIN/pl" investigate --json 2>&1)
-INV_EXIT=$?
-set -e
-[ "$INV_EXIT" -ne 0 ] || fail "investigate exited 0 on garbage stdin"
-case "$INV_OUT" in
-	*Error*|*error*|*invalid*|*Invalid*) : ;;
-	*) fail "investigate gave no usable error on garbage stdin:
-$INV_OUT" ;;
-esac
 
 echo "==> pl up boots the whole application from the installed package"
 # Everything below drives the artifact under test over HTTP. It exists because a
@@ -367,12 +341,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		json,
 		cookie,
 		resolveExpected: () =>
-			resolveHarnessSelection({
-				provider: null,
-				apiKey: "",
-				model: null,
-				harness: "auto",
-			}),
+			resolveHarnessSelection({ envHarness: process.env.PRISMALENS_HARNESS }),
 		readLog: () => {
 			try {
 				return fs.readFileSync(bootLog, "utf8");

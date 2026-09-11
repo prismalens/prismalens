@@ -54,27 +54,7 @@ const MISMATCHED_ROW = {
 	},
 };
 
-/** A provider IS selected — the state the old `!!activeProvider` check passed. */
-async function serveSelectedProvider(page: Page): Promise<void> {
-	await page.route("**/api/settings/llm/config", async (route) => {
-		if (route.request().method() === "GET") {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					activeProvider: "anthropic",
-					providers: { anthropic: { model: "claude-sonnet-4" } },
-					harness: "deepagents",
-				}),
-			});
-			return;
-		}
-		await route.fallback();
-	});
-}
-
 async function serveUnrunnableSelection(page: Page): Promise<void> {
-	await serveSelectedProvider(page);
 	await page.route("**/api/settings/harnesses", async (route) => {
 		await route.fulfill({
 			status: 200,
@@ -92,7 +72,6 @@ async function serveUnrunnableSelection(page: Page): Promise<void> {
 }
 
 async function serveRunnableSelection(page: Page): Promise<void> {
-	await serveSelectedProvider(page);
 	await page.route("**/api/settings/harnesses", async (route) => {
 		await route.fulfill({
 			status: 200,
@@ -110,7 +89,6 @@ async function serveRunnableSelection(page: Page): Promise<void> {
 }
 
 async function failHarnesses(page: Page): Promise<void> {
-	await serveSelectedProvider(page);
 	await page.route("**/api/settings/harnesses", async (route) => {
 		await route.fulfill({
 			status: 500,

@@ -8,7 +8,7 @@ import type {
 	RunFidelitySandbox,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { FileText } from "lucide-react";
+import { AlertTriangle, ListChecks } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -226,41 +226,12 @@ function OverlaySection({
 	);
 }
 
-/**
- * The report is the harness's own output, unsynthesized, because no Tier-1
- * provider was configured (ADR-0031 R4). A supported free-tier outcome, not a
- * failure. Keyed off the host-stamped `reportMode` field — never by matching
- * text in the report body, which the model writes.
- */
-function RawReportBanner() {
-	return (
-		<Alert className="md:col-span-2" data-testid="raw-report-banner">
-			<FileText className="h-4 w-4" />
-			<AlertTitle>Raw harness output</AlertTitle>
-			<AlertDescription>
-				No Tier-1 provider is configured for synthesis, so this is what the
-				investigation agent wrote, passed through unchanged.{" "}
-				<Link
-					to="/settings"
-					search={{ tab: "ai" }}
-					className="text-primary hover:underline"
-				>
-					Add a provider key in Settings
-				</Link>{" "}
-				to get synthesized reports.
-			</AlertDescription>
-		</Alert>
-	);
-}
-
 export function AnalysisTab({ investigation }: AnalysisTabProps) {
 	const report = investigation.report ?? null;
 	const overlay = investigation.overlay ?? null;
 
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
-			{report?.reportMode === "raw" && <RawReportBanner />}
-
 			{/* Root Cause */}
 			<Card>
 				<CardHeader>
@@ -410,6 +381,30 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 									<p className="text-sm text-muted-foreground mt-1">
 										{item.why}
 									</p>
+									{item.evidence.length > 0 && (
+										<ul
+											className="mt-2 space-y-1 text-xs"
+											data-testid="ruled-out-evidence"
+										>
+											{item.evidence.map((ev, j) => (
+												<li
+													key={`${j}-${ev.source}`}
+													className="flex flex-wrap gap-x-2"
+												>
+													<span className="font-mono text-muted-foreground">
+														{ev.source}
+													</span>
+													<span>{ev.observation}</span>
+													<Badge
+														variant="outline"
+														className="h-4 px-1 text-[10px]"
+													>
+														{ev.status}
+													</Badge>
+												</li>
+											))}
+										</ul>
+									)}
 								</div>
 							))}
 						</div>
@@ -417,6 +412,54 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 				</Card>
 			)}
 
+			{report && report.nextSteps.length > 0 && (
+				<Card className="md:col-span-2" data-testid="next-steps">
+					<CardHeader>
+						<CardTitle className="text-base flex items-center gap-2">
+							<ListChecks className="h-4 w-4" />
+							Next steps ({report.nextSteps.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<ol className="space-y-2 list-decimal list-inside">
+							{report.nextSteps.map((step, i) => (
+								<li key={`${i}-${step.title}`} className="text-sm">
+									<span className="font-medium">{step.title}</span>
+									{step.priority && <PriorityBadge priority={step.priority} />}
+									<p className="text-muted-foreground ml-5">{step.detail}</p>
+								</li>
+							))}
+						</ol>
+					</CardContent>
+				</Card>
+			)}
+			{report && report.flaggedContent && report.flaggedContent.length > 0 && (
+				<Alert
+					variant="destructive"
+					className="md:col-span-2"
+					data-testid="flagged-content"
+				>
+					<AlertTriangle className="h-4 w-4" />
+					<AlertTitle>
+						Content tried to instruct the agent ({report.flaggedContent.length})
+					</AlertTitle>
+					<AlertDescription>
+						<p className="mb-2">
+							These lines in what the agent read looked like instructions rather
+							than data. The agent ignored them; weigh the evidence they sit
+							next to.
+						</p>
+						<ul className="space-y-1 text-xs">
+							{report.flaggedContent.map((f, i) => (
+								<li key={`${i}-${f.quote}`}>
+									<span className="font-mono">{f.where}</span>: “{f.quote}” —{" "}
+									{f.why}
+								</li>
+							))}
+						</ul>
+					</AlertDescription>
+				</Alert>
+			)}
 			{/* Reduce overlay (ADR-0016 §5c) — related changes + similar incidents */}
 			{overlay && <OverlaySection overlay={overlay} />}
 

@@ -2,15 +2,24 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The in-process boundary between the dispatch loop and the API's own Nest
- * services (0005 §2). This replaces the internal HTTP surface the forked
- * worker used to call — same operations, direct method calls instead of
- * fetch + X-Internal-Secret.
+ * What one investigation run needs from the API, as functions, so the run is
+ * testable without NestJS. Wired in dispatch.service.ts.
  */
-
+import type { HarnessSelection } from "@prismalens/config";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import type {
+	CloneResult,
+	CloneTarget,
+} from "../../core/harness/repo-clone.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+
+export interface IncidentRepo {
+	url: string;
+	defaultBranch: string | null;
+	subPath: string | null;
+	connectionId: string | null;
+}
 
 export interface RunPorts {
 	findInvestigation(id: string): Promise<{ id: string; status: string } | null>;
@@ -27,22 +36,12 @@ export interface RunPorts {
 	clearEvents(id: string): Promise<void>;
 	writeResult(id: string, dto: InternalInvestigationResultDto): Promise<void>;
 	createTimelineEntry(dto: CreateTimelineEntryDto): Promise<void>;
-	resolveLlm(): Promise<{
-		provider: string | null;
-		model: string | null;
-		baseUrl: string | null;
-		credentials: Record<string, string>;
-		harness: string;
-	}>;
-	integrationCredentials(connectionIds: string[]): Promise<
-		Array<{
-			type: string;
-			connectionId: string;
-			credentials: Record<string, unknown>;
-			config: Record<string, unknown>;
-			specUrl?: string | null;
-		}>
-	>;
+	/** Detect-and-report verdict plus the operator's model choice, if any. */
+	resolveHarness(): Promise<{ selection: HarnessSelection; model?: string }>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
-	listServices(search: string): Promise<Array<Record<string, unknown>>>;
+	/** The repos linked to the incident's service, primary first. Empty means the run is unmapped. */
+	incidentRepos(incidentId: string): Promise<IncidentRepo[]>;
+	/** A git token for the connection that discovered the repo, when one exists. */
+	repoToken(connectionId: string): Promise<string | null>;
+	ensureClone(target: CloneTarget): Promise<CloneResult>;
 }

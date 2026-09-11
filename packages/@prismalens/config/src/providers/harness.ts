@@ -2,168 +2,163 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * @prismalens/config/harness
- *
- * Harness registry (SSOT, ADR-0017). Each tier-2 harness the supervisor can rent
- * (ADR-0008) is described here: the CLI binary, the transport, whether its model id
- * needs a provider prefix, and — crucially — the HONEST guarantee its read-only
- * posture actually provides. The registry drives the per-harness config UX in the
- * CLI + app and selects the runner/adapter. Browser-safe: no Node.js or zod.
+ * Harness registry: every harness speaks ACP over stdio (ADR 0003). A row is
+ * `verified` only after the unattended CI run on a real clone passes; unverified
+ * rows are shown by `pl doctor` and selectable only through PRISMALENS_HARNESS.
  */
-
-/** The tier-2 harness backends the supervisor can rent. */
-export const HARNESS_IDS = ["deepagents", "claude-code", "codex"] as const;
-
+export const HARNESS_IDS = [
+	"opencode",
+	"claude-code",
+	"codex",
+	"gemini",
+	"deepagents",
+] as const;
 export type HarnessId = (typeof HARNESS_IDS)[number];
 
-/** Credential route kinds a harness can authenticate through (ADR-0031). */
-export type HarnessAuthRoute = "api-key" | "cli-session";
-
-/** How prismalens drives the harness. */
-export type HarnessTransport = "acp" | "agent-sdk" | "subprocess-jsonl";
-
-/**
- * The guarantee a harness's read-only realization ACTUALLY provides (ADR-0017 §4 —
- * "honest fidelity"). We report this per run so the user sees what was guaranteed,
- * not just what they asked for:
- *  - `enforced`    — a hard programmatic/OS gate (Claude deny-list/canUseTool; codex sandbox)
- *  - `cooperative` — honoured only if the model complies (deepagents auto-approve today)
- *  - `advisory`    — prompt-only, no mechanism
- */
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
 
-/** Everything the platform needs to know about a rentable harness. */
-export interface HarnessDescriptor {
-	id: HarnessId;
-	/** Human label for the config UX. */
-	label: string;
-	/** CLI binary the harness shells out to. */
-	binary: string;
-	transport: HarnessTransport;
-	/**
-	 * Prefix applied to the BARE `agent.model` id before handing it to this harness
-	 * (deepagents wants `openai:`); null when the harness takes the bare id. Fixes
-	 * the `openai:openai:` overload — `agent.model` is canonical-BARE everywhere.
-	 */
-	modelPrefix: string | null;
-	/** The guarantee the DEFAULT read-only posture achieves on this harness. */
-	readOnlyFidelity: PermissionFidelity;
-	/** One-line description of HOW read-only is realized (shown in doctor/UI). */
-	readOnlyMechanism: string;
-	/**
-	 * The per-tool deny-list that REALIZES read-only on this harness (claude-code's
-	 * Agent-SDK disallowedTools). The runner enforces THIS array AND the reported
-	 * fidelity mechanism is derived from it — one SSOT, so enforcement and report
-	 * cannot drift (ADR-0017 Amendment 2). Undefined where read-only is realized
-	 * without a per-tool list (deepagents cooperative auto-approve; codex OS sandbox).
-	 */
-	readOnlyDeny?: readonly string[];
-	/** Credential routes this harness can use, in precedence order (ADR-0031). */
-	authRoutes: readonly HarnessAuthRoute[];
-	/** Wired end-to-end today? (codex is a reserved slot — ADR-0017 §5.) */
-	implemented: boolean;
+/**
+ * Per-run environment for the harness child. Config is isolated to what
+ * prismalens generates; the user's own login and data home stay reachable
+ * (ADR 0003 §2: prismalens never touches harness credentials).
+ */
+export interface HarnessRunEnv {
+	configDir: string;
+	/** Empty per-run dir a harness can be pointed at for config it would otherwise read from the user's home. */
+	dataDir: string;
+	cwd: string;
+	/** Model id in the harness's own format, when the operator set one; otherwise the harness default. */
+	model?: string;
 }
 
-/** The registry — the single source of truth for harness capabilities. */
+export interface HarnessDescriptor {
+	id: HarnessId;
+	label: string;
+	/** Binary looked up on PATH for detection. */
+	binary: string;
+	/** argv for `binary` that starts an ACP server on stdio in `cwd`. */
+	acpArgs: (env: HarnessRunEnv) => string[];
+	/** Env vars that point the harness at prismalens's per-run config, never the user's. */
+	acpEnv: (env: HarnessRunEnv) => Record<string, string>;
+	/** Files prismalens writes under configDir before the run; the harness reads nothing else. */
+	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
+	/** One line the doctor prints when the binary is missing. */
+	install: string;
+	readOnlyFidelity: PermissionFidelity;
+	readOnlyMechanism: string;
+	/** True once the registry admission run (ACP spike, prismalens#561) is green in CI. */
+	verified: boolean;
+}
+
+const READ_ONLY_MECHANISM =
+	"ACP session/request_permission answered by prismalens: edit, delete and move rejected, mutating shell commands rejected";
+
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
-	deepagents: {
-		id: "deepagents",
-		label: "deepagents (ACP)",
-		binary: "deepagents-acp",
-		transport: "acp",
-		modelPrefix: "openai:",
+	opencode: {
+		id: "opencode",
+		label: "OpenCode",
+		binary: "opencode",
+		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
+		acpEnv: ({ configDir, dataDir }) => ({
+			XDG_CONFIG_HOME: dataDir,
+			OPENCODE_CONFIG_DIR: configDir,
+		}),
+		configFiles: ({ model }) => ({
+			"opencode.json": JSON.stringify(
+				{
+					$schema: "https://opencode.ai/config.json",
+					...(model ? { model } : {}),
+					permission: { edit: "ask", bash: "ask", webfetch: "deny" },
+					share: "disabled",
+				},
+				null,
+				2,
+			),
+		}),
+		install:
+			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism:
-			"ACP session/request_permission auto-approved (prompt-only); OS enforcement arrives with the Sandbox port (ADR-0020/B.1)",
-		authRoutes: ["api-key"],
-		implemented: true,
+		readOnlyMechanism: READ_ONLY_MECHANISM,
+		verified: true,
 	},
 	"claude-code": {
 		id: "claude-code",
-		label: "Claude Code (Agent SDK)",
-		binary: "claude",
-		transport: "agent-sdk",
-		modelPrefix: null,
-		readOnlyFidelity: "enforced",
-		// The reported mechanism is DERIVED from readOnlyDeny — no hand-typed tool list
-		// here to drift from what the runner enforces (ADR-0017 Amendment 2).
-		readOnlyMechanism: "Agent SDK disallowedTools + permissionMode",
-		readOnlyDeny: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
-		authRoutes: ["api-key", "cli-session"],
-		implemented: true,
+		label: "Claude Code",
+		binary: "claude-agent-acp",
+		acpArgs: () => [],
+		acpEnv: ({ dataDir }) => ({ CLAUDE_CONFIG_DIR: dataDir }),
+		install:
+			"npm i -g @agentclientprotocol/claude-agent-acp  (needs `claude login`)",
+		readOnlyFidelity: "cooperative",
+		readOnlyMechanism: READ_ONLY_MECHANISM,
+		verified: false,
 	},
 	codex: {
 		id: "codex",
 		label: "Codex",
-		binary: "codex",
-		transport: "subprocess-jsonl",
-		modelPrefix: null,
-		readOnlyFidelity: "enforced",
-		readOnlyMechanism: "OS sandbox (seccomp/landlock) — not yet wired",
-		authRoutes: ["api-key", "cli-session"],
-		implemented: false,
+		binary: "codex-acp",
+		acpArgs: () => [],
+		acpEnv: ({ dataDir }) => ({ CODEX_HOME: dataDir }),
+		install:
+			"npm i -g @agentclientprotocol/codex-acp  (needs `codex login` or OPENAI_API_KEY)",
+		readOnlyFidelity: "cooperative",
+		readOnlyMechanism: READ_ONLY_MECHANISM,
+		verified: false,
+	},
+	gemini: {
+		id: "gemini",
+		label: "Gemini CLI",
+		binary: "gemini",
+		acpArgs: () => ["--experimental-acp"],
+		acpEnv: () => ({}),
+		install: "npm i -g @google/gemini-cli",
+		readOnlyFidelity: "cooperative",
+		readOnlyMechanism: READ_ONLY_MECHANISM,
+		verified: false,
+	},
+	deepagents: {
+		id: "deepagents",
+		label: "deepagents",
+		binary: "deepagents-acp",
+		acpArgs: () => [],
+		acpEnv: () => ({}),
+		install: "pip install deepagents-acp",
+		readOnlyFidelity: "cooperative",
+		readOnlyMechanism: READ_ONLY_MECHANISM,
+		verified: false,
 	},
 };
 
-/**
- * Auto-selection order for unconfigured or auto harness mode (ADR-0031).
- * Claude Code hero lane first (ADR-0021).
- */
-export const HARNESS_AUTO_ORDER = ["claude-code", "deepagents"] as const;
+/** Auto-selection order; only `verified` rows are eligible without a pin. */
+export const HARNESS_AUTO_ORDER: readonly HarnessId[] = [
+	"opencode",
+	"claude-code",
+	"codex",
+	"gemini",
+	"deepagents",
+];
 
-/** Harness backend -> the CLI binary it shells out to (derived from the registry). */
-export const HARNESS_BINARY: Record<HarnessId, string> = {
-	deepagents: HARNESS_REGISTRY.deepagents.binary,
-	"claude-code": HARNESS_REGISTRY["claude-code"].binary,
-	codex: HARNESS_REGISTRY.codex.binary,
-};
+export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
+	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),
+) as Record<HarnessId, string>;
 
-/**
- * The single posture dial (ADR-0017): prismalens does not build a permission policy
- * engine — it exposes this one dial, translates it to each harness's native config,
- * and reports the HONEST fidelity that resulted (see `resolvePermissionOutcome`).
- */
-export const PERMISSION_MODES = [
-	"read-only",
-	"supervised",
-	"auto",
-	"dangerous",
-] as const;
-
+export const PERMISSION_MODES = ["read-only"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-/** The resolved permission fidelity for a given harness + posture (ADR-0017 §4). */
 export interface PermissionOutcome {
 	mode: PermissionMode;
 	fidelity: PermissionFidelity;
 	mechanism: string;
 }
 
-/**
- * Resolve the HONEST fidelity a harness delivers for a posture (ADR-0017 §4). Pure —
- * ignores any harness `native` passthrough. `read-only`/`supervised` defer to the
- * registry's read-only guarantee for this harness; `auto`/`dangerous` apply no
- * read-only floor and are always `advisory`.
- */
 export function resolvePermissionOutcome(
 	harnessId: HarnessId,
-	mode: PermissionMode,
+	mode: PermissionMode = "read-only",
 ): PermissionOutcome {
 	const registry = HARNESS_REGISTRY[harnessId];
-	if (mode === "read-only" || mode === "supervised") {
-		// Derive the mechanism from the SAME deny-list the runner enforces, so honest
-		// fidelity can't claim a guarantee the runner no longer delivers (ADR-0017 Amdt 2).
-		const mechanism = registry.readOnlyDeny?.length
-			? `disallowedTools deny-list: ${registry.readOnlyDeny.join(", ")}`
-			: registry.readOnlyMechanism;
-		return { mode, fidelity: registry.readOnlyFidelity, mechanism };
-	}
 	return {
 		mode,
-		fidelity: "advisory",
-		mechanism:
-			mode === "dangerous"
-				? "full access — no restrictions applied"
-				: "writes auto-accepted — no read-only floor",
+		fidelity: registry.readOnlyFidelity,
+		mechanism: registry.readOnlyMechanism,
 	};
 }

@@ -3,13 +3,8 @@
 
 "use client";
 
-import {
-	AlertTriangle,
-	ChevronRight,
-	FolderGit2,
-	Server,
-	Zap,
-} from "lucide-react";
+import type { DeletionImpact } from "@prismalens/contracts";
+import { AlertTriangle, ChevronRight, FolderGit2, Server } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -98,17 +93,7 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 }
 
 interface DeletionImpactSectionProps {
-	impact: {
-		connections: Array<{ id: string; label: string }>;
-		repositories: Array<{ id: string; fullName: string }>;
-		deployments: Array<{ id: string; name: string }>;
-		affectedServices: Array<{
-			id: string;
-			name: string;
-			impact: string;
-		}>;
-		suggestionsCount: number;
-	};
+	impact: DeletionImpact;
 	showConnections?: boolean;
 }
 
@@ -117,9 +102,7 @@ export function DeletionImpactSection({
 	showConnections = true,
 }: DeletionImpactSectionProps) {
 	const hasResources =
-		impact.repositories.length > 0 ||
-		impact.deployments.length > 0 ||
-		impact.affectedServices.length > 0;
+		impact.repositories.length > 0 || impact.affectedServices.length > 0;
 
 	return (
 		<div className="space-y-2 py-2 text-sm">
@@ -141,26 +124,6 @@ export function DeletionImpactSection({
 						label: r.fullName,
 					}))}
 				/>
-			)}
-
-			{impact.deployments.length > 0 && (
-				<ImpactLine
-					icon={<Zap className="h-3 w-3" />}
-					count={impact.deployments.length}
-					singular="deployment"
-					plural="deployments"
-					items={impact.deployments.map((d) => ({
-						id: d.id,
-						label: d.name,
-					}))}
-				/>
-			)}
-
-			{impact.suggestionsCount > 0 && (
-				<div className="text-sm">
-					{impact.suggestionsCount} pending suggestion
-					{impact.suggestionsCount !== 1 ? "s" : ""}
-				</div>
 			)}
 
 			{impact.affectedServices.length > 0 && (

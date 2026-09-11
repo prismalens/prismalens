@@ -8,7 +8,7 @@ import { Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import type { Alert } from "../alerts/alerts.service.js";
 import { AlertsService } from "../alerts/alerts.service.js";
-import { CorrelationService } from "../correlation/correlation.service.js";
+import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import type { Event } from "../events/events.service.js";
 import { EventsService } from "../events/events.service.js";
 import {
@@ -58,8 +58,8 @@ export class WebhooksService {
 		@Inject(forwardRef(() => AlertsService))
 		private readonly alertsService: AlertsService,
 		private readonly eventsService: EventsService,
-		@Inject(forwardRef(() => CorrelationService))
-		private readonly correlationService: CorrelationService,
+		@Inject(forwardRef(() => IncidentCorrelationService))
+		private readonly incidentCorrelation: IncidentCorrelationService,
 		private readonly alertMappingService: AlertMappingService,
 	) {}
 
@@ -197,7 +197,16 @@ export class WebhooksService {
 
 		const resolved = await this.alertsService.resolveSourceAlert(fingerprint);
 
-		if (resolved) await this.eventsService.markProcessed(event.id, resolved.id);
+		if (resolved) {
+			await this.eventsService.markProcessed(event.id, resolved.id);
+			// A resolved delivery resolves the alert and, when no firing alert
+			// remains on it, the incident too (#608, C5 on #337).
+			if (resolved.incidentId) {
+				await this.incidentCorrelation.resolveIncidentIfNoFiringAlerts(
+					resolved.incidentId,
+				);
+			}
+		}
 		return resolved;
 	}
 
@@ -254,7 +263,7 @@ export class WebhooksService {
 
 		// 6. Correlate alert to incident
 		const correlationResult =
-			await this.correlationService.correlateAlert(alert);
+			await this.incidentCorrelation.correlateAlert(alert);
 
 		return {
 			event,
@@ -310,7 +319,7 @@ export class WebhooksService {
 
 		// 5. Correlate alert to incident
 		const correlationResult =
-			await this.correlationService.correlateAlert(alert);
+			await this.incidentCorrelation.correlateAlert(alert);
 
 		return {
 			event,
@@ -359,7 +368,7 @@ export class WebhooksService {
 
 		// 5. Correlate alert to incident
 		const correlationResult =
-			await this.correlationService.correlateAlert(alert);
+			await this.incidentCorrelation.correlateAlert(alert);
 
 		return {
 			event,

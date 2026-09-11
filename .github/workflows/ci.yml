@@ -177,6 +177,38 @@ jobs:
       - name: Smoke the packed tarball
         run: sh scripts/packed-smoke.sh tarballs
 
+  harness-admission:
+    # Registry admission (ADR 0003 §10): a harness row is `verified` only while
+    # this passes unattended on a real clone. Criteria and first run: #561.
+    name: Harness admission (opencode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the packages the engine imports
+        run: pnpm --filter @prismalens/config --filter @prismalens/contracts build
+
+      - name: Install the pinned OpenCode
+        run: npm install -g opencode-ai@1.18.30 && opencode --version
+
+      - name: Run the admission script against this checkout
+        env:
+          PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
+        run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"
+
   lint:
     name: Lint (Biome)
     runs-on: ubuntu-latest
@@ -219,7 +251,7 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
-    needs: [build, test, pack, packed-smoke, lint]
+    needs: [build, test, pack, packed-smoke, lint, harness-admission]
     if: always()
     steps:
       - name: Assert every required job succeeded

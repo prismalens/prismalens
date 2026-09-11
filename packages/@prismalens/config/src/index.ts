@@ -13,20 +13,6 @@
  * - `validateConfig()` - Config validation without caching
  * - Environment schemas (globalSchema, databaseSchema, etc.)
  *
- * ### LLM Provider Metadata (`@prismalens/config/llm`)
- * - `LLM_PROVIDERS` - Static provider metadata
- * - `llmProviderIdSchema` - Zod schema for provider IDs
- * - Provider-specific config schemas
- *
- * @example
- * ```typescript
- * // Environment config
- * import { getConfig } from '@prismalens/config';
- * const config = getConfig();
- *
- * // LLM metadata
- * import { LLM_PROVIDERS } from '@prismalens/config/llm';
- * ```
  */
 
 import { z } from "zod";
@@ -36,7 +22,6 @@ import {
 	dispatchSchema,
 	globalSchema,
 	langsmithSchema,
-	llmEnvSchema,
 	loggingSchema,
 	skillsSchema,
 } from "./env/index.js";
@@ -55,28 +40,14 @@ export type {
 	HarnessSelection,
 	HarnessSelectionFailure,
 	HarnessSelectionInput,
+	HarnessStatus,
 } from "./harness-selection.js";
-// Re-export harness selection gate (ADR-0031 R2)
+// Detect-and-report harness selection (ADR 0003 §9)
 export {
-	harnessSpeaksProvider,
-	resolveHarnessAuthFor,
+	isOnPath,
+	listHarnessStatus,
 	resolveHarnessSelection,
-	speaksOpenAiProtocol,
 } from "./harness-selection.js";
-export type {
-	CheckoutRejection,
-	CheckoutValidation,
-	InvestigationCwdResolution,
-	InvestigationCwdSource,
-} from "./utils/repo.js";
-export {
-	detectRepoSlug,
-	normalizeCheckoutPath,
-	pickServiceLabel,
-	resolveInvestigationCwd,
-	resolveRepoPath,
-	validateLocalCheckout,
-} from "./utils/repo.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
@@ -99,7 +70,6 @@ const baseConfigSchema = globalSchema
 	.merge(databaseSchema)
 	.merge(dispatchSchema)
 	.merge(loggingSchema)
-	.merge(llmEnvSchema)
 	.merge(skillsSchema)
 	.merge(langsmithSchema)
 	.extend({

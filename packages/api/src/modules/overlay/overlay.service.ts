@@ -43,7 +43,7 @@ function parseLabels(raw: string | null): Record<string, string> | null {
  * After the engine's canonical report lands, this computes enrichment BESIDE it
  * (never mutating the report; ADR-0011 keeps the engine db-clean, so all of this
  * lives here in the api, not in @prismalens/engine):
- *   (a) CORRELATE report hypotheses against the Deployment/ChangeEvent timeline;
+ *   (a) CORRELATE report hypotheses against the ChangeEvent timeline;
  *   (b) RANK named services by service-graph proximity to the affected service;
  *   (c) SIMILARITY vs past incidents (Jaccard on alert labels + bonuses), writing
  *       the top-K back to IncidentSimilarity so memory grows each run.
@@ -138,38 +138,13 @@ export class OverlayService {
 			reportTime,
 		);
 
-		const [deployments, changeEvents] = affectedIdArr.length
-			? await Promise.all([
-					this.prisma.deployment.findMany({
-						where: { serviceId: { in: affectedIdArr } },
-					}),
-					this.prisma.changeEvent.findMany({
-						where: { serviceId: { in: affectedIdArr } },
-					}),
-				])
-			: [[], []];
+		const changeEvents = affectedIdArr.length
+			? await this.prisma.changeEvent.findMany({
+					where: { serviceId: { in: affectedIdArr } },
+				})
+			: [];
 
 		const candidates: ChangeCandidateInput[] = [];
-		for (const d of deployments) {
-			const meta = safeParseJsonObject(d.metadata) ?? {};
-			const identifiers = [
-				d.externalId,
-				d.name,
-				d.branch,
-				asIdentifier(meta.version),
-				asIdentifier(meta.commit),
-				asIdentifier(meta.sha),
-			].filter((x): x is string => Boolean(x));
-			candidates.push({
-				kind: "deployment",
-				id: d.id,
-				title: d.name,
-				source: "deployment",
-				serviceName: d.serviceId ? (nameById.get(d.serviceId) ?? null) : null,
-				timestamp: d.lastDeployedAt ?? d.createdAt,
-				identifiers,
-			});
-		}
 		for (const c of changeEvents) {
 			const meta = safeParseJsonObject(c.metadata) ?? {};
 			const identifiers = [

@@ -89,10 +89,6 @@ const seededIncidentRow = {
 		tags: null,
 		metadata: null,
 		discoveryMetadata: null,
-		// #331: the seed leaves every service UNMAPPED. Present-and-null is the
-		// point — the column is on the row Prisma returns, so the serializer has to
-		// carry it or `ServiceSchema` rejects the whole incident read.
-		localCheckoutPath: null,
 		createdAt: new Date("2026-08-05T18:33:41.896Z"),
 		updatedAt: new Date("2026-08-05T18:33:41.896Z"),
 	},
@@ -357,7 +353,6 @@ describe("incidents serialization contract conformance", () => {
 			"slackChannel",
 			"tags",
 			"metadata",
-			"localCheckoutPath",
 			"createdAt",
 			"updatedAt",
 		];
@@ -387,7 +382,6 @@ describe("incidents serialization contract conformance", () => {
 				description: undefined,
 				team: undefined,
 				slackChannel: undefined,
-				localCheckoutPath: undefined,
 				// JSON string fields to be parsed
 				tags: '["billing","payments"]',
 				metadata: '{"env":"production","owner":"billing-team"}',
@@ -405,7 +399,6 @@ describe("incidents serialization contract conformance", () => {
 		expect(serialized.service.description).toBeNull();
 		expect(serialized.service.team).toBeNull();
 		expect(serialized.service.slackChannel).toBeNull();
-		expect(serialized.service.localCheckoutPath).toBeNull();
 		expect(serialized.service.tags).toEqual(["billing", "payments"]);
 		expect(serialized.service.metadata).toEqual({
 			env: "production",

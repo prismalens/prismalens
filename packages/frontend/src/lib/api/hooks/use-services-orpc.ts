@@ -95,17 +95,6 @@ export function useUpdateService() {
 }
 
 /**
- * Check a candidate local checkout path WITHOUT saving it (#331).
- *
- * A mutation rather than a query because it is an explicit operator action —
- * it shells out to `git` on the server, so it must not run on every keystroke.
- * Saving re-validates server-side; this only makes the failure visible earlier.
- */
-export function useValidateCheckoutPath() {
-	return useMutation(orpc.services.validateCheckoutPath.mutationOptions());
-}
-
-/**
  * Delete a service
  */
 export function useDeleteService() {

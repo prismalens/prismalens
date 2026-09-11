@@ -8,7 +8,6 @@
  */
 
 import type { Incident } from "@prismalens/contracts";
-import { chartColors } from "@prismalens/design-tokens/colors";
 import { useMemo, useState } from "react";
 import {
 	CartesianGrid,
@@ -28,6 +27,7 @@ import {
 	groupMTTRByDate,
 	type MTTRDataPoint,
 } from "@/lib/analytics";
+import { chartColors } from "@/styles/colors";
 
 interface MTTRTrendChartProps {
 	incidents: Incident[];

@@ -48,6 +48,8 @@ import {
 } from "./migration-source.js";
 
 const MIGRATIONS_TABLE = "_prisma_migrations";
+/** First migration of the pre-0.5.0 lineage; its presence marks a pre-release database. */
+export const PRE_RELEASE_INIT = "20260803122809_init";
 
 /**
  * Verbatim copy of the columns Prisma's migration engine creates for SQLite,
@@ -76,6 +78,8 @@ const LOCK_RETRY_DELAY_MS = 250;
 
 /** Why a migration run refused to proceed. Stable strings — logged and asserted on. */
 export type MigrationErrorCode =
+	/** The database was created by a pre-0.5.0 build; its lineage was reset once, at 0.5.0. */
+	| "pre-release-database"
 	/** The database records migrations this build does not ship. */
 	| "version-skew"
 	/** A recorded migration's SQL no longer matches what was applied. */
@@ -184,6 +188,20 @@ function assertHistoryIsCompatible(
 	}
 
 	const settled = ledger.filter((row) => row.rolled_back_at === null);
+
+	// The lineage was squashed to one `init` at 0.5.0 (#337, 2026-09-11), when every
+	// earlier version was deprecated and no stranger's database existed. A pre-0.5.0
+	// ledger is recognisable by its first migration; refuse it by name so the
+	// operator hears what the file is, not a checksum.
+	if (settled.some((row) => row.migration_name === PRE_RELEASE_INIT)) {
+		throw new MigrationError(
+			"pre-release-database",
+			`The database at ${databaseFile} was created by a PrismaLens version before 0.5.0, whose ` +
+				`migration history was replaced at 0.5.0. Nothing was applied. Those pre-release versions are ` +
+				`deprecated and their databases do not upgrade: move the file aside, or point ` +
+				`PRISMALENS_WORKSPACE_DIR at a different directory to start fresh.`,
+		);
+	}
 
 	const unknown = settled
 		.map((row) => row.migration_name)

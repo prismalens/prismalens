@@ -28,11 +28,6 @@ export type IncidentWithRelations = Incident & {
 		createdAt: Date;
 		completedAt: Date | null;
 	}>;
-	postmortem?: {
-		summary: string | null;
-		whatHappened: string | null;
-		whyItHappened: string | null;
-	} | null;
 	_count?: {
 		alerts: number;
 		investigations: number;
@@ -225,9 +220,6 @@ export class IncidentsService {
 							createdAt: true,
 							completedAt: true,
 						},
-					},
-					postmortem: {
-						select: { summary: true, whatHappened: true, whyItHappened: true },
 					},
 					_count: {
 						select: { alerts: true, investigations: true },

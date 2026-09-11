@@ -6,86 +6,10 @@
 /**
  * Settings hooks using oRPC client
  *
- * Type-safe hooks for LLM configuration operations using oRPC with TanStack Query.
+ * Type-safe hooks for settings operations using oRPC with TanStack Query.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
-
-// =============================================================================
-// COMPREHENSIVE LLM CONFIGURATION
-// =============================================================================
-
-/**
- * Query key factory for LLM settings
- */
-export const llmSettingsKeys = {
-	envStatus: () => orpc.settings.llm.getEnvStatus.key(),
-	settings: () => orpc.settings.llm.getSettings.key(),
-	models: (provider?: string) =>
-		orpc.settings.llm.getModels.key({ input: { provider } }),
-};
-
-/**
- * Fetch environment variable status for all providers
- * Shows which providers have API keys configured via env vars
- */
-export function useLlmEnvStatus() {
-	return useQuery(
-		orpc.settings.llm.getEnvStatus.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Fetch comprehensive LLM settings (model, temperature, per-agent overrides)
- */
-export function useLlmSettings() {
-	return useQuery(
-		orpc.settings.llm.getSettings.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Update LLM settings (partial update)
- */
-export function useUpdateLlmSettings() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.llm.updateSettings.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.settings() });
-			// Readiness reads only harnessKeys.status(), which has a 60s staleTime, so
-			// without this a fixed provider stays reported as unusable (#521).
-			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
-		},
-	});
-}
-
-/**
- * Fetch available models from the models registry
- * Optionally filter by provider
- */
-export function useLlmModels(provider?: string) {
-	return useQuery({
-		...orpc.settings.llm.getModels.queryOptions({
-			input: { provider },
-		}),
-		staleTime: 24 * 60 * 60 * 1000, // 24 hours - models list rarely changes
-	});
-}
-
-/**
- * Test LLM connection using environment variables (no API key input)
- */
-export function useTestLlmConnectionWithEnv() {
-	return useMutation({
-		...orpc.settings.llm.testConnection.mutationOptions(),
-	});
-}
 
 // =============================================================================
 // HARNESS STATUS
@@ -96,6 +20,7 @@ export function useTestLlmConnectionWithEnv() {
  */
 export const harnessKeys = {
 	status: () => orpc.settings.harnesses.getHarnesses.key(),
+	settings: () => orpc.settings.harnesses.getSettings.key(),
 };
 
 /**
@@ -109,6 +34,36 @@ export function useHarnesses() {
 			input: {},
 		}),
 	);
+}
+
+/**
+ * Fetch the persisted harness choice and model (`GET /settings/harness`).
+ * `PRISMALENS_HARNESS`, when set, overrides this — `useHarnesses`' `selection`
+ * carries that verdict, never this hook.
+ */
+export function useHarnessSettings() {
+	return useQuery(
+		orpc.settings.harnesses.getSettings.queryOptions({
+			input: {},
+		}),
+	);
+}
+
+/**
+ * Persist the harness choice and/or model (`PATCH /settings/harness`).
+ * Invalidates both the settings echo and the selection verdict — a saved
+ * harness changes whether an investigation would start right now.
+ */
+export function useUpdateHarnessSettings() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.harnesses.updateSettings.mutationOptions(),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: harnessKeys.settings() });
+			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
+		},
+	});
 }
 
 export interface InvestigationReadiness {
@@ -133,71 +88,16 @@ export function useInvestigationReadiness(): InvestigationReadiness {
 	}
 
 	const fallback = isLoading
-		? "Checking whether an AI provider is usable…"
+		? "Checking whether a coding agent is usable…"
 		: isError
-			? "Could not check AI provider status — retry from Settings → AI provider."
-			: "Configure an AI provider in Settings to enable investigations";
+			? "Could not check agent status — retry from Settings → Harness."
+			: "No coding agent is available — see Settings → Harness.";
 
 	return {
 		isReady: false,
 		blockedReason: selection?.blockedReason ?? fallback,
 		isLoading,
 	};
-}
-
-// =============================================================================
-// LLM CREDENTIAL MANAGEMENT
-// =============================================================================
-
-/**
- * Query key factory for credential status
- */
-export const llmCredentialKeys = {
-	status: () => orpc.settings.llm.getCredentialStatus.key(),
-};
-
-/**
- * Fetch credential status for all providers
- * Shows which providers have DB keys, env keys, or neither
- */
-export function useLlmCredentialStatus() {
-	return useQuery(
-		orpc.settings.llm.getCredentialStatus.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Save an encrypted LLM API key for a provider
- */
-export function useSaveLlmCredential() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.llm.saveCredential.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: llmCredentialKeys.status() });
-			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.envStatus() });
-			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
-		},
-	});
-}
-
-/**
- * Delete an LLM API key for a provider
- */
-export function useDeleteLlmCredential() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.llm.deleteCredential.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: llmCredentialKeys.status() });
-			queryClient.invalidateQueries({ queryKey: llmSettingsKeys.envStatus() });
-			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
-		},
-	});
 }
 
 // =============================================================================

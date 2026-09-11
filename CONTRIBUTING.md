@@ -136,6 +136,7 @@ It never partially applies. Each of these leaves the database exactly as found:
 
 | `MigrationError.code` | What happened | What to do |
 |---|---|---|
+| `pre-release-database` | the database was created by a version before 0.5.0; that lineage was replaced by one `init` at 0.5.0 and does not upgrade | move the file aside, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
 | `version-skew` | the database records a migration this build does not ship — it was written by a newer PrismaLens | upgrade PrismaLens, or point `PRISMALENS_WORKSPACE_DIR` elsewhere |
 | `checksum-mismatch` | a shipped migration's SQL differs from what was applied — an edited or squashed history | restore the migration file; history is append-only. If the edit already shipped, see *Recovering a database that drifted* below — **never** delete the database |
 | `history-gap` | the recorded migrations are not an ordered prefix of the shipped ones — a gap or a duplicate row | restore a *validated* `prismalens.db.bak-*` (see below), or reconcile with the Prisma CLI |

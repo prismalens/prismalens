@@ -139,8 +139,6 @@ export const InvestigationReportSchema = z.object({
 	summary: z.string().min(1),
 	rootCause: z.string().nullable(),
 	rootCauseCategory: RootCauseCategorySchema.nullable(),
-	/** Synthesis mode: synthesized by Tier-1 LLM vs raw harness output (ADR-0031). */
-	reportMode: z.enum(["synthesized", "raw"]).optional(),
 	/** Structured culprit sub-object (ADR-0026). All fields nullable; whole object optional. */
 	culprit: CulpritSchema.nullable().optional(),
 	/** Ordered most → least plausible (array order is the ordering). */
@@ -418,24 +416,6 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		ts: z.string().datetime(),
 		report: InvestigationReportSchema,
 	}),
-	z.object({
-		kind: z.literal("llm_call"),
-		runId: z.string().uuid(),
-		seq: z.number().int(),
-		ts: z.string().datetime(),
-		phase: z.enum(["decompose", "map", "reduce"]),
-		provider: z.string(),
-		model: z.string(),
-		usage: z
-			.object({
-				inputTokens: z.number().int().min(0).nullable(),
-				outputTokens: z.number().int().min(0).nullable(),
-			})
-			.nullable(),
-		latencyMs: z.number().int().min(0),
-		outcome: z.enum(["ok", "error"]),
-		failureCause: z.string().nullable(),
-	}),
 ]);
 
 // ---- TYPE EXPORTS (ordered-evidence + canonical stream) ----
@@ -522,9 +502,9 @@ export type FiringAlert = z.infer<typeof FiringAlertSchema>;
 
 /** Read-only telemetry + app endpoints the harness may query. */
 export const TelemetryEndpointsSchema = z.object({
-	prometheusUrl: z.string(),
-	alertmanagerUrl: z.string(),
-	apiUrl: z.string(),
+	prometheusUrl: z.string().optional(),
+	alertmanagerUrl: z.string().optional(),
+	apiUrl: z.string().optional(),
 });
 export type TelemetryEndpoints = z.infer<typeof TelemetryEndpointsSchema>;
 
@@ -590,8 +570,8 @@ export type PriorInvestigation = z.infer<typeof PriorInvestigationSchema>;
 export const InvestigationContextSchema = z.object({
 	/** ≥1 firing alert. A single-alert run is the degenerate case, not empty. */
 	alerts: z.array(FiringAlertSchema).min(1),
-	/** Read-only telemetry surfaces (resolved by the host — ADR-0011). */
-	telemetry: TelemetryEndpointsSchema,
+	/** Read-only telemetry surfaces, only when the host has them configured (ADR 0002 §2). */
+	telemetry: TelemetryEndpointsSchema.optional(),
 	incident: IncidentContextSchema.optional(),
 	service: ServiceContextSchema.optional(),
 	/** Repo slugs in play (owner/name); the harness cwd is the primary one. */
@@ -633,7 +613,7 @@ export interface InvestigationContextExtras {
  */
 export function correlatedAlertsContext(
 	alerts: readonly FiringAlert[],
-	telemetry: TelemetryEndpoints,
+	telemetry: TelemetryEndpoints | undefined,
 	extras: InvestigationContextExtras = {},
 ): InvestigationContext {
 	// The schema's `.min(1)` would reject this downstream; throwing here names the
@@ -645,7 +625,7 @@ export function correlatedAlertsContext(
 	}
 	return {
 		alerts: [...alerts],
-		telemetry,
+		...(telemetry ? { telemetry } : {}),
 		...(extras.incident ? { incident: extras.incident } : {}),
 		...(extras.service ? { service: extras.service } : {}),
 		...(extras.repos ? { repos: extras.repos } : {}),
@@ -663,7 +643,7 @@ export function correlatedAlertsContext(
  */
 export function singleAlertContext(
 	alert: FiringAlert,
-	telemetry: TelemetryEndpoints,
+	telemetry: TelemetryEndpoints | undefined,
 	extras: InvestigationContextExtras = {},
 ): InvestigationContext {
 	return correlatedAlertsContext([alert], telemetry, extras);

@@ -5,8 +5,7 @@ import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { settingsContract } from "@prismalens/contracts";
-import type { ModelsListResponse } from "@prismalens/contracts/schemas";
-import { LlmSettingsService } from "./llm-settings.service.js";
+import { HarnessService } from "../harness/harness.service.js";
 import { SettingsService } from "./settings.service.js";
 
 @UseGuards(ThrottlerGuard)
@@ -14,78 +13,12 @@ import { SettingsService } from "./settings.service.js";
 export class SettingsController {
 	constructor(
 		private readonly settingsService: SettingsService,
-		private readonly llmSettingsService: LlmSettingsService,
+		private readonly harnessService: HarnessService,
 	) {}
 
 	/**
 	 * Implement the settings contract for LLM configuration
 	 */
-	@Implement(settingsContract.llm)
-	llm() {
-		return {
-			getEnvStatus: implement(settingsContract.llm.getEnvStatus).handler(
-				async () => {
-					return this.llmSettingsService.getLlmEnvStatus();
-				},
-			),
-
-			getSettings: implement(settingsContract.llm.getSettings).handler(
-				async () => {
-					return this.llmSettingsService.getLlmSettings();
-				},
-			),
-
-			updateSettings: implement(settingsContract.llm.updateSettings).handler(
-				async ({ input }) => {
-					return this.llmSettingsService.updateLlmSettings(input);
-				},
-			),
-
-			getModels: implement(settingsContract.llm.getModels).handler(
-				async ({ input }) => {
-					return this.llmSettingsService.getAvailableModels(
-						input.provider,
-					) as Promise<ModelsListResponse>;
-				},
-			),
-
-			testConnection: implement(settingsContract.llm.testConnection).handler(
-				async ({ input }) => {
-					return this.llmSettingsService.testLlmConnectionWithEnv(
-						input.provider,
-						input.model,
-						input.baseUrl,
-					);
-				},
-			),
-
-			saveCredential: implement(settingsContract.llm.saveCredential).handler(
-				async ({ input }) => {
-					await this.llmSettingsService.saveLlmCredential(
-						input.provider,
-						input.apiKey,
-					);
-					return { success: true };
-				},
-			),
-
-			deleteCredential: implement(
-				settingsContract.llm.deleteCredential,
-			).handler(async ({ input }) => {
-				await this.llmSettingsService.deleteLlmCredential(input.provider);
-				return { success: true };
-			}),
-
-			getCredentialStatus: implement(
-				settingsContract.llm.getCredentialStatus,
-			).handler(async () => {
-				const providers =
-					await this.llmSettingsService.getLlmCredentialStatus();
-				return { providers };
-			}),
-		};
-	}
-
 	/**
 	 * Implement investigation policy routes
 	 */
@@ -157,9 +90,15 @@ export class SettingsController {
 		return {
 			getHarnesses: implement(settingsContract.harnesses.getHarnesses).handler(
 				async () => {
-					return this.llmSettingsService.getHarnessesStatus();
+					return this.harnessService.getStatus();
 				},
 			),
+			getSettings: implement(settingsContract.harnesses.getSettings).handler(
+				async () => this.harnessService.getSettings(),
+			),
+			updateSettings: implement(
+				settingsContract.harnesses.updateSettings,
+			).handler(async ({ input }) => this.harnessService.updateSettings(input)),
 		};
 	}
 }

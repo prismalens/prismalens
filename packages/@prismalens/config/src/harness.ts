@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * @prismalens/config/harness
- *
- * Harness backend metadata (SSOT). Browser-safe: no Node.js dependencies.
- */
-
 export {
 	HARNESS_AUTO_ORDER,
 	HARNESS_BINARY,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
-	type HarnessAuthRoute,
 	type HarnessDescriptor,
 	type HarnessId,
-	type HarnessTransport,
+	type HarnessRunEnv,
 	PERMISSION_MODES,
 	type PermissionFidelity,
 	type PermissionMode,

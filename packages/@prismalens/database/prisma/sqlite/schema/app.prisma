@@ -28,29 +28,19 @@ model Service {
   tier         String  @default("tier_3") // tier_1, tier_2, tier_3, tier_4
   team         String?
   slackChannel String?
-  tags              String? // JSON array
-  metadata          String? // JSON object
-  discoveryMetadata String? // JSON object — populated during service discovery
-
-  /// Absolute path to this service's checkout on the machine running the worker (#331).
-  /// This is the working directory an investigation runs in. Unset means the run is
-  /// UNMAPPED and its report says so. Validated server-side: exists, is a directory,
-  /// is inside a git work tree.
-  localCheckoutPath String?
+  tags     String? // JSON array
+  metadata String? // JSON object
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  alerts            Alert[]
-  incidents         Incident[]
-  dependencies      ServiceDependency[]  @relation("DependentService")
-  dependents        ServiceDependency[]  @relation("DependencyService")
-  integrations      ServiceIntegration[]
-  alertMappingRules AlertMappingRule[]
-  changeEvents      ChangeEvent[]
-  repositories         ServiceRepository[]
-  deployments          Deployment[]
-  acceptedSuggestions  ServiceSuggestion[]
+  alerts       Alert[]
+  incidents    Incident[]
+  dependencies ServiceDependency[]  @relation("DependentService")
+  dependents   ServiceDependency[]  @relation("DependencyService")
+  integrations ServiceIntegration[]
+  changeEvents ChangeEvent[]
+  repositories ServiceRepository[]
 
   @@map("services")
 }
@@ -91,34 +81,6 @@ model ServiceRepository {
 
   @@unique([serviceId, repositoryId, subPath])
   @@map("service_repositories")
-}
-
-/// Deployment represents a running instance from a deployment platform
-model Deployment {
-  id              String    @id @default(uuid())
-  tenantId        String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  serviceId       String?
-  connectionId    String
-  externalId      String
-  name            String
-  url             String?
-  status          String?              // "live", "suspended", etc.
-  environment     String?              // "production", "staging"
-  deploymentType  String?              // "web_service", "worker", "cron_job", "static_site"
-  region          String?
-  branch          String?
-  repositoryUrl   String?
-  metadata        String?              // JSON
-  lastDeployedAt  DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  service            Service?            @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  connection         Connection          @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  acceptedSuggestion ServiceSuggestion[]
-
-  @@unique([connectionId, externalId])
-  @@map("deployments")
 }
 
 /// Service dependency for topology-based correlation
@@ -228,7 +190,6 @@ model Incident {
   serviceId         String?
   assignedToId      String?
   correlationReason String?
-  correlationRuleId String?
   tags              String? // JSON array
   customerImpact    String?
   affectedSystems   String? // JSON array
@@ -241,13 +202,11 @@ model Incident {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  service         Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  assignedTo      User?            @relation("AssignedTo", fields: [assignedToId], references: [id])
-  correlationRule CorrelationRule? @relation(fields: [correlationRuleId], references: [id])
-  alerts          Alert[]
-  investigations  Investigation[]
-  timeline        TimelineEntry[]
-  postmortem      Postmortem?
+  service        Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  assignedTo     User?           @relation("AssignedTo", fields: [assignedToId], references: [id])
+  alerts         Alert[]
+  investigations Investigation[]
+  timeline       TimelineEntry[]
 
   @@index([status])
   @@index([severity])
@@ -368,36 +327,6 @@ model TimelineEntry {
 }
 
 // =============================================================================
-// POSTMORTEM - POST-INCIDENT ANALYSIS
-// =============================================================================
-
-/// Postmortem for post-incident learnings
-model Postmortem {
-  id              String    @id @default(uuid())
-  tenantId        String?   // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  incidentId      String    @unique
-  title           String?
-  summary         String?
-  timeline        String? // JSON array
-  whatHappened    String?
-  whyItHappened   String?
-  whatWeLearned   String?
-  actionItems     String? // JSON array
-  customerImpact  String?
-  financialImpact Float?
-  status          String    @default("draft") // draft, in_review, published, archived
-  authorId        String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  publishedAt     DateTime?
-
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  author   User?    @relation("PostmortemAuthor", fields: [authorId], references: [id])
-
-  @@map("postmortems")
-}
-
-// =============================================================================
 // CHANGE TRACKING - FOR CHANGE CORRELATION (BigPanda Pattern)
 // =============================================================================
 // Change events track deployments, config changes, and other changes that
@@ -451,29 +380,6 @@ model IncidentSimilarity {
 }
 
 // =============================================================================
-// CORRELATION RULES - ALERT-TO-INCIDENT MATCHING
-// =============================================================================
-
-/// Correlation rule for grouping alerts into incidents
-model CorrelationRule {
-  id                String   @id @default(uuid())
-  tenantId          String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  name              String   @unique
-  description       String?
-  enabled           Boolean  @default(true)
-  priority          Int      @default(100) // Lower = higher priority
-  matchCriteria     String // JSON
-  timeWindowMinutes Int      @default(60)
-  action            String   @default("correlate") // correlate, suppress, create_incident
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  incidents Incident[]
-
-  @@map("correlation_rules")
-}
-
-// =============================================================================
 // SETTINGS - SYSTEM CONFIGURATION
 // =============================================================================
 
@@ -499,78 +405,11 @@ model Setting {
 // are defined in integrations.prisma in the same schema directory.
 
 // =============================================================================
-// ALERT MAPPING RULES - MAP ALERTS TO SERVICES
-// =============================================================================
-
-/// Alert mapping rule for routing incoming alerts to services.
-model AlertMappingRule {
-  id          String  @id @default(uuid())
-  tenantId    String? // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  name        String
-  description String?
-  priority    Int     @default(100) // Lower = higher priority
-  enabled     Boolean @default(true)
-
-  // Match conditions (JSON)
-  matchCriteria String
-
-  // Target service
-  serviceId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-
-  @@index([priority])
-  @@index([enabled])
-  @@index([serviceId])
-  @@map("alert_mapping_rules")
-}
-
-
-// =============================================================================
 // LICENSE MANAGEMENT
 // =============================================================================
 // SQLite version uses String for enums since SQLite doesn't support native enums.
 // =============================================================================
 
-/// License information for the installation.
-model LicenseInfo {
-  id String @id @default(uuid())
-
-  // License identification
-  licenseKey  String? @unique // The license key from Keygen.sh
-  licenseType String  @default("none") // "none" | "subscription"
-  tier        String  @default("community") // "community" | "enterprise"
-
-  // Validity and activation
-  validUntil    DateTime? // null for perpetual, set for subscription
-  activatedAt   DateTime? // When the license was first activated
-  lastValidated DateTime? // Last successful validation with license server
-
-  // Entitlements (from Keygen policy)
-  features String @default("[]") // JSON array: ["feat:extended_agents", "feat:sso", ...]
-  quotas   String @default("{}") // JSON object: {"investigations_monthly": 500, ...}
-
-  // Subscription-specific (for future use)
-  billingCycle String? // "monthly", "annual" (null for perpetual)
-  seats        Int? // null for unlimited, set for seat-based tiers
-
-  // Cloud-hosted specific (for future cloud tiers)
-  cloudInstanceId String? // Links to cloud deployment (pre-configured licenses)
-  isCloudManaged  Boolean @default(false) // true = license managed by cloud, user never sees key
-
-  // Customer metadata
-  customerEmail String?
-  customerName  String?
-  metadata      String  @default("{}") // JSON for additional data from license server
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("license_info")
-}
 
 // =============================================================================
 // DISPATCH

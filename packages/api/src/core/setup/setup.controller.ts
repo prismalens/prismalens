@@ -8,8 +8,8 @@ import { type SetupStep, setupContract } from "@prismalens/contracts";
 import { AuthService } from "../auth/auth.service.js";
 import { Public } from "../auth/public.decorator.js";
 import { applySetCookieHeaders } from "../auth/session-cookies.js";
+import { HarnessService } from "../harness/harness.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { LlmSettingsService } from "../settings/llm-settings.service.js";
 import { UsersService } from "../users/users.service.js";
 
 // Public: setup runs before any user exists, so auth is not possible.
@@ -32,7 +32,7 @@ export class SetupController {
 		private readonly usersService: UsersService,
 		private readonly authService: AuthService,
 		private readonly prisma: PrismaService,
-		private readonly llmSettingsService: LlmSettingsService,
+		private readonly harnessService: HarnessService,
 	) {}
 
 	@Implement(setupContract)
@@ -60,10 +60,8 @@ export class SetupController {
 				// "Configured" means the ACTIVE provider is runnable, not that some
 				// key exists — see LlmSettingsService.isActiveProviderUsable.
 				const [aiProvider, mappedServices, incidents] = await Promise.all([
-					this.llmSettingsService.isActiveProviderUsable(),
-					this.prisma.service.count({
-						where: { localCheckoutPath: { not: null } },
-					}),
+					this.harnessService.resolveSelection().then((s) => s.runnable),
+					this.prisma.serviceRepository.count(),
 					this.prisma.incident.count(),
 				]);
 

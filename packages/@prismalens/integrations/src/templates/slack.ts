@@ -57,7 +57,7 @@ export const slack: AuthTemplate = {
 		baseUrl: "https://slack.com/api",
 	},
 	verify: { method: "POST", path: "/auth.test" },
-	connectionCreation: { mode: "oauth_redirect" },
+	connectionCreation: { mode: "form" },
 	postIntegrationCreation: { action: "oauth_redirect" },
 	display: { authModeLabel: "OAuth" },
 };

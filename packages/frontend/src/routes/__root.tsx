@@ -17,31 +17,26 @@ import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
-import { LOCALE_COOKIE } from "@/lib/locale";
-import * as m from "@/lib/paraglide/messages.js";
-import { locales } from "@/lib/paraglide/runtime.js";
-import { LanguageProvider } from "@/lib/providers/language-provider";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, THEME_COOKIE } from "@/lib/theme";
 import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
 
 /**
- * Pre-paint theme/locale stamp.
+ * Pre-paint theme stamp.
  *
  * The app ships as a static SPA (`pl up`, issue #237): the HTML that reaches
  * the browser is a prerendered shell that knows nothing about this visitor's
  * cookies, and React only runs once it has parsed. This inline script runs
- * FIRST and writes `<html class>` and `<html lang>` from the cookie — the whole
- * job the deleted `getThemeServerFn`/`getLocaleServerFn` were doing. Without
- * it, every load flashes the default theme before React corrects it.
+ * FIRST and writes `<html class>` from the cookie — the whole job the deleted
+ * `getThemeServerFn` was doing. Without it, every load flashes the default
+ * theme before React corrects it.
  */
 const PRE_PAINT = `(function(){try{
 var g=function(n){var m=document.cookie.match(new RegExp('(^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[2]):null;};
 var e=document.documentElement;
 var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
-var l=g(${JSON.stringify(LOCALE_COOKIE)});if(l&&${JSON.stringify(locales)}.indexOf(l)>-1)e.lang=l;
 }catch(_){}})();`;
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -76,20 +71,18 @@ function RootLayout() {
 				<HeadContent />
 			</head>
 			<body className="font-sans">
-				<LanguageProvider>
-					<ThemeProvider>
-						<QueryClientProvider client={queryClient}>
-							<div className="min-h-screen bg-background text-foreground">
-								<Navbar />
-								<main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-									<Outlet />
-								</main>
-							</div>
-							<Toaster />
-							<ReactQueryDevtools initialIsOpen={false} />
-						</QueryClientProvider>
-					</ThemeProvider>
-				</LanguageProvider>
+				<ThemeProvider>
+					<QueryClientProvider client={queryClient}>
+						<div className="min-h-screen bg-background text-foreground">
+							<Navbar />
+							<main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+								<Outlet />
+							</main>
+						</div>
+						<Toaster />
+						<ReactQueryDevtools initialIsOpen={false} />
+					</QueryClientProvider>
+				</ThemeProvider>
 				<Scripts />
 			</body>
 		</html>
@@ -100,15 +93,13 @@ function NotFound() {
 	return (
 		<div className="flex flex-col items-center justify-center gap-4 py-16">
 			<Frown className="h-16 w-16 text-muted-foreground" />
-			<h1 className="text-4xl font-bold text-foreground">
-				{m.error_404_title()}
-			</h1>
-			<p className="text-xl text-muted-foreground">{m.error_404_subtitle()}</p>
+			<h1 className="text-4xl font-bold text-foreground">404</h1>
+			<p className="text-xl text-muted-foreground">Page not found</p>
 			<p className="text-muted-foreground text-center max-w-md">
-				{m.error_404_description()}
+				The page you're looking for doesn't exist or has been moved.
 			</p>
 			<Button asChild>
-				<Link to="/">{m.error_404_go_home()}</Link>
+				<Link to="/">Go back home</Link>
 			</Button>
 		</div>
 	);
@@ -127,13 +118,14 @@ function RootError({ error }: { error: Error }) {
 					<div className="flex min-h-screen flex-col items-center justify-center gap-4">
 						<ServerOff className="h-16 w-16 text-destructive" />
 						<h1 className="text-2xl font-bold text-foreground">
-							{m.error_connection_title()}
+							Connection Error
 						</h1>
 						<p className="text-muted-foreground text-center max-w-md">
-							{m.error_connection_description()}
+							Unable to connect to the PrismaLens API server. Please ensure
+							the backend is running and try again.
 						</p>
 						<Button onClick={() => window.location.reload()}>
-							{m.error_try_again()}
+							Try again
 						</Button>
 					</div>
 					<Scripts />
@@ -151,11 +143,11 @@ function RootError({ error }: { error: Error }) {
 				<div className="flex min-h-screen flex-col items-center justify-center gap-4">
 					<AlertTriangle className="h-16 w-16 text-destructive" />
 					<h1 className="text-2xl font-bold text-foreground">
-						{m.error_generic_title()}
+						Something went wrong
 					</h1>
 					<p className="text-muted-foreground">{error.message}</p>
 					<Button onClick={() => window.location.reload()}>
-						{m.error_try_again()}
+						Try again
 					</Button>
 				</div>
 				<Scripts />

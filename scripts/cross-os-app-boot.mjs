@@ -750,10 +750,7 @@ const { partBLogOffset } = await assertRefusalGate({
 			)
 		);
 		return resolveHarnessSelection({
-			provider: null,
-			apiKey: "",
-			model: null,
-			harness: "auto",
+			envHarness: process.env.PRISMALENS_HARNESS,
 		});
 	},
 	readLog: () => readLog(),

@@ -8,8 +8,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { PageHeader } from "@/components/layout";
 import {
-	AIProviderSettings,
 	DangerZoneSettings,
+	HarnessSettings,
 	IntegrationsSettings,
 	InvestigationSettings,
 } from "@/components/settings";
@@ -18,14 +18,14 @@ import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
 type SettingsTab =
-	| "ai"
+	| "harness"
 	| "investigation"
 	| "integrations"
 	| "connections"
 	| "danger";
 
 const TABS: { value: SettingsTab; label: string }[] = [
-	{ value: "ai", label: "AI Provider" },
+	{ value: "harness", label: "Harness" },
 	{ value: "investigation", label: "Investigation" },
 	{ value: "integrations", label: "Integrations" },
 	{ value: "connections", label: "Connections" },
@@ -33,16 +33,15 @@ const TABS: { value: SettingsTab; label: string }[] = [
 ];
 
 export const Route = createFileRoute("/_authenticated/settings/")({
-	validateSearch: (search: Record<string, unknown>) => ({
-		tab: (TABS.some((t) => t.value === search.tab)
-			? (search.tab as SettingsTab)
-			: "ai") as SettingsTab,
-	}),
+	validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
+		TABS.some((t) => t.value === search.tab)
+			? { tab: search.tab as SettingsTab }
+			: {},
 	component: SettingsPage,
 });
 
 function SettingsPage() {
-	const { tab } = Route.useSearch();
+	const { tab = "harness" } = Route.useSearch();
 	const navigate = useNavigate({ from: "/settings/" });
 	const queryClient = useQueryClient();
 
@@ -83,7 +82,7 @@ function SettingsPage() {
 
 				{/* Content */}
 				<div className="flex-1 min-w-0">
-					{tab === "ai" && <AIProviderSettings />}
+					{tab === "harness" && <HarnessSettings />}
 					{tab === "investigation" && <InvestigationSettings />}
 					{tab === "integrations" && <IntegrationsSettings />}
 					{tab === "connections" && <ConnectionsTab />}

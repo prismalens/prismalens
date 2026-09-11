@@ -17,23 +17,12 @@ import type {
 	UpdateServiceDto,
 } from "./dto/index.js";
 import {
-	InvalidCheckoutPathError,
 	type Service as PrismaService,
 	type ServiceDependency as PrismaServiceDependency,
 	ServicesService,
 	type ServiceWithDependencies,
 } from "./services.service.js";
 
-/**
- * A refused checkout path (#331) is a caller mistake, not a server fault —
- * surface the validator's sentence so the UI can render it verbatim.
- */
-function rethrowAsBadRequest(error: unknown): never {
-	if (error instanceof InvalidCheckoutPathError) {
-		throw new ORPCError("BAD_REQUEST", { message: error.message });
-	}
-	throw error;
-}
 
 @Controller()
 export class ServicesController {
@@ -53,17 +42,10 @@ export class ServicesController {
 				}
 
 				const service = await this.servicesService
-					.create(input as CreateServiceDto)
-					.catch(rethrowAsBadRequest);
+					.create(input as CreateServiceDto);
 				return this.serializeService(service);
 			}),
 
-			// POST /services/validate-checkout-path - Check a local checkout (#331)
-			validateCheckoutPath: implement(
-				servicesContract.validateCheckoutPath,
-			).handler(async ({ input }) => {
-				return this.servicesService.validateCheckoutPath(input.path);
-			}),
 
 			// GET /services - List all services
 			list: implement(servicesContract.list).handler(async ({ input }) => {
@@ -96,8 +78,7 @@ export class ServicesController {
 			update: implement(servicesContract.update).handler(async ({ input }) => {
 				const { id, ...updateData } = input;
 				const service = await this.servicesService
-					.update(id, updateData as UpdateServiceDto)
-					.catch(rethrowAsBadRequest);
+					.update(id, updateData as UpdateServiceDto);
 				if (!service) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Service ${id} not found`,
@@ -233,9 +214,6 @@ export class ServicesController {
 			...service,
 			tags: service.tags ? JSON.parse(service.tags) : null,
 			metadata: service.metadata ? JSON.parse(service.metadata) : null,
-			discoveryMetadata: service.discoveryMetadata
-				? JSON.parse(service.discoveryMetadata)
-				: null,
 			createdAt: service.createdAt.toISOString(),
 			updatedAt: service.updatedAt.toISOString(),
 		} as Service;
@@ -291,31 +269,6 @@ export class ServicesController {
 				)
 			: [];
 
-		// Serialize nested deployments
-		const deployments = Array.isArray(withRelations.deployments)
-			? (withRelations.deployments as Array<Record<string, unknown>>).map(
-					(d) => ({
-						...d,
-						createdAt:
-							d.createdAt instanceof Date
-								? d.createdAt.toISOString()
-								: d.createdAt,
-						updatedAt:
-							d.updatedAt instanceof Date
-								? d.updatedAt.toISOString()
-								: d.updatedAt,
-						lastDeployedAt:
-							d.lastDeployedAt instanceof Date
-								? d.lastDeployedAt.toISOString()
-								: d.lastDeployedAt,
-						metadata:
-							typeof d.metadata === "string"
-								? JSON.parse(d.metadata as string)
-								: d.metadata,
-					}),
-				)
-			: [];
-
 		return {
 			...serialized,
 			dependencies:
@@ -325,7 +278,6 @@ export class ServicesController {
 				withDeps.dependents?.map((d) => this.serializeServiceDependency(d)) ??
 				[],
 			repositories,
-			deployments,
 		} as ServiceWithRelations;
 	}
 

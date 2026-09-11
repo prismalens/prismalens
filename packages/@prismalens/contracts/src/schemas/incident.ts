@@ -31,7 +31,6 @@ export const IncidentSchema = z.object({
 	serviceId: z.string().uuid().nullable(),
 	assignedToId: z.string().uuid().nullable(),
 	correlationReason: z.string().nullable(),
-	correlationRuleId: z.string().uuid().nullable(),
 	tags: z.array(z.string()).nullable(),
 	customerImpact: z.string().nullable(),
 	affectedSystems: z.array(z.string()).nullable(),

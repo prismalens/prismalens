@@ -2,139 +2,61 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Settings schemas for LLM configuration
+ * Settings schemas: harness detection, investigation policy, danger zone, MCP.
  */
 
 import { HARNESS_IDS } from "@prismalens/config/harness";
-import {
-	type LLMProviderId,
-	llmProviderIdSchema,
-} from "@prismalens/config/llm";
 import { z } from "zod";
 
 // =============================================================================
-// PROVIDER & AGENT SCHEMAS (imported from source packages)
+// HARNESS (detect and report, ADR 0003 §9)
 // =============================================================================
 
-/**
- * Provider ID schema - canonical re-export from @prismalens/config
- */
-export const LlmProviderIdSchema = llmProviderIdSchema;
-
-/**
- * Harness setting schema ("auto" or an explicit harness ID)
- */
+/** Harness setting: "auto" or an explicit harness ID. PRISMALENS_HARNESS overrides. */
 export const HarnessSettingSchema = z.enum(["auto", ...HARNESS_IDS]);
 export type HarnessSetting = z.infer<typeof HarnessSettingSchema>;
 
-/**
- * Harness authentication verdict schema (ADR-0031)
- */
-export const HarnessAuthVerdictSchema = z.union([
-	z.object({
-		usable: z.literal(true),
-		route: z.literal("api-key"),
-	}),
-	z.object({
-		usable: z.literal(true),
-		route: z.literal("cli-session"),
-		verified: z.boolean(),
-	}),
-	z.object({
-		usable: z.literal(false),
-		/** Branch on this, never on `reason` — the backend owns the words (#518). */
-		cause: z.enum(["not-implemented", "not-installed", "not-authenticated"]),
-		reason: z.string(),
-	}),
-]);
-export type HarnessAuthVerdict = z.infer<typeof HarnessAuthVerdictSchema>;
-
+/** One registry row as the doctor and the settings card show it. */
 export const HarnessStatusSchema = z.object({
 	id: z.string(),
 	label: z.string(),
-	implemented: z.boolean(),
-	/** Why this harness does or does not hold a credential (#518). */
-	verdict: HarnessAuthVerdictSchema,
-	/**
-	 * Would a job pinned to this harness actually start? Answered by the shared
-	 * gate the worker runs, so the UI never re-derives it (#517).
-	 */
-	runnable: z.boolean(),
-	/** The gate's own message when it would not. */
-	blockedReason: z.string().nullable(),
+	binary: z.string(),
+	installed: z.boolean(),
+	/** Passed the registry admission run in CI; auto-selection considers only these. */
+	verified: z.boolean(),
+	/** One-line install hint, shown when not installed. */
+	install: z.string(),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
-/**
- * Would an investigation start RIGHT NOW, under the persisted harness setting and
- * the env override? The per-harness rows answer "if you pinned this one" instead,
- * so `harnesses.some((h) => h.runnable)` is not this answer (#521).
- */
+/** Would an investigation start right now? The gate's own words, never rewritten. */
 export const HarnessSelectionStatusSchema = z.object({
 	runnable: z.boolean(),
-	/** The harness a run would use, or the one the failure is about. */
 	harness: z.string().nullable(),
-	/** The gate's own message when it would not. Callers render it; none rewrite it. */
+	/** Set by PRISMALENS_HARNESS rather than auto-selected. */
+	pinned: z.boolean(),
 	blockedReason: z.string().nullable(),
 });
 export type HarnessSelectionStatus = z.infer<
 	typeof HarnessSelectionStatusSchema
 >;
 
+/** Persisted harness choice; PRISMALENS_HARNESS wins over it. */
+export const HarnessSettingsSchema = z.object({
+	harness: HarnessSettingSchema,
+	/** Model id in the harness's own format; absent means the harness default. */
+	model: z.string().min(1).max(200).optional(),
+});
+export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
+
+export const UpdateHarnessSettingsSchema = HarnessSettingsSchema.partial();
+export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
+
 export const HarnessesResponseSchema = z.object({
 	harnesses: z.array(HarnessStatusSchema),
 	selection: HarnessSelectionStatusSchema,
 });
 export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
-export type LlmProviderId = LLMProviderId;
-
-// Test connection result
-export const TestLlmResultSchema = z.object({
-	success: z.boolean(),
-	error: z.string().optional(),
-});
-export type TestLlmResult = z.infer<typeof TestLlmResultSchema>;
-
-// =============================================================================
-// LLM CREDENTIAL MANAGEMENT
-// =============================================================================
-
-/**
- * Save LLM credential input - provider + API key
- */
-export const SaveLlmCredentialSchema = z.object({
-	provider: llmProviderIdSchema,
-	apiKey: z.string().trim().min(8, "API key appears too short"),
-});
-export type SaveLlmCredential = z.infer<typeof SaveLlmCredentialSchema>;
-
-/**
- * Delete LLM credential input
- */
-export const DeleteLlmCredentialSchema = z.object({
-	provider: llmProviderIdSchema,
-});
-export type DeleteLlmCredential = z.infer<typeof DeleteLlmCredentialSchema>;
-
-/**
- * Per-provider credential status
- */
-export const LlmCredentialStatusSchema = z.object({
-	hasDbKey: z.boolean(),
-	hasEnvKey: z.boolean(),
-	activeSource: z.enum(["db", "env", "none"]),
-});
-export type LlmCredentialStatus = z.infer<typeof LlmCredentialStatusSchema>;
-
-/**
- * Full credential status response (all providers)
- */
-export const LlmCredentialStatusResponseSchema = z.object({
-	providers: z.partialRecord(llmProviderIdSchema, LlmCredentialStatusSchema),
-});
-export type LlmCredentialStatusResponse = z.infer<
-	typeof LlmCredentialStatusResponseSchema
->;
 
 // =============================================================================
 // INVESTIGATION POLICIES
@@ -302,114 +224,6 @@ export const DangerOperationResultSchema = z.object({
 	message: z.string().optional(),
 });
 export type DangerOperationResult = z.infer<typeof DangerOperationResultSchema>;
-
-// =============================================================================
-// COMPREHENSIVE LLM CONFIGURATION
-// =============================================================================
-
-/**
- * Per-provider configuration stored in DB
- * API keys are stored encrypted (AES-256-GCM) or provided via env vars
- */
-export const LlmProviderConfigSchema = z.object({
-	model: z.string(),
-	temperature: z.number().min(0).max(2).optional(),
-	maxTokens: z.number().int().min(1).optional(),
-	baseUrl: z.string().optional(), // Ollama only
-	// Advanced options as JSON - provider-specific fields not covered by common options
-	advancedOptions: z.record(z.string(), z.unknown()).optional(),
-});
-export type LlmProviderConfig = z.infer<typeof LlmProviderConfigSchema>;
-
-/**
- * Full LLM settings structure stored in DB
- */
-export const LlmSettingsSchema = z.object({
-	activeProvider: LlmProviderIdSchema.nullable(),
-	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema),
-	harness: HarnessSettingSchema.optional().default("auto"),
-});
-export type LlmSettings = z.infer<typeof LlmSettingsSchema>;
-
-/**
- * Environment variable status for a provider (read-only)
- */
-export const LlmProviderEnvStatusSchema = z.object({
-	hasApiKey: z.boolean(),
-	envVarName: z.string().nullable(),
-	isReady: z.boolean(), // hasApiKey || provider doesn't need key (ollama)
-});
-export type LlmProviderEnvStatus = z.infer<typeof LlmProviderEnvStatusSchema>;
-
-/**
- * Full environment status response
- */
-export const LlmEnvStatusResponseSchema = z.object({
-	providers: z.partialRecord(LlmProviderIdSchema, LlmProviderEnvStatusSchema),
-	activeEnvProvider: z.string().nullable(), // From LLM_PROVIDER env var
-});
-export type LlmEnvStatusResponse = z.infer<typeof LlmEnvStatusResponseSchema>;
-
-/**
- * Update LLM settings input
- */
-export const UpdateLlmSettingsSchema = z.object({
-	activeProvider: LlmProviderIdSchema.optional(),
-	providers: z
-		.partialRecord(LlmProviderIdSchema, LlmProviderConfigSchema.partial())
-		.optional(),
-	harness: HarnessSettingSchema.optional(),
-});
-export type UpdateLlmSettings = z.infer<typeof UpdateLlmSettingsSchema>;
-
-/**
- * Model metadata from models registry
- */
-export const ModelMetadataSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	provider: z.string(),
-	cost: z.object({
-		input: z.number(),
-		output: z.number(),
-	}),
-	limit: z.object({
-		context: z.number(),
-		output: z.number(),
-	}),
-	toolCall: z.boolean(),
-	reasoning: z.boolean(),
-	modalities: z.object({
-		input: z.array(z.string()),
-		output: z.array(z.string()),
-	}),
-	releaseDate: z.string().optional(), // ISO date string for sorting (newest first)
-});
-export type ModelMetadata = z.infer<typeof ModelMetadataSchema>;
-
-/**
- * Models list response
- */
-export const ModelsListResponseSchema = z.object({
-	models: z.array(ModelMetadataSchema),
-});
-export type ModelsListResponse = z.infer<typeof ModelsListResponseSchema>;
-
-/**
- * Test LLM connection input - uses env var for API key
- */
-export const TestLlmConnectionInputSchema = z.object({
-	provider: LlmProviderIdSchema,
-	model: z.string().max(256).optional(),
-	baseUrl: z.string().url().max(512).optional(),
-});
-export type TestLlmConnectionInput = z.infer<
-	typeof TestLlmConnectionInputSchema
->;
-
-// =============================================================================
-// MCP SERVER CONFIGURATION
-// =============================================================================
 
 import { type MCPServerId, mcpServerIdSchema } from "@prismalens/config/mcp";
 

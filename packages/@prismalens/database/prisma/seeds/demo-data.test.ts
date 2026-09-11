@@ -70,13 +70,11 @@ describe("seedDemoData", () => {
 		await seedDemoData(prisma);
 
 		const serviceCount = await prisma.service.count();
-		const ruleCount = await prisma.correlationRule.count();
 		const alertCount = await prisma.alert.count();
 		const incidentCount = await prisma.incident.count();
 		const investigationCount = await prisma.investigation.count();
 
 		expect(serviceCount).toBeGreaterThanOrEqual(4);
-		expect(ruleCount).toBe(2);
 		expect(alertCount).toBe(60);
 		expect(incidentCount).toBeGreaterThanOrEqual(2);
 		expect(investigationCount).toBe(2);

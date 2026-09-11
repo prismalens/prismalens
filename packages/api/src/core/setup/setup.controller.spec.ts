@@ -11,8 +11,8 @@ import { Logger } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { AuthService } from "../auth/auth.service.js";
+import { HarnessService } from "../harness/harness.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { LlmSettingsService } from "../settings/llm-settings.service.js";
 import { UsersService } from "../users/users.service.js";
 import { SetupController } from "./setup.controller.js";
 
@@ -37,12 +37,12 @@ const mockAuthService = {
 	createSessionCookies: vi.fn(),
 };
 
-const mockLlmSettingsService = {
-	isActiveProviderUsable: vi.fn(),
+const mockHarnessService = {
+	resolveSelection: vi.fn(),
 };
 
 const mockPrisma = {
-	service: { count: vi.fn() },
+	serviceRepository: { count: vi.fn() },
 	incident: { count: vi.fn() },
 };
 
@@ -64,7 +64,7 @@ describe("SetupController", () => {
 				{ provide: UsersService, useValue: mockUsersService },
 				{ provide: AuthService, useValue: mockAuthService },
 				{ provide: PrismaService, useValue: mockPrisma },
-				{ provide: LlmSettingsService, useValue: mockLlmSettingsService },
+				{ provide: HarnessService, useValue: mockHarnessService },
 			],
 		})
 			.overrideGuard(ThrottlerGuard)
@@ -150,12 +150,16 @@ describe("SetupController", () => {
 	describe("getStatus — the ai_provider step", () => {
 		beforeEach(() => {
 			mockUsersService.isSetupComplete.mockResolvedValue(true);
-			mockPrisma.service.count.mockResolvedValue(0);
+			mockPrisma.serviceRepository.count.mockResolvedValue(0);
 			mockPrisma.incident.count.mockResolvedValue(0);
 		});
 
-		it("is incomplete while the active provider is not usable, and is the current step", async () => {
-			mockLlmSettingsService.isActiveProviderUsable.mockResolvedValue(false);
+		it("is incomplete while no harness is runnable, and is the current step", async () => {
+			mockHarnessService.resolveSelection.mockResolvedValue({
+				runnable: false,
+				failure: "no-harness",
+				reason: "No coding agent found on PATH.",
+			});
 
 			const status = await getHandlers().getStatus({});
 
@@ -163,8 +167,13 @@ describe("SetupController", () => {
 			expect(status.currentStep).toBe("ai_provider");
 		});
 
-		it("is complete once the active provider is usable", async () => {
-			mockLlmSettingsService.isActiveProviderUsable.mockResolvedValue(true);
+		it("is complete once a harness is runnable", async () => {
+			mockHarnessService.resolveSelection.mockResolvedValue({
+				runnable: true,
+				harness: "opencode",
+				auto: true,
+				verified: true,
+			});
 
 			const status = await getHandlers().getStatus({});
 
@@ -178,9 +187,21 @@ describe("SetupController", () => {
 			const status = await getHandlers().getStatus({});
 
 			expect(status.steps.aiProvider).toBe(false);
-			expect(
-				mockLlmSettingsService.isActiveProviderUsable,
-			).not.toHaveBeenCalled();
+			expect(mockHarnessService.resolveSelection).not.toHaveBeenCalled();
+		});
+
+		it("is complete once a service has a linked repository", async () => {
+			mockHarnessService.resolveSelection.mockResolvedValue({
+				runnable: true,
+				harness: "opencode",
+				auto: true,
+				verified: true,
+			});
+			mockPrisma.serviceRepository.count.mockResolvedValue(1);
+
+			const status = await getHandlers().getStatus({});
+
+			expect(status.steps.codeLocation).toBe(true);
 		});
 	});
 

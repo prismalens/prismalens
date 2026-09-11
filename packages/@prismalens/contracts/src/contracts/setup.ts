@@ -41,9 +41,9 @@ const SetupStatusSchema = z.object({
 	steps: z.object({
 		/** An account with an admin role exists. */
 		owner: z.boolean(),
-		/** Some LLM provider has a usable key, or a keyless provider is active. */
+		/** A harness is on PATH and would run right now. */
 		aiProvider: z.boolean(),
-		/** At least one service has a `localCheckoutPath`. */
+		/** At least one service has a repository linked. */
 		codeLocation: z.boolean(),
 		/** At least one incident exists — the thing there is to investigate. */
 		firstIncident: z.boolean(),

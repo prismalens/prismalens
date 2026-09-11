@@ -15,7 +15,6 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import * as m from "@/lib/paraglide/messages.js";
 import { useTheme } from "@/lib/providers/theme-provider";
 
 export function ThemeToggle() {
@@ -36,11 +35,11 @@ export function ThemeToggle() {
 			<DropdownMenuContent align="end">
 				<DropdownMenuItem onClick={() => setTheme("light")}>
 					<Sun className="mr-2 h-4 w-4" />
-					{m.theme_toggle_light()}
+					Light
 				</DropdownMenuItem>
 				<DropdownMenuItem onClick={() => setTheme("dark")}>
 					<Moon className="mr-2 h-4 w-4" />
-					{m.theme_toggle_dark()}
+					Dark
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>

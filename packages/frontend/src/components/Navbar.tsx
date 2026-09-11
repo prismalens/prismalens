@@ -4,13 +4,12 @@
 /**
  * Navbar Component
  *
- * Main navigation bar with theme toggle and language switcher using shadcn NavigationMenu
+ * Three front doors (Incidents, Alerts, Settings) per the UX study; Services is reached from an incident.
  * Hidden during setup flow to prevent navigation away from required setup steps
  */
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import {
 	navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import { signOut, useSession } from "@/lib/auth";
-import * as m from "@/lib/paraglide/messages.js";
 
 export function Navbar() {
 	const location = useLocation();
@@ -49,10 +47,10 @@ export function Navbar() {
 					{/* Left side - Logo */}
 					<div className="flex items-center gap-4">
 						<Link
-							to="/"
+							to="/incidents"
 							className="text-xl font-bold text-primary hover:text-primary/80 transition-colors"
 						>
-							{m.app_name()}
+							PrismaLens
 						</Link>
 					</div>
 
@@ -65,7 +63,7 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
-										<Link to="/">Command Center</Link>
+										<Link to="/incidents">Incidents</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>
 								<NavigationMenuItem>
@@ -81,48 +79,11 @@ export function Navbar() {
 										asChild
 										className={navigationMenuTriggerStyle()}
 									>
-										<Link to="/incidents">Incidents</Link>
-									</NavigationMenuLink>
-								</NavigationMenuItem>
-								<NavigationMenuItem>
-									<NavigationMenuLink
-										asChild
-										className={navigationMenuTriggerStyle()}
-									>
-										<Link to="/services">Services</Link>
-									</NavigationMenuLink>
-								</NavigationMenuItem>
-								<NavigationMenuItem>
-									<NavigationMenuLink
-										asChild
-										className={navigationMenuTriggerStyle()}
-									>
-										<Link to="/rules" search={{ tab: "correlation" }}>
-											Rules
-										</Link>
-									</NavigationMenuLink>
-								</NavigationMenuItem>
-								<NavigationMenuItem>
-									<NavigationMenuLink
-										asChild
-										className={navigationMenuTriggerStyle()}
-									>
-										<Link to="/investigations">{m.nav_investigations()}</Link>
-									</NavigationMenuLink>
-								</NavigationMenuItem>
-								<NavigationMenuItem>
-									<NavigationMenuLink
-										asChild
-										className={navigationMenuTriggerStyle()}
-									>
-										<Link to="/settings" search={{ tab: "ai" }}>
-											{m.nav_settings()}
-										</Link>
+										<Link to="/settings">Settings</Link>
 									</NavigationMenuLink>
 								</NavigationMenuItem>
 							</NavigationMenuList>
 						</NavigationMenu>
-						<LanguageSwitcher />
 						<ThemeToggle />
 						<UserMenu />
 					</div>

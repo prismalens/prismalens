@@ -5,7 +5,6 @@ import { forwardRef, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AlertMappingModule } from "../alert-mapping/alert-mapping.module.js";
 import { AlertsModule } from "../alerts/alerts.module.js";
-import { CorrelationModule } from "../correlation/correlation.module.js";
 import { EventsModule } from "../events/events.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
@@ -18,7 +17,6 @@ import { WebhooksService } from "./webhooks.service.js";
 		ConfigModule,
 		forwardRef(() => AlertsModule),
 		EventsModule,
-		forwardRef(() => CorrelationModule),
 		AlertMappingModule,
 		IntegrationsModule,
 	],

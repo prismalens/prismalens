@@ -2,30 +2,19 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * @prismalens/engine
- *
- * Tier-1 prismalens supervisor + harness adapters for the two-tier investigation
- * engine (ADR-0008). Drives rented agent harnesses (default: deepagents over ACP)
- * and normalises their native event streams into the canonical stream the UI
- * consumes (@prismalens/contracts).
+ * @prismalens/engine: one investigation is one ACP session in a clone (ADR 0002).
+ * Adapter, session, run loop, sandbox. No model call lives here.
  */
-
 export * from "./adapter/acp-adapter.js";
-export * from "./adapter/claude-code-adapter.js";
-export * from "./config/resolve.js";
+export * from "./run/conductor.js";
+export * from "./run/fence.js";
+export * from "./run/investigate.js";
+export * from "./run/permission.js";
+export * from "./run/prompt.js";
+export * from "./run/report.js";
 export * from "./runner/acp-client.js";
-export * from "./runner/acp-run-branch.js";
-export * from "./runner/claude-code-runner.js";
 export * from "./sandbox/e2b.js";
 export * from "./sandbox/process-floor.js";
 export * from "./sandbox/select.js";
 export * from "./sandbox/srt.js";
 export * from "./sandbox/types.js";
-export * from "./supervisor/alert-source.js";
-export * from "./supervisor/conductor.js";
-export * from "./supervisor/decompose.js";
-export * from "./supervisor/fan-out.js";
-export * from "./supervisor/investigate.js";
-export * from "./supervisor/synthesize.js";
-export * from "./tools/provisioning.js";
-export * from "./tools/types.js";

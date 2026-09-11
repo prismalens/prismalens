@@ -72,29 +72,28 @@ describe("DispatchService.onModuleInit", () => {
 		const streamRelay = { attach: vi.fn() };
 		const incidentsService = { findById: vi.fn(async () => null) };
 		const timelineService = { create: vi.fn(async () => ({})) };
-		const llmSettingsService = {
-			resolveActiveLlmConfig: vi.fn(async () => ({
-				provider: null,
-				model: null,
-				baseUrl: null,
-				harness: "auto",
+		const harnessService = {
+			resolveSelection: vi.fn(async () => ({
+				runnable: false,
+				failure: "no-harness",
+				reason: "No coding agent found on PATH.",
 			})),
-			resolveApiKey: vi.fn(() => null),
+			getSettings: vi.fn(async () => ({ harness: "auto" })),
 		};
+		const repoClone = { ensureClone: vi.fn() };
 		const integrationsService = { getIntegrationsByConnectionIds: vi.fn(async () => []) };
-		const servicesService = { findAll: vi.fn(async () => ({ data: [], total: 0 })) };
 
 		const service = new DispatchService(
-			fakePrisma(rows),
 			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
 			fakeBus() as any,
 			streamRelay as any,
 			investigationsService as any,
 			incidentsService as any,
 			timelineService as any,
-			llmSettingsService as any,
+			harnessService as any,
+			repoClone as any,
+			fakePrisma(rows),
 			integrationsService as any,
-			servicesService as any,
 		);
 
 		await service.onModuleInit();
@@ -120,7 +119,6 @@ describe("DispatchService.onModuleInit", () => {
 		};
 		const streamRelay = { attach: vi.fn() };
 		const service = new DispatchService(
-			fakePrisma([]),
 			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
 			fakeBus() as any,
 			streamRelay as any,
@@ -128,16 +126,16 @@ describe("DispatchService.onModuleInit", () => {
 			{ findById: vi.fn(async () => null) } as any,
 			{ create: vi.fn(async () => ({})) } as any,
 			{
-				resolveActiveLlmConfig: vi.fn(async () => ({
-					provider: null,
-					model: null,
-					baseUrl: null,
-					harness: "auto",
+				resolveSelection: vi.fn(async () => ({
+					runnable: false,
+					failure: "no-harness",
+					reason: "No coding agent found on PATH.",
 				})),
-				resolveApiKey: vi.fn(() => null),
+				getSettings: vi.fn(async () => ({ harness: "auto" })),
 			} as any,
+			{ ensureClone: vi.fn() } as any,
+			fakePrisma([]),
 			{ getIntegrationsByConnectionIds: vi.fn(async () => []) } as any,
-			{ findAll: vi.fn(async () => ({ data: [], total: 0 })) } as any,
 		);
 
 		await service.onModuleInit();

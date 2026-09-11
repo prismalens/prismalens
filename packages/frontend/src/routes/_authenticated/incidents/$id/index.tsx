@@ -1,18 +1,20 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Sumit Patel
-
+/**
+ * The incident screen. The investigation runs in place here (#599, the UX
+ * study's highest-value change): no round-trip to a second route.
+ */
 import type { TimelineEntryType } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import {
 	CorrelatedAlerts,
 	IncidentDetailHeader,
 	IncidentOverview,
-	InvestigationProgress,
-	PostmortemEditor,
 	RecommendationsList,
 	TimelineTab,
 } from "@/components/incidents";
+import { InvestigationPanel } from "@/components/investigation/InvestigationPanel";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -24,59 +26,78 @@ import {
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 
+type IncidentTab =
+	| "overview"
+	| "alerts"
+	| "investigation"
+	| "recommendations"
+	| "timeline";
+
 export const Route = createFileRoute("/_authenticated/incidents/$id/")({
+	validateSearch: (
+		search: Record<string, unknown>,
+	): { tab?: IncidentTab; investigation?: string } => ({
+		...(typeof search.tab === "string"
+			? { tab: search.tab as IncidentTab }
+			: {}),
+		...(typeof search.investigation === "string"
+			? { investigation: search.investigation }
+			: {}),
+	}),
 	component: IncidentDetailPage,
 });
 
 function IncidentDetailPage() {
 	const { id } = Route.useParams();
-	const navigate = useNavigate();
+	const search = Route.useSearch();
+	const navigate = Route.useNavigate();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
-
-	// Would an investigation actually start? Server's gate, not a local guess (#521).
 	const { isReady: canRunInvestigation, blockedReason } =
 		useInvestigationReadiness();
 
-	// Fetch incident details
 	const {
 		data: incident,
 		isLoading: isLoadingIncident,
 		error: incidentError,
 	} = useQuery(orpc.incidents.get.queryOptions({ input: { id } }));
-
-	// Fetch recommendations for this incident
 	const { data: recommendations = [] } = useQuery({
 		...orpc.recommendations.list.queryOptions({ input: { incidentId: id } }),
 		enabled: !!incident,
 	});
-
-	// Fetch timeline entries for this incident
 	const { data: timelineEntries = [], isLoading: isLoadingTimeline } =
 		useTimeline(id);
-
-	// Create timeline entry mutation
 	const createTimelineEntryMutation = useCreateTimelineEntry();
 
-	// Update incident mutation (for acknowledge)
+	// The investigation shown: the one in the URL, else the newest on the incident.
+	const [startedId, setStartedId] = useState<string | null>(null);
+	const latest = incident?.investigations?.[0]?.id ?? null;
+	const investigationId = search.investigation ?? startedId ?? latest;
+	const tab: IncidentTab =
+		search.tab ?? (investigationId ? "investigation" : "overview");
+	const setTab = (next: string) =>
+		navigate({
+			search: (prev) => ({ ...prev, tab: next as IncidentTab }),
+			replace: true,
+		});
+
 	const updateMutation = useMutation({
 		...orpc.incidents.update.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
-		},
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["incidents"] }),
 	});
-
-	// Investigate mutation
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
 		onSuccess: (data) => {
 			queryClient.invalidateQueries({ queryKey: ["incidents"] });
 			queryClient.invalidateQueries({ queryKey: ["investigations"] });
-			// Navigate to the investigation
 			if (data.investigationId) {
+				setStartedId(data.investigationId);
 				navigate({
-					to: "/investigations/$id",
-					params: { id: data.investigationId },
+					search: () => ({
+						tab: "investigation",
+						investigation: data.investigationId,
+					}),
+					replace: true,
 				});
 			}
 		},
@@ -88,43 +109,17 @@ function IncidentDetailPage() {
 			});
 		},
 	});
-
-	// Resolve mutation
 	const resolveMutation = useMutation({
 		...orpc.incidents.resolve.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
-		},
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["incidents"] }),
 	});
-
-	// Recommendation mutations
 	const completeRecommendationMutation = useMutation({
 		...orpc.recommendations.update.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-		},
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: ["recommendations"] }),
 	});
 
-	const handleAcknowledge = () => {
-		updateMutation.mutate({ id, status: "investigating" });
-	};
-
-	const handleInvestigate = () => {
-		investigateMutation.mutate({ id });
-	};
-
-	const handleResolve = () => {
-		resolveMutation.mutate({ id });
-	};
-
-	const handleCompleteRecommendation = (recId: string) => {
-		completeRecommendationMutation.mutate({ id: recId, status: "completed" });
-	};
-
-	const handleDismissRecommendation = (recId: string) => {
-		completeRecommendationMutation.mutate({ id: recId, status: "rejected" });
-	};
-
+	const handleInvestigate = () => investigateMutation.mutate({ id });
 	const handleCreateTimelineEntry = (entry: {
 		title: string;
 		description?: string;
@@ -139,10 +134,7 @@ function IncidentDetailPage() {
 		});
 	};
 
-	if (isLoadingIncident) {
-		return <IncidentDetailSkeleton />;
-	}
-
+	if (isLoadingIncident) return <IncidentDetailSkeleton />;
 	if (incidentError || !incident) {
 		return (
 			<div className="flex flex-col items-center justify-center py-12">
@@ -158,19 +150,19 @@ function IncidentDetailPage() {
 
 	return (
 		<div className="space-y-6">
-			{/* Header */}
 			<IncidentDetailHeader
 				incident={incident}
-				onAcknowledge={handleAcknowledge}
+				onAcknowledge={() =>
+					updateMutation.mutate({ id, status: "investigating" })
+				}
 				onInvestigate={handleInvestigate}
-				onResolve={handleResolve}
+				onResolve={() => resolveMutation.mutate({ id })}
 				isInvestigating={investigateMutation.isPending}
 				investigateDisabled={!canRunInvestigation}
 				investigateDisabledReason={blockedReason}
 			/>
 
-			{/* Tabs */}
-			<Tabs defaultValue="overview" className="space-y-4">
+			<Tabs value={tab} onValueChange={setTab} className="space-y-4">
 				<TabsList>
 					<TabsTrigger value="overview">Overview</TabsTrigger>
 					<TabsTrigger value="alerts">
@@ -183,9 +175,7 @@ function IncidentDetailPage() {
 					<TabsTrigger value="timeline">
 						Timeline ({timelineEntries.length})
 					</TabsTrigger>
-					<TabsTrigger value="postmortem">Postmortem</TabsTrigger>
 				</TabsList>
-
 				<TabsContent value="overview">
 					<IncidentOverview
 						incident={incident}
@@ -193,29 +183,85 @@ function IncidentDetailPage() {
 						timelineLoading={isLoadingTimeline}
 					/>
 				</TabsContent>
-
 				<TabsContent value="alerts">
 					<CorrelatedAlerts alerts={incident.alerts || []} />
 				</TabsContent>
-
 				<TabsContent value="investigation">
-					<InvestigationProgress
-						investigations={incident.investigations || []}
-						onStartInvestigation={handleInvestigate}
-						isStarting={investigateMutation.isPending}
-						startDisabled={!canRunInvestigation}
-						startDisabledReason={blockedReason}
-					/>
+					{investigationId ? (
+						<div className="space-y-4">
+							{(incident.investigations?.length ?? 0) > 1 && (
+								<div
+									className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+									data-testid="investigation-history"
+								>
+									<span>Runs:</span>
+									{incident.investigations?.map((inv, i) => (
+										<Button
+											key={inv.id}
+											variant={
+												inv.id === investigationId ? "secondary" : "ghost"
+											}
+											size="sm"
+											onClick={() =>
+												navigate({
+													search: () => ({
+														tab: "investigation",
+														investigation: inv.id,
+													}),
+													replace: true,
+												})
+											}
+										>
+											#{(incident.investigations?.length ?? 0) - i} ·{" "}
+											{inv.status}
+										</Button>
+									))}
+								</div>
+							)}
+							<InvestigationPanel
+								key={investigationId}
+								investigationId={investigationId}
+							/>
+						</div>
+					) : (
+						<div
+							className="flex flex-col items-center justify-center py-12 text-center"
+							data-testid="investigation-empty"
+						>
+							<p className="text-lg font-medium">No investigation yet</p>
+							<p className="text-sm text-muted-foreground max-w-md mt-1">
+								{canRunInvestigation
+									? "Start one and the run streams here, in place."
+									: (blockedReason ??
+										"No coding agent is available to run one.")}
+							</p>
+							<Button
+								className="mt-4"
+								onClick={handleInvestigate}
+								disabled={!canRunInvestigation || investigateMutation.isPending}
+							>
+								{investigateMutation.isPending ? "Starting..." : "Investigate"}
+							</Button>
+						</div>
+					)}
 				</TabsContent>
-
 				<TabsContent value="recommendations">
 					<RecommendationsList
 						recommendations={recommendations}
-						onComplete={handleCompleteRecommendation}
-						onDismiss={handleDismissRecommendation}
+						onComplete={(recId) =>
+							completeRecommendationMutation.mutate({
+								id: recId,
+								status: "completed",
+							})
+						}
+						onDismiss={(recId) =>
+							completeRecommendationMutation.mutate({
+								id: recId,
+								status: "rejected",
+							})
+						}
 					/>
 				</TabsContent>
-
 				<TabsContent value="timeline">
 					<TimelineTab
 						incidentId={id}
@@ -225,10 +271,6 @@ function IncidentDetailPage() {
 						isCreating={createTimelineEntryMutation.isPending}
 					/>
 				</TabsContent>
-
-				<TabsContent value="postmortem">
-					<PostmortemEditor incidentId={id} incidentTitle={incident.title} />
-				</TabsContent>
 			</Tabs>
 		</div>
 	);
@@ -237,31 +279,16 @@ function IncidentDetailPage() {
 function IncidentDetailSkeleton() {
 	return (
 		<div className="space-y-6">
-			{/* Header skeleton */}
 			<div className="space-y-4">
 				<Skeleton className="h-4 w-32" />
 				<div className="flex items-center gap-3">
 					<Skeleton className="h-6 w-20" />
 					<Skeleton className="h-8 w-64" />
 				</div>
-				<div className="flex items-center gap-2">
-					<Skeleton className="h-6 w-16" />
-					<Skeleton className="h-6 w-12" />
-					<Skeleton className="h-6 w-24" />
-				</div>
 				<Skeleton className="h-4 w-96" />
 			</div>
-
-			{/* Tabs skeleton */}
-			<div className="space-y-4">
-				<Skeleton className="h-10 w-96" />
-				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-					<Skeleton className="h-32" />
-					<Skeleton className="h-32" />
-					<Skeleton className="h-32" />
-					<Skeleton className="h-32" />
-				</div>
-			</div>
+			<Skeleton className="h-10 w-96" />
+			<Skeleton className="h-64" />
 		</div>
 	);
 }

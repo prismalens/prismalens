@@ -12,12 +12,11 @@ npm install -g prismalens
 
 ## Quick start
 
-Check the environment, then start the web interface or run an investigation directly:
+Check the environment, then start the web interface:
 
 ```bash
 prismalens doctor
 pl up
-pl investigate --repo . --query "checkout latency spike after 14:00 UTC"
 ```
 
 ## Commands
@@ -25,14 +24,7 @@ pl investigate --repo . --query "checkout latency spike after 14:00 UTC"
 | Command | Description |
 | --- | --- |
 | `up` | Run PrismaLens as a single process serving the API and web dashboard. |
-| `investigate` | Run a root-cause investigation on a firing alert or query. |
-| `listen` | Start a local HTTP webhook receiver for incoming Alertmanager alerts. |
-| `serve` | Run the JSON-RPC server over stdio for desktop and API integrations. |
-| `doctor` | Preflight-check the environment for harness binaries and credentials. |
-| `init` | Scaffold a default configuration file in the current directory. |
-| `status` | List recent investigation runs and their execution states. |
-| `report` | Display the stored investigation report for a specific run ID. |
-| `auth` | Manage stored credentials for model providers. |
+| `doctor` | Preflight-check the environment for a harness binary on PATH. |
 
 ## Documentation
 

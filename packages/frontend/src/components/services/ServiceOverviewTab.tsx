@@ -6,11 +6,11 @@ import type {
 	ServiceWithRelations,
 	TopologyEdge,
 } from "@prismalens/contracts";
-import { FolderGit2, GitBranch, Link2, Rocket } from "lucide-react";
+import { FolderGit2, GitBranch, Link2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DeploymentStatusIndicator, tierLabels } from "./service-detail.utils";
+import { tierLabels } from "./service-detail.utils";
 
 interface ServiceOverviewTabProps {
 	service: ServiceWithRelations;
@@ -28,7 +28,6 @@ export function ServiceOverviewTab({
 	integrations,
 }: ServiceOverviewTabProps) {
 	const repos = service.repositories ?? [];
-	const deploys = service.deployments ?? [];
 
 	return (
 		<div className="grid gap-4 md:grid-cols-2">
@@ -155,37 +154,6 @@ export function ServiceOverviewTab({
 					) : (
 						<p className="text-sm text-muted-foreground">
 							No linked repositories
-						</p>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Deployments Summary */}
-			<Card>
-				<CardHeader>
-					<CardTitle className="text-base flex items-center gap-2">
-						<Rocket className="h-4 w-4" />
-						Deployments ({deploys.length})
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					{deploys.length > 0 ? (
-						<div className="space-y-1 text-sm">
-							{deploys.map((dep) => (
-								<div key={dep.id} className="flex items-center gap-2">
-									<DeploymentStatusIndicator status={dep.status} />
-									<span className="truncate">{dep.name}</span>
-									{dep.status && (
-										<Badge variant="outline" className="text-xs capitalize">
-											{dep.status}
-										</Badge>
-									)}
-								</div>
-							))}
-						</div>
-					) : (
-						<p className="text-sm text-muted-foreground">
-							No linked deployments
 						</p>
 					)}
 				</CardContent>

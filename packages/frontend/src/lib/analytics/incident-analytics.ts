@@ -9,8 +9,8 @@
  */
 
 import type { Incident, IncidentWithRelations } from "@prismalens/contracts";
-import { chartColors } from "@prismalens/design-tokens/colors";
 import { format, parseISO, startOfDay, startOfWeek, subDays } from "date-fns";
+import { chartColors } from "@/styles/colors";
 
 // =============================================================================
 // TYPES

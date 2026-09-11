@@ -13,7 +13,7 @@ import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
-import { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -27,7 +27,7 @@ export class IncidentsController {
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
-		private readonly llmSettingsService: LlmSettingsService,
+		private readonly harnessService: HarnessService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -140,7 +140,7 @@ export class IncidentsController {
 					}
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
-					const selection = await this.llmSettingsService.resolveSelection();
+					const selection = await this.harnessService.resolveSelection();
 					if (!selection.runnable) {
 						throw new ORPCError("PRECONDITION_FAILED", {
 							message: selection.reason,
@@ -262,7 +262,6 @@ export class IncidentsController {
 			serviceId: incident.serviceId ?? null,
 			assignedToId: incident.assignedToId ?? null,
 			correlationReason: incident.correlationReason ?? null,
-			correlationRuleId: incident.correlationRuleId ?? null,
 			customerImpact: incident.customerImpact ?? null,
 			affectedSystems: incident.affectedSystems
 				? JSON.parse(incident.affectedSystems)
@@ -365,7 +364,6 @@ export class IncidentsController {
 						? JSON.parse(incident.service.metadata)
 						: incident.service.metadata
 					: null,
-				localCheckoutPath: incident.service.localCheckoutPath ?? null,
 				createdAt:
 					incident.service.createdAt instanceof Date
 						? incident.service.createdAt.toISOString()

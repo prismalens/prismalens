@@ -64,16 +64,7 @@ export class OpenAPIController {
 				{ name: "webhooks", description: "Webhook ingestion endpoints" },
 				{ name: "events", description: "Event management" },
 				{ name: "timeline", description: "Incident timeline entries" },
-				{ name: "correlation", description: "Alert correlation rules" },
 				{ name: "integrations", description: "External integrations" },
-				{
-					name: "service-discovery",
-					description: "Service discovery suggestions",
-				},
-				{
-					name: "alert-mapping",
-					description: "Alert to service mapping rules",
-				},
 			],
 		});
 
