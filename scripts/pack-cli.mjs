@@ -159,9 +159,8 @@ function run(cmd, args, cwd = ROOT) {
 
 /** Parse the `catalog:` block of pnpm-workspace.yaml into {name: range}. */
 function loadCatalog() {
-	// `yaml` is a direct dependency of packages/cli, so it always resolves from
-	// there after an install — no new root devDependency for one small parse.
-	const require = createRequire(join(CLI_DIR, "package.json"));
+	// `yaml` is a root devDependency; the CLI no longer depends on it.
+	const require = createRequire(join(ROOT, "package.json"));
 	const { parse } = require("yaml");
 	const doc = parse(readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8"));
 	const catalog = doc?.catalog;

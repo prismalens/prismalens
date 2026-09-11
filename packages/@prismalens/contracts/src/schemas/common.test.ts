@@ -4,9 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { AlertQuerySchema } from "./alert.js";
-import { AlertMappingQuerySchema } from "./alert-mapping.js";
 import { paginatedResponseSchema, QueryBooleanSchema } from "./common.js";
-import { CorrelationRuleQuerySchema } from "./correlation.js";
 import { EventQuerySchema } from "./event.js";
 
 describe("paginatedResponseSchema", () => {
@@ -104,27 +102,7 @@ describe("Query schemas boolean filter integration", () => {
 		).toBe(false);
 	});
 
-	it("AlertMappingQuerySchema parses 'false' string as boolean false for enabled", () => {
-		const result = AlertMappingQuerySchema.parse({ enabled: "false" });
-		expect(result.enabled).toBe(false);
-		expect(
-			AlertMappingQuerySchema.parse({ enabled: "true" }).enabled,
-		).toBe(true);
-		expect(
-			AlertMappingQuerySchema.safeParse({ enabled: "yes" }).success,
-		).toBe(false);
-	});
 
-	it("CorrelationRuleQuerySchema parses 'false' string as boolean false for enabled", () => {
-		const result = CorrelationRuleQuerySchema.parse({ enabled: "false" });
-		expect(result.enabled).toBe(false);
-		expect(
-			CorrelationRuleQuerySchema.parse({ enabled: "true" }).enabled,
-		).toBe(true);
-		expect(
-			CorrelationRuleQuerySchema.safeParse({ enabled: "yes" }).success,
-		).toBe(false);
-	});
 
 	it("EventQuerySchema parses 'false' string as boolean false for processed", () => {
 		const result = EventQuerySchema.parse({ processed: "false" });

@@ -81,6 +81,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
 
   packages/@prismalens/auth:
     dependencies:
@@ -12210,8 +12213,7 @@ snapshots:
 
   yallist@5.0.0: {}
 
-  yaml@2.9.0:
-    optional: true
+  yaml@2.9.0: {}
 
   yocto-queue@0.1.0: {}
 
