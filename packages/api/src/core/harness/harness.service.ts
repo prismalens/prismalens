@@ -82,7 +82,6 @@ export class HarnessService {
 
 	async getStatus(): Promise<HarnessesResponse> {
 		const selection = await this.resolveSelection();
-		const envPinned = Boolean(process.env.PRISMALENS_HARNESS?.trim());
 		return {
 			harnesses: listHarnessStatus(),
 			selection: selection.runnable
@@ -95,7 +94,8 @@ export class HarnessService {
 				: {
 						runnable: false,
 						harness: selection.harness ?? null,
-						pinned: envPinned,
+						// A pin failure (env or persisted) is pinned; only "no-harness" is auto.
+						pinned: selection.failure !== "no-harness",
 						blockedReason: selection.reason,
 					},
 		};
