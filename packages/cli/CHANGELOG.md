@@ -1,5 +1,11 @@
 # prismalens
 
+## 0.5.0-rc.4
+
+### Patch Changes
+
+- 722e221: A Prometheus alert that resolves now actually resolves. When several instances of the same rule are deduplicated into one alert, it closes only once the last instance clears. Prometheus alerts also carry a link back to the firing expression. (#593)
+
 ## 0.5.0-rc.3
 
 ### Patch Changes
