@@ -176,7 +176,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
-		await expect(card(page).getByText("pip install deepagents-acp")).toBeVisible();
+		await expect(
+			page.getByTestId("harness-registry").getByText("pip install deepagents-acp"),
+		).toBeVisible();
 	});
 
 	test("renders the gate's selection verdict verbatim, auto-selected", async ({
@@ -256,14 +258,28 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page, { harness: "auto" });
 
+		// Stateful: the "Saved" line reads back through a GET the update hook
+		// re-fires on success, so the fixture has to actually remember the write —
+		// a GET that always answers with the pre-save value would leave the
+		// picker "dirty" forever and the confirmation text would never appear.
 		let savedBody: Record<string, unknown> | undefined;
+		let current: { harness: string; model?: string } = { harness: "auto" };
 		await page.route(isHarnessSettingsUrl, async (route) => {
 			if (route.request().method() === "PATCH") {
 				savedBody = route.request().postDataJSON();
+				current = { harness: "opencode", model: "sonnet-4" };
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify({ harness: "opencode", model: "sonnet-4" }),
+					body: JSON.stringify(current),
+				});
+				return;
+			}
+			if (route.request().method() === "GET") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(current),
 				});
 				return;
 			}

@@ -105,6 +105,7 @@ async function serveUnusableLlmAndHarnesses(page: Page) {
 				selection: {
 					runnable: false,
 					harness: null,
+					pinned: false,
 					blockedReason: UNUSABLE_SELECTION_REASON,
 				},
 			}),
@@ -122,6 +123,7 @@ async function serveRunnableLlmAndHarnesses(page: Page) {
 				selection: {
 					runnable: true,
 					harness: "deepagents",
+					pinned: false,
 					blockedReason: null,
 				},
 			}),

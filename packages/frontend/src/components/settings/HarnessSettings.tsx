@@ -117,7 +117,9 @@ export function HarnessSettings() {
 					</Alert>
 				)}
 
-				{!isError && harnesses.length === 0 && (
+				{!isError &&
+					harnesses.length > 0 &&
+					harnesses.every((h) => !h.installed) && (
 					<Alert data-testid="harness-none-available">
 						<AlertTriangle className="h-4 w-4" />
 						<AlertTitle>

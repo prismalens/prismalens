@@ -18,8 +18,7 @@ import {
 /**
  * #280 — the investigation stream panel groups branches and follows the tail.
  *
- * Two behaviours, both invisible to `live-canvas.spec.ts` (#247), which drives
- * the same page but asserts only on the canvas:
+ * Two behaviours:
  *
  *  - Branch chrome (the count badge and the collapsible per-branch sections)
  *    belongs to a run that ACTUALLY fanned out. A live fan-out emits `b0`
@@ -268,8 +267,7 @@ test.describe("#280 — the investigation stream panel", () => {
 
 	/**
 	 * Design evidence for the frontend gate (AGENTS.md): default, dark, empty
-	 * and error, captured the same way `rules-management.spec.ts` captures the
-	 * rules surface.
+	 * and error.
 	 */
 	test("design evidence: default, dark, empty and error states", async ({
 		page,

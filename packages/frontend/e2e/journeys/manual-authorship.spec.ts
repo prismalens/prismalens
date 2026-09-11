@@ -20,6 +20,18 @@ import { expect, type Page, test } from "@playwright/test";
 const NO_HARNESS_REASON =
 	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
 
+/**
+ * The Investigation tab's own "start" button, scoped inside
+ * `investigation-empty` — it shares an accessible name ("Investigate") with
+ * the incident-detail header's button, which stays mounted once the tab is
+ * switched, so an unscoped `getByRole` is a strict-mode violation.
+ */
+function tabInvestigateButton(page: Page) {
+	return page
+		.getByTestId("investigation-empty")
+		.getByRole("button", { name: "Investigate", exact: true });
+}
+
 /** Hold the client gate open so a test can drive the server's refusal path. */
 async function serveRunnableSelection(page: Page): Promise<void> {
 	await page.route("**/api/settings/harnesses", async (route) => {
@@ -31,6 +43,7 @@ async function serveRunnableSelection(page: Page): Promise<void> {
 				selection: {
 					runnable: true,
 					harness: "claude-code",
+					pinned: false,
 					blockedReason: null,
 				},
 			}),
@@ -77,15 +90,18 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// 4. Start the investigation — incidents.investigate must accept an
 		//    incident that has zero alerts.
 		await page.getByRole("tab", { name: "Investigation" }).click();
-		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("start-investigation").click();
+		await tabInvestigateButton(page).click();
 
-		// 5. An investigation exists and the app routed to it.
-		await expect(page).toHaveURL(/\/investigations\/[0-9a-f-]{36}$/, {
-			timeout: 20_000,
-		});
+		// 5. An investigation exists and the app stays on the incident, now
+		//    pointed at it — the investigation tab carries `?investigation=<id>`
+		//    rather than navigating away to a separate /investigations/:id route.
+		await expect(page).toHaveURL(
+			/\/incidents\/[0-9a-f-]{36}\?tab=investigation&investigation=[0-9a-f-]{36}$/,
+			{ timeout: 20_000 },
+		);
 	});
 
 	/**
@@ -132,10 +148,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// The client's own gate is open — this is the surface #531 fixes: a
 		// server refusal the client didn't anticipate must not be a silent no-op.
-		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("start-investigation").click();
+		await tabInvestigateButton(page).click();
 
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
@@ -153,10 +169,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
 		await page.getByRole("tab", { name: "Investigation" }).click();
-		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("start-investigation").click();
+		await tabInvestigateButton(page).click();
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
 		});
@@ -259,6 +275,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 					selection: {
 						runnable: false,
 						harness: null,
+						pinned: false,
 						blockedReason: NO_HARNESS_REASON,
 					},
 				}),
@@ -276,10 +293,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// Both affordances for the same procedure must agree that it is blocked,
 		// and the gate's own words say why (#521).
-		await expect(page.getByTestId("start-investigation")).toBeDisabled();
+		await expect(tabInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Investigate", exact: true }),
+			page.getByRole("button", { name: "Investigate", exact: true }).first(),
 		).toBeDisabled();
 	});
 
