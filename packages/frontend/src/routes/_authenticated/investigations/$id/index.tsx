@@ -1,38 +1,45 @@
 /**
- * Investigations live on their incident now (#599). Old links land here and
- * are forwarded to the incident screen's Investigation tab.
+ * Standalone view of one investigation. The incident screen is where a run
+ * normally lives (#599); this route keeps deep links working and renders the
+ * same panel, with a way back to the incident.
  */
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { InvestigationDetailSkeleton } from "@/components/investigation/InvestigationDetailSkeleton";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import { InvestigationPanel } from "@/components/investigation/InvestigationPanel";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/investigations/$id/")({
-	component: InvestigationRedirect,
+	component: InvestigationDetailPage,
 });
 
-function InvestigationRedirect() {
+function InvestigationDetailPage() {
 	const { id } = Route.useParams();
-	const { data, isLoading, error } = useQuery(
+	const { data } = useQuery(
 		orpc.investigations.get.queryOptions({ input: { id } }),
 	);
-	if (isLoading) return <InvestigationDetailSkeleton />;
-	if (error || !data) {
-		return (
-			<div className="flex flex-col items-center justify-center py-12">
-				<p className="text-lg font-medium text-destructive">
-					Investigation not found
-				</p>
-				<p className="text-sm text-muted-foreground">{error?.message ?? id}</p>
-			</div>
-		);
-	}
 	return (
-		<Navigate
-			to="/incidents/$id"
-			params={{ id: data.incidentId }}
-			search={{ tab: "investigation", investigation: id }}
-			replace
-		/>
+		<div className="space-y-6">
+			{data?.incidentId ? (
+				<Link
+					to="/incidents/$id"
+					params={{ id: data.incidentId }}
+					search={{ tab: "investigation", investigation: id }}
+					className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+				>
+					<ArrowLeft className="h-4 w-4" />
+					Back to incident
+				</Link>
+			) : (
+				<Link
+					to="/incidents"
+					className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+				>
+					<ArrowLeft className="h-4 w-4" />
+					Back to incidents
+				</Link>
+			)}
+			<InvestigationPanel investigationId={id} />
+		</div>
 	);
 }

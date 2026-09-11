@@ -18,18 +18,11 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 2. Navigate to /investigations list page
-		await page.goto("/investigations");
-		await expect(
-			page.getByRole("heading", { name: "Investigations" }),
-		).toBeVisible({ timeout: 15_000 });
-
 		// 3. Open culprit investigation (d0111111) and verify culprit fields on Analysis tab
 		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
-		await page.getByRole("tab", { name: "Analysis" }).click();
+		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(
 			page.getByText("auth-service", { exact: false }).first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -45,10 +38,6 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		//    no service, change ref, or mechanism is invented (culprit: null
 		//    in the seed, so AnalysisTab must render no Culprit section at all).
 		await page.goto("/investigations/d0222222-2222-4222-8222-222222222222");
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
-		await page.getByRole("tab", { name: "Analysis" }).click();
 		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -306,9 +295,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+			timeout: 15_000,
+		});
 		await setTheme("light");
 		await page.waitForLoadState("networkidle");
 		await page.screenshot({

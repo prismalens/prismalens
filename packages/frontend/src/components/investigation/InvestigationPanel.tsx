@@ -13,6 +13,7 @@ import { InvestigationStreamPanel } from "@/components/investigation/Investigati
 import { InvestigationStatusBadge } from "@/components/investigation/investigation.utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
 import {
@@ -47,6 +48,14 @@ export function InvestigationPanel({
 		enabled: !!investigation && !isActive,
 	});
 	const events = isActive ? stream.events : (history.data ?? []);
+	const streamFailed = isActive && stream.status === "error";
+	const { data: statusData } = useQuery({
+		...orpc.investigations.getStatus.queryOptions({
+			input: { id: investigationId },
+		}),
+		enabled: !!investigation,
+		refetchInterval: streamFailed ? 3000 : false,
+	});
 
 	useEffect(() => {
 		if (stream.status === "completed" || stream.status === "failed") {
@@ -85,6 +94,7 @@ export function InvestigationPanel({
 		: failed
 			? "failed"
 			: "completed";
+	const jobProgress = statusData?.job?.progress ?? 0;
 
 	return (
 		<div className="space-y-6" data-testid="investigation-panel">
@@ -159,20 +169,43 @@ export function InvestigationPanel({
 				</Card>
 			)}
 
-			<InvestigationStreamPanel
-				key={investigationId}
-				events={events}
-				latestText={isActive ? stream.latestText : null}
-				status={ledgerStatus}
-			/>
-
-			{isActive && stream.status === "error" && (
-				<p
-					className="text-xs text-muted-foreground"
-					data-testid="stream-fallback-message"
-				>
-					Live stream unavailable; the ledger refreshes when the run ends.
-				</p>
+			{streamFailed ? (
+				<Card data-testid="investigation-fallback-panel">
+					<CardHeader className="pb-3">
+						<div className="flex items-center justify-between">
+							<CardTitle className="text-base flex items-center gap-2">
+								Investigation Progress
+								<span
+									data-testid="stream-fallback-badge"
+									className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+								>
+									Polling
+								</span>
+							</CardTitle>
+							<span className="text-sm text-muted-foreground">
+								{jobProgress}%
+							</span>
+						</div>
+					</CardHeader>
+					<CardContent className="pt-0 space-y-2">
+						<Progress value={jobProgress} className="h-2" />
+						<div className="flex items-center justify-between text-xs text-muted-foreground">
+							<p data-testid="stream-fallback-message">
+								Live stream unavailable — polling for progress
+							</p>
+							{statusData?.job?.state && (
+								<span>Job state: {statusData.job.state}</span>
+							)}
+						</div>
+					</CardContent>
+				</Card>
+			) : (
+				<InvestigationStreamPanel
+					key={investigationId}
+					events={events}
+					latestText={isActive ? stream.latestText : null}
+					status={ledgerStatus}
+				/>
 			)}
 
 			{!isActive && !failed && <AnalysisTab investigation={investigation} />}
