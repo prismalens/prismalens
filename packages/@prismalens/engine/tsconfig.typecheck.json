@@ -1,0 +1,9 @@
+{
+	"//": "tsconfig.json is the BUILD config: rootDir ./src, so it cannot see scripts/. The admission gate (scripts/acp-admission.ts) only ever executes inside a 15-minute CI job behind a live model run, so a type error there used to surface at the worst possible moment. This config typechecks src and scripts together and is what `pnpm typecheck` runs; it emits nothing.",
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": "."
+	},
+	"include": ["src/**/*", "scripts/**/*.ts"]
+}

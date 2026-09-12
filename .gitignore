@@ -92,3 +92,9 @@ application.log
 packages/cli/dist-pack/
 packages/cli/.pack-staging/
 *.tgz
+
+# Harness admission probes (scripts/acp-admission.ts) — planted in the checkout
+# for one run and removed in a finally. Ignored so a run killed mid-flight never
+# leaves a file that looks committable.
+/PRISMALENS_ADMISSION.txt
+/PRISMALENS_CWD_PROBE.txt
