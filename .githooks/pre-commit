@@ -1,0 +1,33 @@
+#!/bin/sh
+# Auto-fix staged files with Biome before the commit is created.
+#
+# Convenience automation, NOT enforcement: the `Lint (Biome)` CI job is the
+# backstop, and this hook must never be the reason a commit fails. Anything
+# unexpected here exits 0 and lets the commit through.
+#
+# `biome check --staged` limits work to the index, so this stays sub-second even
+# in a repo this size. `--write` applies formatting, safe lint fixes and safe
+# assist actions only; unsafe fixes need an explicit `--unsafe` and are
+# deliberately not run here — a hook should never rewrite logic behind your back.
+
+command -v pnpm >/dev/null 2>&1 || exit 0
+
+# Files that are staged AND have no unstaged modifications. Re-staging anything
+# else would sweep un-reviewed working-tree changes into the commit, so those are
+# fixed on disk but left for the author to stage deliberately.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+unstaged=$(git diff --name-only)
+
+pnpm -s exec biome check --write --staged --no-errors-on-unmatched >/dev/null 2>&1 || true
+
+restage=""
+for f in $staged; do
+	case "$unstaged" in
+		*"$f"*) continue ;;
+	esac
+	[ -e "$f" ] && restage="$restage $f"
+done
+[ -n "$restage" ] && git add -- $restage
+
+exit 0
