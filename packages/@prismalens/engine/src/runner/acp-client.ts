@@ -105,18 +105,46 @@ export class AcpSession {
 		child.on("error", (err) =>
 			this.fail(`failed to start ${config.command}: ${err.message}`),
 		);
+		// A harness can die at any moment — wrong version, not authenticated,
+		// OOM, killed — and when it does its pipes error asynchronously. Node
+		// rethrows an unhandled stream `error` event as an uncaught exception,
+		// which under `pl up` (one process serving the API, the UI and the
+		// dispatch loop) would take the whole server down instead of failing the
+		// one run. Route them into the same path as an early exit; `fail` keeps
+		// the first message, so whichever of these and `close` wins the race,
+		// the reason still carries the harness's own stderr.
+		for (const [name, stream] of [
+			["stdin", child.stdin],
+			["stdout", child.stdout],
+			["stderr", child.stderr],
+		] as const) {
+			stream.on("error", (err: Error) => {
+				if (this.closed) return;
+				const tail = this.stderrTail();
+				this.fail(
+					`harness ${name} failed (${err.message})${tail ? `: ${tail}` : ""}`,
+				);
+			});
+		}
 		child.on("close", (code, signal) => {
 			if (this.closed) return;
-			const tail = this.stderrChunks.join("").trim().slice(-STDERR_TAIL);
+			const tail = this.stderrTail();
 			this.fail(
 				child.timedOut
 					? `harness exceeded its wall-clock limit (${config.limits?.wallClockMs}ms) and was killed${tail ? `: ${tail}` : ""}`
 					: `harness exited early (code=${code} signal=${signal})${tail ? `: ${tail}` : ""}`,
 			);
 		});
-		createInterface({ input: child.stdout }).on("line", (raw) =>
-			this.onLine(raw),
-		);
+		const lines = createInterface({ input: child.stdout });
+		lines.on("line", (raw) => this.onLine(raw));
+		// readline re-emits its input stream's error on the Interface, and an
+		// Interface with no listener is a second uncaught exception — the stdout
+		// handler above does not cover it. `fail` keeps the first message, so
+		// this is idempotent with it.
+		lines.on("error", (err: Error) => {
+			if (this.closed) return;
+			this.fail(`harness stdout failed (${err.message})`);
+		});
 
 		const init = (await this.request(
 			"initialize",
@@ -201,6 +229,10 @@ export class AcpSession {
 		this.wake = null;
 	}
 
+	private stderrTail(): string {
+		return this.stderrChunks.join("").trim().slice(-STDERR_TAIL);
+	}
+
 	private fail(message: string): void {
 		if (this.exitMessage) return;
 		this.exitMessage = message;
@@ -212,7 +244,12 @@ export class AcpSession {
 	private send(obj: unknown): void {
 		const line = JSON.stringify(obj);
 		this.config.onWire?.("out", line);
-		if (this.child?.stdin.writable) this.child.stdin.write(`${line}\n`);
+		// No `writable` pre-check: it stays true until Node notices the peer is
+		// gone, so it never prevented a write to a dead pipe — it only hid the
+		// race. The stdin `error` handler installed in open() is what makes a
+		// failed write safe, and it reports the dead harness rather than
+		// throwing. Writing to an already-destroyed stream lands there too.
+		this.child?.stdin.write(`${line}\n`);
 	}
 
 	private request(
