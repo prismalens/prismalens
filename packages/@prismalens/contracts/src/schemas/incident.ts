@@ -4,7 +4,10 @@
 /**
  * Incident schemas
  */
-import { HARNESS_IDS } from "@prismalens/config/harness";
+import {
+	HARNESS_IDS,
+	HARNESS_SELECTION_FAILURES,
+} from "@prismalens/config/harness";
 import { z } from "zod";
 import { AlertSchema } from "./alert.js";
 import {
@@ -130,13 +133,14 @@ export const InvestigateIncidentResponseSchema = z.object({
 // INVESTIGATION REFUSAL (ADR-0031, #520)
 // =============================================================================
 
-export const HarnessSelectionFailureSchema = z.enum([
-	"invalid-env-harness",
-	"no-compatible-harness",
-	"protocol-mismatch",
-	"harness-unauthenticated",
-	"llm-not-configured",
-]);
+/**
+ * Derived from the config package's list rather than restated, so a code the
+ * selection logic can emit can never be missing here. The previous hand-written
+ * enum had drifted to the point of sharing exactly one member with it: it still
+ * advertised four codes from the retired LLM-provider model and omitted both
+ * codes a bare machine actually returns.
+ */
+export const HarnessSelectionFailureSchema = z.enum(HARNESS_SELECTION_FAILURES);
 
 export const InvestigationRefusalSchema = z.object({
 	failure: HarnessSelectionFailureSchema,

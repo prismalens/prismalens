@@ -13,7 +13,12 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	type HarnessSelectionFailure,
 } from "./providers/harness.js";
+
+// Re-exported so the union stays importable from the module that produces it,
+// even though it is now declared beside the registry.
+export type { HarnessSelectionFailure };
 
 export function isOnPath(
 	bin: string,
@@ -36,11 +41,6 @@ export function isOnPath(
 	}
 	return false;
 }
-
-export type HarnessSelectionFailure =
-	| "invalid-env-harness"
-	| "pinned-harness-missing"
-	| "no-harness";
 
 export type HarnessSelection =
 	| { runnable: true; harness: HarnessId; auto: boolean; verified: boolean }

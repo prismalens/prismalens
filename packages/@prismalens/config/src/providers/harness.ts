@@ -15,6 +15,25 @@ export const HARNESS_IDS = [
 ] as const;
 export type HarnessId = (typeof HARNESS_IDS)[number];
 
+/**
+ * Every way `resolveHarnessSelection` can refuse, and the only ones the API can
+ * put in a PRECONDITION_FAILED payload. This is the single source of truth:
+ * `HarnessSelectionFailure` and the contract's `HarnessSelectionFailureSchema`
+ * are both derived from it, so the two cannot drift apart again. It lives here,
+ * beside the registry, because this module is pure data — the selection logic
+ * imports `node:fs`, and the contracts package is bundled for the browser.
+ */
+export const HARNESS_SELECTION_FAILURES = [
+	/** PRISMALENS_HARNESS names something that is not a registry id. */
+	"invalid-env-harness",
+	/** A pin (env or persisted) names a real harness whose binary is absent. */
+	"pinned-harness-missing",
+	/** Nothing verified is on PATH. */
+	"no-harness",
+] as const;
+export type HarnessSelectionFailure =
+	(typeof HARNESS_SELECTION_FAILURES)[number];
+
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
 
 /**

@@ -6379,10 +6379,8 @@
                             "failure": {
                               "enum": [
                                 "invalid-env-harness",
-                                "no-compatible-harness",
-                                "protocol-mismatch",
-                                "harness-unauthenticated",
-                                "llm-not-configured"
+                                "pinned-harness-missing",
+                                "no-harness"
                               ],
                               "type": "string"
                             },
