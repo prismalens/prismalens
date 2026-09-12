@@ -101,6 +101,41 @@ jobs:
       - name: Test
         run: pnpm test
 
+  # Coverage thresholds (#58). The policy has existed in the vitest configs since
+  # #58 but NOTHING EVER RAN IT: `pnpm test` is `vitest run`, with no --coverage,
+  # so the thresholds never evaluated and the numbers drifted into fiction (the
+  # api package claimed a 60% floor while sitting at 47%). This job makes the
+  # gate real. Package floors are ratchets set to measured reality — raise them
+  # as coverage improves; never lower one to make a red build pass.
+  coverage:
+    name: Coverage thresholds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The api suite imports @prismalens/database's built entry, so the
+      # workspace has to be built before coverage can run.
+      - name: Build
+        run: pnpm build
+
+      - name: Coverage (api, cli, database)
+        run: |
+          pnpm --filter @prismalens/api test:cov
+          pnpm --filter prismalens test:cov
+          pnpm --filter @prismalens/database test:cov
+
   # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
   # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and
   # prove it installs + runs in a clean container — no pnpm, no monorepo, no
@@ -251,7 +286,7 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
-    needs: [build, test, pack, packed-smoke, lint, harness-admission]
+    needs: [build, test, pack, packed-smoke, lint, harness-admission, coverage]
     if: always()
     steps:
       - name: Assert every required job succeeded
