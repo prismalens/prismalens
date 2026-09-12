@@ -72,23 +72,20 @@ const workspaceDir = mkdtempSync(join(tmpdir(), "prismalens-e2e-"));
  * real harness execution is covered by the `harness-admission` CI job against a
  * pinned OpenCode on a real clone.
  *
- * It drains stdin rather than exiting, and that detail is load-bearing: a harness
- * that exits while prismalens is writing to it makes `AcpSession.send` hit EPIPE
- * on an unhandled child-stdin `error` event, which takes the whole API process
- * down (one process serves everything under `pl up`). Draining keeps the pipe
- * open, so the run simply never answers and the suite stays up. See the
- * robustness note filed against `engine/src/runner/acp-client.ts`.
+ * It exits immediately, which is the most common real failure — a harness that
+ * cannot start. That used to crash the API through an unhandled EPIPE on the
+ * child's stdin and so had to be avoided here; `AcpSession` now routes a dead
+ * pipe into the run's own failure, so the e2e stack exercises that path instead
+ * of tiptoeing around it, and the run fails fast rather than sitting on the
+ * init timeout.
  */
 const harnessBinDir = join(workspaceDir, "harness-bin");
 mkdirSync(harnessBinDir, { recursive: true });
-writeFileSync(join(harnessBinDir, "opencode"), "#!/bin/sh\ncat > /dev/null\n", {
+writeFileSync(join(harnessBinDir, "opencode"), "#!/bin/sh\nexit 1\n", {
 	mode: 0o755,
 });
 // Windows resolves PATHEXT entries, not the extensionless file above.
-writeFileSync(
-	join(harnessBinDir, "opencode.cmd"),
-	"@echo off\r\nmore > NUL\r\n",
-);
+writeFileSync(join(harnessBinDir, "opencode.cmd"), "@echo off\r\nexit /b 1\r\n");
 
 const env = {
 	...process.env,
