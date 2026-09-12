@@ -254,7 +254,6 @@ const json = (path, init) =>
 		},
 	});
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
 	// --- health ---------------------------------------------------------------
@@ -333,11 +332,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		? ok("authenticated GET /api/incidents 200")
 		: bad("authenticated GET /api/incidents", `status ${incidents.status}`);
 
-	// --- unrunnable investigation refused server-side (Part A, #520) -----------
+	// --- unrunnable investigation refused server-side (#520) ------------------
+	// Only the refusal: starting a run needs a harness binary on PATH, and this
+	// gate asserts the opposite (a runnable machine fails its clean-machine
+	// precondition), so both cannot share one `pl up`. The run path is covered
+	// against real OpenCode by the `harness-admission` CI job.
 	// The sequence itself lives in packages/@prismalens/engine/scripts/refusal-gate-check.mjs (#551);
 	// what stays here is what is genuinely container-specific — a bare specifier
 	// that resolves through the installed package, and a log that is a file.
-	const { partBLogOffset } = await assertRefusalGate({
+	await assertRefusalGate({
 		json,
 		cookie,
 		resolveExpected: () =>
@@ -360,118 +363,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		bad,
 		incidentTitle: "packed smoke refusal probe",
 	});
-
-	// --- in-process investigation run (Part B, #520; 0005 §2) ------------------
-	// Configured with a keyless provider so the server-side gate lets the run start.
-	const configRes = await json("/api/settings/llm/config", {
-		method: "PATCH",
-		headers: { cookie },
-		body: JSON.stringify({
-			activeProvider: "custom",
-			providers: {
-				custom: {
-					model: "smoke-test-stub",
-				},
-			},
-		}),
-	});
-	if (configRes.status < 200 || configRes.status >= 300) {
-		bad("PATCH /api/settings/llm/config", `status ${configRes.status}: ${(await configRes.text()).slice(0, 200)}`);
-	} else {
-		const created2 = await json("/api/incidents", {
-			method: "POST",
-			headers: { cookie },
-			body: JSON.stringify({ title: "packed smoke fork probe", severity: "low" }),
-		});
-		const created2Body = await created2.text();
-		if (created2.status < 200 || created2.status >= 300) {
-			bad("POST /api/incidents (configured)", `status ${created2.status}: ${created2Body.slice(0, 200)}`);
-		} else {
-			const incidentId2 = JSON.parse(created2Body).id;
-			const started = await json(`/api/incidents/${incidentId2}/investigate`, {
-				method: "POST",
-				headers: { cookie },
-				body: "{}",
-			});
-			const startedBody = await started.text();
-			if (started.status < 200 || started.status >= 300) {
-				bad("POST /incidents/:id/investigate", `status ${started.status}: ${startedBody.slice(0, 200)}`);
-			} else {
-				ok("POST /incidents/:id/investigate", `status ${started.status}`);
-				let startedJson = null;
-				try {
-					startedJson = JSON.parse(startedBody);
-				} catch {
-					startedJson = null;
-				}
-				const investigationId = startedJson?.investigationId;
-				if (!investigationId) {
-					bad("in-process run", `no investigationId in response: ${startedBody.slice(0, 200)}`);
-				} else {
-					let roundTripSucceeded = false;
-					let diagnosed = false;
-					for (let i = 0; i < 120 && !roundTripSucceeded && !diagnosed; i++) {
-						await sleep(1000);
-						const invRes = await fetch(`${base}/api/investigations/${investigationId}`, {
-							headers: { cookie },
-						});
-						const timelineRes = await fetch(`${base}/api/timeline?incidentId=${incidentId2}`, {
-							headers: { cookie },
-						});
-						if (invRes.status === 200 && timelineRes.status === 200) {
-							let inv = null;
-							let timeline = null;
-							try {
-								inv = await invRes.json();
-								timeline = await timelineRes.json();
-							} catch {
-								inv = null;
-								timeline = null;
-							}
-							// `TimelineSourceSchema`'s "ai_worker" enum value is stored data —
-							// it names where the entry came from, not that a worker forked it.
-							const hasWorkerTimeline =
-								Array.isArray(timeline) &&
-								timeline.some((t) => t.source === "ai_worker");
-							if (inv && inv.status !== "pending" && inv.startedAt && hasWorkerTimeline) {
-								roundTripSucceeded = true;
-								break;
-							}
-						}
-						let log = "";
-						try {
-							const logBuf = fs.readFileSync(bootLog);
-							log = partBLogOffset > 0 ? logBuf.subarray(partBLogOffset).toString("utf8") : logBuf.toString("utf8");
-						} catch {
-							log = "";
-						}
-						if (/"code":"NOT_FOUND"|Job failed: Not Found/.test(log)) {
-							bad("in-process run", "an internal lookup 404d (#511 wire protocol mismatch)");
-							diagnosed = true;
-							break;
-						}
-						if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-							const line = log.split("\n").find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-							bad("in-process run", `the run could not resolve a dependency: ${line}`);
-							diagnosed = true;
-							break;
-						}
-					}
-					if (roundTripSucceeded) {
-						ok(
-							"in-process run",
-							"investigation left pending, startedAt set, ai_worker timeline recorded",
-						);
-					} else if (!diagnosed) {
-						bad(
-							"in-process run",
-							"investigation never completed an ai_worker round trip within 120s",
-						);
-					}
-				}
-			}
-		}
-	}
 
 	if (failed > 0) process.exit(1);
 })().catch((error) => {

@@ -57,10 +57,10 @@
  *                    all three into `200 text/html`.
  *   SPA deep route   a client-side path with no controller returns the shell,
  *                    i.e. the fallback is still doing its job.
- *   investigation    `pl up` runs an investigation in-process (0005 §1-2 — no
- *                    forked child). One is triggered so the shutdown assertion
- *                    exercises the in-process path; zero descendant pids is the
- *                    correct outcome, not a precondition failure.
+ *   investigation    `pl up` refuses an investigation server-side on a machine
+ *                    with no harness on PATH (#520), and forks nothing when it
+ *                    does. Completing a run needs a real harness binary, which
+ *                    the `harness-admission` CI job covers against OpenCode.
  *   clean shutdown   after terminating the process group / tree, no process
  *                    observed under it survives, and the port is released.
  *
@@ -111,8 +111,6 @@ import { assertRefusalGate } from "../packages/@prismalens/engine/scripts/refusa
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);
-/** How long to wait for the investigation child to show up. */
-const FORK_TIMEOUT_S = 120;
 
 let failures = 0;
 const ok = (name, detail = "") =>
@@ -406,11 +404,6 @@ const sample = () => {
 	for (const pid of descendantsOf(child.pid)) seenDescendants.add(pid);
 };
 let sampler = null;
-const startSampling = () => {
-	if (sampler) return;
-	sampler = setInterval(sample, WIN ? 750 : 200);
-	sampler.unref();
-};
 const stopSampling = () => {
 	if (sampler) clearInterval(sampler);
 	sampler = null;
@@ -722,14 +715,16 @@ if (
 // ---------------------------------------------------------------------------
 // The refusal (Part A), the fork (Part B), and then a clean shutdown
 // ---------------------------------------------------------------------------
-// `pl up` refuses unrunnable investigations server-side (412, #520).
-// Configured with a keyless provider, it forks an investigation child per run.
-// Without one there is nothing for the shutdown assertion to catch leaking.
+// `pl up` refuses unrunnable investigations server-side (412, #520). Making a
+// run actually START needs a harness binary on PATH, and the refusal gate above
+// asserts the opposite (a runnable machine fails its clean-machine
+// precondition), so the two cannot share one `pl up`. The run path is covered
+// against real OpenCode by the `harness-admission` job instead.
 
 console.log(
 	"==> pl up refuses unrunnable investigation on a clean machine (#520)",
 );
-const { partBLogOffset } = await assertRefusalGate({
+await assertRefusalGate({
 	json,
 	cookie,
 	// The environment-specific half, which stays here: this job's checkout is
@@ -761,110 +756,14 @@ const { partBLogOffset } = await assertRefusalGate({
 	sample,
 });
 
-console.log("==> pl up runs an investigation in-process");
-sample();
-let forked = false;
-if (!cookie) {
-	bad("fork", "no session — cannot trigger an investigation");
-} else {
-	const configureLlm = await json("/api/settings/llm/config", {
-		method: "PATCH",
-		headers: { cookie },
-		body: JSON.stringify({
-			activeProvider: "custom",
-			providers: {
-				custom: {
-					model: "smoke-test-stub",
-				},
-			},
-		}),
-	});
-	if (!configureLlm.ok) {
-		bad(
-			"PATCH /api/settings/llm/config",
-			`status ${configureLlm.status}: ${(await configureLlm.text()).slice(0, 200)}`,
-		);
-	} else {
-		const created = await json("/api/incidents", {
-			method: "POST",
-			headers: { cookie },
-			body: JSON.stringify({
-				title: "cross-os app boot fork probe",
-				severity: "low",
-			}),
-		});
-		const createdBody = await created.text();
-		if (!created.ok) {
-			bad(
-				"POST /api/incidents (configured)",
-				`status ${created.status}: ${createdBody.slice(0, 200)}`,
-			);
-		} else {
-			let incidentId = null;
-			try {
-				incidentId = JSON.parse(createdBody).id ?? null;
-			} catch {
-				incidentId = null;
-			}
-			if (!incidentId) {
-				bad(
-					"POST /api/incidents (configured)",
-					`2xx with no usable id in the body: ${createdBody.slice(0, 200)}`,
-				);
-			} else {
-				startSampling();
-				const started = await json(`/api/incidents/${incidentId}/investigate`, {
-					method: "POST",
-					headers: { cookie },
-					body: "{}",
-				});
-				const startedBody = await started.text();
-				if (!started.ok) {
-					bad(
-						"POST /api/incidents/:id/investigate",
-						`status ${started.status}: ${startedBody.slice(0, 200)}`,
-					);
-				} else {
-					let investigationId = null;
-					try {
-						investigationId = JSON.parse(startedBody)?.investigationId ?? null;
-					} catch {
-						investigationId = null;
-					}
-					for (let i = 0; i < FORK_TIMEOUT_S && !forked; i++) {
-						await sleep(1000);
-						sample();
-						const log = readLog(partBLogOffset);
-						forked =
-							/"context"\s*:\s*"InvestigationProcessor"/.test(log) &&
-							(investigationId ? log.includes(investigationId) : true);
-					}
-					if (forked) {
-						ok(
-							"investigation ran in-process",
-							`${seenDescendants.size} descendant pid(s) observed`,
-						);
-					} else {
-						dumpLog();
-						bad(
-							"investigation",
-							`no investigation observed within ${FORK_TIMEOUT_S}s`,
-						);
-					}
-				}
-			}
-		}
-	}
-}
-
 console.log("==> shutdown leaves nothing behind");
 sample();
 const observed = [...seenDescendants];
-// One process, one database (0005 §1-2): the investigation above ran
-// in-process, so zero observed descendants here is the correct outcome, not a
-// precondition failure. The orphan assertion below still runs unconditionally
-// and still fails if any descendant pid (a harness process, the only kind
-// `pl up` can spawn) is still alive after shutdown.
+// One process, one database (0005 §1-2): nothing forks, so zero observed
+// descendants here is the correct outcome, not a precondition failure. The
+// orphan assertion below still runs unconditionally and still fails if any
+// descendant pid (a harness process, the only kind `pl up` can spawn) is still
+// alive after shutdown.
 const { graceful } = await stopApp();
 
 if (childExit === null) {
