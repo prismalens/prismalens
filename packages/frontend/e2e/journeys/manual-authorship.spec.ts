@@ -117,7 +117,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await serveRunnableSelection(page);
 
 		const refusalReason =
-			"No runnable AI provider: the configured model has no credentials on this host.";
+			"No coding agent found on PATH. Install one: OpenCode: npm i -g opencode-ai.";
 		await page.route("**/api/incidents/*/investigate", async (route) => {
 			await route.fulfill({
 				status: 412,
@@ -127,7 +127,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 					code: "PRECONDITION_FAILED",
 					status: 412,
 					message: refusalReason,
-					data: { failure: "llm-not-configured", reason: refusalReason },
+					data: { failure: "no-harness", reason: refusalReason },
 				}),
 			});
 		});

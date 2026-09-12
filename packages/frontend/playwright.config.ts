@@ -2,9 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import { execSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
@@ -57,8 +57,42 @@ const FRONTEND_PORT = resolvePort("PRISMALENS_FRONTEND_PORT", "3000");
 const API_PORT = resolvePort("PRISMALENS_PORT", "3001");
 
 const workspaceDir = mkdtempSync(join(tmpdir(), "prismalens-e2e-"));
+
+/**
+ * A stub harness on PATH, so the SERVER-side gate reports runnable.
+ *
+ * `incidents.investigate` refuses with 412 unless `resolveHarnessSelection`
+ * finds a verified registry binary on PATH (#520). That check is pure
+ * detection — `accessSync(bin, X_OK)`, never an exec — and the dev stack has no
+ * coding agent installed, so every journey that actually starts a run would be
+ * refused no matter what the client-side readiness route is stubbed to say.
+ *
+ * The stub satisfies detection deterministically and offline. No spec asserts a
+ * run COMPLETES, so it only has to hold the ACP session open and answer nothing;
+ * real harness execution is covered by the `harness-admission` CI job against a
+ * pinned OpenCode on a real clone.
+ *
+ * It drains stdin rather than exiting, and that detail is load-bearing: a harness
+ * that exits while prismalens is writing to it makes `AcpSession.send` hit EPIPE
+ * on an unhandled child-stdin `error` event, which takes the whole API process
+ * down (one process serves everything under `pl up`). Draining keeps the pipe
+ * open, so the run simply never answers and the suite stays up. See the
+ * robustness note filed against `engine/src/runner/acp-client.ts`.
+ */
+const harnessBinDir = join(workspaceDir, "harness-bin");
+mkdirSync(harnessBinDir, { recursive: true });
+writeFileSync(join(harnessBinDir, "opencode"), "#!/bin/sh\ncat > /dev/null\n", {
+	mode: 0o755,
+});
+// Windows resolves PATHEXT entries, not the extensionless file above.
+writeFileSync(
+	join(harnessBinDir, "opencode.cmd"),
+	"@echo off\r\nmore > NUL\r\n",
+);
+
 const env = {
 	...process.env,
+	PATH: `${harnessBinDir}${delimiter}${process.env.PATH ?? ""}`,
 	PRISMALENS_WORKSPACE_DIR: workspaceDir,
 	PRISMALENS_SEED_DEMO: "1",
 	// Both servers read these: the API binds PRISMALENS_PORT, and Vite both

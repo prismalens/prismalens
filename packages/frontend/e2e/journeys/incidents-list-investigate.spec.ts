@@ -198,7 +198,7 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 						code: "PRECONDITION_FAILED",
 						message: refusalReason,
 						data: {
-							failure: "llm-not-configured",
+							failure: "no-harness",
 							reason: refusalReason,
 						},
 					}),
@@ -313,7 +313,7 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 						code: "PRECONDITION_FAILED",
 						message: refusalReason,
 						data: {
-							failure: "llm-not-configured",
+							failure: "no-harness",
 							reason: refusalReason,
 						},
 					}),
