@@ -9,7 +9,6 @@ describe("createAuth single-tenant organization enforcement", () => {
 	const mockPrisma = {} as unknown;
 
 	const options = {
-		databaseProvider: "sqlite" as const,
 		baseURL: "http://localhost:3000",
 		secret: "test-secret-1234567890-test-secret-1234567890",
 		secureCookies: false,

@@ -2,27 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * Local database initialisation for contributors (`pnpm db:init`).
- *
- * For SQLite this deliberately runs the SAME shipped runner an end user's
- * `pl up` runs (`@prismalens/database/migrator`) rather than shelling out to
- * `prisma migrate deploy`. Two reasons:
- *
- * 1. A packed install has neither `pnpm` nor the `prisma` CLI — that path could
- *    never have worked outside this repo.
- * 2. Migrate-on-boot had never run in anger, because a second migration had
- *    never existed. Routing the daily dev loop through it means the runner is
- *    exercised on every contributor machine, not only on upgrade day.
- *
- * PostgreSQL (the server placement) still uses the Prisma CLI: that deploy has
- * a CLI available and is outside the shipped runner's scope.
- *
- * Authoring a NEW migration is `pnpm db:migrate` (`prisma migrate dev`). This
- * script never creates one — migration history is append-only from R1 onward
- * (issue #335), and a script that can mint an `init` is a script that can
- * silently replace a user's history.
- */
+// Local database initialisation (`pnpm db:init`). Runs the same shipped
+// SQLite runner an end user's `pl up` runs — never `prisma migrate deploy`,
+// and never mints an `init`: migration history is append-only (#335, #597).
 
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -37,34 +19,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // schema, and the migrations all live one level up, in the database package
 // itself — NOT in packages/api.
 const DATABASE_PATH = resolve(__dirname, "..");
+const MIGRATIONS_PATH = resolve(DATABASE_PATH, "prisma/sqlite/schema");
 
-type DbType = "sqlite" | "postgresql";
-
-const DB_TYPES: readonly DbType[] = ["sqlite", "postgresql"];
-
-function getDbType(): DbType {
-	const raw = process.env.PRISMALENS_DB_TYPE || "sqlite";
-	// Validate rather than cast: an unrecognised value used to fall through to
-	// the SQLite branch, where the runner would skip it as non-SQLite and this
-	// script would still report success.
-	if (!DB_TYPES.includes(raw as DbType)) {
-		throw new Error(
-			`Unsupported PRISMALENS_DB_TYPE "${raw}". Supported: ${DB_TYPES.join(", ")}.`,
-		);
-	}
-	return raw as DbType;
-}
-
-function getMigrationsPath(dbType: DbType): string {
-	const folder = dbType === "postgresql" ? "pg/schema" : "sqlite/schema";
-	return resolve(DATABASE_PATH, `prisma/${folder}`);
-}
-
-function migrationsExist(dbType: DbType): boolean {
-	const migrationsPath = getMigrationsPath(dbType);
-	if (!existsSync(migrationsPath)) return false;
+function migrationsExist(): boolean {
+	if (!existsSync(MIGRATIONS_PATH)) return false;
 	try {
-		const entries = readdirSync(migrationsPath, { withFileTypes: true });
+		const entries = readdirSync(MIGRATIONS_PATH, { withFileTypes: true });
 		// Actual migration folders, not just migration_lock.toml.
 		return entries.some((e) => e.isDirectory() && !e.name.startsWith("."));
 	} catch {
@@ -101,32 +61,14 @@ function seed(): void {
 
 async function main() {
 	console.log("🔍 Checking database state...");
+	console.log("   Migrations path: prisma/sqlite/schema");
 
-	const dbType = getDbType();
-	const migrationsFolder =
-		dbType === "postgresql" ? "pg/schema" : "sqlite/schema";
-
-	console.log(`   Database type: ${dbType}`);
-	console.log(`   Migrations path: prisma/${migrationsFolder}`);
-
-	if (!migrationsExist(dbType)) {
+	if (!migrationsExist()) {
 		throw new Error(
-			`No migrations found in prisma/${migrationsFolder}. Author one with ` +
+			"No migrations found in prisma/sqlite/schema. Author one with " +
 				"`pnpm db:migrate` — this script never creates an initial migration, " +
 				"because migration history is append-only from R1 onward (#335).",
 		);
-	}
-
-	if (dbType === "postgresql") {
-		// Server placement: the Prisma CLI is available here by definition.
-		console.log("🔄 Applying migrations with the Prisma CLI...");
-		execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
-			cwd: DATABASE_PATH,
-			stdio: "inherit",
-			env: { ...process.env },
-		});
-		console.log("✅ Database initialization complete");
-		return;
 	}
 
 	const dbPath = sqliteDbPath();
@@ -136,7 +78,6 @@ async function main() {
 
 	const result = await runMigrations({
 		databaseFile: dbPath,
-		dbType,
 		log: (message) => console.log(`   ${message}`),
 	});
 

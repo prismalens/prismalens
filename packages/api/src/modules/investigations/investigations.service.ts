@@ -13,12 +13,14 @@ import {
 	type Recommendation,
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { InternalInvestigationResultDto } from "../../infrastructure/internal/dto/investigation-result.dto.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import { CreateInvestigationDto } from "./dto/index.js";
+import {
+	CreateInvestigationDto,
+	type InternalInvestigationResultDto,
+} from "./dto/index.js";
 
 export type { Investigation };
 
@@ -197,8 +199,8 @@ export class InvestigationsService {
 	}
 
 	/**
-	 * Update investigation status (internal API version with more control)
-	 * Used by Python worker via internal API
+	 * Update investigation status — more control than `updateStatus`. Called
+	 * from the in-process run through `RunPorts.updateStatus` (0005 §2).
 	 */
 	async updateStatusInternal(
 		id: string,
@@ -262,8 +264,8 @@ export class InvestigationsService {
 	}
 
 	/**
-	 * Write full investigation result with all relations (atomic transaction)
-	 * Used by Python worker via internal API
+	 * Write full investigation result with all relations (atomic transaction).
+	 * Called from the in-process run through `RunPorts.writeResult` (0005 §2).
 	 * Writes: investigation, agent_executions, tool_executions, recommendations, incident update, timeline
 	 */
 	async writeResultWithRelations(
@@ -403,10 +405,8 @@ export class InvestigationsService {
 	 * `branchId`, so it lands under the {@link INVESTIGATION_REPORT_BRANCH} sentinel.
 	 *
 	 * Insert strategy — SQLite's `createMany` has no `skipDuplicates` (the generated
-	 * client omits it), so a per-row insert that swallows the unique violation is the
-	 * dialect-agnostic idempotency path. PostgreSQL could use
-	 * `createMany({ skipDuplicates: true })`, but keeping ONE path avoids a
-	 * dialect branch and behaves identically on retry. Batches are small (≤25).
+	 * client omits it), so a per-row insert that swallows the unique violation is
+	 * the idempotency path. Batches are small (≤25).
 	 *
 	 * @returns how many rows were newly inserted vs skipped as duplicates.
 	 */

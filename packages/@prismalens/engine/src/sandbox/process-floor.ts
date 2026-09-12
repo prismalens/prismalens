@@ -25,8 +25,7 @@ type PipedChild = ChildProcessByStdio<Writable, Readable, Readable>;
 /**
  * Own-secret isolation (ADR-0009): only pass the child a bare-minimum shell
  * environment, never prismalens's own process.env verbatim (which would leak
- * ENCRYPTION_KEY, PRISMALENS_INTERNAL_SECRET, OLLAMA_API_KEY, etc. into the rented
- * harness).
+ * ENCRYPTION_KEY, OLLAMA_API_KEY, etc. into the rented harness).
  */
 export const SAFE_ENV_ALLOWLIST = [
 	"PATH",

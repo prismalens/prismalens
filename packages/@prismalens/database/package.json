@@ -18,7 +18,7 @@
 		}
 	},
 	"prisma": {
-		"seed": "tsx prisma/seed.ts"
+		"seed": "tsx ../../api/scripts/seed.ts"
 	},
 	"scripts": {
 		"build": "tsc && node scripts/copy-migrations.mjs",
@@ -28,24 +28,20 @@
 		"db:init": "tsx scripts/db-init.ts",
 		"db:generate": "prisma generate --config prisma.config.ts",
 		"db:migrate": "prisma migrate dev --config prisma.config.ts",
-		"db:deploy": "prisma migrate deploy --config prisma.config.ts",
 		"db:studio": "prisma studio --config prisma.config.ts",
 		"db:reset": "prisma migrate reset --config prisma.config.ts",
 		"db:seed": "prisma db seed --config prisma.config.ts"
 	},
 	"dependencies": {
 		"@prisma/adapter-better-sqlite3": "^7.10.0",
-		"@prisma/adapter-pg": "^7.10.0",
 		"@prisma/client": "^7.10.0",
 		"@prismalens/config": "workspace:*",
 		"better-sqlite3": "^13.0.3",
-		"dotenv": "catalog:",
-		"pg": "^8.23.0"
+		"dotenv": "catalog:"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "catalog:",
-		"@types/pg": "^8.23.1",
 		"@vitest/coverage-v8": "^5.0.0",
 		"prisma": "^7.10.0",
 		"typescript": "catalog:",

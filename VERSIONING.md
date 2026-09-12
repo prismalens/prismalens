@@ -12,23 +12,17 @@ promise.
 - **Patch (`0.N.P`)** — fixes and small corrections landed between phases, in a
   package that's already been released.
 
-Every change to a publishable package carries a
-[changeset](CONTRIBUTING.md#releases-and-package-publishing) — `minor` for a
-feature, `patch` for a fix. The release workflow batches pending changesets into
-one version PR; merging it publishes the bump.
+The version comes from conventional-commit titles on `main` — a `feat:` bumps
+minor, a `fix:` bumps patch (see
+[CONTRIBUTING.md](CONTRIBUTING.md#releases-and-package-publishing)).
+[release-please](https://github.com/googleapis/release-please) computes it and
+opens a release PR; merging that PR publishes the bump.
 
 ## Pre-releases
 
-**Not yet wired — planned.** There is no release-candidate track today; every
-release publishes to npm's `latest` dist-tag. Pre-1.0 with no external RC
-consumers, we validate against the packed tarball (`pnpm run pack`) — the artifact
-users actually install — and cut the final version directly.
-
-When a phase first genuinely needs live validation before it's final, we'll add
-it then: Changesets' [pre mode](https://github.com/changesets/changesets/blob/main/docs/prereleases.md)
-(`-rc.N`) **plus** publishing under the `next` dist-tag (`pnpm publish --tag next`)
-so a candidate never lands on `latest`. Until that's wired, do **not** run
-`changeset pre enter` — an RC would publish straight to `latest`.
+There is no release-candidate track: every release publishes to npm's `latest`
+dist-tag. We validate against the packed tarball (`pnpm run pack`) — the
+artifact users actually install — and cut the final version directly.
 
 ## 1.0.0
 

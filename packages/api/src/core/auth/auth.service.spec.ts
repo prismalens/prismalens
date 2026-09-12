@@ -13,7 +13,6 @@ describe("AuthService", () => {
 		get: (key: string, defaultValue?: string) => {
 			if (key === "PRISMALENS_AUTH_SECRET")
 				return "test-secret-1234567890-test-secret-1234567890";
-			if (key === "DATABASE_URL") return "file:./dev.db";
 			if (key === "PRISMALENS_PUBLIC_URL") return "http://localhost:3001";
 			return defaultValue ?? "";
 		},
@@ -124,8 +123,7 @@ describe("AuthService", () => {
 			get: (key: string, defaultValue?: string) => {
 				if (key === "PRISMALENS_AUTH_SECRET")
 					return "test-secret-1234567890-test-secret-1234567890";
-				if (key === "DATABASE_URL") return "file:./dev.db";
-				if (key === "NODE_ENV") return "production";
+					if (key === "NODE_ENV") return "production";
 				// No PRISMALENS_PUBLIC_URL/PROTOCOL — publicUrl derives to http://...,
 				// which is the gap: NODE_ENV=production but not actually behind TLS.
 				return defaultValue ?? "";
@@ -164,8 +162,7 @@ describe("AuthService", () => {
 			get: (key: string, defaultValue?: string) => {
 				if (key === "PRISMALENS_AUTH_SECRET")
 					return "test-secret-1234567890-test-secret-1234567890";
-				if (key === "DATABASE_URL") return "file:./dev.db";
-				if (key === "NODE_ENV") return "production";
+					if (key === "NODE_ENV") return "production";
 				if (key === "PRISMALENS_PUBLIC_URL") return "https://example.com";
 				return defaultValue ?? "";
 			},

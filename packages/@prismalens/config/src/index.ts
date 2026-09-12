@@ -31,7 +31,6 @@
 
 import { z } from "zod";
 import {
-	assertDispatchIntervals,
 	databaseSchema,
 	deploymentSchema,
 	dispatchSchema,
@@ -40,7 +39,6 @@ import {
 	llmEnvSchema,
 	loggingSchema,
 	skillsSchema,
-	workerSchema,
 } from "./env/index.js";
 import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
@@ -48,7 +46,6 @@ import {
 	generateEncryptionKey,
 	getOrCreateAuthSecret,
 	getOrCreateEncryptionKey,
-	getOrCreateInternalSecret,
 } from "./utils/encryption-key.js";
 import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
@@ -91,7 +88,6 @@ export {
 	getAppDataDir,
 	getOrCreateAuthSecret,
 	getOrCreateEncryptionKey,
-	getOrCreateInternalSecret,
 };
 
 /**
@@ -134,16 +130,12 @@ export function getConfig(): GlobalConfig {
 		) {
 			process.env[SecretEnvVars.ENCRYPTION_KEY] = getOrCreateEncryptionKey();
 		}
-		if (!process.env[SecretEnvVars.INTERNAL_SECRET]) {
-			process.env[SecretEnvVars.INTERNAL_SECRET] = getOrCreateInternalSecret();
-		}
 		if (!process.env[SecretEnvVars.AUTH_SECRET]) {
 			process.env[SecretEnvVars.AUTH_SECRET] = getOrCreateAuthSecret();
 		}
 
 		const result = baseConfigSchema
 			.omit({ PRISMALENS_DB_URL: true })
-			.superRefine(assertDispatchIntervals)
 			.safeParse(process.env);
 
 		if (!result.success) {
@@ -178,47 +170,4 @@ export type EnvironmentVariables = z.infer<typeof baseConfigSchema>;
  */
 export function resetConfig(): void {
 	_config = null;
-}
-
-// =============================================================================
-// INVESTIGATION CHILD CONFIGURATION
-// =============================================================================
-// Separate config getter for the per-run investigation child process.
-// Validates only the child's own env vars (not the full API config).
-// =============================================================================
-
-const workerConfigSchema = workerSchema;
-export type WorkerEnvironmentVariables = z.infer<typeof workerConfigSchema>;
-
-let _workerConfig: WorkerEnvironmentVariables | null = null;
-
-/**
- * Get validated investigation-child configuration.
- * Validates the child's own env vars only (not the full API schema).
- *
- * @throws {Error} If validation fails with details about invalid/missing vars
- */
-export function getWorkerConfig(): WorkerEnvironmentVariables {
-	if (!_workerConfig) {
-		const result = workerConfigSchema.safeParse(process.env);
-		if (!result.success) {
-			console.error("\n❌ Worker configuration validation failed:\n");
-			result.error.issues.forEach((issue) => {
-				const path = issue.path.join(".");
-				console.error(`  • ${path}: ${issue.message}`);
-			});
-			throw new Error(
-				"Invalid worker configuration. Check environment variables.",
-			);
-		}
-		_workerConfig = result.data;
-	}
-	return _workerConfig;
-}
-
-/**
- * Reset cached worker config. Useful for testing.
- */
-export function resetWorkerConfig(): void {
-	_workerConfig = null;
 }

@@ -10,7 +10,6 @@
 
 import { Global, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { InternalGuard } from "../../infrastructure/internal/guards/internal.guard.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 import { LicenseController } from "./license.controller.js";
 import {
@@ -29,7 +28,6 @@ import { LicenseService } from "./license.service.js";
 		LicenseGuard,
 		LicenseFeatureGuard,
 		LicenseTierGuard,
-		InternalGuard,
 	],
 	exports: [
 		LicenseService,

@@ -110,8 +110,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	/**
 	 * The unassigned set is resolved server-side (`unassigned=true`,
 	 * AlertQuerySchema). Filtering a page in the browser capped the tab at
-	 * whatever fit in one 100-row window — see
-	 * .changeset/ux-study-alerts-tab-rootcause-progress.md.
+	 * whatever fit in one 100-row window.
 	 */
 	test("tab=unmapped asks the server for the unassigned set instead of filtering a page in the browser", async ({
 		page,

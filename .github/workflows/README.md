@@ -100,11 +100,11 @@ rest are advisory or out-of-band and cannot affect a merge.
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | `pull_request`, `push` | build, test, lint, pack, changeset validation; aggregates to `CI gate` |
+| `ci.yml` | `pull_request`, `push` | build, test, lint, pack; aggregates to `CI gate` |
 | `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
-| `release.yml` | `push` | changesets release and publish |
+| `release.yml` | `push`, `release` | release-please release PR on push; npm publish on release published |
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |

@@ -4,7 +4,6 @@
 import { forwardRef, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { SettingsModule } from "../../core/settings/settings.module.js";
-import { InternalGuard } from "../../infrastructure/internal/guards/internal.guard.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { OverlayModule } from "../overlay/overlay.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
@@ -29,7 +28,6 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		InvestigationTriggerService,
 		InvestigationUpdateService,
 		StreamRelayService,
-		InternalGuard,
 	],
 	exports: [
 		InvestigationsService,

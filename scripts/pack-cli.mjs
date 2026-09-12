@@ -66,7 +66,6 @@
  *       |   +-- api/
  *       |   |   +-- dist/src/main.js ......... NestJS entry, imported by `pl up`
  *       |   |   +-- public/index.html ........ the SPA, served single-origin
- *       |   +-- worker/dist/index.js ......... forked once per investigation
  *       |   +-- database/
  *       |   |   +-- dist/prisma/generated/ ... Prisma 7 generated client
  *       |   |   +-- dist/prisma/sqlite/schema/ migration SQL, applied at boot
@@ -487,11 +486,7 @@ function assertTarball(tarball, copiedNames) {
 			"the tarball has no SPA entry at node_modules/@prismalens/api/public/index.html",
 		);
 	}
-	// The migration runner reads `dist/prisma/<flavour>/schema` and nothing else,
-	// and `pl up` is always the SQLITE placement — so assert that lineage by name.
-	// A flavour-agnostic pattern would be satisfied by the `pg` copy alone, which
-	// `pl up` never reads: the tarball would pass here and then fail to create a
-	// database on a stranger's machine.
+	// The migration runner reads `dist/prisma/sqlite/schema` and nothing else.
 	if (
 		!has((e) =>
 			/node_modules\/@prismalens\/database\/dist\/prisma\/sqlite\/schema\/[^/]+\/migration\.sql$/.test(
@@ -509,13 +504,6 @@ function assertTarball(tarball, copiedNames) {
 	) {
 		fail(
 			"the tarball has no API entry at node_modules/@prismalens/api/dist/src/main.js",
-		);
-	}
-	if (
-		!has((e) => e === "package/node_modules/@prismalens/worker/dist/index.js")
-	) {
-		fail(
-			"the tarball has no worker entry — the forked investigation cannot start",
 		);
 	}
 	const noise = entries.filter((e) => /\.tsbuildinfo$|\.map$/.test(e));
@@ -541,28 +529,17 @@ function assertTarball(tarball, copiedNames) {
 
 /**
  * Determine which npm dist-tag to publish to.
- * Explicit `--tag <tag>` wins. If omitted, pre mode (.changeset/pre.json
- * with mode === "pre") or a prerelease version string (e.g. `0.5.0-rc.0`)
- * sets the tag (e.g. "rc"); otherwise publishing defaults to "latest".
- * Fails closed if the version contains a prerelease indicator ('-') but
- * no tag could be resolved, rather than publishing to "latest".
+ * Explicit `--tag <tag>` wins. If omitted, a prerelease version string
+ * (e.g. `0.5.0-rc.0`) sets the tag (e.g. "rc"); otherwise publishing
+ * defaults to "latest". Fails closed if the version contains a prerelease
+ * indicator ('-') but no tag could be resolved, rather than publishing to
+ * "latest".
  */
 export function resolvePublishTag(options = {}) {
 	const explicit =
 		options.tag ??
 		(options.tagArg !== undefined ? options.tagArg : opt("--tag", null));
 	if (explicit) return explicit;
-
-	const rootDir = options.rootDir ?? ROOT;
-	const prePath = join(rootDir, ".changeset", "pre.json");
-	if (existsSync(prePath)) {
-		try {
-			const pre = readJson(prePath);
-			if (pre?.mode === "pre" && pre?.tag) {
-				return pre.tag;
-			}
-		} catch {}
-	}
 
 	const version =
 		options.version ??
@@ -607,7 +584,6 @@ export function packCli() {
 	// closure (declared as devDependencies because it used to be bundled).
 	const roots = [
 		"@prismalens/api",
-		"@prismalens/worker",
 		...Object.keys(cliPkg.manifest.devDependencies ?? {}).filter((d) =>
 			d.startsWith("@prismalens/"),
 		),
@@ -668,23 +644,12 @@ export function packCli() {
 		if (name === "@prismalens/database") {
 			// Migration SQL + schema, applied at first boot through the
 			// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
-			// closure and must never be invoked at user runtime.
-			//
-			// Staged at `dist/prisma/<flavour>/schema` — the first candidate
-			// `src/migrator/migration-source.ts` resolves from its own compiled
-			// location (`dist/src/migrator/` -> `../..`), and the layout
-			// `scripts/copy-migrations.mjs` produces at build time. Restaged here
-			// rather than trusted from the dist copy because tsc emits only JS: a
-			// build that skipped copy-migrations would otherwise pack a tarball with
-			// no SQL in it and fail on a stranger's machine, not on ours.
-			//
-			// This used to be staged at the source layout (`prisma/<flavour>/schema`)
-			// as well, to serve #357's interim `migrate.ts`. That runner is gone
-			// (#335 deduplication) and nothing reads the source layout at runtime.
-			for (const flavour of ["sqlite", "pg"]) {
-				const from = join(dir, "prisma", flavour, "schema");
-				if (!existsSync(from)) continue;
-				copyTree(from, join(target, "dist", "prisma", flavour, "schema"));
+			// closure and must never be invoked at user runtime. Restaged here
+			// (not trusted from the dist copy) because tsc emits only JS: a build
+			// that skipped copy-migrations would pack a tarball with no SQL in it.
+			const from = join(dir, "prisma", "sqlite", "schema");
+			if (existsSync(from)) {
+				copyTree(from, join(target, "dist", "prisma", "sqlite", "schema"));
 			}
 			// Prisma 7's `prisma-client` generator emits TypeScript, which tsc
 			// compiles into dist/prisma/generated. Any NON-TypeScript asset it

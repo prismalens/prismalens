@@ -57,8 +57,10 @@
  *                    all three into `200 text/html`.
  *   SPA deep route   a client-side path with no controller returns the shell,
  *                    i.e. the fallback is still doing its job.
- *   fork             `pl up` forks an investigation child per run. One is
- *                    triggered so the shutdown assertion has something to leak.
+ *   investigation    `pl up` runs an investigation in-process (0005 §1-2 — no
+ *                    forked child). One is triggered so the shutdown assertion
+ *                    exercises the in-process path; zero descendant pids is the
+ *                    correct outcome, not a precondition failure.
  *   clean shutdown   after terminating the process group / tree, no process
  *                    observed under it survives, and the port is released.
  *
@@ -105,7 +107,7 @@ import { pathToFileURL } from "node:url";
 // The Part A assertion sequence, shared with scripts/packed-smoke.sh (#551).
 // Relative to this module's own URL, so it resolves whatever the cwd is — and
 // it is why this job's sparse-checkout list carries a second entry.
-import { assertRefusalGate } from "./lib/refusal-gate-check.mjs";
+import { assertRefusalGate } from "../packages/@prismalens/engine/scripts/refusal-gate-check.mjs";
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);
@@ -762,7 +764,7 @@ const { partBLogOffset } = await assertRefusalGate({
 	sample,
 });
 
-console.log("==> pl up forks an investigation child");
+console.log("==> pl up runs an investigation in-process");
 sample();
 let forked = false;
 if (!cookie) {
@@ -832,36 +834,25 @@ if (!cookie) {
 					} catch {
 						investigationId = null;
 					}
-					let diagnosed = false;
-					for (let i = 0; i < FORK_TIMEOUT_S && !forked && !diagnosed; i++) {
+					for (let i = 0; i < FORK_TIMEOUT_S && !forked; i++) {
 						await sleep(1000);
 						sample();
 						const log = readLog(partBLogOffset);
 						forked =
 							/"context"\s*:\s*"InvestigationProcessor"/.test(log) &&
 							(investigationId ? log.includes(investigationId) : true);
-						if (/Cannot locate the investigation child entrypoint/.test(log)) {
-							bad(
-								"fork",
-								"the worker entrypoint did not resolve inside the install",
-							);
-							diagnosed = true;
-						} else if (/ERR_MODULE_NOT_FOUND/.test(log)) {
-							const line = log
-								.split("\n")
-								.find((l) => l.includes("ERR_MODULE_NOT_FOUND"));
-							bad("fork", `the child could not resolve a dependency: ${line}`);
-							diagnosed = true;
-						}
 					}
 					if (forked) {
 						ok(
-							"investigation child forked",
-							`${seenDescendants.size} pid(s) observed`,
+							"investigation ran in-process",
+							`${seenDescendants.size} descendant pid(s) observed`,
 						);
-					} else if (!diagnosed) {
+					} else {
 						dumpLog();
-						bad("fork", `no investigation child within ${FORK_TIMEOUT_S}s`);
+						bad(
+							"investigation",
+							`no investigation observed within ${FORK_TIMEOUT_S}s`,
+						);
 					}
 				}
 			}
@@ -872,15 +863,11 @@ if (!cookie) {
 console.log("==> shutdown leaves nothing behind");
 sample();
 const observed = [...seenDescendants];
-// Without a pid to check, "no orphans" is a sentence, not an assertion. This
-// also doubles as the process-level proof that the fork produced a real OS
-// process on this platform, which no log line can give.
-if (forked && observed.length === 0) {
-	bad(
-		"orphan check",
-		"the log says a child forked but no pid was ever observed under pl up — the orphan assertion below has nothing to check",
-	);
-}
+// One process, one database (0005 §1-2): the investigation above ran
+// in-process, so zero observed descendants here is the correct outcome, not a
+// precondition failure. The orphan assertion below still runs unconditionally
+// and still fails if any descendant pid (a harness process, the only kind
+// `pl up` can spawn) is still alive after shutdown.
 const { graceful } = await stopApp();
 
 if (childExit === null) {

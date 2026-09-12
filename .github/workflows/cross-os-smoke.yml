@@ -42,7 +42,6 @@ on:
       - ".github/workflows/cross-os-smoke.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
-      - "scripts/lib/refusal-gate-check.mjs"
   push:
     branches: [main]
     paths:
@@ -50,7 +49,6 @@ on:
       - ".github/workflows/cross-os-smoke.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
-      - "scripts/lib/refusal-gate-check.mjs"
   release:
     types: [published]
   workflow_dispatch:
@@ -278,7 +276,7 @@ jobs:
           # so leaving it out fails at startup on all three OSes.
           sparse-checkout: |
             scripts/cross-os-app-boot.mjs
-            scripts/lib/refusal-gate-check.mjs
+            packages/@prismalens/engine/scripts/refusal-gate-check.mjs
             .nvmrc
           sparse-checkout-cone-mode: false
 

@@ -6,9 +6,6 @@
 // Tests resolvePublishTag in scripts/pack-cli.mjs.
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 import { resolvePublishTag } from "./pack-cli.mjs";
 
@@ -47,66 +44,6 @@ test("returns prerelease identifier for alpha/beta versions", () => {
 		}),
 		"beta",
 	);
-});
-
-test("reads tag from .changeset/pre.json when in pre mode", () => {
-	const tempDir = mkdtempSync(join(tmpdir(), "pl-pack-test-pre-"));
-	try {
-		mkdirSync(join(tempDir, ".changeset"), { recursive: true });
-		writeFileSync(
-			join(tempDir, ".changeset", "pre.json"),
-			JSON.stringify({ mode: "pre", tag: "rc", changesets: [] }),
-		);
-
-		const tag = resolvePublishTag({
-			tagArg: null,
-			rootDir: tempDir,
-			version: "0.5.0",
-		});
-		assert.equal(tag, "rc");
-	} finally {
-		rmSync(tempDir, { recursive: true, force: true });
-	}
-});
-
-test("falls back to version resolution when pre.json mode is exit", () => {
-	const tempDir = mkdtempSync(join(tmpdir(), "pl-pack-test-exit-"));
-	try {
-		mkdirSync(join(tempDir, ".changeset"), { recursive: true });
-		writeFileSync(
-			join(tempDir, ".changeset", "pre.json"),
-			JSON.stringify({ mode: "exit", tag: "rc", changesets: [] }),
-		);
-
-		const tag = resolvePublishTag({
-			tagArg: null,
-			rootDir: tempDir,
-			version: "0.5.0",
-		});
-		assert.equal(tag, "latest");
-	} finally {
-		rmSync(tempDir, { recursive: true, force: true });
-	}
-});
-
-test("explicit --tag wins over version string and pre.json", () => {
-	const tempDir = mkdtempSync(join(tmpdir(), "pl-pack-test-tag-"));
-	try {
-		mkdirSync(join(tempDir, ".changeset"), { recursive: true });
-		writeFileSync(
-			join(tempDir, ".changeset", "pre.json"),
-			JSON.stringify({ mode: "pre", tag: "rc", changesets: [] }),
-		);
-
-		const tag = resolvePublishTag({
-			tagArg: "custom-tag",
-			rootDir: tempDir,
-			version: "0.5.0-rc.0",
-		});
-		assert.equal(tag, "custom-tag");
-	} finally {
-		rmSync(tempDir, { recursive: true, force: true });
-	}
 });
 
 test("fails closed (throws) on unrecognized numeric prerelease versions like 0.5.0-0", () => {

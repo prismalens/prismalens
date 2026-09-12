@@ -42,7 +42,7 @@
 		"build": "tsc",
 		"dev": "tsc --watch",
 		"typecheck": "tsc --noEmit",
-		"test": "vitest run",
+		"test": "vitest run && node --test scripts/refusal-gate-check.test.mjs",
 		"test:watch": "vitest",
 		"eval": "tsx eval/run-evals.ts",
 		"eval:typecheck": "tsc --noEmit -p eval/tsconfig.json",

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * The package version, read from package.json at runtime so the number lives
- * in exactly one place (bumped by changesets). Walks up from this file until
+ * in exactly one place. Walks up from this file until
  * the CLI's own package.json is found — the depth differs between dev
  * (src/version.ts via tsx) and the build (dist/src/version.js).
  */

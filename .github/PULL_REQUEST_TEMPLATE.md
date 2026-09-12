@@ -25,7 +25,6 @@ Keep PRs focused and small where you can.
       pass locally
 - [ ] Tests added or updated for the change
 - [ ] No secrets, tokens, or private content committed
-- [ ] Feature or fix in a published package → changeset added (`pnpm changeset`; `minor` for a feature, `patch` for a fix)
 - [ ] Breaking config or schema change → called out above
 
 ## Docs

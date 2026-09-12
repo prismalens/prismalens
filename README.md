@@ -143,13 +143,12 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | `packages/@prismalens/contracts` | Shared Zod schemas and canonical event/report types. |
 | `packages/@prismalens/config` | Shared config and environment-variable resolution. |
 | `packages/@prismalens/auth` | Auth configuration and client (Better Auth), for the in-development server. |
-| `packages/@prismalens/database` | Prisma client and database adapter, for the in-development server. |
+| `packages/@prismalens/database` | SQLite database via Prisma — client, schema and the shipped migration runner. |
 | `packages/@prismalens/integrations` | Integration templates, OAuth2 flows, credential encryption, for the in-development server. |
 | `packages/@prismalens/logger` | Wide-events logging with tail sampling, shared across packages. |
 | `packages/@prismalens/design-tokens` | Shared brand/design tokens for the (in-development) web UI. |
 | `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
 | `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |
-| `packages/worker` | The per-run investigation child the API's dispatch loop forks. |
 
 Only `packages/cli` is published, under the name `prismalens`. Everything else
 is `private: true` and travels INSIDE that one tarball as bundled dependencies.

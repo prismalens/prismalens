@@ -2,44 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * JobStore — the durable claim record behind the in-process dispatch loop.
+ * JobStore — the durable claim record behind the in-process dispatch loop
+ * (0005 §2: one API process, no worker, no reclaim). A `Job` row is claimed
+ * exclusively via a conditional UPDATE guarded on `status = 'pending'`; only
+ * one caller ever writes it, since dispatch runs inside this one process.
  *
- * This is a DISPATCH-LAYER seam that lives OUTSIDE the engine. It is not a port on
- * `conductRun`, which takes exactly two injected ports (a sink and a store) and gains
- * no third. Dispatch decides *which* run happens *when*; the engine decides what a run
- * does. They meet only at the child process boundary.
- *
- * The contract is claim / heartbeat / reclaim, and it exists from day one because it is
- * the answer to the deploy-coupling objection against running dispatch in the API
- * process: an API restart or crash abandons in-flight runs, and something has to notice
- * and re-drive them.
- *
- * **Reclaim means RERUN, not resume.** Harness sessions are not resumable, the
- * `(branchId, seq)` invariant already permits gappy live delivery, and only the durable
- * event record is complete. So a job whose claim went stale is returned to `pending` and
- * runs again from the top. That is the correct answer, not a compromise.
- *
- * The claim itself is a conditional UPDATE guarded on `status = 'pending'`. Whichever
- * writer's guard still matches wins; every other concurrent claimer sees a zero row
- * count and moves on. This is exclusive on SQLite (single writer) and on Postgres (row
- * lock, then the re-evaluated guard fails). The Postgres `SELECT … FOR UPDATE SKIP
- * LOCKED` driver is a faster implementation of this same contract and is not built here.
- *
- * **An exclusive claim ROW is not an exclusive RUNNER**, and the bridge between them is
- * the claim token. `claimedBy` holds a token minted per ATTEMPT — not per process — and
- * `heartbeat` / `complete` / `retryLater` are guarded on that token rather than on the
- * loop's identity. This is what makes the stand-down rule able to discriminate: when a
- * claim is reclaimed and re-claimed, the new attempt writes a NEW token, so the displaced
- * holder's heartbeat reports `false` and it kills its run. A per-process token cannot do
- * that — the pathological case is a loop reclaiming its OWN stalled claim (heartbeats
- * failing for longer than `staleClaimMs` while the child is alive and well), where a
- * per-process token would be rewritten as itself and the displaced child would heartbeat
- * `true` forever, running alongside its own replacement. The same hole opens whenever two
- * processes are configured with the same owner string, or when clock skew makes one
- * replica see another's live claims as stale.
+ * An API restart abandons any `running` row — nothing reclaims or reruns it.
+ * `DispatchService.onModuleInit` calls {@link JobStore.failRunning} before the
+ * loop starts, so an interrupted run is marked failed, never silently retried.
  */
-
-import { randomUUID } from "node:crypto";
 
 export type JobStatus =
 	| "pending"
@@ -58,25 +29,14 @@ export interface JobFields {
 	payload: string;
 	priority: number;
 	attempts: number;
-	maxAttempts: number;
 }
 
-/** A claimed job, as handed to the dispatch loop. */
-export interface ClaimedJob extends JobFields {
-	/**
-	 * The token that owns THIS attempt. Minted per claim, never reused, and the guard on
-	 * every subsequent write about the claim — pass it to `heartbeat`, `complete` and
-	 * `retryLater` instead of the loop's owner string. A holder whose job was reclaimed
-	 * and re-claimed sees its token replaced, which is how it learns to stand down.
-	 */
-	claimToken: string;
-}
+export type ClaimedJob = JobFields;
 
 export interface JobRecord extends JobFields {
 	status: JobStatus;
 	claimedBy: string | null;
 	claimedAt: Date | null;
-	heartbeatAt: Date | null;
 	finishedAt: Date | null;
 	lastError: string | null;
 	runAt: Date;
@@ -89,7 +49,6 @@ export interface EnqueueJobInput {
 	payload: string;
 	/** 1 (critical) … 4 (low). Ordering only — this is not a fairness key. */
 	priority: number;
-	maxAttempts: number;
 	kind?: string;
 }
 
@@ -100,50 +59,18 @@ export interface JobStore {
 	/**
 	 * Atomically take ownership of up to `limit` claimable jobs for `owner`.
 	 * Only jobs whose guard still matched at write time are returned, so two
-	 * concurrent claimers can never receive the same job. Each returned job carries the
-	 * per-attempt {@link ClaimedJob.claimToken} that every later write must be guarded on.
+	 * concurrent callers can never receive the same job.
 	 */
 	claim(owner: string, limit: number, now?: Date): Promise<ClaimedJob[]>;
 
 	/**
-	 * Refresh the claim's proof-of-life, guarded on the per-attempt claim token. Returns
-	 * false when the claim was lost (reclaimed by the sweeper, re-claimed as a new
-	 * attempt, or the job reached a terminal state) — the caller must then stop working
-	 * on it.
-	 */
-	heartbeat(jobId: string, claimToken: string, now?: Date): Promise<boolean>;
-
-	/**
-	 * Return every job whose claim heartbeat is older than `staleMs` to `pending` so it
-	 * RERUNS, unless it has exhausted its attempts — those are failed permanently.
-	 * Returns the ids of jobs put back in the claimable pool.
-	 */
-	reclaimStale(staleMs: number, now?: Date): Promise<string[]>;
-
-	/**
-	 * Mark a running job terminal.
-	 *
-	 * Guarded on the per-attempt claim token: a holder whose claim was already reclaimed
-	 * must not be able to write a terminal status over the run that replaced it. Returns
-	 * whether the write landed.
+	 * Mark a running job terminal. Returns whether the write landed — false
+	 * when the row was no longer `running` (e.g. already cancelled).
 	 */
 	complete(
 		jobId: string,
-		claimToken: string,
 		status: Extract<JobStatus, "succeeded" | "failed" | "cancelled">,
 		error?: string,
-	): Promise<boolean>;
-
-	/**
-	 * Release a claim back to `pending` with a delay, for a retryable failure.
-	 * Returns false when the attempt budget is spent (the job is failed instead) or
-	 * when this claim token no longer holds the claim.
-	 */
-	retryLater(
-		jobId: string,
-		claimToken: string,
-		delayMs: number,
-		error: string,
 	): Promise<boolean>;
 
 	/** Look a job up by the investigation it belongs to. */
@@ -159,19 +86,16 @@ export interface JobStore {
 	/**
 	 * Cancel a job whose row still says `running` but whose holder is provably gone —
 	 * the cancel publish found zero receivers across every grace retry, so no live run
-	 * will ever write the terminal state.
-	 *
-	 * Deliberately NOT guarded on a claim token: the caller has established there is no
-	 * holder to name. Leaving the row `running` is the bug this closes — `reclaimStale`
-	 * only ever selects `status: "running"`, so an abandoned row would go back to
-	 * `pending` and rerun an investigation the user explicitly cancelled. Writing
-	 * `cancelled` both records the intent and drops the row out of the sweeper's reach,
-	 * and the claim-token guard on {@link JobStore.complete} means a holder that somehow
-	 * resurfaces cannot write over it.
-	 *
-	 * Returns whether a running row was cancelled.
+	 * will ever write the terminal state. Returns whether a running row was cancelled.
 	 */
 	cancelOrphanedRun(investigationId: string): Promise<boolean>;
+
+	/**
+	 * Fail every `running` row with `reason`, for the boot-time sweep after an
+	 * API restart abandoned whatever was mid-flight. Returns the investigation
+	 * ids of every row it failed, so the caller can fail those investigations too.
+	 */
+	failRunning(reason: string): Promise<string[]>;
 }
 
 /** The Prisma delegate surface this store needs. Structural, so tests can fake it. */
@@ -190,7 +114,6 @@ const CLAIMABLE_SELECT = {
 	payload: true,
 	priority: true,
 	attempts: true,
-	maxAttempts: true,
 } as const;
 
 function toJobFields(row: Record<string, unknown>): JobFields {
@@ -202,7 +125,6 @@ function toJobFields(row: Record<string, unknown>): JobFields {
 		payload: String(row.payload),
 		priority: Number(row.priority),
 		attempts: Number(row.attempts),
-		maxAttempts: Number(row.maxAttempts),
 	};
 }
 
@@ -212,7 +134,6 @@ function toJobRecord(row: Record<string, unknown>): JobRecord {
 		status: row.status as JobStatus,
 		claimedBy: (row.claimedBy as string | null) ?? null,
 		claimedAt: (row.claimedAt as Date | null) ?? null,
-		heartbeatAt: (row.heartbeatAt as Date | null) ?? null,
 		finishedAt: (row.finishedAt as Date | null) ?? null,
 		lastError: (row.lastError as string | null) ?? null,
 		runAt: row.runAt as Date,
@@ -220,11 +141,7 @@ function toJobRecord(row: Record<string, unknown>): JobRecord {
 	};
 }
 
-/**
- * The SQLite/Postgres JobStore, over Prisma. One implementation serves both schema
- * trees — nothing here is dialect-specific, which is exactly why the `SKIP LOCKED`
- * driver can arrive later as an optimisation rather than a redesign.
- */
+/** The SQLite JobStore, over Prisma. */
 export class PrismaJobStore implements JobStore {
 	constructor(private readonly jobs: JobDelegate) {}
 
@@ -236,7 +153,6 @@ export class PrismaJobStore implements JobStore {
 				incidentId: input.incidentId,
 				payload: input.payload,
 				priority: input.priority,
-				maxAttempts: input.maxAttempts,
 				status: "pending",
 				runAt: new Date(),
 			},
@@ -265,141 +181,33 @@ export class PrismaJobStore implements JobStore {
 		const claimed: ClaimedJob[] = [];
 		for (const row of candidates) {
 			const job = toJobFields(row);
-			// One token per ATTEMPT. The uuid is what makes it unique; the owner and the
-			// attempt number are there so a log line identifies the holder. Re-claiming a
-			// job — including one this same loop is still running — therefore always
-			// replaces the token, which is what lets the previous holder's heartbeat
-			// discover that it was displaced.
-			const claimToken = `${owner}#${job.attempts + 1}#${randomUUID()}`;
 			const { count } = await this.jobs.updateMany({
 				where: { id: job.id, status: "pending" },
 				data: {
 					status: "running",
-					claimedBy: claimToken,
+					claimedBy: owner,
 					claimedAt: now,
-					heartbeatAt: now,
 					attempts: { increment: 1 },
 				},
 			});
 			// count === 0 ⇒ another claimer got there first. Not an error.
-			if (count === 1)
-				claimed.push({ ...job, attempts: job.attempts + 1, claimToken });
+			if (count === 1) claimed.push({ ...job, attempts: job.attempts + 1 });
 		}
 		return claimed;
 	}
 
-	async heartbeat(
-		jobId: string,
-		claimToken: string,
-		now: Date = new Date(),
-	): Promise<boolean> {
-		const { count } = await this.jobs.updateMany({
-			where: { id: jobId, status: "running", claimedBy: claimToken },
-			data: { heartbeatAt: now },
-		});
-		return count === 1;
-	}
-
-	async reclaimStale(
-		staleMs: number,
-		now: Date = new Date(),
-	): Promise<string[]> {
-		const cutoff = new Date(now.getTime() - staleMs);
-		const stale = await this.jobs.findMany({
-			where: { status: "running", heartbeatAt: { lt: cutoff } },
-			select: { ...CLAIMABLE_SELECT, claimedBy: true },
-		});
-
-		const reclaimed: string[] = [];
-		for (const row of stale) {
-			const job = toJobFields(row);
-			const claimToken = (row.claimedBy as string | null) ?? null;
-			const exhausted = job.attempts >= job.maxAttempts;
-
-			// Guard on the claim token we observed as well as the status: if the holder
-			// heartbeated between the read and this write, its claim is alive again and the
-			// guard's `heartbeatAt` bound refuses to steal it.
-			const { count } = await this.jobs.updateMany({
-				where: {
-					id: job.id,
-					status: "running",
-					claimedBy: claimToken,
-					heartbeatAt: { lt: cutoff },
-				},
-				data: exhausted
-					? {
-							status: "failed",
-							claimedBy: null,
-							finishedAt: now,
-							lastError: `Abandoned after ${job.attempts} attempt(s) — claim heartbeat went stale`,
-						}
-					: {
-							// Reclaim = RERUN. The row goes back in the claimable pool from the
-							// top; the next claimer runs the investigation again rather than
-							// trying to resume a harness session that cannot be resumed.
-							status: "pending",
-							claimedBy: null,
-							claimedAt: null,
-							heartbeatAt: null,
-							runAt: now,
-							lastError: "Reclaimed after the claim heartbeat went stale",
-						},
-			});
-			if (count === 1 && !exhausted) reclaimed.push(job.id);
-		}
-		return reclaimed;
-	}
-
 	async complete(
 		jobId: string,
-		claimToken: string,
 		status: Extract<JobStatus, "succeeded" | "failed" | "cancelled">,
 		error?: string,
 	): Promise<boolean> {
-		// `claimedBy: claimToken` is the load-bearing guard. Without it a holder whose
-		// claim the sweeper already reclaimed could land a terminal write on top of the
-		// RERUN that replaced it — two writers on one investigation, which is the exact
-		// failure the heartbeat's stand-down rule exists to prevent.
 		const { count } = await this.jobs.updateMany({
-			where: { id: jobId, status: "running", claimedBy: claimToken },
+			where: { id: jobId, status: "running" },
 			data: {
 				status,
 				claimedBy: null,
 				finishedAt: new Date(),
 				...(error !== undefined ? { lastError: error } : {}),
-			},
-		});
-		return count === 1;
-	}
-
-	async retryLater(
-		jobId: string,
-		claimToken: string,
-		delayMs: number,
-		error: string,
-	): Promise<boolean> {
-		const row = await this.jobs.findUnique({
-			where: { id: jobId },
-			select: CLAIMABLE_SELECT,
-		});
-		if (!row) return false;
-		const job = toJobFields(row);
-		if (job.attempts >= job.maxAttempts) {
-			await this.complete(jobId, claimToken, "failed", error);
-			return false;
-		}
-		// Same claim-token guard as `complete`, and the result is reported honestly: a
-		// lost claim means someone else already owns the rerun, so this caller must not
-		// report that it scheduled one.
-		const { count } = await this.jobs.updateMany({
-			where: { id: jobId, status: "running", claimedBy: claimToken },
-			data: {
-				status: "pending",
-				claimedBy: null,
-				claimedAt: null,
-				heartbeatAt: null,
-				runAt: new Date(Date.now() + delayMs),
-				lastError: error,
 			},
 		});
 		return count === 1;
@@ -436,5 +244,24 @@ export class PrismaJobStore implements JobStore {
 			},
 		});
 		return count === 1;
+	}
+
+	async failRunning(reason: string): Promise<string[]> {
+		const running = await this.jobs.findMany({
+			where: { status: "running" },
+			select: { id: true, investigationId: true },
+		});
+		if (running.length === 0) return [];
+
+		await this.jobs.updateMany({
+			where: { status: "running" },
+			data: {
+				status: "failed",
+				claimedBy: null,
+				finishedAt: new Date(),
+				lastError: reason,
+			},
+		});
+		return running.map((row) => String(row.investigationId));
 	}
 }

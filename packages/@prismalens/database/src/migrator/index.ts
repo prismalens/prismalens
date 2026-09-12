@@ -11,7 +11,6 @@
 
 export {
 	MIGRATIONS_DIR_ENV,
-	type MigrationFlavour,
 	migrationDirCandidates,
 	readShippedMigrations,
 	resolveMigrationsDir,

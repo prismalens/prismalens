@@ -54,9 +54,6 @@
 			"cache": false,
 			"persistent": true
 		},
-		"db:deploy": {
-			"cache": false
-		},
 		"db:init": {
 			"cache": false,
 			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR", "PRISMALENS_SEED_DEMO"]

@@ -202,9 +202,6 @@ export function SetupWizard({
 				)}
 
 				<div className="mt-6 flex items-center justify-center gap-3 text-sm text-muted-foreground">
-					<span>
-						PrismaLens Community Edition - Unlimited users, unlimited features
-					</span>
 					{currentStep !== "account" && (
 						<Button
 							variant="link"

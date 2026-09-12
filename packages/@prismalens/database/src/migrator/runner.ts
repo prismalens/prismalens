@@ -42,7 +42,6 @@ import { dirname, join } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import Database from "better-sqlite3";
 import {
-	type MigrationFlavour,
 	readShippedMigrations,
 	resolveMigrationsDir,
 	type ShippedMigration,
@@ -108,15 +107,6 @@ export interface RunMigrationsOptions {
 	databaseFile?: string;
 	/** Directory holding the `<timestamp>_<name>/migration.sql` folders. */
 	migrationsDir?: string;
-	/** Datasource lineage to read. Defaults to `sqlite`. */
-	flavour?: MigrationFlavour;
-	/**
-	 * Configured database type. Anything other than `sqlite` short-circuits: the
-	 * Postgres placement is a server deploy with the Prisma CLI available, and
-	 * migrating it from inside the app process is not this runner's job.
-	 * Defaults to `PRISMALENS_DB_TYPE`.
-	 */
-	dbType?: string;
 	/** How long to wait on a competing writer before giving up. */
 	busyTimeoutMs?: number;
 	/** Progress sink. Defaults to silence. */
@@ -125,7 +115,7 @@ export interface RunMigrationsOptions {
 
 export interface MigrationRunResult {
 	/** `applied` when this run changed the schema; `up-to-date` when it did not. */
-	status: "applied" | "up-to-date" | "skipped-non-sqlite";
+	status: "applied" | "up-to-date";
 	databaseFile: string;
 	/** `null` only when the run was skipped before resolving anything. */
 	migrationsDir: string | null;
@@ -351,25 +341,9 @@ export async function runMigrations(
 	options: RunMigrationsOptions = {},
 ): Promise<MigrationRunResult> {
 	const log = options.log ?? (() => {});
-	const dbType = options.dbType ?? process.env.PRISMALENS_DB_TYPE ?? "sqlite";
 	const databaseFile = options.databaseFile ?? defaultDatabaseFile();
 
-	if (dbType !== "sqlite") {
-		log(
-			`Skipping the embedded migration runner: PRISMALENS_DB_TYPE is "${dbType}". Server placements migrate with the Prisma CLI.`,
-		);
-		return {
-			status: "skipped-non-sqlite",
-			databaseFile,
-			migrationsDir: null,
-			applied: [],
-			alreadyApplied: [],
-			backupFile: null,
-		};
-	}
-
-	const flavour = options.flavour ?? "sqlite";
-	const migrationsDir = resolveMigrationsDir(flavour, options.migrationsDir);
+	const migrationsDir = resolveMigrationsDir(options.migrationsDir);
 	const shipped = readShippedMigrations(migrationsDir);
 	if (shipped.length === 0) {
 		throw new MigrationError(

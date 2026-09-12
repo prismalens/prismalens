@@ -9,9 +9,9 @@ import type { CanonicalEvent } from "@prismalens/contracts";
  * (`live-canvas.spec.ts` #247, `investigation-stream-panel.spec.ts` #280).
  *
  * The real producers cannot be summoned from a spec: the demo seed ships no
- * `running` investigation, and the genuine `/stream` endpoint needs a worker, a
- * queue and a funded LLM provider. Only the transport and the one status field
- * are faked — the contract boundary, the hook and the UI are all real.
+ * `running` investigation, and the genuine `/stream` endpoint needs a live
+ * investigation run and a funded LLM provider. Only the transport and the one
+ * status field are faked — the contract boundary, the hook and the UI are all real.
  */
 
 export const INVESTIGATION_ID = "d0111111-1111-4111-8111-111111111111";

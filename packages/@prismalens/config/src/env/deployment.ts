@@ -31,18 +31,6 @@ export const deploymentSchema = z.object({
 			"Hex-encoded 32-byte (64 hex chars) encryption key for encrypting sensitive data at rest. " +
 				"If not set, random key will be generated (not recommended for production).",
 		),
-	[SecretEnvVars.INTERNAL_SECRET]: z
-		.string()
-		.min(
-			32,
-			`${SecretEnvVars.INTERNAL_SECRET} must be at least 32 characters when set`,
-		)
-		.optional()
-		.describe(
-			"Shared secret for internal API communication. " +
-				"Auto-generated and persisted to ~/.prismalens/ if not set.",
-		),
-
 	// Authentication (Better Auth)
 	[SecretEnvVars.AUTH_SECRET]: z
 		.string()

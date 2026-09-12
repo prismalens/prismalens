@@ -9,9 +9,7 @@
  * Every path below is resolved from the INSTALLED package, never from a repo
  * checkout: `scripts/pack-cli.mjs` copies each first-party package into this
  * package's own `node_modules/@prismalens/<name>`, so `require.resolve` finds
- * exactly the copy that shipped. That matters most for the forked investigation
- * child — `@prismalens/worker` must resolve inside the install, not against a
- * developer's monorepo.
+ * exactly the copy that shipped, not a developer's monorepo.
  */
 
 import { existsSync, mkdirSync } from "node:fs";
@@ -114,13 +112,11 @@ export default defineCommand({
 		//
 		// What `pl up` still depends on is the migration SQL being present in the
 		// tarball: `scripts/pack-cli.mjs` stages it at
-		// `@prismalens/database/dist/prisma/<flavour>/schema` and asserts it.
+		// `@prismalens/database/dist/prisma/sqlite/schema` and asserts it.
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Dashboard: ${app.staticDir}`);
 
-		// Import, not fork: `pl up` is ONE process. The API forks its own child
-		// per investigation, and that child resolves @prismalens/worker from this
-		// same install.
+		// One process (0005 §1-2): the API runs each investigation in-process.
 		await import(pathToFileURL(app.main).href);
 	},
 });

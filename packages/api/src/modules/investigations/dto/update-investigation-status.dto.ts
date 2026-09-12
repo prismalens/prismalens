@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import {
+	IsDateString,
+	IsEnum,
+	IsOptional,
+	IsString,
+	IsUUID,
+} from "class-validator";
+import { WorkflowStatus } from "../../../shared/enums/index.js";
+
+/**
+ * DTO for updating investigation status
+ */
+export class UpdateInvestigationStatusDto {
+	@IsEnum(WorkflowStatus)
+	status!: WorkflowStatus;
+
+	@IsOptional()
+	@IsDateString()
+	startedAt?: string;
+
+	@IsOptional()
+	@IsString()
+	error?: string;
+
+	@IsOptional()
+	@IsUUID()
+	harnessThreadId?: string;
+}

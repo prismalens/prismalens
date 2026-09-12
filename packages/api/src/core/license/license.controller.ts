@@ -16,10 +16,7 @@ import {
 	HttpCode,
 	HttpStatus,
 	Post,
-	UseGuards,
 } from "@nestjs/common";
-import { InternalGuard } from "../../infrastructure/internal/guards/internal.guard.js";
-import { Public } from "../auth/public.decorator.js";
 import { LicenseService, type LicenseState } from "./license.service.js";
 
 // =============================================================================
@@ -112,23 +109,6 @@ export class LicenseController {
 	async refreshLicense(): Promise<LicenseStatusResponse> {
 		const state = await this.licenseService.getLicenseState(true);
 		return this.formatLicenseResponse(state);
-	}
-
-	/**
-	 * Internal endpoint for worker to get license state
-	 * GET /api/license/internal
-	 *
-	 * @Public() skips AuthGuard — InternalGuard handles auth via X-Internal-Secret.
-	 */
-	@Public()
-	@UseGuards(InternalGuard)
-	@Get("internal")
-	async getLicenseStateInternal(): Promise<{
-		tier: string;
-		features: string[];
-		isValid: boolean;
-	}> {
-		return this.licenseService.getLicenseStateForWorker();
 	}
 
 	// ===========================================================================

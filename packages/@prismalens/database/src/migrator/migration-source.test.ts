@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	MIGRATIONS_DIR_ENV,
-	type MigrationFlavour,
 	migrationDirCandidates,
 	readShippedMigrations,
 	resolveMigrationsDir,
@@ -36,16 +35,10 @@ describe("resolveMigrationsDir", () => {
 	it("finds the SQL that ships with the package, without a workspace root", () => {
 		// The same relative walk works from src/ and from dist/src/ because
 		// `rootDir: "."` makes dist mirror the package root.
-		const dir = resolveMigrationsDir("sqlite");
-		expect(dir).toBe(migrationDirCandidates("sqlite")[0]);
+		const dir = resolveMigrationsDir();
+		expect(dir).toBe(migrationDirCandidates()[0]);
 		expect(readShippedMigrations(dir).map((m) => m.name)).toContain(
 			"20260803122809_init",
-		);
-	});
-
-	it("finds the postgres lineage too", () => {
-		expect(readShippedMigrations(resolveMigrationsDir("pg"))).not.toHaveLength(
-			0,
 		);
 	});
 
@@ -54,29 +47,12 @@ describe("resolveMigrationsDir", () => {
 		writeFileSync(join(scratch, "20260101000000_x", "migration.sql"), "SELECT 1;");
 		process.env[MIGRATIONS_DIR_ENV] = scratch;
 
-		expect(resolveMigrationsDir("sqlite")).toBe(scratch);
+		expect(resolveMigrationsDir()).toBe(scratch);
 	});
 
 	it("names the configured override when it does not exist", () => {
 		process.env[MIGRATIONS_DIR_ENV] = join(scratch, "nope");
-		expect(() => resolveMigrationsDir("sqlite")).toThrow(/nope/);
-	});
-
-	it("names every candidate it tried when the search finds nothing", () => {
-		// A lineage that does not exist, so every candidate misses and the search
-		// path (not the override path) produces the message.
-		const missing = "mysql" as MigrationFlavour;
-		let message = "";
-		try {
-			resolveMigrationsDir(missing);
-		} catch (error) {
-			message = (error as Error).message;
-		}
-		expect(message).not.toBe("");
-		for (const candidate of migrationDirCandidates(missing)) {
-			expect(message).toContain(candidate);
-		}
-		expect(message).toContain(MIGRATIONS_DIR_ENV);
+		expect(() => resolveMigrationsDir()).toThrow(/nope/);
 	});
 });
 

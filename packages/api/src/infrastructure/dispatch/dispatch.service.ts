@@ -4,10 +4,8 @@
 /**
  * The Nest-facing face of dispatch: enqueue, cancel, and status, plus ownership of the
  * loop's lifecycle. All of the interesting behaviour lives in {@link Dispatcher} and
- * {@link PrismaJobStore}; this is the wiring.
- *
- * JobStore and EventBus are DISPATCH-LAYER seams, outside the engine. Neither is a port
- * on `conductRun`, which takes exactly two injected ports and gains no third.
+ * {@link PrismaJobStore}; this is the wiring — including, since 0005 §2, the
+ * {@link RunPorts} object the in-process runner uses instead of internal HTTP calls.
  */
 
 import {
@@ -17,41 +15,30 @@ import {
 	OnApplicationShutdown,
 	OnModuleInit,
 } from "@nestjs/common";
-import { assertDispatchTopology, getConfig } from "@prismalens/config";
+import { getConfig } from "@prismalens/config";
+import { getApiKeyEnvVar } from "@prismalens/config/llm";
 import type { InvestigationJobData } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
+import { IncidentsService } from "../../modules/incidents/incidents.service.js";
+import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
+import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
+import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
+import { ServicesService } from "../../modules/services/services.service.js";
+import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { Dispatcher } from "./dispatcher.js";
 import { EVENT_BUS, type EventBus, runCancelTopic } from "./event-bus.js";
-import { createForkRunner } from "./fork-runner.js";
+import { createInProcessRunner } from "./in-process-runner.js";
 import {
 	type JobDelegate,
 	type JobStore,
 	PrismaJobStore,
 } from "./job-store.js";
+import type { RunPorts } from "./run-ports.js";
 
 export type { InvestigationJobData };
-
-/**
- * The oRPC base URL the forked child should call back on: this process's own
- * listen address. A wildcard bind names no dialable host, so the child dials
- * loopback — it always runs on this machine.
- */
-function internalApiUrl(config: {
-	PRISMALENS_PROTOCOL?: string;
-	PRISMALENS_HOST?: string;
-	PRISMALENS_PORT?: number;
-}): string {
-	const protocol = config.PRISMALENS_PROTOCOL ?? "http";
-	const host = config.PRISMALENS_HOST ?? "localhost";
-	const dialable =
-		host === "0.0.0.0" || host === "::" || host === "" ? "127.0.0.1" : host;
-	const port = config.PRISMALENS_PORT ?? 3001;
-	// A literal IPv6 address needs brackets before the port, or the whole
-	// authority parses as one host and the child dials nothing.
-	const authority = dialable.includes(":") ? `[${dialable}]` : dialable;
-	return `${protocol}://${authority}:${port}/api`;
-}
 
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */
 const PRIORITY_ORDER: Record<string, number> = {
@@ -61,56 +48,92 @@ const PRIORITY_ORDER: Record<string, number> = {
 	low: 4,
 };
 
+/** The reason recorded on every job a restart abandoned mid-flight. */
+const RESTART_REASON = "API restarted while the run was in flight";
+
 @Injectable()
 export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private readonly logger = new Logger(DispatchService.name);
 	private readonly store: JobStore;
 	private readonly dispatcher: Dispatcher;
-	private readonly enabled: boolean;
-	private readonly maxAttempts: number;
 
 	constructor(
 		prisma: PrismaService,
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
 		private readonly streamRelay: StreamRelayService,
+		private readonly investigationsService: InvestigationsService,
+		private readonly incidentsService: IncidentsService,
+		private readonly timelineService: TimelineService,
+		private readonly llmSettingsService: LlmSettingsService,
+		private readonly integrationsService: IntegrationsService,
+		private readonly servicesService: ServicesService,
 	) {
-		const config = getConfig();
-		this.enabled = config.PRISMALENS_DISPATCH_ENABLED;
-		this.maxAttempts = config.PRISMALENS_DISPATCH_MAX_ATTEMPTS;
-
-		// The store takes the delegate structurally (narrowed to the four calls it
+		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
 		// each model explicitly — `job` must be one of them or this is undefined at
 		// runtime while typechecking clean.
 		this.store = new PrismaJobStore(prisma.job as unknown as JobDelegate);
 
+		const ports: RunPorts = {
+			findInvestigation: async (id) => {
+				const investigation = await this.investigationsService.findById(id);
+				return investigation
+					? { id: investigation.id, status: investigation.status }
+					: null;
+			},
+			updateStatus: async (id, dto) => {
+				await this.investigationsService.updateStatusInternal(
+					id,
+					dto.status,
+					dto.startedAt,
+					dto.error,
+					dto.harnessThreadId,
+				);
+			},
+			appendEvents: async (id, events) => {
+				await this.investigationsService.appendEvents(id, events);
+			},
+			clearEvents: async (id) => {
+				await this.investigationsService.clearEvents(id);
+			},
+			writeResult: async (id, dto: InternalInvestigationResultDto) => {
+				await this.investigationsService.writeResultWithRelations(id, dto);
+			},
+			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
+				await this.timelineService.create(dto);
+			},
+			resolveLlm: async () => {
+				const { provider, model, baseUrl, harness } =
+					await this.llmSettingsService.resolveActiveLlmConfig();
+				const credentials: Record<string, string> = {};
+				if (provider) {
+					const apiKey = this.llmSettingsService.resolveApiKey(provider);
+					const envVar = getApiKeyEnvVar(provider);
+					if (envVar && apiKey) credentials[envVar] = apiKey;
+				}
+				return { provider, model, baseUrl, credentials, harness };
+			},
+			integrationCredentials: (connectionIds) =>
+				this.integrationsService.getIntegrationsByConnectionIds(connectionIds),
+			getIncident: async (id) => {
+				const incident = await this.incidentsService.findById(id);
+				return incident as unknown as Record<string, unknown> | null;
+			},
+			listServices: async (search) => {
+				const { data } = await this.servicesService.findAll({ search });
+				return data as unknown as Array<Record<string, unknown>>;
+			},
+		};
+
 		this.dispatcher = new Dispatcher(
 			this.store,
 			this.bus,
-			createForkRunner({
-				...(config.PRISMALENS_WORKER_ENTRY
-					? { entry: config.PRISMALENS_WORKER_ENTRY }
-					: {}),
-				// The child calls back into THIS process over oRPC. Its own default is
-				// a fixed `http://localhost:5367/api` that nothing ever served, so
-				// under `pl up --port 8080` every run died with `fetch failed` after a
-				// perfectly healthy fork. The forking process is the one that knows
-				// where it listens — so it says so, unless an operator overrode it.
-				env: process.env.PRISMALENS_WORKER_API_URL
-					? {}
-					: { PRISMALENS_WORKER_API_URL: internalApiUrl(config) },
-				log: {
-					warn: (m) => this.logger.warn(m),
-					error: (m) => this.logger.error(m),
-				},
-			}),
+			createInProcessRunner(ports),
 			{
-				concurrency: config.PRISMALENS_DISPATCH_CONCURRENCY,
-				pollIntervalMs: config.PRISMALENS_DISPATCH_POLL_INTERVAL_MS,
-				heartbeatIntervalMs: config.PRISMALENS_DISPATCH_HEARTBEAT_INTERVAL_MS,
-				staleClaimMs: config.PRISMALENS_DISPATCH_STALE_CLAIM_MS,
-				// A reclaimed job RERUNS, so the relay must be listening again before its
-				// first event — the run does not resume where it left off.
+				concurrency: getConfig().PRISMALENS_DISPATCH_CONCURRENCY,
+				// A claim still races the stream controller's own subscribe, so
+				// attaching the relay here (before the run's first event) stays
+				// correct even though there is no reclaim any more to re-attach for.
 				onClaim: (job) => this.streamRelay.attach(job.investigationId),
 				onSettled: (job) =>
 					this.logger.log(`Job ${job.id} settled (${job.investigationId})`),
@@ -123,12 +146,24 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		);
 	}
 
-	onModuleInit(): void {
-		// Boot refuses an API process that does not run the loop. The EventBus is
-		// in-process only, so such a process cannot stream a run or cancel one, and it
-		// would go on to write terminal states over runs that are still executing
-		// elsewhere. See `assertDispatchTopology` for why this is fatal and not a warning.
-		assertDispatchTopology({ PRISMALENS_DISPATCH_ENABLED: this.enabled });
+	async onModuleInit(): Promise<void> {
+		// An API restart abandons whatever was `running` — there is no reclaim any
+		// more (0005 §2: one process). Fail those rows and their investigations
+		// before the loop starts, so nothing sits stuck "running" forever.
+		const ids = await this.store.failRunning(RESTART_REASON);
+		for (const id of ids) {
+			await this.investigationsService.updateStatusInternal(
+				id,
+				"failed",
+				undefined,
+				RESTART_REASON,
+			);
+		}
+		if (ids.length > 0) {
+			this.logger.warn(
+				`Failed ${ids.length} investigation(s) left running by a previous process: ${ids.join(", ")}`,
+			);
+		}
 		this.dispatcher.start();
 		this.logger.log(
 			`Dispatch loop started, concurrency cap ${getConfig().PRISMALENS_DISPATCH_CONCURRENCY}, owner ${this.dispatcher.ownerToken}`,
@@ -153,7 +188,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				incidentId: data.incidentId,
 				payload: JSON.stringify(data),
 				priority: PRIORITY_ORDER[data.priority ?? "normal"] ?? 3,
-				maxAttempts: this.maxAttempts,
 			});
 			// Attach the relay at enqueue time, exactly as the Redis subscription used to
 			// be opened here: the buffer must exist before the run's first event.
@@ -161,7 +195,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			this.logger.log(
 				`Enqueued investigation job ${jobId} for incident ${data.incidentId}`,
 			);
-			// Don't wait for the next poll interval to notice work that just arrived.
+			// Don't wait for the next tick to notice work that just arrived.
 			void this.dispatcher.tick();
 			return jobId;
 		} catch (error) {
@@ -214,9 +248,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 
 	/**
 	 * Cancel the job row of a run nobody holds, after {@link requestCancel} found zero
-	 * receivers on every attempt. Without this the row stays `running`, goes stale, and
-	 * `reclaimStale` returns it to `pending` — rerunning an investigation the user
-	 * cancelled. Returns whether a running row was cancelled.
+	 * receivers on every attempt. Without this the row stays `running` until the next
+	 * restart, when the boot-time sweep marks it failed rather than the cancellation the
+	 * user asked for. Returns whether a running row was cancelled.
 	 */
 	async cancelOrphanedRun(investigationId: string): Promise<boolean> {
 		try {

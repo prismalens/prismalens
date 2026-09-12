@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * JobStore contract tests: claim exclusivity, heartbeat, and reclaim = rerun.
+ * JobStore contract tests: claim exclusivity and the terminal transitions
+ * (0005 §2 — one process, no heartbeat, no reclaim).
  *
  * These run against an in-memory delegate that models the ONE property the claim
  * algorithm depends on — a conditional UPDATE either matches its guard and writes, or
- * matches nothing and reports zero rows. That is what SQLite and Postgres both give, and
- * it is what makes a claim exclusive without `SKIP LOCKED`.
+ * matches nothing and reports zero rows. That is what SQLite gives, and it is what makes
+ * a claim exclusive without `SKIP LOCKED`.
  *
  * The delegate yields to the microtask queue inside every operation so two claimers
  * genuinely interleave. A sequential test would prove nothing: the guard would trivially
@@ -26,10 +27,9 @@ type Row = Record<string, unknown>;
 /**
  * A minimal in-memory stand-in for the Prisma `job` delegate.
  *
- * Only what the store uses is implemented — equality/`lt`/`lte`/`in` filters, ordering,
- * `take`, and `{ increment }`. Every method awaits before mutating, so concurrent callers
- * interleave between their read and their write, which is exactly the window a claim race
- * lives in.
+ * Only what the store uses is implemented — equality/`lte` filters, ordering, `take`, and
+ * `{ increment }`. Every method awaits before mutating, so concurrent callers interleave
+ * between their read and their write, which is exactly the window a claim race lives in.
  */
 class FakeJobDelegate implements JobDelegate {
 	rows: Row[] = [];
@@ -47,11 +47,9 @@ class FakeJobDelegate implements JobDelegate {
 			priority: 3,
 			status: "pending",
 			attempts: 0,
-			maxAttempts: 3,
 			runAt: new Date(0),
 			claimedBy: null,
 			claimedAt: null,
-			heartbeatAt: null,
 			finishedAt: null,
 			lastError: null,
 			createdAt: new Date(this.seq),
@@ -142,7 +140,6 @@ function job(n: number, overrides: Partial<EnqueueJobInput> = {}) {
 		incidentId: `inc-${n}`,
 		payload: JSON.stringify({ investigationId: `inv-${n}` }),
 		priority: 3,
-		maxAttempts: 3,
 		...overrides,
 	};
 }
@@ -205,138 +202,6 @@ describe("PrismaJobStore", () => {
 			expect(claimed).toHaveLength(2);
 			expect(claimed.map((j) => j.investigationId)).toEqual(["inv-2", "inv-3"]);
 		});
-
-		it("does not claim a job whose runAt is still in the future", async () => {
-			const id = await store.enqueue(job(1));
-			const [claimed] = await store.claim("owner", 1);
-			// A retryable failure pushes the job out by a backoff; it must stay unclaimable
-			// until that window passes, or a failing job would spin.
-			await store.retryLater(id, claimed.claimToken, 60_000, "transient");
-
-			expect(await store.claim("owner", 5)).toEqual([]);
-		});
-	});
-
-	describe("the claim token is per ATTEMPT, not per owner", () => {
-		it("mints a fresh token on every claim, and writes it to the row", async () => {
-			await store.enqueue(job(1));
-
-			const [first] = await store.claim("owner-a", 1, at(0));
-			expect(first.claimToken).toEqual(expect.stringContaining("owner-a"));
-			expect(delegate.rows[0].claimedBy).toBe(first.claimToken);
-
-			await store.reclaimStale(1_000, at(60_000));
-			const [second] = await store.claim("owner-a", 1, at(70_000));
-
-			// Same job, same owner, same process — and still a different token, because
-			// the token names the attempt.
-			expect(second.id).toBe(first.id);
-			expect(second.claimToken).not.toBe(first.claimToken);
-		});
-
-		it("lets a holder detect that its OWN loop re-claimed the job under it", async () => {
-			await store.enqueue(job(1));
-			const [first] = await store.claim("owner-a", 1, at(0));
-
-			// The heartbeats stopped landing (a database blip) for longer than the
-			// staleness cutoff, so this loop's own sweep reclaims its own claim and the
-			// very next claim in the same pass takes it back — under the SAME owner.
-			await store.reclaimStale(1_000, at(60_000));
-			const [second] = await store.claim("owner-a", 1, at(60_001));
-
-			// The displaced run must be told it lost the claim. Guarded on the owner
-			// string this returns true — the owner was rewritten as itself — and the run
-			// keeps going alongside its own replacement. Guarded on the attempt token it
-			// is false, and the stand-down rule fires.
-			expect(await store.heartbeat(first.id, first.claimToken)).toBe(false);
-			expect(await store.heartbeat(second.id, second.claimToken)).toBe(true);
-		});
-
-		it("refuses a terminal write from a holder its own loop displaced", async () => {
-			const id = await store.enqueue(job(1));
-			const [first] = await store.claim("owner-a", 1, at(0));
-			await store.reclaimStale(1_000, at(60_000));
-			const [second] = await store.claim("owner-a", 1, at(60_001));
-
-			expect(await store.complete(id, first.claimToken, "succeeded")).toBe(false);
-			expect(
-				await store.retryLater(id, first.claimToken, 1_000, "late failure"),
-			).toBe(false);
-
-			// The replacement still owns the outcome.
-			expect(delegate.rows[0].status).toBe("running");
-			expect(delegate.rows[0].claimedBy).toBe(second.claimToken);
-		});
-	});
-
-	describe("heartbeat", () => {
-		it("keeps a claim alive and reports that it is still held", async () => {
-			await store.enqueue(job(1));
-			const [claimed] = await store.claim("owner-a", 1, at(0));
-
-			const t1 = at(10_000);
-			expect(await store.heartbeat(claimed.id, claimed.claimToken, t1)).toBe(
-				true,
-			);
-			expect(delegate.rows[0].heartbeatAt).toEqual(t1);
-		});
-
-		it("returns false for a different owner — a claim cannot be heartbeated by a stranger", async () => {
-			await store.enqueue(job(1));
-			const [claimed] = await store.claim("owner-a", 1);
-
-			expect(await store.heartbeat(claimed.id, "owner-b")).toBe(false);
-		});
-
-		it("returns false once the claim was reclaimed, so the old holder stands down", async () => {
-			await store.enqueue(job(1));
-			const [claimed] = await store.claim("owner-a", 1, at(0));
-
-			await store.reclaimStale(1_000, at(60_000));
-
-			expect(await store.heartbeat(claimed.id, claimed.claimToken)).toBe(false);
-		});
-	});
-
-	describe("reclaim = rerun", () => {
-		it("a stale claim goes back to pending and is claimed AGAIN — the job reruns", async () => {
-			await store.enqueue(job(1));
-			const [first] = await store.claim("owner-a", 1, at(0));
-			expect(first.attempts).toBe(1);
-
-			const reclaimed = await store.reclaimStale(30_000, at(120_000));
-			expect(reclaimed).toEqual([first.id]);
-			expect(delegate.rows[0].status).toBe("pending");
-			expect(delegate.rows[0].claimedBy).toBeNull();
-
-			// The rerun: a different owner claims the same job and gets attempt 2. Nothing
-			// is resumed — the run starts from the top, which is the whole contract.
-			const [second] = await store.claim("owner-b", 1, at(200_000));
-			expect(second.id).toBe(first.id);
-			expect(second.attempts).toBe(2);
-		});
-
-		it("leaves a freshly heartbeated claim alone", async () => {
-			await store.enqueue(job(1));
-			const [claimed] = await store.claim("owner-a", 1, at(0));
-			await store.heartbeat(claimed.id, claimed.claimToken, at(115_000));
-
-			expect(await store.reclaimStale(30_000, at(120_000))).toEqual([]);
-			expect(delegate.rows[0].status).toBe("running");
-		});
-
-		it("fails a job permanently once its attempts are spent, instead of rerunning forever", async () => {
-			await store.enqueue(job(1, { maxAttempts: 2 }));
-
-			await store.claim("owner-a", 1, at(0));
-			await store.reclaimStale(1_000, at(60_000));
-			await store.claim("owner-b", 1, at(70_000));
-			const reclaimed = await store.reclaimStale(1_000, at(200_000));
-
-			expect(reclaimed).toEqual([]);
-			expect(delegate.rows[0].status).toBe("failed");
-			expect(String(delegate.rows[0].lastError)).toContain("Abandoned");
-		});
 	});
 
 	describe("terminal transitions", () => {
@@ -355,16 +220,11 @@ describe("PrismaJobStore", () => {
 			expect(delegate.rows[0].status).toBe("running");
 		});
 
-		it("cancelOrphanedRun cancels a claimed job whose holder is gone, and the sweeper leaves it alone", async () => {
+		it("cancelOrphanedRun cancels a claimed job whose holder is gone", async () => {
 			await store.enqueue(job(1));
 			await store.claim("owner-a", 1, at(0));
 
 			expect(await store.cancelOrphanedRun("inv-1")).toBe(true);
-			expect(delegate.rows[0].status).toBe("cancelled");
-
-			// The whole point: reclaimStale selects `status: "running"`, so a row left
-			// running would be returned to `pending` and rerun after a user cancel.
-			expect(await store.reclaimStale(1_000, at(60_000))).toEqual([]);
 			expect(delegate.rows[0].status).toBe("cancelled");
 		});
 
@@ -375,58 +235,47 @@ describe("PrismaJobStore", () => {
 			expect(delegate.rows[0].status).toBe("pending");
 		});
 
-		it("retryLater fails the job when the attempt budget is spent", async () => {
-			const id = await store.enqueue(job(1, { maxAttempts: 1 }));
-			const [claimed] = await store.claim("owner-a", 1);
-
-			expect(
-				await store.retryLater(id, claimed.claimToken, 1_000, "boom"),
-			).toBe(false);
-			expect(delegate.rows[0].status).toBe("failed");
-		});
-
 		it("complete records the terminal status and releases the claim", async () => {
 			const id = await store.enqueue(job(1));
-			const [claimed] = await store.claim("owner-a", 1);
+			await store.claim("owner-a", 1);
 
-			expect(await store.complete(id, claimed.claimToken, "succeeded")).toBe(
-				true,
-			);
+			expect(await store.complete(id, "succeeded")).toBe(true);
 
 			expect(delegate.rows[0].status).toBe("succeeded");
 			expect(delegate.rows[0].claimedBy).toBeNull();
 		});
+
+		it("complete refuses a job that is not running", async () => {
+			const id = await store.enqueue(job(1));
+
+			expect(await store.complete(id, "succeeded")).toBe(false);
+			expect(delegate.rows[0].status).toBe("pending");
+		});
 	});
 
-	describe("the owner guard on terminal writes", () => {
-		it("refuses a terminal write from a holder whose claim was reclaimed", async () => {
-			const id = await store.enqueue(job(1));
-			const [first] = await store.claim("owner-a", 1, at(0));
-			await store.reclaimStale(30_000, at(120_000));
-			// The rerun is now owned by B.
-			const [second] = await store.claim("owner-b", 1, at(200_000));
+	describe("failRunning", () => {
+		it("fails every running row with the given reason and returns their investigation ids", async () => {
+			await store.enqueue(job(1));
+			await store.enqueue(job(2));
+			await store.enqueue(job(3));
+			await store.claim("owner-a", 2); // job-1 and job-2 go running; job-3 stays pending
 
-			// A finishes late and tries to settle the job it no longer holds.
-			expect(await store.complete(id, first.claimToken, "succeeded")).toBe(
-				false,
-			);
+			const failed = await store.failRunning("API restarted while the run was in flight");
 
-			// B's run is untouched — no double writer on one investigation.
-			expect(delegate.rows[0].status).toBe("running");
-			expect(delegate.rows[0].claimedBy).toBe(second.claimToken);
+			expect(failed.sort()).toEqual(["inv-1", "inv-2"]);
+			expect(delegate.rows[0].status).toBe("failed");
+			expect(delegate.rows[1].status).toBe("failed");
+			expect(delegate.rows[0].claimedBy).toBeNull();
+			expect(String(delegate.rows[0].lastError)).toContain("restarted");
+			// The still-pending job is untouched.
+			expect(delegate.rows[2].status).toBe("pending");
 		});
 
-		it("refuses a retry from a holder whose claim was reclaimed", async () => {
-			const id = await store.enqueue(job(1, { maxAttempts: 5 }));
-			const [first] = await store.claim("owner-a", 1, at(0));
-			await store.reclaimStale(30_000, at(120_000));
-			const [second] = await store.claim("owner-b", 1, at(200_000));
+		it("returns an empty array when nothing is running", async () => {
+			await store.enqueue(job(1));
 
-			expect(
-				await store.retryLater(id, first.claimToken, 1_000, "late failure"),
-			).toBe(false);
-			expect(delegate.rows[0].status).toBe("running");
-			expect(delegate.rows[0].claimedBy).toBe(second.claimToken);
+			expect(await store.failRunning("reason")).toEqual([]);
+			expect(delegate.rows[0].status).toBe("pending");
 		});
 	});
 });

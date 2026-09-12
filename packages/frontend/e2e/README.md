@@ -585,8 +585,8 @@ behave the same by unit-testing either one.
 2. **N>1 fan-out through the app.** The storm spec's assertion from §3: N alerts in, one incident
    out, one investigation, one report — observed through the UI, which is the surface a user has.
 3. **Per-alert cwd parity, asserted observably.** This is the subtle half and the one most likely to
-   be waved through. `pl listen` resolves a working directory per alert; the worker uses one fixed
-   cwd per process. The evidence is a storm containing alerts that name *different services*,
+   be waved through. `pl listen` resolves a working directory per alert; the API's investigation
+   run uses one fixed cwd per run. The evidence is a storm containing alerts that name *different services*,
    producing agent executions with *distinct* cwd values — read through the API or the
    investigation's agents tab, not by inspecting the database. If the app cannot yet do this, that
    is the gate correctly holding the deletion, and the spec should be written first and land
