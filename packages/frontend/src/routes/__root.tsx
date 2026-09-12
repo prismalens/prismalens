@@ -7,6 +7,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import {
 	createRootRouteWithContext,
+	type ErrorComponentProps,
 	HeadContent,
 	Link,
 	Outlet,
@@ -17,6 +18,7 @@ import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, THEME_COOKIE } from "@/lib/theme";
 import { queryClient, type RouterContext } from "@/router";
@@ -105,7 +107,7 @@ function NotFound() {
 	);
 }
 
-function RootError({ error }: { error: Error }) {
+function RootError({ error }: ErrorComponentProps) {
 	const isConnectionError = error instanceof ConnectionError;
 
 	if (isConnectionError) {
@@ -143,7 +145,7 @@ function RootError({ error }: { error: Error }) {
 					<h1 className="text-2xl font-bold text-foreground">
 						Something went wrong
 					</h1>
-					<p className="text-muted-foreground">{error.message}</p>
+					<p className="text-muted-foreground">{getErrorMessage(error)}</p>
 					<Button onClick={() => window.location.reload()}>Try again</Button>
 				</div>
 				<Scripts />
