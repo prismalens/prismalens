@@ -8,10 +8,8 @@
  * Used by the frontend to:
  * - Sign in/out users
  * - Access session state
- * - Manage organization invitations
  */
 
-import { adminClient, organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 /**
@@ -41,12 +39,6 @@ export function createPrismaLensAuthClient(
 ) {
 	return createAuthClient({
 		baseURL,
-		plugins: [
-			// Organization client for invitation management
-			organizationClient(),
-			// Admin client for user management
-			adminClient(),
-		],
 	});
 }
 
@@ -64,12 +56,4 @@ export const authClient = createPrismaLensAuthClient();
 /**
  * Destructured exports for convenience
  */
-export const {
-	signIn,
-	signUp,
-	signOut,
-	useSession,
-	getSession,
-	organization,
-	admin,
-} = authClient;
+export const { signIn, signUp, signOut, useSession, getSession } = authClient;

@@ -27,7 +27,7 @@ export function LLMWarningBanner({
 		: null;
 	const remedy =
 		reason ??
-		"Configure an AI provider to enable automated incident investigation and recommendations.";
+		"Install a coding agent to enable automated incident investigation and recommendations.";
 	const message = [context, remedy].filter(Boolean).join(" ");
 
 	return (
@@ -40,7 +40,7 @@ export function LLMWarningBanner({
 		>
 			<AlertTriangle className="h-4 w-4 text-amber-600" />
 			<AlertTitle className="text-amber-900 dark:text-amber-200">
-				AI Investigations Unavailable
+				Investigations Unavailable
 			</AlertTitle>
 			<AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
 				<span
@@ -50,9 +50,9 @@ export function LLMWarningBanner({
 					{message}
 				</span>
 				<Button variant="outline" size="sm" asChild className="w-fit">
-					<Link to="/settings" search={{ tab: "ai" }}>
+					<Link to="/settings" search={{ tab: "harness" }}>
 						<Settings className="h-4 w-4 mr-2" />
-						Configure AI
+						Configure agent
 					</Link>
 				</Button>
 			</AlertDescription>

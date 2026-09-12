@@ -1040,9 +1040,7 @@ export class IntegrationsService implements OnModuleInit {
 						repositories: {
 							include: { services: { include: { service: true } } },
 						},
-						deployments: { include: { service: true } },
 						serviceMappings: { include: { service: true } },
-						_count: { select: { serviceSuggestions: true } },
 					},
 				},
 			},
@@ -1060,9 +1058,7 @@ export class IntegrationsService implements OnModuleInit {
 				repositories: {
 					include: { services: { include: { service: true } } },
 				},
-				deployments: { include: { service: true } },
 				serviceMappings: { include: { service: true } },
-				_count: { select: { serviceSuggestions: true } },
 			},
 		});
 
@@ -1080,28 +1076,17 @@ export class IntegrationsService implements OnModuleInit {
 				fullName: string;
 				services: Array<{ service: { id: string; name: string } }>;
 			}>;
-			deployments: Array<{
-				id: string;
-				name: string;
-				service?: { id: string; name: string } | null;
-			}>;
 			serviceMappings: Array<{
 				service: { id: string; name: string };
 			}>;
-			_count: { serviceSuggestions: number };
 		}>,
 	) {
 		const repos: Array<{ id: string; fullName: string }> = [];
-		const deploys: Array<{ id: string; name: string }> = [];
-		type ImpactType =
-			| "repo_link_lost"
-			| "deployment_link_lost"
-			| "integration_override_lost";
+		type ImpactType = "repo_link_lost" | "integration_override_lost";
 		const affectedMap = new Map<
 			string,
 			{ id: string; name: string; impact: ImpactType }
 		>();
-		let suggestionsCount = 0;
 
 		for (const conn of connections) {
 			for (const repo of conn.repositories) {
@@ -1117,20 +1102,6 @@ export class IntegrationsService implements OnModuleInit {
 				}
 			}
 
-			for (const dep of conn.deployments) {
-				deploys.push({ id: dep.id, name: dep.name });
-				if (
-					dep.service &&
-					!affectedMap.has(`${dep.service.id}:deployment_link_lost`)
-				) {
-					affectedMap.set(`${dep.service.id}:deployment_link_lost`, {
-						id: dep.service.id,
-						name: dep.service.name,
-						impact: "deployment_link_lost",
-					});
-				}
-			}
-
 			for (const sm of conn.serviceMappings) {
 				if (!affectedMap.has(`${sm.service.id}:integration_override_lost`)) {
 					affectedMap.set(`${sm.service.id}:integration_override_lost`, {
@@ -1140,8 +1111,6 @@ export class IntegrationsService implements OnModuleInit {
 					});
 				}
 			}
-
-			suggestionsCount += conn._count.serviceSuggestions;
 		}
 
 		return {
@@ -1150,9 +1119,7 @@ export class IntegrationsService implements OnModuleInit {
 				label: c.integration?.label ?? String(c.id).slice(0, 8),
 			})),
 			repositories: repos,
-			deployments: deploys,
 			affectedServices: Array.from(affectedMap.values()),
-			suggestionsCount,
 		};
 	}
 }

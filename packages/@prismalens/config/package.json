@@ -12,25 +12,9 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./credentials": {
-			"types": "./dist/credentials.d.ts",
-			"import": "./dist/credentials.js"
-		},
-		"./auth": {
-			"types": "./dist/auth-store.d.ts",
-			"import": "./dist/auth-store.js"
-		},
-		"./llm": {
-			"types": "./dist/llm.d.ts",
-			"import": "./dist/llm.js"
-		},
 		"./harness": {
 			"types": "./dist/harness.d.ts",
 			"import": "./dist/harness.js"
-		},
-		"./harness-auth": {
-			"types": "./dist/harness-auth.d.ts",
-			"import": "./dist/harness-auth.js"
 		},
 		"./harness-selection": {
 			"types": "./dist/harness-selection.d.ts",
@@ -47,10 +31,6 @@
 		"./investigation": {
 			"types": "./dist/investigation.d.ts",
 			"import": "./dist/investigation.js"
-		},
-		"./model": {
-			"types": "./dist/model.d.ts",
-			"import": "./dist/model.js"
 		}
 	},
 	"scripts": {

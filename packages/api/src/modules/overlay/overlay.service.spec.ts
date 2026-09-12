@@ -27,7 +27,7 @@ const REPORT: InvestigationReport = {
 /**
  * A prisma double covering exactly the model methods OverlayService touches.
  * Defaults describe one incident (`inc-1`, service `payments-api`) whose report
- * names a real deployment and that has one strongly-similar past incident.
+ * names a real change event and that has one strongly-similar past incident.
  */
 function makeMockPrisma() {
 	return {
@@ -64,22 +64,18 @@ function makeMockPrisma() {
 					{ dependentId: "svc-pay", dependencyId: "svc-ldg" },
 				]),
 		},
-		deployment: {
+		changeEvent: {
 			findMany: vi.fn().mockResolvedValue([
 				{
-					id: "dep-1",
-					name: "payments-api",
-					externalId: "abc123",
-					branch: "main",
-					metadata: null,
-					lastDeployedAt: new Date("2026-07-05T10:00:00Z"),
-					createdAt: new Date("2026-07-05T10:00:00Z"),
+					id: "chg-1",
+					type: "deploy",
+					description: "payments-api deploy abc123",
+					source: "github",
+					metadata: JSON.stringify({ sha: "abc123" }),
+					timestamp: new Date("2026-07-05T10:00:00Z"),
 					serviceId: "svc-pay",
 				},
 			]),
-		},
-		changeEvent: {
-			findMany: vi.fn().mockResolvedValue([]),
 		},
 		incident: {
 			findMany: vi.fn().mockResolvedValue([
@@ -134,8 +130,8 @@ describe("OverlayService", () => {
 			expect(overlay).not.toBeNull();
 			expect(overlay?.matchedChanges).toHaveLength(1);
 			expect(overlay?.matchedChanges[0]).toMatchObject({
-				id: "dep-1",
-				kind: "deployment",
+				id: "chg-1",
+				kind: "change_event",
 				hypothesisIndex: 0,
 			});
 

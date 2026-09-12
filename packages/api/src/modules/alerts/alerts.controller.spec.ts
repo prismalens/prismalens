@@ -3,9 +3,9 @@
 
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ORPCError } from "@orpc/nest";
-import { CorrelationService } from "../correlation/correlation.service.js";
 import { AlertsController } from "./alerts.controller.js";
 import { AlertsService } from "./alerts.service.js";
+import { IncidentCorrelationService } from "./incident-correlation.service.js";
 
 const mockAlertsService = {
 	create: vi.fn(),
@@ -19,9 +19,9 @@ const mockAlertsService = {
 	delete: vi.fn(),
 };
 
-const mockCorrelationService = {
+const mockIncidentCorrelationService = {
 	correlateAlert: vi.fn(),
-	findSuppressingRule: vi.fn(),
+	resolveIncidentIfNoFiringAlerts: vi.fn(),
 };
 
 const now = new Date("2026-08-01T00:00:00.000Z");
@@ -64,7 +64,7 @@ describe("AlertsController", () => {
 			controllers: [AlertsController],
 			providers: [
 				{ provide: AlertsService, useValue: mockAlertsService },
-				{ provide: CorrelationService, useValue: mockCorrelationService },
+				{ provide: IncidentCorrelationService, useValue: mockIncidentCorrelationService },
 			],
 		}).compile();
 
@@ -83,62 +83,25 @@ describe("AlertsController", () => {
 		);
 	}
 
-	describe("correlate — the un-suppression path (#312, ADR-0028 §4)", () => {
-		it("should refuse with CONFLICT and name the rule when a suppress rule still blocks the alert", async () => {
-			const alert = alertRow();
-			mockAlertsService.findById.mockResolvedValue(alert);
-			mockCorrelationService.correlateAlert.mockResolvedValue({
-				matched: false,
-				suppressed: true,
-				reason: "Suppressed by rule: Info Suppress Rule",
-				ruleId: "rule-1",
-				ruleName: "Info Suppress Rule",
-				isNewIncident: false,
+	describe("correlate (#608, C5 on #337: rule table and suppression are gone)", () => {
+		it("short-circuits when the alert is already correlated: no IncidentCorrelationService call", async () => {
+			const alert = alertRow({
+				incidentId: "00000000-0000-0000-0000-0000000000b1",
+				incident: { id: "00000000-0000-0000-0000-0000000000b1", number: 7 },
 			});
+			mockAlertsService.findById.mockResolvedValue(alert);
 
 			const handlers = getHandlers();
+			const result = await handlers.correlate({ input: { id: alert.id } } as any);
 
-			await expect(
-				handlers.correlate({ input: { id: alert.id } } as any),
-			).rejects.toThrow(ORPCError);
-
-			const error = await handlers
-				.correlate({ input: { id: alert.id } } as any)
-				.catch((e: ORPCError<string, unknown>) => e);
-
-			expect(error).toBeInstanceOf(ORPCError);
-			expect(error.code).toBe("CONFLICT");
-			expect(error.message).toContain("Info Suppress Rule");
-			// The message must tell the operator what actually unblocks this.
-			expect(error.message).toContain("PATCH /correlation/rules/rule-1");
-			expect(error.data).toEqual({
-				alertId: alert.id,
-				ruleId: "rule-1",
-				ruleName: "Info Suppress Rule",
-			});
+			expect(result.incidentId).toBe("00000000-0000-0000-0000-0000000000b1");
+			expect(result.incidentNumber).toBe(7);
+			expect(result.reason).toBe("Already correlated");
+			expect(result.isNewIncident).toBe(false);
+			expect(mockIncidentCorrelationService.correlateAlert).not.toHaveBeenCalled();
 		});
 
-		it("should still refuse when a suppressed result carries no rule attribution", async () => {
-			// Guards the invariant rather than the happy path: falling through to the
-			// 200-with-no-incident response would restore the dead end.
-			const alert = alertRow();
-			mockAlertsService.findById.mockResolvedValue(alert);
-			mockCorrelationService.correlateAlert.mockResolvedValue({
-				matched: false,
-				suppressed: true,
-				isNewIncident: false,
-			});
-
-			const handlers = getHandlers();
-			const error = await handlers
-				.correlate({ input: { id: alert.id } } as any)
-				.catch((e: ORPCError<string, unknown>) => e);
-
-			expect(error).toBeInstanceOf(ORPCError);
-			expect(error.code).toBe("CONFLICT");
-		});
-
-		it("should correlate normally once no rule suppresses the alert any more", async () => {
+		it("delegates to IncidentCorrelationService.correlateAlert when not yet correlated", async () => {
 			const alert = alertRow();
 			const correlated = alertRow({
 				status: "correlated",
@@ -147,8 +110,7 @@ describe("AlertsController", () => {
 			mockAlertsService.findById
 				.mockResolvedValueOnce(alert)
 				.mockResolvedValueOnce(correlated);
-			mockCorrelationService.correlateAlert.mockResolvedValue({
-				matched: true,
+			mockIncidentCorrelationService.correlateAlert.mockResolvedValue({
 				incidentId: "00000000-0000-0000-0000-0000000000b1",
 				incidentNumber: 7,
 				reason: "Created new incident",
@@ -160,51 +122,32 @@ describe("AlertsController", () => {
 				input: { id: alert.id },
 			} as any);
 
+			expect(mockIncidentCorrelationService.correlateAlert).toHaveBeenCalledWith(alert);
 			expect(result.incidentId).toBe("00000000-0000-0000-0000-0000000000b1");
 			expect(result.incidentNumber).toBe(7);
 			expect(result.isNewIncident).toBe(true);
 		});
+
+		it("throws NOT_FOUND for an unknown alert", async () => {
+			mockAlertsService.findById.mockResolvedValue(null);
+
+			const handlers = getHandlers();
+			await expect(
+				handlers.correlate({ input: { id: "missing" } } as any),
+			).rejects.toThrow(ORPCError);
+			expect(mockIncidentCorrelationService.correlateAlert).not.toHaveBeenCalled();
+		});
 	});
 
-	describe("get — surfacing 'suppressed by rule X'", () => {
-		it("should name the rule holding a suppressed alert down", async () => {
-			const alert = alertRow();
-			mockAlertsService.findById.mockResolvedValue(alert);
-			mockCorrelationService.findSuppressingRule.mockResolvedValue({
-				id: "rule-1",
-				name: "Info Suppress Rule",
-			});
-
-			const handlers = getHandlers();
-			const result = await handlers.get({ input: { id: alert.id } } as any);
-
-			expect(result.suppressedBy).toEqual({
-				ruleId: "rule-1",
-				ruleName: "Info Suppress Rule",
-			});
-		});
-
-		it("should report no blocker once the suppressing rule is disabled", async () => {
-			const alert = alertRow();
-			mockAlertsService.findById.mockResolvedValue(alert);
-			// Derived from the live rule set — the disabled rule no longer matches.
-			mockCorrelationService.findSuppressingRule.mockResolvedValue(null);
-
-			const handlers = getHandlers();
-			const result = await handlers.get({ input: { id: alert.id } } as any);
-
-			expect(result.suppressedBy).toBeNull();
-		});
-
-		it("should not consult the rule set for an alert that is not suppressed", async () => {
-			const alert = alertRow({ status: "triggered" });
+	describe("get — suppressedBy (#608: no rule table survives the correlation module deferral)", () => {
+		it("always reports null — nothing can suppress an alert any more", async () => {
+			const alert = alertRow({ status: "suppressed" });
 			mockAlertsService.findById.mockResolvedValue(alert);
 
 			const handlers = getHandlers();
 			const result = await handlers.get({ input: { id: alert.id } } as any);
 
 			expect(result.suppressedBy).toBeNull();
-			expect(mockCorrelationService.findSuppressingRule).not.toHaveBeenCalled();
 		});
 	});
 

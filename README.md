@@ -34,19 +34,12 @@ pl up                 # http://localhost:3001
 pl up --port 8080     # or wherever you like
 ```
 
-Open the URL and a four-step setup wizard walks you the rest of the way:
-
-| Step | What it asks for | Skippable? |
-|---|---|---|
-| 1. Account | Owner email and password | No — it is the only thing that gates the app |
-| 2. AI provider | A provider and model, plus an API key if that provider needs one. The key is encrypted (AES-256-GCM) into this instance's database — never written to a file. A signed-in Claude Code session on the machine is offered here as a keyless alternative | Yes |
-| 3. Code location | An absolute path to a git checkout on this machine, mapped to a service. This is the directory investigations actually read | Yes |
-| 4. First incident | A hand-off into authoring your first incident, or connecting a monitoring tool | Yes |
-
-Each step's "done" is derived on the server from durable state — a user row, a stored
-credential, a service with a checkout path, an incident row — so a reload, a
-sign-in, or coming back tomorrow lands you on the first thing that is genuinely
-still missing.
+Open the URL and setup asks for one thing: the owner account. Everything else is
+configured after sign-in. A coding agent must be installed on the machine for
+investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
+PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
+is the verified default). PrismaLens never bundles, installs or authenticates a
+harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
@@ -59,14 +52,15 @@ A fresh install has nothing pointed at it, so no incidents arrive on their own.
 You do not need an Alertmanager to see the product work — author an incident by
 hand:
 
-1. **Settings → AI Provider**: set a provider and key. Investigations are
-   disabled until you do, and the buttons say so.
+1. **Install a coding agent** (OpenCode by default) and run `pl doctor`. The
+   Investigate button says why when nothing is on PATH.
 2. **Incidents → Create Incident**: a title is the only required field. Pick a
-   **Service** if you have one — that is what decides which code the
-   investigation reads.
+   **Service** with a repository linked — PrismaLens clones that repo under
+   `~/.prismalens/repos` and the investigation runs inside the clone, never in
+   your own checkout.
 3. You land on the new incident (`INC-1`, **Alerts (0)**).
-4. **Investigation → Start Investigation** runs the real investigation path on
-   it, then shows the report.
+4. **Investigate** runs one agent session in the clone and streams it on the
+   incident screen; the report renders beneath the ledger when it ends.
 
 That is the same `incidents.create` and `incidents.investigate` path the
 correlation engine uses, so nothing about the run is a mock.
@@ -79,17 +73,11 @@ The same binary is a standalone investigator that needs nothing running:
 npx prismalens doctor
 ```
 
-`doctor` checks that a harness binary and a model credential are in place,
-then investigate:
+`doctor` checks that a harness binary is on PATH, then `pl up` boots the app
+(API and dashboard on one port, SQLite, no external services):
 
 ```bash
-pl investigate --repo . --query "checkout latency spike after 14:00 UTC"
-```
-
-Pipe in a real alert instead of describing one:
-
-```bash
-cat alert.json | pl investigate --repo ./my-service
+pl up
 ```
 
 Both `prismalens` and the shorter `pl` alias point at the same binary. Full
@@ -106,27 +94,20 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 
 ## How it works
 
-- **Two-tier engine.** A thin, deterministic PrismaLens supervisor (Tier-1)
-  seeds an investigation from a firing alert and rents an agent harness
-  (Tier-2) to do the investigative legwork, then reduces its event stream into the
-  final report.
-- **Bring your own harness.** By default, `claude-code` is used (driven over the
-  Claude Agent SDK). `deepagents` (driven over ACP) is available as a long-tail
-  harness — switch to it with `--harness deepagents` or `agent.default: deepagents`
-  in `prismalens.config.yaml`. `codex` is stubbed. In the app, Settings → AI
-  Provider → Investigation agent picks the harness and shows which credential
-  each one has on this machine.
-- **Bring your own model key.** Tier-1 and the `deepagents` harness talk to
-  any OpenAI-compatible provider (Ollama, OpenAI, Groq, ...); `claude-code`
-  uses your signed-in Claude Code session or an Anthropic key. Keys resolve
-  env (`PROVIDER_API_KEY`) → `_FILE` (`PROVIDER_API_KEY_FILE`) → stored, where
-  stored is opt-in local storage via `pl auth login` (`auth.json` in the app
-  data dir, mode `0600`). With no Tier-1 key at all, investigations still run and
-  the report is the harness's own output, passed through unsynthesized — a
-  supported outcome, labelled as such in the app.
-- **Tool guardrails, not read-only.** Edit tools are removed by default as a
-  guardrail — `Bash` can still write. The real boundary is an enforced
-  `--sandbox`, which confines writes and allowlists egress.
+- **One run, no model call.** An investigation is one coding-agent session in a
+  clone of the service's repo, driven over the Agent Client Protocol (ACP).
+  PrismaLens assembles the prompt, answers the agent's permission requests,
+  records the stream and validates the report. It never calls a model itself.
+- **Bring your own harness.** Any ACP agent on PATH is a registry row:
+  `opencode` (verified), `claude-code`, `codex`, `gemini`, `deepagents`. A row
+  is auto-selected only after its unattended admission run is green in CI; the
+  rest need `PRISMALENS_HARNESS=<id>`. Settings → Harness shows what is
+  installed. The harness's own login or API key is its business; PrismaLens
+  never reads or stores one.
+- **Runtime gate, not read-only.** Every ACP permission request is answered in
+  PrismaLens code: edit, delete and move tools and mutating shell commands are
+  refused. It is a guardrail; `Bash` walks through text rules. The boundary is
+  an enforced `--sandbox`, which confines writes and allowlists egress.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
   with supporting/contradicting evidence per hypothesis — never a numeric
   confidence number.
@@ -139,7 +120,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | Package | What it is |
 | --- | --- |
 | `packages/cli` | The `prismalens`/`pl` binary — the released engine CLI. |
-| `packages/@prismalens/engine` | The two-tier investigation engine (supervisor, harness adapters, conductor) the CLI drives. |
+| `packages/@prismalens/engine` | The investigation run: ACP session, permission policy, stream adapter, report validation, sandbox. |
 | `packages/@prismalens/contracts` | Shared Zod schemas and canonical event/report types. |
 | `packages/@prismalens/config` | Shared config and environment-variable resolution. |
 | `packages/@prismalens/auth` | Auth configuration and client (Better Auth), for the in-development server. |

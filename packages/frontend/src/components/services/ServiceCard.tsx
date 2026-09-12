@@ -36,7 +36,6 @@ const tierLabels: Record<string, string> = {
 export function ServiceCard({ service }: ServiceCardProps) {
 	const typeIcon = serviceTypeIcons[service.type] || serviceTypeIcons.service;
 	const repos = service.repositories ?? [];
-	const deployments = service.deployments ?? [];
 
 	return (
 		<Card className="hover:border-primary/50 transition-colors">
@@ -79,19 +78,11 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				)}
 
 				{/* Sources */}
-				{(repos.length > 0 || deployments.length > 0) && (
+				{repos.length > 0 && (
 					<div className="flex flex-wrap gap-1">
 						{repos.map((sr) => (
 							<Badge key={sr.id} variant="secondary" className="text-xs">
 								🔗 {sr.repository.fullName}
-							</Badge>
-						))}
-						{deployments.map((dep) => (
-							<Badge key={dep.id} variant="secondary" className="text-xs">
-								🚀 {dep.name}
-								{dep.status && (
-									<span className="ml-1 opacity-70">({dep.status})</span>
-								)}
 							</Badge>
 						))}
 					</div>

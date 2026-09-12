@@ -43,33 +43,6 @@ export const deploymentSchema = z.object({
 			"Secret for Better Auth session signing. " +
 				"Auto-generated and persisted to ~/.prismalens/ if not set.",
 		),
-
-	// SMTP Configuration (Optional - for email invitations)
-	PRISMALENS_SMTP_HOST: z
-		.string()
-		.optional()
-		.describe("SMTP server hostname for sending invitation emails"),
-	PRISMALENS_SMTP_PORT: z.coerce
-		.number()
-		.default(587)
-		.describe("SMTP server port (default: 587)"),
-	PRISMALENS_SMTP_USER: z
-		.string()
-		.optional()
-		.describe("SMTP authentication username"),
-	PRISMALENS_SMTP_PASS: z
-		.string()
-		.optional()
-		.describe("SMTP authentication password"),
-	PRISMALENS_SMTP_FROM: z
-		.string()
-		.email()
-		.optional()
-		.describe("Email address to send invitations from"),
-	PRISMALENS_SMTP_SECURE: z
-		.preprocess((val) => val === "true" || val === true, z.boolean())
-		.default(true)
-		.describe("Use TLS for SMTP connection (default: true)"),
 });
 
 export type DeploymentConfig = z.infer<typeof deploymentSchema>;

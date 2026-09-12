@@ -12,9 +12,10 @@
  * This component asks `setup.getStatus` what is genuinely incomplete and names
  * the first one, so the empty state always points at a door.
  *
- * `/setup` is the link target for wizard-shaped work because the wizard's own
- * resume logic already lands on the first incomplete step — no query
- * parameter can go stale here.
+ * The wizard is account-only now (#337/#609): `aiProvider` means a harness is
+ * on PATH and `codeLocation` means a service has a repository linked, neither
+ * of which is a wizard step any more, so both hints point at the screen that
+ * actually resolves them instead of `/setup`.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -50,38 +51,23 @@ export function SetupNextStepHint({
 
 	if (!steps.aiProvider) {
 		hint = {
-			message:
-				"No AI provider is configured, so investigations cannot run yet.",
+			message: "No coding agent is on PATH, so investigations cannot run yet.",
 			actions: (
-				<>
-					<Button size="sm" asChild>
-						<Link to="/setup" search={{ redirect: undefined }}>
-							Finish setup
-						</Link>
-					</Button>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/settings" search={{ tab: "ai" }}>
-							AI provider settings
-						</Link>
-					</Button>
-				</>
+				<Button size="sm" asChild>
+					<Link to="/settings" search={{ tab: "harness" }}>
+						Investigation agent settings
+					</Link>
+				</Button>
 			),
 		};
 	} else if (!steps.codeLocation) {
 		hint = {
 			message:
-				"No service points at a local checkout, so investigations would read the wrong code.",
+				"No service has a repository linked, so investigations would read the wrong code.",
 			actions: (
-				<>
-					<Button size="sm" asChild>
-						<Link to="/setup" search={{ redirect: undefined }}>
-							Map a checkout
-						</Link>
-					</Button>
-					<Button variant="outline" size="sm" asChild>
-						<Link to="/services">Services</Link>
-					</Button>
-				</>
+				<Button size="sm" asChild>
+					<Link to="/services">Services</Link>
+				</Button>
 			),
 		};
 	} else if (!steps.firstIncident) {

@@ -2,39 +2,28 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * `prismalens doctor` — preflight checklist for the two-tier engine (ADR-0008/0010).
+ * `prismalens doctor` — preflight checklist for `pl up` (ADR-0008/0010, #337/#610).
  *
- * Salvaged in spirit from the retired pl orchestrator's doctor, but pared down to the
- * checks that actually gate a run:
- *  - HARD: the configured harness binary is on PATH
- *      (deepagents -> "deepagents", claude-code -> "claude", codex -> "codex")
- *  - HARD: an LLM credential is present
- *      (any provider credential env var from LLM_PROVIDERS, or, for claude-code,
- *       a signed-in ~/.claude/.credentials.json)
- *  - SOFT: workspace.dir is writable
- *
- * Prints pass/fail per check; exits non-zero iff a HARD check fails. No tinyexec /
- * check-tool helper here — availability is a dependency-free PATH scan.
+ * No config loader, no LLM credential check, no listen-token check: prismalens
+ * makes no model calls and has no webhook listener command any more. What is
+ * left is what actually gates a boot:
+ *  - Node version
+ *  - the app data directory (created by `pl up` itself)
+ *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4)
+ *  - the port/host `pl up` will bind, informational only
  */
-import { constants as fsConstants } from "node:fs";
-import { access, mkdir } from "node:fs/promises";
-import { resolveCredentials } from "@prismalens/config/credentials";
-import { HARNESS_BINARY } from "@prismalens/config/harness";
-import { isOnPath, resolveHarnessAuth } from "@prismalens/config/harness-auth";
+import { ensureAppDataDir, getAppDataDir } from "@prismalens/config";
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
-	AUTO_SELECT_PROVIDER_IDS,
-	LLM_PROVIDERS,
-	type LLMProviderId,
-} from "@prismalens/config/llm";
-import { pingModel } from "@prismalens/config/model";
+	isOnPath,
+	resolveHarnessSelection,
+} from "@prismalens/config/harness-selection";
 import { defineCommand } from "citty";
 import consola from "consola";
-import { loadConfig } from "../config/loader.js";
-import type { PlConfig } from "../config/schema.js";
-import { resolveBaseDir } from "../core/session.js";
 import { assertKnownFlags } from "./flags.js";
 
-type Harness = PlConfig["agent"]["default"];
+const MIN_NODE_MAJOR = 22;
+const MIN_NODE_MINOR = 13;
 
 interface Check {
 	name: string;
@@ -43,134 +32,105 @@ interface Check {
 	hard: boolean;
 }
 
-function checkHarness(harness: Harness): Check {
-	const binary = HARNESS_BINARY[harness];
-	const pass = isOnPath(binary);
-	const sessionVerdict =
-		harness === "claude-code"
-			? resolveHarnessAuth("claude-code", { apiKeyPresent: false })
-			: null;
-	const sessionSuffix =
-		sessionVerdict?.usable &&
-		sessionVerdict.route === "cli-session" &&
-		sessionVerdict.verified
-			? ", verified session"
-			: "";
+function checkNodeVersion(): Check {
+	const [major, minor] = process.versions.node.split(".").map(Number);
+	const pass =
+		major > MIN_NODE_MAJOR ||
+		(major === MIN_NODE_MAJOR && minor >= MIN_NODE_MINOR);
 	return {
-		name: "Harness binary",
+		name: "Node version",
 		pass,
 		detail: pass
-			? `${binary} found on PATH (harness: ${harness}${sessionSuffix})`
-			: `${binary} not found on PATH — install the "${harness}" harness`,
+			? `${process.versions.node} (>= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} required)`
+			: `${process.versions.node} — prismalens requires Node >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR}`,
 		hard: true,
 	};
 }
 
-export async function checkCredential(
-	config: PlConfig,
-	noPing: boolean,
-): Promise<Check> {
-	let providerId = config.synth.provider;
-	let creds: ReturnType<typeof resolveCredentials> | undefined;
-
-	if (providerId) {
-		creds = resolveCredentials(providerId, config.synth.base_url);
-	} else {
-		for (const id of AUTO_SELECT_PROVIDER_IDS) {
-			const candidate = resolveCredentials(id, config.synth.base_url);
-			if (candidate.source !== "none") {
-				providerId = id;
-				creds = candidate;
-				break;
-			}
-		}
-		if (!creds) {
-			creds = { providerId: "ollama", source: "none" };
-			providerId = "ollama";
-		}
-	}
-
-	if (creds.source === "none") {
+function checkAppDataDir(): Check {
+	try {
+		const dir = ensureAppDataDir();
 		return {
-			name: "LLM credential",
-			pass: false,
-			detail: "none (reports will be RAW harness pass-through) — not verified",
-			hard: false,
-		};
-	}
-
-	const providerName = LLM_PROVIDERS[providerId as LLMProviderId].name;
-
-	if (noPing) {
-		return {
-			name: "LLM credential",
+			name: "App data dir",
 			pass: true,
-			detail: `${providerName} (source: ${creds.source}) — ping skipped`,
-			hard: false,
+			detail: dir,
+			hard: true,
 		};
-	}
-
-	const ping = await pingModel(
-		providerId as LLMProviderId,
-		config.synth.model,
-		{
-			apiKey: creds.apiKey,
-			baseURL: creds.baseURL,
-		},
-	);
-
-	if (ping.success) {
+	} catch (err) {
 		return {
-			name: "LLM credential",
-			pass: true,
-			detail: `${providerName} (source: ${creds.source}) — ping OK`,
-			hard: false,
-		};
-	} else {
-		return {
-			name: "LLM credential",
+			name: "App data dir",
 			pass: false,
-			detail: `${providerName} (source: ${creds.source}) — ping failed: ${ping.error}`,
+			detail: `${getAppDataDir()} — ${err instanceof Error ? err.message : String(err)}`,
 			hard: true,
 		};
 	}
 }
 
-async function checkWorkspace(config: PlConfig): Promise<Check> {
-	const baseDir = resolveBaseDir(config.workspace.dir);
-	try {
-		await mkdir(baseDir, { recursive: true });
-		await access(baseDir, fsConstants.W_OK);
+/** For every registry entry, is its binary on PATH — the existing PATH scan. */
+export function checkHarnessesOnPath(): Check[] {
+	return (
+		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
+	).map((descriptor) => {
+		const pass = isOnPath(descriptor.binary);
 		return {
-			name: "Workspace",
-			pass: true,
-			detail: `${baseDir} is writable`,
+			name: `Harness: ${descriptor.label}`,
+			pass,
+			detail: pass
+				? `${descriptor.binary} found on PATH`
+				: `${descriptor.binary} not found on PATH`,
 			hard: false,
 		};
-	} catch {
-		return {
-			name: "Workspace",
-			pass: false,
-			detail: `${baseDir} is not writable — runs cannot persist here`,
-			hard: false,
-		};
-	}
+	});
 }
 
-export function checkListenToken(config: PlConfig): Check {
-	if (config.listen.token) {
+/**
+ * HARD: at least one registry harness must be on PATH. Prismalens never bundles
+ * or installs a harness (#337 C3/C4) — this is the detect-and-report failure.
+ */
+export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
+	const pass = perHarness.some((c) => c.pass);
+	const listing = (
+		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
+	)
+		.map((d) => d.id)
+		.join(", ");
+	return {
+		name: "Harness available",
+		pass,
+		detail: pass
+			? "at least one harness is installed"
+			: `no harness found on PATH — install one of: ${listing}`,
+		hard: true,
+	};
+}
+
+/** Which harness `pl up` would actually pick, per the shared selection gate. */
+function checkAutoSelection(): Check {
+	const envHarness = process.env.PRISMALENS_HARNESS;
+	const selection = resolveHarnessSelection({ envHarness });
+	if (selection.runnable) {
 		return {
-			name: "Listen intake",
+			name: "Auto-selected harness",
 			pass: true,
-			detail: `token configured; \`pl listen\` will serve on port ${config.listen.port}`,
+			detail: `${selection.harness}${selection.auto ? " (auto)" : " (pinned by PRISMALENS_HARNESS)"}${selection.verified ? "" : ", not yet verified"}`,
 			hard: false,
 		};
 	}
 	return {
-		name: "Listen intake",
+		name: "Auto-selected harness",
 		pass: false,
-		detail:
-			"listen.token is unset — `pl listen` will refuse to start (set listen.token in prismalens.config.yaml)",
+		detail: selection.reason,
+		hard: false,
+	};
+}
+
+function checkPortHost(): Check {
+	const port = process.env.PRISMALENS_PORT ?? "3001";
+	const host = process.env.PRISMALENS_HOST ?? "127.0.0.1";
+	return {
+		name: "Port/host",
+		pass: true,
+		detail: `${host}:${port}`,
 		hard: false,
 	};
 }
@@ -178,31 +138,22 @@ export function checkListenToken(config: PlConfig): Check {
 export default defineCommand({
 	meta: {
 		name: "doctor",
-		description:
-			"Preflight check the investigation environment\n\nExamples:\n  $ pl doctor --no-ping",
+		description: "Preflight check the `pl up` environment",
 	},
-	args: {
-		// citty models `--no-ping` as negation of a `ping` boolean — a literal
-		// `noPing` arg would never receive it.
-		ping: {
-			type: "boolean",
-			description: "Live-ping the LLM credential (disable with --no-ping)",
-			default: true,
-		},
-	},
+	args: {},
 	async run({ args, cmd }) {
 		try {
 			assertKnownFlags(args, cmd);
 
-			const config = await loadConfig();
-			const harness = config.agent.default;
-			const noPing = !args.ping;
+			const harnessChecks = checkHarnessesOnPath();
 
 			const checks: Check[] = [
-				checkHarness(harness),
-				await checkCredential(config, noPing),
-				await checkWorkspace(config),
-				checkListenToken(config),
+				checkNodeVersion(),
+				checkAppDataDir(),
+				...harnessChecks,
+				checkAnyHarnessOnPath(harnessChecks),
+				checkAutoSelection(),
+				checkPortHost(),
 			];
 
 			consola.log("");
@@ -217,7 +168,7 @@ export default defineCommand({
 			const hardFailures = checks.filter((c) => c.hard && !c.pass);
 			if (hardFailures.length > 0) {
 				consola.error(
-					`${hardFailures.length} required check(s) failed — fix the above before investigating.`,
+					`${hardFailures.length} required check(s) failed — fix the above before running \`pl up\`.`,
 				);
 				process.exit(1);
 			}

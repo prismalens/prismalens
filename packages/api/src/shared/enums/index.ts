@@ -11,7 +11,6 @@
  */
 import {
 	AlertStatusSchema,
-	CorrelationActionSchema,
 	DependencyCriticalitySchema,
 	DependencyTypeSchema,
 	EffortEstimateSchema,
@@ -61,9 +60,6 @@ export const RecommendationStatus = RecommendationStatusSchema.enum;
 export const TimelineEntryType = TimelineEntryTypeSchema.enum;
 export const TimelineSource = TimelineSourceSchema.enum;
 
-// Correlation
-export const CorrelationAction = CorrelationActionSchema.enum;
-
 // =============================================================================
 // TYPE EXPORTS — derived from the const objects above
 // =============================================================================
@@ -96,5 +92,3 @@ export type TimelineEntryType =
 	(typeof TimelineEntryType)[keyof typeof TimelineEntryType];
 export type TimelineSource =
 	(typeof TimelineSource)[keyof typeof TimelineSource];
-export type CorrelationAction =
-	(typeof CorrelationAction)[keyof typeof CorrelationAction];

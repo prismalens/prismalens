@@ -16,16 +16,15 @@ import {
 	OnModuleInit,
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
-import { getApiKeyEnvVar } from "@prismalens/config/llm";
 import type { InvestigationJobData } from "@prismalens/contracts";
+import { HarnessService } from "../../core/harness/harness.service.js";
+import { RepoCloneService } from "../../core/harness/repo-clone.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
-import { ServicesService } from "../../modules/services/services.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { Dispatcher } from "./dispatcher.js";
@@ -58,21 +57,21 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	private readonly dispatcher: Dispatcher;
 
 	constructor(
-		prisma: PrismaService,
 		@Inject(EVENT_BUS) private readonly bus: EventBus,
 		private readonly streamRelay: StreamRelayService,
 		private readonly investigationsService: InvestigationsService,
 		private readonly incidentsService: IncidentsService,
 		private readonly timelineService: TimelineService,
-		private readonly llmSettingsService: LlmSettingsService,
+		private readonly harnessService: HarnessService,
+		private readonly repoClone: RepoCloneService,
+		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
-		private readonly servicesService: ServicesService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
 		// each model explicitly — `job` must be one of them or this is undefined at
 		// runtime while typechecking clean.
-		this.store = new PrismaJobStore(prisma.job as unknown as JobDelegate);
+		this.store = new PrismaJobStore(this.prisma.job as unknown as JobDelegate);
 
 		const ports: RunPorts = {
 			findInvestigation: async (id) => {
@@ -102,26 +101,67 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
 				await this.timelineService.create(dto);
 			},
-			resolveLlm: async () => {
-				const { provider, model, baseUrl, harness } =
-					await this.llmSettingsService.resolveActiveLlmConfig();
-				const credentials: Record<string, string> = {};
-				if (provider) {
-					const apiKey = this.llmSettingsService.resolveApiKey(provider);
-					const envVar = getApiKeyEnvVar(provider);
-					if (envVar && apiKey) credentials[envVar] = apiKey;
-				}
-				return { provider, model, baseUrl, credentials, harness };
+			resolveHarness: async () => {
+				const [selection, settings] = await Promise.all([
+					this.harnessService.resolveSelection(),
+					this.harnessService.getSettings(),
+				]);
+				return {
+					selection,
+					...(settings.model ? { model: settings.model } : {}),
+				};
 			},
-			integrationCredentials: (connectionIds) =>
-				this.integrationsService.getIntegrationsByConnectionIds(connectionIds),
+			incidentRepos: async (incidentId) => {
+				const incident = await this.prisma.incident.findUnique({
+					where: { id: incidentId },
+					select: {
+						service: {
+							select: {
+								repositories: {
+									orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+									select: {
+										subPath: true,
+										repository: {
+											select: {
+												url: true,
+												defaultBranch: true,
+												connectionId: true,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				});
+				return (incident?.service?.repositories ?? []).map((r) => ({
+					url: r.repository.url,
+					defaultBranch: r.repository.defaultBranch,
+					subPath: r.subPath,
+					connectionId: r.repository.connectionId,
+				}));
+			},
+			repoToken: async (connectionId) => {
+				const [conn] =
+					await this.integrationsService.getIntegrationsByConnectionIds([
+						connectionId,
+					]);
+				const creds = (conn?.credentials ?? {}) as Record<string, unknown>;
+				for (const key of [
+					"token",
+					"accessToken",
+					"access_token",
+					"personalAccessToken",
+				]) {
+					if (typeof creds[key] === "string" && creds[key])
+						return creds[key] as string;
+				}
+				return null;
+			},
+			ensureClone: (target) => this.repoClone.ensureClone(target),
 			getIncident: async (id) => {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;
-			},
-			listServices: async (search) => {
-				const { data } = await this.servicesService.findAll({ search });
-				return data as unknown as Array<Record<string, unknown>>;
 			},
 		};
 

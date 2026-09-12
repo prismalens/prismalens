@@ -11,14 +11,26 @@ import { expect, type Page, test } from "@playwright/test";
  * page. This is the first spec in the suite that drives a *write* path on the
  * incidents surface — `incidents.create` followed by `incidents.investigate`.
  *
- * The AI-provider precondition is set through the API, not the settings UI:
- * it belongs to C6's gate, not to this journey, and setting it up front keeps
- * the spec idempotent under Playwright retries (`activeProvider` is global
- * state that survives a retry against the same database).
+ * The harness precondition is stubbed at the route level, not through the
+ * settings UI: it belongs to C6's gate, not to this journey, and there is no
+ * settings write left to drive it through the API — a runnable harness is
+ * detected from PATH, not configured (#337/#609).
  */
 /** The shared gate's own words when `auto` resolves to nothing (#521). */
 const NO_HARNESS_REASON =
 	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
+
+/**
+ * The Investigation tab's own "start" button, scoped inside
+ * `investigation-empty` — it shares an accessible name ("Investigate") with
+ * the incident-detail header's button, which stays mounted once the tab is
+ * switched, so an unscoped `getByRole` is a strict-mode violation.
+ */
+function tabInvestigateButton(page: Page) {
+	return page
+		.getByTestId("investigation-empty")
+		.getByRole("button", { name: "Investigate", exact: true });
+}
 
 /** Hold the client gate open so a test can drive the server's refusal path. */
 async function serveRunnableSelection(page: Page): Promise<void> {
@@ -31,6 +43,7 @@ async function serveRunnableSelection(page: Page): Promise<void> {
 				selection: {
 					runnable: true,
 					harness: "claude-code",
+					pinned: false,
 					blockedReason: null,
 				},
 			}),
@@ -44,18 +57,8 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	}) => {
 		const title = `Checkout latency spike ${Date.now()}`;
 
-		// 0. Precondition: configure a runnable keyless provider (#520).
-		const configured = await page.request.patch("/api/settings/llm/config", {
-			data: {
-				activeProvider: "custom",
-				providers: {
-					custom: {
-						model: "smoke-test-stub",
-					},
-				},
-			},
-		});
-		expect(configured.ok()).toBeTruthy();
+		// 0. Precondition: the gate reports a runnable harness (#520).
+		await serveRunnableSelection(page);
 
 		// 1. The incidents page offers the authorship affordance.
 		await page.goto("/incidents");
@@ -87,15 +90,18 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// 4. Start the investigation — incidents.investigate must accept an
 		//    incident that has zero alerts.
 		await page.getByRole("tab", { name: "Investigation" }).click();
-		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("start-investigation").click();
+		await tabInvestigateButton(page).click();
 
-		// 5. An investigation exists and the app routed to it.
-		await expect(page).toHaveURL(/\/investigations\/[0-9a-f-]{36}$/, {
-			timeout: 20_000,
-		});
+		// 5. An investigation exists and the app stays on the incident, now
+		//    pointed at it — the investigation tab carries `?investigation=<id>`
+		//    rather than navigating away to a separate /investigations/:id route.
+		await expect(page).toHaveURL(
+			/\/incidents\/[0-9a-f-]{36}\?tab=investigation&investigation=[0-9a-f-]{36}$/,
+			{ timeout: 20_000 },
+		);
 	});
 
 	/**
@@ -111,7 +117,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await serveRunnableSelection(page);
 
 		const refusalReason =
-			"No runnable AI provider: the configured model has no credentials on this host.";
+			"No coding agent found on PATH. Install one: OpenCode: npm i -g opencode-ai.";
 		await page.route("**/api/incidents/*/investigate", async (route) => {
 			await route.fulfill({
 				status: 412,
@@ -121,7 +127,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 					code: "PRECONDITION_FAILED",
 					status: 412,
 					message: refusalReason,
-					data: { failure: "llm-not-configured", reason: refusalReason },
+					data: { failure: "no-harness", reason: refusalReason },
 				}),
 			});
 		});
@@ -142,10 +148,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// The client's own gate is open — this is the surface #531 fixes: a
 		// server refusal the client didn't anticipate must not be a silent no-op.
-		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("start-investigation").click();
+		await tabInvestigateButton(page).click();
 
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
@@ -163,10 +169,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
 		await page.getByRole("tab", { name: "Investigation" }).click();
-		await expect(page.getByTestId("start-investigation")).toBeEnabled({
+		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("start-investigation").click();
+		await tabInvestigateButton(page).click();
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
 		});
@@ -257,20 +263,9 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	 * independent of whatever the other tests have configured — and of whether
 	 * this is a first run or a Playwright retry against the same database.
 	 */
-	test("offers no way to investigate while no AI provider is configured", async ({
+	test("offers no way to investigate while no harness is usable", async ({
 		page,
 	}) => {
-		await page.route("**/api/settings/llm/config", async (route) => {
-			if (route.request().method() === "GET") {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({ activeProvider: null, providers: {} }),
-				});
-				return;
-			}
-			await route.fallback();
-		});
 		await page.route("**/api/settings/harnesses", async (route) => {
 			await route.fulfill({
 				status: 200,
@@ -280,6 +275,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 					selection: {
 						runnable: false,
 						harness: null,
+						pinned: false,
 						blockedReason: NO_HARNESS_REASON,
 					},
 				}),
@@ -297,10 +293,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// Both affordances for the same procedure must agree that it is blocked,
 		// and the gate's own words say why (#521).
-		await expect(page.getByTestId("start-investigation")).toBeDisabled();
+		await expect(tabInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Investigate", exact: true }),
+			page.getByRole("button", { name: "Investigate", exact: true }).first(),
 		).toBeDisabled();
 	});
 

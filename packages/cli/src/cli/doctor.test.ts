@@ -1,52 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it, vi } from "vitest";
-import { PlConfigSchema } from "../config/schema.js";
-import { checkListenToken, checkCredential } from "./doctor.js";
-import { resolveCredentials } from "@prismalens/config/credentials";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { checkAnyHarnessOnPath, checkHarnessesOnPath } from "./doctor.js";
 
-vi.mock("@prismalens/config/credentials", () => ({
-	resolveCredentials: vi.fn(),
-}));
+describe("doctor — harness detection", () => {
+	let tempPathDir: string;
+	let originalPath: string | undefined;
 
-describe("doctor — checkListenToken", () => {
-	it("passes when listen.token is configured", () => {
-		const config = PlConfigSchema.parse({
-			listen: { token: "sometoken" },
-		});
-		const check = checkListenToken(config);
-		expect(check.name).toBe("Listen intake");
-		expect(check.pass).toBe(true);
-		expect(check.hard).toBe(false);
-		expect(check.detail).toContain("token configured");
-		expect(check.detail).toContain(config.listen.port.toString());
+	beforeEach(() => {
+		tempPathDir = join(
+			os.tmpdir(),
+			`pl-doctor-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(tempPathDir, { recursive: true });
+		originalPath = process.env.PATH;
 	});
 
-	it("fails softly when listen.token is unset", () => {
-		const config = PlConfigSchema.parse({});
-		const check = checkListenToken(config);
-		expect(check.name).toBe("Listen intake");
-		expect(check.pass).toBe(false);
-		expect(check.hard).toBe(false); // Explicitly a soft check
-		expect(check.detail).toContain("listen.token is unset");
+	afterEach(() => {
+		rmSync(tempPathDir, { recursive: true, force: true });
+		if (originalPath === undefined) {
+			process.env.PATH = "";
+		} else {
+			process.env.PATH = originalPath;
+		}
 	});
-});
 
-describe("doctor — checkCredential", () => {
-	it("reports source: stored when credential source is stored", async () => {
-		vi.mocked(resolveCredentials).mockReturnValue({
-			source: "stored",
-			apiKey: "test-key",
-			providerId: "openai",
-			baseURL: undefined
-		});
+	it("is a HARD failure, listing every registry harness, when none is on PATH", () => {
+		process.env.PATH = tempPathDir; // empty dir — nothing resolvable
 
-		const config = PlConfigSchema.parse({});
-		const check = await checkCredential(config, true); // noPing = true
-		
-		expect(check.name).toBe("LLM credential");
-		expect(check.pass).toBe(true);
-		expect(check.detail).toContain("source: stored");
+		const perHarness = checkHarnessesOnPath();
+		expect(perHarness.every((check) => !check.pass)).toBe(true);
+
+		const overall = checkAnyHarnessOnPath(perHarness);
+		expect(overall.pass).toBe(false);
+		expect(overall.hard).toBe(true);
+		for (const id of Object.keys(HARNESS_REGISTRY)) {
+			expect(overall.detail).toContain(id);
+		}
+	});
+
+	it("passes when a registry harness binary is on PATH", () => {
+		const descriptor = Object.values(HARNESS_REGISTRY)[0];
+		const binPath = join(tempPathDir, descriptor.binary);
+		writeFileSync(binPath, "#!/bin/sh\nexit 0\n");
+		chmodSync(binPath, 0o755);
+		process.env.PATH = tempPathDir;
+
+		const perHarness = checkHarnessesOnPath();
+		const match = perHarness.find((check) =>
+			check.name.includes(descriptor.label),
+		);
+		expect(match?.pass).toBe(true);
+
+		const overall = checkAnyHarnessOnPath(perHarness);
+		expect(overall.pass).toBe(true);
+		expect(overall.hard).toBe(true);
 	});
 });

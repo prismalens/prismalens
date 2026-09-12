@@ -22,6 +22,10 @@ creates a database on a stranger's machine.
 * A schema change means a **new additive migration**: `pnpm db:migrate` (`prisma migrate dev`).
 * **Never** tell anyone to delete `prismalens.db`. `pnpm db:init` applies pending migrations
   in place, over the same runner an end user's `pl up` runs.
+* The lineage was reset **once**, at 0.5.0 (ruled on #337, 2026-09-11): every earlier version
+  was deprecated and no stranger's database existed, so the eleven pre-release migrations
+  became one `init`. The runner refuses a pre-0.5.0 database by name (`pre-release-database`).
+  That reset is not a precedent; from 0.5.0 on the rule above is absolute.
 * See `CONTRIBUTING.md` → *Database migrations* for the lifecycle and the failure table.
 
 ## Package installation

@@ -114,12 +114,6 @@ async function bootstrap() {
 	const configService = app.get(ConfigService);
 
 	// Load encrypted LLM credentials from DB into process.env
-	// This must run early so LLM factories can resolve API keys from env
-	const llmSettingsService = app.get(
-		(await import("./core/settings/llm-settings.service.js"))
-			.LlmSettingsService,
-	);
-	await llmSettingsService.loadLlmCredentialsToEnv();
 
 	const publicUrl = configService.get<string>("PRISMALENS_PUBLIC_URL");
 	const corsOrigins = configService.get<string>("PRISMALENS_CORS_ORIGIN");

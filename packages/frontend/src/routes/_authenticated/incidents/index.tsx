@@ -124,15 +124,16 @@ function IncidentsPage() {
 	// Investigate mutation
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
-		onSuccess: (data) => {
+		onSuccess: (data, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["incidents"] });
 			queryClient.invalidateQueries({ queryKey: ["investigations"] });
-			if (data?.investigationId) {
-				navigate({
-					to: "/investigations/$id",
-					params: { id: data.investigationId },
-				});
-			}
+			navigate({
+				to: "/incidents/$id",
+				params: { id: variables.id },
+				search: data?.investigationId
+					? { tab: "investigation", investigation: data.investigationId }
+					: { tab: "investigation" },
+			});
 		},
 		onError: (error) => {
 			toast({

@@ -17,8 +17,6 @@ import {
 	List,
 	Plus,
 	RefreshCw,
-	Rocket,
-	Sparkles,
 	X,
 } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -27,7 +25,6 @@ import { ImportFromVcsDialog } from "@/components/services/ImportFromVcsDialog";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ServiceList } from "@/components/services/ServiceList";
 import { tierLabels } from "@/components/services/service-detail.utils";
-import { UnlinkedDeploymentsDialog } from "@/components/services/UnlinkedDeploymentsDialog";
 import { UnlinkedReposDialog } from "@/components/services/UnlinkedReposDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,11 +39,8 @@ import {
 } from "@/components/ui/select";
 import {
 	useConnections,
-	useDeployments,
 	useRepositories,
 	useServices,
-	useSuggestions,
-	useUnlinkedDeploymentCount,
 	useUnlinkedRepositoryCount,
 } from "@/lib/api/hooks";
 
@@ -146,8 +140,7 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 		cell: ({ row }) => {
 			const s = row.original;
 			const repos = s.repositories ?? [];
-			const deploys = s.deployments ?? [];
-			if (repos.length === 0 && deploys.length === 0) {
+			if (repos.length === 0) {
 				return <span className="text-muted-foreground">—</span>;
 			}
 			return (
@@ -159,11 +152,6 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 							className="text-xs"
 						>
 							🔗 {sr.repository?.fullName ?? sr.repositoryId}
-						</Badge>
-					))}
-					{deploys.map((d) => (
-						<Badge key={d.id} variant="outline" className="text-xs">
-							🚀 {d.name} ({d.status})
 						</Badge>
 					))}
 				</div>
@@ -178,8 +166,6 @@ function ServicesPage() {
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [showImportDialog, setShowImportDialog] = useState(false);
 	const [showUnlinkedReposDialog, setShowUnlinkedReposDialog] = useState(false);
-	const [showUnlinkedDeploymentsDialog, setShowUnlinkedDeploymentsDialog] =
-		useState(false);
 	const [bannerDismissed, setBannerDismissed] = useState(false);
 
 	const typeFilter = (searchParams.type || "all") as ServiceType | "all";
@@ -215,13 +201,11 @@ function ServicesPage() {
 		(c) => c.template?.category === "vcs",
 	);
 
-	// Unlinked resource counts (lightweight server-side queries for banner)
+	// Unlinked resource count (lightweight server-side query for banner)
 	const { data: unlinkedRepoCount } = useUnlinkedRepositoryCount();
-	const { data: unlinkedDeployCount } = useUnlinkedDeploymentCount();
 	const unlinkedReposCount = unlinkedRepoCount?.count ?? 0;
-	const unlinkedDeploymentsCount = unlinkedDeployCount?.count ?? 0;
 
-	// Full data for dialogs (only fetched when dialogs are open)
+	// Full data for dialog (only fetched when the dialog is open)
 	const { data: repoResponse } = useRepositories({
 		limit: 100,
 		enabled: showUnlinkedReposDialog,
@@ -229,19 +213,6 @@ function ServicesPage() {
 	const unlinkedRepos = (repoResponse?.data ?? []).filter(
 		(r) => !r.services || r.services.length === 0,
 	);
-	const { data: deployResponse } = useDeployments({
-		limit: 100,
-		enabled: showUnlinkedDeploymentsDialog,
-	});
-	const unlinkedDeployments = (deployResponse?.data ?? []).filter(
-		(d) => !d.serviceId,
-	);
-
-	// Pending suggestions count
-	const { data: pendingSuggestions } = useSuggestions({ status: "pending" });
-	const pendingCount = Array.isArray(pendingSuggestions)
-		? pendingSuggestions.length
-		: 0;
 
 	// Fetch services with server-side filtering
 	const {
@@ -293,17 +264,6 @@ function ServicesPage() {
 							/>
 							Refresh
 						</Button>
-						<Button variant="outline" size="sm" asChild>
-							<Link to="/services/discovery">
-								<Sparkles className="h-4 w-4 mr-1" />
-								Discovery
-								{pendingCount > 0 && (
-									<Badge variant="secondary" className="ml-1 text-xs">
-										{pendingCount}
-									</Badge>
-								)}
-							</Link>
-						</Button>
 						{hasVcsConnections && (
 							<Button
 								variant="outline"
@@ -323,56 +283,35 @@ function ServicesPage() {
 			/>
 
 			{/* Unlinked Resources Banner */}
-			{(unlinkedReposCount > 0 || unlinkedDeploymentsCount > 0) &&
-				!bannerDismissed && (
-					<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50 text-sm">
-						<div className="flex items-center gap-2">
-							<AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-							<span>
-								{[
-									unlinkedReposCount > 0
-										? `${unlinkedReposCount} repositor${unlinkedReposCount !== 1 ? "ies" : "y"}`
-										: null,
-									unlinkedDeploymentsCount > 0
-										? `${unlinkedDeploymentsCount} deployment${unlinkedDeploymentsCount !== 1 ? "s" : ""}`
-										: null,
-								]
-									.filter(Boolean)
-									.join(" and ")}{" "}
-								not linked to any service.
-							</span>
-						</div>
-						<div className="flex items-center gap-2 flex-shrink-0">
-							{unlinkedReposCount > 0 && (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setShowUnlinkedReposDialog(true)}
-								>
-									Repos ({unlinkedReposCount})
-								</Button>
-							)}
-							{unlinkedDeploymentsCount > 0 && (
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setShowUnlinkedDeploymentsDialog(true)}
-								>
-									<Rocket className="h-3 w-3 mr-1" />
-									Deployments ({unlinkedDeploymentsCount})
-								</Button>
-							)}
-							<Button
-								variant="ghost"
-								size="sm"
-								className="h-7 w-7 p-0"
-								onClick={() => setBannerDismissed(true)}
-							>
-								<X className="h-3 w-3" />
-							</Button>
-						</div>
+			{unlinkedReposCount > 0 && !bannerDismissed && (
+				<div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50 text-sm">
+					<div className="flex items-center gap-2">
+						<AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+						<span>
+							{unlinkedReposCount} repositor
+							{unlinkedReposCount !== 1 ? "ies" : "y"} not linked to any
+							service.
+						</span>
 					</div>
-				)}
+					<div className="flex items-center gap-2 flex-shrink-0">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setShowUnlinkedReposDialog(true)}
+						>
+							Repos ({unlinkedReposCount})
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-7 w-7 p-0"
+							onClick={() => setBannerDismissed(true)}
+						>
+							<X className="h-3 w-3" />
+						</Button>
+					</div>
+				</div>
+			)}
 
 			{/* Filters */}
 			<div className="flex flex-wrap items-center gap-3">
@@ -517,12 +456,6 @@ function ServicesPage() {
 				open={showUnlinkedReposDialog}
 				onOpenChange={setShowUnlinkedReposDialog}
 				unlinkedRepos={unlinkedRepos}
-				services={services}
-			/>
-			<UnlinkedDeploymentsDialog
-				open={showUnlinkedDeploymentsDialog}
-				onOpenChange={setShowUnlinkedDeploymentsDialog}
-				unlinkedDeployments={unlinkedDeployments}
 				services={services}
 			/>
 		</div>

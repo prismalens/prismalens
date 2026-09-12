@@ -2,144 +2,49 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * ACP transport client — drives a rented harness over the Agent Client Protocol
- * (`deepagents-acp`, JSON-RPC over stdio) and yields a flat, typed stream of
- * branch items (ADR-0008, Slice 0). The child is spawned into a {@link Sandbox}
- * (ADR-0020) — the `process` floor by default.
- *
- * Lifecycle per branch: spawn → `initialize` → `session/new` → `session/prompt`,
- * relaying every `session/update` notification as an `{ kind:"update" }` item and
- * terminating with exactly one `{ kind:"done" }` (the prompt's `stopReason`) or
- * `{ kind:"error" }` (transport/spawn/timeout failure). The stream ALWAYS
- * terminates, so the live UI never hangs.
- *
- * Server→client requests are answered inline: `session/request_permission` via the
- * injected {@link PermissionPolicy} (default: auto-allow, the read-only Slice-0
- * posture — a real approval gate replaces this at the act phase, ADR-0009);
- * `fs/*` is refused (we advertise no fs capability); anything else gets an empty
- * ack so the harness never blocks on us.
- *
- * BYO-key (ADR-0006): the model + credentials are injected via `model`/`env`; the
- * engine never hard-binds a provider.
+ * ACP session over stdio (Agent Client Protocol v1, JSON-RPC). One session per
+ * investigation: `initialize` → `session/new` → one or more `session/prompt`
+ * turns. Every `session/update` is yielded from the turn that caused it; every
+ * `session/request_permission` is answered by the injected policy. The child is
+ * spawned into a Sandbox (ADR 0004); the process floor by default.
  */
-
 import { createInterface } from "node:readline";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
+import type { PermissionPolicy, PermissionRequest } from "../run/permission.js";
 import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
-import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
+import type {
+	Sandbox,
+	SandboxLimits,
+	SandboxProcess,
+} from "../sandbox/types.js";
 
-/** One item in a branch's transport stream. Exactly one terminal item ends it. */
 export type AcpStreamItem =
 	| { kind: "update"; update: AcpUpdate }
+	| {
+			kind: "permission";
+			request: PermissionRequest;
+			allowed: boolean;
+			why?: string;
+	  }
 	| { kind: "done"; stopReason: string }
 	| { kind: "error"; message: string };
 
-/** A single permission option offered by the harness. */
-export interface AcpPermissionOption {
-	optionId: string;
-	name?: string;
-	/** allow_once | allow_always | reject_once | reject_always. */
-	kind?: string;
-}
-
-export interface AcpPermissionRequest {
-	options: AcpPermissionOption[];
-	toolCall?: { title?: string; toolCallId?: string };
-}
-
-/**
- * Decide how to answer a permission request: pick an option, or reject.
- *
- * ACT-PHASE SEAM (document-only, ADR-0009 responsibility 2): the approval-gated act
- * phase rides THIS seam later. A mutating tool call surfaces here as a
- * `session/request_permission`; the future act phase supplies a policy that suspends
- * the run and routes the decision to a human (HITL approve/deny) instead of the
- * read-only {@link autoAllowReadOnly} auto-allow, WITHOUT touching the transport. No
- * implementation in the CANCEL slice — this note only marks the extension point (the
- * Agent SDK's `canUseTool` gate in claude-code-runner.ts is the analogous seam there).
- */
-export type PermissionPolicy = (
-	req: AcpPermissionRequest,
-) => { optionId: string } | { reject: true };
-
-/** Read-only Slice-0 default: approve (the cheapest allow option, else the first). */
-export const autoAllowReadOnly: PermissionPolicy = (req) => {
-	const allow =
-		req.options.find((o) => o.kind === "allow_once") ??
-		req.options.find((o) => (o.kind ?? "").startsWith("allow")) ??
-		req.options[0];
-	return allow ? { optionId: allow.optionId } : { reject: true };
-};
-
-export interface AcpClientConfig {
-	/** Working directory the harness runs in (its `cwd`). */
+export interface AcpSessionConfig {
+	command: string;
+	args: string[];
 	cwd: string;
-	/** The investigation prompt sent as the first `session/prompt`. */
-	prompt: string;
-	/** Harness binary. Default `"deepagents-acp"` (ACP-on-stdio by default). */
-	command?: string;
-	/** Model id passed via `-m`. Default `"openai:gpt-oss:120b"`. */
-	model?: string;
-	/** Full arg vector override; when set, `model`/native args are ignored. Default `["-m",model]`. */
-	args?: string[];
-	/**
-	 * Native passthrough (ADR-0017): deepagents-specific config, turned into the arg
-	 * vector by {@link buildAcpArgs} — `args` → extra CLI args, verbatim (no
-	 * intermediate mapping hop; ADR-0017 Amendment 2). The published binary has no
-	 * shell-allowlist or sandbox flags: read-only stays cooperative until the
-	 * Sandbox port's enforced providers land (ADR-0020/B.1).
-	 */
-	native?: Record<string, unknown>;
-	/** Extra env merged OVER the sandbox's safe base env (BYO-key: OPENAI_API_KEY, OPENAI_BASE_URL, …). */
 	env?: NodeJS.ProcessEnv;
-	/**
-	 * The isolation boundary the harness is spawned into (ADR-0020). Default: a
-	 * fresh `process`-floor sandbox (own-secret scrub, cooperative fidelity),
-	 * destroyed when the run ends. Callers pass an enforced provider (srt/E2B in
-	 * B.1) to upgrade — and then own its lifecycle.
-	 */
 	sandbox?: Sandbox;
-	/**
-	 * Best-effort resource caps for the sandboxed harness (ADR-0020): wall-clock
-	 * timeout (enforced by every provider) + memory/cpu (provider/OS permitting).
-	 * Passed to `sandbox.spawn`; a wall-clock kill surfaces as a distinguishable
-	 * timeout error on the terminal stream item (never a generic early-exit).
-	 */
 	limits?: SandboxLimits;
-	/** MCP servers offered to the session. Default `[]`. */
-	mcpServers?: unknown[];
-	/** How to answer permission requests. Default {@link autoAllowReadOnly}. */
-	permission?: PermissionPolicy;
-	/** Timeout for `initialize` + `session/new`. Default 30s. */
+	permission: PermissionPolicy;
 	initTimeoutMs?: number;
-	/** Timeout for the `session/prompt` round-trip. Default 180s. */
 	promptTimeoutMs?: number;
+	/** Raw wire lines, both directions, for the run transcript. Best effort. */
+	onWire?: (direction: "in" | "out", line: string) => void;
 }
 
-const DEFAULT_COMMAND = "deepagents-acp";
-const DEFAULT_MODEL = "openai:gpt-oss:120b";
-
-/**
- * Build the deepagents-acp arg vector from the model + native passthrough
- * (ADR-0017): the base `-m <model> -w <cwd>`, then any extra args. The published
- * binary serves ACP on stdio by default and takes no shell-allowlist/sandbox flags
- * (verified against `deepagents-acp --help`, B.1 spike 2026-07-03) — isolation is
- * the Sandbox port's job (ADR-0020), not an argv knob. `-w` pins the harness
- * workspaceRoot explicitly: deepagents-acp IGNORES the ACP `session/new` cwd
- * (verified v0.1.15) and falls back to its process cwd — which we also set, but
- * the flag survives placements where spawn cwd doesn't. The full `args` override
- * (when set) bypasses this entirely.
- */
-function buildAcpArgs(model: string, config: AcpClientConfig): string[] {
-	const args = ["-m", model, "-w", config.cwd];
-	const native = config.native ?? {};
-	const strings = (v: unknown): string[] =>
-		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-	args.push(...strings(native.args));
-	return args;
-}
-const DEFAULT_INIT_TIMEOUT_MS = 30_000;
-const DEFAULT_PROMPT_TIMEOUT_MS = 180_000;
+const DEFAULT_INIT_TIMEOUT_MS = 120_000;
+const DEFAULT_PROMPT_TIMEOUT_MS = 900_000;
 const STDERR_TAIL = 500;
 
 interface JsonRpcMessage {
@@ -151,11 +56,6 @@ interface JsonRpcMessage {
 	error?: { code?: number; message?: string; data?: unknown };
 }
 
-/**
- * Flatten a JSON-RPC error into one actionable line. Servers hide the useful
- * part in `error.data` (deepagents-acp puts install hints in `data.details`)
- * while `message` is a generic "Internal error" — surface both, truncated.
- */
 function jsonRpcErrorText(error: NonNullable<JsonRpcMessage["error"]>): string {
 	const head = error.message ?? `ACP error ${error.code}`;
 	if (error.data === undefined) return head;
@@ -164,179 +64,89 @@ function jsonRpcErrorText(error: NonNullable<JsonRpcMessage["error"]>): string {
 	return `${head} — ${data.slice(0, 500)}`;
 }
 
-/**
- * Run one branch to completion over ACP. Yields `update` items as they stream and
- * a single terminal `done`/`error`. Always cleans up the child process.
- */
-export async function* runAcpBranch(
-	config: AcpClientConfig,
-): AsyncGenerator<AcpStreamItem> {
-	const command = config.command ?? DEFAULT_COMMAND;
-	const model = config.model ?? DEFAULT_MODEL;
-	const args = config.args ?? buildAcpArgs(model, config);
-	const permission = config.permission ?? autoAllowReadOnly;
-	const initTimeout = config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
-	const promptTimeout = config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS;
+export interface AcpAgentInfo {
+	name?: string;
+	version?: string;
+}
 
-	// The harness is spawned INTO a Sandbox (ADR-0020) — the provider owns env
-	// hygiene (ADR-0009 own-secret allowlist in the floor) and the boundary. A
-	// caller-supplied sandbox is caller-owned; the default floor is ours to destroy.
-	const sandbox = config.sandbox ?? createProcessFloorSandbox();
-	const ownsSandbox = config.sandbox === undefined;
-	const child = sandbox.spawn(command, args, {
-		cwd: config.cwd,
-		env: config.env,
-		...(config.limits ? { limits: config.limits } : {}),
-	});
-
-	// --- queue plumbing: readline callbacks push items; the generator drains them ---
-	const queue: AcpStreamItem[] = [];
-	let wake: (() => void) | null = null;
-	let finished = false;
-	const stderrChunks: string[] = [];
-	const pending = new Map<
+export class AcpSession {
+	private readonly sandbox: Sandbox;
+	private readonly ownsSandbox: boolean;
+	private child: SandboxProcess | null = null;
+	private sessionId: string | null = null;
+	private nextId = 1;
+	private readonly pending = new Map<
 		number,
-		{ resolve: (result: unknown) => void; reject: (err: Error) => void }
+		{ resolve: (r: unknown) => void; reject: (e: Error) => void }
 	>();
-	let nextId = 1;
+	private queue: AcpStreamItem[] = [];
+	private wake: (() => void) | null = null;
+	private closed = false;
+	private exitMessage: string | null = null;
+	private readonly stderrChunks: string[] = [];
+	agent: AcpAgentInfo = {};
 
-	const pushItem = (item: AcpStreamItem): void => {
-		queue.push(item);
-		wake?.();
-		wake = null;
-	};
-	const finish = (): void => {
-		finished = true;
-		wake?.();
-		wake = null;
-	};
-	const send = (obj: unknown): void => {
-		if (child.stdin.writable) child.stdin.write(`${JSON.stringify(obj)}\n`);
-	};
-	const request = (
-		method: string,
-		params: Record<string, unknown>,
-		timeoutMs: number,
-	): Promise<unknown> =>
-		new Promise<unknown>((resolve, reject) => {
-			const id = nextId++;
-			const timer = setTimeout(() => {
-				if (pending.delete(id)) {
-					reject(new Error(`ACP ${method} timed out after ${timeoutMs}ms`));
-				}
-			}, timeoutMs);
-			pending.set(id, {
-				resolve: (result) => {
-					clearTimeout(timer);
-					resolve(result);
-				},
-				reject: (err) => {
-					clearTimeout(timer);
-					reject(err);
-				},
+	constructor(private readonly config: AcpSessionConfig) {
+		this.sandbox = config.sandbox ?? createProcessFloorSandbox();
+		this.ownsSandbox = config.sandbox === undefined;
+	}
+
+	async open(): Promise<void> {
+		const { config } = this;
+		const child = this.sandbox.spawn(config.command, config.args, {
+			cwd: config.cwd,
+			env: config.env,
+			...(config.limits ? { limits: config.limits } : {}),
+		});
+		this.child = child;
+		child.stderr.on("data", (d: Buffer) =>
+			this.stderrChunks.push(d.toString()),
+		);
+		child.on("error", (err) =>
+			this.fail(`failed to start ${config.command}: ${err.message}`),
+		);
+		// A harness can die at any moment — wrong version, not authenticated,
+		// OOM, killed — and when it does its pipes error asynchronously. Node
+		// rethrows an unhandled stream `error` event as an uncaught exception,
+		// which under `pl up` (one process serving the API, the UI and the
+		// dispatch loop) would take the whole server down instead of failing the
+		// one run. Route them into the same path as an early exit; `fail` keeps
+		// the first message, so whichever of these and `close` wins the race,
+		// the reason still carries the harness's own stderr.
+		for (const [name, stream] of [
+			["stdin", child.stdin],
+			["stdout", child.stdout],
+			["stderr", child.stderr],
+		] as const) {
+			stream.on("error", (err: Error) => {
+				if (this.closed) return;
+				const tail = this.stderrTail();
+				this.fail(
+					`harness ${name} failed (${err.message})${tail ? `: ${tail}` : ""}`,
+				);
 			});
-			send({ jsonrpc: "2.0", id, method, params });
+		}
+		child.on("close", (code, signal) => {
+			if (this.closed) return;
+			const tail = this.stderrTail();
+			this.fail(
+				child.timedOut
+					? `harness exceeded its wall-clock limit (${config.limits?.wallClockMs}ms) and was killed${tail ? `: ${tail}` : ""}`
+					: `harness exited early (code=${code} signal=${signal})${tail ? `: ${tail}` : ""}`,
+			);
+		});
+		const lines = createInterface({ input: child.stdout });
+		lines.on("line", (raw) => this.onLine(raw));
+		// readline re-emits its input stream's error on the Interface, and an
+		// Interface with no listener is a second uncaught exception — the stdout
+		// handler above does not cover it. `fail` keeps the first message, so
+		// this is idempotent with it.
+		lines.on("error", (err: Error) => {
+			if (this.closed) return;
+			this.fail(`harness stdout failed (${err.message})`);
 		});
 
-	const answerPermission = (msg: JsonRpcMessage): void => {
-		const params = msg.params ?? {};
-		const options = (params.options as AcpPermissionOption[]) ?? [];
-		const decision = permission({
-			options,
-			toolCall: params.toolCall as AcpPermissionRequest["toolCall"],
-		});
-		if ("optionId" in decision) {
-			send({
-				jsonrpc: "2.0",
-				id: msg.id,
-				result: {
-					outcome: { outcome: "selected", optionId: decision.optionId },
-				},
-			});
-			return;
-		}
-		const reject = options.find((o) => (o.kind ?? "").startsWith("reject"));
-		send({
-			jsonrpc: "2.0",
-			id: msg.id,
-			result: reject
-				? { outcome: { outcome: "selected", optionId: reject.optionId } }
-				: { outcome: { outcome: "cancelled" } },
-		});
-	};
-
-	const handleServerRequest = (msg: JsonRpcMessage): void => {
-		const method = msg.method ?? "";
-		if (method === "session/request_permission") {
-			answerPermission(msg);
-		} else if (method.startsWith("fs/")) {
-			send({
-				jsonrpc: "2.0",
-				id: msg.id,
-				error: { code: -32601, message: "fs capability not offered" },
-			});
-		} else {
-			send({ jsonrpc: "2.0", id: msg.id, result: {} });
-		}
-	};
-
-	const rl = createInterface({ input: child.stdout });
-	rl.on("line", (raw) => {
-		const line = raw.trim();
-		if (!line) return;
-		let msg: JsonRpcMessage;
-		try {
-			msg = JSON.parse(line) as JsonRpcMessage;
-		} catch {
-			return; // ignore non-JSON noise on stdout
-		}
-		if (msg.id !== undefined && msg.method) {
-			handleServerRequest(msg);
-		} else if (msg.id !== undefined) {
-			const p = pending.get(msg.id);
-			if (p) {
-				pending.delete(msg.id);
-				if (msg.error) {
-					p.reject(new Error(jsonRpcErrorText(msg.error)));
-				} else {
-					p.resolve(msg.result);
-				}
-			}
-		} else if (msg.method === "session/update") {
-			const update = msg.params?.update;
-			if (update && typeof update === "object") {
-				pushItem({ kind: "update", update: update as AcpUpdate });
-			}
-		}
-	});
-
-	child.stderr.on("data", (d: Buffer) => stderrChunks.push(d.toString()));
-	child.on("error", (err) => {
-		pushItem({
-			kind: "error",
-			message: `failed to start ${command}: ${err.message}`,
-		});
-		finish();
-	});
-	// Use 'close', not 'exit': 'exit' can fire before stdout is fully drained, so a
-	// clean exit(0) racing the final result would be misreported as a transport error.
-	// 'close' only fires once the child's stdio streams have ended, by which point a
-	// result already on the wire has been read and `finished` set.
-	child.on("close", (code, signal) => {
-		if (finished) return;
-		const tail = stderrChunks.join("").trim().slice(-STDERR_TAIL);
-		// A wall-clock kill (ADR-0020 resource-limits contract) is reported
-		// DISTINGUISHABLY from an ordinary early exit — the sandbox flips `timedOut`
-		// before SIGKILL, so the runner names the deadline instead of a bare signal.
-		const message = child.timedOut
-			? `harness exceeded its wall-clock limit (${config.limits?.wallClockMs}ms) and was killed${tail ? `: ${tail}` : ""}`
-			: `harness exited early (code=${code} signal=${signal})${tail ? `: ${tail}` : ""}`;
-		pushItem({ kind: "error", message });
-		finish();
-	});
-
-	try {
-		await request(
+		const init = (await this.request(
 			"initialize",
 			{
 				protocolVersion: 1,
@@ -344,61 +154,187 @@ export async function* runAcpBranch(
 					fs: { readTextFile: false, writeTextFile: false },
 				},
 			},
-			initTimeout,
-		);
-		const sessionResult = (await request(
+			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
+		)) as { agentInfo?: AcpAgentInfo } | null;
+		this.agent = init?.agentInfo ?? {};
+		const session = (await this.request(
 			"session/new",
-			{ cwd: config.cwd, mcpServers: config.mcpServers ?? [] },
-			initTimeout,
+			{ cwd: config.cwd, mcpServers: [] },
+			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 		)) as { sessionId?: string } | null;
-		const sessionId = sessionResult?.sessionId;
-		if (!sessionId) throw new Error("ACP session/new returned no sessionId");
+		if (!session?.sessionId)
+			throw new Error("ACP session/new returned no sessionId");
+		this.sessionId = session.sessionId;
+	}
 
-		// Fire the prompt; its resolution drives the single terminal item.
-		request(
+	/** One prompt turn. Yields updates and permission decisions, then exactly one done or error. */
+	async *prompt(text: string): AsyncGenerator<AcpStreamItem> {
+		if (!this.sessionId) throw new Error("AcpSession.prompt before open()");
+		if (this.exitMessage) {
+			yield { kind: "error", message: this.exitMessage };
+			return;
+		}
+		let turnDone = false;
+		this.request(
 			"session/prompt",
-			{ sessionId, prompt: [{ type: "text", text: config.prompt }] },
-			promptTimeout,
+			{ sessionId: this.sessionId, prompt: [{ type: "text", text }] },
+			this.config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
 		)
 			.then((res) => {
 				const stopReason = (res as { stopReason?: string } | null)?.stopReason;
-				pushItem({ kind: "done", stopReason: stopReason ?? "end_turn" });
-				finish();
+				this.push({ kind: "done", stopReason: stopReason ?? "end_turn" });
 			})
 			.catch((err: unknown) => {
-				pushItem({
+				this.push({
 					kind: "error",
 					message: err instanceof Error ? err.message : String(err),
 				});
-				finish();
 			});
-
-		while (true) {
-			while (queue.length > 0) {
-				const item = queue.shift();
-				if (item) yield item;
+		while (!turnDone) {
+			while (this.queue.length > 0) {
+				const item = this.queue.shift() as AcpStreamItem;
+				if (item.kind === "done" || item.kind === "error") turnDone = true;
+				yield item;
+				if (turnDone) return;
 			}
-			if (finished) break;
 			await new Promise<void>((r) => {
-				wake = r;
+				this.wake = r;
 			});
 		}
-		while (queue.length > 0) {
-			const item = queue.shift();
-			if (item) yield item;
+	}
+
+	/** Cancel the in-flight turn; the harness answers with a done carrying stopReason "cancelled". */
+	cancel(): void {
+		if (!this.sessionId) return;
+		this.send({
+			jsonrpc: "2.0",
+			method: "session/cancel",
+			params: { sessionId: this.sessionId },
+		});
+	}
+
+	async close(): Promise<void> {
+		if (this.closed) return;
+		this.closed = true;
+		for (const p of this.pending.values())
+			p.reject(new Error("ACP session closing"));
+		this.pending.clear();
+		if (this.child && !this.child.killed) this.child.kill();
+		if (this.ownsSandbox) await this.sandbox.destroy();
+	}
+
+	private push(item: AcpStreamItem): void {
+		this.queue.push(item);
+		this.wake?.();
+		this.wake = null;
+	}
+
+	private stderrTail(): string {
+		return this.stderrChunks.join("").trim().slice(-STDERR_TAIL);
+	}
+
+	private fail(message: string): void {
+		if (this.exitMessage) return;
+		this.exitMessage = message;
+		for (const p of this.pending.values()) p.reject(new Error(message));
+		this.pending.clear();
+		this.push({ kind: "error", message });
+	}
+
+	private send(obj: unknown): void {
+		const line = JSON.stringify(obj);
+		this.config.onWire?.("out", line);
+		// No `writable` pre-check: it stays true until Node notices the peer is
+		// gone, so it never prevented a write to a dead pipe — it only hid the
+		// race. The stdin `error` handler installed in open() is what makes a
+		// failed write safe, and it reports the dead harness rather than
+		// throwing. Writing to an already-destroyed stream lands there too.
+		this.child?.stdin.write(`${line}\n`);
+	}
+
+	private request(
+		method: string,
+		params: Record<string, unknown>,
+		timeoutMs: number,
+	): Promise<unknown> {
+		return new Promise<unknown>((resolve, reject) => {
+			const id = this.nextId++;
+			const timer = setTimeout(() => {
+				if (this.pending.delete(id))
+					reject(new Error(`ACP ${method} timed out after ${timeoutMs}ms`));
+			}, timeoutMs);
+			this.pending.set(id, {
+				resolve: (r) => {
+					clearTimeout(timer);
+					resolve(r);
+				},
+				reject: (e) => {
+					clearTimeout(timer);
+					reject(e);
+				},
+			});
+			this.send({ jsonrpc: "2.0", id, method, params });
+		});
+	}
+
+	private onLine(raw: string): void {
+		const line = raw.trim();
+		if (!line) return;
+		this.config.onWire?.("in", line);
+		let msg: JsonRpcMessage;
+		try {
+			msg = JSON.parse(line) as JsonRpcMessage;
+		} catch {
+			return;
 		}
-	} catch (err) {
-		yield {
-			kind: "error",
-			message: err instanceof Error ? err.message : String(err),
-		};
-	} finally {
-		rl.close();
-		for (const p of pending.values()) p.reject(new Error("ACP client closing"));
-		pending.clear();
-		if (!child.killed) child.kill();
-		// Only tear down the boundary we created; a caller-supplied sandbox is
-		// caller-owned (they may run more branches in it — B.2 fan-out).
-		if (ownsSandbox) await sandbox.destroy();
+		if (msg.id !== undefined && msg.method) {
+			this.onServerRequest(msg);
+		} else if (msg.id !== undefined) {
+			const p = this.pending.get(msg.id);
+			if (!p) return;
+			this.pending.delete(msg.id);
+			if (msg.error) p.reject(new Error(jsonRpcErrorText(msg.error)));
+			else p.resolve(msg.result);
+		} else if (msg.method === "session/update") {
+			const update = msg.params?.update;
+			if (update && typeof update === "object")
+				this.push({ kind: "update", update: update as AcpUpdate });
+		}
+	}
+
+	private onServerRequest(msg: JsonRpcMessage): void {
+		const method = msg.method ?? "";
+		if (method === "session/request_permission") {
+			const params = msg.params ?? {};
+			const request: PermissionRequest = {
+				options: (params.options as PermissionRequest["options"]) ?? [],
+				toolCall: params.toolCall as PermissionRequest["toolCall"],
+			};
+			const decision = this.config.permission(request);
+			const optionId = decision.optionId;
+			this.send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				result: optionId
+					? { outcome: { outcome: "selected", optionId } }
+					: { outcome: { outcome: "cancelled" } },
+			});
+			this.push({
+				kind: "permission",
+				request,
+				allowed: decision.allow,
+				...(decision.allow ? {} : { why: decision.why }),
+			});
+			return;
+		}
+		if (method.startsWith("fs/")) {
+			this.send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				error: { code: -32601, message: "fs capability not offered" },
+			});
+			return;
+		}
+		this.send({ jsonrpc: "2.0", id: msg.id, result: {} });
 	}
 }

@@ -72,55 +72,22 @@ GOT=$("$BIN/prismalens" --version)
 [ "$GOT" = "$EXPECTED" ] || fail "--version printed '$GOT', package.json says '$EXPECTED'"
 echo "    $GOT"
 
-echo "==> init scaffolds a config and leaves an existing one untouched"
-INIT_DIR=$(mktemp -d)
-( cd "$INIT_DIR" && "$BIN/pl" init >/dev/null ) || fail "pl init exited nonzero"
-[ -f "$INIT_DIR/prismalens.config.yaml" ] || fail "init did not create prismalens.config.yaml"
-echo "sentinel: keep" >> "$INIT_DIR/prismalens.config.yaml"
-( cd "$INIT_DIR" && "$BIN/pl" init >/dev/null 2>&1 ) || true
-grep -q "sentinel: keep" "$INIT_DIR/prismalens.config.yaml" || fail "second init overwrote the existing config"
-
-echo "==> doctor fails LOUDLY on a machine with no harness and no credentials"
+echo "==> doctor fails LOUDLY on a machine with no harness"
 set +e
 DOCTOR_OUT=$("$BIN/pl" doctor 2>&1)
 DOCTOR_EXIT=$?
 set -e
-[ "$DOCTOR_EXIT" -ne 0 ] || fail "doctor exited 0 in a clean env with no harness/credentials"
+[ "$DOCTOR_EXIT" -ne 0 ] || fail "doctor exited 0 in a clean env with no harness"
 echo "$DOCTOR_OUT" | grep -qi "harness" || fail "doctor output does not mention the missing harness:
 $DOCTOR_OUT"
 
-echo "==> status on a clean workspace reports no runs, exit 0"
-STATUS_OUT=$("$BIN/pl" status) || fail "status exited nonzero on a clean workspace"
-echo "$STATUS_OUT" | grep -qi "no runs found" || fail "status did not report 'No runs found':
-$STATUS_OUT"
-
 echo "==> unknown flag is rejected with exit 1"
 set +e
-BAD_FLAG_OUT=$("$BIN/pl" status --this-flag-does-not-exist 2>&1)
+BAD_FLAG_OUT=$("$BIN/pl" doctor --this-flag-does-not-exist 2>&1)
 BAD_FLAG_EXIT=$?
 set -e
 [ "$BAD_FLAG_EXIT" -ne 0 ] || fail "unknown flag exited 0"
 echo "$BAD_FLAG_OUT" | grep -q "Unknown option:" || fail "unknown-flag output missing 'Unknown option:':
 $BAD_FLAG_OUT"
-
-echo "==> investigate rejects garbage stdin with a usable error (no crash)"
-set +e
-INV_OUT=$(echo "not json" | "$BIN/pl" investigate --json 2>&1)
-INV_EXIT=$?
-set -e
-[ "$INV_EXIT" -ne 0 ] || fail "investigate exited 0 on garbage stdin"
-case "$INV_OUT" in
-	*Error*|*error*|*invalid*|*Invalid*) : ;;
-	*) fail "investigate gave no usable error on garbage stdin:
-$INV_OUT" ;;
-esac
-
-echo "==> serve completes a JSON-RPC 2.0 initialize round-trip over stdio"
-SERVE_OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | "$BIN/pl" serve) \
-	|| fail "serve exited nonzero on a clean initialize round-trip"
-echo "$SERVE_OUT" | grep -q '"protocolVersion"' || fail "serve response missing protocolVersion:
-$SERVE_OUT"
-echo "$SERVE_OUT" | grep -q '"serverInfo"' || fail "serve response missing serverInfo:
-$SERVE_OUT"
 
 echo "SMOKE OK (node $(node --version), $EXPECTED)"

@@ -153,13 +153,5 @@ export class TokenRefreshProcessor implements OnModuleInit, OnModuleDestroy {
 		this.logger.log(
 			`Token refresh complete: ${refreshed} refreshed, ${failed} failed`,
 		);
-
-		// Clean up expired OAuth states (abandoned authorization flows)
-		const { count: cleanedStates } = await this.prisma.oAuthState.deleteMany({
-			where: { expiresAt: { lt: new Date() } },
-		});
-		if (cleanedStates > 0) {
-			this.logger.log(`Cleaned up ${cleanedStates} expired OAuth states`);
-		}
 	}
 }

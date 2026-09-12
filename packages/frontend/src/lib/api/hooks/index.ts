@@ -9,17 +9,6 @@
 
 // Re-export the oRPC client for direct usage
 export { client, orpc } from "../orpc-client";
-// Alert mapping rule hooks
-export {
-	alertMappingKeys,
-	useAlertMappingHealth,
-	useAlertMappingRule,
-	useAlertMappingRules,
-	useCreateAlertMappingRule,
-	useDeleteAlertMappingRule,
-	useTestAlertMapping,
-	useUpdateAlertMappingRule,
-} from "./use-alert-mapping-orpc";
 // Alert hooks
 export {
 	alertKeys,
@@ -32,27 +21,6 @@ export {
 	useResolveAlert,
 	useUpdateAlert,
 } from "./use-alerts-orpc";
-// Correlation rule hooks
-export {
-	correlationKeys,
-	useCorrelationRule,
-	useCorrelationRules,
-	useCreateCorrelationRule,
-	useDeleteCorrelationRule,
-	useTestCorrelation,
-	useUpdateCorrelationRule,
-} from "./use-correlation-orpc";
-// Deployment hooks
-export {
-	deploymentKeys,
-	useBatchCreateDeployments,
-	useDeleteDeployment,
-	useDeployment,
-	useDeployments,
-	useLinkDeployment,
-	useUnlinkDeployment,
-	useUnlinkedDeploymentCount,
-} from "./use-deployments-orpc";
 // Incident hooks
 export {
 	incidentKeys,
@@ -108,18 +76,6 @@ export {
 	useInvestigations,
 	useInvestigationsByIncident,
 } from "./use-investigations-orpc";
-// Ollama hooks
-export { useOllamaModels } from "./use-ollama-models";
-// Postmortem hooks
-export {
-	postmortemKeys,
-	useCreatePostmortem,
-	useDeletePostmortem,
-	usePostmortem,
-	usePostmortemByIncident,
-	usePublishPostmortem,
-	useUpdatePostmortem,
-} from "./use-postmortems-orpc";
 // Recommendation hooks
 export {
 	recommendationKeys,
@@ -144,15 +100,6 @@ export {
 	useUnlinkRepository,
 } from "./use-repositories-orpc";
 
-// Service discovery hooks
-export {
-	serviceDiscoveryKeys,
-	useAcceptSuggestion,
-	useIgnoreSuggestion,
-	useRejectSuggestion,
-	useSuggestions,
-	useTriggerDiscovery,
-} from "./use-service-discovery-orpc";
 // Service hooks
 export {
 	serviceKeys,
@@ -165,29 +112,20 @@ export {
 	useServiceTopology,
 	useUpdateService,
 	useUpdateServiceDependency,
-	useValidateCheckoutPath,
 } from "./use-services-orpc";
 // Settings hooks
 export {
 	harnessKeys,
-	llmCredentialKeys,
-	llmSettingsKeys,
-	useDeleteLlmCredential,
 	useFactoryReset,
 	useHarnesses,
+	useHarnessSettings,
 	useInvestigationLimits,
 	useInvestigationPolicies,
 	useInvestigationReadiness,
-	useLlmCredentialStatus,
-	useLlmEnvStatus,
-	useLlmModels,
-	useLlmSettings,
 	useResetData,
-	useSaveLlmCredential,
-	useTestLlmConnectionWithEnv,
+	useUpdateHarnessSettings,
 	useUpdateInvestigationLimits,
 	useUpdateInvestigationPolicy,
-	useUpdateLlmSettings,
 } from "./use-settings-orpc";
 // Setup hooks
 export { setupKeys, useCreateOwner, useSetupStatus } from "./use-setup-orpc";

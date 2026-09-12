@@ -4,25 +4,18 @@
 "use client";
 
 /**
- * The first-run wizard (#332).
+ * The first-run wizard (#332, narrowed by #337/#609).
  *
- * Four steps, and the one you land on is the server's answer, not this
- * component's memory: `/setup`'s loader seeds `initialStep` from
- * `setup.getStatus`, which derives it from durable state. Reload mid-flow,
- * close the tab, come back tomorrow on another machine — you resume on the
- * first thing that is genuinely still missing.
- *
- * Steps after the account need an authenticated session, because they call
- * authenticated endpoints (`/settings/llm/*`, `/services/*`). If the browser
- * has no session yet the wizard says so and hands off to sign-in with a
- * `redirect` back here, rather than firing requests that 401 and look like
- * broken steps.
+ * One step: the owner account. The AI-provider, code-location and
+ * first-incident steps are gone — a harness is detected from PATH
+ * (`GET /settings/harnesses`) and a repo is linked from a service's
+ * Repositories tab, neither of which needs a wizard page. Once the account
+ * exists, `setupComplete` is true and `/_authenticated` stops redirecting
+ * here, so this component's only job is to create that account and hand off.
  */
 
-import { SETUP_STEP_ORDER, type SetupStep } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { CheckCircle, LogIn } from "lucide-react";
-import { useState } from "react";
+import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -31,27 +24,15 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { useSetupStatus } from "@/lib/api/hooks";
 import { useSession } from "@/lib/auth";
-import { SetupProgress } from "./SetupProgress";
-import { SetupStepAIProvider } from "./SetupStepAIProvider";
-import { SetupStepCodeLocation } from "./SetupStepCodeLocation";
-import { SetupStepFirstIncident } from "./SetupStepFirstIncident";
 import { SetupStepOwner } from "./SetupStepOwner";
 
 export interface SetupWizardProps {
 	/** Redirect URL after setup completes */
 	redirect?: string;
-	/** Initial step to start from (used when resuming setup) */
-	initialStep?: SetupStep;
 }
 
-export function SetupWizard({
-	redirect,
-	initialStep = "account",
-}: SetupWizardProps) {
-	const [currentStep, setCurrentStep] = useState<SetupStep>(initialStep);
-	const { data: status, refetch: refetchStatus } = useSetupStatus();
+export function SetupWizard({ redirect }: SetupWizardProps) {
 	const {
 		data: session,
 		isPending: sessionPending,
@@ -64,65 +45,40 @@ export function SetupWizard({
 				const url = new URL(redirect, window.location.origin);
 				return url.pathname;
 			} catch {
-				return "/";
+				return "/incidents";
 			}
 		}
-		return "/";
+		return "/incidents";
 	};
 
-	/** Move to the next step in contract order, or finish. */
-	const advanceFrom = (step: SetupStep) => {
-		const index = SETUP_STEP_ORDER.indexOf(
-			step as Exclude<SetupStep, "complete">,
-		);
-		const next = index >= 0 ? SETUP_STEP_ORDER[index + 1] : undefined;
-		setCurrentStep(next ?? "complete");
-	};
-
-	/**
-	 * A step finished. Refresh the derived status first so the progress bar
-	 * ticks from the server's view rather than from optimism, then advance.
-	 */
-	const handleStepDone = async (step: SetupStep) => {
+	const handleAccountCreated = async () => {
 		// The account step mints a session server-side (#358), but Better Auth's
-		// `useSession()` store is not told, so `needsSession` below would bounce a
-		// brand-new owner to the sign-in interstitial (#437). Refetch before advancing.
-		if (step === "account") await refetchSession();
-		await refetchStatus();
-		advanceFrom(step);
+		// `useSession()` store is not told, so refetch before handing off — a
+		// stale empty session would bounce a brand-new owner to sign-in.
+		await refetchSession();
+		window.location.href = getRedirectDestination();
 	};
 
-	const handleFinish = () => {
-		setCurrentStep("complete");
-		const destination = getRedirectDestination();
-		setTimeout(() => {
-			window.location.href = destination;
-		}, 2000);
-	};
-
-	if (currentStep === "complete") {
-		const destination = getRedirectDestination();
+	// Someone reloaded /setup after the account already exists (an old bookmark
+	// or a `redirect` that pointed back here). setupComplete is already true, so
+	// `/_authenticated` will not bounce them back — just send them on.
+	if (!sessionPending && session?.user) {
 		return (
 			<div className="min-h-[80vh] flex items-center justify-center">
 				<div className="w-full max-w-md">
-					<Card className="text-center">
-						<CardHeader>
-							<div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-								<CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+					<Card>
+						<CardHeader className="text-center">
+							<div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+								<LogIn className="h-8 w-8 text-primary" />
 							</div>
-							<CardTitle className="text-2xl">Setup Complete!</CardTitle>
-							<CardDescription>
-								PrismaLens is ready to help you investigate incidents
-							</CardDescription>
+							<CardTitle>
+								<h2>Setup is already complete</h2>
+							</CardTitle>
+							<CardDescription>PrismaLens is ready to use.</CardDescription>
 						</CardHeader>
-						<CardContent className="space-y-4">
-							<p className="text-muted-foreground">Redirecting...</p>
-							<Button
-								onClick={() => {
-									window.location.href = destination;
-								}}
-							>
-								Continue
+						<CardContent className="flex justify-center">
+							<Button asChild>
+								<Link to="/incidents">Go to incidents</Link>
 							</Button>
 						</CardContent>
 					</Card>
@@ -131,93 +87,10 @@ export function SetupWizard({
 		);
 	}
 
-	// Everything past the account step talks to authenticated endpoints.
-	const needsSession =
-		currentStep !== "account" && !sessionPending && !session?.user;
-
 	return (
 		<div className="min-h-[80vh] flex items-center justify-center py-8">
 			<div className="w-full max-w-2xl px-4">
-				<SetupProgress
-					currentStep={currentStep}
-					completed={
-						status
-							? {
-									account: status.steps.owner,
-									ai_provider: status.steps.aiProvider,
-									code_location: status.steps.codeLocation,
-									first_incident: status.steps.firstIncident,
-								}
-							: undefined
-					}
-				/>
-
-				{needsSession ? (
-					<Card>
-						<CardHeader className="text-center">
-							<div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-								<LogIn className="h-8 w-8 text-primary" />
-							</div>
-							<CardTitle>
-								<h2>Sign in to continue setup</h2>
-							</CardTitle>
-							<CardDescription>
-								Your administrator account exists. The remaining steps configure
-								this instance, so they need you signed in. You will come
-								straight back here.
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="flex justify-center">
-							<Button asChild>
-								<Link to="/auth/login" search={{ redirect: "/setup" }}>
-									Sign in
-								</Link>
-							</Button>
-						</CardContent>
-					</Card>
-				) : (
-					<>
-						{currentStep === "account" && (
-							<SetupStepOwner onComplete={() => handleStepDone("account")} />
-						)}
-
-						{currentStep === "ai_provider" && (
-							<SetupStepAIProvider
-								onComplete={() => handleStepDone("ai_provider")}
-								onSkip={() => advanceFrom("ai_provider")}
-							/>
-						)}
-
-						{currentStep === "code_location" && (
-							<SetupStepCodeLocation
-								onComplete={() => handleStepDone("code_location")}
-								onSkip={() => advanceFrom("code_location")}
-							/>
-						)}
-
-						{currentStep === "first_incident" && (
-							<SetupStepFirstIncident onComplete={handleFinish} />
-						)}
-					</>
-				)}
-
-				<div className="mt-6 flex items-center justify-center gap-3 text-sm text-muted-foreground">
-					{currentStep !== "account" && (
-						<Button
-							variant="link"
-							size="sm"
-							className="h-auto p-0 text-sm"
-							onClick={() => {
-								// A full navigation, not a router push: the destination is a
-								// runtime string from `?redirect=`, which the typed router
-								// cannot accept as a route literal.
-								window.location.href = getRedirectDestination();
-							}}
-						>
-							Skip setup
-						</Button>
-					)}
-				</div>
+				<SetupStepOwner onComplete={handleAccountCreated} />
 			</div>
 		</div>
 	);

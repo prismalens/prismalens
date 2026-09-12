@@ -8,9 +8,7 @@
  *
  * `GET /investigations/:id/events` is seq-cursor paginated (default 100, max 200
  * per page) and never collapses to a single call for a longer investigation, so
- * this loops `nextCursor` to completion before resolving. Pairs with
- * `transformLiveEventsToCanvas`, which does not care whether its events arrived
- * live over SSE or from this replay.
+ * this loops `nextCursor` to completion before resolving.
  */
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
@@ -40,7 +38,7 @@ async function fetchAllEvents(
 
 /**
  * Fetch the full canonical event history for a finished (non-streaming)
- * investigation, for the same canvas transform the live path uses.
+ * investigation.
  */
 export function useInvestigationEventsHistory(
 	investigationId: string,

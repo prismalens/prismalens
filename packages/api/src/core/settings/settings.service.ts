@@ -206,7 +206,6 @@ export class SettingsService {
 			this.prisma.recommendation.deleteMany({}),
 			this.prisma.investigation.deleteMany({}),
 			this.prisma.timelineEntry.deleteMany({}),
-			this.prisma.postmortem.deleteMany({}),
 			this.prisma.incident.deleteMany({}),
 			this.prisma.alert.deleteMany({}),
 			this.prisma.event.deleteMany({}),
@@ -223,27 +222,19 @@ export class SettingsService {
 			this.prisma.recommendation.deleteMany({}),
 			this.prisma.investigation.deleteMany({}),
 			this.prisma.timelineEntry.deleteMany({}),
-			this.prisma.postmortem.deleteMany({}),
 			this.prisma.changeEvent.deleteMany({}),
-			// Incident/Alert (after investigations, timelines, postmortems)
+			// Incident/Alert (after investigations, timelines)
 			this.prisma.incident.deleteMany({}),
 			this.prisma.alert.deleteMany({}),
 			this.prisma.event.deleteMany({}),
 			// Service hierarchy
-			this.prisma.serviceSuggestion.deleteMany({}),
 			this.prisma.serviceIntegration.deleteMany({}),
 			this.prisma.serviceDependency.deleteMany({}),
-			this.prisma.alertMappingRule.deleteMany({}),
 			this.prisma.service.deleteMany({}),
 			// Integrations (after serviceIntegrations)
-			this.prisma.oAuthState.deleteMany({}),
 			this.prisma.connection.deleteMany({}),
-			this.prisma.correlationRule.deleteMany({}),
 			this.prisma.setting.deleteMany({}),
 			// Auth tables (after sessions → after users)
-			this.prisma.invitation.deleteMany({}),
-			this.prisma.member.deleteMany({}),
-			this.prisma.organization.deleteMany({}),
 			this.prisma.session.deleteMany({}),
 			this.prisma.account.deleteMany({}),
 			this.prisma.verification.deleteMany({}),

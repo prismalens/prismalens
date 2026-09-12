@@ -18,8 +18,7 @@ import {
 /**
  * #280 — the investigation stream panel groups branches and follows the tail.
  *
- * Two behaviours, both invisible to `live-canvas.spec.ts` (#247), which drives
- * the same page but asserts only on the canvas:
+ * Two behaviours:
  *
  *  - Branch chrome (the count badge and the collapsible per-branch sections)
  *    belongs to a run that ACTUALLY fanned out. A live fan-out emits `b0`
@@ -184,7 +183,7 @@ test.describe("#280 — the investigation stream panel", () => {
 
 	// The path a reader takes today: the list is a different route, so the detail
 	// component unmounts on the way through and its state resets on its own.
-	test("starts a second investigation clean when reached back through the list", async ({
+	test("starts a second investigation clean when reached back through the incident", async ({
 		page,
 	}) => {
 		await serveAsRunning(page, SECOND_INVESTIGATION_ID);
@@ -202,10 +201,12 @@ test.describe("#280 — the investigation stream panel", () => {
 		await page.waitForTimeout(300);
 		expect(await viewport(page).evaluate((el) => el.scrollTop)).toBe(0);
 
-		// Navigate to B the way a reader does — no full page load.
-		await page.getByRole("link", { name: "Back to Investigations" }).click();
-		await page.getByRole("link", { name: /^d0222222/ }).click();
-		await expect(page).toHaveURL(new RegExp(SECOND_INVESTIGATION_ID));
+		// Navigate to B the way a reader does — no full page load. The list is
+		// gone (#609); leave through the incident, which unmounts the panel, then
+		// enter B client-side so the route mounts fresh.
+		await page.getByRole("link", { name: "Back to incident" }).click();
+		await expect(page).toHaveURL(/\/incidents\//);
+		await navigateToInvestigation(page, SECOND_INVESTIGATION_ID);
 		await expect(panel).toBeVisible({ timeout: 20_000 });
 
 		// B is a different run: none of A's rows come with it...
@@ -268,8 +269,7 @@ test.describe("#280 — the investigation stream panel", () => {
 
 	/**
 	 * Design evidence for the frontend gate (AGENTS.md): default, dark, empty
-	 * and error, captured the same way `rules-management.spec.ts` captures the
-	 * rules surface.
+	 * and error.
 	 */
 	test("design evidence: default, dark, empty and error states", async ({
 		page,

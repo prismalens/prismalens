@@ -16,7 +16,9 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMigrationsDir } from "./migration-source.js";
-import { defaultDatabaseFile, MigrationError, runMigrations } from "./runner.js";
+import { defaultDatabaseFile, MigrationError, runMigrations,
+	PRE_RELEASE_INIT,
+} from "./runner.js";
 
 const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SCRATCH_ROOT = join(PACKAGE_DIR, ".tmp-migrator-tests");
@@ -26,16 +28,15 @@ const SCRATCH_ROOT = join(PACKAGE_DIR, ".tmp-migrator-tests");
  * `prisma migrate deploy` recorded for it. Pinned so a change to the shipped
  * SQL is caught here rather than on a user's machine.
  *
- * Updated once, when this branch rebased onto the last of the in-place `init`
- * edits (#350/#352/#357). Those were legal because they predate this PR — it is
- * this PR that makes editing `init` illegal. From here on, a diff on this line
+ * Re-pinned once, at 0.5.0, when the pre-release lineage was squashed to this
+ * single `init` (#337, 2026-09-11). From here on, a diff on this line
  * means someone edited a shipped migration and every existing database will
  * hard-stop with `checksum-mismatch`; the fix is to revert the SQL, not to
  * re-pin this constant.
  */
-const SHIPPED_INIT = "20260803122809_init";
+const SHIPPED_INIT = "20260911192405_init";
 const SHIPPED_INIT_CHECKSUM =
-	"0e7aa00150d19520db40e2faf4400c93e317e19051d891dced3541e147b7ab76";
+	"99037325f0dc5841343f140f6282bdfb74224eec2e4b3612b38ff93177e155e4";
 
 /** Prisma's own `_prisma_migrations` DDL, as SQLite stores it in sqlite_master. */
 const PRISMA_LEDGER_DDL = `CREATE TABLE "_prisma_migrations" (
@@ -54,6 +55,8 @@ const ADD_COLOUR = "20260102000000_add_colour";
 const BROKEN = "20260103000000_broken";
 
 const FIXTURE_SQL: Record<string, string> = {
+	[PRE_RELEASE_INIT]: `CREATE TABLE "legacy" ("id" TEXT NOT NULL PRIMARY KEY);
+`,
 	[BASE]: `-- CreateTable
 CREATE TABLE "widget" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -321,6 +324,27 @@ describe("runMigrations — refuses incompatible histories", () => {
 		).rejects.toMatchObject({
 			name: "MigrationError",
 			code: "version-skew",
+		});
+
+		expect(readLedger(file)).toEqual(before);
+		expect(backupsIn(scratch)).toEqual([]);
+	});
+
+	it("refuses a pre-0.5.0 database by name, before any checksum talk", async () => {
+		const file = dbFile();
+		// A database whose lineage began with the pre-release init (#337, 2026-09-11).
+		await runMigrations({
+			databaseFile: file,
+			migrationsDir: lineage([PRE_RELEASE_INIT]),
+		});
+		const before = readLedger(file);
+
+		await expect(
+			runMigrations({ databaseFile: file, migrationsDir: lineage([BASE]) }),
+		).rejects.toMatchObject({
+			name: "MigrationError",
+			code: "pre-release-database",
+			message: expect.stringContaining("before 0.5.0"),
 		});
 
 		expect(readLedger(file)).toEqual(before);

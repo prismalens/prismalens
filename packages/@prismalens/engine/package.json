@@ -2,7 +2,7 @@
 	"name": "@prismalens/engine",
 	"version": "0.2.1",
 	"private": true,
-	"description": "Two-tier AI investigation engine for PrismaLens — a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
+	"description": "Two-tier AI investigation engine for PrismaLens \u2014 a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
 	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -44,18 +44,14 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run && node --test scripts/refusal-gate-check.test.mjs",
 		"test:watch": "vitest",
-		"eval": "tsx eval/run-evals.ts",
-		"eval:typecheck": "tsc --noEmit -p eval/tsconfig.json",
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
-		"@anthropic-ai/claude-agent-sdk": "^0.3.263",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
-		"ai": "catalog:",
 		"zod": "catalog:"
 	},
-	"//peerDependencies": "`e2b` is the cloud `enforced` sandbox provider (ADR-0020). src/sandbox/e2b.ts resolves it lazily through createRequire and refuses with an actionable message when it is absent, so it must NOT be a hard dependency — but it must be DECLARED, or the packaging import scan (scripts/pack-cli.mjs) cannot tell a deliberate optional apart from a missed hoist.",
+	"//peerDependencies": "`e2b` is the cloud `enforced` sandbox provider (ADR-0020). src/sandbox/e2b.ts resolves it lazily through createRequire and refuses with an actionable message when it is absent, so it must NOT be a hard dependency \u2014 but it must be DECLARED, or the packaging import scan (scripts/pack-cli.mjs) cannot tell a deliberate optional apart from a missed hoist.",
 	"peerDependencies": {
 		"e2b": "*"
 	},

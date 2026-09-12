@@ -4,7 +4,7 @@
 import { ORPCError } from "@orpc/nest";
 import type { HarnessSelection } from "@prismalens/config/harness-selection";
 import { describe, expect, it, vi } from "vitest";
-import type { LlmSettingsService } from "../../core/settings/llm-settings.service.js";
+import type { HarnessService } from "../../core/harness/harness.service.js";
 import type { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { IntegrationsService } from "../integrations/integrations.service.js";
 import type { InvestigationsService } from "../investigations/investigations.service.js";
@@ -85,11 +85,10 @@ describe("IncidentsController - storm path alert serialization", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 
-		const llmSettingsService = {
+		const harnessService = {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
-				route: "api-key",
 				verified: true,
 				auto: true,
 			} satisfies HarnessSelection),
@@ -100,7 +99,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 			investigationsService as unknown as InvestigationsService,
 			dispatchService as unknown as DispatchService,
 			integrationsService as unknown as IntegrationsService,
-			llmSettingsService as unknown as LlmSettingsService,
+			harnessService as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -189,7 +188,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 			{} as unknown as InvestigationsService,
 			{} as unknown as DispatchService,
 			{} as unknown as IntegrationsService,
-			{} as unknown as LlmSettingsService,
+			{} as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -252,11 +251,10 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		const integrationsService = {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
-		const llmSettingsService = {
+		const harnessService = {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
-				route: "api-key",
 				verified: true,
 				auto: true,
 			} satisfies HarnessSelection),
@@ -267,7 +265,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			investigationsService as unknown as InvestigationsService,
 			dispatchService as unknown as DispatchService,
 			integrationsService as unknown as IntegrationsService,
-			llmSettingsService as unknown as LlmSettingsService,
+			harnessService as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -294,7 +292,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(dispatchService.addInvestigationJob).toHaveBeenCalledTimes(1);
 	});
 
-	it("refuses with PRECONDITION_FAILED when LLM is not configured: status UNCHANGED and no job enqueued", async () => {
+	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
 			update: vi.fn().mockResolvedValue({}),
@@ -308,13 +306,12 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		const integrationsService = {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
-		const llmSettingsService = {
+		const harnessService = {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
-				failure: "llm-not-configured",
-				harness: "deepagents",
+				failure: "no-harness",
 				reason:
-					"LLM not configured: no active provider/model. Configure via Settings or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
+					"No coding agent found on PATH. Install one: OpenCode: curl -fsSL https://opencode.ai/install | bash.",
 			} satisfies HarnessSelection),
 		};
 
@@ -323,7 +320,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			investigationsService as unknown as InvestigationsService,
 			dispatchService as unknown as DispatchService,
 			integrationsService as unknown as IntegrationsService,
-			llmSettingsService as unknown as LlmSettingsService,
+			harnessService as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -343,10 +340,10 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(orpcErr.code).toBe("PRECONDITION_FAILED");
 		expect(orpcErr.status).toBe(412);
 		expect(orpcErr.data).toEqual({
-			failure: "llm-not-configured",
+			failure: "no-harness",
 			reason:
-				"LLM not configured: no active provider/model. Configure via Settings or set PRISMALENS_LLM_PROVIDER + PRISMALENS_LLM_MODEL.",
-			harness: "deepagents",
+				"No coding agent found on PATH. Install one: OpenCode: curl -fsSL https://opencode.ai/install | bash.",
+			harness: undefined,
 		});
 
 		// 2. Incident status is UNCHANGED
@@ -357,7 +354,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
 	});
 
-	it("refuses with PRECONDITION_FAILED on protocol-mismatch: status UNCHANGED and no job enqueued", async () => {
+	it("refuses with PRECONDITION_FAILED on a pinned-but-missing harness: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
 			update: vi.fn().mockResolvedValue({}),
@@ -371,13 +368,13 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		const integrationsService = {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
-		const llmSettingsService = {
+		const harnessService = {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
-				failure: "protocol-mismatch",
+				failure: "pinned-harness-missing",
 				harness: "deepagents",
 				reason:
-					'Harness "deepagents" only supports OpenAI-protocol providers (openai/ollama/custom); active provider is "anthropic". Switch provider or set PRISMALENS_HARNESS to a harness that supports it (e.g. claude-code for anthropic).',
+					'PRISMALENS_HARNESS="deepagents" but deepagents-acp is not on PATH. Install: pip install deepagents-acp',
 			} satisfies HarnessSelection),
 		};
 
@@ -386,7 +383,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			investigationsService as unknown as InvestigationsService,
 			dispatchService as unknown as DispatchService,
 			integrationsService as unknown as IntegrationsService,
-			llmSettingsService as unknown as LlmSettingsService,
+			harnessService as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -404,7 +401,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		const orpcErr = thrown as ORPCError<"PRECONDITION_FAILED", { failure: string; reason: string; harness?: string }>;
 		expect(orpcErr.code).toBe("PRECONDITION_FAILED");
 		expect(orpcErr.status).toBe(412);
-		expect(orpcErr.data.failure).toBe("protocol-mismatch");
+		expect(orpcErr.data.failure).toBe("pinned-harness-missing");
 		expect(orpcErr.data.harness).toBe("deepagents");
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
@@ -412,7 +409,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
 	});
 
-	it("refuses with PRECONDITION_FAILED on harness-unauthenticated: status UNCHANGED and no job enqueued", async () => {
+	it("refuses with PRECONDITION_FAILED on an invalid PRISMALENS_HARNESS pin: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
 			update: vi.fn().mockResolvedValue({}),
@@ -426,13 +423,12 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		const integrationsService = {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
-		const llmSettingsService = {
+		const harnessService = {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
-				failure: "harness-unauthenticated",
-				harness: "claude-code",
+				failure: "invalid-env-harness",
 				reason:
-					'Claude Code harness requires either an Anthropic API key (ANTHROPIC_API_KEY) or a signed-in Claude CLI session. Run "claude auth login" or configure Anthropic in Settings.',
+					'PRISMALENS_HARNESS="bogus" is not a known harness (opencode, claude-code, codex, gemini, deepagents)',
 			} satisfies HarnessSelection),
 		};
 
@@ -441,7 +437,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			investigationsService as unknown as InvestigationsService,
 			dispatchService as unknown as DispatchService,
 			integrationsService as unknown as IntegrationsService,
-			llmSettingsService as unknown as LlmSettingsService,
+			harnessService as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -459,8 +455,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		const orpcErr = thrown as ORPCError<"PRECONDITION_FAILED", { failure: string; reason: string; harness?: string }>;
 		expect(orpcErr.code).toBe("PRECONDITION_FAILED");
 		expect(orpcErr.status).toBe(412);
-		expect(orpcErr.data.failure).toBe("harness-unauthenticated");
-		expect(orpcErr.data.harness).toBe("claude-code");
+		expect(orpcErr.data.failure).toBe("invalid-env-harness");
+		expect(orpcErr.data.harness).toBeUndefined();
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
 		expect(investigationsService.create).not.toHaveBeenCalled();
@@ -477,7 +473,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as unknown as InvestigationsService,
 			{} as unknown as DispatchService,
 			{} as unknown as IntegrationsService,
-			{} as unknown as LlmSettingsService,
+			{} as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -523,7 +519,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					slackChannel: "#payments-alerts",
 					tags: JSON.stringify(["tier1", "pci"]),
 					metadata: JSON.stringify({ repo: "org/checkout" }),
-					localCheckoutPath: "/home/user/checkout",
 					createdAt: new Date("2026-07-31T10:00:00Z"),
 					updatedAt: new Date("2026-07-31T10:00:00Z"),
 					// Internal / unwhitelisted columns
@@ -540,7 +535,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as any,
 			{} as any,
 			{} as any,
-			{} as unknown as LlmSettingsService,
+			{} as unknown as HarnessService,
 		);
 
 		const handlers = getHandlers(controller);
@@ -558,7 +553,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				"description",
 				"displayName",
 				"id",
-				"localCheckoutPath",
 				"metadata",
 				"name",
 				"slackChannel",

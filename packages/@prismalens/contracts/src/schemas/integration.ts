@@ -258,24 +258,13 @@ export const DeletionImpactSchema = z.object({
 			fullName: z.string(),
 		}),
 	),
-	deployments: z.array(
-		z.object({
-			id: z.string().uuid(),
-			name: z.string(),
-		}),
-	),
 	affectedServices: z.array(
 		z.object({
 			id: z.string().uuid(),
 			name: z.string(),
-			impact: z.enum([
-				"repo_link_lost",
-				"deployment_link_lost",
-				"integration_override_lost",
-			]),
+			impact: z.enum(["repo_link_lost", "integration_override_lost"]),
 		}),
 	),
-	suggestionsCount: z.number().int(),
 });
 
 // =============================================================================

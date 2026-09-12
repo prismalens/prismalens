@@ -11,7 +11,6 @@ import {
 	Link2,
 	MoreHorizontal,
 	Pencil,
-	Rocket,
 	Search,
 	type Server,
 	Trash2,
@@ -22,7 +21,6 @@ import { AddDependencyDialog } from "@/components/services/AddDependencyDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { EditDependencyDialog } from "@/components/services/EditDependencyDialog";
 import { ServiceDependenciesTab } from "@/components/services/ServiceDependenciesTab";
-import { ServiceDeploymentsTab } from "@/components/services/ServiceDeploymentsTab";
 import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ServiceIntegrationOverrideDialog } from "@/components/services/ServiceIntegrationOverrideDialog";
@@ -64,7 +62,6 @@ import { orpc } from "@/lib/api/orpc-client";
 type ServiceTab =
 	| "overview"
 	| "repositories"
-	| "deployments"
 	| "integrations"
 	| "investigation"
 	| "dependencies";
@@ -72,7 +69,6 @@ type ServiceTab =
 const TABS: { value: ServiceTab; label: string; icon: typeof Server }[] = [
 	{ value: "overview", label: "Overview", icon: Info },
 	{ value: "repositories", label: "Repositories", icon: FolderGit2 },
-	{ value: "deployments", label: "Deployments", icon: Rocket },
 	{ value: "integrations", label: "Integrations", icon: Link2 },
 	{ value: "investigation", label: "Investigation", icon: Search },
 	{ value: "dependencies", label: "Dependencies", icon: GitBranch },
@@ -309,9 +305,6 @@ function ServiceDetailPage() {
 				)}
 				{tab === "repositories" && (
 					<ServiceRepositoriesTab serviceId={id} service={service} />
-				)}
-				{tab === "deployments" && (
-					<ServiceDeploymentsTab serviceId={id} service={service} />
 				)}
 				{tab === "integrations" && (
 					<>

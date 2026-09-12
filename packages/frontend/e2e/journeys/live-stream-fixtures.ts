@@ -6,7 +6,7 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 
 /**
  * Doubles shared by the specs that drive the live investigation stream
- * (`live-canvas.spec.ts` #247, `investigation-stream-panel.spec.ts` #280).
+ * (`investigation-stream-panel.spec.ts` #280).
  *
  * The real producers cannot be summoned from a spec: the demo seed ships no
  * `running` investigation, and the genuine `/stream` endpoint needs a live

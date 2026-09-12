@@ -3,15 +3,15 @@
 
 import { forwardRef, Module } from "@nestjs/common";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
+import { HarnessModule } from "../harness/harness.module.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
-import { LlmSettingsService } from "./llm-settings.service.js";
 import { SettingsController } from "./settings.controller.js";
 import { SettingsService } from "./settings.service.js";
 
 @Module({
-	imports: [PrismaModule, forwardRef(() => IntegrationsModule)],
+	imports: [PrismaModule, HarnessModule, forwardRef(() => IntegrationsModule)],
 	controllers: [SettingsController],
-	providers: [SettingsService, LlmSettingsService],
-	exports: [SettingsService, LlmSettingsService],
+	providers: [SettingsService],
+	exports: [SettingsService],
 })
 export class SettingsModule {}

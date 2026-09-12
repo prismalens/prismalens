@@ -58,16 +58,13 @@ function makePorts(
 		clearEvents: vi.fn(async () => {}),
 		writeResult: vi.fn(async () => {}),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
-		resolveLlm: vi.fn(async () => ({
-			provider: null,
-			model: null,
-			baseUrl: null,
-			credentials: {},
-			harness: "auto",
+		resolveHarness: vi.fn(async () => ({
+			selection: { runnable: true as const, harness: "opencode" as const, auto: true, verified: true },
 		})),
-		integrationCredentials: vi.fn(async () => []),
 		getIncident: vi.fn(async () => null),
-		listServices: vi.fn(async () => []),
+		incidentRepos: vi.fn(async () => []),
+		repoToken: vi.fn(async () => null),
+		ensureClone: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", action: "cloned" as const })),
 		...overrides,
 	};
 }

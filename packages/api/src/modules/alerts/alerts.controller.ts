@@ -1,26 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller, forwardRef, Inject } from "@nestjs/common";
+import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { alertsContract } from "@prismalens/contracts";
 import type {
 	Alert,
 	AlertDetail,
 	AlertWithRelations,
-	SuppressedByRuleConflict,
 } from "@prismalens/contracts/schemas";
 import type { Alert as PrismaAlert } from "@prismalens/database";
-import { CorrelationService } from "../correlation/correlation.service.js";
 import { AlertsService } from "./alerts.service.js";
 import type { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
+import { IncidentCorrelationService } from "./incident-correlation.service.js";
 
 @Controller()
 export class AlertsController {
 	constructor(
 		private readonly alertsService: AlertsService,
-		@Inject(forwardRef(() => CorrelationService))
-		private readonly correlationService: CorrelationService,
+		private readonly incidentCorrelation: IncidentCorrelationService,
 	) {}
 
 	/**
@@ -35,7 +33,7 @@ export class AlertsController {
 				// Cast to DTO type - Zod validation ensures values are compatible
 				const alert = await this.alertsService.create(input as CreateAlertDto);
 				const correlationResult =
-					await this.correlationService.correlateAlert(alert);
+					await this.incidentCorrelation.correlateAlert(alert);
 				const finalAlert =
 					(await this.alertsService.findById(alert.id)) ?? alert;
 
@@ -98,7 +96,9 @@ export class AlertsController {
 				}
 				return {
 					...this.serializeAlertWithRelations(alert),
-					suppressedBy: await this.resolveSuppressedBy(alert),
+					// No rule table survives the deferral of the correlation module
+					// (#608, C5 on #337) — nothing can suppress an alert any more.
+					suppressedBy: null,
 				} as AlertDetail;
 			}),
 
@@ -162,42 +162,7 @@ export class AlertsController {
 						};
 					}
 
-					const result = await this.correlationService.correlateAlert(alert);
-
-					// The waterfall ran and a rule suppressed the alert. Answering 200
-					// with no incident here is the dead end from #312: the caller asked
-					// to correlate, nothing correlated, and nothing said why. Refuse
-					// loudly and name the rule instead. We do not offer a bypass — the
-					// rule is the source of truth, so "suppressed by rule X" is still
-					// true after this call. The way out is to disable the rule or amend
-					// its match criteria (PATCH /correlation/rules/:id) and try again.
-					if (result.suppressed) {
-						// Rule-based suppression always names its rule, so this is the
-						// path every real refusal takes.
-						if (result.ruleId && result.ruleName) {
-							throw new ORPCError("CONFLICT", {
-								message:
-									`Alert ${input.id} cannot be correlated: correlation rule ` +
-									`"${result.ruleName}" (${result.ruleId}) is enabled and suppresses it. ` +
-									`Disable that rule or amend its match criteria via ` +
-									`PATCH /correlation/rules/${result.ruleId}, then correlate again.`,
-								data: {
-									alertId: input.id,
-									ruleId: result.ruleId,
-									ruleName: result.ruleName,
-								} satisfies SuppressedByRuleConflict,
-							});
-						}
-
-						// Attribution missing. Still refuse: returning the 200-with-no-
-						// incident response here would restore exactly the dead end this
-						// endpoint exists to close.
-						throw new ORPCError("CONFLICT", {
-							message:
-								`Alert ${input.id} cannot be correlated: an enabled ` +
-								`correlation rule suppresses it.`,
-						});
-					}
+					const result = await this.incidentCorrelation.correlateAlert(alert);
 
 					const updatedAlert = await this.alertsService.findById(input.id);
 
@@ -222,25 +187,6 @@ export class AlertsController {
 				// Return void for DELETE
 			}),
 		};
-	}
-
-	/**
-	 * Answer "which enabled rule is holding this alert down right now?" for a
-	 * single-alert read.
-	 *
-	 * Only suppressed alerts can be blocked, so anything else short-circuits
-	 * without touching the rule set. The answer is derived, never stored — see
-	 * CorrelationService.findSuppressingRule.
-	 */
-	private async resolveSuppressedBy(
-		alert: PrismaAlert,
-	): Promise<AlertDetail["suppressedBy"]> {
-		if (alert.status !== "suppressed") {
-			return null;
-		}
-
-		const rule = await this.correlationService.findSuppressingRule(alert);
-		return rule ? { ruleId: rule.id, ruleName: rule.name } : null;
 	}
 
 	/**

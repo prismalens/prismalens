@@ -38,7 +38,7 @@ describe("resolveMigrationsDir", () => {
 		const dir = resolveMigrationsDir();
 		expect(dir).toBe(migrationDirCandidates()[0]);
 		expect(readShippedMigrations(dir).map((m) => m.name)).toContain(
-			"20260803122809_init",
+			"20260911192405_init",
 		);
 	});
 

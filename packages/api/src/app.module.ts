@@ -64,7 +64,6 @@ declare module "@orpc/nest" {
 }
 
 import { AuthGuard, AuthModule } from "./core/auth/index.js";
-import { LicenseModule } from "./core/license/license.module.js";
 // Core modules
 import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
@@ -77,17 +76,13 @@ import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
-import { CorrelationModule } from "./modules/correlation/correlation.module.js";
-import { DeploymentsModule } from "./modules/deployments/deployments.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { IncidentsModule } from "./modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "./modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "./modules/investigations/investigations.module.js";
 import { OpenAPIModule } from "./modules/openapi/openapi.module.js";
-import { PostmortemsModule } from "./modules/postmortems/postmortems.module.js";
 import { RecommendationsModule } from "./modules/recommendations/recommendations.module.js";
 import { RepositoriesModule } from "./modules/repositories/repositories.module.js";
-import { ServiceDiscoveryModule } from "./modules/service-discovery/service-discovery.module.js";
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
@@ -159,7 +154,6 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		UsersModule,
 		SetupModule, // Initial setup (oRPC)
 		SettingsModule,
-		LicenseModule,
 
 		// Infrastructure
 		HealthModule,
@@ -176,18 +170,14 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		EventsModule, // Raw event ingestion
 		ServicesModule, // Service catalog
 		RepositoriesModule, // Repository management
-		DeploymentsModule, // Deployment management
 		AlertsModule, // Alert processing
-		AlertMappingModule, // Alert mapping rules
-		CorrelationModule, // Alert → Incident correlation
+		AlertMappingModule, // Alert → service lookup (exact label match)
 		IncidentsModule, // Incident management (primary entity)
 		InvestigationsModule, // AI investigation (replaces AnalysisModule)
 		TimelineModule, // Incident timeline
-		PostmortemsModule, // Postmortem management
 		WebhooksModule, // Webhook ingestion
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)
-		ServiceDiscoveryModule, // Service discovery from integrations
 		OpenAPIModule, // OpenAPI spec and documentation
 	],
 	controllers: [AppController],

@@ -49,10 +49,6 @@ export {
 	type InvestigationProgressProps,
 } from "./InvestigationProgress";
 export {
-	PostmortemEditor,
-	type PostmortemEditorProps,
-} from "./PostmortemEditor";
-export {
 	RecommendationCard,
 	type RecommendationCardProps,
 } from "./RecommendationCard";

@@ -7,9 +7,6 @@ export interface SeedPrismaClient {
 	service: {
 		upsert: PrismaClient["service"]["upsert"];
 	};
-	correlationRule: {
-		upsert: PrismaClient["correlationRule"]["upsert"];
-	};
 	incident: {
 		upsert: PrismaClient["incident"]["upsert"];
 	};
@@ -92,50 +89,7 @@ export async function seedDemoData(prisma: SeedPrismaClient): Promise<void> {
 	}
 
 	// ---------------------------------------------------------------------------
-	// 2. Correlation Rules (1 correlate, 1 suppress)
-	// ---------------------------------------------------------------------------
-	const rules = [
-		{
-			id: "c0111111-1111-4111-8111-111111111111",
-			name: "storm-error-correlation",
-			description: "Correlate error rate spikes across gateway & auth service",
-			enabled: true,
-			priority: 10,
-			matchCriteria: JSON.stringify({
-				serviceId: {
-					in: [
-						"11111111-1111-4111-8111-111111111111",
-						"22222222-2222-4222-8222-222222222222",
-					],
-				},
-			}),
-			timeWindowMinutes: 30,
-			action: "correlate",
-		},
-		{
-			id: "c0222222-2222-4222-8222-222222222222",
-			name: "maintenance-suppression-rule",
-			description: "Suppress low-severity synthetic probe alerts during window",
-			enabled: true,
-			priority: 1,
-			matchCriteria: JSON.stringify({
-				labels: { maintenance: "true" },
-			}),
-			timeWindowMinutes: 60,
-			action: "suppress",
-		},
-	];
-
-	for (const rule of rules) {
-		await prisma.correlationRule.upsert({
-			where: { id: rule.id },
-			create: rule,
-			update: {},
-		});
-	}
-
-	// ---------------------------------------------------------------------------
-	// 3. Incidents (Sequential application-managed numbers 1, 2, 3)
+	// 2. Incidents (Sequential application-managed numbers 1, 2, 3)
 	// ---------------------------------------------------------------------------
 	const baseDate = new Date("2026-08-03T12:00:00Z");
 
@@ -152,7 +106,6 @@ export async function seedDemoData(prisma: SeedPrismaClient): Promise<void> {
 			serviceId: "11111111-1111-4111-8111-111111111111",
 			correlationReason:
 				"Correlated 10 high-rate error alerts within 15m window",
-			correlationRuleId: "c0111111-1111-4111-8111-111111111111",
 			alertCount: 10,
 			triggeredAt: new Date(baseDate.getTime() - 60 * 60 * 1000),
 		},
@@ -195,7 +148,7 @@ export async function seedDemoData(prisma: SeedPrismaClient): Promise<void> {
 	}
 
 	// ---------------------------------------------------------------------------
-	// 4. Alerts (~60 total: 1 suppressed + 15 correlated + 44 general)
+	// 3. Alerts (~60 total: 1 suppressed + 15 correlated + 44 general)
 	// ---------------------------------------------------------------------------
 	// (a) 1 Suppressed alert (#244 path)
 	const suppressedAlert = {
@@ -336,7 +289,7 @@ export async function seedDemoData(prisma: SeedPrismaClient): Promise<void> {
 	}
 
 	// ---------------------------------------------------------------------------
-	// 5. Investigations (#282/ADR-0026 culprit rendering proof)
+	// 4. Investigations (#282/ADR-0026 culprit rendering proof)
 	// ---------------------------------------------------------------------------
 	// (a) Investigation with populated culprit (under Storm Incident 1)
 	const inv1Report = {

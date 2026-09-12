@@ -8,41 +8,11 @@
  * It handles:
  * - Email/password authentication
  * - Session management (cookie-based)
- * - User invitations (via organization plugin)
  * - Role-based access control
  */
 
-import { APIError, betterAuth } from "better-auth";
+import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { admin, organization } from "better-auth/plugins";
-
-/**
- * Create the Better Auth instance.
- *
- * Note: This function must be called with the Prisma client instance
- * because we can't directly import it here (would cause circular dependency).
- * The API package will call this with its Prisma instance.
- */
-export async function assertOrganizationCreatable(
-	prisma: unknown,
-): Promise<void> {
-	const prismaClient = prisma as {
-		organization?: { count?: () => Promise<number> };
-	};
-	let count: number | undefined;
-	try {
-		count = await prismaClient?.organization?.count?.();
-	} catch {
-		count = undefined;
-	}
-	// Fail closed (ADR-0011 §6): an unreadable or failing count blocks creation too.
-	if (typeof count !== "number" || count >= 1) {
-		throw new APIError("BAD_REQUEST", {
-			message:
-				"Organization creation is disabled in single-tenant mode (ADR-0011 §6)",
-		});
-	}
-}
 
 export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
@@ -83,47 +53,6 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 			useSecureCookies: options.secureCookies,
 			cookiePrefix: "prismalens",
 		},
-
-		// Plugins
-		plugins: [
-			// Admin plugin for user management
-			admin({
-				defaultRole: "member",
-			}),
-
-			// Organization plugin for team management and invitations
-			organization({
-				// For Community Edition, we use a single organization
-				allowUserToCreateOrganization: false,
-				organizationLimit: 1,
-
-				organizationHooks: {
-					async beforeCreateOrganization() {
-						await assertOrganizationCreatable(prisma);
-					},
-				},
-
-				// Custom invitation email handler
-				// If SMTP is configured, this sends the email
-				// Otherwise, the invite URL is returned in the API response
-				async sendInvitationEmail(data) {
-					if (options.sendInvitationEmail) {
-						const inviteLink = `${options.baseURL}/auth/accept-invitation/${data.id}`;
-						await options.sendInvitationEmail({
-							email: data.email,
-							invitedByEmail: data.inviter.user.email,
-							invitedByName: data.inviter.user.name,
-							organizationName: data.organization.name,
-							organizationSlug: data.organization.slug,
-							invitationId: data.id,
-							url: inviteLink,
-						});
-					}
-					// If no email handler provided, the invitation URL will be
-					// returned in the API response for manual sharing
-				},
-			}),
-		],
 	});
 }
 
@@ -142,20 +71,6 @@ export interface AuthOptions {
 
 	/** Use secure cookies (true for HTTPS, false for local development) */
 	secureCookies: boolean;
-
-	/**
-	 * Optional: Custom email sending function for invitations
-	 * If not provided, invite URLs are returned in API responses
-	 */
-	sendInvitationEmail?: (params: {
-		email: string;
-		invitedByEmail: string;
-		invitedByName: string | null;
-		organizationName: string;
-		organizationSlug: string;
-		invitationId: string;
-		url: string;
-	}) => Promise<void>;
 }
 
 /**

@@ -8,14 +8,11 @@
  * It provides authentication hooks and methods for:
  * - Sign in/out
  * - Session management
- * - Organization management
  */
 
 import {
-	admin,
 	authClient,
 	getSession,
-	organization,
 	signIn,
 	signOut,
 	signUp,
@@ -25,13 +22,4 @@ import {
 // Export types
 export type { AuthClient } from "@prismalens/auth/client";
 // Re-export everything from the auth package
-export {
-	admin,
-	authClient,
-	getSession,
-	organization,
-	signIn,
-	signOut,
-	signUp,
-	useSession,
-};
+export { authClient, getSession, signIn, signOut, signUp, useSession };

@@ -1,8 +1,8 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
-@import '@prismalens/design-tokens/tokens.css';
-@import '@prismalens/design-tokens/tailwind-preset.css';
+@import './styles/tokens.css';
+@import './styles/tailwind-preset.css';
 
 @plugin "tailwindcss-animate";
 

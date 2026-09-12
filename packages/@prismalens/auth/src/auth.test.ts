@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { APIError } from "better-auth";
 import { describe, expect, it } from "vitest";
-import { assertOrganizationCreatable, createAuth } from "./auth.js";
+import { createAuth } from "./auth.js";
 
-describe("createAuth single-tenant organization enforcement", () => {
+describe("createAuth", () => {
 	const mockPrisma = {} as unknown;
 
 	const options = {
@@ -14,67 +13,14 @@ describe("createAuth single-tenant organization enforcement", () => {
 		secureCookies: false,
 	};
 
-	it("disables organization self-creation and sets organization limit to 1", () => {
-		const auth = createAuth(mockPrisma, options);
-		const orgPlugin = auth.options.plugins?.find(
-			(plugin) => plugin.id === "organization",
-		);
-
-		expect(orgPlugin).toBeDefined();
-		expect(orgPlugin?.options).toMatchObject({
-			allowUserToCreateOrganization: false,
-			organizationLimit: 1,
-		});
-	});
-
-	it("exposes organization plugin endpoints for provisioned org workflows", () => {
+	it("builds a Better Auth instance with email/password enabled", () => {
 		const auth = createAuth(mockPrisma, options);
 
-		// Organization plugin endpoints remain available for provisioned organization operations (roles, invitations, members)
-		expect(auth.api.listOrganizations).toBeDefined();
-		expect(auth.api.createInvitation).toBeDefined();
-		expect(auth.api.acceptInvitation).toBeDefined();
-		expect(auth.api.addMember).toBeDefined();
-	});
-
-	it("rejects unauthorized self-creation requests for secondary organizations", async () => {
-		const auth = createAuth(mockPrisma, options);
-
-		const res = await auth.api.createOrganization({
-			body: {
-				name: "Second Org",
-				slug: "second-org",
-			},
-			asResponse: true,
-		});
-
-		// Organization creation is rejected
-		expect(res.status).not.toBe(200);
-	});
-
-	it("hook guard allows creation only when no organization exists", async () => {
-		await expect(
-			assertOrganizationCreatable({ organization: { count: async () => 0 } }),
-		).resolves.toBeUndefined();
-	});
-
-	it("hook guard fails closed: existing org, unreadable count, throwing query, missing model", async () => {
-		const failClosedCases: unknown[] = [
-			{ organization: { count: async () => 1 } },
-			{ organization: { count: async () => "bogus" } },
-			{
-				organization: {
-					count: async () => {
-						throw new Error("db down");
-					},
-				},
-			},
-			{},
-		];
-		for (const prismaCase of failClosedCases) {
-			await expect(
-				assertOrganizationCreatable(prismaCase),
-			).rejects.toBeInstanceOf(APIError);
-		}
+		expect(auth).toBeDefined();
+		expect(auth.options.emailAndPassword?.enabled).toBe(true);
+		// Single-tenant: no organization/admin plugin — `plugins` isn't even a key
+		// on the options this build produces (asserted at compile time by
+		// createAuth's own return type, not re-checked at runtime here).
+		expect("plugins" in auth.options).toBe(false);
 	});
 });

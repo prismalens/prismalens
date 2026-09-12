@@ -193,21 +193,6 @@ export const TimelineEntryTypeSchema = z.enum([
 
 export const TimelineSourceSchema = z.enum(["system", "user", "ai_worker"]);
 
-// Postmortem
-export const PostmortemStatusSchema = z.enum([
-	"draft",
-	"in_review",
-	"published",
-	"archived",
-]);
-
-// Correlation
-export const CorrelationActionSchema = z.enum([
-	"correlate",
-	"suppress",
-	"create_incident",
-]);
-
 // Settings
 export const SettingTypeSchema = z.enum([
 	"string",
@@ -233,14 +218,6 @@ export const ConnectionStatusSchema = z.enum([
 	"CREDENTIALS_INVALID",
 	"REVOKED",
 	"ERROR",
-]);
-
-// Service Discovery
-export const SuggestionStatusSchema = z.enum([
-	"pending",
-	"accepted",
-	"rejected",
-	"ignored",
 ]);
 
 // Change Tracking
@@ -361,12 +338,9 @@ export type EffortEstimate = z.infer<typeof EffortEstimateSchema>;
 export type RecommendationStatus = z.infer<typeof RecommendationStatusSchema>;
 export type TimelineEntryType = z.infer<typeof TimelineEntryTypeSchema>;
 export type TimelineSource = z.infer<typeof TimelineSourceSchema>;
-export type PostmortemStatus = z.infer<typeof PostmortemStatusSchema>;
-export type CorrelationAction = z.infer<typeof CorrelationActionSchema>;
 export type SettingType = z.infer<typeof SettingTypeSchema>;
 export type SettingCategory = z.infer<typeof SettingCategorySchema>;
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>;
-export type SuggestionStatus = z.infer<typeof SuggestionStatusSchema>;
 export type ChangeEventType = z.infer<typeof ChangeEventTypeSchema>;
 export type LicenseType = z.infer<typeof LicenseTypeSchema>;
 export type LicenseTier = z.infer<typeof LicenseTierSchema>;

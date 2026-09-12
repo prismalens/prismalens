@@ -72,10 +72,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.connection;
 	}
 
-	get oAuthState() {
-		return prisma.oAuthState;
-	}
-
 	get serviceIntegration() {
 		return prisma.serviceIntegration;
 	}
@@ -88,28 +84,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.timelineEntry;
 	}
 
-	get correlationRule() {
-		return prisma.correlationRule;
-	}
-
-	get alertMappingRule() {
-		return prisma.alertMappingRule;
-	}
-
 	get serviceDependency() {
 		return prisma.serviceDependency;
 	}
 
-	get serviceSuggestion() {
-		return prisma.serviceSuggestion;
-	}
-
 	get setting() {
 		return prisma.setting;
-	}
-
-	get postmortem() {
-		return prisma.postmortem;
 	}
 
 	get changeEvent() {
@@ -122,10 +102,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
 	get serviceRepository() {
 		return prisma.serviceRepository;
-	}
-
-	get deployment() {
-		return prisma.deployment;
 	}
 
 	get incidentSimilarity() {
@@ -143,18 +119,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
 	get verification() {
 		return prisma.verification;
-	}
-
-	get organization() {
-		return prisma.organization;
-	}
-
-	get member() {
-		return prisma.member;
-	}
-
-	get invitation() {
-		return prisma.invitation;
 	}
 
 	async onModuleInit(): Promise<void> {

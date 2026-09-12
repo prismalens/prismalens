@@ -2,8 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * J1, first-run setup (#268) — the regression guard for #358, plus the
- * wizard's later steps (#332: AI provider, code location, first incident).
+ * J1, first-run setup (#268) — the regression guard for #358.
  *
  * The rest of the suite signs in through the LOGIN FORM, which is exactly why
  * #358 survived a green e2e run: the form path always set a cookie, so nothing
@@ -12,14 +11,10 @@
  * and still be the owner. A test that signs in through the form would pass
  * against the bug.
  *
- * #332's later steps only exist on an instance that has just been created,
- * and this is the only harness in the repo that starts genuinely empty — so
- * their walkthrough lives here too, between account creation and the
- * dashboard, rather than in `single-origin.spec.ts` (#237/#358), which stays
- * state-agnostic on purpose. Every step past account is on-ramp, not a gate:
- * this walkthrough skips through AI provider and, after code location, uses
- * the wizard's own "Skip setup" link rather than completing first_incident
- * for real — reaching the same dashboard either way.
+ * The wizard is account-only now (#337/#609): the AI-provider, code-location
+ * and first-incident steps are gone — a harness is detected from PATH and a
+ * repository is linked from a service's Repositories tab, neither of which
+ * needs a wizard page. Creating the account hands off straight to /incidents.
  *
  * It runs ONLY under `PL_UP_E2E=1`, because it needs a genuinely empty database
  * — the default dev-stack harness seeds an owner up front, so `/setup` there
@@ -29,8 +24,6 @@
  * any order relative to `single-origin.spec.ts`.
  */
 
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
 const OWNER = {
@@ -41,13 +34,9 @@ const OWNER = {
 
 const SHOTS = "e2e/pl-up/screenshots";
 
-/**
- * The dashboard's own heading. Deliberately NOT the navbar: that lives in the
- * root route and renders on the login screen too, so it cannot tell "signed in"
- * from "bounced".
- */
-function dashboard(page: import("@playwright/test").Page) {
-	return page.getByRole("heading", { name: /command center/i }).first();
+/** The incidents page's own heading — the wizard's post-account destination. */
+function incidentsHeading(page: import("@playwright/test").Page) {
+	return page.getByRole("heading", { name: "Incidents", exact: true }).first();
 }
 
 async function setTheme(
@@ -123,90 +112,20 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 
 	// #358 already establishes the session at account-creation time (the
 	// controller applies Set-Cookie headers from a real sign-in before
-	// responding), and #437 made the wizard refetch `useSession()` on the
-	// account step so the client agrees. So the wizard advances straight into
-	// the next step, with NO reload, rather than bouncing to a "sign in to
-	// continue setup" interstitial. Either that card appearing here or landing
-	// back on /auth/login would mean that regressed.
-	await expect(
-		page.getByRole("heading", { name: "Connect an AI provider" }),
-	).toBeVisible({ timeout: 30_000 });
-	await expect(
-		page.getByRole("heading", { name: "Sign in to continue setup" }),
-	).toHaveCount(0);
+	// responding), and the wizard refetches `useSession()` on account creation
+	// so the client agrees — it hands off to /incidents with NO reload, rather
+	// than bouncing to a "sign in to continue setup" interstitial.
+	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
 	await expect(page).not.toHaveURL(/\/auth\/login/);
-	// The step arrives without a navigation now, so `networkidle` settles before
-	// the provider list has rendered and photographs a spinner. Wait for the
-	// list itself.
-	await page.waitForLoadState("networkidle");
-	await expect(page.getByRole("button", { name: /anthropic/i })).toBeVisible({
-		timeout: 30_000,
-	});
-	await page.screenshot({
-		path: `${SHOTS}/setup-ai-provider-default.png`,
-		fullPage: true,
-	});
-	// No provider key in CI, so skip: the step is an on-ramp, never a gate.
-	await page.getByRole("button", { name: "Skip for now" }).click();
-
-	// The code-location step (#332): an error state from the real surface
-	// before a value that resolves, exactly like the AI-provider step's own
-	// "no server round trip needed" error case above.
-	await expect(
-		page.getByRole("heading", { name: "Point PrismaLens at your code" }),
-	).toBeVisible({ timeout: 30_000 });
-	await page.locator("#setup-service-name").fill("e2e-service");
-	await page.locator("#setup-checkout-path").fill("/definitely/not/a/checkout");
-	await page.getByRole("button", { name: "Check" }).click();
-	await expect(page.getByRole("alert")).toContainText(/does not exist/i, {
-		timeout: 15_000,
-	});
-	await page.screenshot({
-		path: `${SHOTS}/setup-code-location-error.png`,
-		fullPage: true,
-	});
-
-	// A fresh artifact has no service catalog, so the step has to be able to
-	// create one from a real checkout — the repo these tests run from is one.
-	const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
-	await page.locator("#setup-checkout-path").fill(repoRoot);
-	await page.getByRole("button", { name: "Check" }).click();
-	await expect(page.getByText(/Valid git checkout/i)).toBeVisible({
-		timeout: 15_000,
-	});
-	await page.screenshot({
-		path: `${SHOTS}/setup-code-location-default.png`,
-		fullPage: true,
-	});
-	await page.getByRole("button", { name: "Save & continue" }).click();
-
-	// The last step is on-ramp, not a gate: skipping it must reach the
-	// dashboard exactly like finishing it would.
-	await expect(
-		page.getByRole("heading", { name: "Run your first investigation" }),
-	).toBeVisible({ timeout: 30_000 });
-	await page.screenshot({
-		path: `${SHOTS}/setup-first-incident-default.png`,
-		fullPage: true,
-	});
-	await page.getByRole("button", { name: "Skip setup" }).click();
-	await page.waitForURL(/:\d+\/$/, { timeout: 30_000 });
-	await expect(dashboard(page)).toBeVisible({ timeout: 30_000 });
+	await expect(incidentsHeading(page)).toBeVisible({ timeout: 30_000 });
 
 	// THE FALSIFIER. Before the fix the client was authenticated in memory only:
 	// POST /api/setup created the owner but its Set-Cookie never left the server,
 	// so this reload dropped a brand-new owner on the login screen.
-	//
-	// The guard runs in the BROWSER after the bundle loads, so the bounce is a
-	// client-side redirect a beat later — settle the page first, or the URL
-	// assertion passes against the pre-redirect `/` and proves nothing. The
-	// navbar is no good as a signal either: it is rendered by the root route, so
-	// it is just as visible on the login screen.
 	await page.reload();
 	await page.waitForLoadState("networkidle");
 	await expect(page).not.toHaveURL(/\/auth\/login/);
-	await expect(page).toHaveURL(/:\d+\/$/);
-	await expect(dashboard(page)).toBeVisible({ timeout: 30_000 });
+	await expect(incidentsHeading(page)).toBeVisible({ timeout: 30_000 });
 
 	// And the server agrees it is a session, not just a rendered shell.
 	const session = await page.request.get("/api/auth/get-session");

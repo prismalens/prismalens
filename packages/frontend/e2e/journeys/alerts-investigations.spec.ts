@@ -18,18 +18,11 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 2. Navigate to /investigations list page
-		await page.goto("/investigations");
-		await expect(
-			page.getByRole("heading", { name: "Investigations" }),
-		).toBeVisible({ timeout: 15_000 });
-
 		// 3. Open culprit investigation (d0111111) and verify culprit fields on Analysis tab
 		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
-		await page.getByRole("tab", { name: "Analysis" }).click();
+		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(
 			page.getByText("auth-service", { exact: false }).first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -45,10 +38,6 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		//    no service, change ref, or mechanism is invented (culprit: null
 		//    in the seed, so AnalysisTab must render no Culprit section at all).
 		await page.goto("/investigations/d0222222-2222-4222-8222-222222222222");
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
-		await page.getByRole("tab", { name: "Analysis" }).click();
 		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -63,11 +52,11 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	});
 
 	/**
-	 * #tab=unmapped — the dashboard's "Unassigned" links (`/alerts?tab=unmapped`)
-	 * used to do nothing: the alerts route declared no `validateSearch`, so the
-	 * param was silently dropped. The route now honours it via a real,
-	 * backend-filterable field (`unassigned`, AlertQuerySchema) — not an
-	 * invented one.
+	 * #tab=unmapped — the `/alerts?tab=unmapped` link (the dashboard used to
+	 * send it; the dashboard itself is gone) used to do nothing: the alerts
+	 * route declared no `validateSearch`, so the param was silently dropped.
+	 * The route now honours it via a real, backend-filterable field
+	 * (`unassigned`, AlertQuerySchema) — not an invented one.
 	 */
 	test("tab=unmapped filters alerts to those with no incident", async ({
 		page,
@@ -97,11 +86,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 3. The real repro: the dashboard's "Unassigned" link actually navigates
-		//    and lands with the Unmapped tab selected.
-		await page.goto("/");
-		await page.getByRole("link", { name: /Unassigned:/ }).click();
-		await expect(page).toHaveURL(/\/alerts\?tab=unmapped/);
+		// 3. The real repro: navigating to the link's own URL lands with the
+		//    Unmapped tab selected.
+		await page.goto("/alerts?tab=unmapped");
 		await expect(
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -188,11 +175,12 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await page.unroute("**/api/alerts");
 	});
 
-	test("the dashboard Unassigned count and the unmapped tab read the same server-side set", async ({
+	test("the unmapped tab reads the server-side set, not a page-local filter", async ({
 		page,
 	}) => {
-		// The stub reports 137 unassigned alerts but returns 4 rows: the count
-		// must come from `pagination.total`, never from the returned page.
+		// The tab renders exactly the rows the `unassigned=true` request answers
+		// with — a page-local filter over the "all alerts" set would show
+		// something else.
 		const unassignedRows = Array.from({ length: 4 }, (_, i) => ({
 			id: `a000000${i + 1}-0000-4000-8000-00000000000${i + 1}`,
 			dedupKey: `unassigned-${i}`,
@@ -221,12 +209,6 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 					}),
 				});
 			},
-		);
-
-		await page.goto("/");
-		await expect(page.getByRole("link", { name: /Unassigned:/ })).toHaveText(
-			"Unassigned: 137",
-			{ timeout: 15_000 },
 		);
 
 		await page.goto("/alerts?tab=unmapped");
@@ -313,9 +295,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
-		await expect(
-			page.getByRole("tab", { name: "Analysis" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+			timeout: 15_000,
+		});
 		await setTheme("light");
 		await page.waitForLoadState("networkidle");
 		await page.screenshot({

@@ -8,7 +8,6 @@
  */
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
-import { chartColors } from "@prismalens/design-tokens/colors";
 import { useMemo } from "react";
 import {
 	Bar,
@@ -24,6 +23,7 @@ import {
 	type BarChartDataPoint,
 	groupIncidentsByService,
 } from "@/lib/analytics";
+import { chartColors } from "@/styles/colors";
 
 interface ServiceDistributionChartProps {
 	incidents: IncidentWithRelations[];

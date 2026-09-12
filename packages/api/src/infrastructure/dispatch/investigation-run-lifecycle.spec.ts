@@ -20,12 +20,6 @@ const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
 vi.mock("@prismalens/engine", () => ({
 	conductRun: mocks.conductRun,
-	resolveInvestigation: vi.fn(() => ({
-		context: { alerts: [], telemetry: {} },
-		harness: () => (async function* () {})(),
-		synth: { providerId: "openai", model: "gpt-4", apiKey: "k" },
-		fidelity: undefined,
-	})),
 	resolveSandbox: vi.fn(() => ({
 		sandbox: { destroy: vi.fn(async () => {}) },
 	})),
@@ -74,16 +68,13 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		clearEvents: vi.fn(async () => {}),
 		writeResult: vi.fn(async () => {}),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
-		resolveLlm: vi.fn(async () => ({
-			provider: "openai",
-			model: "gpt-4",
-			baseUrl: null,
-			credentials: { key: "sk-test" },
-			harness: "auto",
+		resolveHarness: vi.fn(async () => ({
+			selection: { runnable: true as const, harness: "opencode" as const, auto: true, verified: true },
 		})),
-		integrationCredentials: vi.fn(async () => []),
 		getIncident: vi.fn(async () => ({ id: "inc-1", title: "Boom" })),
-		listServices: vi.fn(async () => []),
+		incidentRepos: vi.fn(async () => []),
+		repoToken: vi.fn(async () => null),
+		ensureClone: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", action: "cloned" as const })),
 		...overrides,
 	};
 }
@@ -210,11 +201,10 @@ describe("#331 workspace record (in-process run)", () => {
 		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
 		const ports = makePorts({
 			createTimelineEntry,
-			getIncident: vi.fn(async () => ({
-				id: "inc-1",
-				title: "Checkout 5xx",
-				service: { name: "api-gateway", localCheckoutPath: MAPPED },
-			})),
+			incidentRepos: vi.fn(async () => [
+				{ url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+			]),
+			ensureClone: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", action: "cloned" as const })),
 		});
 
 		await runInvestigationJob(
@@ -240,11 +230,7 @@ describe("#331 workspace record (in-process run)", () => {
 		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
 		const ports = makePorts({
 			createTimelineEntry,
-			getIncident: vi.fn(async () => ({
-				id: "inc-1",
-				title: "Checkout 5xx",
-				service: { name: "api-gateway", localCheckoutPath: null },
-			})),
+			incidentRepos: vi.fn(async () => []),
 		});
 
 		await runInvestigationJob(
@@ -266,11 +252,10 @@ describe("#331 workspace record (in-process run)", () => {
 		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
 		const ports = makePorts({
 			createTimelineEntry,
-			getIncident: vi.fn(async () => ({
-				id: "inc-1",
-				title: "Checkout 5xx",
-				service: { name: "api-gateway", localCheckoutPath: MAPPED },
-			})),
+			incidentRepos: vi.fn(async () => [
+				{ url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+			]),
+			ensureClone: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", action: "cloned" as const })),
 		});
 
 		await runInvestigationJob(
@@ -295,11 +280,10 @@ describe("#331 workspace record (in-process run)", () => {
 			createTimelineEntry: vi.fn(async () => {
 				throw new Error("timeline down");
 			}),
-			getIncident: vi.fn(async () => ({
-				id: "inc-1",
-				title: "Checkout 5xx",
-				service: { name: "api-gateway", localCheckoutPath: MAPPED },
-			})),
+			incidentRepos: vi.fn(async () => [
+				{ url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+			]),
+			ensureClone: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", action: "cloned" as const })),
 		});
 
 		const result = await runInvestigationJob(

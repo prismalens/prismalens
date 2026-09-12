@@ -2,11 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Global, Module } from "@nestjs/common";
-import { SettingsModule } from "../../core/settings/settings.module.js";
+import { HarnessModule } from "../../core/harness/harness.module.js";
+import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { IncidentsModule } from "../../modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "../../modules/investigations/investigations.module.js";
-import { ServicesModule } from "../../modules/services/services.module.js";
 import { TimelineModule } from "../../modules/timeline/timeline.module.js";
 import { DispatchService } from "./dispatch.service.js";
 import { EventBusModule } from "./event-bus.module.js";
@@ -30,8 +30,8 @@ import { EventBusModule } from "./event-bus.module.js";
 		forwardRef(() => IncidentsModule),
 		TimelineModule,
 		IntegrationsModule,
-		SettingsModule,
-		ServicesModule,
+		HarnessModule,
+		PrismaModule,
 	],
 	providers: [DispatchService],
 	exports: [DispatchService],
