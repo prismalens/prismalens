@@ -21,6 +21,14 @@ const HOOKS_PATH = ".githooks";
 // CI checks out fresh, never commits, and would only pay the cost.
 if (process.env.CI) process.exit(0);
 
+/**
+ * Run a git subcommand and return its trimmed stdout.
+ *
+ * @param {string[]} args argv for git, e.g. `["config", "--local", "core.hooksPath"]`
+ * @returns {string} stdout with surrounding whitespace removed
+ * @throws if git exits non-zero — every caller here treats that as "not
+ *   configured" or "not a checkout" and degrades to leaving hooks unwired.
+ */
 function git(args) {
 	return execFileSync("git", args, {
 		encoding: "utf8",

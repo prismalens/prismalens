@@ -12,22 +12,27 @@
 
 command -v pnpm >/dev/null 2>&1 || exit 0
 
-# Files that are staged AND have no unstaged modifications. Re-staging anything
-# else would sweep un-reviewed working-tree changes into the commit, so those are
-# fixed on disk but left for the author to stage deliberately.
-staged=$(git diff --cached --name-only --diff-filter=ACMR)
-[ -n "$staged" ] || exit 0
-unstaged=$(git diff --name-only)
+# Snapshot which files already had unstaged edits BEFORE Biome runs. This has to
+# happen first: once Biome writes, its own fix shows up as an unstaged change, so
+# a check made afterwards would see every fixed file as dirty and re-stage none.
+dirty=$(mktemp 2>/dev/null) || exit 0
+trap 'rm -f "$dirty"' EXIT
+git diff --name-only >"$dirty" 2>/dev/null || exit 0
 
 pnpm -s exec biome check --write --staged --no-errors-on-unmatched >/dev/null 2>&1 || true
 
-restage=""
-for f in $staged; do
-	case "$unstaged" in
-		*"$f"*) continue ;;
-	esac
-	[ -e "$f" ] && restage="$restage $f"
+# Re-stage only files that were fully staged to begin with. Re-staging a
+# partially-staged file would sweep un-reviewed working-tree changes into the
+# commit, so those keep their fix on disk and wait for the author to stage it.
+#
+# `IFS= read -r` keeps paths containing spaces intact; `grep -Fxq` matches a
+# whole line exactly, so `a.ts.bak` cannot suppress `a.ts`; and every path
+# reaches `git add` quoted. A path containing a newline is quoted by git, fails
+# the existence test, and is skipped — the safe direction.
+git diff --cached --name-only --diff-filter=ACMR | while IFS= read -r f; do
+	[ -e "$f" ] || continue
+	grep -Fxq -- "$f" "$dirty" && continue
+	git add -- "$f"
 done
-[ -n "$restage" ] && git add -- $restage
 
 exit 0
