@@ -1,5 +1,54 @@
 # prismalens
 
+## [1.0.0-rc.3](https://github.com/prismalens/prismalens/compare/v0.5.0-rc.3...v1.0.0-rc.3) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* one ACP run per investigation, detect-and-report harness, deferred modules and pre-release lineage removed ([#621](https://github.com/prismalens/prismalens/issues/621))
+* **release:** publish only prismalens — scoped packages bundled into the CLI ([#195](https://github.com/prismalens/prismalens/issues/195))
+
+### Features
+
+* **api,cli:** establish ruled dedup/flap-suppression semantics ([#231](https://github.com/prismalens/prismalens/issues/231)) ([#434](https://github.com/prismalens/prismalens/issues/434)) ([d3d84ae](https://github.com/prismalens/prismalens/commit/d3d84ae0f4ba798e156746df528161e59487954b))
+* **app,worker,contracts:** storm path — correlated alerts fan out to one investigation ([#276](https://github.com/prismalens/prismalens/issues/276)) ([f2e96fa](https://github.com/prismalens/prismalens/commit/f2e96faa4686d6ba08d30ca4992f30306e726786))
+* **cli,config:** config key casing, serve --sandbox parity, agent/synth model split ([#180](https://github.com/prismalens/prismalens/issues/180)) ([#183](https://github.com/prismalens/prismalens/issues/183)) ([0049fa8](https://github.com/prismalens/prismalens/commit/0049fa8c9801d0359870562bae35c6e0396765f7))
+* **cli,config:** pl auth login/list/logout — stored credentials (ADR-0024 layer 3) ([#167](https://github.com/prismalens/prismalens/issues/167)) ([4636c9c](https://github.com/prismalens/prismalens/commit/4636c9c75b60d59651262faeaa3305007da38144))
+* **cli:** 0.1.0 first-impression quick wins + one auto-selection order ([#154](https://github.com/prismalens/prismalens/issues/154)) ([27fa706](https://github.com/prismalens/prismalens/commit/27fa7063f40fc80beb7fbe431c17f3aa9f5f1924))
+* **cli:** budget guardrails for pl listen ([#110](https://github.com/prismalens/prismalens/issues/110)) ([df29640](https://github.com/prismalens/prismalens/commit/df29640ae5c8ca6af4cea7bdf97170771b1393d9))
+* **cli:** listen storm grouping — debounce window, coarse group key, attach-while-running ([#102](https://github.com/prismalens/prismalens/issues/102)) ([2c25539](https://github.com/prismalens/prismalens/commit/2c255398dc8c135c44382e3ec7228b25355436da))
+* **cli:** pl listen walking skeleton — token-authed Alertmanager intake ([#99](https://github.com/prismalens/prismalens/issues/99)) ([0d1b430](https://github.com/prismalens/prismalens/commit/0d1b430145e6904d1551e24b1091a379987a1947))
+* **cli:** pl up — the whole app as one process, from one npm install ([#237](https://github.com/prismalens/prismalens/issues/237)) ([#357](https://github.com/prismalens/prismalens/issues/357)) ([4c16af6](https://github.com/prismalens/prismalens/commit/4c16af6220ae75d67f2b75374f523fe8d36041ff))
+* **cli:** slack delivery of listen reports ([#108](https://github.com/prismalens/prismalens/issues/108)) ([9d96a4d](https://github.com/prismalens/prismalens/commit/9d96a4d5fbb64b8323d1564420d578ac7c7b5964))
+* **cli:** sqlite record store + pl status / pl report ([#103](https://github.com/prismalens/prismalens/issues/103)) ([b9f84e6](https://github.com/prismalens/prismalens/commit/b9f84e64d1cbcc79ff258ff54ce97c324a24a7a9))
+* **contracts,engine,cli,db:** structured culprit + record identity/provenance stamps (ADR-0026) ([#267](https://github.com/prismalens/prismalens/issues/267)) ([6ee2531](https://github.com/prismalens/prismalens/commit/6ee25312be6b25fc5110a7ae4662d0d444f6054d))
+* **database:** ship a migration runner and retire the squash-init policy ([#335](https://github.com/prismalens/prismalens/issues/335)) ([#354](https://github.com/prismalens/prismalens/issues/354)) ([7fdac79](https://github.com/prismalens/prismalens/commit/7fdac79e6bdac4acbf548793fdd4d74635e73957))
+* **engine:** claude code default harness via registry SSOT ([#107](https://github.com/prismalens/prismalens/issues/107)) ([4d076ac](https://github.com/prismalens/prismalens/commit/4d076aca37772c65c2a8067c379d56deee580638))
+* **engine:** contain mid-run harness aborts — partial report instead of run death ([#52](https://github.com/prismalens/prismalens/issues/52)) ([a336543](https://github.com/prismalens/prismalens/commit/a33654342ada1a337d77ec8b08d09e84da352bd8))
+* **release:** publish only prismalens — scoped packages bundled into the CLI ([#195](https://github.com/prismalens/prismalens/issues/195)) ([d2ba9f4](https://github.com/prismalens/prismalens/commit/d2ba9f4a34fde107952d86b238ee0511159f45d7))
+* **services:** map a Service to a local checkout, and run investigations there ([#331](https://github.com/prismalens/prismalens/issues/331)) ([#352](https://github.com/prismalens/prismalens/issues/352)) ([4e323ea](https://github.com/prismalens/prismalens/commit/4e323ea0bab44fe418ee033b73b791dfacf387b1))
+* **worker,api,config:** harness auth routes and session discovery (Refs [#501](https://github.com/prismalens/prismalens/issues/501)) ([#507](https://github.com/prismalens/prismalens/issues/507)) ([36d5f43](https://github.com/prismalens/prismalens/commit/36d5f43b20247a1bc39b9ec4f3e59cfbbc3a3fac))
+
+
+### Bug Fixes
+
+* **cli,config,engine:** ADR-0024 credential resolver — provider selection, honest doctor, fail-closed config ([#149](https://github.com/prismalens/prismalens/issues/149)) ([a79f5ef](https://github.com/prismalens/prismalens/commit/a79f5ef42ff98f0a1a24d5559ae520f313ba81a1))
+* **cli,config:** workspace-dir naming unification, flag-error output, path composition, registry model refresh ([#186](https://github.com/prismalens/prismalens/issues/186)) ([4bbb2b1](https://github.com/prismalens/prismalens/commit/4bbb2b197a684837847c181f78da8f71b54b9726))
+* **cli,engine:** listen harness isolation — workspace scoping fail-closed + no host settings bleed ([#160](https://github.com/prismalens/prismalens/issues/160)) ([ed8ac21](https://github.com/prismalens/prismalens/commit/ed8ac210fbfdc57fe407f4f5c203e829248c8306))
+* **cli:** give the session store its own file and refuse to rename app data aside ([#355](https://github.com/prismalens/prismalens/issues/355)) ([#387](https://github.com/prismalens/prismalens/issues/387)) ([1df7aed](https://github.com/prismalens/prismalens/commit/1df7aed62f204024ef0e8dac0cc8e5e0ec00967a))
+* **cli:** listen bind host config + accepted-intake log line ([#165](https://github.com/prismalens/prismalens/issues/165)) ([bd40a4b](https://github.com/prismalens/prismalens/commit/bd40a4bf00fa8ad795c8e2a77e4c206baeb0ba0e))
+* **cli:** listen dispatch robustness — re-page dedupe with key release + startup reaper with liveness guard ([#161](https://github.com/prismalens/prismalens/issues/161)) ([6a137ec](https://github.com/prismalens/prismalens/commit/6a137ecb9476c65056d855a883c61b10878b18cf))
+* **cli:** log JSON-RPC invalid-params as WARN, not unexpected-error stack trace ([#306](https://github.com/prismalens/prismalens/issues/306)) ([dc3a4c8](https://github.com/prismalens/prismalens/commit/dc3a4c86a5e32a978e3441c3e43feec087126966))
+* **cli:** replace invalid event kinds and obsolete report shape in sqlite-session-store tests ([#545](https://github.com/prismalens/prismalens/issues/545)) ([10726f6](https://github.com/prismalens/prismalens/commit/10726f616b28a02f68c088f87dbaa4fd2bbce6d2))
+* **cli:** stale workspace schema no longer hard-crashes startup — back up and recreate ([#158](https://github.com/prismalens/prismalens/issues/158)) ([e19a42b](https://github.com/prismalens/prismalens/commit/e19a42b7e2ab8e1520b54d9960d74e44dae5e663))
+* **cli:** UX quick wins from the 2026-07-11 audit ([#148](https://github.com/prismalens/prismalens/issues/148) items 1-7 + nits) ([#166](https://github.com/prismalens/prismalens/issues/166)) ([c824957](https://github.com/prismalens/prismalens/commit/c8249578fe55b22176140657c019374ca3d80d99))
+* **engine,cli:** reduce pass-through + salvage — subscription-only runs get a raw report ([#141](https://github.com/prismalens/prismalens/issues/141)) ([f9dfc13](https://github.com/prismalens/prismalens/commit/f9dfc1354e62d57bca4e5cff9d814f008efa7c7c))
+
+
+### Code Refactoring
+
+* one ACP run per investigation, detect-and-report harness, deferred modules and pre-release lineage removed ([#621](https://github.com/prismalens/prismalens/issues/621)) ([d8c6e51](https://github.com/prismalens/prismalens/commit/d8c6e510ead55e58a4f6c04169f7b576bec67ea8))
+
 ## 0.5.0-rc.3
 
 ### Patch Changes
