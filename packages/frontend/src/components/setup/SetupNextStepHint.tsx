@@ -51,8 +51,7 @@ export function SetupNextStepHint({
 
 	if (!steps.aiProvider) {
 		hint = {
-			message:
-				"No coding agent is on PATH, so investigations cannot run yet.",
+			message: "No coding agent is on PATH, so investigations cannot run yet.",
 			actions: (
 				<Button size="sm" asChild>
 					<Link to="/settings" search={{ tab: "harness" }}>

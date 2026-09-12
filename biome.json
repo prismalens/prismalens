@@ -13,6 +13,7 @@
 			"!**/*.spec.ts",
 			"!**/routeTree.gen.ts",
 			"!**/project.inlang",
+			"!packages/api/openapi.json",
 			"!packages/@prismalens/engine/eval/captures",
 			"!packages/frontend/src/app.css",
 			"!packages/frontend/src/styles/tailwind-preset.css"

@@ -61,5 +61,4 @@ export class CreateServiceDto {
 	@IsOptional()
 	@IsObject()
 	metadata?: Record<string, unknown>;
-
 }

@@ -121,12 +121,10 @@ function RootError({ error }: { error: Error }) {
 							Connection Error
 						</h1>
 						<p className="text-muted-foreground text-center max-w-md">
-							Unable to connect to the PrismaLens API server. Please ensure
-							the backend is running and try again.
+							Unable to connect to the PrismaLens API server. Please ensure the
+							backend is running and try again.
 						</p>
-						<Button onClick={() => window.location.reload()}>
-							Try again
-						</Button>
+						<Button onClick={() => window.location.reload()}>Try again</Button>
 					</div>
 					<Scripts />
 				</body>
@@ -146,9 +144,7 @@ function RootError({ error }: { error: Error }) {
 						Something went wrong
 					</h1>
 					<p className="text-muted-foreground">{error.message}</p>
-					<Button onClick={() => window.location.reload()}>
-						Try again
-					</Button>
+					<Button onClick={() => window.location.reload()}>Try again</Button>
 				</div>
 				<Scripts />
 			</body>

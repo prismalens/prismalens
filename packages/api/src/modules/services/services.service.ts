@@ -13,8 +13,6 @@ import {
 
 export type { Service, ServiceDependency };
 
-
-
 export type ServiceWithDependencies = Service & {
 	dependencies: Array<ServiceDependency & { dependency: Service }>;
 	dependents: Array<ServiceDependency & { dependent: Service }>;
@@ -25,8 +23,6 @@ export class ServicesService {
 	private readonly logger = new Logger(ServicesService.name);
 
 	constructor(private readonly prisma: PrismaService) {}
-
-
 
 	/**
 	 * Create a new service in the catalog

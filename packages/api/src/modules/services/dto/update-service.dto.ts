@@ -46,5 +46,4 @@ export class UpdateServiceDto {
 	@IsOptional()
 	@IsObject()
 	metadata?: Record<string, unknown>;
-
 }

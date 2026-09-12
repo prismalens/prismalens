@@ -17,7 +17,13 @@
 
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type { HarnessSetting } from "@prismalens/contracts";
-import { AlertTriangle, CheckCircle2, Loader2, Terminal, XCircle } from "lucide-react";
+import {
+	AlertTriangle,
+	CheckCircle2,
+	Loader2,
+	Terminal,
+	XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +44,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useHarnesses, useHarnessSettings, useUpdateHarnessSettings } from "@/lib/api/hooks";
+import {
+	useHarnesses,
+	useHarnessSettings,
+	useUpdateHarnessSettings,
+} from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
 export function HarnessSettings() {
@@ -98,9 +108,9 @@ export function HarnessSettings() {
 					</CardTitle>
 				</div>
 				<CardDescription>
-					The coding agent PrismaLens rents to do the investigative legwork.
-					It authenticates on its own — a signed-in session counts, an API
-					key is not always required.
+					The coding agent PrismaLens rents to do the investigative legwork. It
+					authenticates on its own — a signed-in session counts, an API key is
+					not always required.
 				</CardDescription>
 			</CardHeader>
 
@@ -120,17 +130,17 @@ export function HarnessSettings() {
 				{!isError &&
 					harnesses.length > 0 &&
 					harnesses.every((h) => !h.installed) && (
-					<Alert data-testid="harness-none-available">
-						<AlertTriangle className="h-4 w-4" />
-						<AlertTitle>
-							No investigation agent is available on this machine
-						</AlertTitle>
-						<AlertDescription>
-							Investigations cannot run until one of the harnesses below is
-							installed.
-						</AlertDescription>
-					</Alert>
-				)}
+						<Alert data-testid="harness-none-available">
+							<AlertTriangle className="h-4 w-4" />
+							<AlertTitle>
+								No investigation agent is available on this machine
+							</AlertTitle>
+							<AlertDescription>
+								Investigations cannot run until one of the harnesses below is
+								installed.
+							</AlertDescription>
+						</Alert>
+					)}
 
 				{selection?.pinned && (
 					<Alert data-testid="harness-pinned-notice">
@@ -172,10 +182,10 @@ export function HarnessSettings() {
 										<code className="text-xs text-muted-foreground">
 											{harness.binary}
 										</code>
-										{isSelected && (
-											<Badge variant="secondary">Selected</Badge>
-										)}
-										<Badge variant={harness.installed ? "secondary" : "outline"}>
+										{isSelected && <Badge variant="secondary">Selected</Badge>}
+										<Badge
+											variant={harness.installed ? "secondary" : "outline"}
+										>
 											{harness.installed ? "Installed" : "Not installed"}
 										</Badge>
 										<Badge variant={harness.verified ? "secondary" : "outline"}>
@@ -287,8 +297,9 @@ export function HarnessSettings() {
 								Saved — investigations use{" "}
 								{savedHarness === "auto"
 									? "automatic selection"
-									: HARNESS_REGISTRY[savedHarness as keyof typeof HARNESS_REGISTRY]
-										?.label ?? savedHarness}
+									: (HARNESS_REGISTRY[
+											savedHarness as keyof typeof HARNESS_REGISTRY
+										]?.label ?? savedHarness)}
 								{savedModel ? ` (${savedModel})` : ""}.
 							</span>
 						)}

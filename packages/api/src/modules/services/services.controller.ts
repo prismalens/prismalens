@@ -23,7 +23,6 @@ import {
 	type ServiceWithDependencies,
 } from "./services.service.js";
 
-
 @Controller()
 export class ServicesController {
 	constructor(private readonly servicesService: ServicesService) {}
@@ -41,11 +40,11 @@ export class ServicesController {
 					});
 				}
 
-				const service = await this.servicesService
-					.create(input as CreateServiceDto);
+				const service = await this.servicesService.create(
+					input as CreateServiceDto,
+				);
 				return this.serializeService(service);
 			}),
-
 
 			// GET /services - List all services
 			list: implement(servicesContract.list).handler(async ({ input }) => {
@@ -77,8 +76,10 @@ export class ServicesController {
 			// PATCH /services/:id - Update a service
 			update: implement(servicesContract.update).handler(async ({ input }) => {
 				const { id, ...updateData } = input;
-				const service = await this.servicesService
-					.update(id, updateData as UpdateServiceDto);
+				const service = await this.servicesService.update(
+					id,
+					updateData as UpdateServiceDto,
+				);
 				if (!service) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Service ${id} not found`,
