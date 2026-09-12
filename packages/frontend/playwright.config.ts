@@ -85,7 +85,10 @@ writeFileSync(join(harnessBinDir, "opencode"), "#!/bin/sh\nexit 1\n", {
 	mode: 0o755,
 });
 // Windows resolves PATHEXT entries, not the extensionless file above.
-writeFileSync(join(harnessBinDir, "opencode.cmd"), "@echo off\r\nexit /b 1\r\n");
+writeFileSync(
+	join(harnessBinDir, "opencode.cmd"),
+	"@echo off\r\nexit /b 1\r\n",
+);
 
 const env = {
 	...process.env,
