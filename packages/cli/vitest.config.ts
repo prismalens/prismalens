@@ -11,6 +11,20 @@ import { defineConfig } from "vitest/config";
  * lines: 80 }` — reviewers treat a new source file with no threshold entry as
  * a missing test. Pre-#58 files are exempt until touched.
  */
+/**
+ * Package floor = the coverage this package ACTUALLY had when the gate was first
+ * wired into CI (#58's policy was written but never run, so the old numbers were
+ * aspirational, not real). It is a RATCHET, not a target: raise it as coverage
+ * improves, never lower it to make a red build pass. New code still ships at the
+ * 80% per-glob threshold documented above.
+ */
+const PACKAGE_FLOOR = {
+	statements: 26,
+	branches: 17,
+	functions: 48,
+	lines: 26,
+};
+
 export default defineConfig({
 	test: {
 		include: ["src/**/*.test.ts"],
@@ -19,7 +33,7 @@ export default defineConfig({
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.test.ts"],
 			reporter: ["text-summary", "lcov", "text"],
-			thresholds: {},
+			thresholds: { ...PACKAGE_FLOOR },
 		},
 	},
 });

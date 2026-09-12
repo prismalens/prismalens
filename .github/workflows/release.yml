@@ -11,7 +11,20 @@ permissions:
 concurrency: release-${{ github.ref }}
 jobs:
   release-please:
-    if: github.event_name == 'push'
+    # HELD until 0.5.0 is deliberately cut. release-please opens a release PR on
+    # every push to main, and merging that PR publishes to npm and cuts a GitHub
+    # Release — so an open release PR is a live publish button nobody asked for.
+    # Set the `RELEASE_ENABLED` repository variable to "true" to re-arm it
+    # (Settings -> Secrets and variables -> Actions -> Variables); no code change
+    # and no PR needed to turn it back on.
+    #
+    # When it IS re-armed, note that release-please will compute a MAJOR bump: the
+    # history carries a `BREAKING CHANGES` entry (#195) and #621 landed as
+    # `refactor!:`. Cutting 0.5.0 instead needs a `Release-As: 0.5.0` commit footer.
+    #
+    # The `publish` job below is deliberately NOT gated: it fires on a published
+    # GitHub Release, which only exists if a human deliberately made one.
+    if: github.event_name == 'push' && vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
