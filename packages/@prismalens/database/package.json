@@ -24,6 +24,7 @@
 		"build": "tsc && node scripts/copy-migrations.mjs",
 		"dev": "tsc --watch",
 		"test": "vitest run --coverage",
+		"test:cov": "vitest run --coverage",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"db:init": "tsx scripts/db-init.ts",
 		"db:generate": "prisma generate --config prisma.config.ts",

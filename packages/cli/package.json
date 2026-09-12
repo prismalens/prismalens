@@ -1,7 +1,7 @@
 {
 	"name": "prismalens",
 	"version": "0.5.0-rc.3",
-	"description": "AI root-cause investigation from your terminal — point it at a repo, pipe it an alert, get an evidence-linked report",
+	"description": "AI root-cause investigation from your terminal \u2014 point it at a repo, pipe it an alert, get an evidence-linked report",
 	"license": "Apache-2.0",
 	"type": "module",
 	"bin": {
@@ -39,7 +39,8 @@
 		"build": "tsup",
 		"typecheck": "tsc --noEmit",
 		"dev": "tsx bin/prismalens.ts",
-		"test": "vitest run --coverage"
+		"test": "vitest run --coverage",
+		"test:cov": "vitest run --coverage"
 	},
 	"dependencies": {
 		"citty": "^0.2.2",
