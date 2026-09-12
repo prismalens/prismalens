@@ -51,6 +51,8 @@ export default defineConfig({
 				statements: 60,
 				"src/modules/investigations/stream-relay.service.ts":
 					NEW_CODE_THRESHOLD,
+				"src/core/harness/harness.service.ts": NEW_CODE_THRESHOLD,
+				"src/core/harness/repo-clone.service.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},
