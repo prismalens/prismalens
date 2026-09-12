@@ -58,6 +58,11 @@ export function parseTranscript(raw: string): WireLine[] {
 	return lines;
 }
 
+/**
+ * Pick out the decision lines `runInvestigation` synthesises onto the wire.
+ * Most lines are JSON-RPC frames and a few are not JSON at all; both are
+ * skipped rather than treated as a parse failure.
+ */
 export function permissionDecisions(
 	lines: WireLine[],
 ): PermissionDecisionLine[] {

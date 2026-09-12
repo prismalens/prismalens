@@ -63,7 +63,6 @@ if (existsSync(probeFile)) rmSync(probeFile);
 const CWD_PROBE_BASENAME = "PRISMALENS_CWD_PROBE.txt";
 const nonce = randomBytes(16).toString("hex");
 const cwdProbeFile = join(cloneDir, CWD_PROBE_BASENAME);
-writeFileSync(cwdProbeFile, `${nonce}\n`);
 const removeCwdProbe = (): void => {
 	try {
 		rmSync(cwdProbeFile, { force: true });
@@ -72,7 +71,6 @@ const removeCwdProbe = (): void => {
 	}
 };
 
-const runDir = mkdtempSync(join(tmpdir(), "pl-admission-"));
 const timeoutMs = Number(
 	process.env.PRISMALENS_ADMISSION_TIMEOUT_MS ?? 600_000,
 );
@@ -95,19 +93,28 @@ const context: InvestigationContext = {
 
 const started = Date.now();
 const events: CanonicalEvent[] = [];
-const timer = setTimeout(() => {
-	removeCwdProbe();
-	console.error(
-		JSON.stringify({
-			pass: false,
-			reason: `timeout after ${timeoutMs}ms`,
-			events: events.length,
-		}),
-	);
-	process.exit(1);
-}, timeoutMs);
 
+// Everything that can throw once the probe exists runs inside the cleanup
+// scope. Planting it outside meant a failure in between — a full `/tmp` on the
+// runner, a sandbox that will not start — left PRISMALENS_CWD_PROBE.txt in the
+// checkout.
+let runDir = "";
+let timer: ReturnType<typeof setTimeout> | undefined;
 try {
+	writeFileSync(cwdProbeFile, `${nonce}\n`);
+	runDir = mkdtempSync(join(tmpdir(), "pl-admission-"));
+	timer = setTimeout(() => {
+		removeCwdProbe();
+		console.error(
+			JSON.stringify({
+				pass: false,
+				reason: `timeout after ${timeoutMs}ms`,
+				events: events.length,
+			}),
+		);
+		process.exit(1);
+	}, timeoutMs);
+
 	for await (const ev of runInvestigation({
 		runId: "00000000-0000-4000-8000-000000000001",
 		context,
@@ -131,13 +138,19 @@ try {
 		events.push(ev);
 	}
 } finally {
-	clearTimeout(timer);
+	if (timer) clearTimeout(timer);
 	// Never leave the checkout dirty, even when the run throws.
 	removeCwdProbe();
 }
 
+// `runInvestigation` catches a failed `session.open()` and YIELDS an error event
+// rather than throwing, and `sandbox.spawn()` runs before the first `onWire`
+// write. So a sandbox that never starts completes this loop normally with no
+// transcript on disk; reading it unguarded replaced the report below with an
+// ENOENT stack trace — losing the diagnostic exactly when it is most wanted.
+const transcriptFile = join(runDir, "transcript.jsonl");
 const wireLines = parseTranscript(
-	readFileSync(join(runDir, "transcript.jsonl"), "utf8"),
+	existsSync(transcriptFile) ? readFileSync(transcriptFile, "utf8") : "",
 );
 const decisions = permissionDecisions(wireLines);
 const cwdProof = proveCwd(wireLines, {
