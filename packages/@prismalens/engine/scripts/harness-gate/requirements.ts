@@ -47,7 +47,7 @@ export const REQUIREMENTS: readonly Requirement[] = [
 		id: "R7",
 		title: "Served model equals the requested model",
 		tier: "must",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R12",
@@ -101,7 +101,7 @@ export const REQUIREMENTS: readonly Requirement[] = [
 		id: "R10",
 		title: "Sub-agent events carry a parent id",
 		tier: "want",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R11",

@@ -29,11 +29,12 @@ The result lands in `results/<driver>[.isolated].json` with the harness versions
 
 ## What a run does
 
-Each run opens three sessions on fresh fixtures (`scenarios.ts`), through the driver's `GateSession` (`session.ts`): prompt, cancel, close, and every event stamped on arrival.
+Each run opens four sessions on fresh fixtures (`scenarios.ts`), through the driver's `GateSession` (`session.ts`): prompt, cancel, close, and every event stamped on arrival.
 
-1. **Base.** `fixture.ts` creates a git repo holding a random nonce and traps: a Claude `.claude/settings.json` hook and `.mcp.json` server, an OpenCode project plugin and `opencode.json` MCP server. Each trap touches a marker file if the harness honours repo config. The prompt asks for four tool calls: read the nonce, call the injected `probe-mcp.ts` tool, write a file, run `touch`. Permission requests are answered with prismalens's policy (reads and the probe pass, the rest is refused). Then a follow-up prompt in the same session asks for the nonce again. Rows R1-R5, R12-R15, R18.
-2. **Interrupt.** A long text-only prompt is cancelled once it is streaming; the turn must settle within 10 s. Row R6.
-3. **Errors.** The session asks for a model the endpoint does not serve; the failure must surface within 30 s. Row R16.
+1. **Base.** `fixture.ts` creates a git repo holding a random nonce and traps: a Claude `.claude/settings.json` hook and `.mcp.json` server, an OpenCode project plugin and `opencode.json` MCP server. Each trap touches a marker file if the harness honours repo config. The prompt asks for four tool calls: read the nonce, call the injected `probe-mcp.ts` tool, write a file, run `touch`. Permission requests are answered with prismalens's policy (reads and the probe pass, the rest is refused). Then a follow-up prompt in the same session asks for the nonce again. Every model request goes through a loopback recorder (`recorder.ts`) that notes the model asked for. Rows R1-R5, R7, R12-R15, R18.
+2. **Sub-agent.** The prompt asks the agent to delegate the nonce read to one sub-agent; its tool events must carry the spawning call's id. Row R10 (WANT).
+3. **Interrupt.** A long text-only prompt is cancelled once it is streaming; the turn must settle within 10 s. Row R6.
+4. **Errors.** The session asks for a model the endpoint does not serve; the failure must surface within 30 s. Row R16.
 
 `verdict.ts` judges rows from disk and the event stream, never from the model's claims alone; its predicates have unit tests.
 
@@ -56,5 +57,6 @@ Each run opens three sessions on fresh fixtures (`scenarios.ts`), through the dr
 ## Findings so far
 
 - Claude Code and OpenCode both honour repo-supplied config by default on both transports, so R4 fails without isolation. Claude: `settingSources: []` (SDK option, or `_meta.claudeCode.options.settingSources` on ACP `session/new`). OpenCode: `--pure` plus `OPENCODE_DISABLE_PROJECT_CONFIG=1` and `OPENCODE_DISABLE_CLAUDE_CODE=1`.
-- With isolation on, all four drivers pass every probed MUST row 3/3 on `gemma4:31b-cloud` (R1-R6, R12-R16, R18). No probed row separates ACP from the native SDK yet for Claude Code or OpenCode.
+- With isolation on, all four drivers pass every probed MUST row 3/3 on `gemma4:31b-cloud` (R1-R7, R12-R16, R18). No MUST row separates ACP from the native SDK for Claude Code or OpenCode.
+- R10 (sub-agent attribution, WANT) separates OpenCode's transports: over its SDK the child session's tool events arrive attributed; over ACP the sub-agent runs but only the parent `task` call is streamed, 0/3. Claude Code attributes sub-agent events on both transports (`_meta.claudeCode.parentToolUseId` on ACP).
 - OpenCode ends the agent loop on the first refused tool call unless `experimental.continue_loop_on_deny` is `true`; without it no final answer, and so no report, arrives after a refused write.

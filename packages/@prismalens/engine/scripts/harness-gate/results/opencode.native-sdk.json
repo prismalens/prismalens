@@ -37,7 +37,7 @@
 		},
 		"R7": {
 			"tier": "must",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R12": {
 			"tier": "must",
@@ -73,7 +73,7 @@
 		},
 		"R10": {
 			"tier": "want",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R11": {
 			"tier": "want",
