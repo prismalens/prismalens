@@ -219,7 +219,7 @@ if [ "$ROUTES" -lt 100 ]; then
 fi
 echo "    mapped routes: $ROUTES"
 
-APP_LOG="$UP_DIR/workspace/logs/prismalens.log"
+APP_LOG="$UP_DIR/workspace/logs/prismalens.1.log"
 # The file transport writes from a worker thread, so it may trail the console.
 i=0
 until grep -q "Mapped {" "$APP_LOG" 2>/dev/null || [ "$i" -ge 10 ]; do
@@ -227,6 +227,7 @@ until grep -q "Mapped {" "$APP_LOG" 2>/dev/null || [ "$i" -ge 10 ]; do
 	sleep 1
 done
 grep -q "Mapped {" "$APP_LOG" 2>/dev/null || fail "the API log file $APP_LOG is missing or has no route records"
+[ -L "$UP_DIR/workspace/logs/prismalens.log" ] && fail "a log symlink is back; it needs admin on Windows"
 echo "    log file: $APP_LOG"
 
 grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowlist is back — pl up is single-origin"

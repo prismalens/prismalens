@@ -44,7 +44,7 @@ harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
 `--workspace <dir>` to put the database and secrets somewhere other than
-`~/.prismalens`. Logs are written to `<workspace>/logs/prismalens.log`;
+`~/.prismalens`. Logs are in `<workspace>/logs/`, the newest is `prismalens.<highest N>.log`;
 `--verbose` streams them to the terminal. Webhook deliveries need either
 `Authorization: Bearer <token>` (or basic auth with the token as password) or
 `X-Hub-Signature-256` computed with the token generated at

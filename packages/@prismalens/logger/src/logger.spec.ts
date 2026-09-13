@@ -87,7 +87,7 @@ describe("Pino Logger Integration", () => {
 			logger.info("Informational message in quiet mode");
 			logger.warn("Warning message in quiet mode");
 
-			const logFile = join(testDir, "logs", "prismalens.log");
+			const logFile = join(testDir, "logs", "prismalens.1.log");
 			const content = await waitForFileContent(logFile, 2);
 			const lines = content.trim().split("\n").filter(Boolean);
 
@@ -121,7 +121,7 @@ describe("Pino Logger Integration", () => {
 			logger.info("Verbose info message");
 			logger.warn("Verbose warn message");
 
-			const logFile = join(testDir, "logs", "prismalens.log");
+			const logFile = join(testDir, "logs", "prismalens.1.log");
 			const content = await waitForFileContent(logFile, 2);
 			const lines = content.trim().split("\n").filter(Boolean);
 			expect(lines.length).toBeGreaterThanOrEqual(2);
@@ -150,7 +150,7 @@ describe("Pino Logger Integration", () => {
 				safeField: "safe-value",
 			});
 
-			const logFile = join(testDir, "logs", "prismalens.log");
+			const logFile = join(testDir, "logs", "prismalens.1.log");
 			const content = await waitForFileContent(logFile, 1);
 			expect(content).not.toContain("Bearer super-secret-jwt-token");
 			expect(content).not.toContain("UserPassword123!");

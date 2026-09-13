@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAppDataDir, getConfig } from "@prismalens/config";
@@ -41,12 +41,9 @@ export function getRootPino(): PinoLogger {
 	const isQuiet = cfg.PRISMALENS_LOG_CONSOLE === "quiet";
 
 	mkdirSync(loc, { recursive: true });
+	// pino-roll writes <base>.<N>.log beside this path. No symlink: creating one needs
+	// admin or Developer Mode on Windows, so `pl up` prints the directory instead.
 	const logPath = join(loc, name);
-	try {
-		if (!existsSync(logPath)) {
-			symlinkSync(`${name.replace(/\.log$/, "")}.1.log`, logPath);
-		}
-	} catch {}
 
 	const fileTransport = pino.transport({
 		target: fileURLToPath(import.meta.resolve("pino-roll")),
