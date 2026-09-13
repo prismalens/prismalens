@@ -405,6 +405,35 @@ describe("WebhookSignatureGuard", () => {
 		}
 	});
 
+	it("falls through an unknown Authorization scheme to the HMAC check", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const digest = createHmac("sha256", GENERIC_SECRET)
+			.update(Buffer.from(RAW_DELIVERY, "utf8"))
+			.digest("hex");
+		const withSignature = createMockContext({
+			headers: {
+				authorization: "Token sender-side-credential",
+				"x-hub-signature-256": `sha256=${digest}`,
+			},
+			rawBody: Buffer.from(RAW_DELIVERY, "utf8"),
+			body: PARSED_DELIVERY,
+			path: "/api/webhooks/generic",
+		});
+		const withoutSignature = createMockContext({
+			headers: { authorization: "Token sender-side-credential" },
+			rawBody: Buffer.from(RAW_DELIVERY, "utf8"),
+			body: PARSED_DELIVERY,
+			path: "/api/webhooks/generic",
+		});
+
+		expect(guard.canActivate(withSignature)).toBe(true);
+		expect(() => guard.canActivate(withoutSignature)).toThrow(
+			ForbiddenException,
+		);
+	});
+
 	it("throws UnauthorizedException (401) when neither Authorization nor X-Hub-Signature-256 is present", () => {
 		const guard = new WebhookSignatureGuard(
 			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),

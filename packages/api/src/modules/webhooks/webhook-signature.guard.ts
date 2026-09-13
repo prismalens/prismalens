@@ -49,39 +49,22 @@ export class WebhookSignatureGuard implements CanActivate {
 		}
 
 		const authHeader = request.headers.authorization;
-		if (authHeader) {
-			const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-			if (bearerMatch) {
-				const token = bearerMatch[1].trim();
-				if (safeCompare(token, this.secret)) {
-					return true;
-				}
-				this.logger.warn("Webhook rejected: invalid bearer token");
-				throw new ForbiddenException("Invalid authorization token");
-			}
-
-			const basicMatch = authHeader.match(/^Basic\s+(.+)$/i);
-			if (basicMatch) {
-				const decoded = Buffer.from(basicMatch[1].trim(), "base64").toString(
-					"utf8",
-				);
-				const colonIdx = decoded.indexOf(":");
-				const password =
-					colonIdx === -1 ? decoded : decoded.slice(colonIdx + 1);
-				if (safeCompare(password, this.secret)) {
-					return true;
-				}
-				this.logger.warn("Webhook rejected: invalid basic auth credentials");
-				throw new ForbiddenException("Invalid basic auth credentials");
-			}
-
-			this.logger.warn("Webhook rejected: unsupported authorization scheme");
-			throw new ForbiddenException("Unsupported authorization scheme");
-		}
-
 		const signature = request.headers["x-hub-signature-256"] as
 			| string
 			| undefined;
+
+		if (!authHeader && !signature) {
+			this.logger.warn(
+				"Webhook rejected: missing authorization or signature header",
+			);
+			throw new UnauthorizedException(
+				"Missing webhook authorization or signature header",
+			);
+		}
+
+		if (authHeader && this.authorizationMatches(authHeader)) {
+			return true;
+		}
 
 		if (signature) {
 			const rawBody = request.rawBody;
@@ -91,20 +74,29 @@ export class WebhookSignatureGuard implements CanActivate {
 				);
 				throw new ForbiddenException("Raw request body unavailable");
 			}
-
 			const expected = `sha256=${createHmac("sha256", this.secret).update(rawBody).digest("hex")}`;
 			if (safeCompare(signature, expected)) {
 				return true;
 			}
-			this.logger.warn("Webhook rejected: invalid signature");
-			throw new ForbiddenException("Invalid webhook signature");
 		}
 
-		this.logger.warn(
-			"Webhook rejected: missing authorization or signature header",
-		);
-		throw new UnauthorizedException(
-			"Missing webhook authorization or signature header",
-		);
+		this.logger.warn("Webhook rejected: no valid credential");
+		throw new ForbiddenException("Invalid webhook credentials");
+	}
+
+	/** Bearer token, or Basic auth with the secret as password (any username). */
+	private authorizationMatches(authHeader: string): boolean {
+		const bearer = authHeader.match(/^Bearer\s+(.+)$/i);
+		if (bearer) {
+			return safeCompare(bearer[1].trim(), this.secret);
+		}
+		const basic = authHeader.match(/^Basic\s+(.+)$/i);
+		if (basic) {
+			const decoded = Buffer.from(basic[1].trim(), "base64").toString("utf8");
+			const colonIdx = decoded.indexOf(":");
+			const password = colonIdx === -1 ? decoded : decoded.slice(colonIdx + 1);
+			return safeCompare(password, this.secret);
+		}
+		return false;
 	}
 }

@@ -113,7 +113,8 @@ async function bootstrap() {
 		bufferLogs: true,
 	});
 
-	app.useLogger(app.get(LoggerService));
+	// LoggerService is transient-scoped, so get() throws InvalidClassScopeException.
+	app.useLogger(await app.resolve(LoggerService));
 
 	const configService = app.get(ConfigService);
 
