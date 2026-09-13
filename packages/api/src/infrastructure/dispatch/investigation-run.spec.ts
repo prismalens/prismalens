@@ -404,3 +404,42 @@ describe("assembled investigation context (Date-typed incident fields)", () => {
 		expect(opts.context.alerts[0].startsAt).toBe("2026-07-31T10:00:00.000Z");
 	});
 });
+
+/**
+ * ADR 0004 §5 / #628: the harness child never gets `process.env` verbatim. The
+ * only env `conductRun` receives is the resolved harness's own provider keys,
+ * never a `PRISMALENS_*` name — even one sitting right next to a real
+ * provider key in the parent process.
+ */
+describe("harness child env (trust floor, #628)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("passes the resolved harness's provider keys, never PRISMALENS_* or the rest of process.env", async () => {
+		vi.stubEnv("PRISMALENS_AUTH_SECRET", "leak-me");
+		vi.stubEnv("PRISMALENS_WEBHOOK_SECRET", "leak-me-too");
+		vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+		vi.stubEnv("SOME_UNRELATED_HOST_VAR", "noise");
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({
+			report: { summary: "done", rootCause: null, nextSteps: [] },
+		});
+		const ports = fakePorts();
+
+		await runInvestigationJob(
+			{ id: "job-env", investigationId: "inv-env", attempts: 1 },
+			{ investigationId: "inv-env", incidentId: "inc-env" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string> }];
+		// `resolveHarness` in `fakePorts` defaults to opencode, which lists
+		// ANTHROPIC_API_KEY among its provider keys (registry row).
+		expect(opts.env.ANTHROPIC_API_KEY).toBe("sk-ant-test");
+		expect(opts.env.PRISMALENS_AUTH_SECRET).toBeUndefined();
+		expect(opts.env.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
+		expect(opts.env.SOME_UNRELATED_HOST_VAR).toBeUndefined();
+	});
+});

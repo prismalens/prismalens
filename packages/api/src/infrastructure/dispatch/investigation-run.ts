@@ -9,6 +9,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
+import { getHarnessProviderKeys } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
 	type CanonicalEvent,
@@ -181,7 +182,10 @@ async function runJobInternal(
 				cwd: workspace.cwd,
 				runDir,
 				...(model ? { model } : {}),
-				env: process.env,
+				// Never process.env: the child gets only the process-floor allowlist
+				// (layered on by buildFloorEnv) plus this harness's own provider keys,
+				// never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
+				env: getHarnessProviderKeys(selection.harness, process.env),
 				sandbox,
 				requestedSandbox: sandboxMode,
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },

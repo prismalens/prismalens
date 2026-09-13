@@ -44,7 +44,9 @@ export const SAFE_ENV_ALLOWLIST = [
 
 /**
  * The floor's child env: the safe allowlist from process.env, with the caller's
- * env (BYO-key) layered on top so it always wins.
+ * env (BYO-key) layered on top so it always wins. A `PRISMALENS_*` key in
+ * `extra` is always dropped (ADR 0004 §5) — the harness never sees the app's
+ * own secrets, even if a caller passes `process.env` here by mistake.
  */
 export function buildFloorEnv(
 	extra?: NodeJS.ProcessEnv,
@@ -55,7 +57,9 @@ export function buildFloorEnv(
 		if (value !== undefined) env[key] = value;
 	}
 	for (const [key, value] of Object.entries(extra ?? {})) {
-		if (value !== undefined) env[key] = value;
+		if (value !== undefined && !key.startsWith("PRISMALENS_")) {
+			env[key] = value;
+		}
 	}
 	return env;
 }

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 export {
+	getHarnessProviderKeys,
 	HARNESS_AUTO_ORDER,
 	HARNESS_BINARY,
 	HARNESS_IDS,

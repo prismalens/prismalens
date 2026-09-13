@@ -36,6 +36,17 @@ describe("buildFloorEnv (own-secret isolation, ADR-0009)", () => {
 		const env = buildFloorEnv({ OPENAI_BASE_URL: undefined });
 		expect("OPENAI_BASE_URL" in env).toBe(false);
 	});
+
+	it("drops PRISMALENS_* keys even if the caller passes them in extra", () => {
+		const env = buildFloorEnv({
+			PRISMALENS_AUTH_SECRET: "leak-me",
+			PRISMALENS_WEBHOOK_SECRET: "leak-me-too",
+			OPENAI_API_KEY: "byo-key",
+		});
+		expect(env.PRISMALENS_AUTH_SECRET).toBeUndefined();
+		expect(env.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
+		expect(env.OPENAI_API_KEY).toBe("byo-key");
+	});
 });
 
 describe("createProcessFloorSandbox", () => {
@@ -59,6 +70,33 @@ describe("createProcessFloorSandbox", () => {
 		expect(childEnv.OPENAI_API_KEY).toBe("byo-key");
 		expect(childEnv[SECRET]).toBeUndefined();
 		await sandbox.destroy();
+	});
+
+	it("a child spawned with PRISMALENS_AUTH_SECRET and PRISMALENS_WEBHOOK_SECRET in the parent env sees neither", async () => {
+		process.env.PRISMALENS_AUTH_SECRET = "auth-secret-123";
+		process.env.PRISMALENS_WEBHOOK_SECRET = "webhook-secret-456";
+		try {
+			const sandbox = createProcessFloorSandbox();
+			const child = sandbox.spawn(
+				process.execPath,
+				["-e", "process.stdout.write(JSON.stringify(process.env))"],
+				{ cwd: process.cwd(), env: { OPENAI_API_KEY: "byo-key" } },
+			);
+			const chunks: Buffer[] = [];
+			child.stdout.on("data", (d: Buffer) => chunks.push(d));
+			await once(child, "close");
+			const childEnv = JSON.parse(Buffer.concat(chunks).toString()) as Record<
+				string,
+				string
+			>;
+			expect(childEnv.OPENAI_API_KEY).toBe("byo-key");
+			expect(childEnv.PRISMALENS_AUTH_SECRET).toBeUndefined();
+			expect(childEnv.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
+			await sandbox.destroy();
+		} finally {
+			delete process.env.PRISMALENS_AUTH_SECRET;
+			delete process.env.PRISMALENS_WEBHOOK_SECRET;
+		}
 	});
 
 	it("destroy() kills children still running inside the boundary", async () => {
