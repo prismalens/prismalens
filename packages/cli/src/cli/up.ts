@@ -20,6 +20,7 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import {
 	displayUrl,
+	healthUrl,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogFile,
@@ -150,10 +151,9 @@ export default defineCommand({
 			consola.info(`Starting at ${url}`);
 			return;
 		}
-		const ready = await waitForReady(
-			`${bind.protocol}://${bind.host}:${bind.port}/health`,
-			{ timeoutMs: READY_TIMEOUT_MS },
-		);
+		const ready = await waitForReady(healthUrl(bind), {
+			timeoutMs: READY_TIMEOUT_MS,
+		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
 		} else {

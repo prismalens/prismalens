@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	displayUrl,
+	healthUrl,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogFile,
@@ -72,6 +73,21 @@ describe("resolveBind and displayUrl", () => {
 	});
 	it("falls back to 3001 on a non-numeric port", () => {
 		expect(resolveBind({ PRISMALENS_PORT: "abc" }).port).toBe(3001);
+	});
+});
+
+describe("healthUrl", () => {
+	it("probes a wildcard bind over loopback", () => {
+		for (const host of ["0.0.0.0", "::"]) {
+			const url = healthUrl({ host, port: 3001, protocol: "http" });
+			expect(url).toBe("http://127.0.0.1:3001/health");
+			expect(() => new URL(url)).not.toThrow();
+		}
+	});
+	it("brackets an IPv6 literal", () => {
+		const url = healthUrl({ host: "::1", port: 3001, protocol: "http" });
+		expect(url).toBe("http://[::1]:3001/health");
+		expect(() => new URL(url)).not.toThrow();
 	});
 });
 

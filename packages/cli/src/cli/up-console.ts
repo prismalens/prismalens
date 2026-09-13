@@ -56,6 +56,21 @@ export function displayUrl(bind: {
 	return `${bind.protocol}://${shown}:${bind.port}`;
 }
 
+/** Where the readiness probe connects: a wildcard bind is reached over loopback, an IPv6 literal needs brackets. */
+export function healthUrl(bind: {
+	host: string;
+	port: number;
+	protocol: string;
+}): string {
+	const host =
+		bind.host === "0.0.0.0" || bind.host === "::"
+			? "127.0.0.1"
+			: bind.host.includes(":")
+				? `[${bind.host}]`
+				: bind.host;
+	return `${bind.protocol}://${host}:${bind.port}/health`;
+}
+
 export interface WaitForReadyOptions {
 	timeoutMs?: number;
 	intervalMs?: number;
