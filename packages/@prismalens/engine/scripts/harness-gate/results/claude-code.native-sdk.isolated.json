@@ -33,7 +33,7 @@
 		},
 		"R6": {
 			"tier": "must",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R7": {
 			"tier": "must",
@@ -41,15 +41,15 @@
 		},
 		"R12": {
 			"tier": "must",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R13": {
 			"tier": "must",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R14": {
 			"tier": "must",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R15": {
 			"tier": "must",
@@ -57,7 +57,7 @@
 		},
 		"R16": {
 			"tier": "must",
-			"passed": "not probed"
+			"passed": "3/3"
 		},
 		"R18": {
 			"tier": "must",

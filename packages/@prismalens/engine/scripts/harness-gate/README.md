@@ -23,16 +23,19 @@ pnpm --filter @prismalens/engine exec tsx scripts/harness-gate/run.ts \
 | `--model` | `gemma4:31b-cloud` | An Ollama model the account can use (free tier: `gemma4:31b-cloud`, `gpt-oss:120b-cloud`) |
 | `--base-url` | `http://localhost:11434` | Must be loopback; anything else is refused |
 | `--timeout` | `300` | Seconds per run |
-| `--keep-fixtures` | off | Keep the fixture and write `observation.json` into it for debugging |
+| `--keep-fixtures` | off | Keep the fixtures and write `dump.json` (observation, turns, events) into each for debugging |
 
 The result lands in `results/<driver>[.isolated].json` with the harness versions, the config that made it pass, and passes per requirement row.
 
 ## What a run does
 
-1. `fixture.ts` creates a git repo holding a random nonce and traps: a Claude `.claude/settings.json` hook and `.mcp.json` server, an OpenCode project plugin and `opencode.json` MCP server. Each trap touches a marker file if the harness honours repo config.
-2. The driver starts the harness through one transport, injects the `probe-mcp.ts` server, and sends the same prompt: read the nonce, call the MCP tool, write a file, run `touch`, answer with the nonce and token.
-3. The driver answers every permission request with prismalens's policy: allow reads and the probe tool, refuse writes and shell.
-4. `verdict.ts` judges rows from what happened on disk and in the stream, never from the model's claims alone.
+Each run opens three sessions on fresh fixtures (`scenarios.ts`), through the driver's `GateSession` (`session.ts`): prompt, cancel, close, and every event stamped on arrival.
+
+1. **Base.** `fixture.ts` creates a git repo holding a random nonce and traps: a Claude `.claude/settings.json` hook and `.mcp.json` server, an OpenCode project plugin and `opencode.json` MCP server. Each trap touches a marker file if the harness honours repo config. The prompt asks for four tool calls: read the nonce, call the injected `probe-mcp.ts` tool, write a file, run `touch`. Permission requests are answered with prismalens's policy (reads and the probe pass, the rest is refused). Then a follow-up prompt in the same session asks for the nonce again. Rows R1-R5, R12-R15, R18.
+2. **Interrupt.** A long text-only prompt is cancelled once it is streaming; the turn must settle within 10 s. Row R6.
+3. **Errors.** The session asks for a model the endpoint does not serve; the failure must surface within 30 s. Row R16.
+
+`verdict.ts` judges rows from disk and the event stream, never from the model's claims alone; its predicates have unit tests.
 
 ## Decision rule
 
@@ -46,11 +49,12 @@ The result lands in `results/<driver>[.isolated].json` with the harness versions
 
 ## Adding a harness
 
-1. Add a driver per transport implementing `Driver` (`drivers.ts`): start the harness keyless against `opts.baseUrl`, pass `harnessEnv(fx.home, ...)`, inject `fx.probe`, answer permissions with the refuse-writes policy, return `observe(fx, ...)`.
+1. Add a driver per transport implementing `Driver` (`session.ts`): `open()` starts the harness keyless against `opts.baseUrl` with `harnessEnv(fx.home, ...)`, injects `fx.probe`, answers permissions with `allowed()`, and returns a `GateSession`. An ACP harness needs only `openAcp()` with its launch command (`acp.ts`); see `opencodeAcp` in `opencode.ts`.
 2. If the harness reads repo config from its own files, add a trap for it in `fixture.ts` that touches `repo-hook-fired` or `repo-mcp-started`.
 3. Register it in `registry.ts`, run it with and without `--isolate`, commit the result files.
 
 ## Findings so far
 
 - Claude Code and OpenCode both honour repo-supplied config by default on both transports, so R4 fails without isolation. Claude: `settingSources: []` (SDK option, or `_meta.claudeCode.options.settingSources` on ACP `session/new`). OpenCode: `--pure` plus `OPENCODE_DISABLE_PROJECT_CONFIG=1` and `OPENCODE_DISABLE_CLAUDE_CODE=1`.
+- With isolation on, all four drivers pass every probed MUST row 3/3 on `gemma4:31b-cloud` (R1-R6, R12-R16, R18). No probed row separates ACP from the native SDK yet for Claude Code or OpenCode.
 - OpenCode ends the agent loop on the first refused tool call unless `experimental.continue_loop_on_deny` is `true`; without it no final answer, and so no report, arrives after a refused write.

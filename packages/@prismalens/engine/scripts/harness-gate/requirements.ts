@@ -41,7 +41,7 @@ export const REQUIREMENTS: readonly Requirement[] = [
 		id: "R6",
 		title: "Interrupt stops the turn within 10 s",
 		tier: "must",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R7",
@@ -53,19 +53,19 @@ export const REQUIREMENTS: readonly Requirement[] = [
 		id: "R12",
 		title: "Tool calls pair start to result with input and content",
 		tier: "must",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R13",
 		title: "Liveness is content: first event within 15 s, no silence over 30 s",
 		tier: "must",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R14",
 		title: "Follow-up in the same session keeps context",
 		tier: "must",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R15",
@@ -77,7 +77,7 @@ export const REQUIREMENTS: readonly Requirement[] = [
 		id: "R16",
 		title: "Failures arrive as errors within 30 s, not hangs",
 		tier: "must",
-		probed: false,
+		probed: true,
 	},
 	{
 		id: "R18",

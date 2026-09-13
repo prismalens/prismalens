@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Readable, Writable } from "node:stream";
-import {
-	type Client,
-	ClientSideConnection,
-	ndJsonStream,
-	PROTOCOL_VERSION,
-} from "@agentclientprotocol/sdk";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
-import type { Driver, GateOptions } from "./drivers.js";
+import { openAcp } from "./acp.js";
 import { harnessEnv } from "./env.js";
-import { type Fixture, observe, PROMPT } from "./fixture.js";
-
-const refuse = (text: string) => !/prismalens_probe/.test(text);
+import type { Fixture } from "./fixture.js";
+import {
+	allowed,
+	type Driver,
+	type GateEvent,
+	type GateOptions,
+	sleep,
+	type TurnResult,
+	withTimeout,
+} from "./session.js";
 
 /** Inline config: an Ollama provider (no key) and ask-before-edit/bash, the policy prismalens answers. */
 function inlineConfig(fx: Fixture, opts: GateOptions, withMcp: boolean) {
@@ -72,7 +72,7 @@ function opencodeEnv(
 	});
 }
 
-const isolationConfig = (opts: GateOptions) => ({
+const config = (opts: GateOptions) => ({
 	"experimental.continue_loop_on_deny": true,
 	...(opts.isolate && {
 		flags: ["--pure"],
@@ -83,122 +83,28 @@ const isolationConfig = (opts: GateOptions) => ({
 	}),
 });
 
-const opencodeVersion = () => {
-	const out = spawn("opencode", ["--version"]);
-	return new Promise<string>((resolve) => {
-		let v = "";
-		out.stdout.on("data", (d) => {
-			v += d;
-		});
-		out.on("close", () => resolve(v.trim()));
-	});
-};
-let cachedVersion = "unknown";
-void opencodeVersion().then((v) => {
-	cachedVersion = v;
+const versions = () => ({
+	"opencode-ai": execFileSync("opencode", ["--version"]).toString().trim(),
 });
-
-const killGroup = (child: ChildProcess) => {
-	if (child.pid) {
-		try {
-			process.kill(-child.pid, "SIGKILL");
-		} catch {
-			// already gone
-		}
-	}
-};
 
 export const opencodeAcp: Driver = {
 	id: "opencode.acp",
-	config: isolationConfig,
-	versions: () => ({ "opencode-ai": cachedVersion }),
-	async run(fx, opts) {
-		const args = ["acp", "--cwd", fx.repo, ...(opts.isolate ? ["--pure"] : [])];
-		const child = spawn("opencode", args, {
-			cwd: fx.repo,
+	config,
+	versions,
+	open(fx, opts) {
+		return openAcp(fx, {
+			command: "opencode",
+			args: ["acp", "--cwd", fx.repo, ...(opts.isolate ? ["--pure"] : [])],
 			env: opencodeEnv(fx, opts, inlineConfig(fx, opts, false)),
-			stdio: ["pipe", "pipe", "ignore"],
-			detached: true,
 		});
-		const permissionRequests: string[] = [];
-		const toolCalls: string[] = [];
-		let finalText = "";
-		const client: Client = {
-			async requestPermission(p) {
-				const text = `${p.toolCall.title ?? ""} ${JSON.stringify(p.toolCall.rawInput ?? {})}`;
-				permissionRequests.push(text);
-				const kind =
-					refuse(text) && p.toolCall.kind !== "read"
-						? "reject_once"
-						: "allow_once";
-				const option = p.options.find((o) => o.kind === kind) ?? p.options[0];
-				return { outcome: { outcome: "selected", optionId: option.optionId } };
-			},
-			async sessionUpdate(n) {
-				const u = n.update;
-				if (
-					u.sessionUpdate === "tool_call" ||
-					u.sessionUpdate === "tool_call_update"
-				)
-					toolCalls.push(
-						`${u.title ?? ""} ${JSON.stringify(u.rawInput ?? {})}`,
-					);
-				if (
-					u.sessionUpdate === "agent_message_chunk" &&
-					u.content.type === "text"
-				)
-					finalText += u.content.text;
-			},
-		};
-		const conn = new ClientSideConnection(
-			() => client,
-			ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout)),
-		);
-		const timeout = new Promise<null>((resolve) =>
-			setTimeout(() => resolve(null), opts.timeoutMs),
-		);
-		let ended = false;
-		try {
-			await conn.initialize({
-				protocolVersion: PROTOCOL_VERSION,
-				clientCapabilities: {},
-			});
-			const session = await conn.newSession({
-				cwd: fx.repo,
-				mcpServers: [
-					{
-						name: "probe",
-						command: fx.probe.command,
-						args: fx.probe.args,
-						env: Object.entries(fx.probe.env).map(([name, value]) => ({
-							name,
-							value,
-						})),
-					},
-				],
-			});
-			const res = await Promise.race([
-				conn.prompt({
-					sessionId: session.sessionId,
-					prompt: [{ type: "text", text: PROMPT }],
-				}),
-				timeout,
-			]);
-			ended = res !== null && Boolean(res.stopReason);
-		} catch {
-			ended = false;
-		} finally {
-			killGroup(child);
-		}
-		return observe(fx, { finalText, permissionRequests, toolCalls, ended });
 	},
 };
 
 export const opencodeNative: Driver = {
 	id: "opencode.native-sdk",
-	config: isolationConfig,
-	versions: () => ({ "opencode-ai": cachedVersion }),
-	async run(fx, opts) {
+	config,
+	versions,
+	async open(fx, opts) {
 		const child = spawn(
 			"opencode",
 			[
@@ -214,12 +120,16 @@ export const opencodeNative: Driver = {
 				detached: true,
 			},
 		);
-		const permissionRequests: string[] = [];
-		const toolCalls = new Map<string, string>();
-		let finalText = "";
-		let ended = false;
-		let error: string | undefined;
-		const events = new AbortController();
+		const kill = () => {
+			if (child.pid)
+				try {
+					process.kill(-child.pid, "SIGKILL");
+				} catch {
+					// already gone
+				}
+		};
+		const events: GateEvent[] = [];
+		const stream = new AbortController();
 		try {
 			const baseUrl = await new Promise<string>((resolve, reject) => {
 				let out = "";
@@ -244,12 +154,14 @@ export const opencodeNative: Driver = {
 				const created = await client.session.create({});
 				sessionID = created.data?.id;
 				lastError = created.error;
-				if (!sessionID) await new Promise((r) => setTimeout(r, 500));
+				if (!sessionID) await sleep(500);
 			}
 			if (!sessionID)
 				throw new Error(
 					`session.create returned no id: ${JSON.stringify(lastError)}`,
 				);
+			const mainSession = sessionID;
+
 			const answered = new Set<string>();
 			const answer = async (p: {
 				id: string;
@@ -259,85 +171,138 @@ export const opencodeNative: Driver = {
 			}) => {
 				if (answered.has(p.id)) return;
 				answered.add(p.id);
-				const text = `${p.permission} ${p.patterns.join(" ")} ${JSON.stringify(p.metadata)}`;
-				permissionRequests.push(text);
+				const request = `${p.permission} ${p.patterns.join(" ")} ${JSON.stringify(p.metadata)}`;
+				events.push({ t: Date.now(), kind: "permission", request });
 				await client.permission.reply({
 					requestID: p.id,
-					reply: refuse(text) ? "reject" : "once",
+					reply: allowed(request, p.permission) ? "once" : "reject",
 				});
 			};
-			const sub = await client.event.subscribe(undefined, {
-				signal: events.signal,
-			});
+			const texts = new Map<string, string>();
+			let turnStart = 0;
+			let turnError: string | undefined;
+			let onIdle: (() => void) | undefined;
 			let connected: () => void = () => {};
 			const isConnected = new Promise<void>((r) => {
 				connected = r;
 			});
-			const idle = (async () => {
-				for await (const ev of sub.stream) {
-					if (ev.type === "server.connected") connected();
-					if (ev.type === "permission.asked") await answer(ev.properties);
-					if (
-						ev.type === "message.part.updated" &&
-						ev.properties.part.type === "tool"
-					) {
-						const part = ev.properties.part;
-						const input =
-							"input" in part.state ? JSON.stringify(part.state.input) : "{}";
-						toolCalls.set(part.callID, `${part.tool} ${input}`);
+			const sub = await client.event.subscribe(undefined, {
+				signal: stream.signal,
+			});
+			void (async () => {
+				try {
+					for await (const ev of sub.stream) {
+						const t = Date.now();
+						if (ev.type === "server.connected") connected();
+						if (ev.type === "permission.asked") await answer(ev.properties);
+						if (ev.type === "message.part.updated") {
+							const part = ev.properties.part;
+							const parentId =
+								part.sessionID !== mainSession ? part.sessionID : undefined;
+							if (part.type === "text" && !parentId && t >= turnStart) {
+								texts.set(part.id, part.text);
+								events.push({ t, kind: "text", output: part.text });
+							} else if (part.type === "reasoning")
+								events.push({ t, kind: "delta", parentId });
+							else if (part.type === "tool")
+								events.push({
+									t,
+									kind: "tool",
+									id: part.callID,
+									name: part.tool,
+									status: part.state.status,
+									input: JSON.stringify(part.state.input),
+									output:
+										part.state.status === "completed"
+											? part.state.output
+											: part.state.status === "error"
+												? part.state.error
+												: undefined,
+									parentId,
+								});
+						}
+						if (
+							ev.type === "session.error" &&
+							(!ev.properties.sessionID ||
+								ev.properties.sessionID === mainSession)
+						)
+							turnError = JSON.stringify(
+								ev.properties.error ?? "session.error",
+							);
+						if (
+							ev.type === "session.idle" &&
+							ev.properties.sessionID === mainSession
+						)
+							onIdle?.();
 					}
-					if (
-						ev.type === "session.idle" &&
-						ev.properties.sessionID === sessionID
-					)
-						return true;
+				} catch {
+					// the stream is aborted on close
 				}
-				return false;
 			})();
 			// A request raised before the event stream connects is never delivered on it.
-			await Promise.race([
-				isConnected,
-				new Promise((r) => setTimeout(r, 10_000)),
-			]);
+			await withTimeout(isConnected, 10_000, undefined);
 			const backstop = setInterval(() => {
 				void client.permission
 					.list()
 					.then((res) => Promise.all((res.data ?? []).map(answer)))
 					.catch(() => {});
 			}, 2_000);
-			await client.session.promptAsync({
-				sessionID,
-				model: { providerID: "ollama", modelID: opts.model },
-				parts: [{ type: "text", text: PROMPT }],
-			});
-			ended =
-				(await Promise.race([
-					idle,
-					new Promise<boolean>((r) =>
-						setTimeout(() => r(false), opts.timeoutMs),
-					),
-				])) === true;
-			clearInterval(backstop);
-			const messages = await client.session.messages({ sessionID });
-			const last = [...(messages.data ?? [])]
-				.reverse()
-				.find((m) => m.info.role === "assistant");
-			finalText = (last?.parts ?? [])
-				.map((p) => (p.type === "text" ? p.text : ""))
-				.join("");
+
+			return {
+				events,
+				async prompt(text, timeoutMs): Promise<TurnResult> {
+					texts.clear();
+					turnStart = Date.now();
+					turnError = undefined;
+					const idle = new Promise<boolean>((resolve) => {
+						onIdle = () => resolve(true);
+					});
+					const sent = await client.session.promptAsync({
+						sessionID: mainSession,
+						model: { providerID: "ollama", modelID: opts.model },
+						parts: [{ type: "text", text }],
+					});
+					if (sent.error)
+						return {
+							settled: true,
+							ended: false,
+							text: "",
+							error: JSON.stringify(sent.error),
+						};
+					const settled = await withTimeout(idle, timeoutMs, false);
+					const messages = await client.session.messages({
+						sessionID: mainSession,
+					});
+					const last = [...(messages.data ?? [])]
+						.reverse()
+						.find((m) => m.info.role === "assistant");
+					const error =
+						turnError ??
+						(last?.info.role === "assistant" && last.info.error
+							? JSON.stringify(last.info.error)
+							: undefined);
+					return {
+						settled,
+						ended: settled && !error,
+						text: (last?.parts ?? [])
+							.map((p) => (p.type === "text" ? p.text : ""))
+							.join(""),
+						error,
+					};
+				},
+				async cancel() {
+					await client.session.abort({ sessionID: mainSession });
+				},
+				async close() {
+					clearInterval(backstop);
+					stream.abort();
+					kill();
+				},
+			};
 		} catch (e) {
-			ended = false;
-			error = e instanceof Error ? e.message : String(e);
-		} finally {
-			events.abort();
-			killGroup(child);
+			stream.abort();
+			kill();
+			throw e;
 		}
-		return observe(fx, {
-			finalText,
-			permissionRequests,
-			toolCalls: [...toolCalls.values()],
-			ended,
-			error,
-		});
 	},
 };

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { rmSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { assertLoopback } from "./env.js";
-import { makeFixture } from "./fixture.js";
 import { DRIVERS } from "./registry.js";
 import { REQUIREMENTS } from "./requirements.js";
-import { judge } from "./verdict.js";
+import { runScenarios } from "./scenarios.js";
 
 const { values } = parseArgs({
 	options: {
@@ -33,7 +32,6 @@ if (!driver) {
 	console.error(`--driver must be one of: ${Object.keys(DRIVERS).join(", ")}`);
 	process.exit(2);
 }
-
 assertLoopback(values["base-url"]);
 
 const opts = {
@@ -41,23 +39,12 @@ const opts = {
 	baseUrl: values["base-url"],
 	isolate: values.isolate,
 	timeoutMs: Number(values.timeout) * 1000,
+	keepFixtures: values["keep-fixtures"],
 };
 const runs = Number(values.runs);
 const tally: Record<string, number> = {};
 for (let i = 1; i <= runs; i++) {
-	const fx = makeFixture();
-	const started = Date.now();
-	const observation = await driver.run(fx, opts);
-	const rows = judge(observation, fx);
-	if (values["keep-fixtures"])
-		writeFileSync(
-			join(fx.root, "observation.json"),
-			JSON.stringify(
-				{ seconds: (Date.now() - started) / 1000, ...observation },
-				null,
-				2,
-			),
-		);
+	const rows = await runScenarios(driver, opts);
 	for (const [id, pass] of Object.entries(rows))
 		tally[id] = (tally[id] ?? 0) + (pass ? 1 : 0);
 	console.log(
@@ -65,13 +52,6 @@ for (let i = 1; i <= runs; i++) {
 			.map(([id, pass]) => `${id}=${pass ? "pass" : "FAIL"}`)
 			.join(" ")}`,
 	);
-	if (!values["keep-fixtures"])
-		rmSync(fx.root, {
-			recursive: true,
-			force: true,
-			maxRetries: 5,
-			retryDelay: 200,
-		});
 }
 
 const result = {
