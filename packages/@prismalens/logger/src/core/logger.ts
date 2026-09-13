@@ -1,286 +1,164 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { getConfig } from "@prismalens/config";
+import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { getAppDataDir, getConfig } from "@prismalens/config";
 import pino, { type Logger as PinoLogger } from "pino";
-import type { LogEntry, LoggerOptions } from "../types/log-entry.js";
-import type { LogLevel, ServiceInfo, WideEvent } from "../types/wide-event.js";
-import { redactSensitiveData } from "../utils/redaction.js";
-import { truncatePayload } from "../utils/truncation.js";
-import {
-	enrichContext,
-	getCurrentWideEvent,
-	getRequestScope,
-} from "./context.js";
-import { TailSampler } from "./sampler.js";
+import { prettyFactory } from "pino-pretty";
+import type { LoggerOptions, LogLevel, ServiceInfo } from "../index.js";
+import { enrichContext, getRequestScope } from "./context.js";
 
-const _LOG_LEVELS: Record<LogLevel, number> = {
-	debug: 20,
-	info: 30,
-	warn: 40,
-	error: 50,
-};
+const KEYS = [
+	"authorization",
+	"cookie",
+	"password",
+	"token",
+	"secret",
+	"apiKey",
+	"api_key",
+];
+const P = ["", "*.", "*.*.", "*.*.*.", "[*].", "*.[*].", "[*].*."];
+export const REDACT_PATHS = [
+	...P.flatMap((p) => [
+		...KEYS.map((k) => `${p}${k}`),
+		`${p}["set-cookie"]`,
+		`${p}set-cookie`,
+	]),
+];
 
-const PINO_LEVEL_MAP: Record<LogLevel, string> = {
-	debug: "debug",
-	info: "info",
-	warn: "warn",
-	error: "error",
-};
+let rootPino: PinoLogger | null = null;
+let currentServiceInfo: ServiceInfo | null = null;
+let defaultInstance: Logger | null = null;
 
-/**
- * Main logger class implementing wide events logging with Pino.
- */
+export function getRootPino(): PinoLogger {
+	if (rootPino) return rootPino;
+
+	const cfg = getConfig();
+	const loc = cfg.PRISMALENS_LOG_FILE_LOCATION ?? join(getAppDataDir(), "logs");
+	const name = cfg.PRISMALENS_LOG_FILE_NAME;
+	const isQuiet = cfg.PRISMALENS_LOG_CONSOLE === "quiet";
+
+	mkdirSync(loc, { recursive: true });
+	const logPath = join(loc, name);
+	try {
+		if (!existsSync(logPath)) {
+			symlinkSync(`${name.replace(/\.log$/, "")}.1.log`, logPath);
+		}
+	} catch {}
+
+	const fileTransport = pino.transport({
+		target: fileURLToPath(import.meta.resolve("pino-roll")),
+		options: {
+			file: logPath,
+			size: `${cfg.PRISMALENS_LOG_FILE_SIZE_MAX}m`,
+			mkdir: true,
+			limit: { count: cfg.PRISMALENS_LOG_FILE_COUNT_MAX },
+		},
+	});
+
+	const pretty = prettyFactory({
+		ignore: "pid,hostname,time",
+		colorize: false,
+		singleLine: true,
+	});
+	const consoleStream = {
+		write(c: string | Buffer) {
+			const s = pretty(c.toString());
+			if (s) {
+				if (isQuiet) process.stderr.write(s);
+				else process.stdout.write(s);
+			}
+		},
+	};
+
+	rootPino = pino(
+		{
+			level: cfg.PRISMALENS_LOG_LEVEL,
+			redact: { paths: REDACT_PATHS, censor: "[redacted]" },
+		},
+		pino.multistream([
+			{ level: cfg.PRISMALENS_LOG_LEVEL, stream: fileTransport },
+			{
+				level: isQuiet ? "warn" : cfg.PRISMALENS_LOG_LEVEL,
+				stream: consoleStream,
+			},
+		]),
+	);
+	return rootPino;
+}
+
 export class Logger {
-	private readonly context: string;
-	private readonly pino: PinoLogger;
-	private readonly sampler: TailSampler;
-	private readonly maxPayloadSize: number;
-	private readonly includeStackTrace: boolean;
-
-	private static instance: Logger | null = null;
-	private static serviceInfo: ServiceInfo | null = null;
-
-	constructor(options: LoggerOptions = {}) {
-		const config = getConfig();
-
-		this.context = options.context ?? "Application";
-		this.maxPayloadSize = config.PRISMALENS_LOG_MAX_PAYLOAD_SIZE;
-		this.includeStackTrace = config.PRISMALENS_LOG_INCLUDE_STACK_TRACE;
-
-		// Initialize Pino logger
-		const isPretty = config.PRISMALENS_LOG_FORMAT === "text";
-		const pinoOptions: pino.LoggerOptions = {
-			level: config.PRISMALENS_LOG_LEVEL,
-			formatters: {
-				level: (label) => ({ level: label }),
-			},
-			timestamp: pino.stdTimeFunctions.isoTime,
-		};
-
-		if (isPretty) {
-			// Use pino-pretty for human-readable output in development
-			this.pino = pino({
-				...pinoOptions,
-				transport: {
-					target: "pino-pretty",
-					options: {
-						colorize: true,
-						translateTime: "SYS:standard",
-						ignore: "pid,hostname",
-					},
-				},
-			});
-		} else {
-			this.pino = pino(pinoOptions);
-		}
-
-		// Initialize sampler
-		this.sampler = new TailSampler(config);
+	constructor(private readonly context?: string | LoggerOptions) {
+		if (typeof context === "object" && context) this.context = context.context;
 	}
 
-	/**
-	 * Set service metadata (called once at startup).
-	 */
-	static setServiceInfo(info: ServiceInfo): void {
-		Logger.serviceInfo = info;
+	static setServiceInfo(i: ServiceInfo) {
+		currentServiceInfo = i;
+	}
+	static getServiceInfo() {
+		return currentServiceInfo;
+	}
+	static getInstance() {
+		if (!defaultInstance) defaultInstance = new Logger();
+		return defaultInstance;
+	}
+	static resetInstance() {
+		defaultInstance = null;
+		rootPino = null;
+		currentServiceInfo = null;
 	}
 
-	/**
-	 * Get service info.
-	 */
-	static getServiceInfo(): ServiceInfo | null {
-		return Logger.serviceInfo;
+	child(ctx: string) {
+		return new Logger(ctx);
+	}
+	getContext() {
+		return typeof this.context === "string" ? this.context : undefined;
+	}
+	enrich(d: Record<string, unknown>) {
+		enrichContext(d);
+	}
+	emitWideEvent() {}
+
+	debug(m: string, x?: unknown, ...a: unknown[]) {
+		this.write("debug", m, x, a);
+	}
+	info(m: string, x?: unknown, ...a: unknown[]) {
+		this.write("info", m, x, a);
+	}
+	warn(m: string, x?: unknown, ...a: unknown[]) {
+		this.write("warn", m, x, a);
+	}
+	error(m: string, x?: unknown, ...a: unknown[]) {
+		this.write("error", m, x, a);
 	}
 
-	/**
-	 * Get singleton logger instance.
-	 */
-	static getInstance(): Logger {
-		if (!Logger.instance) {
-			Logger.instance = new Logger();
-		}
-		return Logger.instance;
-	}
-
-	/**
-	 * Reset singleton instance (for testing).
-	 */
-	static resetInstance(): void {
-		Logger.instance = null;
-		Logger.serviceInfo = null;
-	}
-
-	/**
-	 * Create a child logger with specific context.
-	 */
-	child(context: string): Logger {
-		const childLogger = new Logger({ context });
-		return childLogger;
-	}
-
-	/**
-	 * Get the current context name.
-	 */
-	getContext(): string {
-		return this.context;
-	}
-
-	// ===== Standard Log Methods =====
-
-	debug(message: string, ...args: unknown[]): void {
-		this.log("debug", message, args);
-	}
-
-	info(message: string, ...args: unknown[]): void {
-		this.log("info", message, args);
-	}
-
-	warn(message: string, ...args: unknown[]): void {
-		this.log("warn", message, args);
-	}
-
-	error(message: string, error?: Error | unknown, ...args: unknown[]): void {
-		const errorObj = error instanceof Error ? error : undefined;
-		const extraArgs =
-			error instanceof Error
-				? args
-				: [error, ...args].filter((a) => a !== undefined);
-		this.log("error", message, extraArgs, errorObj);
-	}
-
-	/**
-	 * Emit a complete wide event (typically at end of request).
-	 * Applies tail sampling to decide if the event should be retained.
-	 */
-	emitWideEvent(additionalData?: Partial<WideEvent>): void {
+	private write(
+		lvl: LogLevel,
+		msg: string,
+		meta?: unknown,
+		args: unknown[] = [],
+	) {
+		const p = getRootPino();
 		const scope = getRequestScope();
-		let finalEvent = getCurrentWideEvent() ?? {};
+		const log: Record<string, unknown> = {};
 
-		if (additionalData) {
-			finalEvent = { ...finalEvent, ...additionalData };
+		if (currentServiceInfo) log.service = currentServiceInfo;
+		if (scope?.bindings) Object.assign(log, scope.bindings);
+		if (this.context) log.context = this.context;
+
+		if (meta instanceof Error) {
+			log.err = meta;
+		} else if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+			Object.assign(log, meta);
+		} else if (meta !== undefined) {
+			log.data = [meta, ...args];
 		}
 
-		// Add service info
-		if (Logger.serviceInfo) {
-			finalEvent.service = Logger.serviceInfo;
-		}
-
-		// Calculate final duration
-		if (scope) {
-			finalEvent.duration_ms = Date.now() - scope.startTime;
-		}
-
-		// Apply tail sampling
-		const decision = this.sampler.shouldSample(finalEvent);
-		finalEvent.sampling = {
-			decision: decision.shouldRetain ? "retained" : "dropped",
-			reason: decision.reason,
-			rate: this.sampler.getOptions().sampleRate,
-		};
-
-		if (!decision.shouldRetain) {
-			return; // Drop the event
-		}
-
-		// Apply redaction and truncation
-		const safeEvent = redactSensitiveData(finalEvent);
-		const truncatedEvent = truncatePayload(safeEvent, this.maxPayloadSize);
-
-		// Emit as a structured log entry
-		this.pino.info({ ...truncatedEvent, _type: "wide_event" }, "wide_event");
-	}
-
-	/**
-	 * Internal log method.
-	 */
-	private log(
-		level: LogLevel,
-		message: string,
-		args: unknown[],
-		error?: Error,
-	): void {
-		const _entry: LogEntry = {
-			level,
-			message,
-			context: this.context,
-			timestamp: new Date().toISOString(),
-			args: args.length > 0 ? args : undefined,
-			error,
-		};
-
-		// Enrich wide event context if in request scope
-		const enrichment: Partial<WideEvent> = {
-			log: {
-				level,
-				message,
-				context: this.context,
-				args: args.length > 0 ? args : undefined,
-			},
-		};
-
-		if (error) {
-			enrichment.error = {
-				type: error.name,
-				message: error.message,
-				stack: this.includeStackTrace ? error.stack : undefined,
-			};
-		}
-
-		enrichContext(enrichment);
-
-		// Build log object
-		const logObj: Record<string, unknown> = {
-			context: this.context,
-		};
-
-		if (args.length === 1 && typeof args[0] === "object" && args[0] !== null) {
-			Object.assign(logObj, args[0]);
-		} else if (args.length > 0) {
-			logObj.data = args;
-		}
-
-		if (error) {
-			logObj.err = {
-				type: error.name,
-				message: error.message,
-				stack: this.includeStackTrace ? error.stack : undefined,
-			};
-		}
-
-		// Apply redaction to log object before emitting
-		const safeLogObj = redactSensitiveData(logObj);
-
-		// Use Pino to emit the log
-		const pinoLevel = PINO_LEVEL_MAP[level];
-		(
-			this.pino[pinoLevel as keyof PinoLogger] as (
-				obj: unknown,
-				msg: string,
-			) => void
-		)(safeLogObj, message);
-	}
-
-	/**
-	 * Enrich the current request context with additional data.
-	 */
-	enrich(data: Record<string, unknown>): void {
-		enrichContext({ context: data });
+		p[lvl](log, msg);
 	}
 }
 
-// ===== Convenience exports for standalone usage =====
-
-/**
- * Get the singleton logger instance.
- */
-export function getLogger(): Logger {
-	return Logger.getInstance();
-}
-
-/**
- * Create a child logger with a specific context.
- */
-export function createChildLogger(context: string): Logger {
-	return Logger.getInstance().child(context);
-}
+export const getLogger = () => Logger.getInstance();
+export const createChildLogger = (c: string) => Logger.getInstance().child(c);
