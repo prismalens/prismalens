@@ -31,6 +31,7 @@ import {
 	generateEncryptionKey,
 	getOrCreateAuthSecret,
 	getOrCreateEncryptionKey,
+	getOrCreateWebhookSecret,
 } from "./utils/encryption-key.js";
 import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
@@ -59,6 +60,7 @@ export {
 	getAppDataDir,
 	getOrCreateAuthSecret,
 	getOrCreateEncryptionKey,
+	getOrCreateWebhookSecret,
 };
 
 /**
@@ -102,6 +104,9 @@ export function getConfig(): GlobalConfig {
 		}
 		if (!process.env[SecretEnvVars.AUTH_SECRET]) {
 			process.env[SecretEnvVars.AUTH_SECRET] = getOrCreateAuthSecret();
+		}
+		if (!process.env[SecretEnvVars.WEBHOOK_SECRET]) {
+			process.env[SecretEnvVars.WEBHOOK_SECRET] = getOrCreateWebhookSecret();
 		}
 
 		const result = baseConfigSchema

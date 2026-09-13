@@ -44,7 +44,12 @@ harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
 `--workspace <dir>` to put the database and secrets somewhere other than
-`~/.prismalens`.
+`~/.prismalens`. Logs are in `<workspace>/logs/`, the newest is `prismalens.<highest N>.log`;
+`--verbose` streams them to the terminal. Webhook deliveries need the token in
+`<workspace>/PRISMALENS_WEBHOOK_SECRET_FILE`: send it as
+`Authorization: Bearer <token>` or as the basic auth password, or use it as the
+HMAC-SHA256 key over the raw body and send `X-Hub-Signature-256: sha256=<hex digest>`.
+Alertmanager: set `authorization: { credentials: <token> }` on the receiver.
 
 ### Try it without an alert source
 
@@ -126,7 +131,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | `packages/@prismalens/auth` | Auth configuration and client (Better Auth), for the in-development server. |
 | `packages/@prismalens/database` | SQLite database via Prisma — client, schema and the shipped migration runner. |
 | `packages/@prismalens/integrations` | Integration templates, OAuth2 flows, credential encryption, for the in-development server. |
-| `packages/@prismalens/logger` | Wide-events logging with tail sampling, shared across packages. |
+| `packages/@prismalens/logger` | Pino-based structured logging with log rotation and secret redaction, shared across packages. |
 | `packages/@prismalens/design-tokens` | Shared brand/design tokens for the (in-development) web UI. |
 | `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
 | `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |

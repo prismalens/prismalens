@@ -1,34 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
-	CanActivate,
-	ExecutionContext,
+	type CanActivate,
+	type ExecutionContext,
+	ForbiddenException,
 	Injectable,
 	Logger,
+	UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "@prismalens/config";
 import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
 import { RENDER_WEBHOOK_PATH } from "../../shared/constants/routes.js";
 
+/** Hashing both sides first keeps the comparison fixed-length, so timing never reveals the secret's length. */
+function safeCompare(a: string, b: string): boolean {
+	const digest = (s: string) => createHash("sha256").update(s).digest();
+	return timingSafeEqual(digest(a), digest(b));
+}
+
 /**
- * Optional HMAC signature verification guard for webhooks.
- * When PRISMALENS_WEBHOOK_SECRET is set, requires valid X-Hub-Signature-256 header.
- * When not set, all requests pass through (community edition default).
- *
- * Like the Render guard, the HMAC is computed over the raw bytes captured by
- * `WebhookRawBodyMiddleware` — re-serializing the parsed body would hash a
- * different byte sequence than the sender signed.
+ * Fronts all webhook endpoints. Accepts Bearer token, Basic auth password,
+ * or X-Hub-Signature-256 HMAC against PRISMALENS_WEBHOOK_SECRET (#610).
  */
 @Injectable()
 export class WebhookSignatureGuard implements CanActivate {
 	private readonly logger = new Logger(WebhookSignatureGuard.name);
+	private readonly secret: string;
 
 	constructor(
 		private readonly configService: ConfigService<EnvironmentVariables>,
-	) {}
+	) {
+		const secret = this.configService.get("PRISMALENS_WEBHOOK_SECRET", {
+			infer: true,
+		});
+		if (!secret) {
+			throw new Error("PRISMALENS_WEBHOOK_SECRET is required");
+		}
+		this.secret = secret;
+	}
 
 	canActivate(context: ExecutionContext): boolean {
 		const request = context.switchToHttp().getRequest<RequestWithRawBody>();
@@ -36,42 +48,55 @@ export class WebhookSignatureGuard implements CanActivate {
 			return true; // Render has its own dedicated signature guard
 		}
 
-		const secret = this.configService.get("PRISMALENS_WEBHOOK_SECRET");
-		if (!secret) {
-			return true; // No secret configured — allow all (community edition default)
-		}
-
+		const authHeader = request.headers.authorization;
 		const signature = request.headers["x-hub-signature-256"] as
 			| string
 			| undefined;
 
-		if (!signature) {
-			this.logger.warn("Webhook rejected: missing X-Hub-Signature-256 header");
-			return false;
-		}
-
-		const rawBody = request.rawBody;
-		if (!rawBody) {
+		if (!authHeader && !signature) {
 			this.logger.warn(
-				"Webhook rejected: raw request body unavailable — WebhookRawBodyMiddleware must run for this route",
+				"Webhook rejected: missing authorization or signature header",
 			);
-			return false;
+			throw new UnauthorizedException(
+				"Missing webhook authorization or signature header",
+			);
 		}
 
-		const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+		if (authHeader && this.authorizationMatches(authHeader)) {
+			return true;
+		}
 
-		try {
-			const sigBuf = Buffer.from(signature);
-			const expBuf = Buffer.from(expected);
-			if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
-				this.logger.warn("Webhook rejected: invalid signature");
-				return false;
+		if (signature) {
+			const rawBody = request.rawBody;
+			if (!rawBody) {
+				this.logger.warn(
+					"Webhook rejected: raw request body unavailable — WebhookRawBodyMiddleware must run for this route",
+				);
+				throw new ForbiddenException("Raw request body unavailable");
 			}
-		} catch {
-			this.logger.warn("Webhook rejected: signature comparison failed");
-			return false;
+			const expected = `sha256=${createHmac("sha256", this.secret).update(rawBody).digest("hex")}`;
+			if (safeCompare(signature, expected)) {
+				return true;
+			}
 		}
 
-		return true;
+		this.logger.warn("Webhook rejected: no valid credential");
+		throw new ForbiddenException("Invalid webhook credentials");
+	}
+
+	/** Bearer token, or Basic auth with the secret as password (any username). */
+	private authorizationMatches(authHeader: string): boolean {
+		const bearer = authHeader.match(/^Bearer\s+(.+)$/i);
+		if (bearer) {
+			return safeCompare(bearer[1].trim(), this.secret);
+		}
+		const basic = authHeader.match(/^Basic\s+(.+)$/i);
+		if (basic) {
+			const decoded = Buffer.from(basic[1].trim(), "base64").toString("utf8");
+			const colonIdx = decoded.indexOf(":");
+			const password = colonIdx === -1 ? decoded : decoded.slice(colonIdx + 1);
+			return safeCompare(password, this.secret);
+		}
+		return false;
 	}
 }
