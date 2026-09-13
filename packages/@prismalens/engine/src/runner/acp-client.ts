@@ -41,6 +41,8 @@ export interface AcpSessionConfig {
 	promptTimeoutMs?: number;
 	/** Raw wire lines, both directions, for the run transcript. Best effort. */
 	onWire?: (direction: "in" | "out", line: string) => void;
+	/** Harness stderr as it arrives, so the host can log it instead of it hitting the terminal (#600). */
+	onStderr?: (chunk: string) => void;
 }
 
 const DEFAULT_INIT_TIMEOUT_MS = 120_000;
@@ -99,9 +101,11 @@ export class AcpSession {
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;
-		child.stderr.on("data", (d: Buffer) =>
-			this.stderrChunks.push(d.toString()),
-		);
+		child.stderr.on("data", (d: Buffer) => {
+			const chunk = d.toString();
+			this.stderrChunks.push(chunk);
+			config.onStderr?.(chunk);
+		});
 		child.on("error", (err) =>
 			this.fail(`failed to start ${config.command}: ${err.message}`),
 		);

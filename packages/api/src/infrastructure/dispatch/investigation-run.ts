@@ -187,6 +187,10 @@ async function runJobInternal(
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
+				onHarnessStderr: (chunk) => {
+					const line = chunk.trimEnd();
+					if (line) logger.debug(`harness stderr: ${line}`);
+				},
 				signal: io.signal,
 			},
 			{ sink, store },
