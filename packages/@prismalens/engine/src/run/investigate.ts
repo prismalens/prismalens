@@ -55,7 +55,7 @@ export interface RunInvestigationOptions {
 	steer?: () => string | null;
 	/** Appended to the prompt. Used by the registry admission script to provoke a write; never by the API. */
 	promptSuffix?: string;
-	/** Harness stderr, chunk by chunk, for the host's logger instead of the terminal (#600). */
+	/** Harness stderr, chunk by chunk, for the host's logger (#600). */
 	onHarnessStderr?: (chunk: string) => void;
 	signal?: AbortSignal;
 }

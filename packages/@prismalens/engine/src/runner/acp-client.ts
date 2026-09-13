@@ -41,7 +41,7 @@ export interface AcpSessionConfig {
 	promptTimeoutMs?: number;
 	/** Raw wire lines, both directions, for the run transcript. Best effort. */
 	onWire?: (direction: "in" | "out", line: string) => void;
-	/** Harness stderr as it arrives, so the host can log it instead of it hitting the terminal (#600). */
+	/** Harness stderr as it arrives, so the host can log it (#600). */
 	onStderr?: (chunk: string) => void;
 }
 
