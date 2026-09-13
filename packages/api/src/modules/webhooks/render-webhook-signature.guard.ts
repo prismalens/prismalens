@@ -6,6 +6,7 @@ import {
 	ExecutionContext,
 	Injectable,
 	Logger,
+	UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "@prismalens/config";
@@ -34,7 +35,12 @@ export class RenderWebhookSignatureGuard implements CanActivate {
 	canActivate(context: ExecutionContext): boolean {
 		const secret = this.configService.get("PRISMALENS_RENDER_WEBHOOK_SECRET");
 		if (!secret) {
-			return true; // No secret configured — allow all (community edition default)
+			this.logger.warn(
+				"Render webhook rejected: PRISMALENS_RENDER_WEBHOOK_SECRET is not configured",
+			);
+			throw new UnauthorizedException(
+				"Render webhook signing secret is not configured",
+			);
 		}
 
 		const request = context.switchToHttp().getRequest<RequestWithRawBody>();

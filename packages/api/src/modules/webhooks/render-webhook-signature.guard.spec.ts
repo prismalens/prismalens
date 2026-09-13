@@ -68,10 +68,34 @@ const signRender = (payload: string, msgId = "msg_123456789") => {
 };
 
 describe("RenderWebhookSignatureGuard", () => {
-	it("allows requests when no secret is configured", () => {
+	it("refuses with 401 when no secret is configured, never fails open", () => {
 		const guard = new RenderWebhookSignatureGuard(configWith({}));
 
-		expect(guard.canActivate(createMockContext({}))).toBe(true);
+		expect(() => guard.canActivate(createMockContext({}))).toThrow(
+			UnauthorizedException,
+		);
+		try {
+			guard.canActivate(createMockContext({}));
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(401);
+		}
+	});
+
+	it("refuses a validly-shaped signature with 401 when no secret is configured", () => {
+		const guard = new RenderWebhookSignatureGuard(configWith({}));
+		const { msgId, timestamp, signature } = signRender(RAW_DELIVERY);
+
+		const context = createMockContext({
+			headers: {
+				"webhook-id": msgId,
+				"webhook-timestamp": timestamp,
+				"webhook-signature": signature,
+			},
+			rawBody: Buffer.from(RAW_DELIVERY, "utf8"),
+			body: PARSED_DELIVERY,
+		});
+
+		expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
 	});
 
 	it("verifies the signature against the raw bytes, not the parsed body", () => {
