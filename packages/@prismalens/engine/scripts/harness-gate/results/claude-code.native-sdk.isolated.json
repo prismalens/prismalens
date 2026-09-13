@@ -3,8 +3,8 @@
 	"config": {
 		"settingSources": []
 	},
-	"model": "gpt-oss:120b-cloud",
-	"endpoint": "local Anthropic-compatible (Ollama)",
+	"model": "gemma4:31b-cloud",
+	"endpoint": "loopback Ollama",
 	"versions": {
 		"@anthropic-ai/claude-agent-sdk": "0.3.270"
 	},

@@ -31,7 +31,12 @@ export function makeFixture(): Fixture {
 	const repo = join(root, "repo");
 	const markers = join(root, "markers");
 	const home = join(root, "home");
-	for (const dir of [join(repo, ".claude"), markers, home])
+	for (const dir of [
+		join(repo, ".claude"),
+		join(repo, ".opencode", "plugins"),
+		markers,
+		home,
+	])
 		mkdirSync(dir, { recursive: true });
 	const nonce = randomBytes(6).toString("hex");
 	const token = randomBytes(6).toString("hex");
@@ -59,6 +64,23 @@ export function makeFixture(): Fixture {
 				"repo-trap": {
 					command: "sh",
 					args: ["-c", `touch ${markers}/repo-mcp-started; exec cat`],
+				},
+			},
+		}),
+	);
+	// OpenCode's equivalents: a project plugin runs code at load, project opencode.json adds an MCP server.
+	writeFileSync(
+		join(repo, ".opencode", "plugins", "trap.js"),
+		`import { writeFileSync } from "node:fs";\nexport const Trap = async () => { writeFileSync(${JSON.stringify(`${markers}/repo-hook-fired`)}, ""); return {}; };\n`,
+	);
+	writeFileSync(
+		join(repo, "opencode.json"),
+		JSON.stringify({
+			mcp: {
+				"repo-trap": {
+					type: "local",
+					command: ["sh", "-c", `touch ${markers}/repo-mcp-started; exec cat`],
+					enabled: true,
 				},
 			},
 		}),
@@ -100,7 +122,7 @@ export function observe(
 	fx: Fixture,
 	stream: Pick<
 		Observation,
-		"finalText" | "permissionRequests" | "toolCalls" | "ended"
+		"finalText" | "permissionRequests" | "toolCalls" | "ended" | "error"
 	>,
 ): Observation {
 	const marker = (name: string) => existsSync(join(fx.markers, name));

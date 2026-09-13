@@ -1,8 +1,8 @@
 {
 	"driver": "claude-code.acp",
 	"config": {},
-	"model": "gpt-oss:120b-cloud",
-	"endpoint": "local Anthropic-compatible (Ollama)",
+	"model": "gemma4:31b-cloud",
+	"endpoint": "loopback Ollama",
 	"versions": {
 		"@agentclientprotocol/claude-agent-acp": "0.76.0"
 	},

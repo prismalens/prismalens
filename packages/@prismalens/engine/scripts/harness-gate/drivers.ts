@@ -12,6 +12,7 @@ import {
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { harnessEnv } from "./env.js";
 import { type Fixture, observe, PROMPT } from "./fixture.js";
 import type { Observation } from "./verdict.js";
 
@@ -43,14 +44,10 @@ const pkgVersion = (name: string) => pkgJson(name).version;
 
 /** Points Claude Code at an Anthropic-compatible endpoint (Ollama locally) with no API key. */
 function claudeEnv(fx: Fixture, opts: GateOptions): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const [k, v] of Object.entries(process.env))
-		if (v !== undefined) env[k] = v;
-	return {
-		...env,
+	return harnessEnv(fx.home, {
 		CLAUDE_CONFIG_DIR: fx.home,
 		ANTHROPIC_BASE_URL: opts.baseUrl,
-		ANTHROPIC_AUTH_TOKEN: process.env.GATE_AUTH_TOKEN ?? "ollama",
+		ANTHROPIC_AUTH_TOKEN: "ollama",
 		ANTHROPIC_API_KEY: "",
 		ANTHROPIC_MODEL: opts.model,
 		ANTHROPIC_DEFAULT_HAIKU_MODEL: opts.model,
@@ -58,7 +55,7 @@ function claudeEnv(fx: Fixture, opts: GateOptions): Record<string, string> {
 		ANTHROPIC_DEFAULT_OPUS_MODEL: opts.model,
 		CLAUDE_CODE_SUBAGENT_MODEL: opts.model,
 		CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-	};
+	});
 }
 
 const refusesWrites = (text: string) => !/prismalens_probe/.test(text);
@@ -218,9 +215,4 @@ export const claudeAcp: Driver = {
 		}
 		return observe(fx, { finalText, permissionRequests, toolCalls, ended });
 	},
-};
-
-export const DRIVERS: Record<string, Driver> = {
-	[claudeNative.id]: claudeNative,
-	[claudeAcp.id]: claudeAcp,
 };

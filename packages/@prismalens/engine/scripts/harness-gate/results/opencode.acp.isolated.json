@@ -1,12 +1,17 @@
 {
-	"driver": "claude-code.acp",
+	"driver": "opencode.acp",
 	"config": {
-		"session/new._meta.claudeCode.options.settingSources": []
+		"experimental.continue_loop_on_deny": true,
+		"flags": ["--pure"],
+		"env": {
+			"OPENCODE_DISABLE_PROJECT_CONFIG": "1",
+			"OPENCODE_DISABLE_CLAUDE_CODE": "1"
+		}
 	},
 	"model": "gemma4:31b-cloud",
 	"endpoint": "loopback Ollama",
 	"versions": {
-		"@agentclientprotocol/claude-agent-acp": "0.76.0"
+		"opencode-ai": "1.18.30"
 	},
 	"date": "2026-09-13",
 	"runs": 3,

@@ -1,35 +1,40 @@
 {
-	"driver": "claude-code.acp",
+	"driver": "opencode.native-sdk",
 	"config": {
-		"session/new._meta.claudeCode.options.settingSources": []
+		"experimental.continue_loop_on_deny": true,
+		"flags": ["--pure"],
+		"env": {
+			"OPENCODE_DISABLE_PROJECT_CONFIG": "1",
+			"OPENCODE_DISABLE_CLAUDE_CODE": "1"
+		}
 	},
 	"model": "gemma4:31b-cloud",
 	"endpoint": "loopback Ollama",
 	"versions": {
-		"@agentclientprotocol/claude-agent-acp": "0.76.0"
+		"opencode-ai": "1.18.30"
 	},
 	"date": "2026-09-13",
-	"runs": 3,
+	"runs": 6,
 	"rows": {
 		"R1": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R2": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R3": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R4": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R5": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R6": {
 			"tier": "must",
@@ -53,7 +58,7 @@
 		},
 		"R15": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R16": {
 			"tier": "must",
@@ -61,7 +66,7 @@
 		},
 		"R18": {
 			"tier": "must",
-			"passed": "3/3"
+			"passed": "6/6"
 		},
 		"R8": {
 			"tier": "want",

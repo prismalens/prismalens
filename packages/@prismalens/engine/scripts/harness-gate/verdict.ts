@@ -10,6 +10,8 @@ export interface Observation {
 	toolCalls: string[];
 	/** True when the stream ended with a stop reason rather than a timeout or crash. */
 	ended: boolean;
+	/** Why the driver gave up, when it did; kept for the observation dump. */
+	error?: string;
 	markers: {
 		repoHookFired: boolean;
 		repoMcpStarted: boolean;

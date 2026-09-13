@@ -4,8 +4,9 @@
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { DRIVERS } from "./drivers.js";
+import { assertLoopback } from "./env.js";
 import { makeFixture } from "./fixture.js";
+import { DRIVERS } from "./registry.js";
 import { REQUIREMENTS } from "./requirements.js";
 import { judge } from "./verdict.js";
 
@@ -16,13 +17,14 @@ const { values } = parseArgs({
 		runs: { type: "string", default: "3" },
 		model: {
 			type: "string",
-			default: process.env.GATE_MODEL ?? "gpt-oss:120b-cloud",
+			default: process.env.GATE_MODEL ?? "gemma4:31b-cloud",
 		},
 		"base-url": {
 			type: "string",
 			default: process.env.GATE_BASE_URL ?? "http://localhost:11434",
 		},
 		"keep-fixtures": { type: "boolean", default: false },
+		timeout: { type: "string", default: "300" },
 	},
 });
 
@@ -32,17 +34,30 @@ if (!driver) {
 	process.exit(2);
 }
 
+assertLoopback(values["base-url"]);
+
 const opts = {
 	model: values.model,
 	baseUrl: values["base-url"],
 	isolate: values.isolate,
-	timeoutMs: 300_000,
+	timeoutMs: Number(values.timeout) * 1000,
 };
 const runs = Number(values.runs);
 const tally: Record<string, number> = {};
 for (let i = 1; i <= runs; i++) {
 	const fx = makeFixture();
-	const rows = judge(await driver.run(fx, opts), fx);
+	const started = Date.now();
+	const observation = await driver.run(fx, opts);
+	const rows = judge(observation, fx);
+	if (values["keep-fixtures"])
+		writeFileSync(
+			join(fx.root, "observation.json"),
+			JSON.stringify(
+				{ seconds: (Date.now() - started) / 1000, ...observation },
+				null,
+				2,
+			),
+		);
 	for (const [id, pass] of Object.entries(rows))
 		tally[id] = (tally[id] ?? 0) + (pass ? 1 : 0);
 	console.log(
@@ -63,9 +78,7 @@ const result = {
 	driver: driver.id,
 	config: driver.config(opts),
 	model: opts.model,
-	endpoint: opts.baseUrl.includes("localhost")
-		? "local Anthropic-compatible (Ollama)"
-		: "remote",
+	endpoint: "loopback Ollama",
 	versions: driver.versions(),
 	date: new Date().toISOString().slice(0, 10),
 	runs,
@@ -86,3 +99,5 @@ const file = join(
 );
 writeFileSync(file, `${JSON.stringify(result, null, "\t")}\n`);
 console.log(`wrote ${file}`);
+// Harness children and SSE streams can hold the event loop open after the last run.
+process.exit(0);
