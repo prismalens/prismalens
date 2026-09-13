@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { createHmac } from "node:crypto";
-import type { ExecutionContext } from "@nestjs/common";
+import {
+	type ExecutionContext,
+	ForbiddenException,
+	UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Webhook } from "svix";
 import { describe, expect, it } from "vitest";
@@ -233,7 +237,88 @@ describe("WebhookSignatureGuard", () => {
 		// An unprefixed path is not a real runtime path, so it must not bypass.
 		const context = createMockContext({ path: "/webhooks/render" });
 
-		expect(guard.canActivate(context)).toBe(false);
+		expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+	});
+
+	it("throws configuration error when no generic secret is configured", () => {
+		expect(() => new WebhookSignatureGuard(configWith({}))).toThrow(
+			"PRISMALENS_WEBHOOK_SECRET is required",
+		);
+	});
+
+	it("allows requests with valid bearer token", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const context = createMockContext({
+			headers: { authorization: `Bearer ${GENERIC_SECRET}` },
+			path: "/api/webhooks/generic",
+		});
+
+		expect(guard.canActivate(context)).toBe(true);
+	});
+
+	it("rejects requests with wrong bearer token and throws ForbiddenException (403)", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const context = createMockContext({
+			headers: { authorization: "Bearer wrong-secret" },
+			path: "/api/webhooks/generic",
+		});
+
+		expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+		try {
+			guard.canActivate(context);
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(403);
+		}
+	});
+
+	it("allows requests with valid basic auth (any username, secret as password)", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const encoded = Buffer.from(`alertmanager:${GENERIC_SECRET}`).toString(
+			"base64",
+		);
+		const context = createMockContext({
+			headers: { authorization: `Basic ${encoded}` },
+			path: "/api/webhooks/prometheus",
+		});
+
+		expect(guard.canActivate(context)).toBe(true);
+	});
+
+	it("allows requests with valid basic auth when username is omitted (no colon)", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const encoded = Buffer.from(GENERIC_SECRET).toString("base64");
+		const context = createMockContext({
+			headers: { authorization: `Basic ${encoded}` },
+			path: "/api/webhooks/prometheus",
+		});
+
+		expect(guard.canActivate(context)).toBe(true);
+	});
+
+	it("rejects requests with wrong basic auth password and throws ForbiddenException (403)", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const encoded = Buffer.from("alertmanager:wrong-secret").toString("base64");
+		const context = createMockContext({
+			headers: { authorization: `Basic ${encoded}` },
+			path: "/api/webhooks/prometheus",
+		});
+
+		expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+		try {
+			guard.canActivate(context);
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(403);
+		}
 	});
 
 	it("verifies the HMAC against the raw bytes of a generic delivery", () => {
@@ -254,7 +339,7 @@ describe("WebhookSignatureGuard", () => {
 		expect(guard.canActivate(context)).toBe(true);
 	});
 
-	it("rejects a generic delivery when raw bytes were not captured", () => {
+	it("rejects a generic delivery when raw bytes were not captured and throws ForbiddenException (403)", () => {
 		const guard = new WebhookSignatureGuard(
 			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
 		);
@@ -270,14 +355,71 @@ describe("WebhookSignatureGuard", () => {
 			path: "/api/webhooks/generic",
 		});
 
-		expect(guard.canActivate(context)).toBe(false);
+		expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+		try {
+			guard.canActivate(context);
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(403);
+		}
 	});
 
-	it("allows any request when no generic secret is configured", () => {
-		const guard = new WebhookSignatureGuard(configWith({}));
+	it("rejects requests with an invalid HMAC signature and throws ForbiddenException (403)", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const context = createMockContext({
+			headers: { "x-hub-signature-256": "sha256=invalid_signature" },
+			rawBody: Buffer.from(RAW_DELIVERY, "utf8"),
+			body: PARSED_DELIVERY,
+			path: "/api/webhooks/generic",
+		});
 
-		const context = createMockContext({ path: "/api/webhooks/generic" });
+		expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+		try {
+			guard.canActivate(context);
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(403);
+		}
+	});
 
-		expect(guard.canActivate(context)).toBe(true);
+	it("rejects requests whose raw bytes were altered in transit and throws ForbiddenException (403)", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const digest = createHmac("sha256", GENERIC_SECRET)
+			.update(Buffer.from(RAW_DELIVERY, "utf8"))
+			.digest("hex");
+
+		const context = createMockContext({
+			headers: { "x-hub-signature-256": `sha256=${digest}` },
+			rawBody: Buffer.from(`${RAW_DELIVERY} `, "utf8"),
+			body: PARSED_DELIVERY,
+			path: "/api/webhooks/generic",
+		});
+
+		expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+		try {
+			guard.canActivate(context);
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(403);
+		}
+	});
+
+	it("throws UnauthorizedException (401) when neither Authorization nor X-Hub-Signature-256 is present", () => {
+		const guard = new WebhookSignatureGuard(
+			configWith({ PRISMALENS_WEBHOOK_SECRET: GENERIC_SECRET }),
+		);
+		const context = createMockContext({
+			path: "/api/webhooks/generic",
+			rawBody: Buffer.from(RAW_DELIVERY, "utf8"),
+			body: PARSED_DELIVERY,
+		});
+
+		expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+		try {
+			guard.canActivate(context);
+		} catch (err: any) {
+			expect(err.getStatus()).toBe(401);
+		}
 	});
 });

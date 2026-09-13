@@ -107,3 +107,11 @@ export function getOrCreateEncryptionKey(): string {
 export function getOrCreateAuthSecret(): string {
 	return getOrCreateSecret(SecretEnvVars.AUTH_SECRET);
 }
+
+/**
+ * Get or create the webhook signature secret.
+ * Used for HMAC-SHA256 verification of inbound webhooks.
+ */
+export function getOrCreateWebhookSecret(): string {
+	return getOrCreateSecret(SecretEnvVars.WEBHOOK_SECRET);
+}

@@ -222,7 +222,11 @@ export function IntegrationsTab() {
 					</div>
 					<p className="text-sm text-muted-foreground">
 						Copy these URLs into your monitoring tools to send alerts to
-						PrismaLens.
+						PrismaLens. Webhook deliveries need either Authorization: Bearer
+						&lt;token&gt; (or basic auth with the token as password) or
+						X-Hub-Signature-256 computed with the token generated at
+						~/.prismalens/PRISMALENS_WEBHOOK_SECRET_FILE (under #605 webhooks
+						are loopback only, same machine only).
 					</p>
 				</CardHeader>
 				<CardContent className="space-y-4">

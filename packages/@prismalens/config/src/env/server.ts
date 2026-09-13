@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { z } from "zod";
+import { getOrCreateWebhookSecret } from "../utils/encryption-key.js";
 
 /**
  * Global configuration schema.
@@ -57,10 +58,10 @@ export const globalSchema = z.object({
 	PRISMALENS_WEBHOOK_SECRET: z
 		.string()
 		.min(16, "Webhook secret must be at least 16 characters")
-		.optional()
+		.default(() => getOrCreateWebhookSecret())
 		.describe(
-			"Optional shared secret for webhook HMAC-SHA256 signature verification. " +
-				"When set, incoming webhooks must include a valid X-Hub-Signature-256 header.",
+			"Shared secret for webhook HMAC-SHA256 signature verification. " +
+				"Auto-generated on first run. Incoming webhooks must include a valid X-Hub-Signature-256 header.",
 		),
 	PRISMALENS_RENDER_WEBHOOK_SECRET: z
 		.string()

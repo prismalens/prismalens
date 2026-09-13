@@ -15,6 +15,7 @@ export const FILE_SUFFIX = "_FILE" as const;
 export const SecretEnvVars = {
 	ENCRYPTION_KEY: "PRISMALENS_ENCRYPTION_KEY",
 	AUTH_SECRET: "PRISMALENS_AUTH_SECRET",
+	WEBHOOK_SECRET: "PRISMALENS_WEBHOOK_SECRET",
 } as const;
 
 export type SecretEnvVar = (typeof SecretEnvVars)[keyof typeof SecretEnvVars];
