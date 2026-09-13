@@ -1,0 +1,93 @@
+{
+	"driver": "codex.native-sdk",
+	"config": {
+		"approval_policy": "on-request",
+		"sandbox_mode": "read-only",
+		"codex-acp INITIAL_AGENT_MODE": "read-only"
+	},
+	"model": "gemma4:31b-cloud",
+	"endpoint": "loopback Ollama",
+	"versions": {
+		"@openai/codex-sdk": "0.154.0"
+	},
+	"date": "2026-09-13",
+	"runs": 3,
+	"rows": {
+		"R1": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R2": {
+			"tier": "must",
+			"passed": "0/3"
+		},
+		"R3": {
+			"tier": "must",
+			"passed": "0/3"
+		},
+		"R4": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R5": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R6": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R7": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R12": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R13": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R14": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R15": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R16": {
+			"tier": "must",
+			"passed": "3/3"
+		},
+		"R18": {
+			"tier": "must",
+			"passed": "0/3"
+		},
+		"R8": {
+			"tier": "want",
+			"passed": "not probed"
+		},
+		"R9": {
+			"tier": "want",
+			"passed": "not probed"
+		},
+		"R10": {
+			"tier": "want",
+			"passed": "0/3"
+		},
+		"R11": {
+			"tier": "want",
+			"passed": "not probed"
+		},
+		"R17": {
+			"tier": "want",
+			"passed": "not probed"
+		},
+		"R19": {
+			"tier": "want",
+			"passed": "not probed"
+		}
+	}
+}

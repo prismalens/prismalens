@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Observation, Planted } from "./verdict.js";
 
@@ -27,13 +27,17 @@ export interface Fixture extends Planted {
 
 /** A git repo carrying the planted nonce plus traps that fire only if repo config is honoured. */
 export function makeFixture(): Fixture {
-	const root = mkdtempSync(join(tmpdir(), "harness-gate-"));
+	// Not under /tmp: Codex refuses to create its helper binaries beneath a temp dir.
+	const base = join(homedir(), ".cache", "prismalens-harness-gate", "fixtures");
+	mkdirSync(base, { recursive: true });
+	const root = mkdtempSync(join(base, "run-"));
 	const repo = join(root, "repo");
 	const markers = join(root, "markers");
 	const home = join(root, "home");
 	for (const dir of [
 		join(repo, ".claude"),
 		join(repo, ".opencode", "plugins"),
+		join(repo, ".codex"),
 		markers,
 		home,
 	])
@@ -84,6 +88,11 @@ export function makeFixture(): Fixture {
 				},
 			},
 		}),
+	);
+	// Codex's equivalent: a project .codex/config.toml adding an MCP server.
+	writeFileSync(
+		join(repo, ".codex", "config.toml"),
+		`[mcp_servers.repo-trap]\ncommand = "sh"\nargs = ["-c", ${JSON.stringify(`touch ${markers}/repo-mcp-started; exec cat`)}]\n`,
 	);
 	const git = (...args: string[]) =>
 		execFileSync(
