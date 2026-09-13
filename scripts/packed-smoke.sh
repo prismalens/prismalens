@@ -178,7 +178,10 @@ if command -v setsid >/dev/null 2>&1; then
 else
 	SETSID=
 fi
+# The gates below read info-level records off the console; quiet (the default) sends
+# those only to the log file, which is asserted separately (#610).
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
+PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \
 PRISMALENS_PORT="$PORT" \
 NODE_ENV=production \
@@ -215,6 +218,16 @@ if [ "$ROUTES" -lt 100 ]; then
 	fail "pl up mapped $ROUTES routes — it did not boot, so no HTTP assertion below means anything"
 fi
 echo "    mapped routes: $ROUTES"
+
+APP_LOG="$UP_DIR/workspace/logs/prismalens.log"
+# The file transport writes from a worker thread, so it may trail the console.
+i=0
+until grep -q "Mapped {" "$APP_LOG" 2>/dev/null || [ "$i" -ge 10 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+grep -q "Mapped {" "$APP_LOG" 2>/dev/null || fail "the API log file $APP_LOG is missing or has no route records"
+echo "    log file: $APP_LOG"
 
 grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowlist is back — pl up is single-origin"
 
