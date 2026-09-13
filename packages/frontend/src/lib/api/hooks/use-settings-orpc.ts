@@ -66,6 +66,16 @@ export function useUpdateHarnessSettings() {
 	});
 }
 
+/**
+ * On-demand ACP handshake against one harness (`POST /settings/harness/check`,
+ * #630). PATH presence (`useHarnesses`) says a binary exists, not that it is
+ * logged in — this is the same probe `pl doctor` runs, spent only when the
+ * operator asks for it, never on page load.
+ */
+export function useCheckHarness() {
+	return useMutation(orpc.settings.harnesses.checkHarness.mutationOptions());
+}
+
 export interface InvestigationReadiness {
 	/** Would an investigation start right now? */
 	isReady: boolean;

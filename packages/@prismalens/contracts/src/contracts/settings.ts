@@ -9,9 +9,11 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AllInvestigationPoliciesSchema,
+	CheckHarnessInputSchema,
 	DangerOperationResultSchema,
 	FactoryResetInputSchema,
 	HarnessesResponseSchema,
+	HarnessProbeResultSchema,
 	HarnessSettingsSchema,
 	InvestigationLimitsSchema,
 	InvestigationPolicySchema,
@@ -150,5 +152,20 @@ export const settingsContract = {
 			})
 			.input(UpdateHarnessSettingsSchema)
 			.output(HarnessSettingsSchema),
+		/**
+		 * On-demand ACP handshake against one harness — the same probe `pl
+		 * doctor` runs, behind a button rather than page load (#630).
+		 * POST /settings/harness/check
+		 */
+		checkHarness: oc
+			.route({
+				method: "POST",
+				path: "/settings/harness/check",
+				summary:
+					"Probe one harness with an ACP handshake (initialize + session/new, no prompt turn)",
+				tags: ["settings"],
+			})
+			.input(CheckHarnessInputSchema)
+			.output(HarnessProbeResultSchema),
 	},
 };

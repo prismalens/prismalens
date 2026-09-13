@@ -4,11 +4,12 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module.js";
 import { HarnessService } from "./harness.service.js";
+import { HarnessProbeService } from "./harness-probe.service.js";
 import { RepoCloneService } from "./repo-clone.service.js";
 
 @Module({
 	imports: [PrismaModule],
-	providers: [HarnessService, RepoCloneService],
-	exports: [HarnessService, RepoCloneService],
+	providers: [HarnessService, RepoCloneService, HarnessProbeService],
+	exports: [HarnessService, RepoCloneService, HarnessProbeService],
 })
 export class HarnessModule {}

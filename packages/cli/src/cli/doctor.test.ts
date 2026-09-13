@@ -3,15 +3,23 @@
 
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getAppDataDir, secretFileName } from "@prismalens/config";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	checkAnyHarnessOnPath,
 	checkHarnessesOnPath,
+	checkHarnessReadiness,
 	checkWebhookToken,
 } from "./doctor.js";
+
+const FAKE_HANDSHAKE = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"__fixtures__",
+	"fake-acp-handshake.mjs",
+);
 
 describe("doctor — harness detection", () => {
 	let tempPathDir: string;
@@ -65,6 +73,68 @@ describe("doctor — harness detection", () => {
 		const overall = checkAnyHarnessOnPath(perHarness);
 		expect(overall.pass).toBe(true);
 		expect(overall.hard).toBe(true);
+	});
+});
+
+describe("doctor — harness readiness (ACP handshake)", () => {
+	let tempPathDir: string;
+	let originalPath: string | undefined;
+
+	beforeEach(() => {
+		tempPathDir = join(
+			os.tmpdir(),
+			`pl-doctor-readiness-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(tempPathDir, { recursive: true });
+		originalPath = process.env.PATH;
+		process.env.PATH = tempPathDir;
+	});
+
+	afterEach(() => {
+		rmSync(tempPathDir, { recursive: true, force: true });
+		if (originalPath === undefined) {
+			process.env.PATH = "";
+		} else {
+			process.env.PATH = originalPath;
+		}
+		delete process.env.FAKE_ACP_MODE;
+	});
+
+	/** A shell shim named after the registry binary; the wrapped fixture speaks ACP over stdio regardless of the argv `checkHarnessesOnPath` resolved it with. */
+	function installFakeOpencode(mode: string): void {
+		const binPath = join(tempPathDir, HARNESS_REGISTRY.opencode.binary);
+		writeFileSync(
+			binPath,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
+		);
+		chmodSync(binPath, 0o755);
+		process.env.FAKE_ACP_MODE = mode;
+	}
+
+	it("reports ready for a harness whose ACP handshake succeeds", async () => {
+		installFakeOpencode("ok");
+		const results = await checkHarnessReadiness();
+		const opencode = results.find((c) => c.name.includes("OpenCode"));
+		expect(opencode).toEqual({
+			name: `Harness readiness: ${HARNESS_REGISTRY.opencode.label}`,
+			pass: true,
+			detail: "ready",
+			hard: false,
+		});
+	});
+
+	it("is a SOFT failure carrying the harness's own stderr tail when it is not logged in", async () => {
+		installFakeOpencode("unauthenticated");
+		const results = await checkHarnessReadiness();
+		const opencode = results.find((c) => c.name.includes("OpenCode"));
+		expect(opencode?.pass).toBe(false);
+		expect(opencode?.hard).toBe(false);
+		expect(opencode?.detail).toContain("not logged in");
+	});
+
+	it("probes nothing when no harness is on PATH", async () => {
+		const results = await checkHarnessReadiness();
+		expect(results).toEqual([]);
 	});
 });
 

@@ -4,8 +4,10 @@
 import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
 import { HarnessService } from "../harness/harness.service.js";
+import { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { SettingsService } from "./settings.service.js";
 
 @UseGuards(ThrottlerGuard)
@@ -14,6 +16,7 @@ export class SettingsController {
 	constructor(
 		private readonly settingsService: SettingsService,
 		private readonly harnessService: HarnessService,
+		private readonly harnessProbeService: HarnessProbeService,
 	) {}
 
 	/**
@@ -99,6 +102,10 @@ export class SettingsController {
 			updateSettings: implement(
 				settingsContract.harnesses.updateSettings,
 			).handler(async ({ input }) => this.harnessService.updateSettings(input)),
+			checkHarness: implement(settingsContract.harnesses.checkHarness).handler(
+				async ({ input }) =>
+					this.harnessProbeService.check(input.id as HarnessId),
+			),
 		};
 	}
 }

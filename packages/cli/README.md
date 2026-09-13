@@ -24,7 +24,7 @@ pl up
 | Command | Description |
 | --- | --- |
 | `up` | Run PrismaLens as a single process serving the API and web dashboard. |
-| `doctor` | Preflight-check the environment for a harness binary on PATH. |
+| `doctor` | Preflight-check the environment: a harness binary on PATH, and whether it answers an ACP handshake (ready, or its own login-failure line). |
 
 ## Documentation
 

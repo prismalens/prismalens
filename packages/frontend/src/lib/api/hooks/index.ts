@@ -116,6 +116,7 @@ export {
 // Settings hooks
 export {
 	harnessKeys,
+	useCheckHarness,
 	useFactoryReset,
 	useHarnesses,
 	useHarnessSettings,

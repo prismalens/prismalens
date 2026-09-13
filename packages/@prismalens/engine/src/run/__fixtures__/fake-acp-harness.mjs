@@ -5,12 +5,20 @@
 // A fake ACP agent for engine tests. Speaks protocol v1 over stdio. Behaviour is
 // picked by FAKE_ACP_MODE: "ok" (valid report first try), "retry" (invalid then
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
-// runs). It always attempts one read-only shell call and one write, and reports
-// what the client decided for each so the test can assert the gate.
+// runs), "hang" (never answers the handshake — a doctor-probe timeout), or
+// "unauthenticated" (exits immediately with a stderr line — a doctor-probe
+// login failure). It always attempts one read-only shell call and one write,
+// and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
 const cwd = process.cwd();
+
+if (mode === "unauthenticated") {
+	process.stderr.write("Error: not logged in\n");
+	process.exit(1);
+}
+// "hang": never reads/responds. The client's initTimeoutMs is what ends this.
 let nextId = 100;
 const pending = new Map();
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
@@ -149,6 +157,7 @@ async function turn(sessionId, promptText) {
 }
 
 createInterface({ input: process.stdin }).on("line", async (line) => {
+	if (mode === "hang") return; // never answer; the client's own timeout ends the probe
 	let msg;
 	try {
 		msg = JSON.parse(line);
