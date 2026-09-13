@@ -101,10 +101,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			),
 		}),
 		// opencode resolves ~75 provider catalogs via models.dev (models.dev/api.json);
-		// most first-class ones also support `/connect` OAuth stored under the
-		// isolated dataDir this row already sets (XDG_CONFIG_HOME), so no host env
-		// is needed for those. This lists only the BYO-key env vars for the
-		// providers this repo documents elsewhere in the registry (Anthropic,
+		// most first-class ones also support `/connect`, whose auth.json lives under the
+		// XDG data dir (Global.Path.data). XDG_DATA_HOME is not overridden here, so the
+		// user's `/connect` login survives and no host env is needed for those. This
+		// lists only the BYO-key env vars for the providers this repo documents elsewhere
+		// in the registry (Anthropic,
 		// OpenAI, Google/Gemini), per each provider's `env` field in that catalog,
 		// plus OpenRouter as the common self-hosted gateway. Not exhaustive by
 		// design (ADR 0004 §5 is an allowlist, not "every provider key that
@@ -129,11 +130,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "claude-agent-acp",
 		acpArgs: () => [],
 		acpEnv: ({ dataDir }) => ({ CLAUDE_CONFIG_DIR: dataDir }),
-		// Anthropic SDK default env var (docs.anthropic.com); `claude login` OAuth
-		// state lives under CLAUDE_CONFIG_DIR above, not the host env.
+		// Anthropic SDK default env var (docs.anthropic.com). CLAUDE_CONFIG_DIR above is the
+		// empty per-run dir, so a `claude login` stored in the user's home is not visible.
 		providerKeys: ["ANTHROPIC_API_KEY"],
 		install:
-			"npm i -g @agentclientprotocol/claude-agent-acp  (needs `claude login`)",
+			"npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
 		verified: false,
@@ -146,8 +147,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		acpEnv: ({ dataDir }) => ({ CODEX_HOME: dataDir }),
 		// codex-acp's own install line names this as its env-based login fallback.
 		providerKeys: ["OPENAI_API_KEY"],
-		install:
-			"npm i -g @agentclientprotocol/codex-acp  (needs `codex login` or OPENAI_API_KEY)",
+		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
 		verified: false,

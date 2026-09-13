@@ -37,7 +37,7 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	binary: "claude-agent-acp",
 	installed: true,
 	verified: false,
-	install: "npm i -g @agentclientprotocol/claude-agent-acp  (needs `claude login`)",
+	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 };
 
 const OPENCODE_INSTALLED: HarnessFixture = {
@@ -73,7 +73,7 @@ const NOTHING: HarnessFixture[] = [
 ];
 
 const NO_HARNESS_REASON =
-	"No coding agent found on PATH. Install one: OpenCode: curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai); Claude Code: npm i -g @agentclientprotocol/claude-agent-acp  (needs `claude login`); Codex: npm i -g @agentclientprotocol/codex-acp  (needs `codex login` or OPENAI_API_KEY); Gemini CLI: npm i -g @google/gemini-cli; deepagents: pip install deepagents-acp.";
+	"No coding agent found on PATH. Install one: OpenCode: curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai); Claude Code: npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY); Codex: npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY); Gemini CLI: npm i -g @google/gemini-cli; deepagents: pip install deepagents-acp.";
 
 const isHarnessesUrl = (url: URL) => url.pathname === "/api/settings/harnesses";
 
