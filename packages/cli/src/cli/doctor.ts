@@ -12,7 +12,13 @@
  *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4)
  *  - the port/host `pl up` will bind, informational only
  */
-import { ensureAppDataDir, getAppDataDir } from "@prismalens/config";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import {
+	ensureAppDataDir,
+	getAppDataDir,
+	secretFileName,
+} from "@prismalens/config";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	isOnPath,
@@ -124,6 +130,20 @@ function checkAutoSelection(): Check {
 	};
 }
 
+export function checkWebhookToken(): Check {
+	const filePath = join(
+		getAppDataDir(),
+		secretFileName("PRISMALENS_WEBHOOK_SECRET"),
+	);
+	const exists = existsSync(filePath);
+	return {
+		name: "Webhook token",
+		pass: exists,
+		detail: `${filePath} (${exists ? "exists" : "does not exist yet"})`,
+		hard: false,
+	};
+}
+
 function checkPortHost(): Check {
 	const port = process.env.PRISMALENS_PORT ?? "3001";
 	const host = process.env.PRISMALENS_HOST ?? "127.0.0.1";
@@ -153,6 +173,7 @@ export default defineCommand({
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
 				checkAutoSelection(),
+				checkWebhookToken(),
 				checkPortHost(),
 			];
 

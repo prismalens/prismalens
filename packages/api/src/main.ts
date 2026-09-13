@@ -8,6 +8,7 @@ import { NestFactory } from "@nestjs/core";
 import { getConfig } from "@prismalens/config";
 import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
+import { LoggerService } from "@prismalens/logger/nestjs";
 import { AppModule } from "./app.module.js";
 import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
 import {
@@ -109,7 +110,11 @@ async function bootstrap() {
 	const app = await NestFactory.create(AppModule, {
 		httpsOptions,
 		bodyParser: false, // Required for oRPC to handle body parsing
+		bufferLogs: true,
 	});
+
+	// LoggerService is transient-scoped, so get() throws InvalidClassScopeException.
+	app.useLogger(await app.resolve(LoggerService));
 
 	const configService = app.get(ConfigService);
 

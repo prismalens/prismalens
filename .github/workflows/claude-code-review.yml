@@ -54,3 +54,6 @@ jobs:
       pull-requests: write
       issues: read
       id-token: write
+      # Read ceiling required by callee review job for CI state and logs (#610, gh-workflows#145).
+      checks: read
+      actions: read
