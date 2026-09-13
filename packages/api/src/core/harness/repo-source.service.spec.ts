@@ -25,6 +25,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	classifySource,
+	displayNameFor,
+	gitAuthEnv,
 	mirrorPathFor,
 	RepoSourceService,
 } from "./repo-source.service.js";
@@ -120,6 +122,47 @@ describe("repo-source.service", () => {
 			expect(() => classifySource("file:///tmp/some-repo.git")).toThrow(
 				/absolute folder path or a git URL/,
 			);
+		});
+
+		it("refuses a leading dash, which git would read as an option", () => {
+			expect(() => classifySource("-uevil@host:owner/repo")).toThrow(
+				/must not start with '-'/,
+			);
+		});
+	});
+
+	describe("displayNameFor", () => {
+		it("names a folder by its basename and a URL by owner/repo", () => {
+			expect(displayNameFor("folder", "/home/u/code/api")).toBe("api");
+			expect(displayNameFor("url", "https://github.com/acme/api.git")).toBe(
+				"acme/api",
+			);
+			expect(displayNameFor("url", "git@github.com:acme/api.git")).toBe(
+				"acme/api",
+			);
+		});
+	});
+
+	describe("gitAuthEnv", () => {
+		it("carries an https token as a config-env header, never in argv", () => {
+			const env = gitAuthEnv({
+				kind: "url",
+				source: "https://github.com/acme/api.git",
+				token: "tok",
+			});
+			expect(env.GIT_CONFIG_KEY_0).toBe("http.extraheader");
+			expect(env.GIT_CONFIG_VALUE_0).toBe(
+				`Authorization: Basic ${Buffer.from("x-access-token:tok").toString("base64")}`,
+			);
+		});
+
+		it("sends nothing for ssh remotes or without a token", () => {
+			expect(
+				gitAuthEnv({ kind: "url", source: "git@github.com:acme/api.git", token: "tok" }),
+			).toEqual({});
+			expect(
+				gitAuthEnv({ kind: "url", source: "https://github.com/acme/api.git" }),
+			).toEqual({});
 		});
 	});
 
@@ -240,6 +283,20 @@ describe("repo-source.service", () => {
 			expect(check.head).toBe(head);
 			const mirror = mirrorPathFor(url);
 			expect(existsSync(join(mirror, "HEAD"))).toBe(true);
+		});
+
+		it("validate() with a default branch reports that branch from the bare mirror", async () => {
+			const { bareDir, work } = makeBareRemote();
+			const head = commitAndPush(work, "a.txt", "v1");
+			const url = `file://${bareDir}`;
+
+			const check = await new RepoSourceService().validate({
+				kind: "url",
+				source: url,
+				defaultBranch: "main",
+			});
+
+			expect(check).toEqual({ branch: "main", head });
 		});
 
 		it("a second commit pushed to the remote is picked up by the next snapshot()", async () => {

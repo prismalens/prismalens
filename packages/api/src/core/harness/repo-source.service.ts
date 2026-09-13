@@ -56,6 +56,9 @@ export function classifySource(input: string): {
 	source: string;
 } {
 	const trimmed = input.trim();
+	// A leading dash would reach git as an option: `-uCMD@host:x` passes the URL test.
+	if (trimmed.startsWith("-"))
+		throw new Error("Repository must not start with '-'");
 	const expanded = trimmed.startsWith("~/")
 		? join(homedir(), trimmed.slice(2))
 		: trimmed;
@@ -137,6 +140,7 @@ export class RepoSourceService {
 			"clone",
 			"--quiet",
 			...(branch ? ["--branch", branch] : []),
+			"--",
 			from,
 			dest,
 		]);
@@ -160,19 +164,16 @@ export class RepoSourceService {
 	}
 
 	private async syncMirror(src: RepoSource, path: string): Promise<string> {
-		const auth = this.authArgs(src);
+		const auth = gitAuthEnv(src);
 		if (existsSync(join(path, "HEAD"))) {
-			await this.git([...auth, "fetch", "--prune", "--quiet", "origin"], path);
+			await this.git(["fetch", "--prune", "--quiet", "origin"], path, auth);
 		} else {
 			mkdirSync(join(path, ".."), { recursive: true });
-			await this.git([
-				...auth,
-				"clone",
-				"--mirror",
-				"--quiet",
-				src.source,
-				path,
-			]);
+			await this.git(
+				["clone", "--mirror", "--quiet", "--", src.source, path],
+				undefined,
+				auth,
+			);
 		}
 		return path;
 	}
@@ -203,22 +204,31 @@ export class RepoSourceService {
 	private async git(
 		args: string[],
 		cwd?: string,
+		extraEnv: Record<string, string> = {},
 	): Promise<{ stdout: string; stderr: string }> {
 		try {
 			return await run("git", args, {
 				cwd,
-				env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+				env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...extraEnv },
 				maxBuffer: 16 * 1024 * 1024,
 			});
 		} catch (err) {
 			throw gitError(err);
 		}
 	}
+}
 
-	private authArgs(src: RepoSource): string[] {
-		const token = src.token?.trim();
-		if (!token || !/^https?:\/\//.test(src.source)) return [];
-		const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
-		return ["-c", `http.extraheader=Authorization: Basic ${basic}`];
-	}
+/**
+ * The connection token as an HTTPS auth header, passed through git's config env so it
+ * never appears in argv (`ps`) or the mirror's config. Empty for ssh and scp remotes.
+ */
+export function gitAuthEnv(src: RepoSource): Record<string, string> {
+	const token = src.token?.trim();
+	if (!token || !/^https?:\/\//.test(src.source)) return {};
+	const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+	return {
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: "http.extraheader",
+		GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+	};
 }
