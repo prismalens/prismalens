@@ -64,6 +64,11 @@ describe("resolveBind and displayUrl", () => {
 		});
 		expect(displayUrl(bind)).toBe("https://localhost:8080");
 	});
+	it("brackets an IPv6 literal in the shown URL", () => {
+		const url = displayUrl({ host: "::1", port: 3001, protocol: "http" });
+		expect(url).toBe("http://[::1]:3001");
+		expect(() => new URL(url)).not.toThrow();
+	});
 	it("shows a named host verbatim", () => {
 		expect(
 			displayUrl({ host: "pl.internal", port: 3001, protocol: "http" }),

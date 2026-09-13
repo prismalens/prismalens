@@ -114,6 +114,27 @@ describe("AcpSession when the harness pipe dies", () => {
 		expect(seen.join("")).toContain("not logged in");
 	});
 
+	it("keeps a UTF-8 character split across two stderr chunks intact", async () => {
+		const child = brokenPipeChild("EPIPE");
+		const bytes = Buffer.from("harness: café ✓\n");
+		const cut = bytes.indexOf(0xa9);
+		child.stderr = Readable.from([bytes.subarray(0, cut), bytes.subarray(cut)], {
+			objectMode: false,
+		});
+		const seen: string[] = [];
+		const session = new AcpSession({
+			command: "harness",
+			args: [],
+			cwd: "/tmp",
+			sandbox: sandboxOf(child),
+			permission: { mode: "readOnly" } as never,
+			initTimeoutMs: 250,
+			onStderr: (chunk) => seen.push(chunk),
+		});
+		await expect(session.open()).rejects.toThrow(/harness/i);
+		expect(seen.join("")).toBe("harness: café ✓\n");
+	});
+
 	it("survives an error raised on stdout, not just stdin", async () => {
 		const uncaught: Error[] = [];
 		const onUncaught = (err: Error) => uncaught.push(err);

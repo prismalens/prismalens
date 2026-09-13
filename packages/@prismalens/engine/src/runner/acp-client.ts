@@ -101,8 +101,9 @@ export class AcpSession {
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;
-		child.stderr.on("data", (d: Buffer) => {
-			const chunk = d.toString();
+		// setEncoding keeps a multibyte character split across two chunks intact.
+		child.stderr.setEncoding("utf8");
+		child.stderr.on("data", (chunk: string) => {
 			this.stderrChunks.push(chunk);
 			config.onStderr?.(chunk);
 		});

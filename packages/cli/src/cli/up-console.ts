@@ -43,6 +43,9 @@ export function resolveBind(env: NodeJS.ProcessEnv): {
 	return { host, port, protocol };
 }
 
+const isWildcard = (host: string) => host === "0.0.0.0" || host === "::";
+const urlHost = (host: string) => (host.includes(":") ? `[${host}]` : host);
+
 /** A wildcard bind is not a URL anyone can open; loopback reads better as localhost. */
 export function displayUrl(bind: {
 	host: string;
@@ -50,24 +53,19 @@ export function displayUrl(bind: {
 	protocol: string;
 }): string {
 	const shown =
-		bind.host === "0.0.0.0" || bind.host === "::" || bind.host === "127.0.0.1"
+		isWildcard(bind.host) || bind.host === "127.0.0.1"
 			? "localhost"
-			: bind.host;
+			: urlHost(bind.host);
 	return `${bind.protocol}://${shown}:${bind.port}`;
 }
 
-/** Where the readiness probe connects: a wildcard bind is reached over loopback, an IPv6 literal needs brackets. */
+/** Where the readiness probe connects: a wildcard bind is reached over loopback. */
 export function healthUrl(bind: {
 	host: string;
 	port: number;
 	protocol: string;
 }): string {
-	const host =
-		bind.host === "0.0.0.0" || bind.host === "::"
-			? "127.0.0.1"
-			: bind.host.includes(":")
-				? `[${bind.host}]`
-				: bind.host;
+	const host = isWildcard(bind.host) ? "127.0.0.1" : urlHost(bind.host);
 	return `${bind.protocol}://${host}:${bind.port}/health`;
 }
 
