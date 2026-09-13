@@ -46,10 +46,26 @@ rules until the date above; after it, delete this section.
 - The organizer session plans and writes the new code itself. Subagents take research and
   deletion only: bounded, mechanical, with verify commands. Tests that define new behaviour
   are written by whoever wrote the code.
+- Mechanical verification is delegated, never run by the organizer: packed-tarball boots,
+  smoke and e2e runs, evidence collection, log triage go to agy through the Sonnet
+  `agy-runner` wrapper (ruled 2026-09-13). The organizer writes the verify spec, reads the
+  pasted output and rules; a Bash loop the organizer runs itself is the expensive seat doing
+  cheap work. A single unit test run to close its own edit is still the organizer's.
+- Two lanes never edit the same file. When work is split between the organizer and an agy
+  lane, the split is by file ownership, written into the lane's spec, with the shared
+  contract (env names, exported symbols) fixed in both specs before either starts.
 - One PR per unit of work, however large. No PR splitting; every extra PR costs the operator
   a review round.
 - After `gh pr create`, hand the PR to the named babysitter session (currently
-  `prismalens-71`) with SendMessage; it drives review, CI and follow-up commits.
+  `prismalens-9d`) with SendMessage; it drives review, CI and follow-up commits. The
+  babysitter owns the worktree from then on; the organizer's later edits to that branch go
+  through it.
+- A status report ranks what stands between a stranger and a completed investigation, not
+  what is left on the wave list. "Done with the plan" is not a state the operator accepts;
+  the gap study of 2026-09-13 on #337 is the shape.
+- A gap study never becomes one issue per gap. It comes back as triaged units of similar work,
+  each with a proposal for 0.5.0 or a later release and a reason, so the operator decides per
+  unit and the milestone closes faster (ruled 2026-09-13).
 - Multi-turn research goes to a cheap lane (a Sonnet subagent, or agy) and comes back as a
   file with URLs; the organizer verifies and rules.
 - Before any UI, engine or scope ruling, read the hub's ux-study conclusions and the ADRs
