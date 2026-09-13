@@ -63,6 +63,9 @@ rules until the date above; after it, delete this section.
 - A status report ranks what stands between a stranger and a completed investigation, not
   what is left on the wave list. "Done with the plan" is not a state the operator accepts;
   the gap study of 2026-09-13 on #337 is the shape.
+- A gap study never becomes one issue per gap. It comes back as triaged units of similar work,
+  each with a proposal for 0.5.0 or a later release and a reason, so the operator decides per
+  unit and the milestone closes faster (ruled 2026-09-13).
 - Multi-turn research goes to a cheap lane (a Sonnet subagent, or agy) and comes back as a
   file with URLs; the organizer verifies and rules.
 - Before any UI, engine or scope ruling, read the hub's ux-study conclusions and the ADRs
