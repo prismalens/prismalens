@@ -23315,6 +23315,79 @@
         }
       }
     },
+    "/settings/harness/check": {
+      "post": {
+        "operationId": "settings.harnesses.checkHarness",
+        "summary": "Probe one harness with an ACP handshake (initialize + session/new, no prompt turn)",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "ready": {
+                      "type": "boolean"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "hard": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "ready",
+                    "detail",
+                    "hard"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/setup/status": {
       "get": {
         "operationId": "setup.getStatus",
