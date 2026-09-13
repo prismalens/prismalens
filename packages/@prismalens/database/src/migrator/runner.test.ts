@@ -29,14 +29,13 @@ const SCRATCH_ROOT = join(PACKAGE_DIR, ".tmp-migrator-tests");
  * SQL is caught here rather than on a user's machine.
  *
  * Re-pinned once, at 0.5.0, when the pre-release lineage was squashed to this
- * single `init` (#337, 2026-09-11). From here on, a diff on this line
- * means someone edited a shipped migration and every existing database will
- * hard-stop with `checksum-mismatch`; the fix is to revert the SQL, not to
- * re-pin this constant.
+ * single `init` (#337, 2026-09-11). Until 0.5.0 publishes, a schema change
+ * regenerates `init` and re-pins this (#337, 2026-09-13). After the publish, a
+ * diff here means an edited shipped migration: revert the SQL, never re-pin.
  */
 const SHIPPED_INIT = "20260911192405_init";
 const SHIPPED_INIT_CHECKSUM =
-	"99037325f0dc5841343f140f6282bdfb74224eec2e4b3612b38ff93177e155e4";
+	"0c54ae5f75d0964c9cba9a92e02c0aca33cf755fcf97c3f8142f98c6e9a63c97";
 
 /** Prisma's own `_prisma_migrations` DDL, as SQLite stores it in sqlite_master. */
 const PRISMA_LEDGER_DDL = `CREATE TABLE "_prisma_migrations" (
