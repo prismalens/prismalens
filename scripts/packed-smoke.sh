@@ -211,8 +211,9 @@ done
 # NB: match on `Mapped {` alone. Nest colourises, so ANSI escapes sit between
 # the `[RouterExplorer]` tag and the message and a combined pattern silently
 # counts zero — which is indistinguishable from "did not boot".
+# Nest's own start line, not a route count: #628 deleted routes and 95 fell under a floor of 100.
 ROUTES=$(grep -c "Mapped {" "$UP_LOG" 2>/dev/null) || ROUTES=0
-if [ "$ROUTES" -lt 100 ]; then
+if [ "$ROUTES" -lt 1 ] || ! grep -q "Nest application successfully started" "$UP_LOG"; then
 	echo "----- boot log -----" >&2
 	tail -60 "$UP_LOG" >&2
 	fail "pl up mapped $ROUTES routes — it did not boot, so no HTTP assertion below means anything"
