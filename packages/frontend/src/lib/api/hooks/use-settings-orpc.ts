@@ -101,64 +101,6 @@ export function useInvestigationReadiness(): InvestigationReadiness {
 }
 
 // =============================================================================
-// INVESTIGATION POLICIES
-// =============================================================================
-
-/**
- * Fetch investigation policies for all tiers
- */
-export function useInvestigationPolicies() {
-	return useQuery(
-		orpc.settings.investigation.getPolicies.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Update investigation policy for a tier
- */
-export function useUpdateInvestigationPolicy() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.investigation.updatePolicy.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: orpc.settings.investigation.getPolicies.key(),
-			});
-		},
-	});
-}
-
-/**
- * Fetch investigation limits
- */
-export function useInvestigationLimits() {
-	return useQuery(
-		orpc.settings.investigation.getLimits.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Update investigation limits
- */
-export function useUpdateInvestigationLimits() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.investigation.updateLimits.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: orpc.settings.investigation.getLimits.key(),
-			});
-		},
-	});
-}
-
-// =============================================================================
 // DANGER ZONE
 // =============================================================================
 

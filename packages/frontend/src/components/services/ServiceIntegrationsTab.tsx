@@ -313,14 +313,5 @@ function summarizeConfig(
 		}
 		return "No repositories selected";
 	}
-	if (templateId.startsWith("prometheus")) {
-		const labels = config.labels as Record<string, string> | undefined;
-		if (labels && Object.keys(labels).length > 0) {
-			return `Labels: ${Object.entries(labels)
-				.map(([k, v]) => `${k}=${v}`)
-				.join(", ")}`;
-		}
-		return "No label filters";
-	}
 	return JSON.stringify(config);
 }

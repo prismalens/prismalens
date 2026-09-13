@@ -66,28 +66,6 @@ export class IncidentsController {
 				};
 			}),
 
-			// GET /incidents/active - List active incidents
-			listActive: implement(incidentsContract.listActive).handler(async () => {
-				const incidents = await this.incidentsService.findActive();
-				return incidents.map((i) => this.serializeIncidentWithRelations(i));
-			}),
-
-			// GET /incidents/stats - Get incident statistics
-			getStats: implement(incidentsContract.getStats).handler(async () => {
-				const stats = await this.incidentsService.getStats();
-				const activeCount =
-					(stats.byStatus?.open ?? 0) + (stats.byStatus?.investigating ?? 0);
-				return {
-					total: stats.total,
-					active: activeCount,
-					byStatus: stats.byStatus,
-					bySeverity: stats.bySeverity,
-					byPriority: {},
-					avgTimeToAcknowledge: stats.avgTimeToAcknowledge,
-					avgTimeToResolve: stats.avgTimeToResolve,
-				};
-			}),
-
 			// GET /incidents/:id - Get a single incident
 			get: implement(incidentsContract.get).handler(async ({ input }) => {
 				const incident = await this.incidentsService.findById(input.id);
@@ -98,21 +76,6 @@ export class IncidentsController {
 				}
 				return this.serializeIncidentWithRelations(incident);
 			}),
-
-			// GET /incidents/number/:number - Get incident by number
-			getByNumber: implement(incidentsContract.getByNumber).handler(
-				async ({ input }) => {
-					const incident = await this.incidentsService.findByNumber(
-						input.number,
-					);
-					if (!incident) {
-						throw new ORPCError("NOT_FOUND", {
-							message: `Incident INC-${input.number} not found`,
-						});
-					}
-					return this.serializeIncidentWithRelations(incident);
-				},
-			),
 
 			// PATCH /incidents/:id - Update an incident
 			update: implement(incidentsContract.update).handler(async ({ input }) => {
@@ -208,30 +171,6 @@ export class IncidentsController {
 						});
 					}
 					return this.serializeIncident(incident);
-				},
-			),
-
-			// POST /incidents/:id/alerts - Add an alert to an incident
-			addAlert: implement(incidentsContract.addAlert).handler(
-				async ({ input }) => {
-					const incident = await this.incidentsService.findById(input.id);
-					if (!incident) {
-						throw new ORPCError("NOT_FOUND", {
-							message: `Incident ${input.id} not found`,
-						});
-					}
-
-					const success = await this.incidentsService.addAlert(
-						input.id,
-						input.alertId,
-					);
-					if (!success) {
-						throw new ORPCError("NOT_FOUND", {
-							message: `Alert ${input.alertId} not found or already correlated`,
-						});
-					}
-
-					return { success };
 				},
 			),
 		};

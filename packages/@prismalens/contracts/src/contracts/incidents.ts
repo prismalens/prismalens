@@ -5,19 +5,15 @@
  * Incident route contracts
  */
 import { oc } from "@orpc/contract";
-import { z } from "zod";
 import {
-	AddAlertToIncidentSchema,
 	CreateIncidentSchema,
 	IdParamSchema,
 	IncidentQuerySchema,
 	IncidentSchema,
-	IncidentStatsSchema,
 	IncidentWithRelationsSchema,
 	InvestigateIncidentResponseSchema,
 	InvestigationRefusalSchema,
 	paginatedResponseSchema,
-	SuccessResponseSchema,
 	UpdateIncidentSchema,
 } from "../schemas/index.js";
 
@@ -51,34 +47,6 @@ export const incidentsContract = {
 		.output(paginatedResponseSchema(IncidentWithRelationsSchema)),
 
 	/**
-	 * Get active incidents
-	 * GET /incidents/active
-	 */
-	listActive: oc
-		.route({
-			method: "GET",
-			path: "/incidents/active",
-			summary: "List active (non-resolved) incidents",
-			tags: ["incidents"],
-		})
-		.input(z.object({}))
-		.output(z.array(IncidentWithRelationsSchema)),
-
-	/**
-	 * Get incident statistics
-	 * GET /incidents/stats
-	 */
-	getStats: oc
-		.route({
-			method: "GET",
-			path: "/incidents/stats",
-			summary: "Get incident statistics",
-			tags: ["incidents"],
-		})
-		.input(z.object({}))
-		.output(IncidentStatsSchema),
-
-	/**
 	 * Get a single incident by ID
 	 * GET /incidents/:id
 	 */
@@ -90,20 +58,6 @@ export const incidentsContract = {
 			tags: ["incidents"],
 		})
 		.input(IdParamSchema)
-		.output(IncidentWithRelationsSchema),
-
-	/**
-	 * Get an incident by number (INC-123)
-	 * GET /incidents/number/:number
-	 */
-	getByNumber: oc
-		.route({
-			method: "GET",
-			path: "/incidents/number/{number}",
-			summary: "Get incident by number",
-			tags: ["incidents"],
-		})
-		.input(z.object({ number: z.coerce.number().int() }))
 		.output(IncidentWithRelationsSchema),
 
 	/**
@@ -153,18 +107,4 @@ export const incidentsContract = {
 		})
 		.input(IdParamSchema)
 		.output(IncidentSchema),
-
-	/**
-	 * Add an alert to an incident
-	 * POST /incidents/:id/alerts
-	 */
-	addAlert: oc
-		.route({
-			method: "POST",
-			path: "/incidents/{id}/alerts",
-			summary: "Add alert to incident",
-			tags: ["incidents"],
-		})
-		.input(IdParamSchema.merge(AddAlertToIncidentSchema))
-		.output(SuccessResponseSchema),
 };

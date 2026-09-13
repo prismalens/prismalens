@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
@@ -9,7 +9,11 @@ export class SettingsService {
 	constructor(private prisma: PrismaService) {}
 
 	// =============================================================================
-	// INVESTIGATION POLICIES
+	// INVESTIGATION POLICIES (read-only: #628 deleted the settings tab and the
+	// write routes — nothing can persist a row anymore — but
+	// `InvestigationTriggerService` still calls this directly, in-process, to
+	// decide whether an alert correlation auto-starts an investigation. That
+	// read path is independent of the oRPC contract this issue removed.)
 	// =============================================================================
 
 	private readonly DEFAULT_POLICIES = {
@@ -63,19 +67,6 @@ export class SettingsService {
 		},
 	};
 
-	private readonly DEFAULT_LIMITS = {
-		maxConcurrent: 5,
-		timeoutMinutes: 30,
-		maxToolCalls: 50,
-	};
-
-	private static readonly VALID_TIERS = new Set([
-		"tier_1",
-		"tier_2",
-		"tier_3",
-		"tier_4",
-	]);
-
 	async getInvestigationPolicies() {
 		const setting = await this.prisma.setting.findUnique({
 			where: { key: "INVESTIGATION_POLICIES" },
@@ -100,101 +91,6 @@ export class SettingsService {
 		}));
 
 		return { policies };
-	}
-
-	async updateInvestigationPolicy(
-		tier: string,
-		dto: {
-			autoInvestigate?: string;
-			requiresApproval?: boolean;
-			pageOnCall?: boolean;
-			postToSlack?: boolean;
-			triggerOnAlertCount?: number;
-			triggerOnSeverities?: ("critical" | "high")[];
-			triggerDelayMinutes?: number;
-			reInvestigateOnNewAlerts?: boolean;
-			reInvestigateThreshold?: number;
-		},
-	) {
-		if (!SettingsService.VALID_TIERS.has(tier)) {
-			throw new BadRequestException(`Invalid tier: ${tier}`);
-		}
-
-		const setting = await this.prisma.setting.findUnique({
-			where: { key: "INVESTIGATION_POLICIES" },
-		});
-
-		let current: Record<string, any>;
-		if (setting) {
-			try {
-				current = JSON.parse(setting.value);
-			} catch {
-				current = { ...this.DEFAULT_POLICIES };
-			}
-		} else {
-			current = { ...this.DEFAULT_POLICIES };
-		}
-
-		current[tier] = {
-			...(current[tier] ||
-				this.DEFAULT_POLICIES[tier as keyof typeof this.DEFAULT_POLICIES]),
-			...dto,
-			tier,
-		};
-
-		await this.prisma.setting.upsert({
-			where: { key: "INVESTIGATION_POLICIES" },
-			update: { value: JSON.stringify(current), type: "json", category: "ai" },
-			create: {
-				key: "INVESTIGATION_POLICIES",
-				value: JSON.stringify(current),
-				type: "json",
-				category: "ai",
-			},
-		});
-
-		return current[tier];
-	}
-
-	async getInvestigationLimits() {
-		const setting = await this.prisma.setting.findUnique({
-			where: { key: "INVESTIGATION_LIMITS" },
-		});
-
-		if (!setting) {
-			return this.DEFAULT_LIMITS;
-		}
-
-		try {
-			return {
-				...this.DEFAULT_LIMITS,
-				...JSON.parse(setting.value),
-			};
-		} catch {
-			return this.DEFAULT_LIMITS;
-		}
-	}
-
-	async updateInvestigationLimits(dto: {
-		maxConcurrent?: number;
-		timeoutMinutes?: number;
-		maxToolCalls?: number;
-	}) {
-		const current = await this.getInvestigationLimits();
-		const updated = { ...current, ...dto };
-
-		await this.prisma.setting.upsert({
-			where: { key: "INVESTIGATION_LIMITS" },
-			update: { value: JSON.stringify(updated), type: "json", category: "ai" },
-			create: {
-				key: "INVESTIGATION_LIMITS",
-				value: JSON.stringify(updated),
-				type: "json",
-				category: "ai",
-			},
-		});
-
-		return updated;
 	}
 
 	// =============================================================================

@@ -16,7 +16,6 @@ import {
 	isAdapterSupported,
 	RenderAdapter,
 	templatesForSegment,
-	VercelAdapter,
 } from "./index.js";
 
 describe("Exact-templateId Adapter Registry (#446)", () => {
@@ -33,17 +32,13 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(isAdapterSupported("github-token")).toBe(true);
 	});
 
-	it("resolves render and vercel to their respective adapters", () => {
+	it("resolves render to its adapter", () => {
 		const renderAdapter = createAdapter("render");
-		const vercelAdapter = createAdapter("vercel");
 
 		expect(renderAdapter).toBeInstanceOf(RenderAdapter);
-		expect(vercelAdapter).toBeInstanceOf(VercelAdapter);
 		expect(renderAdapter?.name).toBe("render");
-		expect(vercelAdapter?.name).toBe("vercel");
 
 		expect(isAdapterSupported("render")).toBe(true);
-		expect(isAdapterSupported("vercel")).toBe(true);
 	});
 
 	it("resolves unknown templateIds to null cleanly", () => {
@@ -52,17 +47,18 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(createAdapter("prometheus")).toBeNull();
 		expect(createAdapter("slack")).toBeNull();
 		expect(createAdapter("slack-token")).toBeNull();
+		expect(createAdapter("vercel")).toBeNull();
 		expect(createAdapter("nonsense")).toBeNull();
 
 		expect(isAdapterSupported("gitlab")).toBe(false);
 		expect(isAdapterSupported("prometheus")).toBe(false);
+		expect(isAdapterSupported("vercel")).toBe(false);
 		expect(isAdapterSupported("nonsense")).toBe(false);
 	});
 
 	it("derives segments correctly per adapter", () => {
 		const github = new GitHubAdapter();
 		const render = new RenderAdapter();
-		const vercel = new VercelAdapter();
 
 		// Segment derivation
 		expect(github.vcs).toBeDefined();
@@ -74,24 +70,18 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(render.vcs).toBeUndefined();
 		expect(getAdapterSegments(render)).toEqual(["deployment"]);
 		expect(adapterSegments(render)).toEqual(["deployment"]);
-
-		expect(vercel.deployment).toBeDefined();
-		expect(vercel.vcs).toBeUndefined();
-		expect(getAdapterSegments(vercel)).toEqual(["deployment"]);
-		expect(adapterSegments(vercel)).toEqual(["deployment"]);
 	});
 
 	it("answers reverse-direction queries for segments and capabilities", () => {
 		// templatesForSegment
-		expect(getTemplatesForSegment("deployment")).toEqual(["render", "vercel"]);
-		expect(templatesForSegment("deployment")).toEqual(["render", "vercel"]);
+		expect(getTemplatesForSegment("deployment")).toEqual(["render"]);
+		expect(templatesForSegment("deployment")).toEqual(["render"]);
 		expect(getTemplatesForSegment("vcs")).toEqual(["github-app", "github-token"]);
 		expect(templatesForSegment("vcs")).toEqual(["github-app", "github-token"]);
 
 		// templatesForCapability
 		expect(getTemplatesForCapability("deployment:list_services")).toEqual([
 			"render",
-			"vercel",
 		]);
 		expect(getTemplatesForCapability("vcs:read_file")).toEqual([
 			"github-app",
@@ -115,21 +105,12 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(getCapabilities(tokenTemplate!)).toContain("vcs:list_orgs");
 
 		const renderTemplate = getTemplate("render");
-		const vercelTemplate = getTemplate("vercel");
 		expect(renderTemplate).toBeDefined();
-		expect(vercelTemplate).toBeDefined();
 		expect(getCapabilities(renderTemplate!)).toContain(
 			"deployment:list_services",
 		);
 		expect(getCapabilities(renderTemplate!)).toContain("deployment:get_service");
 		expect(getCapabilities(renderTemplate!)).toContain("deployment:list_deploys");
 		expect(getCapabilities(renderTemplate!)).not.toContain("vcs:list_repos");
-
-		expect(getCapabilities(vercelTemplate!)).toContain(
-			"deployment:list_services",
-		);
-		expect(getCapabilities(vercelTemplate!)).toContain("deployment:get_service");
-		expect(getCapabilities(vercelTemplate!)).toContain("deployment:list_deploys");
-		expect(getCapabilities(vercelTemplate!)).not.toContain("vcs:list_repos");
 	});
 });

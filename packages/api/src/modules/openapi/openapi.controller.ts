@@ -34,8 +34,7 @@ export class OpenAPIController {
 			info: {
 				title: "PrismaLens API",
 				version: "1.0.0",
-				description:
-					"PrismaLens Community Edition API - Incident management and root cause analysis platform",
+				description: "PrismaLens API - incident investigation",
 				contact: {
 					name: "PrismaLens Team",
 					url: "https://github.com/prismalens-org/prismalens",

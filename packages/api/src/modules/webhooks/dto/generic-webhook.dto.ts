@@ -4,10 +4,8 @@
 import { Type } from "class-transformer";
 import {
 	IsArray,
-	IsBoolean,
 	IsEnum,
 	IsNotEmpty,
-	IsNumber,
 	IsObject,
 	IsOptional,
 	IsString,
@@ -69,121 +67,6 @@ export class GenericWebhookDto {
 	@IsOptional()
 	@IsObject()
 	rawPayload?: Record<string, unknown>;
-}
-
-// Nested DTOs for GitHub webhook structure
-class GithubIssueDto {
-	@IsNumber()
-	number!: number;
-
-	@IsString()
-	title!: string;
-
-	@IsOptional()
-	@IsString()
-	body?: string;
-
-	@IsOptional()
-	@IsString()
-	html_url?: string;
-
-	@IsOptional()
-	@IsArray()
-	labels?: Array<{ name: string }>;
-
-	@IsOptional()
-	@IsString()
-	state?: string;
-}
-
-class GithubPullRequestDto {
-	@IsNumber()
-	number!: number;
-
-	@IsString()
-	title!: string;
-
-	@IsOptional()
-	@IsString()
-	body?: string;
-
-	@IsOptional()
-	@IsString()
-	html_url?: string;
-
-	@IsOptional()
-	@IsString()
-	state?: string;
-
-	@IsOptional()
-	@IsBoolean()
-	merged?: boolean;
-}
-
-class GithubAlertDto {
-	@IsNumber()
-	number!: number;
-
-	@IsOptional()
-	@IsString()
-	html_url?: string;
-
-	@IsOptional()
-	@IsString()
-	state?: string;
-
-	@IsOptional()
-	@IsString()
-	severity?: string;
-
-	@IsOptional()
-	@IsString()
-	summary?: string;
-}
-
-class GithubRepositoryDto {
-	@IsString()
-	full_name!: string;
-
-	@IsOptional()
-	@IsString()
-	html_url?: string;
-}
-
-class GithubSenderDto {
-	@IsString()
-	login!: string;
-}
-
-export class GithubWebhookDto {
-	@IsOptional()
-	@IsString()
-	action?: string;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => GithubIssueDto)
-	issue?: GithubIssueDto;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => GithubPullRequestDto)
-	pull_request?: GithubPullRequestDto;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => GithubAlertDto)
-	alert?: GithubAlertDto;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => GithubRepositoryDto)
-	repository?: GithubRepositoryDto;
-
-	@IsOptional()
-	@ValidateNested()
-	@Type(() => GithubSenderDto)
-	sender?: GithubSenderDto;
 }
 
 // Nested DTOs for Render webhook structure

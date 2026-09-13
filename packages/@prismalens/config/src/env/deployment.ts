@@ -17,13 +17,6 @@ export const deploymentSchema = z.object({
 				"Defaults to user home directory if not specified. " +
 				"Example: /var/prismalens or /home/user/.custom-prismalens",
 		),
-	PRISMALENS_PATH: z
-		.string()
-		.optional()
-		.describe(
-			"Path to .prismalens directory where CLI stores application files (logs, config, cached data). " +
-				"Defaults to ~/.prismalens if not specified.",
-		),
 	[SecretEnvVars.ENCRYPTION_KEY]: z
 		.string()
 		.optional()

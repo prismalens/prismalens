@@ -215,8 +215,7 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 
 				<div className="mt-6 p-4 bg-muted/50 rounded-lg">
 					<p className="text-sm text-muted-foreground">
-						This account will have full administrative access to PrismaLens. You
-						can invite team members later.
+						This account will have full administrative access to PrismaLens.
 					</p>
 				</div>
 			</CardContent>

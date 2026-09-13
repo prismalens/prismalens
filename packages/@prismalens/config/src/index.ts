@@ -21,9 +21,7 @@ import {
 	deploymentSchema,
 	dispatchSchema,
 	globalSchema,
-	langsmithSchema,
 	loggingSchema,
-	skillsSchema,
 } from "./env/index.js";
 import { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 import { buildDatabaseUrl } from "./utils/database-url.js";
@@ -72,8 +70,6 @@ const baseConfigSchema = globalSchema
 	.merge(databaseSchema)
 	.merge(dispatchSchema)
 	.merge(loggingSchema)
-	.merge(skillsSchema)
-	.merge(langsmithSchema)
 	.extend({
 		PRISMALENS_DB_URL: z.string().describe("Computed database connection URL"),
 	});

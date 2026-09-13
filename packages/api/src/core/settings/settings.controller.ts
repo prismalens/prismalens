@@ -17,42 +17,6 @@ export class SettingsController {
 	) {}
 
 	/**
-	 * Implement the settings contract for LLM configuration
-	 */
-	/**
-	 * Implement investigation policy routes
-	 */
-	@Implement(settingsContract.investigation)
-	investigation() {
-		return {
-			getPolicies: implement(
-				settingsContract.investigation.getPolicies,
-			).handler(async () => {
-				return this.settingsService.getInvestigationPolicies();
-			}),
-
-			updatePolicy: implement(
-				settingsContract.investigation.updatePolicy,
-			).handler(async ({ input }) => {
-				const { tier, ...policy } = input;
-				return this.settingsService.updateInvestigationPolicy(tier, policy);
-			}),
-
-			getLimits: implement(settingsContract.investigation.getLimits).handler(
-				async () => {
-					return this.settingsService.getInvestigationLimits();
-				},
-			),
-
-			updateLimits: implement(
-				settingsContract.investigation.updateLimits,
-			).handler(async ({ input }) => {
-				return this.settingsService.updateInvestigationLimits(input);
-			}),
-		};
-	}
-
-	/**
 	 * Implement danger zone routes
 	 */
 	@Implement(settingsContract.danger)

@@ -11,11 +11,7 @@ import { AlertsService } from "../alerts/alerts.service.js";
 import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import type { Event } from "../events/events.service.js";
 import { EventsService } from "../events/events.service.js";
-import {
-	GenericWebhookDto,
-	GithubWebhookDto,
-	RenderWebhookDto,
-} from "./dto/index.js";
+import { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 
 export interface WebhookResult {
 	event: Event;
@@ -276,61 +272,6 @@ export class WebhooksService {
 		};
 	}
 
-	/**
-	 * @param deliveryGuid GitHub's `X-GitHub-Delivery` — unique per delivery and
-	 * REUSED on a redelivery, which is exactly the idempotency key `ingestEvent`
-	 * wants. Closes the asymmetry #309 left between this path and the others (#231 R3).
-	 */
-	async processGithubWebhook(
-		dto: GithubWebhookDto,
-		deliveryGuid?: string,
-	): Promise<WebhookResult> {
-		// 1. Create immutable event record
-		const ingested = await this.ingestEvent(deliveryGuid, () =>
-			this.eventsService.create({
-				source: "github",
-				sourceEventId: this.extractGithubEventId(dto),
-				idempotencyKey: deliveryGuid,
-				eventType: this.determineGithubEventType(dto),
-				payload: dto as unknown as Record<string, unknown>,
-			}),
-		);
-		if ("replay" in ingested) return ingested.replay;
-		const event = ingested.event;
-
-		this.logger.log(`Created event ${event.id} from GitHub webhook`);
-
-		// 2. Extract alert info from GitHub event
-		const alertInfo = this.extractGithubAlertInfo(dto);
-
-		// 3. Create alert
-		const alert = await this.alertsService.create({
-			title: alertInfo.title,
-			description: alertInfo.description,
-			severity: alertInfo.severity,
-			source: "github",
-			sourceUrl: alertInfo.sourceUrl,
-			sourceAlertId: alertInfo.externalId,
-			rawPayload: dto as unknown as Record<string, unknown>,
-		});
-
-		// 4. Link event to alert
-		await this.eventsService.markProcessed(event.id, alert.id);
-
-		// 5. Correlate alert to incident
-		const correlationResult =
-			await this.incidentCorrelation.correlateAlert(alert);
-
-		return {
-			event,
-			alert,
-			incidentId: correlationResult.incidentId,
-			incidentNumber: correlationResult.incidentNumber,
-			correlationReason: correlationResult.reason,
-			isNewIncident: correlationResult.isNewIncident,
-		};
-	}
-
 	async processRenderWebhook(
 		dto: RenderWebhookDto,
 		idempotencyKey?: string,
@@ -380,66 +321,6 @@ export class WebhooksService {
 		};
 	}
 
-	private extractGithubEventId(dto: GithubWebhookDto): string | undefined {
-		if (dto.alert) return `github-alert-${dto.alert.number}`;
-		if (dto.issue)
-			return `github-issue-${dto.repository?.full_name}-${dto.issue.number}`;
-		if (dto.pull_request)
-			return `github-pr-${dto.repository?.full_name}-${dto.pull_request.number}`;
-		return undefined;
-	}
-
-	private determineGithubEventType(dto: GithubWebhookDto): string {
-		if (dto.alert) return "security_alert";
-		if (dto.issue) return "issue";
-		if (dto.pull_request) return "pull_request";
-		return "unknown";
-	}
-
-	private extractGithubAlertInfo(dto: GithubWebhookDto): {
-		title: string;
-		description?: string;
-		severity: Severity;
-		sourceUrl?: string;
-		externalId?: string;
-	} {
-		if (dto.alert) {
-			return {
-				title: `GitHub Security Alert: ${dto.alert.summary ?? "Unknown"}`,
-				description: `Security alert in ${dto.repository?.full_name ?? "unknown repo"}`,
-				severity: this.mapGithubSeverity(dto.alert.severity),
-				sourceUrl: dto.alert.html_url,
-				externalId: `github-alert-${dto.alert.number}`,
-			};
-		}
-
-		if (dto.issue) {
-			return {
-				title: `GitHub Issue: ${dto.issue.title}`,
-				description: dto.issue.body,
-				severity: this.inferSeverityFromLabels(dto.issue.labels),
-				sourceUrl: dto.issue.html_url,
-				externalId: `github-issue-${dto.repository?.full_name}-${dto.issue.number}`,
-			};
-		}
-
-		if (dto.pull_request) {
-			return {
-				title: `GitHub PR: ${dto.pull_request.title}`,
-				description: dto.pull_request.body,
-				severity: Severity.info,
-				sourceUrl: dto.pull_request.html_url,
-				externalId: `github-pr-${dto.repository?.full_name}-${dto.pull_request.number}`,
-			};
-		}
-
-		return {
-			title: `GitHub Event: ${dto.action ?? "unknown"}`,
-			description: `Event from ${dto.repository?.full_name ?? "unknown repo"}`,
-			severity: Severity.info,
-		};
-	}
-
 	private extractRenderAlertInfo(dto: RenderWebhookDto): {
 		title: string;
 		description: string;
@@ -474,40 +355,5 @@ export class WebhooksService {
 				? `render-deploy-${dto.deploy.id}`
 				: `render-${dto.service?.id ?? "unknown"}`,
 		};
-	}
-
-	private mapGithubSeverity(severity: string | undefined): Severity {
-		switch (severity?.toLowerCase()) {
-			case "critical":
-				return Severity.critical;
-			case "high":
-				return Severity.high;
-			case "medium":
-			case "moderate":
-				return Severity.medium;
-			case "low":
-				return Severity.low;
-			default:
-				return Severity.medium;
-		}
-	}
-
-	private inferSeverityFromLabels(labels?: Array<{ name: string }>): Severity {
-		if (!labels) return Severity.medium;
-
-		const labelNames = labels.map((l) => l.name.toLowerCase());
-
-		if (
-			labelNames.some((l) => l.includes("critical") || l.includes("urgent"))
-		) {
-			return Severity.critical;
-		}
-		if (labelNames.some((l) => l.includes("high") || l.includes("important"))) {
-			return Severity.high;
-		}
-		if (labelNames.some((l) => l.includes("low") || l.includes("minor"))) {
-			return Severity.low;
-		}
-		return Severity.medium;
 	}
 }

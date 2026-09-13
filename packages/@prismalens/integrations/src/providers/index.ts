@@ -8,7 +8,6 @@
 import { GitHubAdapter } from "./github/github.adapter.js";
 import { RenderAdapter } from "./render/render.adapter.js";
 import type { ProviderAdapter, SegmentKind } from "./types.js";
-import { VercelAdapter } from "./vercel/vercel.adapter.js";
 
 // Deployment provider
 export type { DeploymentProvider } from "./deployment.interface.js";
@@ -26,7 +25,6 @@ export type {
 	ProviderAdapterFactory,
 	SegmentKind,
 } from "./types.js";
-export { VercelAdapter, VercelDeploymentSegment } from "./vercel/index.js";
 
 // ── Exact-templateId adapter registry ──
 
@@ -34,7 +32,6 @@ const ADAPTER_REGISTRY: Record<string, new () => ProviderAdapter> = {
 	"github-app": GitHubAdapter,
 	"github-token": GitHubAdapter,
 	render: RenderAdapter,
-	vercel: VercelAdapter,
 };
 
 /** Create an adapter instance for an exact templateId (#446). */
