@@ -9,6 +9,9 @@
  * {@link RunPorts} instead of fetch/oRPC mocks). Every other seam (engine /
  * logger) stays mocked — no network, no LLM, no dispatch loop.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
@@ -74,7 +77,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		getIncident: vi.fn(async () => ({ id: "inc-1", title: "Boom" })),
 		incidentRepos: vi.fn(async () => []),
 		repoToken: vi.fn(async () => null),
-		ensureClone: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", action: "cloned" as const })),
+		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		...overrides,
 	};
 }
@@ -198,32 +201,45 @@ describe("#331 workspace record (in-process run)", () => {
 	});
 
 	it("a mapped service: the timeline names the directory, and says it was mapped", async () => {
-		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
-		const ports = makePorts({
-			createTimelineEntry,
-			incidentRepos: vi.fn(async () => [
-				{ url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
-			]),
-			ensureClone: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", action: "cloned" as const })),
-		});
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
+			const snapshot = vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const }));
+			const ports = makePorts({
+				createTimelineEntry,
+				incidentRepos: vi.fn(async () => [
+					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				]),
+				snapshot,
+			});
 
-		await runInvestigationJob(
-			makeJob("inv-1"),
-			makeData("inv-1", "inc-1"),
-			makeIo(new AbortController().signal),
-			ports,
-		);
+			await runInvestigationJob(
+				makeJob("inv-1"),
+				makeData("inv-1", "inc-1"),
+				makeIo(new AbortController().signal),
+				ports,
+			);
 
-		const entry = createTimelineEntry.mock.calls
-			.map(([dto]) => dto)
-			.find((dto) => dto.type === "investigation_started");
-		if (!entry) throw new Error("no investigation_started timeline entry was recorded");
-		expect(entry.incidentId).toBe("inc-1");
-		expect(entry.metadata).toMatchObject({
-			investigationId: "inv-1",
-			cwd: MAPPED,
-			mapped: true,
-		});
+			expect(snapshot).toHaveBeenCalledWith(
+				expect.objectContaining({ kind: "url", source: "https://github.com/acme/api-gateway" }),
+				join(tmp, "runs", "inv-1", "repo"),
+			);
+
+			const entry = createTimelineEntry.mock.calls
+				.map(([dto]) => dto)
+				.find((dto) => dto.type === "investigation_started");
+			if (!entry) throw new Error("no investigation_started timeline entry was recorded");
+			expect(entry.incidentId).toBe("inc-1");
+			expect(entry.metadata).toMatchObject({
+				investigationId: "inv-1",
+				cwd: MAPPED,
+				mapped: true,
+			});
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
 	});
 
 	it("an UNMAPPED service is allowed but never silent — the timeline admits it", async () => {
@@ -253,9 +269,9 @@ describe("#331 workspace record (in-process run)", () => {
 		const ports = makePorts({
 			createTimelineEntry,
 			incidentRepos: vi.fn(async () => [
-				{ url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
 			]),
-			ensureClone: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", action: "cloned" as const })),
+			snapshot: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
 		});
 
 		await runInvestigationJob(
@@ -281,9 +297,9 @@ describe("#331 workspace record (in-process run)", () => {
 				throw new Error("timeline down");
 			}),
 			incidentRepos: vi.fn(async () => [
-				{ url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
 			]),
-			ensureClone: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", action: "cloned" as const })),
+			snapshot: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
 		});
 
 		const result = await runInvestigationJob(
