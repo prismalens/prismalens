@@ -45,22 +45,27 @@ model Service {
   @@map("services")
 }
 
-/// Repository represents a code source from a VCS provider
+/// Repository is the code a service names: a local folder, a git URL, or a repo a VCS connection discovered (ADR 0004 §2, #629)
 model Repository {
   id            String   @id @default(uuid())
   tenantId      String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
-  connectionId  String
+  connectionId  String?              // null for a folder or URL the operator typed
+  sourceKind    String   @default("url")   // "folder" | "url"
   fullName      String               // "org/repo"
-  url           String               // "https://github.com/org/repo"
+  url           String               // "https://github.com/org/repo" or an absolute folder path
   description   String?
   language      String?
   defaultBranch String   @default("main")
   isPrivate     Boolean  @default(false)
   metadata      String?              // JSON — stars, topics, etc.
+  syncBranch    String?              // what save validated: branch and commit, or the git error verbatim
+  syncHead      String?
+  syncError     String?
+  syncedAt      DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  connection    Connection          @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection    Connection?         @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   services      ServiceRepository[]
 
   @@unique([connectionId, fullName])

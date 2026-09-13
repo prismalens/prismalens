@@ -75,6 +75,24 @@ export function useBatchCreateRepositories() {
 }
 
 /**
+ * Point a service at its code: a folder path or git URL, validated on save
+ */
+export function useAddRepositorySource() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.repositories.addSource.mutationOptions(),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+			queryClient.invalidateQueries({
+				queryKey: serviceKeys.detail(variables.serviceId),
+			});
+			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
+		},
+	});
+}
+
+/**
  * Link a repository to a service
  */
 export function useLinkRepository() {

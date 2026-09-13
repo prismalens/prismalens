@@ -993,6 +993,22 @@ export class IntegrationsService implements OnModuleInit {
 		return contexts;
 	}
 
+	/** The git token a VCS connection holds, for cloning a repo it discovered. */
+	async gitToken(connectionId: string): Promise<string | null> {
+		const [conn] = await this.getIntegrationsByConnectionIds([connectionId]);
+		const creds = conn?.credentials ?? {};
+		for (const key of [
+			"token",
+			"accessToken",
+			"access_token",
+			"personalAccessToken",
+		]) {
+			const value = creds[key];
+			if (typeof value === "string" && value) return value;
+		}
+		return null;
+	}
+
 	async getIntegrationsByConnectionIds(
 		connectionIds: string[],
 	): Promise<IntegrationContext[]> {

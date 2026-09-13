@@ -140,14 +140,34 @@ export function ServiceOverviewTab({
 					{repos.length > 0 ? (
 						<div className="space-y-1 text-sm">
 							{repos.map((sr) => (
-								<div key={sr.id} className="flex items-center gap-2">
-									<GitBranch className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-									<span className="truncate">{sr.repository.fullName}</span>
-									{sr.isPrimary && (
-										<Badge variant="default" className="text-xs">
-											PRIMARY
-										</Badge>
-									)}
+								<div key={sr.id} className="space-y-0.5">
+									<div className="flex items-center gap-2">
+										<GitBranch className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+										<span className="truncate" title={sr.repository.url}>
+											{sr.repository.fullName}
+										</span>
+										{sr.isPrimary && (
+											<Badge variant="default" className="text-xs">
+												PRIMARY
+											</Badge>
+										)}
+									</div>
+									{sr.repository.syncError ? (
+										<p
+											className="pl-5 font-mono text-xs text-destructive break-words"
+											data-testid="repository-sync-error"
+										>
+											{sr.repository.syncError}
+										</p>
+									) : sr.repository.syncHead ? (
+										<p
+											className="pl-5 font-mono text-xs text-muted-foreground"
+											data-testid="repository-sync-head"
+										>
+											{sr.repository.syncBranch ?? "detached"} at{" "}
+											{sr.repository.syncHead.slice(0, 12)}
+										</p>
+									) : null}
 								</div>
 							))}
 						</div>

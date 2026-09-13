@@ -8,13 +8,15 @@
 import type { HarnessSelection } from "@prismalens/config";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import type {
-	CloneResult,
-	CloneTarget,
-} from "../../core/harness/repo-clone.service.js";
+	RepoSource,
+	Snapshot,
+} from "../../core/harness/repo-source.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 
 export interface IncidentRepo {
+	/** "folder" or "url"; `url` holds the folder path for a folder. */
+	sourceKind: RepoSource["kind"];
 	url: string;
 	defaultBranch: string | null;
 	subPath: string | null;
@@ -43,5 +45,6 @@ export interface RunPorts {
 	incidentRepos(incidentId: string): Promise<IncidentRepo[]>;
 	/** A git token for the connection that discovered the repo, when one exists. */
 	repoToken(connectionId: string): Promise<string | null>;
-	ensureClone(target: CloneTarget): Promise<CloneResult>;
+	/** A fresh clone of the source's committed HEAD into `dest`. */
+	snapshot(src: RepoSource, dest: string): Promise<Snapshot>;
 }

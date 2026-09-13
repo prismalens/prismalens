@@ -11,18 +11,35 @@ import { DateStringSchema } from "./common.js";
 // REPOSITORY SCHEMAS
 // =============================================================================
 
+export const RepositorySourceKindSchema = z.enum(["folder", "url"]);
+
 export const RepositorySchema = z.object({
 	id: z.string().uuid(),
-	connectionId: z.string().uuid(),
+	/** Null for a folder or URL the operator typed; set when a VCS connection discovered it. */
+	connectionId: z.string().uuid().nullable(),
+	sourceKind: RepositorySourceKindSchema,
 	fullName: z.string(),
+	/** A git URL, or an absolute folder path when sourceKind is "folder". */
 	url: z.string(),
 	description: z.string().nullable(),
 	language: z.string().nullable(),
 	defaultBranch: z.string(),
 	isPrivate: z.boolean(),
 	metadata: z.record(z.string(), z.unknown()).nullable(),
+	/** What the last save validated: branch and commit, or the git error verbatim (ADR 0004 §2). */
+	syncBranch: z.string().nullable(),
+	syncHead: z.string().nullable(),
+	syncError: z.string().nullable(),
+	syncedAt: DateStringSchema.nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
+});
+
+/** A service names its code as a local folder or a git URL; save validates it and links it as primary. */
+export const AddRepositorySourceSchema = z.object({
+	serviceId: z.string().uuid(),
+	source: z.string().trim().min(1),
+	subPath: z.string().trim().min(1).optional(),
 });
 
 export const CreateRepositorySchema = z.object({
@@ -68,6 +85,10 @@ export const RepositoryWithServicesSchema = RepositorySchema.extend({
 // =============================================================================
 
 export type Repository = z.infer<typeof RepositorySchema>;
+export type RepositorySourceKind = z.infer<typeof RepositorySourceKindSchema>;
+export type AddRepositorySourceInput = z.infer<
+	typeof AddRepositorySourceSchema
+>;
 export type CreateRepositoryInput = z.infer<typeof CreateRepositorySchema>;
 export type BatchCreateRepositoriesInput = z.infer<
 	typeof BatchCreateRepositoriesSchema

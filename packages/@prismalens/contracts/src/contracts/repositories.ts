@@ -7,6 +7,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AddRepositorySourceSchema,
 	BatchCreateRepositoriesSchema,
 	IdParamSchema,
 	LinkRepositorySchema,
@@ -17,6 +18,21 @@ import {
 } from "../schemas/index.js";
 
 export const repositoriesContract = {
+	/**
+	 * Name a service's code as a local folder or a git URL; validates it and links it as primary (ADR 0004 §2)
+	 * POST /repositories/source
+	 */
+	addSource: oc
+		.route({
+			method: "POST",
+			path: "/repositories/source",
+			summary:
+				"Add a repository by folder path or git URL and link it to a service",
+			tags: ["repositories"],
+		})
+		.input(AddRepositorySourceSchema)
+		.output(RepositorySchema),
+
 	/**
 	 * Batch create repositories from VCS import
 	 * POST /repositories/batch

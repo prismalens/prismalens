@@ -12,18 +12,7 @@ import type {
 import type { Repository as PrismaRepository } from "@prismalens/database";
 import { requireAdmin } from "../../core/auth/index.js";
 import { RepositoriesService } from "./repositories.service.js";
-
-function serializeRepository(repo: PrismaRepository): Repository {
-	return {
-		...repo,
-		createdAt: repo.createdAt.toISOString(),
-		updatedAt: repo.updatedAt.toISOString(),
-		metadata:
-			typeof repo.metadata === "string"
-				? (JSON.parse(repo.metadata) as Record<string, unknown>)
-				: (repo.metadata as Record<string, unknown> | null),
-	} as Repository;
-}
+import { serializeRepository } from "./serialize-repository.js";
 
 function serializeRepositoryWithServices(
 	repo: PrismaRepository & {
@@ -46,6 +35,15 @@ export class RepositoriesController {
 	@Implement(repositoriesContract)
 	repositories() {
 		return {
+			// POST /repositories/source - Folder or URL from the service form
+			addSource: implement(repositoriesContract.addSource).handler(
+				async ({ input, context }) => {
+					requireAdmin(context);
+					const repo = await this.repositoriesService.addSource(input);
+					return serializeRepository(repo);
+				},
+			),
+
 			// POST /repositories/batch - Batch create repositories
 			batchCreate: implement(repositoriesContract.batchCreate).handler(
 				async ({ input, context }) => {

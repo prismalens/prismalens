@@ -19,7 +19,8 @@ CREATE TABLE "services" (
 CREATE TABLE "repositories" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "tenantId" TEXT,
-    "connectionId" TEXT NOT NULL,
+    "connectionId" TEXT,
+    "sourceKind" TEXT NOT NULL DEFAULT 'url',
     "fullName" TEXT NOT NULL,
     "url" TEXT NOT NULL,
     "description" TEXT,
@@ -27,6 +28,10 @@ CREATE TABLE "repositories" (
     "defaultBranch" TEXT NOT NULL DEFAULT 'main',
     "isPrivate" BOOLEAN NOT NULL DEFAULT false,
     "metadata" TEXT,
+    "syncBranch" TEXT,
+    "syncHead" TEXT,
+    "syncError" TEXT,
+    "syncedAt" DATETIME,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "repositories_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "connections" ("id") ON DELETE CASCADE ON UPDATE CASCADE
@@ -558,3 +563,4 @@ CREATE INDEX "service_integrations_connectionId_idx" ON "service_integrations"("
 
 -- CreateIndex
 CREATE UNIQUE INDEX "service_integrations_serviceId_connectionId_key" ON "service_integrations"("serviceId", "connectionId");
+

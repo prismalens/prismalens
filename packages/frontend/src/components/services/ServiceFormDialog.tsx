@@ -31,7 +31,11 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateService, useUpdateService } from "@/lib/api/hooks";
+import {
+	useAddRepositorySource,
+	useCreateService,
+	useUpdateService,
+} from "@/lib/api/hooks";
 
 export interface ServiceFormDialogProps {
 	open: boolean;
@@ -74,12 +78,21 @@ export function ServiceFormDialog({
 	const [tier, setTier] = useState<ServiceTier>("tier_3");
 	const [team, setTeam] = useState("");
 	const [tags, setTags] = useState<string[]>([]);
+	const [repository, setRepository] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
 	// Mutations
 	const createService = useCreateService();
 	const updateService = useUpdateService();
-	const isPending = createService.isPending || updateService.isPending;
+	const addSource = useAddRepositorySource();
+	const isPending =
+		createService.isPending || updateService.isPending || addSource.isPending;
+	const primaryRepo = service?.repositories?.find((r) => r.isPrimary);
+	const currentRepository = !primaryRepo
+		? ""
+		: primaryRepo.repository.sourceKind === "folder" && primaryRepo.subPath
+			? `${primaryRepo.repository.url}/${primaryRepo.subPath}`
+			: primaryRepo.repository.url;
 
 	// Populate form when editing or reset for create
 	useEffect(() => {
@@ -92,6 +105,7 @@ export function ServiceFormDialog({
 				setTier(service.tier);
 				setTeam(service.team || "");
 				setTags(service.tags || []);
+				setRepository(currentRepository);
 			} else {
 				// Reset form for create
 				setName("");
@@ -101,10 +115,11 @@ export function ServiceFormDialog({
 				setTier("tier_3");
 				setTeam("");
 				setTags([]);
+				setRepository("");
 			}
 			setError(null);
 		}
-	}, [service, open]);
+	}, [service, open, currentRepository]);
 
 	const handleSubmit = async () => {
 		if (!name.trim()) {
@@ -115,6 +130,7 @@ export function ServiceFormDialog({
 		setError(null);
 
 		try {
+			let serviceId = service?.id;
 			if (isEditing && service) {
 				await updateService.mutateAsync({
 					id: service.id,
@@ -126,7 +142,7 @@ export function ServiceFormDialog({
 					tags: tags.length > 0 ? tags : undefined,
 				});
 			} else {
-				await createService.mutateAsync({
+				const created = await createService.mutateAsync({
 					name: name.trim(),
 					displayName: displayName || undefined,
 					description: description || undefined,
@@ -135,6 +151,16 @@ export function ServiceFormDialog({
 					team: team || undefined,
 					tags: tags.length > 0 ? tags : undefined,
 				});
+				serviceId = created.id;
+			}
+			const source = repository.trim();
+			if (serviceId && source && source !== currentRepository) {
+				const repo = await addSource.mutateAsync({ serviceId, source });
+				if (repo.syncError) {
+					// The service and link are saved; keep the dialog open so git's answer is read.
+					setError(`Saved, but git could not read it: ${repo.syncError}`);
+					return;
+				}
 			}
 			onOpenChange(false);
 			onSuccess?.();
@@ -186,6 +212,22 @@ export function ServiceFormDialog({
 							onChange={(e) => setDisplayName(e.target.value)}
 							placeholder="Payment Service"
 						/>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="repository">Repository</Label>
+						<Input
+							id="repository"
+							value={repository}
+							onChange={(e) => setRepository(e.target.value)}
+							placeholder="~/code/payment-service or git@github.com:acme/payments.git"
+							data-testid="service-repository-input"
+						/>
+						<p className="text-xs text-muted-foreground">
+							A folder on this machine or a git URL. Each investigation reads a
+							fresh copy of its last commit; uncommitted changes are not
+							included.
+						</p>
 					</div>
 
 					{/* Description */}

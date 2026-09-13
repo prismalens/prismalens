@@ -2,13 +2,21 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	BadRequestException,
 	ConflictException,
 	Injectable,
 	Logger,
 	NotFoundException,
 } from "@nestjs/common";
+import type { AddRepositorySourceInput } from "@prismalens/contracts";
 import type { Repository, ServiceRepository } from "@prismalens/database";
+import {
+	classifySource,
+	displayNameFor,
+	RepoSourceService,
+} from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { IntegrationsService } from "../integrations/integrations.service.js";
 import type {
 	BatchCreateRepositoriesDto,
 	LinkRepositoryDto,
@@ -20,7 +28,115 @@ export type { Repository, ServiceRepository };
 export class RepositoriesService {
 	private readonly logger = new Logger(RepositoriesService.name);
 
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly repoSource: RepoSourceService,
+		private readonly integrations: IntegrationsService,
+	) {}
+
+	/**
+	 * The service form's Repository field (ADR 0004 §2, #629): classify the input,
+	 * validate it with git, store what git answered or its error verbatim, and make
+	 * it the service's primary repo. A failed validation still saves, so the card
+	 * can show why.
+	 */
+	async addSource(input: AddRepositorySourceInput): Promise<Repository> {
+		const service = await this.prisma.service.findUnique({
+			where: { id: input.serviceId },
+			select: { id: true },
+		});
+		if (!service) throw new NotFoundException("Service not found");
+
+		let classified: ReturnType<typeof classifySource>;
+		try {
+			classified = classifySource(input.source);
+		} catch (err) {
+			throw new BadRequestException((err as Error).message);
+		}
+		let { kind, source } = classified;
+		let subPath = input.subPath ?? null;
+
+		const discovered =
+			kind === "url"
+				? await this.prisma.repository.findFirst({
+						where: { url: source, connectionId: { not: null } },
+					})
+				: null;
+		const token = discovered?.connectionId
+			? await this.integrations.gitToken(discovered.connectionId)
+			: null;
+
+		const sync: {
+			syncBranch: string | null;
+			syncHead: string | null;
+			syncError: string | null;
+			defaultBranch?: string;
+		} = { syncBranch: null, syncHead: null, syncError: null };
+		try {
+			if (kind === "folder") {
+				const check = await this.repoSource.checkFolder(source);
+				source = check.root;
+				subPath = subPath ?? (check.prefix || null);
+				Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
+			} else {
+				const check = await this.repoSource.validate({ kind, source, token });
+				Object.assign(sync, {
+					syncBranch: check.branch,
+					syncHead: check.head,
+					...(check.branch ? { defaultBranch: check.branch } : {}),
+				});
+			}
+		} catch (err) {
+			sync.syncError = (err as Error).message;
+		}
+
+		const fields = {
+			sourceKind: kind,
+			url: source,
+			...sync,
+			syncedAt: new Date(),
+		};
+		const repository = await this.prisma.$transaction(async (tx) => {
+			const sameRoot = await tx.repository.findFirst({
+				where: { url: source },
+			});
+			const repo = sameRoot
+				? await tx.repository.update({
+						where: { id: sameRoot.id },
+						data: fields,
+					})
+				: await tx.repository.create({
+						data: { ...fields, fullName: displayNameFor(kind, source) },
+					});
+			await tx.serviceRepository.updateMany({
+				where: { serviceId: input.serviceId },
+				data: { isPrimary: false },
+			});
+			const link = await tx.serviceRepository.findFirst({
+				where: { serviceId: input.serviceId, repositoryId: repo.id, subPath },
+			});
+			if (link) {
+				await tx.serviceRepository.update({
+					where: { id: link.id },
+					data: { isPrimary: true },
+				});
+			} else {
+				await tx.serviceRepository.create({
+					data: {
+						serviceId: input.serviceId,
+						repositoryId: repo.id,
+						subPath,
+						isPrimary: true,
+					},
+				});
+			}
+			return repo;
+		});
+		this.logger.log(
+			`Service ${input.serviceId} repository → ${kind} ${source}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
+		);
+		return repository;
+	}
 
 	/**
 	 * Batch create repositories (upsert by connectionId + fullName)
