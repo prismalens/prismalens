@@ -18,8 +18,17 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineCommand } from "citty";
 import consola from "consola";
+import {
+	displayUrl,
+	healthUrl,
+	resolveBind,
+	resolveConsoleMode,
+	resolveLogDir,
+	waitForReady,
+} from "./up-console.js";
 
 const require = createRequire(import.meta.url);
+const READY_TIMEOUT_MS = 60_000;
 
 interface PackagedApi {
 	/** Directory of the installed `@prismalens/api`. */
@@ -79,7 +88,12 @@ export default defineCommand({
 		workspace: {
 			type: "string",
 			description:
-				"Data directory for the database and secrets (default ~/.prismalens, or PRISMALENS_WORKSPACE_DIR)",
+				"Data directory for the database, secrets and logs (default ~/.prismalens, or PRISMALENS_WORKSPACE_DIR)",
+		},
+		verbose: {
+			type: "boolean",
+			description:
+				"Stream every log record to the terminal as well as the log file (default: warnings and errors only)",
 		},
 	},
 	async run({ args }) {
@@ -91,6 +105,10 @@ export default defineCommand({
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 		}
 		process.env.PRISMALENS_STATIC_DIR = app.staticDir;
+		process.env.PRISMALENS_LOG_CONSOLE = resolveConsoleMode(
+			process.env,
+			Boolean(args.verbose),
+		);
 
 		// @prismalens/config derives every on-disk path from this directory —
 		// PRISMALENS_DB_URL is ignored, so the workspace dir is the ONLY knob.
@@ -113,10 +131,35 @@ export default defineCommand({
 		// What `pl up` still depends on is the migration SQL being present in the
 		// tarball: `scripts/pack-cli.mjs` stages it at
 		// `@prismalens/database/dist/prisma/sqlite/schema` and asserts it.
+		const logDir = resolveLogDir(process.env, workspaceDir);
+		const bind = resolveBind(process.env);
+		const url = displayUrl(bind);
 		consola.info(`Workspace: ${workspaceDir}`);
-		consola.info(`Dashboard: ${app.staticDir}`);
+		consola.info(`Logs: ${logDir}`);
+		if (process.env.PRISMALENS_LOG_CONSOLE === "verbose") {
+			consola.info(`Dashboard: ${app.staticDir}`);
+		}
 
 		// One process (0005 §1-2): the API runs each investigation in-process.
+		// Bootstrap exits the process itself on a fatal error, so the poll below
+		// only ever ends in "ready" or "still starting".
 		await import(pathToFileURL(app.main).href);
+
+		// A self-signed cert would fail the probe's TLS check; https installs get
+		// the URL without the readiness line.
+		if (bind.protocol === "https") {
+			consola.info(`Starting at ${url}`);
+			return;
+		}
+		const ready = await waitForReady(healthUrl(bind), {
+			timeoutMs: READY_TIMEOUT_MS,
+		});
+		if (ready) {
+			consola.success(`PrismaLens is ready at ${url}`);
+		} else {
+			consola.warn(
+				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,
+			);
+		}
 	},
 });

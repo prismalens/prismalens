@@ -55,6 +55,8 @@ export interface RunInvestigationOptions {
 	steer?: () => string | null;
 	/** Appended to the prompt. Used by the registry admission script to provoke a write; never by the API. */
 	promptSuffix?: string;
+	/** Harness stderr, chunk by chunk, for the host's logger (#600). */
+	onHarnessStderr?: (chunk: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -151,6 +153,7 @@ export async function* runInvestigation(
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,
+		onStderr: opts.onHarnessStderr,
 	});
 
 	let text = "";
