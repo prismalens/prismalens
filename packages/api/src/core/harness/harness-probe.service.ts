@@ -19,7 +19,7 @@ export class HarnessProbeService {
 		const result = await probeHarness(id);
 		return {
 			id: result.id,
-			ready: result.ready,
+			outcome: result.outcome,
 			detail: result.detail,
 			hard: result.hard,
 		};

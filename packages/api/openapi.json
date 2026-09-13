@@ -23365,8 +23365,14 @@
                       ],
                       "type": "string"
                     },
-                    "ready": {
-                      "type": "boolean"
+                    "outcome": {
+                      "enum": [
+                        "answers-acp",
+                        "sign-in-needed",
+                        "no-answer",
+                        "failed-to-start"
+                      ],
+                      "type": "string"
                     },
                     "detail": {
                       "type": "string"
@@ -23377,7 +23383,7 @@
                   },
                   "required": [
                     "id",
-                    "ready",
+                    "outcome",
                     "detail",
                     "hard"
                   ]

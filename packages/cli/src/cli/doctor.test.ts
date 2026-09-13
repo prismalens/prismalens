@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	checkAnyHarnessOnPath,
 	checkHarnessesOnPath,
-	checkHarnessReadiness,
+	checkHarnessHandshake,
 	checkWebhookToken,
 } from "./doctor.js";
 
@@ -76,14 +76,14 @@ describe("doctor — harness detection", () => {
 	});
 });
 
-describe("doctor — harness readiness (ACP handshake)", () => {
+describe("doctor — harness ACP handshake", () => {
 	let tempPathDir: string;
 	let originalPath: string | undefined;
 
 	beforeEach(() => {
 		tempPathDir = join(
 			os.tmpdir(),
-			`pl-doctor-readiness-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			`pl-doctor-handshake-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 		);
 		mkdirSync(tempPathDir, { recursive: true });
 		originalPath = process.env.PATH;
@@ -97,43 +97,41 @@ describe("doctor — harness readiness (ACP handshake)", () => {
 		} else {
 			process.env.PATH = originalPath;
 		}
-		delete process.env.FAKE_ACP_MODE;
 	});
 
-	/** A shell shim named after the registry binary; the wrapped fixture speaks ACP over stdio regardless of the argv `checkHarnessesOnPath` resolved it with. */
+	/** A shell shim named after the registry binary. The mode is baked into the shim, not the parent env, which the harness child does not inherit. */
 	function installFakeOpencode(mode: string): void {
 		const binPath = join(tempPathDir, HARNESS_REGISTRY.opencode.binary);
 		writeFileSync(
 			binPath,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
+			`#!/bin/sh\nFAKE_ACP_MODE=${mode} exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
 		);
 		chmodSync(binPath, 0o755);
-		process.env.FAKE_ACP_MODE = mode;
 	}
 
-	it("reports ready for a harness whose ACP handshake succeeds", async () => {
+	it('says "answers ACP", never "ready", for a harness whose handshake succeeds', async () => {
 		installFakeOpencode("ok");
-		const results = await checkHarnessReadiness();
+		const results = await checkHarnessHandshake();
 		const opencode = results.find((c) => c.name.includes("OpenCode"));
 		expect(opencode).toEqual({
-			name: `Harness readiness: ${HARNESS_REGISTRY.opencode.label}`,
+			name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
 			pass: true,
-			detail: "ready",
+			detail: "answers ACP",
 			hard: false,
 		});
 	});
 
-	it("is a SOFT failure carrying the harness's own stderr tail when it is not logged in", async () => {
+	it("is a SOFT failure carrying the harness's own stderr tail when it exits before answering", async () => {
 		installFakeOpencode("unauthenticated");
-		const results = await checkHarnessReadiness();
+		const results = await checkHarnessHandshake();
 		const opencode = results.find((c) => c.name.includes("OpenCode"));
 		expect(opencode?.pass).toBe(false);
 		expect(opencode?.hard).toBe(false);
-		expect(opencode?.detail).toContain("not logged in");
+		expect(opencode?.detail).toMatch(/^failed to start: .*not logged in/);
 	});
 
 	it("probes nothing when no harness is on PATH", async () => {
-		const results = await checkHarnessReadiness();
+		const results = await checkHarnessHandshake();
 		expect(results).toEqual([]);
 	});
 });

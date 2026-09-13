@@ -113,11 +113,12 @@ export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
 
 /**
  * ACP handshake against every harness on PATH (#630, Unit D on #337): PATH
- * presence says a binary exists, not that it is logged in. `initialize` +
+ * presence says a binary exists; a handshake says it speaks ACP, not that it is
+ * signed in (see probeHarness). `initialize` +
  * `session/new`, no prompt turn, 10 s per harness, sequential — a hung
  * harness reports its own line and the doctor moves on to the next one.
  */
-export async function checkHarnessReadiness(): Promise<Check[]> {
+export async function checkHarnessHandshake(): Promise<Check[]> {
 	const installed = (
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
 	).filter((descriptor) => isOnPath(descriptor.binary));
@@ -125,8 +126,8 @@ export async function checkHarnessReadiness(): Promise<Check[]> {
 	for (const descriptor of installed) {
 		const probe = await probeHarness(descriptor.id);
 		results.push({
-			name: `Harness readiness: ${descriptor.label}`,
-			pass: probe.ready,
+			name: `Harness ACP handshake: ${descriptor.label}`,
+			pass: probe.outcome === "answers-acp",
 			detail: probe.detail,
 			hard: false,
 		});
@@ -190,14 +191,14 @@ export default defineCommand({
 			assertKnownFlags(args, cmd);
 
 			const harnessChecks = checkHarnessesOnPath();
-			const readinessChecks = await checkHarnessReadiness();
+			const handshakeChecks = await checkHarnessHandshake();
 
 			const checks: Check[] = [
 				checkNodeVersion(),
 				checkAppDataDir(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
-				...readinessChecks,
+				...handshakeChecks,
 				checkAutoSelection(),
 				checkWebhookToken(),
 				checkPortHost(),

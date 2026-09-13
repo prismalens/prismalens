@@ -322,11 +322,16 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 					contentType: "application/json",
 					body: JSON.stringify(
 						body?.id === "opencode"
-							? { id: "opencode", ready: true, detail: "ready", hard: false }
+							? {
+									id: "opencode",
+									outcome: "answers-acp",
+									detail: "answers ACP",
+									hard: false,
+								}
 							: {
 									id: "claude-code",
-									ready: false,
-									detail: "not logged in",
+									outcome: "sign-in-needed",
+									detail: "sign in needed (Log in with Claude)",
 									hard: false,
 								},
 					),
@@ -336,13 +341,13 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await page.getByTestId("harness-check-opencode").click();
 		await expect(page.getByTestId("harness-check-result-opencode")).toHaveText(
-			"Ready",
+			"answers ACP",
 		);
 
 		await page.getByTestId("harness-check-claude-code").click();
 		await expect(
 			page.getByTestId("harness-check-result-claude-code"),
-		).toHaveText("not logged in");
+		).toHaveText("sign in needed (Log in with Claude)");
 	});
 });
 

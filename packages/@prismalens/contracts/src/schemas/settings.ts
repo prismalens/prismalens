@@ -64,10 +64,15 @@ export const CheckHarnessInputSchema = z.object({
 });
 export type CheckHarnessInput = z.infer<typeof CheckHarnessInputSchema>;
 
-/** `initialize` + `session/new`, no prompt turn. `ready`, or the harness's own stderr tail / a timeout message, one line. */
+/** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words `pl doctor` prints too, one line. */
 export const HarnessProbeResultSchema = z.object({
 	id: z.enum(HARNESS_IDS),
-	ready: z.boolean(),
+	outcome: z.enum([
+		"answers-acp",
+		"sign-in-needed",
+		"no-answer",
+		"failed-to-start",
+	]),
 	detail: z.string(),
 	hard: z.literal(false),
 });

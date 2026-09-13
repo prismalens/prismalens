@@ -2,14 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Harness readiness probe (#630, Unit D on #337): does the harness answer an
- * ACP handshake at all? `pl doctor` and the on-demand Settings verdict both
- * call this — neither spends a prompt turn or a model call. `AcpSession.open()`
- * is `initialize` + `session/new` only; the session is closed immediately
- * after, success or failure. The throwaway run dir goes through the same
- * `prepareRunEnv` materialisation a real investigation gets, so a failure here
- * reflects the harness's own login state, not a config difference from the
- * real run path.
+ * Harness handshake probe (#630, Unit D on #337). `pl doctor` and the Settings
+ * check both call this, and both print `detail` verbatim, so they use the same
+ * words. `initialize` + `session/new` only: no prompt turn, no model call.
+ *
+ * It never says "ready". A logged-out agent can pass the handshake: opencode
+ * needs no provider for `session/new`, and claude-agent-acp checks credentials
+ * only at turn start. So a pass means "answers ACP", nothing more.
  */
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,23 +18,64 @@ import {
 	type HarnessDescriptor,
 	type HarnessId,
 } from "@prismalens/config/harness";
-import { AcpSession } from "../runner/acp-client.js";
+import { AcpRpcError, AcpSession } from "../runner/acp-client.js";
 import { prepareRunEnv } from "./investigate.js";
 import { readOnlyPolicy } from "./permission.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
+/** ACP's auth_required error code. */
+const AUTH_REQUIRED = -32000;
+
+export type HarnessProbeOutcome =
+	| "answers-acp"
+	| "sign-in-needed"
+	| "no-answer"
+	| "failed-to-start";
 
 export interface HarnessProbeResult {
 	id: HarnessId;
-	ready: boolean;
-	/** "ready", or the harness's own stderr tail / a timeout message. One line. */
+	outcome: HarnessProbeOutcome;
+	/** The outcome's fixed words, plus the auth method names or the harness's stderr tail when there are any. One line. */
 	detail: string;
 	hard: false;
 }
 
-/** `AcpSession`'s failure messages already carry the stderr tail; this just guarantees one line. */
 function oneLine(message: string): string {
 	return message.replace(/\s*\r?\n\s*/g, " ").trim();
+}
+
+function classify(
+	err: unknown,
+	session: AcpSession,
+	timeoutMs: number,
+): Pick<HarnessProbeResult, "outcome" | "detail"> {
+	const message = oneLine(err instanceof Error ? err.message : String(err));
+	if (
+		(err instanceof AcpRpcError && err.code === AUTH_REQUIRED) ||
+		/auth_required|authentication required/i.test(message)
+	) {
+		const methods = session.authMethods
+			.map((m) => m.name ?? m.id)
+			.filter(Boolean);
+		return {
+			outcome: "sign-in-needed",
+			detail: methods.length
+				? `sign in needed (${methods.join(", ")})`
+				: "sign in needed",
+		};
+	}
+	if (/timed out after/.test(message)) {
+		return {
+			outcome: "no-answer",
+			detail: `no answer in ${Math.max(1, Math.round(timeoutMs / 1000))}s`,
+		};
+	}
+	// A spawn error, or a harness that exited before it answered the handshake.
+	const tail = message.replace(/^failed to start [^:]*:\s*/, "");
+	return {
+		outcome: "failed-to-start",
+		detail: tail ? `failed to start: ${tail}` : "failed to start",
+	};
 }
 
 /**
@@ -74,25 +114,20 @@ export async function probeHarness(
 			cwd,
 			env,
 			// Never exercised: open() sends no prompt turn, so no permission
-			// request can ever arrive. Required only because AcpSessionConfig
-			// has no optional form of the field.
+			// request can arrive. AcpSessionConfig has no optional form of it.
 			permission: readOnlyPolicy,
 			initTimeoutMs: timeoutMs,
 		});
 		try {
 			await session.open();
-			return { id: harness, ready: true, detail: "ready", hard: false };
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			const timedOut = /timed out after/.test(message);
 			return {
 				id: harness,
-				ready: false,
-				detail: timedOut
-					? `no answer in ${Math.max(1, Math.round(timeoutMs / 1000))}s`
-					: oneLine(message),
+				outcome: "answers-acp",
+				detail: "answers ACP",
 				hard: false,
 			};
+		} catch (err) {
+			return { id: harness, ...classify(err, session, timeoutMs), hard: false };
 		} finally {
 			await session.close();
 		}

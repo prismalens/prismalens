@@ -5,9 +5,9 @@
 // A fake ACP agent for engine tests. Speaks protocol v1 over stdio. Behaviour is
 // picked by FAKE_ACP_MODE: "ok" (valid report first try), "retry" (invalid then
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
-// runs), "hang" (never answers the handshake — a doctor-probe timeout), or
-// "unauthenticated" (exits immediately with a stderr line — a doctor-probe
-// login failure). It always attempts one read-only shell call and one write,
+// runs), "hang" (never answers the handshake — a doctor-probe timeout),
+// "unauthenticated" (exits immediately with a stderr line), or "auth-required"
+// (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
 
@@ -173,7 +173,19 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
-			result: { protocolVersion: 1, agentInfo: { name: "fake", version: "0" } },
+			result: {
+				protocolVersion: 1,
+				agentInfo: { name: "fake", version: "0" },
+				...(mode === "auth-required"
+					? { authMethods: [{ id: "login", name: "Log in with Fake" }] }
+					: {}),
+			},
+		});
+	} else if (msg.method === "session/new" && mode === "auth-required") {
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			error: { code: -32000, message: "Authentication required" },
 		});
 	} else if (msg.method === "session/new") {
 		if (msg.params?.cwd !== cwd)

@@ -55,7 +55,8 @@ import { cn } from "@/lib/utils";
 
 /** One harness's last on-demand ACP handshake verdict, kept only in memory — it goes stale the moment the harness's login state changes. */
 interface ProbeState {
-	ready: boolean;
+	/** Only "answers ACP" is a pass; it still does not mean signed in. */
+	answers: boolean;
 	detail: string;
 }
 
@@ -77,13 +78,16 @@ export function HarnessSettings() {
 			const result = await checkHarness.mutateAsync({ id });
 			setProbes((prev) => ({
 				...prev,
-				[id]: { ready: result.ready, detail: result.detail },
+				[id]: {
+					answers: result.outcome === "answers-acp",
+					detail: result.detail,
+				},
 			}));
 		} catch (err) {
 			setProbes((prev) => ({
 				...prev,
 				[id]: {
-					ready: false,
+					answers: false,
 					detail:
 						err instanceof Error ? err.message : "Could not run the check",
 				},
@@ -261,13 +265,13 @@ export function HarnessSettings() {
 												<span
 													className={cn(
 														"text-xs",
-														probe.ready
+														probe.answers
 															? "text-muted-foreground"
 															: "text-destructive",
 													)}
 													data-testid={`harness-check-result-${harness.id}`}
 												>
-													{probe.ready ? "Ready" : probe.detail}
+													{probe.detail}
 												</span>
 											)}
 										</div>
