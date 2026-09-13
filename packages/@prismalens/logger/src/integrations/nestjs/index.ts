@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { inspect } from "node:util";
 import {
 	type DynamicModule,
-	Global,
 	Injectable,
 	Module,
 	type LoggerService as NestLoggerService,
@@ -83,7 +83,12 @@ export class LoggerService implements NestLoggerService {
 
 	private format(message: unknown): string {
 		if (typeof message === "string") return message;
-		return message instanceof Error ? message.message : JSON.stringify(message);
+		if (message instanceof Error) return message.message;
+		// inspect, not JSON.stringify: circular refs and bigint must not throw inside a log call.
+		return inspect(message, {
+			depth: 4,
+			breakLength: Number.POSITIVE_INFINITY,
+		});
 	}
 
 	private extractContext(params: unknown[]) {
@@ -101,7 +106,6 @@ export class LoggerService implements NestLoggerService {
 	}
 }
 
-@Global()
 @Module({})
 // biome-ignore lint/complexity/noStaticOnlyClass: NestJS dynamic module pattern
 export class LoggerModule {

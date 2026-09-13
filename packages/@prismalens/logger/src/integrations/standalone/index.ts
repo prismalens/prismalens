@@ -26,14 +26,14 @@ export const runWithWideEvent = <T>(
 	initial?: Record<string, unknown>,
 ): Promise<T> =>
 	runInRequestContext(async () => fn(), {
-		requestId: jobId,
 		...initial,
+		requestId: jobId,
 	}) as Promise<T>;
 
 export const runWithWideEventSync = <T>(
 	jobId: string,
 	fn: () => T,
 	initial?: Record<string, unknown>,
-): T => runInRequestContext(fn, { requestId: jobId, ...initial }) as T;
+): T => runInRequestContext(fn, { ...initial, requestId: jobId }) as T;
 
 export { enrichContext, getRequestId, getTraceId, runInRequestContext };

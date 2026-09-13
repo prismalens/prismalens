@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
 	type CanActivate,
 	type ExecutionContext,
@@ -15,10 +15,10 @@ import type { EnvironmentVariables } from "@prismalens/config";
 import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
 import { RENDER_WEBHOOK_PATH } from "../../shared/constants/routes.js";
 
+/** Hashing both sides first keeps the comparison fixed-length, so timing never reveals the secret's length. */
 function safeCompare(a: string, b: string): boolean {
-	const bufA = Buffer.from(a);
-	const bufB = Buffer.from(b);
-	return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+	const digest = (s: string) => createHash("sha256").update(s).digest();
+	return timingSafeEqual(digest(a), digest(b));
 }
 
 /**

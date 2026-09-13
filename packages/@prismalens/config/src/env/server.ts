@@ -59,7 +59,8 @@ export const globalSchema = z.object({
 		.min(16, "Webhook secret must be at least 16 characters")
 		.describe(
 			"Shared secret for inbound webhooks, auto-generated on first run. A delivery must carry it as " +
-				"a Bearer token, as the Basic auth password, or as the key of a valid X-Hub-Signature-256 header.",
+				"a Bearer token or as the Basic auth password, or use it as the HMAC-SHA256 key over the raw body " +
+				"and send X-Hub-Signature-256: sha256=<hex digest>.",
 		),
 	PRISMALENS_RENDER_WEBHOOK_SECRET: z
 		.string()

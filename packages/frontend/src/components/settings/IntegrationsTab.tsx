@@ -223,8 +223,9 @@ export function IntegrationsTab() {
 					<p className="text-sm text-muted-foreground">
 						Copy these URLs into your monitoring tools to send alerts to
 						PrismaLens. Each delivery must send the webhook token as
-						Authorization: Bearer &lt;token&gt;, as the basic auth password, or
-						as the key of an X-Hub-Signature-256 header. The token is in
+						Authorization: Bearer &lt;token&gt; or as the basic auth password,
+						or use it as the HMAC-SHA256 key over the raw body and send
+						X-Hub-Signature-256: sha256=&lt;hex digest&gt;. The token is in
 						&lt;workspace&gt;/PRISMALENS_WEBHOOK_SECRET_FILE; pl up prints the
 						workspace path.
 					</p>
