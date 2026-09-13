@@ -10,7 +10,6 @@
 import { join } from "node:path";
 
 const DEFAULT_LOG_DIR = "logs";
-const DEFAULT_LOG_FILE = "prismalens.log";
 
 export type ConsoleMode = "quiet" | "verbose";
 
@@ -23,13 +22,14 @@ export function resolveConsoleMode(
 	return env.PRISMALENS_LOG_CONSOLE === "verbose" ? "verbose" : "quiet";
 }
 
-export function resolveLogFile(
+/** The directory, not a file: the logger rotates `<base>.<N>.log` and keeps no symlink (#610). */
+export function resolveLogDir(
 	env: NodeJS.ProcessEnv,
 	workspaceDir: string,
 ): string {
-	const dir =
-		env.PRISMALENS_LOG_FILE_LOCATION || join(workspaceDir, DEFAULT_LOG_DIR);
-	return join(dir, env.PRISMALENS_LOG_FILE_NAME || DEFAULT_LOG_FILE);
+	return (
+		env.PRISMALENS_LOG_FILE_LOCATION || join(workspaceDir, DEFAULT_LOG_DIR)
+	);
 }
 
 export function resolveBind(env: NodeJS.ProcessEnv): {

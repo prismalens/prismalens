@@ -8,7 +8,7 @@ import {
 	healthUrl,
 	resolveBind,
 	resolveConsoleMode,
-	resolveLogFile,
+	resolveLogDir,
 	waitForReady,
 } from "./up-console.js";
 
@@ -33,22 +33,20 @@ describe("resolveConsoleMode", () => {
 	});
 });
 
-describe("resolveLogFile", () => {
-	it("defaults to <workspace>/logs/prismalens.log", () => {
-		expect(resolveLogFile({}, "/data/pl")).toBe(
-			join("/data/pl", "logs", "prismalens.log"),
-		);
+describe("resolveLogDir", () => {
+	it("defaults to <workspace>/logs", () => {
+		expect(resolveLogDir({}, "/data/pl")).toBe(join("/data/pl", "logs"));
 	});
-	it("honours PRISMALENS_LOG_FILE_LOCATION and PRISMALENS_LOG_FILE_NAME", () => {
+	it("honours PRISMALENS_LOG_FILE_LOCATION and ignores the rotated base name", () => {
 		expect(
-			resolveLogFile(
+			resolveLogDir(
 				{
 					PRISMALENS_LOG_FILE_LOCATION: "/var/log/pl",
 					PRISMALENS_LOG_FILE_NAME: "app.log",
 				},
 				"/data/pl",
 			),
-		).toBe(join("/var/log/pl", "app.log"));
+		).toBe("/var/log/pl");
 	});
 });
 

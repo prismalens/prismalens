@@ -23,7 +23,7 @@ import {
 	healthUrl,
 	resolveBind,
 	resolveConsoleMode,
-	resolveLogFile,
+	resolveLogDir,
 	waitForReady,
 } from "./up-console.js";
 
@@ -131,11 +131,11 @@ export default defineCommand({
 		// What `pl up` still depends on is the migration SQL being present in the
 		// tarball: `scripts/pack-cli.mjs` stages it at
 		// `@prismalens/database/dist/prisma/sqlite/schema` and asserts it.
-		const logFile = resolveLogFile(process.env, workspaceDir);
+		const logDir = resolveLogDir(process.env, workspaceDir);
 		const bind = resolveBind(process.env);
 		const url = displayUrl(bind);
 		consola.info(`Workspace: ${workspaceDir}`);
-		consola.info(`Logs: ${logFile}`);
+		consola.info(`Logs: ${logDir}`);
 		if (process.env.PRISMALENS_LOG_CONSOLE === "verbose") {
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
@@ -158,7 +158,7 @@ export default defineCommand({
 			consola.success(`PrismaLens is ready at ${url}`);
 		} else {
 			consola.warn(
-				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logFile}`,
+				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,
 			);
 		}
 	},
