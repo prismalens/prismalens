@@ -16,7 +16,6 @@ import { describe, expect, it, vi } from "vitest";
 import { GitHubAdapter } from "../providers/github/github.adapter.js";
 import { RenderAdapter } from "../providers/render/render.adapter.js";
 import type { AuthenticatedRequestFn } from "../providers/types.js";
-import { VercelAdapter } from "../providers/vercel/vercel.adapter.js";
 import {
 	httpStatusDiagnostic,
 	providerHttpError,
@@ -175,26 +174,6 @@ describe("provider clients do not leak the response body (#347 F1)", () => {
 
 		expect(error.message).toBe(
 			"GitHub API request failed for provider 'github' (HTTP 422 Unprocessable Entity)",
-		);
-	});
-
-	it("VercelAdapter", async () => {
-		const request = failingRequest(
-			403,
-			JSON.stringify({ error: { message: `token ${SENTINEL}` } }),
-		);
-
-		const error = expectNoSentinel(
-			await new VercelAdapter().deployment
-				.listServices(request)
-				.then(() => {
-					throw new Error("expected listServices to reject");
-				})
-				.catch((e: unknown) => e),
-		);
-
-		expect(error.message).toBe(
-			"Vercel API request failed for provider 'vercel' (HTTP 403 Forbidden)",
 		);
 	});
 

@@ -153,7 +153,6 @@ describe("incidents query shape", () => {
 
 	it.each([
 		["findById", (s: IncidentsService) => s.findById("some-id")],
-		["findByNumber", (s: IncidentsService) => s.findByNumber(1)],
 		["findAll", (s: IncidentsService) => s.findAll({ limit: 50, offset: 0 })],
 	])("%s joins the whole service row, not a partial select", async (_n, run) => {
 		const { service, calls } = makeRecordingService();
@@ -167,7 +166,6 @@ describe("incidents query shape", () => {
 
 	it.each([
 		["findById", (s: IncidentsService) => s.findById("some-id")],
-		["findByNumber", (s: IncidentsService) => s.findByNumber(1)],
 		["findAll", (s: IncidentsService) => s.findAll({ limit: 50, offset: 0 })],
 	])("%s selects both investigation timestamps", async (_n, run) => {
 		const { service, calls } = makeRecordingService();

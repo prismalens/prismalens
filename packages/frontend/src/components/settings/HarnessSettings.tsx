@@ -15,12 +15,13 @@
  * (`selection.pinned`), so the picker stays editable but the card says so.
  */
 
-import { HARNESS_REGISTRY } from "@prismalens/config/harness";
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { HarnessSetting } from "@prismalens/contracts";
 import {
 	AlertTriangle,
 	CheckCircle2,
 	Loader2,
+	RadioTower,
 	Terminal,
 	XCircle,
 } from "lucide-react";
@@ -45,20 +46,54 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import {
+	useCheckHarness,
 	useHarnesses,
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
+/** One harness's last on-demand ACP handshake verdict, kept only in memory — it goes stale the moment the harness's login state changes. */
+interface ProbeState {
+	/** Only "answers ACP" is a pass; it still does not mean signed in. */
+	answers: boolean;
+	detail: string;
+}
+
 export function HarnessSettings() {
 	const { data, isLoading, isError } = useHarnesses();
 	const { data: settings, isLoading: settingsLoading } = useHarnessSettings();
 	const updateSettings = useUpdateHarnessSettings();
+	const checkHarness = useCheckHarness();
 
 	const [selected, setSelected] = useState<HarnessSetting>("auto");
 	const [model, setModel] = useState("");
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [probes, setProbes] = useState<Partial<Record<HarnessId, ProbeState>>>(
+		{},
+	);
+
+	async function handleCheck(id: HarnessId) {
+		try {
+			const result = await checkHarness.mutateAsync({ id });
+			setProbes((prev) => ({
+				...prev,
+				[id]: {
+					answers: result.outcome === "answers-acp",
+					detail: result.detail,
+				},
+			}));
+		} catch (err) {
+			setProbes((prev) => ({
+				...prev,
+				[id]: {
+					answers: false,
+					detail:
+						err instanceof Error ? err.message : "Could not run the check",
+				},
+			}));
+		}
+	}
 
 	const savedHarness = settings?.harness ?? "auto";
 	const savedModel = settings?.model ?? "";
@@ -161,6 +196,11 @@ export function HarnessSettings() {
 								? HARNESS_REGISTRY[harness.id as keyof typeof HARNESS_REGISTRY]
 								: undefined;
 						const isSelected = selection?.harness === harness.id;
+						const harnessId = harness.id as HarnessId;
+						const probe = probes[harnessId];
+						const checking =
+							checkHarness.isPending &&
+							checkHarness.variables?.id === harnessId;
 						return (
 							<div
 								key={harness.id}
@@ -204,6 +244,37 @@ export function HarnessSettings() {
 										<p className="mt-1 text-xs text-muted-foreground">
 											{harness.install}
 										</p>
+									)}
+									{harness.installed && (
+										<div className="mt-2 flex flex-wrap items-center gap-2">
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() => handleCheck(harnessId)}
+												disabled={checking}
+												data-testid={`harness-check-${harness.id}`}
+											>
+												{checking ? (
+													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+												) : (
+													<RadioTower className="mr-2 h-3 w-3" />
+												)}
+												Check readiness
+											</Button>
+											{probe && !checking && (
+												<span
+													className={cn(
+														"text-xs",
+														probe.answers
+															? "text-muted-foreground"
+															: "text-destructive",
+													)}
+													data-testid={`harness-check-result-${harness.id}`}
+												>
+													{probe.detail}
+												</span>
+											)}
+										</div>
 									)}
 								</div>
 							</div>

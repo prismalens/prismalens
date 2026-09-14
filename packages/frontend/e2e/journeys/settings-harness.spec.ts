@@ -37,7 +37,7 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	binary: "claude-agent-acp",
 	installed: true,
 	verified: false,
-	install: "npm i -g @agentclientprotocol/claude-agent-acp  (needs `claude login`)",
+	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 };
 
 const OPENCODE_INSTALLED: HarnessFixture = {
@@ -73,7 +73,7 @@ const NOTHING: HarnessFixture[] = [
 ];
 
 const NO_HARNESS_REASON =
-	"No coding agent found on PATH. Install one: OpenCode: curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai); Claude Code: npm i -g @agentclientprotocol/claude-agent-acp  (needs `claude login`); Codex: npm i -g @agentclientprotocol/codex-acp  (needs `codex login` or OPENAI_API_KEY); Gemini CLI: npm i -g @google/gemini-cli; deepagents: pip install deepagents-acp.";
+	"No coding agent found on PATH. Install one: OpenCode: curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai); Claude Code: npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY); Codex: npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY); Gemini CLI: npm i -g @google/gemini-cli; deepagents: pip install deepagents-acp.";
 
 const isHarnessesUrl = (url: URL) => url.pathname === "/api/settings/harnesses";
 
@@ -300,6 +300,54 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			card(page).getByText(/Saved — investigations use OpenCode \(sonnet-4\)/),
 		).toBeVisible();
+	});
+
+	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			blockedReason: null,
+		});
+		await openHarnessSettings(page);
+
+		await page.route(
+			(url) => url.pathname === "/api/settings/harness/check",
+			async (route) => {
+				const body = route.request().postDataJSON();
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(
+						body?.id === "opencode"
+							? {
+									id: "opencode",
+									outcome: "answers-acp",
+									detail: "answers ACP",
+									hard: false,
+								}
+							: {
+									id: "claude-code",
+									outcome: "sign-in-needed",
+									detail: "sign in needed (Log in with Claude)",
+									hard: false,
+								},
+					),
+				});
+			},
+		);
+
+		await page.getByTestId("harness-check-opencode").click();
+		await expect(page.getByTestId("harness-check-result-opencode")).toHaveText(
+			"answers ACP",
+		);
+
+		await page.getByTestId("harness-check-claude-code").click();
+		await expect(
+			page.getByTestId("harness-check-result-claude-code"),
+		).toHaveText("sign in needed (Log in with Claude)");
 	});
 });
 

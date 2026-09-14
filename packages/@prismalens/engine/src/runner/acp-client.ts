@@ -66,9 +66,24 @@ function jsonRpcErrorText(error: NonNullable<JsonRpcMessage["error"]>): string {
 	return `${head} — ${data.slice(0, 500)}`;
 }
 
+/** A JSON-RPC error answer from the harness, keeping its code (-32000 is ACP's auth_required). */
+export class AcpRpcError extends Error {
+	constructor(
+		message: string,
+		readonly code: number | undefined,
+	) {
+		super(message);
+	}
+}
+
 export interface AcpAgentInfo {
 	name?: string;
 	version?: string;
+}
+
+export interface AcpAuthMethod {
+	id: string;
+	name?: string;
 }
 
 export class AcpSession {
@@ -87,6 +102,7 @@ export class AcpSession {
 	private exitMessage: string | null = null;
 	private readonly stderrChunks: string[] = [];
 	agent: AcpAgentInfo = {};
+	authMethods: AcpAuthMethod[] = [];
 
 	constructor(private readonly config: AcpSessionConfig) {
 		this.sandbox = config.sandbox ?? createProcessFloorSandbox();
@@ -160,8 +176,9 @@ export class AcpSession {
 				},
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-		)) as { agentInfo?: AcpAgentInfo } | null;
+		)) as { agentInfo?: AcpAgentInfo; authMethods?: AcpAuthMethod[] } | null;
 		this.agent = init?.agentInfo ?? {};
+		this.authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
 		const session = (await this.request(
 			"session/new",
 			{ cwd: config.cwd, mcpServers: [] },
@@ -298,7 +315,8 @@ export class AcpSession {
 			const p = this.pending.get(msg.id);
 			if (!p) return;
 			this.pending.delete(msg.id);
-			if (msg.error) p.reject(new Error(jsonRpcErrorText(msg.error)));
+			if (msg.error)
+				p.reject(new AcpRpcError(jsonRpcErrorText(msg.error), msg.error.code));
 			else p.resolve(msg.result);
 		} else if (msg.method === "session/update") {
 			const update = msg.params?.update;

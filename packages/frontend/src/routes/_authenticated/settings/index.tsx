@@ -11,22 +11,15 @@ import {
 	DangerZoneSettings,
 	HarnessSettings,
 	IntegrationsSettings,
-	InvestigationSettings,
 } from "@/components/settings";
 import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
-type SettingsTab =
-	| "harness"
-	| "investigation"
-	| "integrations"
-	| "connections"
-	| "danger";
+type SettingsTab = "harness" | "integrations" | "connections" | "danger";
 
 const TABS: { value: SettingsTab; label: string }[] = [
 	{ value: "harness", label: "Harness" },
-	{ value: "investigation", label: "Investigation" },
 	{ value: "integrations", label: "Integrations" },
 	{ value: "connections", label: "Connections" },
 	{ value: "danger", label: "Danger Zone" },
@@ -83,7 +76,6 @@ function SettingsPage() {
 				{/* Content */}
 				<div className="flex-1 min-w-0">
 					{tab === "harness" && <HarnessSettings />}
-					{tab === "investigation" && <InvestigationSettings />}
 					{tab === "integrations" && <IntegrationsSettings />}
 					{tab === "connections" && <ConnectionsTab />}
 					{tab === "danger" && <DangerZoneSettings />}

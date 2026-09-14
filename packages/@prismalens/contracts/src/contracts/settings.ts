@@ -8,78 +8,17 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
-	AllInvestigationPoliciesSchema,
+	CheckHarnessInputSchema,
 	DangerOperationResultSchema,
 	FactoryResetInputSchema,
 	HarnessesResponseSchema,
+	HarnessProbeResultSchema,
 	HarnessSettingsSchema,
-	InvestigationLimitsSchema,
-	InvestigationPolicySchema,
 	ResetDataInputSchema,
 	UpdateHarnessSettingsSchema,
-	UpdateInvestigationLimitsSchema,
-	UpdateInvestigationPolicySchema,
 } from "../schemas/settings.js";
 
 export const settingsContract = {
-	investigation: {
-		/**
-		 * Get all investigation policies
-		 * GET /settings/investigation/policies
-		 */
-		getPolicies: oc
-			.route({
-				method: "GET",
-				path: "/settings/investigation/policies",
-				summary: "Get investigation policies for all tiers",
-				tags: ["settings"],
-			})
-			.input(z.object({}))
-			.output(AllInvestigationPoliciesSchema),
-
-		/**
-		 * Update investigation policy for a tier
-		 * PUT /settings/investigation/policies/:tier
-		 */
-		updatePolicy: oc
-			.route({
-				method: "PUT",
-				path: "/settings/investigation/policies/{tier}",
-				summary: "Update investigation policy for a tier",
-				tags: ["settings"],
-			})
-			.input(UpdateInvestigationPolicySchema)
-			.output(InvestigationPolicySchema),
-
-		/**
-		 * Get investigation limits
-		 * GET /settings/investigation/limits
-		 */
-		getLimits: oc
-			.route({
-				method: "GET",
-				path: "/settings/investigation/limits",
-				summary: "Get investigation limits",
-				tags: ["settings"],
-			})
-			.input(z.object({}))
-			.output(InvestigationLimitsSchema),
-
-		/**
-		 * Update investigation limits
-		 * PUT /settings/investigation/limits
-		 */
-		updateLimits: oc
-			.route({
-				method: "PUT",
-				path: "/settings/investigation/limits",
-				summary: "Update investigation limits",
-				tags: ["settings"],
-			})
-			.input(UpdateInvestigationLimitsSchema)
-			.output(InvestigationLimitsSchema),
-	},
-
 	danger: {
 		/**
 		 * Reset all data (alerts, incidents, investigations)
@@ -150,5 +89,20 @@ export const settingsContract = {
 			})
 			.input(UpdateHarnessSettingsSchema)
 			.output(HarnessSettingsSchema),
+		/**
+		 * On-demand ACP handshake against one harness — the same probe `pl
+		 * doctor` runs, behind a button rather than page load (#630).
+		 * POST /settings/harness/check
+		 */
+		checkHarness: oc
+			.route({
+				method: "POST",
+				path: "/settings/harness/check",
+				summary:
+					"Probe one harness with an ACP handshake (initialize + session/new, no prompt turn)",
+				tags: ["settings"],
+			})
+			.input(CheckHarnessInputSchema)
+			.output(HarnessProbeResultSchema),
 	},
 };

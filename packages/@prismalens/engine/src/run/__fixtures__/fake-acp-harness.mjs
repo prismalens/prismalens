@@ -5,12 +5,28 @@
 // A fake ACP agent for engine tests. Speaks protocol v1 over stdio. Behaviour is
 // picked by FAKE_ACP_MODE: "ok" (valid report first try), "retry" (invalid then
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
-// runs). It always attempts one read-only shell call and one write, and reports
-// what the client decided for each so the test can assert the gate.
+// runs), "hang" (never answers the handshake — a doctor-probe timeout),
+// "unauthenticated" (exits immediately with a stderr line), "print-env" (exits
+// naming which of FAKE_ENV_PROBE's comma-separated vars it received), or "auth-required"
+// (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
+// and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
 const cwd = process.cwd();
+
+if (mode === "unauthenticated") {
+	process.stderr.write("Error: not logged in\n");
+	process.exit(1);
+}
+if (mode === "print-env") {
+	const seen = (process.env.FAKE_ENV_PROBE ?? "")
+		.split(",")
+		.map((k) => `${k}=${process.env[k] === undefined ? "unset" : "set"}`);
+	process.stderr.write(`env ${seen.join(" ")}\n`);
+	process.exit(1);
+}
+// "hang": never reads/responds. The client's initTimeoutMs is what ends this.
 let nextId = 100;
 const pending = new Map();
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
@@ -149,6 +165,7 @@ async function turn(sessionId, promptText) {
 }
 
 createInterface({ input: process.stdin }).on("line", async (line) => {
+	if (mode === "hang") return; // never answer; the client's own timeout ends the probe
 	let msg;
 	try {
 		msg = JSON.parse(line);
@@ -161,11 +178,30 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		return;
 	}
 	if (msg.method === "initialize") {
+		// "slow-init": answer initialize after FAKE_INIT_DELAY_MS, then never answer session/new.
+		if (mode === "slow-init")
+			await new Promise((r) =>
+				setTimeout(r, Number(process.env.FAKE_INIT_DELAY_MS)),
+			);
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
-			result: { protocolVersion: 1, agentInfo: { name: "fake", version: "0" } },
+			result: {
+				protocolVersion: 1,
+				agentInfo: { name: "fake", version: "0" },
+				...(mode === "auth-required"
+					? { authMethods: [{ id: "login", name: "Log in with Fake" }] }
+					: {}),
+			},
 		});
+	} else if (msg.method === "session/new" && mode === "auth-required") {
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			error: { code: -32000, message: "Authentication required" },
+		});
+	} else if (msg.method === "session/new" && mode === "slow-init") {
+		// never answered
 	} else if (msg.method === "session/new") {
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);

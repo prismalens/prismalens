@@ -7,7 +7,7 @@
  * Service Integration Override Dialog
  *
  * Dialog for creating or editing service-specific integration overrides.
- * Supports different config UI based on integration type (GitHub, Prometheus, etc.)
+ * Supports different config UI based on integration type (GitHub, etc.)
  */
 
 import type {
@@ -98,14 +98,8 @@ export function ServiceIntegrationOverrideDialog({
 	const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set());
 	const [repoSearch, setRepoSearch] = useState("");
 
-	// Prometheus config state
-	const [labels, setLabels] = useState<Record<string, string>>({});
-	const [newLabelKey, setNewLabelKey] = useState("");
-	const [newLabelValue, setNewLabelValue] = useState("");
-
 	// Detect integration category from templateId
 	const isGitHub = templateId.startsWith("github");
-	const isPrometheus = templateId.startsWith("prometheus");
 
 	// Initialize state from existing config
 	useEffect(() => {
@@ -116,13 +110,8 @@ export function ServiceIntegrationOverrideDialog({
 			};
 			setRepoMode(config.allRepositories === false ? "specific" : "all");
 			setSelectedRepos(new Set(config.repositories || []));
-		} else if (isPrometheus) {
-			const config = initialConfig as {
-				labels?: Record<string, string>;
-			};
-			setLabels(config.labels || {});
 		}
-	}, [isGitHub, isPrometheus, initialConfig]);
+	}, [isGitHub, initialConfig]);
 
 	// Filtered repositories
 	const filteredRepos = useMemo(() => {
@@ -147,21 +136,6 @@ export function ServiceIntegrationOverrideDialog({
 		setSelectedRepos(newSelected);
 	};
 
-	// Add Prometheus label
-	const addLabel = () => {
-		if (newLabelKey && newLabelValue) {
-			setLabels({ ...labels, [newLabelKey]: newLabelValue });
-			setNewLabelKey("");
-			setNewLabelValue("");
-		}
-	};
-
-	// Remove Prometheus label
-	const removeLabel = (key: string) => {
-		const { [key]: _, ...rest } = labels;
-		setLabels(rest);
-	};
-
 	// Build config and save
 	const handleSave = () => {
 		let config: Record<string, unknown> = {};
@@ -172,8 +146,6 @@ export function ServiceIntegrationOverrideDialog({
 				allRepositories: repoMode === "all",
 				repositories: repoMode === "specific" ? Array.from(selectedRepos) : [],
 			};
-		} else if (isPrometheus) {
-			config = { labels };
 		} else {
 			// For unknown integrations, just pass through
 			config = initialConfig;
@@ -220,21 +192,8 @@ export function ServiceIntegrationOverrideDialog({
 						/>
 					)}
 
-					{/* Prometheus Config */}
-					{isPrometheus && (
-						<PrometheusConfigEditor
-							labels={labels}
-							onAddLabel={addLabel}
-							onRemoveLabel={removeLabel}
-							newLabelKey={newLabelKey}
-							onNewLabelKeyChange={setNewLabelKey}
-							newLabelValue={newLabelValue}
-							onNewLabelValueChange={setNewLabelValue}
-						/>
-					)}
-
 					{/* Unknown Integration */}
-					{!isGitHub && !isPrometheus && (
+					{!isGitHub && (
 						<div className="text-center py-6 text-muted-foreground">
 							<p>Configuration not available for this integration type.</p>
 						</div>
@@ -441,90 +400,6 @@ function GitHubConfigEditor({
 						</div>
 					)}
 				</div>
-			)}
-		</div>
-	);
-}
-
-// Prometheus config editor component
-interface PrometheusConfigEditorProps {
-	labels: Record<string, string>;
-	onAddLabel: () => void;
-	onRemoveLabel: (key: string) => void;
-	newLabelKey: string;
-	onNewLabelKeyChange: (key: string) => void;
-	newLabelValue: string;
-	onNewLabelValueChange: (value: string) => void;
-}
-
-function PrometheusConfigEditor({
-	labels,
-	onAddLabel,
-	onRemoveLabel,
-	newLabelKey,
-	onNewLabelKeyChange,
-	newLabelValue,
-	onNewLabelValueChange,
-}: PrometheusConfigEditorProps) {
-	return (
-		<div className="space-y-4">
-			<div>
-				<Label>Label Filters</Label>
-				<p className="text-sm text-muted-foreground mt-1">
-					Only include metrics with these Prometheus labels for this service.
-				</p>
-			</div>
-
-			{/* Existing labels */}
-			{Object.keys(labels).length > 0 && (
-				<div className="space-y-2">
-					{Object.entries(labels).map(([key, value]) => (
-						<div
-							key={key}
-							className="flex items-center gap-2 p-2 bg-muted rounded"
-						>
-							<code className="text-sm flex-1">
-								{key}="{value}"
-							</code>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => onRemoveLabel(key)}
-							>
-								Remove
-							</Button>
-						</div>
-					))}
-				</div>
-			)}
-
-			{/* Add new label */}
-			<div className="flex gap-2">
-				<Input
-					placeholder="Label key (e.g., job)"
-					value={newLabelKey}
-					onChange={(e) => onNewLabelKeyChange(e.target.value)}
-					className="flex-1"
-				/>
-				<Input
-					placeholder="Value (e.g., api-gateway)"
-					value={newLabelValue}
-					onChange={(e) => onNewLabelValueChange(e.target.value)}
-					className="flex-1"
-				/>
-				<Button
-					variant="outline"
-					onClick={onAddLabel}
-					disabled={!newLabelKey || !newLabelValue}
-				>
-					Add
-				</Button>
-			</div>
-
-			{Object.keys(labels).length === 0 && (
-				<p className="text-sm text-muted-foreground text-center py-2">
-					No label filters configured. All metrics will be included.
-				</p>
 			)}
 		</div>
 	);

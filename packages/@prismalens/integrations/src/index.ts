@@ -57,8 +57,6 @@ export {
 	RenderAdapter,
 	RenderDeploymentSegment,
 	templatesForSegment,
-	VercelAdapter,
-	VercelDeploymentSegment,
 } from "./providers/index.js";
 // Providers — shared types
 export type {
@@ -75,11 +73,7 @@ export {
 	getTemplatesByCategory,
 	githubApp,
 	githubToken,
-	prometheus,
 	render,
-	slack,
-	slackToken,
-	// placeholder
 } from "./templates/index.js";
 export type {
 	AuthMode,

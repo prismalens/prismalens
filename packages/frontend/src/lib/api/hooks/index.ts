@@ -24,11 +24,8 @@ export {
 // Incident hooks
 export {
 	incidentKeys,
-	useActiveIncidents,
-	useAddAlertToIncident,
 	useCreateIncident,
 	useIncident,
-	useIncidentStats,
 	useIncidents,
 	useInvestigateIncident,
 	useResolveIncident,
@@ -91,6 +88,7 @@ export {
 // Repository hooks
 export {
 	repositoryKeys,
+	useAddRepositorySource,
 	useBatchCreateRepositories,
 	useDeleteRepository,
 	useLinkRepository,
@@ -116,16 +114,13 @@ export {
 // Settings hooks
 export {
 	harnessKeys,
+	useCheckHarness,
 	useFactoryReset,
 	useHarnesses,
 	useHarnessSettings,
-	useInvestigationLimits,
-	useInvestigationPolicies,
 	useInvestigationReadiness,
 	useResetData,
 	useUpdateHarnessSettings,
-	useUpdateInvestigationLimits,
-	useUpdateInvestigationPolicy,
 } from "./use-settings-orpc";
 // Setup hooks
 export { setupKeys, useCreateOwner, useSetupStatus } from "./use-setup-orpc";

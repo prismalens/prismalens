@@ -90,8 +90,19 @@ export function buildRunFidelity(
 	};
 }
 
+/**
+ * The subset `prepareRunEnv` actually reads. Narrower than
+ * `RunInvestigationOptions` so a caller with no investigation in hand — the
+ * harness doctor probe — can reuse the same config/data-home materialisation
+ * without fabricating a `runId` or an `InvestigationContext`.
+ */
+export type PrepareRunEnvOptions = Pick<
+	RunInvestigationOptions,
+	"harness" | "descriptor" | "cwd" | "runDir" | "model" | "env"
+>;
+
 /** Materialise the per-run config and data dirs the registry row points the harness at. */
-export function prepareRunEnv(opts: RunInvestigationOptions): {
+export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	env: NodeJS.ProcessEnv;
 	runEnv: HarnessRunEnv;
 } {

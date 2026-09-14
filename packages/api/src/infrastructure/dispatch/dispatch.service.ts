@@ -18,7 +18,7 @@ import {
 import { getConfig } from "@prismalens/config";
 import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
-import { RepoCloneService } from "../../core/harness/repo-clone.service.js";
+import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
@@ -63,7 +63,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly incidentsService: IncidentsService,
 		private readonly timelineService: TimelineService,
 		private readonly harnessService: HarnessService,
-		private readonly repoClone: RepoCloneService,
+		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
 	) {
@@ -123,6 +123,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 										subPath: true,
 										repository: {
 											select: {
+												sourceKind: true,
 												url: true,
 												defaultBranch: true,
 												connectionId: true,
@@ -135,30 +136,16 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					},
 				});
 				return (incident?.service?.repositories ?? []).map((r) => ({
+					sourceKind: r.repository.sourceKind === "folder" ? "folder" : "url",
 					url: r.repository.url,
 					defaultBranch: r.repository.defaultBranch,
 					subPath: r.subPath,
 					connectionId: r.repository.connectionId,
 				}));
 			},
-			repoToken: async (connectionId) => {
-				const [conn] =
-					await this.integrationsService.getIntegrationsByConnectionIds([
-						connectionId,
-					]);
-				const creds = (conn?.credentials ?? {}) as Record<string, unknown>;
-				for (const key of [
-					"token",
-					"accessToken",
-					"access_token",
-					"personalAccessToken",
-				]) {
-					if (typeof creds[key] === "string" && creds[key])
-						return creds[key] as string;
-				}
-				return null;
-			},
-			ensureClone: (target) => this.repoClone.ensureClone(target),
+			repoToken: (connectionId) =>
+				this.integrationsService.gitToken(connectionId),
+			snapshot: (src, dest) => this.repoSource.snapshot(src, dest),
 			getIncident: async (id) => {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;

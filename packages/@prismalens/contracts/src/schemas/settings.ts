@@ -58,6 +58,26 @@ export const HarnessesResponseSchema = z.object({
 });
 export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
 
+/** `pl doctor`'s ACP handshake, on demand from the Settings Harness tab (#630, Unit D on #337). */
+export const CheckHarnessInputSchema = z.object({
+	id: z.enum(HARNESS_IDS),
+});
+export type CheckHarnessInput = z.infer<typeof CheckHarnessInputSchema>;
+
+/** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words `pl doctor` prints too, one line. */
+export const HarnessProbeResultSchema = z.object({
+	id: z.enum(HARNESS_IDS),
+	outcome: z.enum([
+		"answers-acp",
+		"sign-in-needed",
+		"no-answer",
+		"failed-to-start",
+	]),
+	detail: z.string(),
+	hard: z.literal(false),
+});
+export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
+
 // =============================================================================
 // INVESTIGATION POLICIES
 // =============================================================================
@@ -74,44 +94,6 @@ export type AutoInvestigateMode = z.infer<typeof AutoInvestigateModeSchema>;
 // Tier values
 export const TierSchema = z.enum(["tier_1", "tier_2", "tier_3", "tier_4"]);
 export type Tier = z.infer<typeof TierSchema>;
-
-// Single investigation policy
-export const InvestigationPolicySchema = z.object({
-	tier: TierSchema,
-	autoInvestigate: AutoInvestigateModeSchema,
-	requiresApproval: z.boolean(),
-	pageOnCall: z.boolean(),
-	postToSlack: z.boolean(),
-});
-export type InvestigationPolicy = z.infer<typeof InvestigationPolicySchema>;
-
-// All policies response
-export const AllInvestigationPoliciesSchema = z.object({
-	policies: z.array(InvestigationPolicySchema),
-});
-export type AllInvestigationPolicies = z.infer<
-	typeof AllInvestigationPoliciesSchema
->;
-
-// Update policy input (tier comes from path param)
-export const UpdateInvestigationPolicySchema = z.object({
-	tier: TierSchema,
-	autoInvestigate: AutoInvestigateModeSchema.optional(),
-	requiresApproval: z.boolean().optional(),
-	pageOnCall: z.boolean().optional(),
-	postToSlack: z.boolean().optional(),
-});
-export type UpdateInvestigationPolicy = z.infer<
-	typeof UpdateInvestigationPolicySchema
->;
-
-// Investigation limits
-export const InvestigationLimitsSchema = z.object({
-	maxConcurrent: z.number().int().min(1).max(100),
-	timeoutMinutes: z.number().int().min(1).max(120),
-	maxToolCalls: z.number().int().min(1).max(500),
-});
-export type InvestigationLimits = z.infer<typeof InvestigationLimitsSchema>;
 
 // =============================================================================
 // INVESTIGATION TRIGGERS
@@ -193,16 +175,6 @@ export const InvestigationUpdateStrategySchema = z.enum([
 ]);
 export type InvestigationUpdateStrategy = z.infer<
 	typeof InvestigationUpdateStrategySchema
->;
-
-// Update limits
-export const UpdateInvestigationLimitsSchema = z.object({
-	maxConcurrent: z.number().int().min(1).max(100).optional(),
-	timeoutMinutes: z.number().int().min(1).max(120).optional(),
-	maxToolCalls: z.number().int().min(1).max(500).optional(),
-});
-export type UpdateInvestigationLimits = z.infer<
-	typeof UpdateInvestigationLimitsSchema
 >;
 
 // =============================================================================

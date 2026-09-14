@@ -142,33 +142,6 @@ export class IncidentsService {
 	}
 
 	/**
-	 * Find incident by number (human-readable ID)
-	 */
-	async findByNumber(number: number): Promise<IncidentWithRelations | null> {
-		return this.prisma.incident.findUnique({
-			where: { number },
-			include: {
-				alerts: {
-					orderBy: { triggeredAt: "desc" },
-				},
-				service: true,
-				investigations: {
-					select: {
-						id: true,
-						status: true,
-						summary: true,
-						rootCause: true,
-						rootCauseCategory: true,
-						createdAt: true,
-						completedAt: true,
-					},
-					orderBy: { createdAt: "desc" },
-				},
-			},
-		});
-	}
-
-	/**
 	 * Find all incidents with filters
 	 */
 	async findAll(options?: {
@@ -237,16 +210,6 @@ export class IncidentsService {
 		]);
 
 		return { data, total };
-	}
-
-	/**
-	 * Find active (open) incidents
-	 */
-	async findActive(): Promise<IncidentWithRelations[]> {
-		const { data } = await this.findAll({
-			status: undefined, // We'll filter below
-		});
-		return data.filter((i) => !["resolved", "closed"].includes(i.status));
 	}
 
 	/**
@@ -447,58 +410,6 @@ export class IncidentsService {
 	 */
 	async close(id: string): Promise<Incident | null> {
 		return this.update(id, { status: "closed" });
-	}
-
-	/**
-	 * Get incident statistics
-	 */
-	async getStats(): Promise<{
-		total: number;
-		byStatus: Record<string, number>;
-		bySeverity: Record<string, number>;
-		avgTimeToAcknowledge: number | null;
-		avgTimeToResolve: number | null;
-	}> {
-		const [total, byStatus, bySeverity, ttaResult, ttrResult] =
-			await Promise.all([
-				this.prisma.incident.count(),
-				this.prisma.incident.groupBy({
-					by: ["status"],
-					_count: true,
-				}),
-				this.prisma.incident.groupBy({
-					by: ["severity"],
-					_count: true,
-				}),
-				this.prisma.incident.aggregate({
-					_avg: { timeToAcknowledge: true },
-					where: { timeToAcknowledge: { not: null } },
-				}),
-				this.prisma.incident.aggregate({
-					_avg: { timeToResolve: true },
-					where: { timeToResolve: { not: null } },
-				}),
-			]);
-
-		return {
-			total,
-			byStatus: byStatus.reduce(
-				(acc, item) => {
-					acc[item.status] = item._count;
-					return acc;
-				},
-				{} as Record<string, number>,
-			),
-			bySeverity: bySeverity.reduce(
-				(acc, item) => {
-					acc[item.severity] = item._count;
-					return acc;
-				},
-				{} as Record<string, number>,
-			),
-			avgTimeToAcknowledge: ttaResult._avg.timeToAcknowledge,
-			avgTimeToResolve: ttrResult._avg.timeToResolve,
-		};
 	}
 
 	/**

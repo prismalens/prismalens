@@ -21,7 +21,6 @@ export const incidentKeys = {
 	list: (filters: Partial<IncidentQuery>) =>
 		orpc.incidents.list.key({ input: filters }),
 	detail: (id: string) => orpc.incidents.get.key({ input: { id } }),
-	stats: () => orpc.incidents.getStats.key(),
 };
 
 /**
@@ -48,24 +47,6 @@ export function useIncident(id: string) {
 }
 
 /**
- * Fetch active incidents
- */
-export function useActiveIncidents() {
-	return useQuery(
-		orpc.incidents.listActive.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Fetch incident statistics
- */
-export function useIncidentStats() {
-	return useQuery(orpc.incidents.getStats.queryOptions({ input: {} }));
-}
-
-/**
  * Create a new incident
  */
 export function useCreateIncident() {
@@ -75,7 +56,6 @@ export function useCreateIncident() {
 		...orpc.incidents.create.mutationOptions(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
-			queryClient.invalidateQueries({ queryKey: incidentKeys.stats() });
 		},
 	});
 }
@@ -105,7 +85,6 @@ export function useResolveIncident() {
 		...orpc.incidents.resolve.mutationOptions(),
 		onSuccess: (incident) => {
 			queryClient.invalidateQueries({ queryKey: incidentKeys.lists() });
-			queryClient.invalidateQueries({ queryKey: incidentKeys.stats() });
 			queryClient.setQueryData(incidentKeys.detail(incident.id), incident);
 		},
 	});
@@ -119,22 +98,6 @@ export function useInvestigateIncident() {
 
 	return useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
-		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({
-				queryKey: incidentKeys.detail(variables.id),
-			});
-		},
-	});
-}
-
-/**
- * Add an alert to an incident
- */
-export function useAddAlertToIncident() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.incidents.addAlert.mutationOptions(),
 		onSuccess: (_, variables) => {
 			queryClient.invalidateQueries({
 				queryKey: incidentKeys.detail(variables.id),

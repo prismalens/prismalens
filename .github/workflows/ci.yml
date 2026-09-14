@@ -212,6 +212,39 @@ jobs:
       - name: Smoke the packed tarball
         run: sh scripts/packed-smoke.sh tarballs
 
+  packed-intake:
+    # Unit F on the 2026-09-13 gap study on #337 (#630): does a real alert
+    # source reach an incident on the packed tarball? `packed-smoke` proves the
+    # tarball boots; this proves a webhook delivery becomes an open incident
+    # and a resolution closes it — no investigation run, no model call.
+    #
+    # ADVISORY, not in `ci-gate`'s `needs`: it has not yet run green three
+    # times in a row on this branch. Promote it once it has (#630).
+    name: Packed intake (Prometheus webhook -> incident)
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/packed-intake.mjs
+            .nvmrc
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Prometheus webhook to incident, and back to resolved
+        run: node scripts/packed-intake.mjs tarballs
+
   harness-admission:
     # Registry admission (ADR 0003 §10): a harness row is `verified` only while
     # this passes unattended on a real clone. Criteria and first run: #561.

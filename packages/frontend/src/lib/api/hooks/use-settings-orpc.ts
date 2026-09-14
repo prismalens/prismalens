@@ -66,6 +66,16 @@ export function useUpdateHarnessSettings() {
 	});
 }
 
+/**
+ * On-demand ACP handshake against one harness (`POST /settings/harness/check`,
+ * #630). PATH presence (`useHarnesses`) says a binary exists, not that it is
+ * logged in — this is the same probe `pl doctor` runs, spent only when the
+ * operator asks for it, never on page load.
+ */
+export function useCheckHarness() {
+	return useMutation(orpc.settings.harnesses.checkHarness.mutationOptions());
+}
+
 export interface InvestigationReadiness {
 	/** Would an investigation start right now? */
 	isReady: boolean;
@@ -98,64 +108,6 @@ export function useInvestigationReadiness(): InvestigationReadiness {
 		blockedReason: selection?.blockedReason ?? fallback,
 		isLoading,
 	};
-}
-
-// =============================================================================
-// INVESTIGATION POLICIES
-// =============================================================================
-
-/**
- * Fetch investigation policies for all tiers
- */
-export function useInvestigationPolicies() {
-	return useQuery(
-		orpc.settings.investigation.getPolicies.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Update investigation policy for a tier
- */
-export function useUpdateInvestigationPolicy() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.investigation.updatePolicy.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: orpc.settings.investigation.getPolicies.key(),
-			});
-		},
-	});
-}
-
-/**
- * Fetch investigation limits
- */
-export function useInvestigationLimits() {
-	return useQuery(
-		orpc.settings.investigation.getLimits.queryOptions({
-			input: {},
-		}),
-	);
-}
-
-/**
- * Update investigation limits
- */
-export function useUpdateInvestigationLimits() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.settings.investigation.updateLimits.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: orpc.settings.investigation.getLimits.key(),
-			});
-		},
-	});
 }
 
 // =============================================================================

@@ -10,7 +10,9 @@ import type {
 	ServiceWithRelations,
 	TopologyEdge,
 } from "@prismalens/contracts/schemas";
+import type { Repository as PrismaRepository } from "@prismalens/database";
 import { requireAdmin } from "../../core/auth/index.js";
+import { serializeRepository } from "../repositories/serialize-repository.js";
 import type {
 	AddDependencyDto,
 	CreateServiceDto,
@@ -238,33 +240,7 @@ export class ServicesController {
 								? sr.createdAt.toISOString()
 								: sr.createdAt,
 						repository: sr.repository
-							? {
-									...(sr.repository as Record<string, unknown>),
-									createdAt:
-										(sr.repository as Record<string, unknown>)
-											.createdAt instanceof Date
-											? (
-													(sr.repository as Record<string, unknown>)
-														.createdAt as Date
-												).toISOString()
-											: (sr.repository as Record<string, unknown>).createdAt,
-									updatedAt:
-										(sr.repository as Record<string, unknown>)
-											.updatedAt instanceof Date
-											? (
-													(sr.repository as Record<string, unknown>)
-														.updatedAt as Date
-												).toISOString()
-											: (sr.repository as Record<string, unknown>).updatedAt,
-									metadata:
-										typeof (sr.repository as Record<string, unknown>)
-											.metadata === "string"
-											? JSON.parse(
-													(sr.repository as Record<string, unknown>)
-														.metadata as string,
-												)
-											: (sr.repository as Record<string, unknown>).metadata,
-								}
+							? serializeRepository(sr.repository as PrismaRepository)
 							: undefined,
 					}),
 				)

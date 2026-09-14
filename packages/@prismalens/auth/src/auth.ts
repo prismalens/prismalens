@@ -11,8 +11,54 @@
  * - Role-based access control
  */
 
-import { betterAuth } from "better-auth";
+import { type BetterAuthPlugin, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { ADMIN_ROLES } from "./roles.js";
+
+/** The one query this plugin needs; `role` is a prismalens column Better Auth's own schema knows nothing about (no `user.additionalFields` declares it), so this goes straight to Prisma rather than through `ctx.context.adapter`, which would silently no-op on an unregistered field. */
+interface OwnerLookupClient {
+	user: {
+		findFirst(args: {
+			where: { role: { in: readonly string[] } };
+		}): Promise<unknown>;
+	};
+}
+
+/**
+ * Refuses `POST /sign-up/email` once an owner/admin row exists. Setup's own
+ * `createOwner` path (`UsersService.setupOwner`) calls `auth.api.signUpEmail`
+ * directly, but only ever before the first owner is written, so it is never
+ * blocked by this. Better Auth 1.7.2's `emailAndPassword.disableSignUp` is a
+ * plain boolean checked once at request time from the options object (see
+ * `dist/api/routes/sign-up.mjs`), not a function of live DB state, so a
+ * request-time DB check needs this hook instead (same `matcher`/`handler`
+ * shape the library's own `username` plugin uses for the same endpoint).
+ */
+export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
+	const client = prisma as OwnerLookupClient;
+	return {
+		id: "close-sign-up-after-owner",
+		hooks: {
+			before: [
+				{
+					matcher: (ctx) => ctx.path === "/sign-up/email",
+					handler: createAuthMiddleware(async () => {
+						const existingOwner = await client.user.findFirst({
+							where: { role: { in: ADMIN_ROLES } },
+						});
+						if (existingOwner) {
+							throw new APIError("FORBIDDEN", {
+								message: "Sign-up is closed: an owner account already exists.",
+								code: "SIGN_UP_CLOSED",
+							});
+						}
+					}),
+				},
+			],
+		},
+	};
+}
 
 export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
@@ -53,6 +99,8 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 			useSecureCookies: options.secureCookies,
 			cookiePrefix: "prismalens",
 		},
+
+		plugins: [closeSignUpAfterOwner(prisma)],
 	});
 }
 

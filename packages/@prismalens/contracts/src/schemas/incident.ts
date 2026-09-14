@@ -118,10 +118,6 @@ export const IncidentQuerySchema = z.object({
 // INCIDENT ACTIONS
 // =============================================================================
 
-export const AddAlertToIncidentSchema = z.object({
-	alertId: z.string().uuid(),
-});
-
 export const InvestigateIncidentResponseSchema = z.object({
 	incidentId: z.string().uuid(),
 	investigationId: z.string().uuid(),
@@ -149,20 +145,6 @@ export const InvestigationRefusalSchema = z.object({
 });
 
 // =============================================================================
-// INCIDENT STATS
-// =============================================================================
-
-export const IncidentStatsSchema = z.object({
-	total: z.number().int(),
-	active: z.number().int(),
-	byStatus: z.record(z.string(), z.number().int()),
-	bySeverity: z.record(z.string(), z.number().int()),
-	byPriority: z.record(z.string(), z.number().int()),
-	avgTimeToAcknowledge: z.number().nullable(),
-	avgTimeToResolve: z.number().nullable(),
-});
-
-// =============================================================================
 // TYPE EXPORTS
 // =============================================================================
 
@@ -171,7 +153,6 @@ export type CreateIncidentInput = z.infer<typeof CreateIncidentSchema>;
 export type UpdateIncidentInput = z.infer<typeof UpdateIncidentSchema>;
 export type IncidentWithRelations = z.infer<typeof IncidentWithRelationsSchema>;
 export type IncidentQuery = z.infer<typeof IncidentQuerySchema>;
-export type AddAlertToIncidentInput = z.infer<typeof AddAlertToIncidentSchema>;
 export type InvestigateIncidentResponse = z.infer<
 	typeof InvestigateIncidentResponseSchema
 >;
@@ -179,4 +160,3 @@ export type HarnessSelectionFailure = z.infer<
 	typeof HarnessSelectionFailureSchema
 >;
 export type InvestigationRefusal = z.infer<typeof InvestigationRefusalSchema>;
-export type IncidentStats = z.infer<typeof IncidentStatsSchema>;

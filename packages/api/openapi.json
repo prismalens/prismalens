@@ -2,7 +2,7 @@
   "info": {
     "title": "PrismaLens API",
     "version": "1.0.0",
-    "description": "PrismaLens Community Edition API - Incident management and root cause analysis platform",
+    "description": "PrismaLens API - incident investigation",
     "contact": {
       "name": "PrismaLens Team",
       "url": "https://github.com/prismalens-org/prismalens"
@@ -3855,777 +3855,6 @@
         }
       }
     },
-    "/incidents/active": {
-      "get": {
-        "operationId": "incidents.listActive",
-        "summary": "List active (non-resolved) incidents",
-        "tags": [
-          "incidents"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string",
-                        "format": "uuid"
-                      },
-                      "number": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "title": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "description": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "severity": {
-                        "enum": [
-                          "critical",
-                          "high",
-                          "medium",
-                          "low",
-                          "info"
-                        ],
-                        "type": "string"
-                      },
-                      "status": {
-                        "enum": [
-                          "triggered",
-                          "investigating",
-                          "identified",
-                          "monitoring",
-                          "resolved",
-                          "closed"
-                        ],
-                        "type": "string"
-                      },
-                      "priority": {
-                        "enum": [
-                          "p1",
-                          "p2",
-                          "p3",
-                          "p4",
-                          "p5"
-                        ],
-                        "type": "string"
-                      },
-                      "serviceId": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "assignedToId": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "correlationReason": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "tags": {
-                        "anyOf": [
-                          {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "customerImpact": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "affectedSystems": {
-                        "anyOf": [
-                          {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "triggeredAt": {
-                        "type": "string",
-                        "format": "date-time"
-                      },
-                      "acknowledgedAt": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "resolvedAt": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "alertCount": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "timeToAcknowledge": {
-                        "anyOf": [
-                          {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "timeToResolve": {
-                        "anyOf": [
-                          {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                      },
-                      "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
-                      },
-                      "service": {
-                        "anyOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string",
-                                "format": "uuid"
-                              },
-                              "name": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "displayName": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "description": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "type": {
-                                "enum": [
-                                  "service",
-                                  "database",
-                                  "queue",
-                                  "cache",
-                                  "gateway",
-                                  "external",
-                                  "infrastructure"
-                                ],
-                                "type": "string"
-                              },
-                              "tier": {
-                                "enum": [
-                                  "tier_1",
-                                  "tier_2",
-                                  "tier_3",
-                                  "tier_4"
-                                ],
-                                "type": "string"
-                              },
-                              "team": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "slackChannel": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "tags": {
-                                "anyOf": [
-                                  {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "metadata": {
-                                "anyOf": [
-                                  {
-                                    "type": "object",
-                                    "propertyNames": {
-                                      "type": "string"
-                                    },
-                                    "additionalProperties": {}
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "updatedAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name",
-                              "displayName",
-                              "description",
-                              "type",
-                              "tier",
-                              "team",
-                              "slackChannel",
-                              "tags",
-                              "metadata",
-                              "createdAt",
-                              "updatedAt"
-                            ]
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "assignedTo": {
-                        "anyOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string",
-                                "format": "uuid"
-                              },
-                              "email": {
-                                "type": "string",
-                                "format": "email"
-                              },
-                              "firstName": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "lastName": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "email",
-                              "firstName",
-                              "lastName"
-                            ]
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "alerts": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "dedupKey": {
-                              "type": "string"
-                            },
-                            "fingerprint": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "externalId": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "title": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "description": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "severity": {
-                              "enum": [
-                                "critical",
-                                "high",
-                                "medium",
-                                "low",
-                                "info"
-                              ],
-                              "type": "string"
-                            },
-                            "status": {
-                              "enum": [
-                                "triggered",
-                                "acknowledged",
-                                "correlated",
-                                "resolved",
-                                "suppressed"
-                              ],
-                              "type": "string"
-                            },
-                            "source": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "sourceUrl": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "serviceId": {
-                              "anyOf": [
-                                {
-                                  "type": "string",
-                                  "format": "uuid"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "incidentId": {
-                              "anyOf": [
-                                {
-                                  "type": "string",
-                                  "format": "uuid"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "tags": {
-                              "anyOf": [
-                                {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "labels": {
-                              "anyOf": [
-                                {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "string"
-                                  }
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "triggeredAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "acknowledgedAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string",
-                                  "format": "date-time"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "resolvedAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string",
-                                  "format": "date-time"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "occurrenceCount": {
-                              "type": "integer",
-                              "minimum": -9007199254740991,
-                              "maximum": 9007199254740991
-                            },
-                            "lastOccurrence": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "rawPayload": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "dedupKey",
-                            "fingerprint",
-                            "externalId",
-                            "title",
-                            "description",
-                            "severity",
-                            "status",
-                            "source",
-                            "sourceUrl",
-                            "serviceId",
-                            "incidentId",
-                            "tags",
-                            "labels",
-                            "triggeredAt",
-                            "acknowledgedAt",
-                            "resolvedAt",
-                            "occurrenceCount",
-                            "lastOccurrence",
-                            "rawPayload",
-                            "createdAt",
-                            "updatedAt"
-                          ]
-                        }
-                      },
-                      "investigations": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "status": {
-                              "type": "string"
-                            },
-                            "rootCause": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "completedAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string",
-                                  "format": "date-time"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "status",
-                            "rootCause",
-                            "createdAt",
-                            "completedAt"
-                          ]
-                        }
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "number",
-                      "title",
-                      "description",
-                      "severity",
-                      "status",
-                      "priority",
-                      "serviceId",
-                      "assignedToId",
-                      "correlationReason",
-                      "tags",
-                      "customerImpact",
-                      "affectedSystems",
-                      "triggeredAt",
-                      "acknowledgedAt",
-                      "resolvedAt",
-                      "alertCount",
-                      "timeToAcknowledge",
-                      "timeToResolve",
-                      "createdAt",
-                      "updatedAt"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/incidents/stats": {
-      "get": {
-        "operationId": "incidents.getStats",
-        "summary": "Get incident statistics",
-        "tags": [
-          "incidents"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "total": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "active": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "byStatus": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "bySeverity": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "byPriority": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "avgTimeToAcknowledge": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "avgTimeToResolve": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "total",
-                    "active",
-                    "byStatus",
-                    "bySeverity",
-                    "byPriority",
-                    "avgTimeToAcknowledge",
-                    "avgTimeToResolve"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/incidents/{id}": {
       "get": {
         "operationId": "incidents.get",
@@ -5610,689 +4839,6 @@
         }
       }
     },
-    "/incidents/number/{number}": {
-      "get": {
-        "operationId": "incidents.getByNumber",
-        "summary": "Get incident by number",
-        "tags": [
-          "incidents"
-        ],
-        "parameters": [
-          {
-            "name": "number",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "number": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "title": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "description": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "severity": {
-                      "enum": [
-                        "critical",
-                        "high",
-                        "medium",
-                        "low",
-                        "info"
-                      ],
-                      "type": "string"
-                    },
-                    "status": {
-                      "enum": [
-                        "triggered",
-                        "investigating",
-                        "identified",
-                        "monitoring",
-                        "resolved",
-                        "closed"
-                      ],
-                      "type": "string"
-                    },
-                    "priority": {
-                      "enum": [
-                        "p1",
-                        "p2",
-                        "p3",
-                        "p4",
-                        "p5"
-                      ],
-                      "type": "string"
-                    },
-                    "serviceId": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "assignedToId": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "correlationReason": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "tags": {
-                      "anyOf": [
-                        {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "customerImpact": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "affectedSystems": {
-                      "anyOf": [
-                        {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "triggeredAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "acknowledgedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "resolvedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "alertCount": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "timeToAcknowledge": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "timeToResolve": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "service": {
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "name": {
-                              "type": "string",
-                              "minLength": 1
-                            },
-                            "displayName": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "description": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "type": {
-                              "enum": [
-                                "service",
-                                "database",
-                                "queue",
-                                "cache",
-                                "gateway",
-                                "external",
-                                "infrastructure"
-                              ],
-                              "type": "string"
-                            },
-                            "tier": {
-                              "enum": [
-                                "tier_1",
-                                "tier_2",
-                                "tier_3",
-                                "tier_4"
-                              ],
-                              "type": "string"
-                            },
-                            "team": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "slackChannel": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "tags": {
-                              "anyOf": [
-                                {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "metadata": {
-                              "anyOf": [
-                                {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {}
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "name",
-                            "displayName",
-                            "description",
-                            "type",
-                            "tier",
-                            "team",
-                            "slackChannel",
-                            "tags",
-                            "metadata",
-                            "createdAt",
-                            "updatedAt"
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "assignedTo": {
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "email": {
-                              "type": "string",
-                              "format": "email"
-                            },
-                            "firstName": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "lastName": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "email",
-                            "firstName",
-                            "lastName"
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "alerts": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "dedupKey": {
-                            "type": "string"
-                          },
-                          "fingerprint": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "externalId": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "title": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "description": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "severity": {
-                            "enum": [
-                              "critical",
-                              "high",
-                              "medium",
-                              "low",
-                              "info"
-                            ],
-                            "type": "string"
-                          },
-                          "status": {
-                            "enum": [
-                              "triggered",
-                              "acknowledged",
-                              "correlated",
-                              "resolved",
-                              "suppressed"
-                            ],
-                            "type": "string"
-                          },
-                          "source": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "sourceUrl": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "serviceId": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "uuid"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "incidentId": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "uuid"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "tags": {
-                            "anyOf": [
-                              {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "labels": {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "propertyNames": {
-                                  "type": "string"
-                                },
-                                "additionalProperties": {
-                                  "type": "string"
-                                }
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "triggeredAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "acknowledgedAt": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "resolvedAt": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "occurrenceCount": {
-                            "type": "integer",
-                            "minimum": -9007199254740991,
-                            "maximum": 9007199254740991
-                          },
-                          "lastOccurrence": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "rawPayload": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "updatedAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "dedupKey",
-                          "fingerprint",
-                          "externalId",
-                          "title",
-                          "description",
-                          "severity",
-                          "status",
-                          "source",
-                          "sourceUrl",
-                          "serviceId",
-                          "incidentId",
-                          "tags",
-                          "labels",
-                          "triggeredAt",
-                          "acknowledgedAt",
-                          "resolvedAt",
-                          "occurrenceCount",
-                          "lastOccurrence",
-                          "rawPayload",
-                          "createdAt",
-                          "updatedAt"
-                        ]
-                      }
-                    },
-                    "investigations": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "status": {
-                            "type": "string"
-                          },
-                          "rootCause": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "completedAt": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "status",
-                          "rootCause",
-                          "createdAt",
-                          "completedAt"
-                        ]
-                      }
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "number",
-                    "title",
-                    "description",
-                    "severity",
-                    "status",
-                    "priority",
-                    "serviceId",
-                    "assignedToId",
-                    "correlationReason",
-                    "tags",
-                    "customerImpact",
-                    "affectedSystems",
-                    "triggeredAt",
-                    "acknowledgedAt",
-                    "resolvedAt",
-                    "alertCount",
-                    "timeToAcknowledge",
-                    "timeToResolve",
-                    "createdAt",
-                    "updatedAt"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/incidents/{id}/investigate": {
       "post": {
         "operationId": "incidents.investigate",
@@ -6678,65 +5224,6 @@
                     "timeToResolve",
                     "createdAt",
                     "updatedAt"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/incidents/{id}/alerts": {
-      "post": {
-        "operationId": "incidents.addAlert",
-        "summary": "Add alert to incident",
-        "tags": [
-          "incidents"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "alertId": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                },
-                "required": [
-                  "alertId"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "success"
                   ]
                 }
               }
@@ -14417,6 +12904,192 @@
         }
       }
     },
+    "/repositories/source": {
+      "post": {
+        "operationId": "repositories.addSource",
+        "summary": "Add a repository by folder path or git URL and link it to a service",
+        "tags": [
+          "repositories"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "subPath": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "serviceId",
+                  "source"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "connectionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "folder",
+                        "url"
+                      ],
+                      "type": "string"
+                    },
+                    "fullName": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "defaultBranch": {
+                      "type": "string"
+                    },
+                    "isPrivate": {
+                      "type": "boolean"
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncBranch": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncHead": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "connectionId",
+                    "sourceKind",
+                    "fullName",
+                    "url",
+                    "description",
+                    "language",
+                    "defaultBranch",
+                    "isPrivate",
+                    "metadata",
+                    "syncBranch",
+                    "syncHead",
+                    "syncError",
+                    "syncedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/repositories/batch": {
       "post": {
         "operationId": "repositories.batchCreate",
@@ -14505,8 +13178,22 @@
                             "format": "uuid"
                           },
                           "connectionId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceKind": {
+                            "enum": [
+                              "folder",
+                              "url"
+                            ],
+                            "type": "string"
                           },
                           "fullName": {
                             "type": "string"
@@ -14554,6 +13241,47 @@
                               }
                             ]
                           },
+                          "syncBranch": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncHead": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncError": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -14566,6 +13294,7 @@
                         "required": [
                           "id",
                           "connectionId",
+                          "sourceKind",
                           "fullName",
                           "url",
                           "description",
@@ -14573,6 +13302,10 @@
                           "defaultBranch",
                           "isPrivate",
                           "metadata",
+                          "syncBranch",
+                          "syncHead",
+                          "syncError",
+                          "syncedAt",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -14660,8 +13393,22 @@
                             "format": "uuid"
                           },
                           "connectionId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceKind": {
+                            "enum": [
+                              "folder",
+                              "url"
+                            ],
+                            "type": "string"
                           },
                           "fullName": {
                             "type": "string"
@@ -14703,6 +13450,47 @@
                                   "type": "string"
                                 },
                                 "additionalProperties": {}
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncBranch": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncHead": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncError": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
                               },
                               {
                                 "type": "null"
@@ -14766,6 +13554,7 @@
                         "required": [
                           "id",
                           "connectionId",
+                          "sourceKind",
                           "fullName",
                           "url",
                           "description",
@@ -14773,6 +13562,10 @@
                           "defaultBranch",
                           "isPrivate",
                           "metadata",
+                          "syncBranch",
+                          "syncHead",
+                          "syncError",
+                          "syncedAt",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -14858,8 +13651,22 @@
                       "format": "uuid"
                     },
                     "connectionId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "folder",
+                        "url"
+                      ],
+                      "type": "string"
                     },
                     "fullName": {
                       "type": "string"
@@ -14901,6 +13708,47 @@
                             "type": "string"
                           },
                           "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncBranch": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncHead": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         {
                           "type": "null"
@@ -14964,6 +13812,7 @@
                   "required": [
                     "id",
                     "connectionId",
+                    "sourceKind",
                     "fullName",
                     "url",
                     "description",
@@ -14971,6 +13820,10 @@
                     "defaultBranch",
                     "isPrivate",
                     "metadata",
+                    "syncBranch",
+                    "syncHead",
+                    "syncError",
+                    "syncedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -15048,7 +13901,8 @@
                     "format": "uuid"
                   },
                   "subPath": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
                   },
                   "isPrimary": {
                     "type": "boolean"
@@ -15705,8 +14559,22 @@
                                       "format": "uuid"
                                     },
                                     "connectionId": {
-                                      "type": "string",
-                                      "format": "uuid"
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "sourceKind": {
+                                      "enum": [
+                                        "folder",
+                                        "url"
+                                      ],
+                                      "type": "string"
                                     },
                                     "fullName": {
                                       "type": "string"
@@ -15754,6 +14622,47 @@
                                         }
                                       ]
                                     },
+                                    "syncBranch": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "syncHead": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "syncError": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "syncedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
                                     "createdAt": {
                                       "type": "string",
                                       "format": "date-time"
@@ -15766,6 +14675,7 @@
                                   "required": [
                                     "id",
                                     "connectionId",
+                                    "sourceKind",
                                     "fullName",
                                     "url",
                                     "description",
@@ -15773,6 +14683,10 @@
                                     "defaultBranch",
                                     "isPrivate",
                                     "metadata",
+                                    "syncBranch",
+                                    "syncHead",
+                                    "syncError",
+                                    "syncedAt",
                                     "createdAt",
                                     "updatedAt"
                                   ]
@@ -16101,8 +15015,22 @@
                                 "format": "uuid"
                               },
                               "connectionId": {
-                                "type": "string",
-                                "format": "uuid"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "sourceKind": {
+                                "enum": [
+                                  "folder",
+                                  "url"
+                                ],
+                                "type": "string"
                               },
                               "fullName": {
                                 "type": "string"
@@ -16150,6 +15078,47 @@
                                   }
                                 ]
                               },
+                              "syncBranch": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "syncHead": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "syncError": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "syncedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "createdAt": {
                                 "type": "string",
                                 "format": "date-time"
@@ -16162,6 +15131,7 @@
                             "required": [
                               "id",
                               "connectionId",
+                              "sourceKind",
                               "fullName",
                               "url",
                               "description",
@@ -16169,6 +15139,10 @@
                               "defaultBranch",
                               "isPrivate",
                               "metadata",
+                              "syncBranch",
+                              "syncHead",
+                              "syncError",
+                              "syncedAt",
                               "createdAt",
                               "updatedAt"
                             ]
@@ -17003,8 +15977,22 @@
                                     "format": "uuid"
                                   },
                                   "connectionId": {
-                                    "type": "string",
-                                    "format": "uuid"
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
                                   },
                                   "fullName": {
                                     "type": "string"
@@ -17052,6 +16040,47 @@
                                       }
                                     ]
                                   },
+                                  "syncBranch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "syncHead": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "syncError": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "syncedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "date-time"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
                                   "createdAt": {
                                     "type": "string",
                                     "format": "date-time"
@@ -17064,6 +16093,7 @@
                                 "required": [
                                   "id",
                                   "connectionId",
+                                  "sourceKind",
                                   "fullName",
                                   "url",
                                   "description",
@@ -17071,6 +16101,10 @@
                                   "defaultBranch",
                                   "isPrivate",
                                   "metadata",
+                                  "syncBranch",
+                                  "syncHead",
+                                  "syncError",
+                                  "syncedAt",
                                   "createdAt",
                                   "updatedAt"
                                 ]
@@ -22721,290 +21755,6 @@
         }
       }
     },
-    "/settings/investigation/policies": {
-      "get": {
-        "operationId": "settings.investigation.getPolicies",
-        "summary": "Get investigation policies for all tiers",
-        "tags": [
-          "settings"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "policies": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "tier": {
-                            "enum": [
-                              "tier_1",
-                              "tier_2",
-                              "tier_3",
-                              "tier_4"
-                            ],
-                            "type": "string"
-                          },
-                          "autoInvestigate": {
-                            "enum": [
-                              "always",
-                              "critical_high",
-                              "manual",
-                              "never"
-                            ],
-                            "type": "string"
-                          },
-                          "requiresApproval": {
-                            "type": "boolean"
-                          },
-                          "pageOnCall": {
-                            "type": "boolean"
-                          },
-                          "postToSlack": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "tier",
-                          "autoInvestigate",
-                          "requiresApproval",
-                          "pageOnCall",
-                          "postToSlack"
-                        ]
-                      }
-                    }
-                  },
-                  "required": [
-                    "policies"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/settings/investigation/policies/{tier}": {
-      "put": {
-        "operationId": "settings.investigation.updatePolicy",
-        "summary": "Update investigation policy for a tier",
-        "tags": [
-          "settings"
-        ],
-        "parameters": [
-          {
-            "name": "tier",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "enum": [
-                "tier_1",
-                "tier_2",
-                "tier_3",
-                "tier_4"
-              ],
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "autoInvestigate": {
-                    "enum": [
-                      "always",
-                      "critical_high",
-                      "manual",
-                      "never"
-                    ],
-                    "type": "string"
-                  },
-                  "requiresApproval": {
-                    "type": "boolean"
-                  },
-                  "pageOnCall": {
-                    "type": "boolean"
-                  },
-                  "postToSlack": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "tier": {
-                      "enum": [
-                        "tier_1",
-                        "tier_2",
-                        "tier_3",
-                        "tier_4"
-                      ],
-                      "type": "string"
-                    },
-                    "autoInvestigate": {
-                      "enum": [
-                        "always",
-                        "critical_high",
-                        "manual",
-                        "never"
-                      ],
-                      "type": "string"
-                    },
-                    "requiresApproval": {
-                      "type": "boolean"
-                    },
-                    "pageOnCall": {
-                      "type": "boolean"
-                    },
-                    "postToSlack": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "tier",
-                    "autoInvestigate",
-                    "requiresApproval",
-                    "pageOnCall",
-                    "postToSlack"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/settings/investigation/limits": {
-      "get": {
-        "operationId": "settings.investigation.getLimits",
-        "summary": "Get investigation limits",
-        "tags": [
-          "settings"
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "maxConcurrent": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 100
-                    },
-                    "timeoutMinutes": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 120
-                    },
-                    "maxToolCalls": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 500
-                    }
-                  },
-                  "required": [
-                    "maxConcurrent",
-                    "timeoutMinutes",
-                    "maxToolCalls"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "operationId": "settings.investigation.updateLimits",
-        "summary": "Update investigation limits",
-        "tags": [
-          "settings"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "maxConcurrent": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 100
-                  },
-                  "timeoutMinutes": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 120
-                  },
-                  "maxToolCalls": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 500
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "maxConcurrent": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 100
-                    },
-                    "timeoutMinutes": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 120
-                    },
-                    "maxToolCalls": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 500
-                    }
-                  },
-                  "required": [
-                    "maxConcurrent",
-                    "timeoutMinutes",
-                    "maxToolCalls"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/settings/danger/reset-data": {
       "post": {
         "operationId": "settings.danger.resetData",
@@ -23307,6 +22057,85 @@
                   },
                   "required": [
                     "harness"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/harness/check": {
+      "post": {
+        "operationId": "settings.harnesses.checkHarness",
+        "summary": "Probe one harness with an ACP handshake (initialize + session/new, no prompt turn)",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "enum": [
+                        "answers-acp",
+                        "sign-in-needed",
+                        "no-answer",
+                        "failed-to-start"
+                      ],
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "hard": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "outcome",
+                    "detail",
+                    "hard"
                   ]
                 }
               }

@@ -993,6 +993,35 @@ export class IntegrationsService implements OnModuleInit {
 		return contexts;
 	}
 
+	/** The git token a VCS connection holds, for cloning a repo it discovered. */
+	async gitToken(connectionId: string): Promise<string | null> {
+		const row = await this.prisma.connection.findUnique({
+			where: { id: connectionId },
+			select: { integration: { select: { templateId: true } } },
+		});
+		if (row && getTemplate(row.integration.templateId)?.githubApp) {
+			// Installation tokens expire; the stored one may be stale.
+			return this.resolveAccessToken(connectionId).catch((error: unknown) => {
+				this.logger.warn(
+					`Failed to resolve token for connection ${connectionId}: ${error instanceof Error ? error.message : "Unknown"}`,
+				);
+				return null;
+			});
+		}
+		const [conn] = await this.getIntegrationsByConnectionIds([connectionId]);
+		const creds = conn?.credentials ?? {};
+		for (const key of [
+			"token",
+			"accessToken",
+			"access_token",
+			"personalAccessToken",
+		]) {
+			const value = creds[key];
+			if (typeof value === "string" && value) return value;
+		}
+		return null;
+	}
+
 	async getIntegrationsByConnectionIds(
 		connectionIds: string[],
 	): Promise<IntegrationContext[]> {

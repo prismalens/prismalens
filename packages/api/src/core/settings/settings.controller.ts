@@ -4,8 +4,10 @@
 import { Controller, UseGuards } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
 import { HarnessService } from "../harness/harness.service.js";
+import { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { SettingsService } from "./settings.service.js";
 
 @UseGuards(ThrottlerGuard)
@@ -14,43 +16,8 @@ export class SettingsController {
 	constructor(
 		private readonly settingsService: SettingsService,
 		private readonly harnessService: HarnessService,
+		private readonly harnessProbeService: HarnessProbeService,
 	) {}
-
-	/**
-	 * Implement the settings contract for LLM configuration
-	 */
-	/**
-	 * Implement investigation policy routes
-	 */
-	@Implement(settingsContract.investigation)
-	investigation() {
-		return {
-			getPolicies: implement(
-				settingsContract.investigation.getPolicies,
-			).handler(async () => {
-				return this.settingsService.getInvestigationPolicies();
-			}),
-
-			updatePolicy: implement(
-				settingsContract.investigation.updatePolicy,
-			).handler(async ({ input }) => {
-				const { tier, ...policy } = input;
-				return this.settingsService.updateInvestigationPolicy(tier, policy);
-			}),
-
-			getLimits: implement(settingsContract.investigation.getLimits).handler(
-				async () => {
-					return this.settingsService.getInvestigationLimits();
-				},
-			),
-
-			updateLimits: implement(
-				settingsContract.investigation.updateLimits,
-			).handler(async ({ input }) => {
-				return this.settingsService.updateInvestigationLimits(input);
-			}),
-		};
-	}
 
 	/**
 	 * Implement danger zone routes
@@ -99,6 +66,10 @@ export class SettingsController {
 			updateSettings: implement(
 				settingsContract.harnesses.updateSettings,
 			).handler(async ({ input }) => this.harnessService.updateSettings(input)),
+			checkHarness: implement(settingsContract.harnesses.checkHarness).handler(
+				async ({ input }) =>
+					this.harnessProbeService.check(input.id as HarnessId),
+			),
 		};
 	}
 }

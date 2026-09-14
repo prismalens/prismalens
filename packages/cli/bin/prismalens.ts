@@ -46,8 +46,7 @@ const main = defineCommand({
 	meta: {
 		name: "prismalens",
 		version: cliVersion(),
-		description:
-			"PrismaLens investigation engine CLI — drives the two-tier engine (ADR-0008/0010).",
+		description: "Run and check a PrismaLens install",
 	},
 	subCommands: {
 		up: lazy("up"),

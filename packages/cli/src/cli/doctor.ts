@@ -24,6 +24,7 @@ import {
 	isOnPath,
 	resolveHarnessSelection,
 } from "@prismalens/config/harness-selection";
+import { probeHarness } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
@@ -110,6 +111,30 @@ export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
 	};
 }
 
+/**
+ * ACP handshake against every harness on PATH (#630, Unit D on #337): PATH
+ * presence says a binary exists; a handshake says it speaks ACP, not that it is
+ * signed in (see probeHarness). `initialize` +
+ * `session/new`, no prompt turn, 10 s per harness, sequential — a hung
+ * harness reports its own line and the doctor moves on to the next one.
+ */
+export async function checkHarnessHandshake(): Promise<Check[]> {
+	const installed = (
+		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
+	).filter((descriptor) => isOnPath(descriptor.binary));
+	const results: Check[] = [];
+	for (const descriptor of installed) {
+		const probe = await probeHarness(descriptor.id);
+		results.push({
+			name: `Harness ACP handshake: ${descriptor.label}`,
+			pass: probe.outcome === "answers-acp",
+			detail: probe.detail,
+			hard: false,
+		});
+	}
+	return results;
+}
+
 /** Which harness `pl up` would actually pick, per the shared selection gate. */
 function checkAutoSelection(): Check {
 	const envHarness = process.env.PRISMALENS_HARNESS;
@@ -166,12 +191,14 @@ export default defineCommand({
 			assertKnownFlags(args, cmd);
 
 			const harnessChecks = checkHarnessesOnPath();
+			const handshakeChecks = await checkHarnessHandshake();
 
 			const checks: Check[] = [
 				checkNodeVersion(),
 				checkAppDataDir(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
+				...handshakeChecks,
 				checkAutoSelection(),
 				checkWebhookToken(),
 				checkPortHost(),
