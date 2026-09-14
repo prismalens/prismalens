@@ -11,7 +11,6 @@ import type {
 	TopologyEdge,
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
-import { requireAdmin } from "../../core/auth/index.js";
 import { serializeRepository } from "../repositories/serialize-repository.js";
 import type {
 	AddDependencyDto,
@@ -93,7 +92,6 @@ export class ServicesController {
 			// DELETE /services/:id - Delete a service
 			delete: implement(servicesContract.delete).handler(
 				async ({ input, context }) => {
-					requireAdmin(context);
 					const deleted = await this.servicesService.delete(input.id);
 					if (!deleted) {
 						throw new ORPCError("NOT_FOUND", {

@@ -8,55 +8,44 @@
  * It handles:
  * - Email/password authentication
  * - Session management (cookie-based)
- * - Role-based access control
  */
 
-import { type BetterAuthPlugin, betterAuth } from "better-auth";
+import {
+	type BetterAuthPlugin,
+	betterAuth,
+	getCurrentAdapter,
+} from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
-import { ADMIN_ROLES } from "./roles.js";
-
-/** The one query this plugin needs; `role` is a prismalens column Better Auth's own schema knows nothing about (no `user.additionalFields` declares it), so this goes straight to Prisma rather than through `ctx.context.adapter`, which would silently no-op on an unregistered field. */
-interface OwnerLookupClient {
-	user: {
-		findFirst(args: {
-			where: { role: { in: readonly string[] } };
-		}): Promise<unknown>;
-	};
-}
+import { APIError } from "better-auth/api";
 
 /**
- * Refuses `POST /sign-up/email` once an owner/admin row exists. Setup's own
- * `createOwner` path (`UsersService.setupOwner`) calls `auth.api.signUpEmail`
- * directly, but only ever before the first owner is written, so it is never
- * blocked by this. Better Auth 1.7.2's `emailAndPassword.disableSignUp` is a
- * plain boolean checked once at request time from the options object (see
- * `dist/api/routes/sign-up.mjs`), not a function of live DB state, so a
- * request-time DB check needs this hook instead (same `matcher`/`handler`
- * shape the library's own `username` plugin uses for the same endpoint).
+ * One account per instance (ADR 0001 §13), on every path that creates a user: setup,
+ * seed and `/sign-up/email`. The count runs in the user-create database hook, inside
+ * the sign-up transaction, so two concurrent sign-ups cannot both see zero users.
  */
-export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
-	const client = prisma as OwnerLookupClient;
+export function oneAccountOnly(): BetterAuthPlugin {
 	return {
-		id: "close-sign-up-after-owner",
-		hooks: {
-			before: [
-				{
-					matcher: (ctx) => ctx.path === "/sign-up/email",
-					handler: createAuthMiddleware(async () => {
-						const existingOwner = await client.user.findFirst({
-							where: { role: { in: ADMIN_ROLES } },
-						});
-						if (existingOwner) {
-							throw new APIError("FORBIDDEN", {
-								message: "Sign-up is closed: an owner account already exists.",
-								code: "SIGN_UP_CLOSED",
-							});
-						}
-					}),
+		id: "one-account-only",
+		init: (ctx) => ({
+			options: {
+				databaseHooks: {
+					user: {
+						create: {
+							before: async () => {
+								const adapter = await getCurrentAdapter(ctx.adapter);
+								if ((await adapter.count({ model: "user" })) > 0) {
+									throw new APIError("FORBIDDEN", {
+										message:
+											"Sign-up is closed: this instance already has its account.",
+										code: "SIGN_UP_CLOSED",
+									});
+								}
+							},
+						},
+					},
 				},
-			],
-		},
+			},
+		}),
 	};
 }
 
@@ -64,6 +53,8 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
 		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
 			provider: "sqlite",
+			// Sign-up's runWithTransaction is a no-op without this, and oneAccountOnly needs it.
+			transaction: true,
 		}),
 
 		// Base URL for auth endpoints
@@ -100,7 +91,7 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 			cookiePrefix: "prismalens",
 		},
 
-		plugins: [closeSignUpAfterOwner(prisma)],
+		plugins: [oneAccountOnly()],
 	});
 }
 

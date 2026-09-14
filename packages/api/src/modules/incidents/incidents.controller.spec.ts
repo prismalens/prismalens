@@ -74,7 +74,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 		};
 
 		const investigationsService = {
-			create: vi.fn().mockResolvedValue({ id: "inv-123" }),
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-123" }, created: true }),
 		};
 
 		const dispatchService = {
@@ -243,7 +243,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({ ...mockIncident, status: "investigating" }),
 		};
 		const investigationsService = {
-			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-456" }, created: true }),
 		};
 		const dispatchService = {
 			addInvestigationJob: vi.fn().mockResolvedValue("job-789"),
@@ -288,8 +288,42 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		);
 
 		// Investigation created and job enqueued
-		expect(investigationsService.create).toHaveBeenCalledTimes(1);
+		expect(investigationsService.startOrGet).toHaveBeenCalledTimes(1);
 		expect(dispatchService.addInvestigationJob).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns the investigation already in progress instead of starting a second one", async () => {
+		const incidentsService = {
+			findById: vi.fn().mockResolvedValue(mockIncident),
+			update: vi.fn(),
+		};
+		const investigationsService = {
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-running" }, created: false }),
+		};
+		const dispatchService = { addInvestigationJob: vi.fn() };
+		const harnessService = {
+			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", verified: true, auto: true }),
+		};
+		const controller = new IncidentsController(
+			incidentsService as unknown as IncidentsService,
+			investigationsService as unknown as InvestigationsService,
+			dispatchService as unknown as DispatchService,
+			{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
+			harnessService as unknown as HarnessService,
+		);
+
+		const result = await getHandlers(controller).investigate({
+			input: { id: mockIncident.id },
+		});
+
+		expect(result).toEqual({
+			incidentId: mockIncident.id,
+			investigationId: "inv-running",
+			jobId: null,
+			queued: false,
+		});
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(incidentsService.update).not.toHaveBeenCalled();
 	});
 
 	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
@@ -298,7 +332,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({}),
 		};
 		const investigationsService = {
-			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-456" }, created: true }),
 		};
 		const dispatchService = {
 			addInvestigationJob: vi.fn().mockResolvedValue("job-789"),
@@ -350,8 +384,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(incidentsService.update).not.toHaveBeenCalled();
 
 		// 3. No job was enqueued and no investigation was created
-		expect(investigationsService.create).not.toHaveBeenCalled();
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 	});
 
 	it("refuses with PRECONDITION_FAILED on a pinned-but-missing harness: status UNCHANGED and no job enqueued", async () => {
@@ -360,7 +394,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({}),
 		};
 		const investigationsService = {
-			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-456" }, created: true }),
 		};
 		const dispatchService = {
 			addInvestigationJob: vi.fn().mockResolvedValue("job-789"),
@@ -405,8 +439,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(orpcErr.data.harness).toBe("deepagents");
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
-		expect(investigationsService.create).not.toHaveBeenCalled();
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 	});
 
 	it("refuses with PRECONDITION_FAILED on an invalid PRISMALENS_HARNESS pin: status UNCHANGED and no job enqueued", async () => {
@@ -415,7 +449,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({}),
 		};
 		const investigationsService = {
-			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-456" }, created: true }),
 		};
 		const dispatchService = {
 			addInvestigationJob: vi.fn().mockResolvedValue("job-789"),
@@ -459,8 +493,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(orpcErr.data.harness).toBeUndefined();
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
-		expect(investigationsService.create).not.toHaveBeenCalled();
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 	});
 
 	it("throws NOT_FOUND when incident does not exist", async () => {

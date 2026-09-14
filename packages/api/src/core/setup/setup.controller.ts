@@ -132,7 +132,6 @@ export class SetupController {
 								id: user.id,
 								email: user.email,
 								name: user.name,
-								role: user.role,
 							},
 						};
 					} catch (error) {
@@ -141,7 +140,7 @@ export class SetupController {
 							error.message.includes("already set up")
 						) {
 							throw new ORPCError("FORBIDDEN", {
-								message: "Instance already set up. Admin account exists.",
+								message: "Instance already set up. Its account exists.",
 							});
 						}
 						this.logger.error(

@@ -27,12 +27,16 @@ export interface PermissionRequest {
 }
 
 export type PermissionDecision =
-	| { allow: true; optionId: string }
+	| { allow: true; optionId: string; warn?: string }
 	| { allow: false; optionId?: string; why: string };
 
 export type PermissionPolicy = (req: PermissionRequest) => PermissionDecision;
 
 const MUTATING_KINDS = new Set(["edit", "delete", "move"]);
+/** `fetch` reaches the network, so a read-only run could send the snapshot anywhere (#637 H3). */
+const NETWORK_KINDS = new Set(["fetch"]);
+/** Kinds this policy judges on purpose; anything else is allowed with a warning. */
+const NAMED_KINDS = new Set(["read", "search", "think", "execute"]);
 
 /**
  * Shell commands that change the tree, the repo, or the machine. A regex is a
@@ -69,6 +73,8 @@ export const readOnlyPolicy: PermissionPolicy = (req) => {
 	const command = commandOf(req);
 	let why: string | null = null;
 	if (MUTATING_KINDS.has(kind)) why = `tool kind "${kind}" is a write`;
+	else if (NETWORK_KINDS.has(kind))
+		why = `tool kind "${kind}" reaches the network`;
 	else if (kind === "execute" && MUTATING_SHELL.test(command))
 		why = "shell command would mutate";
 	else if (!kind && MUTATING_SHELL.test(command)) why = "command would mutate";
@@ -83,5 +89,10 @@ export const readOnlyPolicy: PermissionPolicy = (req) => {
 	}
 	const allow = pick(req.options, "allow") ?? req.options[0];
 	if (!allow) return { allow: false, why: "harness offered no allow option" };
-	return { allow: true, optionId: allow.optionId };
+	if (NAMED_KINDS.has(kind)) return { allow: true, optionId: allow.optionId };
+	return {
+		allow: true,
+		optionId: allow.optionId,
+		warn: `allowed tool kind "${kind || "(none)"}", which the read-only policy does not name: ${req.toolCall?.title ?? command}`,
+	};
 };

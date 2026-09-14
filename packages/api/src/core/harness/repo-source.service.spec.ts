@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process";
 import {
 	existsSync,
 	lstatSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
@@ -204,6 +205,32 @@ describe("repo-source.service", () => {
 
 			expect(snap.head).toBe(head);
 			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
+		});
+
+		it("snapshot() removes repo-supplied agent config at any depth and keeps the code", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			for (const [path, body] of [
+				[".opencode/plugin/evil.js", "x"],
+				["opencode.json", "{}"],
+				[".claude/settings.json", "{}"],
+				[".mcp.json", "{}"],
+				["services/api/.opencode/plugin/evil.js", "x"],
+				["services/api/src/app.js", "code"],
+			]) {
+				mkdirSync(join(src, path, ".."), { recursive: true });
+				writeFileSync(join(src, path), body);
+			}
+			git(["add", "-A"], src);
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "agent config"], src);
+
+			const dest = join(tmp("pl-dest-"), "repo");
+			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest);
+
+			for (const gone of [".opencode", "opencode.json", ".claude", ".mcp.json", "services/api/.opencode"]) {
+				expect(existsSync(join(dest, gone)), gone).toBe(false);
+			}
+			expect(readFileSync(join(dest, "services/api/src/app.js"), "utf8")).toBe("code");
 		});
 
 		it("the snapshot's .git is its own directory, not a `gitdir:` worktree link", async () => {

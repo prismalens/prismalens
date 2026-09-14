@@ -226,7 +226,11 @@ async function bootstrap() {
 	if (!isLoopbackBindAddress(host)) {
 		logger.warn(
 			`Binding to ${host} — PrismaLens is reachable from the network, not just this machine. ` +
-				"Make sure it sits behind a trusted network boundary, and list the hostnames " +
+				(httpsOptions
+					? "It serves HTTPS directly. "
+					: "It serves plain HTTP with no TLS, so traffic and the session cookie cross the network in clear, " +
+						"and the cookie has no Secure attribute unless PRISMALENS_PUBLIC_URL is https behind a TLS proxy. ") +
+				"Keep it behind a trusted network boundary, and list the hostnames " +
 				"you reach it by in PRISMALENS_ALLOWED_HOSTS.",
 		);
 	}

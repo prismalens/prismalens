@@ -90,7 +90,7 @@ export async function probeHarness(
 	opts: {
 		descriptor?: Pick<
 			HarnessDescriptor,
-			"binary" | "acpArgs" | "acpEnv" | "configFiles"
+			"binary" | "acpArgs" | "acpEnv" | "configFiles" | "sessionMeta"
 		>;
 		timeoutMs?: number;
 	} = {},
@@ -117,6 +117,7 @@ export async function probeHarness(
 			// Never exercised: open() sends no prompt turn, so no permission
 			// request can arrive. AcpSessionConfig has no optional form of it.
 			permission: readOnlyPolicy,
+			sessionMeta: descriptor.sessionMeta?.(),
 			initTimeoutMs: timeoutMs,
 		});
 		// open() times initialize and session/new separately; the probe promises one deadline for both.

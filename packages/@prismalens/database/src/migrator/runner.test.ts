@@ -35,7 +35,7 @@ const SCRATCH_ROOT = join(PACKAGE_DIR, ".tmp-migrator-tests");
  */
 const SHIPPED_INIT = "20260911192405_init";
 const SHIPPED_INIT_CHECKSUM =
-	"0c54ae5f75d0964c9cba9a92e02c0aca33cf755fcf97c3f8142f98c6e9a63c97";
+	"6bb009a800b9a85e9790f62656c6bed31db069d35be56408361e2e23f62ec397";
 
 /** Prisma's own `_prisma_migrations` DDL, as SQLite stores it in sqlite_master. */
 const PRISMA_LEDGER_DDL = `CREATE TABLE "_prisma_migrations" (

@@ -20,7 +20,6 @@ const OWNER = {
 	id: "user-1",
 	email: "owner@example.com",
 	name: "Owner",
-	role: "owner",
 };
 
 const SESSION_COOKIE =
@@ -119,7 +118,7 @@ describe("SetupController", () => {
 		expect(result.user.email).toBe(OWNER.email);
 	});
 
-	it("signs in only after the owner role is written, so the cached session is not stale", async () => {
+	it("signs in only after the account exists", async () => {
 		const order: string[] = [];
 		mockUsersService.setupOwner.mockImplementation(async () => {
 			order.push("setupOwner");

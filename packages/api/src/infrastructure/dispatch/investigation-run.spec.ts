@@ -9,7 +9,7 @@
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
@@ -42,6 +42,7 @@ const {
 	parseSandboxMode,
 	deriveAllowedHosts,
 	resolveWorkspace,
+	runDirFor,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
 
@@ -512,5 +513,54 @@ describe("harness child env (trust floor, #628)", () => {
 		expect(opts.env.PRISMALENS_AUTH_SECRET).toBeUndefined();
 		expect(opts.env.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
 		expect(opts.env.SOME_UNRELATED_HOST_VAR).toBeUndefined();
+	});
+});
+
+describe("run snapshot reaping (#637 N3)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("deletes runs/<id>/repo when the job ends and keeps the transcript", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-reap-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-reap");
+			mkdirSync(join(runDir, "repo"), { recursive: true });
+			writeFileSync(join(runDir, "repo", "file.txt"), "x");
+			writeFileSync(join(runDir, "transcript.jsonl"), "{}\n");
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockResolvedValue({
+				report: { summary: "done", rootCause: null, nextSteps: [] },
+			});
+
+			await runInvestigationJob(
+				{ id: "job-reap", investigationId: "inv-reap", attempts: 1 },
+				{ investigationId: "inv-reap", incidentId: "inc-reap" },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				fakePorts(),
+			);
+
+			expect(existsSync(join(runDir, "repo"))).toBe(false);
+			expect(existsSync(join(runDir, "transcript.jsonl"))).toBe(true);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("runDirFor (#643 review)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("keeps a run directory directly under runs/ and refuses an id that escapes it", () => {
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+		expect(runDirFor("0b3c2f1e-1111-4222-8333-444455556666")).toBe(
+			"/ws/runs/0b3c2f1e-1111-4222-8333-444455556666",
+		);
+		for (const bad of ["../../etc", "a/b", "..", "", "staging/../other-id"]) {
+			expect(() => runDirFor(bad), bad).toThrow(/Invalid investigation id/);
+		}
 	});
 });

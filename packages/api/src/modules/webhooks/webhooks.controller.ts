@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller, Logger, UseGuards } from "@nestjs/common";
-import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
+import { Throttle } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
@@ -10,12 +10,16 @@ import { Severity } from "../../shared/enums/index.js";
 import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
+import { WebhookThrottleGuard } from "./webhook-throttle.guard.js";
 import { WebhookResult, WebhooksService } from "./webhooks.service.js";
 
 @Public()
 @Controller()
-@UseGuards(WebhookSignatureGuard, ThrottlerGuard)
-@Throttle({ short: { ttl: 1000, limit: 5 }, medium: { ttl: 60000, limit: 30 } })
+@UseGuards(WebhookThrottleGuard, WebhookSignatureGuard)
+@Throttle({
+	short: { ttl: 1000, limit: 20 },
+	medium: { ttl: 60000, limit: 600 },
+})
 export class WebhooksController {
 	private readonly logger = new Logger(WebhooksController.name);
 

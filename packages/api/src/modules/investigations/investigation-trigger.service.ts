@@ -28,6 +28,7 @@ import {
 } from "../../shared/events/investigation-events.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
+import { InvestigationsService } from "./investigations.service.js";
 
 /**
  * Trigger decision result
@@ -112,6 +113,7 @@ export class InvestigationTriggerService {
 		private readonly integrationsService: IntegrationsService,
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
+		private readonly investigationsService: InvestigationsService,
 	) {}
 
 	/**
@@ -350,15 +352,18 @@ export class InvestigationTriggerService {
 		incident: Incident & { service?: Service | null },
 		decision: TriggerDecision,
 	): Promise<void> {
-		// Create investigation record with trigger info
-		const investigation = await this.prisma.investigation.create({
-			data: {
+		const { investigation, created } =
+			await this.investigationsService.startOrGet({
 				incidentId: incident.id,
-				status: "pending",
-				triggerType: decision.triggerType,
-				triggerReason: decision.reason,
-			},
-		});
+				...(decision.triggerType ? { triggerType: decision.triggerType } : {}),
+				...(decision.reason ? { triggerReason: decision.reason } : {}),
+			});
+		if (!created) {
+			this.logger.log(
+				`Incident ${incident.number} already has investigation ${investigation.id} in progress; not triggering another`,
+			);
+			return;
+		}
 
 		let jobId: string | null;
 		try {

@@ -6,8 +6,8 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
-import { mkdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { mkdirSync, rmSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import { getHarnessProviderKeys } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
@@ -164,7 +164,7 @@ async function runJobInternal(
 		sandbox = sandboxSelection.sandbox;
 
 		const runId = data.investigationId;
-		const runDir = join(getAppDataDir(), "runs", runId);
+		const runDir = runDirFor(runId);
 		mkdirSync(runDir, { recursive: true });
 		const sink: InvestigationSink = async (event) => {
 			await io.emit(event);
@@ -195,6 +195,7 @@ async function runJobInternal(
 					const line = chunk.trimEnd();
 					if (line) logger.debug(`harness stderr: ${line}`);
 				},
+				onPolicyWarning: (message) => logger.warn(message),
 				signal: io.signal,
 			},
 			{ sink, store },
@@ -252,7 +253,29 @@ async function runJobInternal(
 				logger.error("Failed to destroy sandbox boundary", e);
 			}
 		}
+		// A full clone per run fills the disk; the workspace note keeps source and HEAD, the transcript stays (#637 N3).
+		if (unvalidated?.investigationId) {
+			try {
+				rmSync(join(runDirFor(unvalidated.investigationId), "repo"), {
+					recursive: true,
+					force: true,
+				});
+			} catch (e) {
+				logger.warn("Failed to remove the run snapshot", e);
+			}
+		}
 	}
+}
+
+/** `runs/<id>` for a job id, refusing an id that would resolve anywhere else (it is joined, then deleted from). */
+export function runDirFor(investigationId: string): string {
+	const runs = resolve(getAppDataDir(), "runs");
+	const dir = resolve(runs, investigationId);
+	if (!/^[A-Za-z0-9_-]+$/.test(investigationId) || dirname(dir) !== runs)
+		throw new Error(
+			`Invalid investigation id for a run directory: ${investigationId}`,
+		);
+	return dir;
 }
 
 export interface Workspace {
@@ -278,7 +301,7 @@ export async function resolveWorkspace(
 	} catch (e) {
 		logger.warn("Could not list the incident's repos", e);
 	}
-	const runDir = join(getAppDataDir(), "runs", data.investigationId);
+	const runDir = runDirFor(data.investigationId);
 	const repo = repos[0];
 	if (!repo) {
 		const cwd = join(runDir, "unmapped");

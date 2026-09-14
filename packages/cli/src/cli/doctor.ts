@@ -23,6 +23,7 @@ import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	isOnPath,
 	resolveHarnessSelection,
+	resolveOnPath,
 } from "@prismalens/config/harness-selection";
 import { probeHarness } from "@prismalens/engine";
 import { defineCommand } from "citty";
@@ -78,13 +79,13 @@ export function checkHarnessesOnPath(): Check[] {
 	return (
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
 	).map((descriptor) => {
-		const pass = isOnPath(descriptor.binary);
+		const resolved = resolveOnPath(descriptor.binary);
 		return {
 			name: `Harness: ${descriptor.label}`,
-			pass,
-			detail: pass
-				? `${descriptor.binary} found on PATH`
-				: `${descriptor.binary} not found on PATH`,
+			pass: resolved !== null,
+			detail: resolved
+				? `${descriptor.binary} found at ${resolved}`
+				: `${descriptor.binary} not found on PATH (${process.env.PATH || "PATH is empty"})`,
 			hard: false,
 		};
 	});

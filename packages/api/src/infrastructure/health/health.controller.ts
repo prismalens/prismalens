@@ -6,7 +6,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ApiTags } from "@nestjs/swagger";
 import { EnvironmentVariables } from "@prismalens/config";
 import { Public } from "../../core/auth/public.decorator.js";
 
@@ -47,7 +46,6 @@ function resolveServiceVersion(): string {
 }
 
 @Public()
-@ApiTags("health")
 @Controller("health")
 export class HealthController {
 	constructor(readonly _configService: ConfigService<EnvironmentVariables>) {}

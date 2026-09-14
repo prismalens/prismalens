@@ -7,7 +7,7 @@
 // Replicates `UsersService.setupOwner` directly against Prisma + Better Auth,
 // which avoids a database → api(auth) module dependency cycle.
 
-import { ADMIN_ROLES, createAuth } from "@prismalens/auth";
+import { createAuth } from "@prismalens/auth";
 import { getConfig } from "@prismalens/config";
 import { prisma, seedDemoData } from "@prismalens/database";
 
@@ -18,29 +18,21 @@ export async function seed(
 	db: typeof prisma,
 	auth: ReturnType<typeof createAuth>,
 ): Promise<void> {
-	const existingOwner = await db.user.findFirst({
-		where: { role: { in: [...ADMIN_ROLES] } },
-	});
-	if (!existingOwner) {
+	const existing = await db.user.findFirst({ select: { id: true } });
+	if (!existing) {
 		const result = await auth.api.signUpEmail({
 			body: { email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Admin" },
 		});
 		if (!result?.user) {
 			throw new Error("seed: failed to create the owner account");
 		}
-		await db.user.update({
-			where: { id: result.user.id },
-			data: { role: "owner" },
-		});
-		// Same reasoning as UsersService.setupOwner: the auto-signed-in session's
-		// token was minted before the role write, so its cached session data would
-		// hold "member" for its lifetime — drop it rather than hand out a stale role.
+		// Same as UsersService.setupOwner: the server-side sign-up session is never used.
 		if (result.token) {
 			await db.session.deleteMany({ where: { token: result.token } });
 		}
 		console.log(`seed: created owner ${OWNER_EMAIL}`);
 	} else {
-		console.log("seed: an owner/admin already exists — skipped");
+		console.log("seed: an account already exists — skipped");
 	}
 
 	const [alertCount, incidentCount] = await Promise.all([

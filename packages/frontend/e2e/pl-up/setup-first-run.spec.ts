@@ -131,14 +131,9 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	const session = await page.request.get("/api/auth/get-session");
 	expect(session.status()).toBe(200);
 	const body = (await session.json()) as {
-		user?: { email?: string; role?: string };
+		user?: { email?: string };
 	};
 	expect(body?.user?.email).toBe(OWNER.email);
-	// The wizard promotes the account to owner AFTER Better Auth creates it, and
-	// Better Auth caches the session's user in a signed cookie for five minutes.
-	// A session minted before the promotion would report the sign-up default here
-	// and silently 403 the new owner out of their own settings.
-	expect(body?.user?.role).toBe("owner");
 
 	const cookies = await page.context().cookies();
 	const token = cookies.find((c) => c.name.endsWith("session_token"));

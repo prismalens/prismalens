@@ -22269,16 +22269,12 @@
                               "type": "null"
                             }
                           ]
-                        },
-                        "role": {
-                          "type": "string"
                         }
                       },
                       "required": [
                         "id",
                         "email",
-                        "name",
-                        "role"
+                        "name"
                       ]
                     }
                   },

@@ -61,6 +61,8 @@ export interface HarnessDescriptor {
 	acpEnv: (env: HarnessRunEnv) => Record<string, string>;
 	/** Files prismalens writes under configDir before the run; the harness reads nothing else. */
 	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
+	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
+	sessionMeta?: () => Record<string, unknown>;
 	/** One line the doctor prints when the binary is missing. */
 	install: string;
 	readOnlyFidelity: PermissionFidelity;
@@ -87,13 +89,24 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		acpEnv: ({ configDir, dataDir }) => ({
 			XDG_CONFIG_HOME: dataDir,
 			OPENCODE_CONFIG_DIR: configDir,
+			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
+			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		}),
 		configFiles: ({ model }) => ({
 			"opencode.json": JSON.stringify(
 				{
 					$schema: "https://opencode.ai/config.json",
 					...(model ? { model } : {}),
-					permission: { edit: "ask", bash: "ask", webfetch: "deny" },
+					permission: {
+						edit: "ask",
+						bash: "ask",
+						webfetch: "deny",
+						websearch: "deny",
+						external_directory: "deny",
+					},
+					// Without it a refused tool ends the turn, so a read-only run rarely reaches its report (#639 finding 1).
+					experimental: { continue_loop_on_deny: true },
 					share: "disabled",
 				},
 				null,
@@ -129,10 +142,30 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Claude Code",
 		binary: "claude-agent-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir }) => ({ CLAUDE_CONFIG_DIR: dataDir }),
+		acpEnv: ({ dataDir, model }) => ({
+			CLAUDE_CONFIG_DIR: dataDir,
+			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+			// Claude Code reads the model from env; one model for every tier and sub-agent.
+			...(model
+				? {
+						ANTHROPIC_MODEL: model,
+						ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+						ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+						ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+						CLAUDE_CODE_SUBAGENT_MODEL: model,
+					}
+				: {}),
+		}),
+		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
+		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
 		// Anthropic SDK default env var (docs.anthropic.com). CLAUDE_CONFIG_DIR above is the
 		// empty per-run dir, so a `claude login` stored in the user's home is not visible.
-		providerKeys: ["ANTHROPIC_API_KEY"],
+		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
+		providerKeys: [
+			"ANTHROPIC_API_KEY",
+			"ANTHROPIC_BASE_URL",
+			"ANTHROPIC_AUTH_TOKEN",
+		],
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 		readOnlyFidelity: "cooperative",
@@ -200,7 +233,28 @@ export function getHarnessProviderKeys(
 		const value = sourceEnv[key];
 		if (value !== undefined) result[key] = value;
 	}
+	const base = result.ANTHROPIC_BASE_URL;
+	if (base && !isSafeGatewayUrl(base))
+		throw new Error(
+			`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${base}`,
+		);
 	return result;
+}
+
+/** A gateway receives the auth token, so plain http is allowed only on loopback. */
+function isSafeGatewayUrl(raw: string): boolean {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		return false;
+	}
+	if (url.protocol === "https:") return true;
+	const host = url.hostname.replace(/^\[|\]$/g, "");
+	return (
+		url.protocol === "http:" &&
+		(host === "localhost" || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host))
+	);
 }
 
 /** Auto-selection order; only `verified` rows are eligible without a pin. */

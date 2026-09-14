@@ -11,9 +11,6 @@ import { z } from "zod";
 // ENUMS - Mirroring Prisma schema enums
 // =============================================================================
 
-// User & Access Control
-export const GlobalRoleSchema = z.enum(["owner", "admin", "member"]);
-
 // Service Catalog
 export const ServiceTypeSchema = z.enum([
 	"service",
@@ -311,7 +308,6 @@ export const MessageResponseSchema = z.object({
 // TYPE EXPORTS
 // =============================================================================
 
-export type GlobalRole = z.infer<typeof GlobalRoleSchema>;
 export type ServiceType = z.infer<typeof ServiceTypeSchema>;
 export type ServiceTier = z.infer<typeof ServiceTierSchema>;
 export type DependencyType = z.infer<typeof DependencyTypeSchema>;

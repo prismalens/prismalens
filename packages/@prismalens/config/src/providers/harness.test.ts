@@ -59,3 +59,50 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 		}
 	});
 });
+
+describe("harness isolation (ADR 0004 §1, #637)", () => {
+	const runEnv = { configDir: "/c", dataDir: "/d", cwd: "/w" };
+
+	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
+		const row = HARNESS_REGISTRY.opencode;
+		expect(row.acpEnv(runEnv)).toMatchObject({
+			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+			OPENCODE_DISABLE_CLAUDE_CODE: "1",
+		});
+		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
+		expect(config.permission).toMatchObject({
+			webfetch: "deny",
+			websearch: "deny",
+			external_directory: "deny",
+		});
+		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
+	});
+
+	it("claude-code takes the operator's model for every tier", () => {
+		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
+		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {
+			expect(env[key]).toBe("gemma4:31b-cloud");
+		}
+		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).ANTHROPIC_MODEL).toBeUndefined();
+	});
+
+	it("claude-code loads no setting sources from the snapshot", () => {
+		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
+			claudeCode: { options: { settingSources: [] } },
+		});
+	});
+});
+
+describe("gateway URL (claude-code)", () => {
+	it("passes https and loopback http, refuses http to another host", () => {
+		for (const ok of ["https://gw.example.com", "http://127.0.0.1:11434", "http://localhost:4000"]) {
+			expect(getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: ok }).ANTHROPIC_BASE_URL).toBe(ok);
+		}
+		expect(() =>
+			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://gw.lan:4000", ANTHROPIC_AUTH_TOKEN: "t" }),
+		).toThrow(/must be https/);
+		expect(() =>
+			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://127.0.0.1.evil.example/v1" }),
+		).toThrow(/must be https/);
+	});
+});

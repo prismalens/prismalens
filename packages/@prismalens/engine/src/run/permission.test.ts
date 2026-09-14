@@ -34,6 +34,7 @@ describe("readOnlyPolicy", () => {
 			{ kind: "edit", title: "edit src/a.ts" },
 			{ kind: "delete", title: "delete x" },
 			{ kind: "move", title: "mv" },
+			{ kind: "fetch", title: "fetch https://example.com" },
 			{ kind: "execute", rawInput: { command: "echo spike > PRISMALENS_SPIKE.txt" } },
 			{ kind: "execute", rawInput: { command: "git checkout -b fix" } },
 			{ kind: "execute", rawInput: { command: "git branch feature" } },
@@ -48,6 +49,16 @@ describe("readOnlyPolicy", () => {
 			expect(d.allow, JSON.stringify(tc)).toBe(false);
 			expect(d.optionId).toBe("reject");
 		}
+	});
+
+	it("allows a kind it does not name, with a warning the host logs", () => {
+		for (const kind of ["other", undefined]) {
+			const d = readOnlyPolicy(req({ kind, title: "mystery tool" }));
+			expect(d.allow).toBe(true);
+			expect(d.allow && d.warn).toMatch(/does not name: mystery tool/);
+		}
+		const read = readOnlyPolicy(req({ kind: "read", title: "read a" }));
+		expect(read.allow && read.warn).toBeUndefined();
 	});
 
 	it("never picks allow_always", () => {

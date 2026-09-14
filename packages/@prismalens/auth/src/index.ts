@@ -10,7 +10,5 @@
  * - Auth types and utilities
  */
 
-export type { UserWithRole } from "better-auth/plugins/admin";
 export type { Session, User } from "better-auth/types";
 export { type Auth, type AuthOptions, createAuth } from "./auth.js";
-export { ADMIN_ROLES, APP_ROLES, type AppRole } from "./roles.js";

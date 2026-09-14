@@ -282,7 +282,6 @@ CREATE TABLE "user" (
     "image" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    "role" TEXT NOT NULL DEFAULT 'member',
     "banned" BOOLEAN,
     "banReason" TEXT,
     "banExpires" DATETIME
