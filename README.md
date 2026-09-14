@@ -12,6 +12,11 @@ backed by evidence it actually gathered, with no fake numeric confidence
 scores. It's open source (Apache-2.0), local-first, and BYO-key — no
 PrismaLens account, no subscription.
 
+> **Status: v0.4.0, CLI-first launch.** The `prismalens` CLI is the released
+> surface today. The self-hosted server in this monorepo (web UI, webhook
+> alert intake, team features) is still in development and not part of the
+> current release — these packages exist here but aren't shipped yet.
+
 ## Quick start
 
 Requires **Node.js 24+**.
@@ -33,10 +38,8 @@ Open the URL and setup asks for one thing: the owner account. Everything else is
 configured after sign-in. A coding agent must be installed on the machine for
 investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
 PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
-is the verified default). For each one on PATH it also opens an ACP handshake and
-reports `ready` or the harness's own reason (for example "not logged in") — the
-same check the Settings → Harness card runs on demand. PrismaLens never bundles,
-installs or authenticates a harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
+is the verified default). PrismaLens never bundles, installs or authenticates a
+harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
@@ -48,24 +51,21 @@ carries the built dashboard and the API serves it from the same origin. Use
 HMAC-SHA256 key over the raw body and send `X-Hub-Signature-256: sha256=<hex digest>`.
 Alertmanager: set `authorization: { credentials: <token> }` on the receiver.
 
-### Your first investigation
+### Try it without an alert source
 
 A fresh install has nothing pointed at it, so no incidents arrive on their own.
-You do not need an Alertmanager to see it work:
+You do not need an Alertmanager to see the product work — author an incident by
+hand:
 
-1. **Install and start.** `npm install -g prismalens`, then `pl up`, then sign in
-   as the owner. `pl doctor` says whether a coding agent is on PATH.
-2. **Point a service at its code.** Services, then Add Service, then set
-   **Repository** to a folder (`~/code/payments`) or a git URL
-   (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
-   on the service: `main at 3f2c9a1b04de`, or git's error word for word. A URL
-   is mirrored under `~/.prismalens/repos/` with your own git credentials.
-3. **Write the incident.** Incidents, then Create Incident. A title is the only
-   required field; pick the service.
-4. **Run.** Investigate takes a fresh snapshot of the repository's last commit
-   into `~/.prismalens/runs/<id>/repo` and runs one agent session there. Your
-   checkout is never the working directory, and uncommitted changes are not
-   read. The stream and then the report render on the incident.
+1. **Install a coding agent** (OpenCode by default) and run `pl doctor`. The
+   Investigate button says why when nothing is on PATH.
+2. **Incidents → Create Incident**: a title is the only required field. Pick a
+   **Service** with a repository linked — PrismaLens clones that repo under
+   `~/.prismalens/repos` and the investigation runs inside the clone, never in
+   your own checkout.
+3. You land on the new incident (`INC-1`, **Alerts (0)**).
+4. **Investigate** runs one agent session in the clone and streams it on the
+   incident screen; the report renders beneath the ledger when it ends.
 
 That is the same `incidents.create` and `incidents.investigate` path the
 correlation engine uses, so nothing about the run is a mock.
@@ -78,7 +78,7 @@ The same binary is a standalone investigator that needs nothing running:
 npx prismalens doctor
 ```
 
-`doctor` checks that a harness binary is on PATH and answers an ACP handshake, then `pl up` boots the app
+`doctor` checks that a harness binary is on PATH, then `pl up` boots the app
 (API and dashboard on one port, SQLite, no external services):
 
 ```bash
@@ -100,7 +100,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 ## How it works
 
 - **One run, no model call.** An investigation is one coding-agent session in a
-  snapshot of the service's repo, driven over the Agent Client Protocol (ACP).
+  clone of the service's repo, driven over the Agent Client Protocol (ACP).
   PrismaLens assembles the prompt, answers the agent's permission requests,
   records the stream and validates the report. It never calls a model itself.
 - **Bring your own harness.** Any ACP agent on PATH is a registry row:
@@ -132,6 +132,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | `packages/@prismalens/database` | SQLite database via Prisma — client, schema and the shipped migration runner. |
 | `packages/@prismalens/integrations` | Integration templates, OAuth2 flows, credential encryption, for the in-development server. |
 | `packages/@prismalens/logger` | Pino-based structured logging with log rotation and secret redaction, shared across packages. |
+| `packages/@prismalens/design-tokens` | Shared brand/design tokens for the (in-development) web UI. |
 | `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
 | `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |
 
@@ -153,5 +154,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing work
 
 ## License
 
-[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE).
+[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). The hosted cloud /
+enterprise edition is a separate, proprietary product.
 
