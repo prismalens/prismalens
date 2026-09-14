@@ -37,7 +37,7 @@ export class UsersService {
 	async setupOwner(createUserDto: CreateUserDto) {
 		if (await this.isSetupComplete()) {
 			throw new ForbiddenException(
-				"Instance already set up. Owner account exists.",
+				"Instance already set up. Its account exists.",
 			);
 		}
 

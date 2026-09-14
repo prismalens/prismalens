@@ -101,5 +101,8 @@ describe("gateway URL (claude-code)", () => {
 		expect(() =>
 			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://gw.lan:4000", ANTHROPIC_AUTH_TOKEN: "t" }),
 		).toThrow(/must be https/);
+		expect(() =>
+			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://127.0.0.1.evil.example/v1" }),
+		).toThrow(/must be https/);
 	});
 });

@@ -253,7 +253,7 @@ function isSafeGatewayUrl(raw: string): boolean {
 	const host = url.hostname.replace(/^\[|\]$/g, "");
 	return (
 		url.protocol === "http:" &&
-		(host === "localhost" || host === "::1" || /^127\./.test(host))
+		(host === "localhost" || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host))
 	);
 }
 

@@ -322,7 +322,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			jobId: null,
 			queued: false,
 		});
-				expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
 		expect(incidentsService.update).not.toHaveBeenCalled();
 	});
 
@@ -384,7 +384,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(incidentsService.update).not.toHaveBeenCalled();
 
 		// 3. No job was enqueued and no investigation was created
-				expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 	});
 
 	it("refuses with PRECONDITION_FAILED on a pinned-but-missing harness: status UNCHANGED and no job enqueued", async () => {
@@ -438,7 +439,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(orpcErr.data.harness).toBe("deepagents");
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
-				expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 	});
 
 	it("refuses with PRECONDITION_FAILED on an invalid PRISMALENS_HARNESS pin: status UNCHANGED and no job enqueued", async () => {
@@ -491,7 +493,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(orpcErr.data.harness).toBeUndefined();
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
-				expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 	});
 
 	it("throws NOT_FOUND when incident does not exist", async () => {
