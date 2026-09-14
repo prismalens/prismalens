@@ -78,6 +78,14 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
+	it("claude-code takes the operator's model for every tier", () => {
+		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
+		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {
+			expect(env[key]).toBe("gemma4:31b-cloud");
+		}
+		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).ANTHROPIC_MODEL).toBeUndefined();
+	});
+
 	it("claude-code loads no setting sources from the snapshot", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: { options: { settingSources: [] } },

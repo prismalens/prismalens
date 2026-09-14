@@ -142,12 +142,30 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Claude Code",
 		binary: "claude-agent-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir }) => ({ CLAUDE_CONFIG_DIR: dataDir }),
+		acpEnv: ({ dataDir, model }) => ({
+			CLAUDE_CONFIG_DIR: dataDir,
+			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+			// Claude Code reads the model from env; one model for every tier and sub-agent.
+			...(model
+				? {
+						ANTHROPIC_MODEL: model,
+						ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+						ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+						ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+						CLAUDE_CODE_SUBAGENT_MODEL: model,
+					}
+				: {}),
+		}),
 		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
 		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
 		// Anthropic SDK default env var (docs.anthropic.com). CLAUDE_CONFIG_DIR above is the
 		// empty per-run dir, so a `claude login` stored in the user's home is not visible.
-		providerKeys: ["ANTHROPIC_API_KEY"],
+		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
+		providerKeys: [
+			"ANTHROPIC_API_KEY",
+			"ANTHROPIC_BASE_URL",
+			"ANTHROPIC_AUTH_TOKEN",
+		],
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 		readOnlyFidelity: "cooperative",
