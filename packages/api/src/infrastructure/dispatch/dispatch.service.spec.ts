@@ -80,7 +80,7 @@ describe("DispatchService.onModuleInit", () => {
 			})),
 			getSettings: vi.fn(async () => ({ harness: "auto" })),
 		};
-		const repoClone = { ensureClone: vi.fn() };
+		const repoSource = { snapshot: vi.fn() };
 		const integrationsService = { getIntegrationsByConnectionIds: vi.fn(async () => []) };
 
 		const service = new DispatchService(
@@ -91,7 +91,7 @@ describe("DispatchService.onModuleInit", () => {
 			incidentsService as any,
 			timelineService as any,
 			harnessService as any,
-			repoClone as any,
+			repoSource as any,
 			fakePrisma(rows),
 			integrationsService as any,
 		);
@@ -133,7 +133,7 @@ describe("DispatchService.onModuleInit", () => {
 				})),
 				getSettings: vi.fn(async () => ({ harness: "auto" })),
 			} as any,
-			{ ensureClone: vi.fn() } as any,
+			{ snapshot: vi.fn() } as any,
 			fakePrisma([]),
 			{ getIntegrationsByConnectionIds: vi.fn(async () => []) } as any,
 		);

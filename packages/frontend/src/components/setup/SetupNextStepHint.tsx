@@ -63,7 +63,7 @@ export function SetupNextStepHint({
 	} else if (!steps.codeLocation) {
 		hint = {
 			message:
-				"No service has a repository linked, so investigations would read the wrong code.",
+				"No service names its code yet. Edit a service and set Repository to a folder or git URL, or investigations run unmapped.",
 			actions: (
 				<Button size="sm" asChild>
 					<Link to="/services">Services</Link>

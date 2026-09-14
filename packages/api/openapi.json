@@ -12904,6 +12904,192 @@
         }
       }
     },
+    "/repositories/source": {
+      "post": {
+        "operationId": "repositories.addSource",
+        "summary": "Add a repository by folder path or git URL and link it to a service",
+        "tags": [
+          "repositories"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "subPath": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "serviceId",
+                  "source"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "connectionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "folder",
+                        "url"
+                      ],
+                      "type": "string"
+                    },
+                    "fullName": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "defaultBranch": {
+                      "type": "string"
+                    },
+                    "isPrivate": {
+                      "type": "boolean"
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncBranch": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncHead": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "connectionId",
+                    "sourceKind",
+                    "fullName",
+                    "url",
+                    "description",
+                    "language",
+                    "defaultBranch",
+                    "isPrivate",
+                    "metadata",
+                    "syncBranch",
+                    "syncHead",
+                    "syncError",
+                    "syncedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/repositories/batch": {
       "post": {
         "operationId": "repositories.batchCreate",
@@ -12992,8 +13178,22 @@
                             "format": "uuid"
                           },
                           "connectionId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceKind": {
+                            "enum": [
+                              "folder",
+                              "url"
+                            ],
+                            "type": "string"
                           },
                           "fullName": {
                             "type": "string"
@@ -13041,6 +13241,47 @@
                               }
                             ]
                           },
+                          "syncBranch": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncHead": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncError": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -13053,6 +13294,7 @@
                         "required": [
                           "id",
                           "connectionId",
+                          "sourceKind",
                           "fullName",
                           "url",
                           "description",
@@ -13060,6 +13302,10 @@
                           "defaultBranch",
                           "isPrivate",
                           "metadata",
+                          "syncBranch",
+                          "syncHead",
+                          "syncError",
+                          "syncedAt",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -13147,8 +13393,22 @@
                             "format": "uuid"
                           },
                           "connectionId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceKind": {
+                            "enum": [
+                              "folder",
+                              "url"
+                            ],
+                            "type": "string"
                           },
                           "fullName": {
                             "type": "string"
@@ -13190,6 +13450,47 @@
                                   "type": "string"
                                 },
                                 "additionalProperties": {}
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncBranch": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncHead": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncError": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "syncedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
                               },
                               {
                                 "type": "null"
@@ -13253,6 +13554,7 @@
                         "required": [
                           "id",
                           "connectionId",
+                          "sourceKind",
                           "fullName",
                           "url",
                           "description",
@@ -13260,6 +13562,10 @@
                           "defaultBranch",
                           "isPrivate",
                           "metadata",
+                          "syncBranch",
+                          "syncHead",
+                          "syncError",
+                          "syncedAt",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -13345,8 +13651,22 @@
                       "format": "uuid"
                     },
                     "connectionId": {
-                      "type": "string",
-                      "format": "uuid"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "folder",
+                        "url"
+                      ],
+                      "type": "string"
                     },
                     "fullName": {
                       "type": "string"
@@ -13388,6 +13708,47 @@
                             "type": "string"
                           },
                           "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncBranch": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncHead": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
                         },
                         {
                           "type": "null"
@@ -13451,6 +13812,7 @@
                   "required": [
                     "id",
                     "connectionId",
+                    "sourceKind",
                     "fullName",
                     "url",
                     "description",
@@ -13458,6 +13820,10 @@
                     "defaultBranch",
                     "isPrivate",
                     "metadata",
+                    "syncBranch",
+                    "syncHead",
+                    "syncError",
+                    "syncedAt",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -14192,8 +14558,22 @@
                                       "format": "uuid"
                                     },
                                     "connectionId": {
-                                      "type": "string",
-                                      "format": "uuid"
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "sourceKind": {
+                                      "enum": [
+                                        "folder",
+                                        "url"
+                                      ],
+                                      "type": "string"
                                     },
                                     "fullName": {
                                       "type": "string"
@@ -14241,6 +14621,47 @@
                                         }
                                       ]
                                     },
+                                    "syncBranch": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "syncHead": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "syncError": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "syncedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
                                     "createdAt": {
                                       "type": "string",
                                       "format": "date-time"
@@ -14253,6 +14674,7 @@
                                   "required": [
                                     "id",
                                     "connectionId",
+                                    "sourceKind",
                                     "fullName",
                                     "url",
                                     "description",
@@ -14260,6 +14682,10 @@
                                     "defaultBranch",
                                     "isPrivate",
                                     "metadata",
+                                    "syncBranch",
+                                    "syncHead",
+                                    "syncError",
+                                    "syncedAt",
                                     "createdAt",
                                     "updatedAt"
                                   ]
@@ -14588,8 +15014,22 @@
                                 "format": "uuid"
                               },
                               "connectionId": {
-                                "type": "string",
-                                "format": "uuid"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "sourceKind": {
+                                "enum": [
+                                  "folder",
+                                  "url"
+                                ],
+                                "type": "string"
                               },
                               "fullName": {
                                 "type": "string"
@@ -14637,6 +15077,47 @@
                                   }
                                 ]
                               },
+                              "syncBranch": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "syncHead": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "syncError": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "syncedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "createdAt": {
                                 "type": "string",
                                 "format": "date-time"
@@ -14649,6 +15130,7 @@
                             "required": [
                               "id",
                               "connectionId",
+                              "sourceKind",
                               "fullName",
                               "url",
                               "description",
@@ -14656,6 +15138,10 @@
                               "defaultBranch",
                               "isPrivate",
                               "metadata",
+                              "syncBranch",
+                              "syncHead",
+                              "syncError",
+                              "syncedAt",
                               "createdAt",
                               "updatedAt"
                             ]
@@ -15490,8 +15976,22 @@
                                     "format": "uuid"
                                   },
                                   "connectionId": {
-                                    "type": "string",
-                                    "format": "uuid"
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
                                   },
                                   "fullName": {
                                     "type": "string"
@@ -15539,6 +16039,47 @@
                                       }
                                     ]
                                   },
+                                  "syncBranch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "syncHead": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "syncError": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "syncedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "date-time"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
                                   "createdAt": {
                                     "type": "string",
                                     "format": "date-time"
@@ -15551,6 +16092,7 @@
                                 "required": [
                                   "id",
                                   "connectionId",
+                                  "sourceKind",
                                   "fullName",
                                   "url",
                                   "description",
@@ -15558,6 +16100,10 @@
                                   "defaultBranch",
                                   "isPrivate",
                                   "metadata",
+                                  "syncBranch",
+                                  "syncHead",
+                                  "syncError",
+                                  "syncedAt",
                                   "createdAt",
                                   "updatedAt"
                                 ]

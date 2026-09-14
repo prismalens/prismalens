@@ -88,6 +88,7 @@ export {
 // Repository hooks
 export {
 	repositoryKeys,
+	useAddRepositorySource,
 	useBatchCreateRepositories,
 	useDeleteRepository,
 	useLinkRepository,

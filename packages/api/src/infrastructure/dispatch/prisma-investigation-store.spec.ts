@@ -64,7 +64,7 @@ function makePorts(
 		getIncident: vi.fn(async () => null),
 		incidentRepos: vi.fn(async () => []),
 		repoToken: vi.fn(async () => null),
-		ensureClone: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", action: "cloned" as const })),
+		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		...overrides,
 	};
 }

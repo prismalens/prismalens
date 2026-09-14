@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * One investigation job: detect the harness, clone the incident's repo under the
- * app-data dir, run one ACP session there, persist the stream and the report
+ * One investigation job: detect the harness, snapshot the incident's repo into the
+ * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
 import { mkdirSync } from "node:fs";
@@ -264,9 +264,9 @@ export interface Workspace {
 }
 
 /**
- * The harness runs in prismalens's own clone of the incident's primary repo.
- * No linked repo means an UNMAPPED run in an empty scratch dir that says so;
- * a run against the wrong tree produces confident garbage.
+ * The harness runs in a fresh snapshot of the incident's primary repo under the
+ * run's own dir (ADR 0004 §2). No linked repo means an UNMAPPED run in an empty
+ * scratch dir that says so; a run against the wrong tree produces confident garbage.
  */
 export async function resolveWorkspace(
 	data: InvestigationJobData,
@@ -278,31 +278,37 @@ export async function resolveWorkspace(
 	} catch (e) {
 		logger.warn("Could not list the incident's repos", e);
 	}
+	const runDir = join(getAppDataDir(), "runs", data.investigationId);
 	const repo = repos[0];
 	if (!repo) {
-		const cwd = join(getAppDataDir(), "runs", data.investigationId, "unmapped");
+		const cwd = join(runDir, "unmapped");
 		mkdirSync(cwd, { recursive: true });
 		return {
 			cwd,
 			mapped: false,
-			note: "Ran UNMAPPED: this incident's service has no repository linked. Add the repo URL to the service; findings below cannot describe the code that alerted.",
+			note: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
 		};
 	}
 	const token = repo.connectionId
 		? await ports.repoToken(repo.connectionId).catch(() => null)
 		: null;
-	const clone = await ports.ensureClone({
-		url: repo.url,
-		defaultBranch: repo.defaultBranch,
-		token,
-	});
-	const cwd = repo.subPath ? join(clone.path, repo.subPath) : clone.path;
+	const snap = await ports.snapshot(
+		{
+			kind: repo.sourceKind,
+			source: repo.url,
+			defaultBranch: repo.defaultBranch,
+			token,
+		},
+		join(runDir, "repo"),
+	);
+	const cwd = repo.subPath ? join(snap.path, repo.subPath) : snap.path;
+	const from = repo.sourceKind === "folder" ? "folder" : "URL";
 	return {
 		cwd,
 		mapped: true,
 		repo,
-		head: clone.head,
-		note: `Investigating ${repo.url}${repo.subPath ? `/${repo.subPath}` : ""} at ${clone.head.slice(0, 12)} (${clone.action}).`,
+		head: snap.head,
+		note: `Investigating a snapshot of ${from} ${repo.url}${repo.subPath ? `/${repo.subPath}` : ""} at ${snap.branch ? `${snap.branch} ` : ""}${snap.head.slice(0, 12)}. Uncommitted changes are not included.`,
 	};
 }
 

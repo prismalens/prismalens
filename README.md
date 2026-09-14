@@ -12,11 +12,6 @@ backed by evidence it actually gathered, with no fake numeric confidence
 scores. It's open source (Apache-2.0), local-first, and BYO-key — no
 PrismaLens account, no subscription.
 
-> **Status: v0.4.0, CLI-first launch.** The `prismalens` CLI is the released
-> surface today. The self-hosted server in this monorepo (web UI, webhook
-> alert intake, team features) is still in development and not part of the
-> current release — these packages exist here but aren't shipped yet.
-
 ## Quick start
 
 Requires **Node.js 24+**.
@@ -53,21 +48,24 @@ carries the built dashboard and the API serves it from the same origin. Use
 HMAC-SHA256 key over the raw body and send `X-Hub-Signature-256: sha256=<hex digest>`.
 Alertmanager: set `authorization: { credentials: <token> }` on the receiver.
 
-### Try it without an alert source
+### Your first investigation
 
 A fresh install has nothing pointed at it, so no incidents arrive on their own.
-You do not need an Alertmanager to see the product work — author an incident by
-hand:
+You do not need an Alertmanager to see it work:
 
-1. **Install a coding agent** (OpenCode by default) and run `pl doctor`. The
-   Investigate button says why when nothing is on PATH.
-2. **Incidents → Create Incident**: a title is the only required field. Pick a
-   **Service** with a repository linked — PrismaLens clones that repo under
-   `~/.prismalens/repos` and the investigation runs inside the clone, never in
-   your own checkout.
-3. You land on the new incident (`INC-1`, **Alerts (0)**).
-4. **Investigate** runs one agent session in the clone and streams it on the
-   incident screen; the report renders beneath the ledger when it ends.
+1. **Install and start.** `npm install -g prismalens`, then `pl up`, then sign in
+   as the owner. `pl doctor` says whether a coding agent is on PATH.
+2. **Point a service at its code.** Services, then Add Service, then set
+   **Repository** to a folder (`~/code/payments`) or a git URL
+   (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
+   on the service: `main at 3f2c9a1b04de`, or git's error word for word. A URL
+   is mirrored under `~/.prismalens/repos/` with your own git credentials.
+3. **Write the incident.** Incidents, then Create Incident. A title is the only
+   required field; pick the service.
+4. **Run.** Investigate takes a fresh snapshot of the repository's last commit
+   into `~/.prismalens/runs/<id>/repo` and runs one agent session there. Your
+   checkout is never the working directory, and uncommitted changes are not
+   read. The stream and then the report render on the incident.
 
 That is the same `incidents.create` and `incidents.investigate` path the
 correlation engine uses, so nothing about the run is a mock.
@@ -102,7 +100,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 ## How it works
 
 - **One run, no model call.** An investigation is one coding-agent session in a
-  clone of the service's repo, driven over the Agent Client Protocol (ACP).
+  snapshot of the service's repo, driven over the Agent Client Protocol (ACP).
   PrismaLens assembles the prompt, answers the agent's permission requests,
   records the stream and validates the report. It never calls a model itself.
 - **Bring your own harness.** Any ACP agent on PATH is a registry row:
@@ -134,7 +132,6 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | `packages/@prismalens/database` | SQLite database via Prisma — client, schema and the shipped migration runner. |
 | `packages/@prismalens/integrations` | Integration templates, OAuth2 flows, credential encryption, for the in-development server. |
 | `packages/@prismalens/logger` | Pino-based structured logging with log rotation and secret redaction, shared across packages. |
-| `packages/@prismalens/design-tokens` | Shared brand/design tokens for the (in-development) web UI. |
 | `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
 | `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |
 
@@ -156,6 +153,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing work
 
 ## License
 
-[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). The hosted cloud /
-enterprise edition is a separate, proprietary product.
+[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE).
 
