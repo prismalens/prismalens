@@ -4,7 +4,7 @@
 import { betterAuth } from "better-auth";
 import { memoryAdapter, type MemoryDB } from "better-auth/adapters/memory";
 import { describe, expect, it } from "vitest";
-import { closeSignUpAfterOwner, createAuth } from "./auth.js";
+import { createAuth, oneAccountOnly } from "./auth.js";
 
 describe("createAuth", () => {
 	const mockPrisma = {} as unknown;
@@ -24,32 +24,25 @@ describe("createAuth", () => {
 		// this repo's own sign-up gate (below), never a multi-tenant Better Auth
 		// plugin.
 		expect(auth.options.plugins?.map((p) => p.id)).toEqual([
-			"close-sign-up-after-owner",
+			"one-account-only",
 		]);
 	});
 });
 
-/**
- * `closeSignUpAfterOwner` runs against a real Better Auth instance on the library's
- * in-memory adapter, so sign-up goes through its real validation and hooks; only the
- * plugin's Prisma lookup is faked, over the same in-memory user rows.
- */
+/** `oneAccountOnly` against a real Better Auth instance on its in-memory adapter, so sign-up runs its real hooks. */
 function createTestAuth() {
 	const db: MemoryDB = { user: [], session: [], account: [], verification: [] };
-	const fakePrisma = {
-		user: { findFirst: async () => db.user[0] ?? null },
-	};
 	const auth = betterAuth({
 		database: memoryAdapter(db),
 		baseURL: "http://localhost:3000",
 		secret: "test-secret-1234567890-test-secret-1234567890",
 		emailAndPassword: { enabled: true, requireEmailVerification: false },
-		plugins: [closeSignUpAfterOwner(fakePrisma)],
+		plugins: [oneAccountOnly()],
 	});
 	return { auth, db };
 }
 
-describe("close-sign-up-after-owner (one operator, ADR 0001 §13)", () => {
+describe("one account only (ADR 0001 §13)", () => {
 	it("setup's own sign-up succeeds while no account exists", async () => {
 		const { auth } = createTestAuth();
 		const result = await auth.api.signUpEmail({

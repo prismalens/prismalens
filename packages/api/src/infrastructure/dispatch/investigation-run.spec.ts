@@ -559,7 +559,7 @@ describe("runDirFor (#643 review)", () => {
 		expect(runDirFor("0b3c2f1e-1111-4222-8333-444455556666")).toBe(
 			"/ws/runs/0b3c2f1e-1111-4222-8333-444455556666",
 		);
-		for (const bad of ["../../etc", "a/b", "..", ""]) {
+		for (const bad of ["../../etc", "a/b", "..", "", "staging/../other-id"]) {
 			expect(() => runDirFor(bad), bad).toThrow(/Invalid investigation id/);
 		}
 	});

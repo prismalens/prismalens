@@ -10,47 +10,42 @@
  * - Session management (cookie-based)
  */
 
-import { type BetterAuthPlugin, betterAuth } from "better-auth";
+import {
+	type BetterAuthPlugin,
+	betterAuth,
+	getCurrentAdapter,
+} from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
-
-/** The one query this plugin needs. */
-interface UserLookupClient {
-	user: { findFirst(args: { select: { id: true } }): Promise<unknown> };
-}
+import { APIError } from "better-auth/api";
 
 /**
- * Refuses `POST /sign-up/email` once any account exists: an instance has one
- * operator (ADR 0001 §13). Setup (`UsersService.setupOwner`) signs up the first
- * account, before any row exists, so it is never blocked by this. Better Auth 1.7.2's `emailAndPassword.disableSignUp` is a
- * plain boolean checked once at request time from the options object (see
- * `dist/api/routes/sign-up.mjs`), not a function of live DB state, so a
- * request-time DB check needs this hook instead (same `matcher`/`handler`
- * shape the library's own `username` plugin uses for the same endpoint).
+ * One account per instance (ADR 0001 §13), on every path that creates a user: setup,
+ * seed and `/sign-up/email`. The count runs in the user-create database hook, inside
+ * the sign-up transaction, so two concurrent sign-ups cannot both see zero users.
  */
-export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
-	const client = prisma as UserLookupClient;
+export function oneAccountOnly(): BetterAuthPlugin {
 	return {
-		id: "close-sign-up-after-owner",
-		hooks: {
-			before: [
-				{
-					matcher: (ctx) => ctx.path === "/sign-up/email",
-					handler: createAuthMiddleware(async () => {
-						const existing = await client.user.findFirst({
-							select: { id: true },
-						});
-						if (existing) {
-							throw new APIError("FORBIDDEN", {
-								message:
-									"Sign-up is closed: this instance already has its account.",
-								code: "SIGN_UP_CLOSED",
-							});
-						}
-					}),
+		id: "one-account-only",
+		init: (ctx) => ({
+			options: {
+				databaseHooks: {
+					user: {
+						create: {
+							before: async () => {
+								const adapter = await getCurrentAdapter(ctx.adapter);
+								if ((await adapter.count({ model: "user" })) > 0) {
+									throw new APIError("FORBIDDEN", {
+										message:
+											"Sign-up is closed: this instance already has its account.",
+										code: "SIGN_UP_CLOSED",
+									});
+								}
+							},
+						},
+					},
 				},
-			],
-		},
+			},
+		}),
 	};
 }
 
@@ -94,7 +89,7 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 			cookiePrefix: "prismalens",
 		},
 
-		plugins: [closeSignUpAfterOwner(prisma)],
+		plugins: [oneAccountOnly()],
 	});
 }
 

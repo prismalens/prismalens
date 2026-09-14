@@ -271,7 +271,7 @@ async function runJobInternal(
 export function runDirFor(investigationId: string): string {
 	const runs = resolve(getAppDataDir(), "runs");
 	const dir = resolve(runs, investigationId);
-	if (dirname(dir) !== runs)
+	if (!/^[A-Za-z0-9_-]+$/.test(investigationId) || dirname(dir) !== runs)
 		throw new Error(
 			`Invalid investigation id for a run directory: ${investigationId}`,
 		);
