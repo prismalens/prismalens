@@ -11,6 +11,7 @@ import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { ALERT_CORRELATED_EVENT } from "../../shared/events/investigation-events.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
+import { InvestigationsService } from "./investigations.service.js";
 import {
 	InvestigationTriggerService,
 	type TriggerConfig,
@@ -57,6 +58,10 @@ describe("InvestigationTriggerService", () => {
 		create: vi.fn(),
 	};
 
+	const mockInvestigationsService = {
+		startOrGet: vi.fn(),
+	};
+
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
@@ -72,6 +77,7 @@ describe("InvestigationTriggerService", () => {
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: IntegrationsService, useValue: mockIntegrationsService },
 				{ provide: TimelineService, useValue: mockTimelineService },
+				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 			],
 		}).compile();
 
@@ -201,8 +207,16 @@ describe("InvestigationTriggerService", () => {
 			reason: "Test reason",
 		} as unknown as TriggerDecision;
 
+		it("does not enqueue when an investigation is already in progress", async () => {
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-running" }, created: false });
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockDispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		});
+
 		it("should enqueue job successfully", async () => {
-			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-1" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([
 				{ connectionId: "c1" },
 			]);
@@ -226,7 +240,7 @@ describe("InvestigationTriggerService", () => {
 			expect(mockPrisma.alert.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({ where: { incidentId: "inc-1" } }),
 			);
-			expect(mockPrisma.investigation.create).toHaveBeenCalled();
+			expect(mockInvestigationsService.startOrGet).toHaveBeenCalled();
 			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
 				expect.objectContaining({
 					incidentId: "inc-1",
@@ -249,7 +263,7 @@ describe("InvestigationTriggerService", () => {
 		});
 
 		it("should omit alerts when the incident has none (matches manual-path shape)", async () => {
-			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-1" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
 			mockPrisma.alert.findMany.mockResolvedValue([]);
 			mockDispatchService.addInvestigationJob.mockResolvedValue("job-1");
@@ -262,7 +276,7 @@ describe("InvestigationTriggerService", () => {
 		});
 
 		it("should handle enqueue failure", async () => {
-			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-1" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
 			mockPrisma.alert.findMany.mockResolvedValue([]);
 			mockDispatchService.addInvestigationJob.mockResolvedValue(null);
@@ -279,7 +293,7 @@ describe("InvestigationTriggerService", () => {
 		});
 
 		it("should mark failed when integration/enqueue throws", async () => {
-			mockPrisma.investigation.create.mockResolvedValue({ id: "inv-1" });
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-1" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockRejectedValue(
 				new Error("boom"),
 			);
@@ -307,7 +321,7 @@ describe("InvestigationTriggerService", () => {
 				incidentId: "i1",
 				isNewIncident: false,
 			});
-			expect(mockPrisma.investigation.create).not.toHaveBeenCalled();
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
 		});
 
 		it("should process alert if found", async () => {

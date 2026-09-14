@@ -49,13 +49,37 @@ export class InvestigationsService {
 	/**
 	 * Create a new investigation for an incident
 	 */
-	async create(dto: CreateInvestigationDto): Promise<Investigation> {
-		const investigation = await this.prisma.investigation.create({
-			data: {
-				incidentId: dto.incidentId,
-				status: "pending",
-			},
+	/**
+	 * The incident's pending or running investigation, or a new one. Check and insert share
+	 * one transaction, so two clicks or a click and a trigger cannot both start a run (#637).
+	 */
+	async startOrGet(
+		dto: CreateInvestigationDto & {
+			triggerType?: string;
+			triggerReason?: string;
+		},
+	): Promise<{ investigation: Investigation; created: boolean }> {
+		const result = await this.prisma.$transaction(async (tx) => {
+			const running = await tx.investigation.findFirst({
+				where: {
+					incidentId: dto.incidentId,
+					status: { in: ["pending", "running"] },
+				},
+				orderBy: { createdAt: "desc" },
+			});
+			if (running) return { investigation: running, created: false };
+			const investigation = await tx.investigation.create({
+				data: {
+					incidentId: dto.incidentId,
+					status: "pending",
+					...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
+					...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
+				},
+			});
+			return { investigation, created: true };
 		});
+		if (!result.created) return result;
+		const { investigation } = result;
 
 		this.logger.log(
 			`Created investigation ${investigation.id} for incident ${dto.incidentId}`,
@@ -71,7 +95,7 @@ export class InvestigationsService {
 			metadata: { investigationId: investigation.id },
 		});
 
-		return investigation;
+		return result;
 	}
 
 	/**
@@ -103,14 +127,6 @@ export class InvestigationsService {
 	async findByIncidentId(incidentId: string): Promise<Investigation[]> {
 		return this.prisma.investigation.findMany({
 			where: { incidentId },
-			orderBy: { createdAt: "desc" },
-		});
-	}
-
-	/** The pending or running investigation for an incident, if one exists. */
-	async findInProgress(incidentId: string): Promise<Investigation | null> {
-		return this.prisma.investigation.findFirst({
-			where: { incidentId, status: { in: ["pending", "running"] } },
 			orderBy: { createdAt: "desc" },
 		});
 	}

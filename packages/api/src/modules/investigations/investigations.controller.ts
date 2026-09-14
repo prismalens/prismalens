@@ -52,7 +52,8 @@ export class InvestigationsController {
 			// POST /investigations - Create a new investigation
 			create: implement(investigationsContract.create).handler(
 				async ({ input }) => {
-					const investigation = await this.investigationsService.create(input);
+					const { investigation } =
+						await this.investigationsService.startOrGet(input);
 					return this.serializeInvestigation(investigation);
 				},
 			),

@@ -102,19 +102,6 @@ export class IncidentsController {
 						});
 					}
 
-					// A second click must not start a second session on the user's quota (#637).
-					const running = await this.investigationsService.findInProgress(
-						input.id,
-					);
-					if (running) {
-						return {
-							incidentId: input.id,
-							investigationId: running.id,
-							jobId: null,
-							queued: false,
-						};
-					}
-
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
 					const selection = await this.harnessService.resolveSelection();
 					if (!selection.runnable) {
@@ -128,14 +115,22 @@ export class IncidentsController {
 						});
 					}
 
-					// Update incident status to investigating
+					// A second click returns the running investigation instead of a second session on the user's quota (#637).
+					const { investigation, created } =
+						await this.investigationsService.startOrGet({
+							incidentId: input.id,
+						});
+					if (!created) {
+						return {
+							incidentId: input.id,
+							investigationId: investigation.id,
+							jobId: null,
+							queued: false,
+						};
+					}
+
 					await this.incidentsService.update(input.id, {
 						status: "investigating",
-					});
-
-					// Create investigation
-					const investigation = await this.investigationsService.create({
-						incidentId: input.id,
 					});
 
 					// Fetch integrations and extract connectionIds for the job payload.
