@@ -233,7 +233,28 @@ export function getHarnessProviderKeys(
 		const value = sourceEnv[key];
 		if (value !== undefined) result[key] = value;
 	}
+	const base = result.ANTHROPIC_BASE_URL;
+	if (base && !isSafeGatewayUrl(base))
+		throw new Error(
+			`ANTHROPIC_BASE_URL must be https unless it points at this machine: ${base}`,
+		);
 	return result;
+}
+
+/** A gateway receives the auth token, so plain http is allowed only on loopback. */
+function isSafeGatewayUrl(raw: string): boolean {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		return false;
+	}
+	if (url.protocol === "https:") return true;
+	const host = url.hostname.replace(/^\[|\]$/g, "");
+	return (
+		url.protocol === "http:" &&
+		(host === "localhost" || host === "::1" || /^127\./.test(host))
+	);
 }
 
 /** Auto-selection order; only `verified` rows are eligible without a pin. */

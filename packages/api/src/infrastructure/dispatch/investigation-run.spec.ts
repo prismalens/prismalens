@@ -42,6 +42,7 @@ const {
 	parseSandboxMode,
 	deriveAllowedHosts,
 	resolveWorkspace,
+	runDirFor,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
 
@@ -544,6 +545,22 @@ describe("run snapshot reaping (#637 N3)", () => {
 			expect(existsSync(join(runDir, "transcript.jsonl"))).toBe(true);
 		} finally {
 			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("runDirFor (#643 review)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("keeps a run directory directly under runs/ and refuses an id that escapes it", () => {
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+		expect(runDirFor("0b3c2f1e-1111-4222-8333-444455556666")).toBe(
+			"/ws/runs/0b3c2f1e-1111-4222-8333-444455556666",
+		);
+		for (const bad of ["../../etc", "a/b", "..", ""]) {
+			expect(() => runDirFor(bad), bad).toThrow(/Invalid investigation id/);
 		}
 	});
 });

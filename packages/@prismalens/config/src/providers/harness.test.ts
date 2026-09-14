@@ -92,3 +92,14 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		});
 	});
 });
+
+describe("gateway URL (claude-code)", () => {
+	it("passes https and loopback http, refuses http to another host", () => {
+		for (const ok of ["https://gw.example.com", "http://127.0.0.1:11434", "http://localhost:4000"]) {
+			expect(getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: ok }).ANTHROPIC_BASE_URL).toBe(ok);
+		}
+		expect(() =>
+			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://gw.lan:4000", ANTHROPIC_AUTH_TOKEN: "t" }),
+		).toThrow(/must be https/);
+	});
+});
