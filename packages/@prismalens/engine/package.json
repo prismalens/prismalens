@@ -2,7 +2,7 @@
 	"name": "@prismalens/engine",
 	"version": "0.2.1",
 	"private": true,
-	"description": "Two-tier AI investigation engine for PrismaLens \u2014 a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
+	"description": "Two-tier AI investigation engine for PrismaLens — a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
 	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -51,7 +51,7 @@
 		"@prismalens/contracts": "workspace:*",
 		"zod": "catalog:"
 	},
-	"//peerDependencies": "`e2b` is the cloud `enforced` sandbox provider (ADR-0020). src/sandbox/e2b.ts resolves it lazily through createRequire and refuses with an actionable message when it is absent, so it must NOT be a hard dependency \u2014 but it must be DECLARED, or the packaging import scan (scripts/pack-cli.mjs) cannot tell a deliberate optional apart from a missed hoist.",
+	"//peerDependencies": "`e2b` is the cloud `enforced` sandbox provider (ADR-0020). src/sandbox/e2b.ts resolves it lazily through createRequire and refuses with an actionable message when it is absent, so it must NOT be a hard dependency — but it must be DECLARED, or the packaging import scan (scripts/pack-cli.mjs) cannot tell a deliberate optional apart from a missed hoist.",
 	"peerDependencies": {
 		"e2b": "*"
 	},
@@ -61,6 +61,13 @@
 		}
 	},
 	"devDependencies": {
+		"@agentclientprotocol/claude-agent-acp": "^0.76.0",
+		"@agentclientprotocol/codex-acp": "^1.11.0",
+		"@agentclientprotocol/sdk": "^1.4.0",
+		"@anthropic-ai/claude-agent-sdk": "^0.3.270",
+		"@modelcontextprotocol/sdk": "^1.30.0",
+		"@openai/codex-sdk": "^0.154.0",
+		"@opencode-ai/sdk": "^1.18.30",
 		"@types/node": "catalog:",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
