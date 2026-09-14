@@ -80,6 +80,8 @@ export function ServiceFormDialog({
 	const [tags, setTags] = useState<string[]>([]);
 	const [repository, setRepository] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	// Set once create succeeds, so a retry after a repository error updates instead of creating twice.
+	const [createdId, setCreatedId] = useState<string | null>(null);
 
 	// Mutations
 	const createService = useCreateService();
@@ -118,6 +120,7 @@ export function ServiceFormDialog({
 				setRepository("");
 			}
 			setError(null);
+			setCreatedId(null);
 		}
 	}, [service, open, currentRepository]);
 
@@ -130,10 +133,10 @@ export function ServiceFormDialog({
 		setError(null);
 
 		try {
-			let serviceId = service?.id;
-			if (isEditing && service) {
+			let serviceId = service?.id ?? createdId ?? undefined;
+			if (serviceId) {
 				await updateService.mutateAsync({
-					id: service.id,
+					id: serviceId,
 					displayName: displayName || undefined,
 					description: description || undefined,
 					type,
@@ -152,6 +155,7 @@ export function ServiceFormDialog({
 					tags: tags.length > 0 ? tags : undefined,
 				});
 				serviceId = created.id;
+				setCreatedId(created.id);
 			}
 			const source = repository.trim();
 			if (serviceId && source && source !== currentRepository) {

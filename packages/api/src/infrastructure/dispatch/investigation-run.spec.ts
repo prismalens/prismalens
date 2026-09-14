@@ -222,6 +222,23 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		expect(ws.cwd).toBe("/app-data/repos/github.com/acme/api-gateway");
 	});
 
+	it("a stored subPath that climbs out of the snapshot fails the run instead of widening the cwd", async () => {
+		const ports = fakePorts({
+			incidentRepos: vi.fn(async () => [
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: "../../outside", connectionId: null },
+			]),
+			snapshot: vi.fn(async () => ({
+				path: "/app-data/runs/r1/repo",
+				head: "abc123def456789",
+				branch: "main" as const,
+			})),
+		});
+
+		await expect(resolveWorkspace(minimalData(), ports)).rejects.toThrow(
+			/escapes the snapshot/,
+		);
+	});
+
 	it("a linked repo with no connectionId: repoToken is never called, snapshot gets a null token", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);

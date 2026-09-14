@@ -67,30 +67,9 @@ export class SettingsService {
 		},
 	};
 
+	/** Defaults only: nothing writes a stored policy any more, so a leftover row must not steer triggers. */
 	async getInvestigationPolicies() {
-		const setting = await this.prisma.setting.findUnique({
-			where: { key: "INVESTIGATION_POLICIES" },
-		});
-
-		if (!setting) {
-			return {
-				policies: Object.values(this.DEFAULT_POLICIES),
-			};
-		}
-
-		let saved: Record<string, unknown>;
-		try {
-			saved = JSON.parse(setting.value);
-		} catch {
-			saved = {};
-		}
-		const policies = Object.keys(this.DEFAULT_POLICIES).map((tier) => ({
-			...this.DEFAULT_POLICIES[tier as keyof typeof this.DEFAULT_POLICIES],
-			...((saved[tier] as Record<string, unknown>) || {}),
-			tier: tier as "tier_1" | "tier_2" | "tier_3" | "tier_4",
-		}));
-
-		return { policies };
+		return { policies: Object.values(this.DEFAULT_POLICIES) };
 	}
 
 	// =============================================================================

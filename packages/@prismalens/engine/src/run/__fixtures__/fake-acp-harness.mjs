@@ -178,6 +178,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		return;
 	}
 	if (msg.method === "initialize") {
+		// "slow-init": answer initialize after FAKE_INIT_DELAY_MS, then never answer session/new.
+		if (mode === "slow-init")
+			await new Promise((r) =>
+				setTimeout(r, Number(process.env.FAKE_INIT_DELAY_MS)),
+			);
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
@@ -195,6 +200,8 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			id: msg.id,
 			error: { code: -32000, message: "Authentication required" },
 		});
+	} else if (msg.method === "session/new" && mode === "slow-init") {
+		// never answered
 	} else if (msg.method === "session/new") {
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);

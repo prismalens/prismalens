@@ -7,7 +7,7 @@
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import { getHarnessProviderKeys } from "@prismalens/config/harness";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
@@ -301,7 +301,12 @@ export async function resolveWorkspace(
 		},
 		join(runDir, "repo"),
 	);
-	const cwd = repo.subPath ? join(snap.path, repo.subPath) : snap.path;
+	const cwd = repo.subPath ? resolve(snap.path, repo.subPath) : snap.path;
+	const inside = relative(snap.path, cwd);
+	if (inside.startsWith("..") || resolve(snap.path, inside) !== cwd)
+		throw new Error(
+			`Repository sub-path escapes the snapshot: ${repo.subPath}`,
+		);
 	const from = repo.sourceKind === "folder" ? "folder" : "URL";
 	return {
 		cwd,

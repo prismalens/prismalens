@@ -7,13 +7,14 @@
  * caller's env must win, and destroy() must reap live children. No network/LLM.
  */
 import { once } from "node:events";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildFloorEnv, createProcessFloorSandbox } from "./process-floor.js";
 
 const SECRET = "PRISMALENS_FLOOR_TEST_SECRET";
 
 afterEach(() => {
 	delete process.env[SECRET];
+	vi.unstubAllEnvs();
 });
 
 describe("buildFloorEnv (own-secret isolation, ADR-0009)", () => {
@@ -73,30 +74,25 @@ describe("createProcessFloorSandbox", () => {
 	});
 
 	it("a child spawned with PRISMALENS_AUTH_SECRET and PRISMALENS_WEBHOOK_SECRET in the parent env sees neither", async () => {
-		process.env.PRISMALENS_AUTH_SECRET = "auth-secret-123";
-		process.env.PRISMALENS_WEBHOOK_SECRET = "webhook-secret-456";
-		try {
-			const sandbox = createProcessFloorSandbox();
-			const child = sandbox.spawn(
-				process.execPath,
-				["-e", "process.stdout.write(JSON.stringify(process.env))"],
-				{ cwd: process.cwd(), env: { OPENAI_API_KEY: "byo-key" } },
-			);
-			const chunks: Buffer[] = [];
-			child.stdout.on("data", (d: Buffer) => chunks.push(d));
-			await once(child, "close");
-			const childEnv = JSON.parse(Buffer.concat(chunks).toString()) as Record<
-				string,
-				string
-			>;
-			expect(childEnv.OPENAI_API_KEY).toBe("byo-key");
-			expect(childEnv.PRISMALENS_AUTH_SECRET).toBeUndefined();
-			expect(childEnv.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
-			await sandbox.destroy();
-		} finally {
-			delete process.env.PRISMALENS_AUTH_SECRET;
-			delete process.env.PRISMALENS_WEBHOOK_SECRET;
-		}
+		vi.stubEnv("PRISMALENS_AUTH_SECRET", "auth-secret-123");
+		vi.stubEnv("PRISMALENS_WEBHOOK_SECRET", "webhook-secret-456");
+		const sandbox = createProcessFloorSandbox();
+		const child = sandbox.spawn(
+			process.execPath,
+			["-e", "process.stdout.write(JSON.stringify(process.env))"],
+			{ cwd: process.cwd(), env: { OPENAI_API_KEY: "byo-key" } },
+		);
+		const chunks: Buffer[] = [];
+		child.stdout.on("data", (d: Buffer) => chunks.push(d));
+		await once(child, "close");
+		const childEnv = JSON.parse(Buffer.concat(chunks).toString()) as Record<
+			string,
+			string
+		>;
+		expect(childEnv.OPENAI_API_KEY).toBe("byo-key");
+		expect(childEnv.PRISMALENS_AUTH_SECRET).toBeUndefined();
+		expect(childEnv.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
+		await sandbox.destroy();
 	});
 
 	it("destroy() kills children still running inside the boundary", async () => {

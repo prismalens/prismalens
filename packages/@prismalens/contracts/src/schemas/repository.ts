@@ -35,11 +35,21 @@ export const RepositorySchema = z.object({
 	updatedAt: DateStringSchema,
 });
 
+/** Relative to the repository root; the run joins it onto the snapshot, so it must stay inside. */
+const SubPathSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.refine(
+		(p) => !/^([\\/]|[A-Za-z]:)/.test(p) && !p.split(/[\\/]/).includes(".."),
+		"Sub-path must be relative and must not contain '..'",
+	);
+
 /** A service names its code as a local folder or a git URL; save validates it and links it as primary. */
 export const AddRepositorySourceSchema = z.object({
 	serviceId: z.string().uuid(),
 	source: z.string().trim().min(1),
-	subPath: z.string().trim().min(1).optional(),
+	subPath: SubPathSchema.optional(),
 });
 
 export const CreateRepositorySchema = z.object({
@@ -72,7 +82,7 @@ export const ServiceRepositorySchema = z.object({
 
 export const LinkRepositorySchema = z.object({
 	serviceId: z.string().uuid(),
-	subPath: z.string().optional(),
+	subPath: SubPathSchema.optional(),
 	isPrimary: z.boolean().optional(),
 });
 

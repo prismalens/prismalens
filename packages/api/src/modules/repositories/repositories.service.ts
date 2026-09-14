@@ -76,7 +76,7 @@ export class RepositoriesService {
 			if (kind === "folder") {
 				const check = await this.repoSource.checkFolder(source);
 				source = check.root;
-				subPath = subPath ?? (check.prefix || null);
+				subPath = [check.prefix, subPath].filter(Boolean).join("/") || null;
 				Object.assign(sync, { syncBranch: check.branch, syncHead: check.head });
 			} else {
 				const check = await this.repoSource.validate({ kind, source, token });

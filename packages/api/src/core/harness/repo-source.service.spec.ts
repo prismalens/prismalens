@@ -129,6 +129,26 @@ describe("repo-source.service", () => {
 				/must not start with '-'/,
 			);
 		});
+
+		it("refuses credentials in a URL but keeps an ssh username", () => {
+			expect(() =>
+				classifySource("https://user:tok@github.com/acme/api.git"),
+			).toThrow(/must not carry credentials/);
+			expect(() => classifySource("https://tok@github.com/acme/api.git")).toThrow(
+				/must not carry credentials/,
+			);
+			expect(classifySource("ssh://git@example.com/acme/api.git").kind).toBe(
+				"url",
+			);
+		});
+	});
+
+	describe("mirrorPathFor", () => {
+		it("gives remotes that differ only by port their own mirror", () => {
+			const a = mirrorPathFor("https://git.example:8443/acme/api.git", "/r");
+			const b = mirrorPathFor("https://git.example:9443/acme/api.git", "/r");
+			expect(a).not.toBe(b);
+		});
 	});
 
 	describe("displayNameFor", () => {
@@ -162,6 +182,12 @@ describe("repo-source.service", () => {
 			).toEqual({});
 			expect(
 				gitAuthEnv({ kind: "url", source: "https://github.com/acme/api.git" }),
+			).toEqual({});
+		});
+
+		it("never sends a token over plain http", () => {
+			expect(
+				gitAuthEnv({ kind: "url", source: "http://git.example/acme/api.git", token: "tok" }),
 			).toEqual({});
 		});
 	});

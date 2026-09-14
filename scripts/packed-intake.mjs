@@ -37,6 +37,7 @@ import { join, resolve } from "node:path";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
+const FETCH_TIMEOUT_MS = 10_000;
 const EMAIL = "intake@prismalens.test";
 const PASSWORD = "packed-intake-12345";
 
@@ -148,6 +149,7 @@ async function main() {
 
 	const json = (path, init) =>
 		fetch(BASE + path, {
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 			...init,
 			headers: {
 				"content-type": "application/json",
@@ -201,6 +203,7 @@ async function main() {
 		],
 	};
 	const firingRes = await fetch(BASE + "/api/webhooks/prometheus", {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
@@ -248,6 +251,7 @@ async function main() {
 		],
 	};
 	const resolvedRes = await fetch(BASE + "/api/webhooks/prometheus", {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		method: "POST",
 		headers: {
 			"content-type": "application/json",

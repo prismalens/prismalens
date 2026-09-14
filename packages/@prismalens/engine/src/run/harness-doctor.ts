@@ -119,8 +119,18 @@ export async function probeHarness(
 			permission: readOnlyPolicy,
 			initTimeoutMs: timeoutMs,
 		});
+		// open() times initialize and session/new separately; the probe promises one deadline for both.
+		let timer: NodeJS.Timeout | undefined;
+		const deadline = new Promise<never>((_, reject) => {
+			timer = setTimeout(
+				() => reject(new Error(`handshake timed out after ${timeoutMs}ms`)),
+				timeoutMs,
+			);
+		});
+		const opening = session.open();
+		opening.catch(() => {});
 		try {
-			await session.open();
+			await Promise.race([opening, deadline]);
 			return {
 				id: harness,
 				outcome: "answers-acp",
@@ -130,6 +140,7 @@ export async function probeHarness(
 		} catch (err) {
 			return { id: harness, ...classify(err, session, timeoutMs), hard: false };
 		} finally {
+			clearTimeout(timer);
 			await session.close();
 		}
 	} finally {

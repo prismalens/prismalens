@@ -125,6 +125,25 @@ describe("RepositoriesService.addSource", () => {
 		});
 	});
 
+	it("joins the folder's place inside the repo with a given sub-path", async () => {
+		mockRepoSource.checkFolder.mockResolvedValue({
+			root: "/repo",
+			prefix: "packages/api",
+			branch: "main",
+			head: "abc123",
+		});
+
+		await service.addSource({
+			serviceId: "svc-1",
+			source: "/repo/packages/api",
+			subPath: "src",
+		});
+
+		expect(mockTx.serviceRepository.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({ subPath: "packages/api/src" }),
+		});
+	});
+
 	it("demotes whichever repo held the primary slot before this one, before linking the new one", async () => {
 		mockRepoSource.checkFolder.mockResolvedValue({
 			root: "/repo",

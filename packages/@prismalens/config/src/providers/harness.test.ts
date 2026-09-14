@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getHarnessProviderKeys, HARNESS_REGISTRY } from "./harness.js";
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 	it("returns only the registry row's provider keys present in the source env", () => {
@@ -39,14 +43,10 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 	});
 
 	it("defaults to process.env when no source env is given", () => {
-		process.env.GEMINI_API_KEY = "test-gemini-key";
-		try {
-			expect(getHarnessProviderKeys("gemini")).toEqual({
-				GEMINI_API_KEY: "test-gemini-key",
-			});
-		} finally {
-			delete process.env.GEMINI_API_KEY;
-		}
+		vi.stubEnv("GEMINI_API_KEY", "test-gemini-key");
+		expect(getHarnessProviderKeys("gemini")).toEqual({
+			GEMINI_API_KEY: "test-gemini-key",
+		});
 	});
 
 	it("lists real provider keys for every multi-provider harness row, never a bare wildcard", () => {

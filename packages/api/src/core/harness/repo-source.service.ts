@@ -10,6 +10,7 @@
  * per-command header, never in the URL or the mirror's config.
  */
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
@@ -18,6 +19,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { getAppDataDir } from "@prismalens/config";
 
 const run = promisify(execFile);
+/** A remote that accepts the connection and then stalls must not hang a save or a run. */
+const GIT_TIMEOUT_MS = 10 * 60_000;
 
 export type RepoSourceKind = "folder" | "url";
 
@@ -64,7 +67,13 @@ export function classifySource(input: string): {
 		: trimmed;
 	if (isAbsolute(expanded))
 		return { kind: "folder", source: resolve(expanded) };
-	if (URL_LIKE.test(trimmed)) return { kind: "url", source: trimmed };
+	if (URL_LIKE.test(trimmed)) {
+		if (hasEmbeddedSecret(trimmed))
+			throw new Error(
+				"Repository URL must not carry credentials; connect the VCS integration instead",
+			);
+		return { kind: "url", source: trimmed };
+	}
 	throw new Error(
 		"Repository must be an absolute folder path or a git URL (https://, ssh://, git@host:owner/repo)",
 	);
@@ -87,7 +96,18 @@ export function mirrorPathFor(
 	);
 	const host = u.hostname.replace(/[^A-Za-z0-9._-]/g, "_");
 	const name = segments.pop() ?? "repo";
-	return join(root, host, ...segments, `${name}.git`);
+	// The readable part is lossy (port dropped, characters folded); the hash keeps two remotes apart.
+	const hash = createHash("sha256").update(url).digest("hex").slice(0, 12);
+	return join(root, host, ...segments, `${name}-${hash}.git`);
+}
+
+/** https://user:token@host leaks through the mirror's config and logs; ssh://git@host is a username, not a secret. */
+function hasEmbeddedSecret(url: string): boolean {
+	if (!/^[a-z]+:\/\//.test(url)) return false;
+	const u = new URL(url);
+	return (
+		u.password !== "" || (/^https?:$/.test(u.protocol) && u.username !== "")
+	);
 }
 
 function urlSegments(url: string): string[] {
@@ -211,6 +231,8 @@ export class RepoSourceService {
 				cwd,
 				env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...extraEnv },
 				maxBuffer: 16 * 1024 * 1024,
+				timeout: GIT_TIMEOUT_MS,
+				killSignal: "SIGKILL",
 			});
 		} catch (err) {
 			throw gitError(err);
@@ -224,7 +246,7 @@ export class RepoSourceService {
  */
 export function gitAuthEnv(src: RepoSource): Record<string, string> {
 	const token = src.token?.trim();
-	if (!token || !/^https?:\/\//.test(src.source)) return {};
+	if (!token || !/^https:\/\//.test(src.source)) return {};
 	const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
 	return {
 		GIT_CONFIG_COUNT: "1",

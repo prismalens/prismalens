@@ -3,8 +3,12 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { probeHarness } from "./harness-doctor.js";
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 const FAKE = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -78,25 +82,32 @@ describe("probeHarness", () => {
 	});
 
 	it("hands the harness only its provider keys, like the investigation run (ADR 0004 §5)", async () => {
-		const planted = {
-			AWS_SECRET_ACCESS_KEY: "planted-aws",
-			ANTHROPIC_API_KEY: "planted-anthropic",
-		};
-		Object.assign(process.env, planted);
-		try {
-			const result = await probeHarness("claude-code", {
-				descriptor: {
-					...descriptor("print-env"),
-					acpEnv: () => ({
-						FAKE_ACP_MODE: "print-env",
-						FAKE_ENV_PROBE: Object.keys(planted).join(","),
-					}),
-				},
-			});
-			expect(result.detail).toMatch(/AWS_SECRET_ACCESS_KEY=unset/);
-			expect(result.detail).toMatch(/ANTHROPIC_API_KEY=set/);
-		} finally {
-			for (const key of Object.keys(planted)) delete process.env[key];
-		}
+		vi.stubEnv("AWS_SECRET_ACCESS_KEY", "planted-aws");
+		vi.stubEnv("ANTHROPIC_API_KEY", "planted-anthropic");
+		const result = await probeHarness("claude-code", {
+			descriptor: {
+				...descriptor("print-env"),
+				acpEnv: () => ({
+					FAKE_ACP_MODE: "print-env",
+					FAKE_ENV_PROBE: "AWS_SECRET_ACCESS_KEY,ANTHROPIC_API_KEY",
+				}),
+			},
+		});
+		expect(result.detail).toMatch(/AWS_SECRET_ACCESS_KEY=unset/);
+		expect(result.detail).toMatch(/ANTHROPIC_API_KEY=set/);
+	});
+
+	it("holds one deadline across initialize and session/new", async () => {
+		const started = Date.now();
+		const result = await probeHarness("opencode", {
+			descriptor: {
+				...descriptor("slow-init"),
+				acpEnv: () => ({ FAKE_ACP_MODE: "slow-init", FAKE_INIT_DELAY_MS: "300" }),
+			},
+			timeoutMs: 400,
+		});
+		expect(result.outcome).toBe("no-answer");
+		// Per-request timeouts would take about 300 + 400 ms.
+		expect(Date.now() - started).toBeLessThan(600);
 	});
 });
