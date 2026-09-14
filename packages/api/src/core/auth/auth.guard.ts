@@ -45,15 +45,7 @@ export class AuthGuard implements CanActivate {
 				throw new UnauthorizedException("Invalid session");
 			}
 
-			// `role` reaches session.user only because USER_ADDITIONAL_FIELDS declares it
-			// (@prismalens/auth); the inferred session type does not carry it, hence the cast.
-			const sessionUser = session.user as typeof session.user & {
-				role?: string | null;
-			};
-			request.user = {
-				...session.user,
-				role: sessionUser.role ?? undefined,
-			} as typeof request.user;
+			request.user = session.user;
 			request.session = session.session;
 
 			return true;

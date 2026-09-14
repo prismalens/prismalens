@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { ForbiddenException, Injectable } from "@nestjs/common";
-import { ADMIN_ROLES, type AppRole } from "@prismalens/auth";
 import { AuthService } from "../auth/auth.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { CreateUserDto } from "./dto/create-user.dto.js";
@@ -26,14 +25,9 @@ export class UsersService {
 		return this.prisma.user.findUnique({ where: { email } });
 	}
 
-	/**
-	 * Check if instance setup is complete (has an owner or admin user)
-	 */
+	/** Setup is complete once the instance's one account exists (ADR 0001 §13). */
 	async isSetupComplete(): Promise<boolean> {
-		const ownerOrAdmin = await this.prisma.user.findFirst({
-			where: { role: { in: [...ADMIN_ROLES] } },
-		});
-		return !!ownerOrAdmin;
+		return !!(await this.prisma.user.findFirst({ select: { id: true } }));
 	}
 
 	/**
@@ -41,12 +35,7 @@ export class UsersService {
 	 * This uses Better Auth's signup API to properly hash passwords.
 	 */
 	async setupOwner(createUserDto: CreateUserDto) {
-		// Check if any owner/admin exists
-		const existingOwner = await this.prisma.user.findFirst({
-			where: { role: { in: [...ADMIN_ROLES] } },
-		});
-
-		if (existingOwner) {
+		if (await this.isSetupComplete()) {
 			throw new ForbiddenException(
 				"Instance already set up. Owner account exists.",
 			);
@@ -65,22 +54,12 @@ export class UsersService {
 			throw new Error("Failed to create user");
 		}
 
-		// Update the user to be the instance owner
-		const user = await this.prisma.user.update({
-			where: { id: result.user.id },
-			data: { role: "owner" satisfies AppRole },
-		});
-
-		// `signUpEmail` auto-signs-in, but this call is server-side: its session
-		// token is never handed to a browser, and it was minted BEFORE the role
-		// write above, so Better Auth's signed session-data cache would hold
-		// `role: "member"` for its five-minute lifetime. Drop it — callers that
-		// need a usable session ask for one after this returns
-		// (`AuthService.createSessionCookies`), which reads the owner role.
+		// `signUpEmail` auto-signs-in server-side; that token never reaches a browser, so
+		// drop it. The browser session comes from `AuthService.createSessionCookies`.
 		if (result.token) {
 			await this.prisma.session.deleteMany({ where: { token: result.token } });
 		}
 
-		return user;
+		return result.user;
 	}
 }

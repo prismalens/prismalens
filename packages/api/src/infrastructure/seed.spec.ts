@@ -25,10 +25,6 @@ function fakeDb(overrides: { existingOwner?: unknown } = {}) {
 	return {
 		user: {
 			findFirst: vi.fn(async () => overrides.existingOwner ?? null),
-			update: vi.fn(async (args: { data: Record<string, unknown> }) => ({
-				id: "user-1",
-				...args.data,
-			})),
 		},
 		session: {
 			deleteMany: vi.fn(async () => ({ count: 1 })),
@@ -55,7 +51,7 @@ describe("seed — owner bootstrap", () => {
 		mocks.seedDemoData.mockClear();
 	});
 
-	it("creates the owner via signUpEmail, promotes the role, and drops the stale session", async () => {
+	it("creates the account via signUpEmail and drops the server-side session", async () => {
 		const db = fakeDb();
 		const auth = fakeAuth();
 
@@ -68,23 +64,18 @@ describe("seed — owner bootstrap", () => {
 				name: "Admin",
 			},
 		});
-		expect(db.user.update).toHaveBeenCalledWith({
-			where: { id: "user-1" },
-			data: { role: "owner" },
-		});
 		expect(db.session.deleteMany).toHaveBeenCalledWith({
 			where: { token: "tok-1" },
 		});
 	});
 
-	it("skips owner creation when an owner/admin already exists", async () => {
-		const db = fakeDb({ existingOwner: { id: "existing", role: "owner" } });
+	it("skips when an account already exists", async () => {
+		const db = fakeDb({ existingOwner: { id: "existing" } });
 		const auth = fakeAuth();
 
 		await seed(db, auth);
 
 		expect(auth.api.signUpEmail).not.toHaveBeenCalled();
-		expect(db.user.update).not.toHaveBeenCalled();
 	});
 
 	it("throws when signUpEmail returns no user", async () => {

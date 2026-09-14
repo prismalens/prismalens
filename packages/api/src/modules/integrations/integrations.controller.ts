@@ -17,7 +17,7 @@ import type {
 	ServiceIntegration,
 } from "@prismalens/database";
 import { type AuthTemplate, getTemplate } from "@prismalens/integrations";
-import { extractUserId, isAdmin, requireAdmin } from "../../core/auth/index.js";
+import { extractUserId } from "../../core/auth/index.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
 
@@ -110,7 +110,6 @@ export class IntegrationsController {
 			deleteIntegration: implement(
 				integrationsContract.deleteIntegration,
 			).handler(async ({ input, context }) => {
-				requireAdmin(context);
 				const deleted = await this.integrationsService.deleteIntegration(
 					input.id,
 				);
@@ -190,12 +189,9 @@ export class IntegrationsController {
 
 			deleteConnection: implement(
 				integrationsContract.deleteConnection,
-			).handler(async ({ input, context }) => {
-				// Admins can delete any connection; members only their own
-				const userId = isAdmin(context) ? undefined : extractUserId(context);
+			).handler(async ({ input }) => {
 				const deleted = await this.integrationsService.deleteConnection(
 					input.id,
-					userId,
 				);
 				if (!deleted) {
 					throw new ORPCError("NOT_FOUND", {
@@ -223,7 +219,6 @@ export class IntegrationsController {
 			getIntegrationDeletionImpact: implement(
 				integrationsContract.getIntegrationDeletionImpact,
 			).handler(async ({ input, context }) => {
-				requireAdmin(context);
 				const impact =
 					await this.integrationsService.getIntegrationDeletionImpact(input.id);
 				if (!impact) {
@@ -236,14 +231,9 @@ export class IntegrationsController {
 
 			getConnectionDeletionImpact: implement(
 				integrationsContract.getConnectionDeletionImpact,
-			).handler(async ({ input, context }) => {
-				// Admins see any connection's impact; members only their own
-				const userId = isAdmin(context) ? undefined : extractUserId(context);
+			).handler(async ({ input }) => {
 				const impact =
-					await this.integrationsService.getConnectionDeletionImpact(
-						input.id,
-						userId,
-					);
+					await this.integrationsService.getConnectionDeletionImpact(input.id);
 				if (!impact) {
 					throw new ORPCError("NOT_FOUND", {
 						message: "Connection not found",

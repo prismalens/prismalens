@@ -39,7 +39,7 @@ const SetupStatusSchema = z.object({
 	/** An owner account exists. This — and only this — gates the app. */
 	setupComplete: z.boolean(),
 	steps: z.object({
-		/** An account with an admin role exists. */
+		/** The instance's account exists. */
 		owner: z.boolean(),
 		/** A harness is on PATH and would run right now. */
 		aiProvider: z.boolean(),
@@ -63,7 +63,6 @@ const CreateOwnerResponseSchema = z.object({
 		id: z.string(),
 		email: z.string(),
 		name: z.string().nullable(),
-		role: z.string(),
 	}),
 });
 

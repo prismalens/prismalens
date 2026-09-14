@@ -8,35 +8,28 @@
  * It handles:
  * - Email/password authentication
  * - Session management (cookie-based)
- * - Role-based access control
  */
 
 import { type BetterAuthPlugin, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware } from "better-auth/api";
-import { ADMIN_ROLES } from "./roles.js";
 
-/** The one query this plugin needs, straight to Prisma so the plugin does not depend on how `role` is registered with Better Auth. */
-interface OwnerLookupClient {
-	user: {
-		findFirst(args: {
-			where: { role: { in: readonly string[] } };
-		}): Promise<unknown>;
-	};
+/** The one query this plugin needs. */
+interface UserLookupClient {
+	user: { findFirst(args: { select: { id: true } }): Promise<unknown> };
 }
 
 /**
- * Refuses `POST /sign-up/email` once an owner/admin row exists. Setup's own
- * `createOwner` path (`UsersService.setupOwner`) calls `auth.api.signUpEmail`
- * directly, but only ever before the first owner is written, so it is never
- * blocked by this. Better Auth 1.7.2's `emailAndPassword.disableSignUp` is a
+ * Refuses `POST /sign-up/email` once any account exists: an instance has one
+ * operator (ADR 0001 §13). Setup (`UsersService.setupOwner`) signs up the first
+ * account, before any row exists, so it is never blocked by this. Better Auth 1.7.2's `emailAndPassword.disableSignUp` is a
  * plain boolean checked once at request time from the options object (see
  * `dist/api/routes/sign-up.mjs`), not a function of live DB state, so a
  * request-time DB check needs this hook instead (same `matcher`/`handler`
  * shape the library's own `username` plugin uses for the same endpoint).
  */
 export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
-	const client = prisma as OwnerLookupClient;
+	const client = prisma as UserLookupClient;
 	return {
 		id: "close-sign-up-after-owner",
 		hooks: {
@@ -44,12 +37,13 @@ export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
 				{
 					matcher: (ctx) => ctx.path === "/sign-up/email",
 					handler: createAuthMiddleware(async () => {
-						const existingOwner = await client.user.findFirst({
-							where: { role: { in: ADMIN_ROLES } },
+						const existing = await client.user.findFirst({
+							select: { id: true },
 						});
-						if (existingOwner) {
+						if (existing) {
 							throw new APIError("FORBIDDEN", {
-								message: "Sign-up is closed: an owner account already exists.",
+								message:
+									"Sign-up is closed: this instance already has its account.",
 								code: "SIGN_UP_CLOSED",
 							});
 						}
@@ -59,15 +53,6 @@ export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
 		},
 	};
 }
-
-/**
- * `role` has to be a declared field or Better Auth leaves it off `session.user`, and
- * every `requireAdmin` route answers 403, owner included. `input: false` keeps sign-up
- * from setting it; setup writes it. It was declared by the `admin` plugin until #621.
- */
-export const USER_ADDITIONAL_FIELDS = {
-	role: { type: "string", required: false, input: false },
-} as const;
 
 export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
@@ -83,8 +68,6 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 
 		// Secret for signing tokens/cookies
 		secret: options.secret,
-
-		user: { additionalFields: USER_ADDITIONAL_FIELDS },
 
 		// Email and password authentication
 		emailAndPassword: {

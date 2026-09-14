@@ -10,7 +10,6 @@ import type {
 	ServiceRepository,
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
-import { requireAdmin } from "../../core/auth/index.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { serializeRepository } from "./serialize-repository.js";
 
@@ -38,7 +37,6 @@ export class RepositoriesController {
 			// POST /repositories/source - Folder or URL from the service form
 			addSource: implement(repositoriesContract.addSource).handler(
 				async ({ input, context }) => {
-					requireAdmin(context);
 					const repo = await this.repositoriesService.addSource(input);
 					return serializeRepository(repo);
 				},
@@ -47,7 +45,6 @@ export class RepositoriesController {
 			// POST /repositories/batch - Batch create repositories
 			batchCreate: implement(repositoriesContract.batchCreate).handler(
 				async ({ input, context }) => {
-					requireAdmin(context);
 					const result = await this.repositoriesService.batchCreate(input);
 					return {
 						created: result.created,
@@ -92,7 +89,6 @@ export class RepositoriesController {
 			// POST /repositories/:id/link - Link repository to service
 			link: implement(repositoriesContract.link).handler(
 				async ({ input, context }) => {
-					requireAdmin(context);
 					const { id, ...linkData } = input;
 					const result = await this.repositoriesService.linkToService(
 						id,
@@ -108,7 +104,6 @@ export class RepositoriesController {
 			// DELETE /repositories/:id/unlink/:serviceId - Unlink repository
 			unlink: implement(repositoriesContract.unlink).handler(
 				async ({ input, context }) => {
-					requireAdmin(context);
 					await this.repositoriesService.unlinkFromService(
 						input.id,
 						input.serviceId,
@@ -119,7 +114,6 @@ export class RepositoriesController {
 			// DELETE /repositories/:id - Delete an unlinked repository
 			delete: implement(repositoriesContract.delete).handler(
 				async ({ input, context }) => {
-					requireAdmin(context);
 					await this.repositoriesService.delete(input.id);
 				},
 			),
