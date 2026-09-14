@@ -45,12 +45,8 @@ export class AuthGuard implements CanActivate {
 				throw new UnauthorizedException("Invalid session");
 			}
 
-			// Attach user and session to request for use in handlers.
-			// `role` is a plain PrismaLens column on User (not a Better Auth
-			// plugin field), so it survives at runtime even though Better
-			// Auth's inferred session type no longer carries it without the
-			// admin plugin registered — read it via an explicit cast, and
-			// coerce null to undefined to match the UserWithRole type.
+			// `role` reaches session.user only because USER_ADDITIONAL_FIELDS declares it
+			// (@prismalens/auth); the inferred session type does not carry it, hence the cast.
 			const sessionUser = session.user as typeof session.user & {
 				role?: string | null;
 			};

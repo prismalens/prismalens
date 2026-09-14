@@ -4,7 +4,7 @@
 import { betterAuth } from "better-auth";
 import { memoryAdapter, type MemoryDB } from "better-auth/adapters/memory";
 import { describe, expect, it } from "vitest";
-import { closeSignUpAfterOwner, createAuth } from "./auth.js";
+import { closeSignUpAfterOwner, createAuth, USER_ADDITIONAL_FIELDS } from "./auth.js";
 
 describe("createAuth", () => {
 	const mockPrisma = {} as unknown;
@@ -30,13 +30,9 @@ describe("createAuth", () => {
 });
 
 /**
- * `role` is a prismalens column, not a Better Auth field (no
- * `user.additionalFields` declares it), so `closeSignUpAfterOwner` queries
- * Prisma directly rather than through `ctx.context.adapter` (see auth.ts).
- * These tests exercise that plugin against a real Better Auth instance built
- * with the library's own in-memory adapter, so sign-up runs its real
- * validation and hook pipeline; only the `role` lookup is faked, over the
- * same in-memory array Better Auth's adapter writes `user` rows to.
+ * `closeSignUpAfterOwner` is exercised against a real Better Auth instance on the
+ * library's in-memory adapter, so sign-up runs its real validation and hooks; only
+ * the plugin's Prisma `role` lookup is faked, over the same in-memory user rows.
  */
 function createTestAuth() {
 	const db: MemoryDB = { user: [], session: [], account: [], verification: [] };
@@ -51,6 +47,7 @@ function createTestAuth() {
 		baseURL: "http://localhost:3000",
 		secret: "test-secret-1234567890-test-secret-1234567890",
 		emailAndPassword: { enabled: true, requireEmailVerification: false },
+		user: { additionalFields: USER_ADDITIONAL_FIELDS },
 		plugins: [closeSignUpAfterOwner(fakePrisma)],
 	});
 	return { auth, db };
@@ -115,5 +112,35 @@ describe("close-sign-up-after-owner (trust floor, #628)", () => {
 			status: "FORBIDDEN",
 			body: { code: "SIGN_UP_CLOSED" },
 		});
+	});
+});
+
+describe("role on the session (requireAdmin depends on it)", () => {
+	it("carries the stored role on session.user, so the owner passes requireAdmin", async () => {
+		const { auth, db } = createTestAuth();
+		const { user } = await auth.api.signUpEmail({
+			body: { email: "owner@example.com", password: "correct-horse-battery", name: "Owner" },
+		});
+		const row = db.user.find((u) => u.id === user.id);
+		if (row) row.role = "owner";
+
+		const signIn = await auth.api.signInEmail({
+			body: { email: "owner@example.com", password: "correct-horse-battery" },
+			returnHeaders: true,
+		});
+		const cookie = (signIn.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+		const session = await auth.api.getSession({ headers: new Headers({ cookie }) });
+
+		expect((session?.user as { role?: string } | undefined)?.role).toBe("owner");
+	});
+
+	it("does not let sign-up choose a role", async () => {
+		const { auth, db } = createTestAuth();
+		await auth.api
+			.signUpEmail({
+				body: { email: "x@example.com", password: "correct-horse-battery", name: "X", role: "owner" } as never,
+			})
+			.catch(() => undefined);
+		expect(db.user.find((u) => u.email === "x@example.com")?.role).not.toBe("owner");
 	});
 });

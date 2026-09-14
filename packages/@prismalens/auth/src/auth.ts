@@ -16,7 +16,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { ADMIN_ROLES } from "./roles.js";
 
-/** The one query this plugin needs; `role` is a prismalens column Better Auth's own schema knows nothing about (no `user.additionalFields` declares it), so this goes straight to Prisma rather than through `ctx.context.adapter`, which would silently no-op on an unregistered field. */
+/** The one query this plugin needs, straight to Prisma so the plugin does not depend on how `role` is registered with Better Auth. */
 interface OwnerLookupClient {
 	user: {
 		findFirst(args: {
@@ -60,6 +60,15 @@ export function closeSignUpAfterOwner(prisma: unknown): BetterAuthPlugin {
 	};
 }
 
+/**
+ * `role` has to be a declared field or Better Auth leaves it off `session.user`, and
+ * every `requireAdmin` route answers 403, owner included. `input: false` keeps sign-up
+ * from setting it; setup writes it. It was declared by the `admin` plugin until #621.
+ */
+export const USER_ADDITIONAL_FIELDS = {
+	role: { type: "string", required: false, input: false },
+} as const;
+
 export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
 		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
@@ -74,6 +83,8 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 
 		// Secret for signing tokens/cookies
 		secret: options.secret,
+
+		user: { additionalFields: USER_ADDITIONAL_FIELDS },
 
 		// Email and password authentication
 		emailAndPassword: {
