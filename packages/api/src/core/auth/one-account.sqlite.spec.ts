@@ -15,17 +15,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 describe("one account only, concurrent sign-ups on SQLite", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pl-one-account-"));
 	let prisma: typeof import("@prismalens/database").prisma;
-	let createAuth: typeof import("./auth.js").createAuth;
+	let createAuth: typeof import("@prismalens/auth").createAuth;
 
 	beforeAll(async () => {
 		process.env.PRISMALENS_WORKSPACE_DIR = dir;
 		execSync("pnpm exec prisma migrate deploy --config prisma.config.ts", {
-			cwd: resolve(fileURLToPath(new URL(".", import.meta.url)), "../../database"),
+			cwd: resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../../@prismalens/database"),
 			env: { ...process.env, PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: "yes" },
 			stdio: "pipe",
 		});
 		({ prisma } = await import("@prismalens/database"));
-		({ createAuth } = await import("./auth.js"));
+		({ createAuth } = await import("@prismalens/auth"));
 	}, 120_000);
 
 	afterAll(async () => {
