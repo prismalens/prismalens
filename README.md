@@ -38,8 +38,10 @@ Open the URL and setup asks for one thing: the owner account. Everything else is
 configured after sign-in. A coding agent must be installed on the machine for
 investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
 PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
-is the verified default). PrismaLens never bundles, installs or authenticates a
-harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
+is the verified default). For each one on PATH it also opens an ACP handshake and
+reports `ready` or the harness's own reason (for example "not logged in") — the
+same check the Settings → Harness card runs on demand. PrismaLens never bundles,
+installs or authenticates a harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
@@ -78,7 +80,7 @@ The same binary is a standalone investigator that needs nothing running:
 npx prismalens doctor
 ```
 
-`doctor` checks that a harness binary is on PATH, then `pl up` boots the app
+`doctor` checks that a harness binary is on PATH and answers an ACP handshake, then `pl up` boots the app
 (API and dashboard on one port, SQLite, no external services):
 
 ```bash

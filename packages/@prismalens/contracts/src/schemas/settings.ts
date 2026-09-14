@@ -58,6 +58,26 @@ export const HarnessesResponseSchema = z.object({
 });
 export type HarnessesResponse = z.infer<typeof HarnessesResponseSchema>;
 
+/** `pl doctor`'s ACP handshake, on demand from the Settings Harness tab (#630, Unit D on #337). */
+export const CheckHarnessInputSchema = z.object({
+	id: z.enum(HARNESS_IDS),
+});
+export type CheckHarnessInput = z.infer<typeof CheckHarnessInputSchema>;
+
+/** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words `pl doctor` prints too, one line. */
+export const HarnessProbeResultSchema = z.object({
+	id: z.enum(HARNESS_IDS),
+	outcome: z.enum([
+		"answers-acp",
+		"sign-in-needed",
+		"no-answer",
+		"failed-to-start",
+	]),
+	detail: z.string(),
+	hard: z.literal(false),
+});
+export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
+
 // =============================================================================
 // INVESTIGATION POLICIES
 // =============================================================================

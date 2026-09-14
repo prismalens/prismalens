@@ -8,6 +8,7 @@
 export * from "./adapter/acp-adapter.js";
 export * from "./run/conductor.js";
 export * from "./run/fence.js";
+export * from "./run/harness-doctor.js";
 export * from "./run/investigate.js";
 export * from "./run/permission.js";
 export * from "./run/prompt.js";
