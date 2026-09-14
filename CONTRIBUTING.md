@@ -83,15 +83,17 @@ updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
 ## Database migrations
 
-**Migration history is append-only.** Never delete, edit, rename, or squash a
-migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, and
-never tell anyone to delete `prismalens.db`. Installed copies of PrismaLens
-record each migration's checksum; an edited history is unreconcilable with a
-database that already exists, and the runner refuses rather than guessing.
+**Until 0.5.0 publishes, there is one `init` migration and schema changes edit it.**
+No installed copy of 0.5.0 exists yet (ruled on #337, 2026-09-13), so regenerate
+`init` from the schema instead of adding a migration. A database created before
+the edit stops with `checksum-mismatch`; recreate it.
 
-(This replaces an earlier development-phase rule that said to squash the `init`
-migration and delete the database. It was safe only while every database in the
-world belonged to a contributor — see issue #335.)
+**From the 0.5.0 publish on, migration history is append-only.** Never delete,
+edit, rename, or squash a migration under
+`packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, and never tell anyone
+to delete `prismalens.db`. Installed copies of PrismaLens record each migration's
+checksum; an edited history is unreconcilable with a database that already
+exists, and the runner refuses rather than guessing (issue #335).
 
 ### The lifecycle, end to end
 
