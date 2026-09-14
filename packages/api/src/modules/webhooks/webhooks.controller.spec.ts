@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { GUARDS_METADATA } from "@nestjs/common/constants";
+import { GUARDS_METADATA } from "@nestjs/common/constants.js";
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { describe, expect, it } from "vitest";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";

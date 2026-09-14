@@ -108,6 +108,8 @@ for p in api database engine config contracts logger auth integrations; do
 	[ -d "$PKG/node_modules/@prismalens/$p" ] || fail "@prismalens/$p is missing from the installed package"
 done
 [ -f "$PKG/node_modules/@prismalens/api/public/index.html" ] || fail "the SPA is missing from the installed package"
+# Installing must send nothing anywhere: @scarf/scarf reports installs from its postinstall (#637 O4).
+[ -z "$(find "$SCRATCH/node_modules" -type d -path '*/@scarf/scarf' -print -quit)" ] || fail "@scarf/scarf is in the install tree; it phones home on npm install"
 
 echo "==> --version matches the packed package.json"
 EXPECTED=$(node -p "require('$SCRATCH/node_modules/prismalens/package.json').version")
