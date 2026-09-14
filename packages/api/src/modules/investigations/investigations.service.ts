@@ -107,6 +107,14 @@ export class InvestigationsService {
 		});
 	}
 
+	/** The pending or running investigation for an incident, if one exists. */
+	async findInProgress(incidentId: string): Promise<Investigation | null> {
+		return this.prisma.investigation.findFirst({
+			where: { incidentId, status: { in: ["pending", "running"] } },
+			orderBy: { createdAt: "desc" },
+		});
+	}
+
 	/**
 	 * Find all investigations
 	 */

@@ -74,6 +74,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 		};
 
 		const investigationsService = {
+			findInProgress: vi.fn().mockResolvedValue(null),
 			create: vi.fn().mockResolvedValue({ id: "inv-123" }),
 		};
 
@@ -243,6 +244,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({ ...mockIncident, status: "investigating" }),
 		};
 		const investigationsService = {
+			findInProgress: vi.fn().mockResolvedValue(null),
 			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
 		};
 		const dispatchService = {
@@ -292,12 +294,47 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(dispatchService.addInvestigationJob).toHaveBeenCalledTimes(1);
 	});
 
+	it("returns the investigation already in progress instead of starting a second one", async () => {
+		const incidentsService = {
+			findById: vi.fn().mockResolvedValue(mockIncident),
+			update: vi.fn(),
+		};
+		const investigationsService = {
+			findInProgress: vi.fn().mockResolvedValue({ id: "inv-running" }),
+			create: vi.fn(),
+		};
+		const dispatchService = { addInvestigationJob: vi.fn() };
+		const harnessService = { resolveSelection: vi.fn() };
+		const controller = new IncidentsController(
+			incidentsService as unknown as IncidentsService,
+			investigationsService as unknown as InvestigationsService,
+			dispatchService as unknown as DispatchService,
+			{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
+			harnessService as unknown as HarnessService,
+		);
+
+		const result = await getHandlers(controller).investigate({
+			input: { id: mockIncident.id },
+		});
+
+		expect(result).toEqual({
+			incidentId: mockIncident.id,
+			investigationId: "inv-running",
+			jobId: null,
+			queued: false,
+		});
+		expect(investigationsService.create).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		expect(incidentsService.update).not.toHaveBeenCalled();
+	});
+
 	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
 			update: vi.fn().mockResolvedValue({}),
 		};
 		const investigationsService = {
+			findInProgress: vi.fn().mockResolvedValue(null),
 			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
 		};
 		const dispatchService = {
@@ -360,6 +397,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({}),
 		};
 		const investigationsService = {
+			findInProgress: vi.fn().mockResolvedValue(null),
 			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
 		};
 		const dispatchService = {
@@ -415,6 +453,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			update: vi.fn().mockResolvedValue({}),
 		};
 		const investigationsService = {
+			findInProgress: vi.fn().mockResolvedValue(null),
 			create: vi.fn().mockResolvedValue({ id: "inv-456" }),
 		};
 		const dispatchService = {

@@ -6,7 +6,7 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import { getHarnessProviderKeys } from "@prismalens/config/harness";
@@ -251,6 +251,20 @@ async function runJobInternal(
 				await sandbox.destroy();
 			} catch (e) {
 				logger.error("Failed to destroy sandbox boundary", e);
+			}
+		}
+		// A full clone per run fills the disk; the workspace note keeps source and HEAD, the transcript stays (#637 N3).
+		if (unvalidated?.investigationId) {
+			try {
+				rmSync(
+					join(getAppDataDir(), "runs", unvalidated.investigationId, "repo"),
+					{
+						recursive: true,
+						force: true,
+					},
+				);
+			} catch (e) {
+				logger.warn("Failed to remove the run snapshot", e);
 			}
 		}
 	}
