@@ -24,6 +24,14 @@ export function isOnPath(
 	bin: string,
 	pathEnv = process.env.PATH ?? "",
 ): boolean {
+	return resolveOnPath(bin, pathEnv) !== null;
+}
+
+/** The first executable `bin` on PATH, or null. The doctor prints it so a bare sudo or service PATH shows. */
+export function resolveOnPath(
+	bin: string,
+	pathEnv = process.env.PATH ?? "",
+): string | null {
 	const exts =
 		process.platform === "win32"
 			? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";")
@@ -31,15 +39,16 @@ export function isOnPath(
 	for (const dir of pathEnv.split(delimiter)) {
 		if (dir.length === 0) continue;
 		for (const ext of exts) {
+			const candidate = join(dir, bin + ext);
 			try {
-				accessSync(join(dir, bin + ext), fsConstants.X_OK);
-				return true;
+				accessSync(candidate, fsConstants.X_OK);
+				return candidate;
 			} catch {
 				// not here; keep scanning
 			}
 		}
 	}
-	return false;
+	return null;
 }
 
 export type HarnessSelection =

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listHarnessStatus, resolveHarnessSelection } from "./harness-selection.js";
+import { listHarnessStatus, resolveHarnessSelection, resolveOnPath } from "./harness-selection.js";
 
 const onPath = (present: string[]) => (bin: string) => present.includes(bin);
 
@@ -49,5 +52,23 @@ describe("resolveHarnessSelection", () => {
 		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
 		expect(rows[0]).toMatchObject({ installed: true, verified: true });
 		expect(rows[1]).toMatchObject({ installed: false });
+	});
+});
+
+describe.skipIf(process.platform === "win32")("resolveOnPath", () => {
+	it("returns the first executable match on PATH, or null", () => {
+		const a = mkdtempSync(join(tmpdir(), "pl-path-a-"));
+		const b = mkdtempSync(join(tmpdir(), "pl-path-b-"));
+		try {
+			for (const dir of [a, b]) {
+				writeFileSync(join(dir, "fake-agent"), "#!/bin/sh\n");
+				chmodSync(join(dir, "fake-agent"), 0o755);
+			}
+			expect(resolveOnPath("fake-agent", `${a}:${b}`)).toBe(join(a, "fake-agent"));
+			expect(resolveOnPath("fake-agent", "/nonexistent")).toBeNull();
+		} finally {
+			rmSync(a, { recursive: true, force: true });
+			rmSync(b, { recursive: true, force: true });
+		}
 	});
 });

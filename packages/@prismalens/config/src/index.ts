@@ -46,6 +46,7 @@ export {
 	isOnPath,
 	listHarnessStatus,
 	resolveHarnessSelection,
+	resolveOnPath,
 } from "./harness-selection.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants

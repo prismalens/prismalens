@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller, Logger, UseGuards } from "@nestjs/common";
-import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
@@ -14,8 +13,9 @@ import { WebhookResult, WebhooksService } from "./webhooks.service.js";
 
 @Public()
 @Controller()
-@UseGuards(WebhookSignatureGuard, ThrottlerGuard)
-@Throttle({ short: { ttl: 1000, limit: 5 }, medium: { ttl: 60000, limit: 30 } })
+// No throttle: the signature guard has already refused anything unauthenticated, and
+// Alertmanager never retries a 429, so a throttled storm is alerts lost (#637 edge 9).
+@UseGuards(WebhookSignatureGuard)
 export class WebhooksController {
 	private readonly logger = new Logger(WebhooksController.name);
 
