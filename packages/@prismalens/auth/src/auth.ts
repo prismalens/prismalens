@@ -53,6 +53,8 @@ export function createAuth(prisma: unknown, options: AuthOptions) {
 	return betterAuth({
 		database: prismaAdapter(prisma as Parameters<typeof prismaAdapter>[0], {
 			provider: "sqlite",
+			// Sign-up's runWithTransaction is a no-op without this, and oneAccountOnly needs it.
+			transaction: true,
 		}),
 
 		// Base URL for auth endpoints
