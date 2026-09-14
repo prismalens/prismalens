@@ -25,6 +25,7 @@ export type AcpStreamItem =
 			request: PermissionRequest;
 			allowed: boolean;
 			why?: string;
+			warn?: string;
 	  }
 	| { kind: "done"; stopReason: string }
 	| { kind: "error"; message: string };
@@ -37,6 +38,8 @@ export interface AcpSessionConfig {
 	sandbox?: Sandbox;
 	limits?: SandboxLimits;
 	permission: PermissionPolicy;
+	/** Sent as `_meta` on `session/new`. */
+	sessionMeta?: Record<string, unknown>;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
 	/** Raw wire lines, both directions, for the run transcript. Best effort. */
@@ -181,7 +184,11 @@ export class AcpSession {
 		this.authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
 		const session = (await this.request(
 			"session/new",
-			{ cwd: config.cwd, mcpServers: [] },
+			{
+				cwd: config.cwd,
+				mcpServers: [],
+				...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
+			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 		)) as { sessionId?: string } | null;
 		if (!session?.sessionId)
@@ -346,7 +353,11 @@ export class AcpSession {
 				kind: "permission",
 				request,
 				allowed: decision.allow,
-				...(decision.allow ? {} : { why: decision.why }),
+				...(decision.allow
+					? decision.warn
+						? { warn: decision.warn }
+						: {}
+					: { why: decision.why }),
 			});
 			return;
 		}

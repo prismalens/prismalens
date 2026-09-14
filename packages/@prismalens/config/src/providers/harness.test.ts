@@ -59,3 +59,28 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 		}
 	});
 });
+
+describe("harness isolation (ADR 0004 §1, #637)", () => {
+	const runEnv = { configDir: "/c", dataDir: "/d", cwd: "/w" };
+
+	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
+		const row = HARNESS_REGISTRY.opencode;
+		expect(row.acpEnv(runEnv)).toMatchObject({
+			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+			OPENCODE_DISABLE_CLAUDE_CODE: "1",
+		});
+		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
+		expect(config.permission).toMatchObject({
+			webfetch: "deny",
+			websearch: "deny",
+			external_directory: "deny",
+		});
+		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
+	});
+
+	it("claude-code loads no setting sources from the snapshot", () => {
+		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
+			claudeCode: { options: { settingSources: [] } },
+		});
+	});
+});

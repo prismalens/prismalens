@@ -35,7 +35,7 @@ export interface RunInvestigationOptions {
 	/** Tests and the admission script swap the binary; the registry row is the default. */
 	descriptor?: Pick<
 		HarnessDescriptor,
-		"binary" | "acpArgs" | "acpEnv" | "configFiles"
+		"binary" | "acpArgs" | "acpEnv" | "configFiles" | "sessionMeta"
 	>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
@@ -57,6 +57,8 @@ export interface RunInvestigationOptions {
 	promptSuffix?: string;
 	/** Harness stderr, chunk by chunk, for the host's logger (#600). */
 	onHarnessStderr?: (chunk: string) => void;
+	/** A permission the policy allowed without naming its kind; the host logs it at warn. */
+	onPolicyWarning?: (message: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -161,6 +163,7 @@ export async function* runInvestigation(
 		sandbox: opts.sandbox,
 		limits: opts.limits,
 		permission: opts.permission ?? readOnlyPolicy,
+		sessionMeta: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,
@@ -197,8 +200,10 @@ export async function* runInvestigation(
 						permission: item.request.toolCall,
 						allowed: item.allowed,
 						why: item.why,
+						warn: item.warn,
 					}),
 				);
+				if (item.warn) opts.onPolicyWarning?.(item.warn);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;

@@ -61,6 +61,8 @@ export interface HarnessDescriptor {
 	acpEnv: (env: HarnessRunEnv) => Record<string, string>;
 	/** Files prismalens writes under configDir before the run; the harness reads nothing else. */
 	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
+	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
+	sessionMeta?: () => Record<string, unknown>;
 	/** One line the doctor prints when the binary is missing. */
 	install: string;
 	readOnlyFidelity: PermissionFidelity;
@@ -87,13 +89,24 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		acpEnv: ({ configDir, dataDir }) => ({
 			XDG_CONFIG_HOME: dataDir,
 			OPENCODE_CONFIG_DIR: configDir,
+			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
+			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		}),
 		configFiles: ({ model }) => ({
 			"opencode.json": JSON.stringify(
 				{
 					$schema: "https://opencode.ai/config.json",
 					...(model ? { model } : {}),
-					permission: { edit: "ask", bash: "ask", webfetch: "deny" },
+					permission: {
+						edit: "ask",
+						bash: "ask",
+						webfetch: "deny",
+						websearch: "deny",
+						external_directory: "deny",
+					},
+					// Without it a refused tool ends the turn, so a read-only run rarely reaches its report (#639 finding 1).
+					experimental: { continue_loop_on_deny: true },
 					share: "disabled",
 				},
 				null,
@@ -130,6 +143,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "claude-agent-acp",
 		acpArgs: () => [],
 		acpEnv: ({ dataDir }) => ({ CLAUDE_CONFIG_DIR: dataDir }),
+		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
+		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
 		// Anthropic SDK default env var (docs.anthropic.com). CLAUDE_CONFIG_DIR above is the
 		// empty per-run dir, so a `claude login` stored in the user's home is not visible.
 		providerKeys: ["ANTHROPIC_API_KEY"],

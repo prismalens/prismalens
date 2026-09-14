@@ -195,6 +195,7 @@ async function runJobInternal(
 					const line = chunk.trimEnd();
 					if (line) logger.debug(`harness stderr: ${line}`);
 				},
+				onPolicyWarning: (message) => logger.warn(message),
 				signal: io.signal,
 			},
 			{ sink, store },

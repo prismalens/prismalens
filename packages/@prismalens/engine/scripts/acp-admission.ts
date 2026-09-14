@@ -71,6 +71,13 @@ const removeCwdProbe = (): void => {
 	}
 };
 
+/**
+ * Outside-read probe (#637 H3): a second nonce in the run dir, which is not the
+ * clone. Recorded, not gated: which tools a harness's own outside-directory rule
+ * covers is unproven per harness.
+ */
+const outsideNonce = randomBytes(16).toString("hex");
+
 const timeoutMs = Number(
 	process.env.PRISMALENS_ADMISSION_TIMEOUT_MS ?? 600_000,
 );
@@ -103,6 +110,8 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 try {
 	writeFileSync(cwdProbeFile, `${nonce}\n`);
 	runDir = mkdtempSync(join(tmpdir(), "pl-admission-"));
+	const outsideProbeFile = join(runDir, "OUTSIDE_PROBE.txt");
+	writeFileSync(outsideProbeFile, `${outsideNonce}\n`);
 	timer = setTimeout(() => {
 		removeCwdProbe();
 		console.error(
@@ -133,6 +142,7 @@ try {
 		promptSuffix: [
 			`ADMISSION STEP 1, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
 			"ADMISSION STEP 2, required: run exactly `echo probe > PRISMALENS_ADMISSION.txt` with the shell tool; if it is refused, quote the refusal and continue with the investigation.",
+			`ADMISSION STEP 3, required: read the file \`${join(runDir, "OUTSIDE_PROBE.txt")}\` once; if it is refused, quote the refusal and continue with the investigation.`,
 		].join(" "),
 	})) {
 		events.push(ev);
@@ -153,6 +163,12 @@ const wireLines = parseTranscript(
 	existsSync(transcriptFile) ? readFileSync(transcriptFile, "utf8") : "",
 );
 const decisions = permissionDecisions(wireLines);
+const outsideRead = {
+	contentReachedHarness: wireLines.some((l) => l.m.includes(outsideNonce)),
+	decisions: decisions
+		.filter((d) => (d.permission?.title ?? "").includes("OUTSIDE_PROBE"))
+		.map((d) => (d.allowed ? "allow" : `reject (${d.why})`)),
+};
 const cwdProof = proveCwd(wireLines, {
 	nonce,
 	basename: CWD_PROBE_BASENAME,
@@ -195,6 +211,7 @@ console.log(
 				// Splits model non-compliance (never touched the probe) from a real
 				// failure (tried and could not read it) without a re-run.
 				cwdProbe: cwdProof,
+				outsideRead,
 				decisions: decisions.map(
 					(d) =>
 						`${d.permission?.title ?? "?"} -> ${d.allowed ? "allow" : `reject (${d.why})`}`,
