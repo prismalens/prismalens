@@ -6,7 +6,8 @@
 // picked by FAKE_ACP_MODE: "ok" (valid report first try), "retry" (invalid then
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
 // runs), "hang" (never answers the handshake — a doctor-probe timeout),
-// "unauthenticated" (exits immediately with a stderr line), or "auth-required"
+// "unauthenticated" (exits immediately with a stderr line), "print-env" (exits
+// naming which of FAKE_ENV_PROBE's comma-separated vars it received), or "auth-required"
 // (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
@@ -16,6 +17,13 @@ const cwd = process.cwd();
 
 if (mode === "unauthenticated") {
 	process.stderr.write("Error: not logged in\n");
+	process.exit(1);
+}
+if (mode === "print-env") {
+	const seen = (process.env.FAKE_ENV_PROBE ?? "")
+		.split(",")
+		.map((k) => `${k}=${process.env[k] === undefined ? "unset" : "set"}`);
+	process.stderr.write(`env ${seen.join(" ")}\n`);
 	process.exit(1);
 }
 // "hang": never reads/responds. The client's initTimeoutMs is what ends this.

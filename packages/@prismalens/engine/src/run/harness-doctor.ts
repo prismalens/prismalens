@@ -14,6 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
@@ -106,7 +107,7 @@ export async function probeHarness(
 			descriptor,
 			cwd,
 			runDir,
-			env: process.env,
+			env: getHarnessProviderKeys(harness, process.env),
 		});
 		const session = new AcpSession({
 			command: descriptor.binary,

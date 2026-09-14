@@ -76,4 +76,27 @@ describe("probeHarness", () => {
 		expect(result.detail).toMatch(/^failed to start: .*not logged in/);
 		expect(result.detail).not.toMatch(/\n/);
 	});
+
+	it("hands the harness only its provider keys, like the investigation run (ADR 0004 §5)", async () => {
+		const planted = {
+			AWS_SECRET_ACCESS_KEY: "planted-aws",
+			ANTHROPIC_API_KEY: "planted-anthropic",
+		};
+		Object.assign(process.env, planted);
+		try {
+			const result = await probeHarness("claude-code", {
+				descriptor: {
+					...descriptor("print-env"),
+					acpEnv: () => ({
+						FAKE_ACP_MODE: "print-env",
+						FAKE_ENV_PROBE: Object.keys(planted).join(","),
+					}),
+				},
+			});
+			expect(result.detail).toMatch(/AWS_SECRET_ACCESS_KEY=unset/);
+			expect(result.detail).toMatch(/ANTHROPIC_API_KEY=set/);
+		} finally {
+			for (const key of Object.keys(planted)) delete process.env[key];
+		}
+	});
 });
