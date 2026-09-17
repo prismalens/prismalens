@@ -40,7 +40,7 @@ import {
 	rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -425,9 +425,13 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 			`report for investigation ${investigation.id} cites no file path in any evidence source`,
 		);
 	}
-	const missing = [...cited].filter(
-		(p) => !existsSync(p.startsWith("/") ? p : join(REPO, p)),
-	);
+	// A path counts only inside REPO: an absolute path or a `..` escape is
+	// "missing" however real the file it names.
+	const root = resolve(REPO) + sep;
+	const missing = [...cited].filter((p) => {
+		const abs = resolve(REPO, p);
+		return !abs.startsWith(root) || !existsSync(abs);
+	});
 	if (missing.length > 0) {
 		throw new Error(
 			`report cites paths that do not exist in ${REPO}: ${missing.join(", ")}`,
