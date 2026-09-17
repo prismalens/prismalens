@@ -239,34 +239,4 @@ export class InvestigationUpdateService {
 			reason: `Restarted due to critical alert: ${event.alert.title}`,
 		});
 	}
-
-	/**
-	 * Handle investigation completed - check for pending re-investigation
-	 */
-	@OnEvent("investigation.completed")
-	async handleInvestigationCompleted(
-		investigation: Investigation,
-	): Promise<void> {
-		this.logger.debug(`Investigation ${investigation.id} completed`);
-
-		// Get incident with service
-		const incident = await this.prisma.incident.findUnique({
-			where: { id: investigation.incidentId },
-			include: { service: true },
-		});
-
-		if (!incident) {
-			return;
-		}
-
-		// Check if re-investigation needed
-		const decision = await this.triggerService.shouldReInvestigate(incident, 0);
-
-		if (decision.shouldTrigger) {
-			this.logger.log(
-				`Re-triggering investigation for incident ${incident.number}: ${decision.reason}`,
-			);
-			await this.triggerService.triggerInvestigation(incident, decision);
-		}
-	}
 }

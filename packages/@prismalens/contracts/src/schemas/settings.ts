@@ -82,18 +82,19 @@ export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
 // INVESTIGATION POLICIES
 // =============================================================================
 
-// Auto-investigate modes
-export const AutoInvestigateModeSchema = z.enum([
+/**
+ * Per-service auto-investigation policy, stored under the service's
+ * `metadata.investigation.trigger` and read by the API's trigger service when an
+ * alert lands on an incident. A service without one uses the default.
+ */
+export const TriggerPolicySchema = z.enum([
 	"always",
-	"critical_high",
-	"manual",
+	"critical_and_high",
+	"critical_only",
 	"never",
 ]);
-export type AutoInvestigateMode = z.infer<typeof AutoInvestigateModeSchema>;
-
-// Tier values
-export const TierSchema = z.enum(["tier_1", "tier_2", "tier_3", "tier_4"]);
-export type Tier = z.infer<typeof TierSchema>;
+export type TriggerPolicy = z.infer<typeof TriggerPolicySchema>;
+export const DEFAULT_TRIGGER_POLICY: TriggerPolicy = "critical_and_high";
 
 // =============================================================================
 // INVESTIGATION TRIGGERS
@@ -112,56 +113,6 @@ export const InvestigationTriggerTypeSchema = z.enum([
 ]);
 export type InvestigationTriggerType = z.infer<
 	typeof InvestigationTriggerTypeSchema
->;
-
-/**
- * Per-tier investigation trigger configuration
- * Based on BigPanda pattern: critical incidents need immediate attention
- */
-export const InvestigationTriggerSchema = z.object({
-	/** Service tier this trigger applies to */
-	tier: TierSchema,
-	/** When to auto-investigate */
-	autoInvestigate: AutoInvestigateModeSchema,
-	/** Number of alerts before triggering investigation (1-100) */
-	triggerOnAlertCount: z.number().int().min(1).max(100).default(3),
-	/** Severities that trigger auto-investigation */
-	triggerOnSeverities: z
-		.array(z.enum(["critical", "high"]))
-		.default(["critical"]),
-	/** Delay in minutes before triggering (to allow alert correlation) */
-	triggerDelayMinutes: z.number().int().min(0).max(60).default(5),
-	/** Re-investigate when new alerts are added after completion */
-	reInvestigateOnNewAlerts: z.boolean().default(false),
-	/** Number of new alerts to trigger re-investigation */
-	reInvestigateThreshold: z.number().int().min(1).max(50).default(5),
-});
-export type InvestigationTrigger = z.infer<typeof InvestigationTriggerSchema>;
-
-/**
- * All investigation triggers response
- */
-export const AllInvestigationTriggersSchema = z.object({
-	triggers: z.array(InvestigationTriggerSchema),
-});
-export type AllInvestigationTriggers = z.infer<
-	typeof AllInvestigationTriggersSchema
->;
-
-/**
- * Update investigation trigger input
- */
-export const UpdateInvestigationTriggerSchema = z.object({
-	tier: TierSchema,
-	autoInvestigate: AutoInvestigateModeSchema.optional(),
-	triggerOnAlertCount: z.number().int().min(1).max(100).optional(),
-	triggerOnSeverities: z.array(z.enum(["critical", "high"])).optional(),
-	triggerDelayMinutes: z.number().int().min(0).max(60).optional(),
-	reInvestigateOnNewAlerts: z.boolean().optional(),
-	reInvestigateThreshold: z.number().int().min(1).max(50).optional(),
-});
-export type UpdateInvestigationTrigger = z.infer<
-	typeof UpdateInvestigationTriggerSchema
 >;
 
 /**

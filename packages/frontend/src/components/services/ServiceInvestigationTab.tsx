@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import {
+	DEFAULT_TRIGGER_POLICY,
+	type TriggerPolicy,
+} from "@prismalens/contracts";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +13,6 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateService } from "@/lib/api/hooks";
-
-type TriggerPolicy = "always" | "critical_and_high" | "critical_only" | "never";
 
 interface InvestigationPolicy {
 	trigger: TriggerPolicy;
@@ -38,7 +40,7 @@ function parseInvestigationPolicy(
 		| undefined;
 
 	return {
-		trigger: investigation?.trigger ?? "critical_and_high",
+		trigger: investigation?.trigger ?? DEFAULT_TRIGGER_POLICY,
 		context: investigation?.context ?? "",
 		requireApproval: investigation?.requireApproval ?? true,
 	};
