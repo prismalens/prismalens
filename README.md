@@ -10,7 +10,8 @@ reads the repo, queries your read-only telemetry, and comes back with an
 **ordered-evidence report** — hypotheses ranked most to least plausible, each
 backed by evidence it actually gathered, with no fake numeric confidence
 scores. It's open source (Apache-2.0), local-first, and BYO-key — no
-PrismaLens account, no subscription.
+PrismaLens account, no subscription. Before you run it on your machine, read
+**[what PrismaLens reads and never does](https://docs.prismalens.io/trust/)**.
 
 ## Quick start
 
