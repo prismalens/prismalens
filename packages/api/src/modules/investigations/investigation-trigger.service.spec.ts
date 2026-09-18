@@ -5,7 +5,6 @@ import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { SettingsService } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { ALERT_CORRELATED_EVENT } from "../../shared/events/investigation-events.js";
@@ -14,14 +13,14 @@ import { TimelineService } from "../timeline/timeline.service.js";
 import { InvestigationsService } from "./investigations.service.js";
 import {
 	InvestigationTriggerService,
-	type TriggerConfig,
+	NO_SERVICE_REASON,
+	readTriggerPolicy,
 	type TriggerDecision,
 } from "./investigation-trigger.service.js";
 
 describe("InvestigationTriggerService", () => {
 	let service: InvestigationTriggerService;
 	let prisma: PrismaService;
-	let settingsService: SettingsService;
 	let dispatchService: DispatchService;
 	let integrationsService: IntegrationsService;
 	let timelineService: TimelineService;
@@ -40,10 +39,6 @@ describe("InvestigationTriggerService", () => {
 		incident: {
 			findUnique: vi.fn(),
 		},
-	};
-
-	const mockSettingsService = {
-		getInvestigationPolicies: vi.fn(),
 	};
 
 	const mockDispatchService = {
@@ -73,7 +68,6 @@ describe("InvestigationTriggerService", () => {
 			providers: [
 				InvestigationTriggerService,
 				{ provide: PrismaService, useValue: mockPrisma },
-				{ provide: SettingsService, useValue: mockSettingsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: IntegrationsService, useValue: mockIntegrationsService },
 				{ provide: TimelineService, useValue: mockTimelineService },
@@ -83,111 +77,136 @@ describe("InvestigationTriggerService", () => {
 
 		service = moduleRef.get(InvestigationTriggerService);
 		prisma = moduleRef.get(PrismaService);
-		settingsService = moduleRef.get(SettingsService);
 		dispatchService = moduleRef.get(DispatchService);
 		integrationsService = moduleRef.get(IntegrationsService);
 		timelineService = moduleRef.get(TimelineService);
 	});
 
-	describe("getTriggerConfig", () => {
-		it("should return merged policy from settings service", async () => {
-			mockSettingsService.getInvestigationPolicies.mockResolvedValue({
-				policies: [
-					{
-						tier: "tier_1",
-						autoInvestigate: "always",
-						triggerOnAlertCount: 10,
-						triggerOnSeverities: ["critical"],
-						triggerDelayMinutes: 5,
-						reInvestigateOnNewAlerts: false,
-						reInvestigateThreshold: 5,
-					},
-				],
-			});
-
-			const config = await service.getTriggerConfig("tier_1");
-			expect(config.tier).toBe("tier_1");
-			expect(config.autoInvestigate).toBe("always");
-			expect(config.triggerOnAlertCount).toBe(10);
+	describe("readTriggerPolicy", () => {
+		it("defaults when the service has no metadata", () => {
+			expect(readTriggerPolicy(null)).toBe("critical_and_high");
 		});
 
-		it("should return default if tier not found", async () => {
-			mockSettingsService.getInvestigationPolicies.mockResolvedValue({
-				policies: [],
-			});
+		it("reads the service's own policy", () => {
+			expect(
+				readTriggerPolicy(JSON.stringify({ investigation: { trigger: "never" } })),
+			).toBe("never");
+		});
 
-			const config = await service.getTriggerConfig("tier_unknown");
-			expect(config.tier).toBe("tier_3");
+		it("defaults on an unknown value or unparseable metadata", () => {
+			expect(
+				readTriggerPolicy(JSON.stringify({ investigation: { trigger: "sometimes" } })),
+			).toBe("critical_and_high");
+			expect(readTriggerPolicy("{not json")).toBe("critical_and_high");
 		});
 	});
 
 	describe("shouldTriggerInvestigation", () => {
-		const baseIncident = {
-			id: "inc-1",
-			number: 1,
-			alertCount: 1,
-		} as unknown as Incident & { service?: Service | null };
+		const withPolicy = (
+			trigger: string | undefined,
+			severity: string,
+			alertCount = 1,
+		) =>
+			({
+				id: "inc-1",
+				number: 1,
+				alertCount,
+				severity,
+				service: {
+					id: "srv-1",
+					name: "svc",
+					metadata: trigger
+						? JSON.stringify({ investigation: { trigger } })
+						: null,
+				},
+			}) as unknown as Incident & { service?: Service | null };
 
-		it("should return false if autoInvestigate is never", async () => {
-			vi.spyOn(service, "getTriggerConfig").mockResolvedValue({
-				autoInvestigate: "never",
-			} as unknown as TriggerConfig);
-			const decision = await service.shouldTriggerInvestigation(baseIncident);
-			expect(decision.shouldTrigger).toBe(false);
-		});
-
-		it("should return false if investigation already pending/running", async () => {
-			vi.spyOn(service, "getTriggerConfig").mockResolvedValue({
-				autoInvestigate: "always",
-				triggerDelayMinutes: 0,
-			} as unknown as TriggerConfig);
-			mockPrisma.investigation.findFirst.mockResolvedValue({ id: "inv-1" });
-			const decision = await service.shouldTriggerInvestigation(baseIncident);
-			expect(decision.shouldTrigger).toBe(false);
-			expect(decision.reason).toContain("already in progress");
-		});
-
-		it("should return true for always (auto_tier)", async () => {
-			vi.spyOn(service, "getTriggerConfig").mockResolvedValue({
-				autoInvestigate: "always",
-				triggerDelayMinutes: 0,
-			} as unknown as TriggerConfig);
+		beforeEach(() => {
 			mockPrisma.investigation.findFirst.mockResolvedValue(null);
-			const decision = await service.shouldTriggerInvestigation(baseIncident);
-			expect(decision.shouldTrigger).toBe(true);
-			expect(decision.triggerType).toBe("auto_tier");
 		});
 
-		it("should return true for critical_high with matching severity", async () => {
-			vi.spyOn(service, "getTriggerConfig").mockResolvedValue({
-				autoInvestigate: "critical_high",
-				triggerOnSeverities: ["critical"],
-				triggerDelayMinutes: 0,
-			} as unknown as TriggerConfig);
-			mockPrisma.investigation.findFirst.mockResolvedValue(null);
-			const incident = {
-				...baseIncident,
+		it("never triggers without a service, and says why", async () => {
+			const decision = await service.shouldTriggerInvestigation({
+				id: "inc-1",
+				number: 1,
+				alertCount: 1,
 				severity: "critical",
-			} as unknown as Incident & { service?: Service | null };
-			const decision = await service.shouldTriggerInvestigation(incident);
+				service: null,
+			} as unknown as Incident & { service?: Service | null });
+			expect(decision.shouldTrigger).toBe(false);
+			expect(decision.reason).toBe(NO_SERVICE_REASON);
+		});
+
+		it("triggers a high alert on a service with no policy set (the default)", async () => {
+			const decision = await service.shouldTriggerInvestigation(
+				withPolicy(undefined, "high"),
+			);
 			expect(decision.shouldTrigger).toBe(true);
 			expect(decision.triggerType).toBe("auto_critical");
 		});
 
-		it("should return false for critical_high with non-matching severity", async () => {
-			vi.spyOn(service, "getTriggerConfig").mockResolvedValue({
-				autoInvestigate: "critical_high",
-				triggerOnSeverities: ["critical"],
-				triggerOnAlertCount: 999,
-				triggerDelayMinutes: 0,
-			} as unknown as TriggerConfig);
-			mockPrisma.investigation.findFirst.mockResolvedValue(null);
-			const incident = {
-				...baseIncident,
-				severity: "high",
-			} as unknown as Incident & { service?: Service | null };
-			const decision = await service.shouldTriggerInvestigation(incident);
+		it("does not trigger a medium alert under the default", async () => {
+			const decision = await service.shouldTriggerInvestigation(
+				withPolicy(undefined, "medium"),
+			);
 			expect(decision.shouldTrigger).toBe(false);
+		});
+
+		it("critical_only ignores high", async () => {
+			const decision = await service.shouldTriggerInvestigation(
+				withPolicy("critical_only", "high"),
+			);
+			expect(decision.shouldTrigger).toBe(false);
+		});
+
+		it("always triggers on any severity", async () => {
+			const decision = await service.shouldTriggerInvestigation(
+				withPolicy("always", "low"),
+			);
+			expect(decision.shouldTrigger).toBe(true);
+			expect(decision.triggerType).toBe("auto_tier");
+		});
+
+		it("never is off even for critical", async () => {
+			const decision = await service.shouldTriggerInvestigation(
+				withPolicy("never", "critical"),
+			);
+			expect(decision.shouldTrigger).toBe(false);
+			expect(mockPrisma.investigation.findFirst).not.toHaveBeenCalled();
+		});
+
+		it("does not start a second run while one is pending or running", async () => {
+			mockPrisma.investigation.findFirst.mockResolvedValue({ id: "inv-1" });
+			const decision = await service.shouldTriggerInvestigation(
+				withPolicy(undefined, "critical"),
+			);
+			expect(decision.shouldTrigger).toBe(false);
+			expect(decision.reason).toContain("already in progress");
+		});
+	});
+
+	describe("onAlertCorrelated", () => {
+		it("writes one timeline hint on the first alert of a service-less incident", async () => {
+			const incident = {
+				id: "inc-1",
+				number: 1,
+				alertCount: 1,
+				severity: "critical",
+				service: null,
+			} as unknown as Incident & { service?: Service | null };
+			await service.onAlertCorrelated({ id: "a1" } as unknown as Alert, incident);
+			expect(mockTimelineService.create).toHaveBeenCalledTimes(1);
+			expect(mockTimelineService.create.mock.calls[0][0].description).toBe(
+				NO_SERVICE_REASON,
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+
+			mockTimelineService.create.mockClear();
+			await service.onAlertCorrelated({ id: "a2" } as unknown as Alert, {
+				...incident,
+				alertCount: 2,
+			});
+			expect(mockTimelineService.create).not.toHaveBeenCalled();
 		});
 	});
 

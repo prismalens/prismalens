@@ -16,10 +16,14 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
-import { toFiringAlert } from "@prismalens/contracts";
+import {
+	DEFAULT_TRIGGER_POLICY,
+	type TriggerPolicy,
+	TriggerPolicySchema,
+	toFiringAlert,
+} from "@prismalens/contracts";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { SettingsService } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import {
@@ -44,62 +48,33 @@ export interface TriggerDecision {
 		| "re_trigger"
 		| null;
 	reason: string | null;
-	delay?: number; // Delay in milliseconds before triggering
 }
 
-/**
- * Investigation trigger configuration (per tier)
- */
-export interface TriggerConfig {
-	tier: string;
-	autoInvestigate: "always" | "critical_high" | "manual" | "never";
-	triggerOnAlertCount: number;
-	triggerOnSeverities: ("critical" | "high")[];
-	triggerDelayMinutes: number;
-	reInvestigateOnNewAlerts: boolean;
-	reInvestigateThreshold: number;
+export const NO_SERVICE_REASON =
+	"The incident has no service, so there is no repository to investigate. Alerts reach a service through a `service` label whose value is the service's name; add it to the alert, or pick the service on the incident and press Investigate.";
+
+/** The service's own policy from `metadata.investigation.trigger`; the default when absent or invalid. */
+export function readTriggerPolicy(metadata: string | null): TriggerPolicy {
+	if (!metadata) return DEFAULT_TRIGGER_POLICY;
+	try {
+		const parsed = JSON.parse(metadata) as {
+			investigation?: { trigger?: unknown };
+		};
+		const result = TriggerPolicySchema.safeParse(
+			parsed?.investigation?.trigger,
+		);
+		return result.success ? result.data : DEFAULT_TRIGGER_POLICY;
+	} catch {
+		return DEFAULT_TRIGGER_POLICY;
+	}
 }
 
-/**
- * Default trigger configurations by tier
- */
-const DEFAULT_TRIGGER_CONFIGS: Record<string, TriggerConfig> = {
-	tier_1: {
-		tier: "tier_1",
-		autoInvestigate: "critical_high",
-		triggerOnAlertCount: 3,
-		triggerOnSeverities: ["critical", "high"],
-		triggerDelayMinutes: 2,
-		reInvestigateOnNewAlerts: true,
-		reInvestigateThreshold: 3,
-	},
-	tier_2: {
-		tier: "tier_2",
-		autoInvestigate: "critical_high",
-		triggerOnAlertCount: 5,
-		triggerOnSeverities: ["critical"],
-		triggerDelayMinutes: 5,
-		reInvestigateOnNewAlerts: false,
-		reInvestigateThreshold: 5,
-	},
-	tier_3: {
-		tier: "tier_3",
-		autoInvestigate: "manual",
-		triggerOnAlertCount: 10,
-		triggerOnSeverities: ["critical"],
-		triggerDelayMinutes: 10,
-		reInvestigateOnNewAlerts: false,
-		reInvestigateThreshold: 10,
-	},
-	tier_4: {
-		tier: "tier_4",
-		autoInvestigate: "never",
-		triggerOnAlertCount: 20,
-		triggerOnSeverities: [],
-		triggerDelayMinutes: 15,
-		reInvestigateOnNewAlerts: false,
-		reInvestigateThreshold: 20,
-	},
+const SEVERITIES_FOR_POLICY: Record<
+	Exclude<TriggerPolicy, "always" | "never">,
+	readonly string[]
+> = {
+	critical_and_high: ["critical", "high"],
+	critical_only: ["critical"],
 };
 
 @Injectable()
@@ -108,7 +83,6 @@ export class InvestigationTriggerService {
 
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly settingsService: SettingsService,
 		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
 		@Inject(forwardRef(() => TimelineService))
@@ -117,58 +91,34 @@ export class InvestigationTriggerService {
 	) {}
 
 	/**
-	 * Get trigger configuration for a service tier
-	 */
-	async getTriggerConfig(tier: string): Promise<TriggerConfig> {
-		const { policies } = await this.settingsService.getInvestigationPolicies();
-		const policy = policies.find((p) => p.tier === tier);
-		if (!policy) {
-			return DEFAULT_TRIGGER_CONFIGS[tier] ?? DEFAULT_TRIGGER_CONFIGS.tier_3;
-		}
-		const fallback =
-			DEFAULT_TRIGGER_CONFIGS[tier] ?? DEFAULT_TRIGGER_CONFIGS.tier_3;
-		return {
-			tier: policy.tier,
-			autoInvestigate: policy.autoInvestigate,
-			triggerOnAlertCount:
-				policy.triggerOnAlertCount ?? fallback.triggerOnAlertCount,
-			triggerOnSeverities:
-				policy.triggerOnSeverities ?? fallback.triggerOnSeverities,
-			triggerDelayMinutes:
-				policy.triggerDelayMinutes ?? fallback.triggerDelayMinutes,
-			reInvestigateOnNewAlerts:
-				policy.reInvestigateOnNewAlerts ?? fallback.reInvestigateOnNewAlerts,
-			reInvestigateThreshold:
-				policy.reInvestigateThreshold ?? fallback.reInvestigateThreshold,
-		};
-	}
-
-	/**
-	 * Determine if an investigation should be triggered for an incident
+	 * Whether an alert landing on this incident starts an investigation, by the
+	 * service's own policy. No service means no repository, so never.
 	 */
 	async shouldTriggerInvestigation(
 		incident: Incident & { service?: Service | null },
 	): Promise<TriggerDecision> {
-		const serviceTier = incident.service?.tier || "tier_3";
-		const config = await this.getTriggerConfig(serviceTier);
-
-		// Check if auto-investigation is disabled
-		if (config.autoInvestigate === "never") {
+		if (!incident.service) {
 			return {
 				shouldTrigger: false,
 				triggerType: null,
-				reason: "Auto-investigation disabled for this tier",
+				reason: NO_SERVICE_REASON,
+			};
+		}
+		const policy = readTriggerPolicy(incident.service.metadata);
+		if (policy === "never") {
+			return {
+				shouldTrigger: false,
+				triggerType: null,
+				reason: "Auto-investigation is off for this service",
 			};
 		}
 
-		// Check if investigation already running
 		const existingInvestigation = await this.prisma.investigation.findFirst({
 			where: {
 				incidentId: incident.id,
 				status: { in: ["pending", "running"] },
 			},
 		});
-
 		if (existingInvestigation) {
 			return {
 				shouldTrigger: false,
@@ -177,49 +127,24 @@ export class InvestigationTriggerService {
 			};
 		}
 
-		// Check severity-based trigger
-		if (config.autoInvestigate === "always") {
+		if (policy === "always") {
 			return {
 				shouldTrigger: true,
 				triggerType: "auto_tier",
-				reason: `Auto-investigation enabled for ${serviceTier}`,
-				delay: config.triggerDelayMinutes * 60 * 1000,
+				reason: "Auto-investigation policy: always",
 			};
 		}
-
-		if (config.autoInvestigate === "critical_high") {
-			const severity = incident.severity as
-				| "critical"
-				| "high"
-				| "medium"
-				| "low"
-				| "info";
-			if (
-				config.triggerOnSeverities.includes(severity as "critical" | "high")
-			) {
-				return {
-					shouldTrigger: true,
-					triggerType: "auto_critical",
-					reason: `Auto-triggered for ${severity} severity incident on ${serviceTier} service`,
-					delay: config.triggerDelayMinutes * 60 * 1000,
-				};
-			}
-		}
-
-		// Check alert count threshold
-		if (incident.alertCount >= config.triggerOnAlertCount) {
+		if (SEVERITIES_FOR_POLICY[policy].includes(incident.severity)) {
 			return {
 				shouldTrigger: true,
-				triggerType: "alert_threshold",
-				reason: `Alert count (${incident.alertCount}) reached threshold (${config.triggerOnAlertCount})`,
-				delay: config.triggerDelayMinutes * 60 * 1000,
+				triggerType: "auto_critical",
+				reason: `Auto-investigation policy: ${policy}, incident severity ${incident.severity}`,
 			};
 		}
-
 		return {
 			shouldTrigger: false,
 			triggerType: null,
-			reason: "No trigger conditions met",
+			reason: `Incident severity ${incident.severity} is below the service's policy (${policy})`,
 		};
 	}
 
@@ -256,6 +181,22 @@ export class InvestigationTriggerService {
 		const decision = await this.shouldTriggerInvestigation(incident);
 
 		if (!decision.shouldTrigger) {
+			if (decision.reason === NO_SERVICE_REASON) {
+				this.logger.warn(
+					`No auto-investigation for incident ${incident.number}: ${NO_SERVICE_REASON}`,
+				);
+				if (incident.alertCount <= 1) {
+					await this.timelineService.create({
+						incidentId: incident.id,
+						type: TimelineEntryType.custom,
+						title: "Auto-investigation skipped: no service",
+						description: NO_SERVICE_REASON,
+						source: TimelineSource.system,
+						metadata: {},
+					});
+				}
+				return;
+			}
 			this.logger.debug(
 				`No auto-investigation for incident ${incident.number}: ${decision.reason}`,
 			);
@@ -267,82 +208,6 @@ export class InvestigationTriggerService {
 		);
 
 		await this.triggerInvestigation(incident, decision);
-	}
-
-	/**
-	 * Check if a completed investigation should be re-triggered due to new alerts
-	 */
-	async shouldReInvestigate(
-		incident: Incident & { service?: Service | null },
-		_newAlertCount: number,
-	): Promise<TriggerDecision> {
-		const serviceTier = incident.service?.tier || "tier_3";
-		const config = await this.getTriggerConfig(serviceTier);
-
-		if (!config.reInvestigateOnNewAlerts) {
-			return {
-				shouldTrigger: false,
-				triggerType: null,
-				reason: "Re-investigation disabled for this tier",
-			};
-		}
-
-		// Check if there's a completed investigation
-		const lastInvestigation = await this.prisma.investigation.findFirst({
-			where: {
-				incidentId: incident.id,
-				status: "completed",
-			},
-			orderBy: { completedAt: "desc" },
-		});
-
-		if (!lastInvestigation) {
-			return {
-				shouldTrigger: false,
-				triggerType: null,
-				reason: "No completed investigation found",
-			};
-		}
-
-		// Count alerts added since investigation completed
-		const alertsSinceCompletion = await this.prisma.alert.count({
-			where: {
-				incidentId: incident.id,
-				createdAt: { gt: lastInvestigation.completedAt! },
-			},
-		});
-
-		if (alertsSinceCompletion >= config.reInvestigateThreshold) {
-			return {
-				shouldTrigger: true,
-				triggerType: "re_trigger",
-				reason: `${alertsSinceCompletion} new alerts since last investigation (threshold: ${config.reInvestigateThreshold})`,
-			};
-		}
-
-		return {
-			shouldTrigger: false,
-			triggerType: null,
-			reason: `Not enough new alerts (${alertsSinceCompletion}/${config.reInvestigateThreshold})`,
-		};
-	}
-
-	/**
-	 * Schedule a delayed trigger check (allows more alerts to correlate)
-	 */
-	async scheduleDelayedTriggerCheck(
-		incident: Incident,
-		delayMs: number,
-	): Promise<void> {
-		// TODO: enqueue a delayed job (the JobStore's `runAt` already carries the delay)
-		// For now, log the intent
-		this.logger.debug(
-			`Would schedule trigger check for incident ${incident.number} in ${delayMs}ms`,
-		);
-
-		// In a real implementation, this would enqueue a job whose `runAt` is
-		// `now + delayMs` — the JobStore already carries scheduled-time claiming, so
-		// this needs a job kind, not new machinery.
 	}
 
 	/**

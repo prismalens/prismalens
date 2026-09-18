@@ -15,12 +15,19 @@
  * bearer token, asserts an open incident carries that alert's fingerprint,
  * POSTs the resolved payload, asserts the incident resolves.
  *
+ * With PACKED_INTAKE_REPO=<git checkout> and a harness on PATH it goes one step
+ * further: the alert carries a `service` label naming a service mapped to that
+ * checkout, and the script asserts the app started an investigation on its own
+ * and completed it with a report whose cited paths exist. No human creates an
+ * incident or presses Investigate (the unattended gate, prismalens#337).
+ *
  * Usage: packed-intake.mjs <dir-with-tarball>
  *   The dir must hold the single published tarball from
  *   `node scripts/pack-cli.mjs` — the SAME artifact packed-smoke verifies.
  *   PRISMALENS_TARBALL overrides with an exact path (CI reuse).
  *
- * Env: PACKED_INTAKE_PORT (default 3102).
+ * Env: PACKED_INTAKE_PORT (default 3102). PACKED_INTAKE_REPO (optional, see
+ * above); PRISMALENS_HARNESS_MODEL (optional, the model id set on the harness).
  */
 import { execFileSync, spawn } from "node:child_process";
 import {
@@ -33,11 +40,15 @@ import {
 	rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
 const FETCH_TIMEOUT_MS = 10_000;
+const REPO = process.env.PACKED_INTAKE_REPO
+	? resolve(process.env.PACKED_INTAKE_REPO)
+	: null;
+const SERVICE_NAME = "packed-intake";
 const EMAIL = "intake@prismalens.test";
 const PASSWORD = "packed-intake-12345";
 
@@ -187,6 +198,8 @@ async function main() {
 	const cookie = setCookie.map((c) => c.split(";")[0]).join("; ");
 	console.log("[packed-intake] OK   POST /api/auth/sign-in/email");
 
+	if (REPO) await mapRepository(json, cookie);
+
 	// --- the firing delivery ---------------------------------------------------
 	const fingerprint = `packed-intake-${Date.now()}`;
 	const nowIso = new Date().toISOString();
@@ -195,8 +208,20 @@ async function main() {
 		alerts: [
 			{
 				status: "firing",
-				labels: { alertname: "PackedIntakeProbe", severity: "critical" },
-				annotations: { summary: "Synthetic alert for the packed intake e2e" },
+				labels: {
+					alertname: "PackedIntakeProbe",
+					severity: "critical",
+					...(REPO ? { service: SERVICE_NAME } : {}),
+				},
+				annotations: {
+					summary: "Synthetic alert for the packed intake e2e",
+					...(REPO
+						? {
+								description:
+									"POST /api/webhooks/prometheus answers 500 when the bearer token file under the workspace is empty. Find the cause.",
+							}
+						: {}),
+				},
 				startsAt: nowIso,
 				fingerprint,
 			},
@@ -235,6 +260,8 @@ async function main() {
 	console.log(
 		`[packed-intake] OK   open incident #${openIncident.number} carries the alert`,
 	);
+
+	if (REPO) await assertUnattendedInvestigation(json, cookie, openIncident);
 
 	// --- the resolved delivery --------------------------------------------------
 	const resolved = {
@@ -286,6 +313,154 @@ async function main() {
 	);
 
 	console.log("PACKED INTAKE OK");
+}
+
+/** A service named by the alert's `service` label, pointed at REPO. */
+async function mapRepository(json, cookie) {
+	const model = process.env.PRISMALENS_HARNESS_MODEL;
+	if (model) {
+		const res = await json("/api/settings/harness", {
+			method: "PATCH",
+			headers: { cookie },
+			body: JSON.stringify({ harness: "auto", model }),
+		});
+		if (res.status !== 200) {
+			throw new Error(
+				`PATCH /api/settings/harness failed: status ${res.status}: ${(await res.text()).slice(0, 200)}`,
+			);
+		}
+		console.log(
+			`[packed-intake] OK   PATCH /api/settings/harness model=${model}`,
+		);
+	}
+
+	const serviceRes = await json("/api/services", {
+		method: "POST",
+		headers: { cookie },
+		body: JSON.stringify({ name: SERVICE_NAME }),
+	});
+	if (serviceRes.status < 200 || serviceRes.status >= 300) {
+		throw new Error(
+			`POST /api/services failed: status ${serviceRes.status}: ${(await serviceRes.text()).slice(0, 200)}`,
+		);
+	}
+	const service = await serviceRes.json();
+	console.log(`[packed-intake] OK   POST /api/services (${service.id})`);
+
+	const repoRes = await json("/api/repositories/source", {
+		method: "POST",
+		headers: { cookie },
+		body: JSON.stringify({ serviceId: service.id, source: REPO }),
+	});
+	if (repoRes.status < 200 || repoRes.status >= 300) {
+		throw new Error(
+			`POST /api/repositories/source failed: status ${repoRes.status}: ${(await repoRes.text()).slice(0, 200)}`,
+		);
+	}
+	console.log(`[packed-intake] OK   POST /api/repositories/source (${REPO})`);
+}
+
+/**
+ * The app must start an investigation for the incident by itself and finish it
+ * with a report. Every path the report cites must exist in REPO.
+ */
+async function assertUnattendedInvestigation(json, cookie, incident) {
+	const investigation = await pollUntil(
+		async () => {
+			const res = await json("/api/investigations?limit=50", {
+				headers: { cookie },
+			});
+			if (res.status !== 200) return undefined;
+			const body = await res.json();
+			return (body.data ?? []).find((inv) => inv.incidentId === incident.id);
+		},
+		(inv) => inv !== undefined,
+		60_000,
+	);
+	if (!investigation) {
+		throw new Error(
+			`no investigation was started for incident #${incident.number} within 60s of the alert`,
+		);
+	}
+	console.log(
+		`[packed-intake] OK   investigation ${investigation.id} started on its own`,
+	);
+
+	const finished = await pollUntil(
+		async () => {
+			const res = await json(`/api/investigations/${investigation.id}`, {
+				headers: { cookie },
+			});
+			if (res.status !== 200) return undefined;
+			const body = await res.json();
+			return body.investigation ?? body;
+		},
+		(inv) => inv !== undefined && !["pending", "running"].includes(inv.status),
+		600_000,
+	);
+	if (!finished) {
+		throw new Error(
+			`investigation ${investigation.id} did not reach a terminal state within 10 minutes`,
+		);
+	}
+	if (finished.status !== "completed" || !finished.report) {
+		throw new Error(
+			`investigation ${investigation.id} ended ${finished.status} without a report: ${finished.error ?? ""}`,
+		);
+	}
+	const hypotheses = finished.report.hypotheses ?? [];
+	if (hypotheses.length === 0) {
+		throw new Error(
+			`investigation ${investigation.id} completed with no hypothesis`,
+		);
+	}
+	const cited = new Set();
+	for (const h of hypotheses) {
+		for (const e of h.evidence ?? []) {
+			for (const p of citedPaths(e.source ?? "")) cited.add(p);
+		}
+	}
+	if (cited.size === 0) {
+		throw new Error(
+			`report for investigation ${investigation.id} cites no file path in any evidence source`,
+		);
+	}
+	// A path counts only inside REPO: an absolute path or a `..` escape is
+	// "missing" however real the file it names.
+	const root = resolve(REPO) + sep;
+	const missing = [...cited].filter((p) => {
+		const abs = resolve(REPO, p);
+		return !abs.startsWith(root) || !existsSync(abs);
+	});
+	if (missing.length > 0) {
+		throw new Error(
+			`report cites paths that do not exist in ${REPO}: ${missing.join(", ")}`,
+		);
+	}
+	console.log(
+		`[packed-intake] OK   report: ${hypotheses.length} hypothesis(es), ${cited.size} cited path(s) all present`,
+	);
+}
+
+/**
+ * Repo-relative or absolute file paths inside an evidence source, which is a
+ * command or origin string ("cat config/db.yaml", "promql/engine.go:4880-4890",
+ * "git show 03b0db54 -- server/models/hotlink.js"). A path needs a directory
+ * part and an extension; a bare "hotlink.js" or "e.g." is not one, and a URL
+ * is skipped.
+ */
+function citedPaths(source) {
+	const paths = [];
+	for (const raw of source.split(/[\s"'`()[\]{},;]+/)) {
+		if (!raw || raw.includes("://")) continue;
+		const token = raw.replace(/^\.\//, "").replace(/[.:]+$/, "");
+		const m =
+			/^(\/?(?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?::\d+(?:-\d+)?)?$/.exec(
+				token,
+			);
+		if (m) paths.push(m[1]);
+	}
+	return paths;
 }
 
 /** Poll the incident list for the one whose alerts carry `fingerprint` (Alert.externalId, not the internal dedup Alert.fingerprint). */

@@ -213,36 +213,44 @@ jobs:
         run: sh scripts/packed-smoke.sh tarballs
 
   packed-intake:
-    # Unit F on the 2026-09-13 gap study on #337 (#630): does a real alert
-    # source reach an incident on the packed tarball? `packed-smoke` proves the
-    # tarball boots; this proves a webhook delivery becomes an open incident
-    # and a resolution closes it — no investigation run, no model call.
+    # Unit F on the 2026-09-13 gap study on #337 (#630), extended to the
+    # unattended gate (2026-09-17): does a real alert source reach an incident
+    # on the packed tarball, and does the app then investigate it on its own?
+    # `packed-smoke` proves the tarball boots; this proves a webhook delivery
+    # becomes an open incident, an investigation starts without a human and
+    # completes with a report citing real paths, and a resolution closes the
+    # incident. The harness is the pinned OpenCode on the keyless model, as in
+    # `harness-admission`; the repository under investigation is this checkout.
     #
     # ADVISORY, not in `ci-gate`'s `needs`: it has not yet run green three
     # times in a row on this branch. Promote it once it has (#630).
-    name: Packed intake (Prometheus webhook -> incident)
+    name: Packed intake (Prometheus webhook -> incident -> report)
     needs: pack
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          sparse-checkout: |
-            scripts/packed-intake.mjs
-            .nvmrc
-          sparse-checkout-cone-mode: false
 
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
 
+      - name: Install the pinned OpenCode
+        run: npm install -g opencode-ai@1.18.30 && opencode --version
+
       - uses: actions/download-artifact@v8
         with:
           name: npm-tarballs
           path: tarballs
 
-      - name: Prometheus webhook to incident, and back to resolved
+      - name: Prometheus webhook to incident, unattended investigation, and back to resolved
+        env:
+          PACKED_INTAKE_REPO: ${{ github.workspace }}
+          PRISMALENS_HARNESS: opencode
+          PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
         run: node scripts/packed-intake.mjs tarballs
 
   harness-admission:

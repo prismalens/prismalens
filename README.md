@@ -70,6 +70,15 @@ You do not need an Alertmanager to see it work:
 That is the same `incidents.create` and `incidents.investigate` path the
 correlation engine uses, so nothing about the run is a mock.
 
+### Alerts on their own
+
+Once a receiver posts to `/api/webhooks/prometheus`, nobody has to click. An alert
+reaches a service through its `service` label: the value must equal a service's
+name exactly, or the alert becomes an incident with no service and nothing runs
+(the incident's timeline says so). A critical or high alert on a service starts an
+investigation on arrival; change that per service under Services → the service →
+Investigation (always, critical and high, critical only, never).
+
 ### Or just the CLI
 
 The same binary is a standalone investigator that needs nothing running:
