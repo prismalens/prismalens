@@ -3,6 +3,7 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { useEffect, useRef, useState } from "react";
+import { agentStepMessage } from "@/lib/investigation-events";
 
 /** Maximum number of canonical events to keep in state for rendering */
 const MAX_EVENTS = 200;
@@ -88,7 +89,7 @@ export function useInvestigationStream(
 						status: event.kind === "report" ? "completed" : "streaming",
 						latestText:
 							event.kind === "agent_step" && event.text.trim()
-								? event.text.trim()
+								? agentStepMessage(event.text.trim())
 								: prev.latestText,
 					};
 				});

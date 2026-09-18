@@ -46,7 +46,14 @@ carries the built dashboard and the API serves it from the same origin. Use
 `<workspace>/PRISMALENS_WEBHOOK_SECRET_FILE`: send it as
 `Authorization: Bearer <token>` or as the basic auth password, or use it as the
 HMAC-SHA256 key over the raw body and send `X-Hub-Signature-256: sha256=<hex digest>`.
-Alertmanager: set `authorization: { credentials: <token> }` on the receiver.
+Alertmanager: set `authorization: { credentials: <token> }` on the receiver. One alert by hand:
+
+```bash
+curl -X POST http://localhost:3001/api/webhooks/prometheus \
+  -H "Authorization: Bearer $(cat ~/.prismalens/PRISMALENS_WEBHOOK_SECRET_FILE)" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"HighErrorRate","severity":"critical","service":"payments"},"annotations":{"summary":"5xx above 5% for 10 minutes"},"startsAt":"2026-09-18T12:00:00Z"}]}'
+```
 
 ### Your first investigation
 
@@ -74,10 +81,14 @@ correlation engine uses, so nothing about the run is a mock.
 
 Once a receiver posts to `/api/webhooks/prometheus`, nobody has to click. An alert
 reaches a service through its `service` label: the value must equal a service's
-name exactly, or the alert becomes an incident with no service and nothing runs
-(the incident's timeline says so). A critical or high alert on a service starts an
-investigation on arrival; change that per service under Services → the service →
-Investigation (always, critical and high, critical only, never).
+name exactly. An alert that repeats the title and text of one already on an open
+incident joins that incident; otherwise it opens a new one, and only the alert
+that opens an incident decides whether an investigation starts. A new incident
+with no service runs nothing, and the timeline says so. A critical or high alert
+on a service starts an investigation on arrival; change that per service under
+Services → the service → Investigation (always, critical and high, critical only,
+never). When the policy says no, the incident's timeline names the policy and
+where to change it.
 
 ### Or just the CLI
 

@@ -109,7 +109,7 @@ export class InvestigationTriggerService {
 			return {
 				shouldTrigger: false,
 				triggerType: null,
-				reason: "Auto-investigation is off for this service",
+				reason: `Auto-investigation is off for ${incident.service.name}. Change it under Services → ${incident.service.name} → Investigation, or press Investigate on this incident.`,
 			};
 		}
 
@@ -144,7 +144,7 @@ export class InvestigationTriggerService {
 		return {
 			shouldTrigger: false,
 			triggerType: null,
-			reason: `Incident severity ${incident.severity} is below the service's policy (${policy})`,
+			reason: `Incident severity ${incident.severity} is below the policy of ${incident.service.name} (${policy.replace(/_/g, " ")}). Change it under Services → ${incident.service.name} → Investigation, or press Investigate on this incident.`,
 		};
 	}
 
@@ -163,43 +163,45 @@ export class InvestigationTriggerService {
 			);
 			return;
 		}
-		await this.onAlertCorrelated(alert, incident);
+		await this.onAlertCorrelated(alert, incident, event.isNewIncident);
 	}
 
 	/**
-	 * Called when an alert is correlated to an incident
-	 * Determines if this correlation should trigger an investigation
+	 * The auto-investigation decision for an alert that just landed on an
+	 * incident. Only the alert that opened the incident decides; a later alert
+	 * correlated into an open incident never starts a second run (re-running
+	 * on new evidence is the 0.6 storm work). When the decision is no, the
+	 * incident's timeline says why and where to change it.
 	 */
 	async onAlertCorrelated(
 		alert: Alert,
 		incident: Incident & { service?: Service | null },
+		isNewIncident: boolean,
 	): Promise<void> {
-		this.logger.debug(
-			`Alert ${alert.id} correlated to incident ${incident.number}`,
-		);
+		if (!isNewIncident) {
+			this.logger.debug(
+				`Alert ${alert.id} joined open incident ${incident.number}; auto-investigation decides on the opening alert only`,
+			);
+			return;
+		}
 
 		const decision = await this.shouldTriggerInvestigation(incident);
 
 		if (!decision.shouldTrigger) {
-			if (decision.reason === NO_SERVICE_REASON) {
-				this.logger.warn(
-					`No auto-investigation for incident ${incident.number}: ${NO_SERVICE_REASON}`,
-				);
-				if (incident.alertCount <= 1) {
-					await this.timelineService.create({
-						incidentId: incident.id,
-						type: TimelineEntryType.custom,
-						title: "Auto-investigation skipped: no service",
-						description: NO_SERVICE_REASON,
-						source: TimelineSource.system,
-						metadata: {},
-					});
-				}
-				return;
-			}
-			this.logger.debug(
+			this.logger.log(
 				`No auto-investigation for incident ${incident.number}: ${decision.reason}`,
 			);
+			await this.timelineService.create({
+				incidentId: incident.id,
+				type: TimelineEntryType.custom,
+				title:
+					decision.reason === NO_SERVICE_REASON
+						? "Auto-investigation skipped: no service"
+						: "Auto-investigation skipped",
+				description: decision.reason ?? "",
+				source: TimelineSource.system,
+				metadata: {},
+			});
 			return;
 		}
 

@@ -29,12 +29,34 @@ export interface EventRow {
 	ok?: boolean;
 }
 
+const REPORT_DRAFTED = "Report drafted";
+
+/**
+ * The agent's last text is the report itself, as JSON (fenced or bare). The
+ * panel names that step instead of printing the document; every other text
+ * shows as written.
+ */
+export function agentStepMessage(text: string): string {
+	const body = text
+		.trim()
+		.replace(/^```(?:json)?\s*/i, "")
+		.replace(/```\s*$/, "")
+		.trim();
+	if (!body.startsWith("{") || !body.endsWith("}")) return text;
+	try {
+		JSON.parse(body);
+		return REPORT_DRAFTED;
+	} catch {
+		return text;
+	}
+}
+
 /** Map one canonical event to a row, or null when it shouldn't be shown. */
 export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 	switch (event.kind) {
 		case "agent_step": {
 			const key = `${event.branchId}-${event.seq}`;
-			const text = event.text.trim();
+			const text = agentStepMessage(event.text.trim());
 			if (event.toolCalls.length > 0) {
 				const names = event.toolCalls.map((t) => t.name).join(", ");
 				return {

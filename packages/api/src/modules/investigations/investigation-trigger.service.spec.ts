@@ -186,26 +186,47 @@ describe("InvestigationTriggerService", () => {
 	});
 
 	describe("onAlertCorrelated", () => {
-		it("writes one timeline hint on the first alert of a service-less incident", async () => {
-			const incident = {
+		const alert = { id: "a1" } as unknown as Alert;
+		const withService = (policy: string) =>
+			({
 				id: "inc-1",
 				number: 1,
 				alertCount: 1,
 				severity: "critical",
+				service: {
+					id: "svc-1",
+					name: "payments",
+					metadata: JSON.stringify({ investigation: { trigger: policy } }),
+				},
+			}) as unknown as Incident & { service?: Service | null };
+
+		it("writes one timeline hint on the opening alert of a service-less incident", async () => {
+			const incident = {
+				...withService("always"),
 				service: null,
-			} as unknown as Incident & { service?: Service | null };
-			await service.onAlertCorrelated({ id: "a1" } as unknown as Alert, incident);
+			};
+			await service.onAlertCorrelated(alert, incident, true);
 			expect(mockTimelineService.create).toHaveBeenCalledTimes(1);
 			expect(mockTimelineService.create.mock.calls[0][0].description).toBe(
 				NO_SERVICE_REASON,
 			);
 			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+		});
 
-			mockTimelineService.create.mockClear();
-			await service.onAlertCorrelated({ id: "a2" } as unknown as Alert, {
-				...incident,
-				alertCount: 2,
-			});
+		it("a policy of never leaves a timeline entry naming the service and where to change it", async () => {
+			await service.onAlertCorrelated(alert, withService("never"), true);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			const entry = mockTimelineService.create.mock.calls[0][0];
+			expect(entry.title).toBe("Auto-investigation skipped");
+			expect(entry.description).toContain("off for payments");
+			expect(entry.description).toContain("Services → payments → Investigation");
+		});
+
+		it("an alert correlated into an open incident neither runs nor writes: the opening alert decided", async () => {
+			mockPrisma.investigation.findFirst.mockResolvedValue(null);
+			await service.onAlertCorrelated(alert, withService("always"), false);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			expect(mockDispatchService.addInvestigationJob).not.toHaveBeenCalled();
 			expect(mockTimelineService.create).not.toHaveBeenCalled();
 		});
 	});
@@ -360,7 +381,7 @@ describe("InvestigationTriggerService", () => {
 				incidentId: "i1",
 				isNewIncident: false,
 			});
-			expect(onAlertSpy).toHaveBeenCalledWith(alert, incident);
+			expect(onAlertSpy).toHaveBeenCalledWith(alert, incident, false);
 		});
 	});
 });

@@ -62,6 +62,7 @@ export class RecommendationsService {
 		priority?: string;
 		urgency?: string;
 		investigationId?: string;
+		incidentId?: string;
 		limit?: number;
 		offset?: number;
 	}): Promise<RecommendationWithRelations[]> {
@@ -73,12 +74,16 @@ export class RecommendationsService {
 				...(options?.investigationId && {
 					investigationId: options.investigationId,
 				}),
+				...(options?.incidentId && {
+					investigation: { incidentId: options.incidentId },
+				}),
 			},
 			include: {
 				investigation: {
 					select: {
 						id: true,
 						status: true,
+						incidentId: true,
 						incident: {
 							select: {
 								id: true,

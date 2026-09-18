@@ -75,10 +75,19 @@ export class AlertsService {
 	}
 
 	/**
-	 * Generate dedup key for alert deduplication
+	 * The alert's identity for dedup and the flap window. A labelled alert is
+	 * its label set, the way Alertmanager fingerprints one: two firings that
+	 * differ in any label (`instance`, `pod`) are two alerts, and resolving one
+	 * leaves the other firing. Grouping them is correlation's job (ADR 0006
+	 * §3), not dedup's. Without labels the identity is source, title, severity
+	 * and service.
 	 */
 	generateDedupKey(dto: CreateAlertDto): string {
-		const input = `${dto.source ?? "unknown"}:${dto.title}:${dto.severity ?? "medium"}:${dto.serviceId ?? ""}`;
+		const labels = dto.labels ? Object.entries(dto.labels).sort() : [];
+		const input =
+			labels.length > 0
+				? `${dto.source ?? "unknown"}:labels:${JSON.stringify(labels)}`
+				: `${dto.source ?? "unknown"}:${dto.title}:${dto.severity ?? "medium"}:${dto.serviceId ?? ""}`;
 		return crypto
 			.createHash("sha256")
 			.update(input)

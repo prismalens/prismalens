@@ -145,6 +145,39 @@ describe("AlertsService (BDD)", () => {
 		});
 	});
 
+	describe("generateDedupKey", () => {
+		const labelled = (labels: Record<string, string>): CreateAlertDto => ({
+			source: "prometheus",
+			title: labels.alertname,
+			severity: Severity.critical,
+			labels,
+		});
+
+		it("a labelled alert is its label set: a differing label is another alert, the same set is a refire", () => {
+			const base = { alertname: "HighErrorRate", severity: "critical", service: "payments" };
+			const same = service.generateDedupKey(labelled(base));
+			expect(service.generateDedupKey(labelled({ ...base }))).toBe(same);
+			expect(
+				service.generateDedupKey(labelled({ ...base, instance: "web-2" })),
+			).not.toBe(same);
+		});
+
+		it("without labels the identity is source, title, severity and service", () => {
+			const dto: CreateAlertDto = {
+				source: "api",
+				title: "Disk full",
+				severity: Severity.high,
+				serviceId: "svc-1",
+			};
+			expect(service.generateDedupKey(dto)).toBe(
+				service.generateDedupKey({ ...dto, description: "different text" }),
+			);
+			expect(service.generateDedupKey(dto)).not.toBe(
+				service.generateDedupKey({ ...dto, serviceId: "svc-2" }),
+			);
+		});
+	});
+
 	// ==========================================================================
 	// #231 — ruled dedup / flap-suppression semantics.
 	// Fake timers pin "now"; the flap window comes from the injected config mock.
