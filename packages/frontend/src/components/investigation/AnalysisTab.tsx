@@ -264,7 +264,11 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">
-							Root cause analysis not available yet
+							{investigation.status === "completed"
+								? "The investigation finished without naming a root cause. The hypotheses below are what it found."
+								: investigation.status === "failed"
+									? "The investigation failed before a root cause was found."
+									: "Root cause analysis not available yet"}
 						</p>
 					)}
 					{report?.culprit && <CulpritSection culprit={report.culprit} />}

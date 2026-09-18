@@ -127,6 +127,23 @@ describe("RecommendationsService (BDD)", () => {
 			});
 		});
 
+		it("filters by the incident through its investigation and returns the investigation's incidentId", async () => {
+			mockPrismaService.recommendation.findMany.mockResolvedValue([]);
+
+			await service.findAll({ incidentId: "inc-1" });
+
+			expect(mockPrismaService.recommendation.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { investigation: { incidentId: "inc-1" } },
+					include: {
+						investigation: {
+							select: expect.objectContaining({ incidentId: true }),
+						},
+					},
+				}),
+			);
+		});
+
 		it("should filter by priority", async () => {
 			mockPrismaService.recommendation.findMany.mockResolvedValue([]);
 

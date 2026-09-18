@@ -96,6 +96,20 @@ describe("deriveStreamView", () => {
 		expect(view.reportRows.map((row) => row.message)).toEqual(["Report ready"]);
 	});
 
+	it("names the drafted report instead of printing its JSON, fenced or bare", () => {
+		const json = JSON.stringify({ summary: "pool saturated", hypotheses: [] });
+		const view = deriveStreamView([
+			agentStep("main", 1, "Reading the workers next."),
+			agentStep("main", 2, json),
+			agentStep("main", 3, `\`\`\`json\n${json}\n\`\`\``),
+		]);
+		expect(view.flatRows.map((row) => row.message)).toEqual([
+			"Reading the workers next.",
+			"Report drafted",
+			"Report drafted",
+		]);
+	});
+
 	// The badge only ever prints "N branches", so N is never 1.
 	it("never reports a multi-branch view with a single branch", () => {
 		for (const branchId of ["root", "b0", "supervisor"]) {

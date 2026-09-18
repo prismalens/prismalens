@@ -27,6 +27,7 @@ export class RecommendationsController {
 						status: input.status,
 						priority: input.priority,
 						investigationId: input.investigationId,
+						incidentId: input.incidentId,
 						limit: input.limit,
 						offset: input.offset,
 					});
