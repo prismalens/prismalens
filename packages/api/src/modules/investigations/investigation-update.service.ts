@@ -126,21 +126,10 @@ export class InvestigationUpdateService {
 			event.incidentId,
 		);
 
-		if (!activeInvestigation) {
-			// No active investigation - check if we should trigger one
-			const incidentWithService = await this.prisma.incident.findUnique({
-				where: { id: event.incidentId },
-				include: { service: true },
-			});
-
-			if (incidentWithService) {
-				await this.triggerService.onAlertCorrelated(
-					event.alert,
-					incidentWithService,
-				);
-			}
-			return;
-		}
+		// Whether a run starts was decided once, on the alert that opened the
+		// incident (InvestigationTriggerService on alert.correlated). A later
+		// alert only feeds a run that is already active.
+		if (!activeInvestigation) return;
 
 		// Determine update strategy
 		const strategy = await this.determineUpdateStrategy(
