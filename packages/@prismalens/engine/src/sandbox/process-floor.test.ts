@@ -33,6 +33,16 @@ describe("buildFloorEnv (own-secret isolation, ADR-0009)", () => {
 		if (process.env.PATH !== undefined) expect(env.PATH).toBe(process.env.PATH);
 	});
 
+	it("passes proxy and private-CA settings through so the agent can reach its provider (#633)", () => {
+		vi.stubEnv("HTTPS_PROXY", "http://proxy.corp:3128");
+		vi.stubEnv("no_proxy", "localhost,.corp");
+		vi.stubEnv("NODE_EXTRA_CA_CERTS", "/etc/ssl/corp-ca.pem");
+		const env = buildFloorEnv();
+		expect(env.HTTPS_PROXY).toBe("http://proxy.corp:3128");
+		expect(env.no_proxy).toBe("localhost,.corp");
+		expect(env.NODE_EXTRA_CA_CERTS).toBe("/etc/ssl/corp-ca.pem");
+	});
+
 	it("skips undefined caller entries instead of stringifying them", () => {
 		const env = buildFloorEnv({ OPENAI_BASE_URL: undefined });
 		expect("OPENAI_BASE_URL" in env).toBe(false);

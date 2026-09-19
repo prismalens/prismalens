@@ -40,6 +40,20 @@ export const SAFE_ENV_ALLOWLIST = [
 	"TMPDIR",
 	"TZ",
 	"PWD",
+	// Behind a corporate proxy or private CA the agent cannot reach its provider
+	// without these (#633, review N4). Both cases are read by curl, Node and Python.
+	"HTTP_PROXY",
+	"HTTPS_PROXY",
+	"NO_PROXY",
+	"http_proxy",
+	"https_proxy",
+	"no_proxy",
+	"SSL_CERT_FILE",
+	"SSL_CERT_DIR",
+	"NODE_EXTRA_CA_CERTS",
+	"REQUESTS_CA_BUNDLE",
+	// A relocated data home is where OpenCode keeps a `/connect` login (review N5).
+	"XDG_DATA_HOME",
 ] as const;
 
 /**
