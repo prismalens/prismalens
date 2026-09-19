@@ -8,7 +8,7 @@
  * is the boundary and this is the guardrail.
  */
 
-import { posix } from "node:path";
+import { isAbsolute, normalize, resolve, sep } from "node:path";
 
 export interface PermissionOption {
 	optionId: string;
@@ -86,10 +86,18 @@ const HARMLESS_ABSOLUTE = [
 	"/bin/",
 	"/usr/local/bin/",
 ];
-const DOTDOT_SEGMENT = /(^|\/)\.\.(\/|$)/;
+/** A `..` segment under either separator, so a Windows `..\\..` is seen too. */
+const DOTDOT_SEGMENT = /(^|[/\\])\.\.([/\\]|$)/;
+/** An unexpanded shell variable: its value is unknown here, so a `..` after it cannot be judged. */
+const SHELL_VARIABLE = /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/;
 
+/**
+ * `cwd` comes from the platform `node:path`, so the platform module resolves
+ * and compares here as well (drive letters and backslashes on Windows).
+ */
 function insideSnapshot(resolved: string, cwd: string): boolean {
-	return resolved === cwd || resolved.startsWith(`${cwd}/`);
+	const root = resolve(cwd);
+	return resolved === root || resolved.startsWith(root + sep);
 }
 
 /** The first path in `text` that resolves outside `cwd`, or null. */
@@ -97,17 +105,25 @@ function outsideSnapshotToken(text: string, cwd: string): string | null {
 	for (const token of text.split(SHELL_SPLIT)) {
 		if (!token) continue;
 		if (token.startsWith("~") || /\$\{?HOME\b/.test(token)) return token;
-		if (token.startsWith("/")) {
-			const resolved = posix.normalize(token);
+		const dotdot = DOTDOT_SEGMENT.test(token);
+		if (dotdot && SHELL_VARIABLE.test(token)) return token;
+		if (isAbsolute(token) || token.startsWith("/")) {
+			const resolved = normalize(token);
 			if (insideSnapshot(resolved, cwd)) continue;
+			const posixForm = resolved.replace(/\\/g, "/");
 			if (
-				HARMLESS_ABSOLUTE.some((p) => resolved === p || resolved.startsWith(p))
+				HARMLESS_ABSOLUTE.some(
+					(p) => posixForm === p || posixForm.startsWith(p),
+				)
 			)
 				continue;
 			return token;
 		}
-		if (DOTDOT_SEGMENT.test(token)) {
-			if (insideSnapshot(posix.resolve(cwd, token), cwd)) continue;
+		if (dotdot) {
+			// A backslash is a separator on Windows and a legal name character elsewhere;
+			// judge it as a separator on every platform so the rule stays conservative.
+			if (insideSnapshot(resolve(cwd, token.replace(/\\/g, sep)), cwd))
+				continue;
 			return token;
 		}
 	}
@@ -132,7 +148,7 @@ function outsideSnapshot(
 	const kind = req.toolCall?.kind ?? "";
 	for (const p of pathParamsOf(req)) {
 		if (p.startsWith("~")) return p;
-		if (!insideSnapshot(posix.resolve(cwd, p), cwd)) return p;
+		if (!insideSnapshot(resolve(cwd, p), cwd)) return p;
 	}
 	if (kind === "execute" || !kind) {
 		return outsideSnapshotToken(commandOf(req), cwd);

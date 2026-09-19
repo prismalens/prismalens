@@ -76,6 +76,10 @@ describe("readOnlyPolicy", () => {
 			"cat /bin/../etc/shadow",
 			`cat ${cwd}/../../other/secret`,
 			"head --lines=3 ../transcript.jsonl",
+			"ls -la $PWD/..",
+			"cat ${PWD}/../transcript.jsonl",
+			"cat $REPO/../x",
+			"type ..\\..\\transcript.jsonl",
 		]) {
 			const d = policy(req({ kind: "execute", rawInput: { command } }));
 			expect(d.allow, command).toBe(false);
@@ -88,6 +92,8 @@ describe("readOnlyPolicy", () => {
 			"ls src/../src",
 			"cat ./src/../package.json",
 			`ls ${cwd}/src/../server`,
+			"echo $PWD",
+			"grep -rn $PATTERN src/",
 			"cat package.json 2>/dev/null",
 			"/usr/bin/env node -v",
 		]) {

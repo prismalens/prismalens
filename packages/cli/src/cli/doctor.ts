@@ -294,8 +294,13 @@ export default defineCommand({
 
 			const hardFailures = checks.filter((c) => c.hard && !c.pass);
 			if (hardFailures.length > 0) {
+				const onlyHarness = hardFailures.every(
+					(c) => c.name === "Harness available",
+				);
 				consola.error(
-					`${hardFailures.length} required check(s) failed. \`pl up\` still starts without a harness, but Investigate stays disabled until one is on PATH.`,
+					onlyHarness
+						? "No harness on PATH. `pl up` still starts, but Investigate stays disabled until one is installed."
+						: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
 				);
 				process.exit(1);
 			}
