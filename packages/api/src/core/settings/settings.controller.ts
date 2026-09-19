@@ -19,6 +19,15 @@ export class SettingsController {
 		private readonly harnessProbeService: HarnessProbeService,
 	) {}
 
+	private async refuseWhileRunning(): Promise<void> {
+		const active = await this.settingsService.activeRunCount();
+		if (active > 0) {
+			throw new ORPCError("CONFLICT", {
+				message: `${active} investigation(s) are queued or running. Cancel them, or wait for them to finish, then reset.`,
+			});
+		}
+	}
+
 	/**
 	 * Implement danger zone routes
 	 */
@@ -32,6 +41,7 @@ export class SettingsController {
 							message: "Confirmation required",
 						});
 					}
+					await this.refuseWhileRunning();
 					return this.settingsService.resetData();
 				},
 			),
@@ -43,6 +53,7 @@ export class SettingsController {
 							message: "Confirmation required",
 						});
 					}
+					await this.refuseWhileRunning();
 					return this.settingsService.factoryReset();
 				},
 			),

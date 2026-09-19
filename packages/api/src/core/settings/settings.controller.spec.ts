@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { ORPCError } from "@orpc/nest";
+import { describe, expect, it, vi } from "vitest";
+import type { HarnessService } from "../harness/harness.service.js";
+import type { HarnessProbeService } from "../harness/harness-probe.service.js";
+import { SettingsController } from "./settings.controller.js";
+import type { SettingsService } from "./settings.service.js";
+
+type Handler = (args: { input: { confirmation: string } }) => Promise<unknown>;
+
+function dangerHandlers(settings: Partial<SettingsService>) {
+	const controller = new SettingsController(
+		settings as SettingsService,
+		{} as HarnessService,
+		{} as HarnessProbeService,
+	);
+	const procedures = controller.danger() as unknown as Record<
+		string,
+		{ "~orpc": { handler: Handler } }
+	>;
+	return {
+		resetData: procedures.resetData["~orpc"].handler,
+		factoryReset: procedures.factoryReset["~orpc"].handler,
+	};
+}
+
+describe("SettingsController danger zone (#605 edge 28)", () => {
+	it("refuses both resets with CONFLICT while an investigation is queued or running", async () => {
+		const settings = {
+			activeRunCount: vi.fn(async () => 2),
+			resetData: vi.fn(),
+			factoryReset: vi.fn(),
+		};
+		const h = dangerHandlers(settings);
+
+		await expect(
+			h.resetData({ input: { confirmation: "RESET" } }),
+		).rejects.toMatchObject({ code: "CONFLICT" });
+		await expect(
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" } }),
+		).rejects.toBeInstanceOf(ORPCError);
+		expect(settings.resetData).not.toHaveBeenCalled();
+		expect(settings.factoryReset).not.toHaveBeenCalled();
+	});
+
+	it("resets when nothing is running", async () => {
+		const settings = {
+			activeRunCount: vi.fn(async () => 0),
+			factoryReset: vi.fn(async () => ({ success: true, message: "done" })),
+		};
+		const h = dangerHandlers(settings);
+
+		await expect(
+			h.factoryReset({ input: { confirmation: "FACTORY RESET" } }),
+		).resolves.toEqual({ success: true, message: "done" });
+	});
+});

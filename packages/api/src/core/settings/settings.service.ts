@@ -12,6 +12,13 @@ export class SettingsService {
 	// DANGER ZONE OPERATIONS
 	// =============================================================================
 
+	/** Investigations queued or running; a reset under them deletes rows a run is still writing (#605 edge 28). */
+	async activeRunCount(): Promise<number> {
+		return this.prisma.investigation.count({
+			where: { status: { in: ["pending", "running"] } },
+		});
+	}
+
 	async resetData() {
 		await this.prisma.$transaction([
 			this.prisma.recommendation.deleteMany({}),
