@@ -18,9 +18,11 @@ jobs:
     # (Settings -> Secrets and variables -> Actions -> Variables); no code change
     # and no PR needed to turn it back on.
     #
+    # Every release is a 0.5.x patch (`versioning: always-bump-patch` in
+    # release-please-config.json); a minor needs that line changed on purpose.
     # Before 1.0 a breaking change bumps the minor version (`bump-minor-pre-major`
-    # in release-please-config.json). 0.5.0 is pinned there with `release-as`;
-    # that key comes out right after the 0.5.0 publish.
+    # in release-please-config.json). Tags are `v<version>` from 0.5.0 on; the
+    # releases before it are tagged `prismalens@<version>`.
     #
     # The `publish` job below is deliberately NOT gated: it fires on a published
     # GitHub Release, which only exists if a human deliberately made one.
