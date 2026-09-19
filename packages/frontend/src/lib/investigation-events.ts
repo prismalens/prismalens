@@ -48,10 +48,12 @@ function isJsonObject(body: string): boolean {
  * document; every other text shows as written.
  */
 export function agentStepMessage(text: string): string {
-	for (const fence of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+	for (const fence of Array.from(
+		text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi),
+	)) {
 		if (isJsonObject(fence[1])) return REPORT_DRAFTED;
 	}
-	for (const line of text.matchAll(/^[ \t]*\{/gm)) {
+	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
 		if (isJsonObject(text.slice(line.index))) return REPORT_DRAFTED;
 	}
 	return text;
