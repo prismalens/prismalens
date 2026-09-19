@@ -4926,7 +4926,8 @@
                               "enum": [
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
-                                "no-harness"
+                                "no-harness",
+                                "no-service"
                               ],
                               "type": "string"
                             },
@@ -5678,6 +5679,17 @@
                                         "actual",
                                         "fidelity"
                                       ]
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    },
+                                    "modelSource": {
+                                      "enum": [
+                                        "operator",
+                                        "product-default",
+                                        "harness-default"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -6443,6 +6455,17 @@
                                               "actual",
                                               "fidelity"
                                             ]
+                                          },
+                                          "model": {
+                                            "type": "string"
+                                          },
+                                          "modelSource": {
+                                            "enum": [
+                                              "operator",
+                                              "product-default",
+                                              "harness-default"
+                                            ],
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -7227,6 +7250,17 @@
                                         "actual",
                                         "fidelity"
                                       ]
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    },
+                                    "modelSource": {
+                                      "enum": [
+                                        "operator",
+                                        "product-default",
+                                        "harness-default"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -7978,6 +8012,17 @@
                                             "actual",
                                             "fidelity"
                                           ]
+                                        },
+                                        "model": {
+                                          "type": "string"
+                                        },
+                                        "modelSource": {
+                                          "enum": [
+                                            "operator",
+                                            "product-default",
+                                            "harness-default"
+                                          ],
+                                          "type": "string"
                                         }
                                       },
                                       "required": [
@@ -8787,6 +8832,17 @@
                                         "actual",
                                         "fidelity"
                                       ]
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    },
+                                    "modelSource": {
+                                      "enum": [
+                                        "operator",
+                                        "product-default",
+                                        "harness-default"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -9823,6 +9879,17 @@
                                               "actual",
                                               "fidelity"
                                             ]
+                                          },
+                                          "model": {
+                                            "type": "string"
+                                          },
+                                          "modelSource": {
+                                            "enum": [
+                                              "operator",
+                                              "product-default",
+                                              "harness-default"
+                                            ],
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10351,6 +10418,17 @@
                                         "actual",
                                         "fidelity"
                                       ]
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    },
+                                    "modelSource": {
+                                      "enum": [
+                                        "operator",
+                                        "product-default",
+                                        "harness-default"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -11011,6 +11089,17 @@
                                   "actual",
                                   "fidelity"
                                 ]
+                              },
+                              "model": {
+                                "type": "string"
+                              },
+                              "modelSource": {
+                                "enum": [
+                                  "operator",
+                                  "product-default",
+                                  "harness-default"
+                                ],
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -11536,6 +11625,17 @@
                                         "actual",
                                         "fidelity"
                                       ]
+                                    },
+                                    "model": {
+                                      "type": "string"
+                                    },
+                                    "modelSource": {
+                                      "enum": [
+                                        "operator",
+                                        "product-default",
+                                        "harness-default"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -21893,6 +21993,16 @@
                           },
                           "install": {
                             "type": "string"
+                          },
+                          "defaultModel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -21901,7 +22011,8 @@
                           "binary",
                           "installed",
                           "verified",
-                          "install"
+                          "install",
+                          "defaultModel"
                         ]
                       }
                     },
@@ -21924,6 +22035,20 @@
                         "pinned": {
                           "type": "boolean"
                         },
+                        "pinnedBy": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "env",
+                                "settings"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "blockedReason": {
                           "anyOf": [
                             {
@@ -21939,6 +22064,7 @@
                         "runnable",
                         "harness",
                         "pinned",
+                        "pinnedBy",
                         "blockedReason"
                       ]
                     }
