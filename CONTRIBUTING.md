@@ -83,12 +83,7 @@ updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
 ## Database migrations
 
-**Until 0.5.0 publishes, there is one `init` migration and schema changes edit it.**
-No installed copy of 0.5.0 exists yet (ruled on #337, 2026-09-13), so regenerate
-`init` from the schema instead of adding a migration. A database created before
-the edit stops with `checksum-mismatch`; recreate it.
-
-**From the 0.5.0 publish on, migration history is append-only.** Never delete,
+**Migration history is append-only** (0.5.0 published 2026-09-19). Never delete,
 edit, rename, or squash a migration under
 `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, and never tell anyone
 to delete `prismalens.db`. Installed copies of PrismaLens record each migration's
@@ -331,8 +326,16 @@ Versioning and publishing run through
 3. Merging that PR creates the GitHub Release and tag, which triggers the
    `publish` job: build, `publint`, then pack + publish via npm trusted
    publishing (OIDC) — no npm token secret.
-4. Override the computed version with a `Release-As: 0.5.0`-style footer on a
-   commit to `main`.
+4. Every release is a patch: `versioning: always-bump-patch` in
+   `release-please-config.json` holds the line at 0.5.x whatever the commit
+   types. A minor release means changing that line on purpose. To force one
+   specific version, set `"release-as": "<version>"` on the `packages/cli`
+   entry and remove it once that version publishes. A `Release-As:` commit
+   footer does not work here: squash commits end with the attribution lines,
+   and release-please reads footers only from a commit's last paragraph.
+5. Releases are tagged `v<version>` from 0.5.0 on (`prismalens@<version>`
+   before it). Publishing a release also starts the registry-mode
+   `cross-os-smoke` run against that version.
 
 The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened

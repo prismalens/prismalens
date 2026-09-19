@@ -9,19 +9,13 @@ This is a project that is still in development phase
 * Clean upgrade/update/change only
 * DEV user - admin@prismalens.dev/admin123
 
-## DB migrations: one `init` until 0.5.0 publishes, append-only after (#335, #337)
-Until 0.5.0 is on npm, no stranger's database exists (ruled 2026-09-13 on #337), so a schema
-change edits the single `init` migration instead of adding one:
+## DB migrations: append-only (#335)
+0.5.0 is on npm (2026-09-19), so installed databases exist:
 
-* Regenerate it from the schema, writing to a temp file so a failed command cannot empty it:
-  `pnpm exec prisma migrate diff --config prisma.config.ts --from-empty --to-schema prisma/sqlite/schema --script > "$M.new" && [ -s "$M.new" ] && mv "$M.new" "$M"`
-  (run in `packages/@prismalens/database`, `M` = `prisma/sqlite/schema/<ts>_init/migration.sql`).
-* A database created before the edit now fails with `checksum-mismatch`. That covers a
-  contributor's dev database and a #336 tester's CI-tarball workspace; recreate it.
-* From the 0.5.0 publish on, the old rule is absolute: **never** delete, edit, rename or
-  squash a migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`, a
-  schema change is a new additive migration (`pnpm db:migrate`), and nobody is told to delete
-  `prismalens.db`. The runner hard-stops on an edited history rather than reconcile it.
+* **Never** delete, edit, rename or squash a migration under
+  `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`. A schema change is a new additive
+  migration (`pnpm db:migrate`), and nobody is told to delete `prismalens.db`. The runner
+  hard-stops on an edited history rather than reconcile it.
 * The runner refuses a pre-0.5.0 database by name (`pre-release-database`).
 * See `CONTRIBUTING.md` → *Database migrations* for the lifecycle and the failure table.
 

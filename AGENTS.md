@@ -38,41 +38,6 @@ specific ADR section(s) it bears on** (and those ADRs' `## Relations`),
 run them.
 <!-- END mage -->
 
-## Temporary working rules for this repo (expire 2026-09-18)
-
-Set by the operator on 2026-09-11 for the 0.5.0 push. They override the kit's organizer
-rules until the date above; after it, delete this section.
-
-- The organizer session plans and writes the new code itself. Subagents take research and
-  deletion only: bounded, mechanical, with verify commands. Tests that define new behaviour
-  are written by whoever wrote the code.
-- Mechanical verification is delegated, never run by the organizer: packed-tarball boots,
-  smoke and e2e runs, evidence collection, log triage go to agy through the Sonnet
-  `agy-runner` wrapper (ruled 2026-09-13). The organizer writes the verify spec, reads the
-  pasted output and rules; a Bash loop the organizer runs itself is the expensive seat doing
-  cheap work. A single unit test run to close its own edit is still the organizer's.
-- Two lanes never edit the same file. When work is split between the organizer and an agy
-  lane, the split is by file ownership, written into the lane's spec, with the shared
-  contract (env names, exported symbols) fixed in both specs before either starts.
-- One PR per unit of work, however large. No PR splitting; every extra PR costs the operator
-  a review round.
-- After `gh pr create`, hand the PR to the named babysitter session (currently
-  `prismalens-9d`) with SendMessage; it drives review, CI and follow-up commits. The
-  babysitter owns the worktree from then on; the organizer's later edits to that branch go
-  through it.
-- A status report ranks what stands between a stranger and a completed investigation, not
-  what is left on the wave list. "Done with the plan" is not a state the operator accepts;
-  the gap study of 2026-09-13 on #337 is the shape.
-- A gap study never becomes one issue per gap. It comes back as triaged units of similar work,
-  each with a proposal for 0.5.0 or a later release and a reason, so the operator decides per
-  unit and the milestone closes faster (ruled 2026-09-13).
-- Multi-turn research goes to a cheap lane (a Sonnet subagent, or agy) and comes back as a
-  file with URLs; the organizer verifies and rules.
-- Before any UI, engine or scope ruling, read the hub's ux-study conclusions and the ADRs
-  first; web research last. The hub note `read-the-record-first` has the why.
-- The per-PR UX gate is suspended until 0.8 (see the section above); the `ux-review` label
-  and section stay.
-
 ## Implementation specs must declare docs impact
 
 Every implementation spec handed to a coding agent must name a **Docs surfaces** deliverable: the specific files (README.md section, docs.prismalens.io page, CLI --help text, mage note) the change is expected to update, or state explicitly "none affected because …". A spec without either is incomplete; do not start implementation until it's added.
@@ -83,11 +48,12 @@ README files in this repository follow a three-tier model. The root `README.md` 
 
 ## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 
-**Suspended until 0.8 (ruled on #337, 2026-09-11).** Between 0.5.0 and 0.8 the screens are being
-deleted and merged faster than a per-PR gate pays back, so requirements 1 and 3 below are not
-per-PR. One UX walk runs at the end of each milestone over every PR carrying the `ux-review`
-label. Requirement 2 stays in force on every frontend PR: the label and the `## UX review`
-section are how the walk finds the change. The full per-PR gate returns at 0.8.
+**Suspended while releases are 0.5.x patches** (ruled on #337, 2026-09-11, as "until 0.8"; re-keyed
+2026-09-19 when releases went patch-only). The screens are being deleted and merged faster than a
+per-PR gate pays back, so requirements 1 and 3 below are not per-PR. One UX walk runs at the end of
+each milestone over every PR carrying the `ux-review` label. Requirement 2 stays in force on every
+frontend PR: the label and the `## UX review` section are how the walk finds the change. The full
+per-PR gate returns when `versioning: always-bump-patch` leaves `release-please-config.json`.
 
 Every PR touching `packages/frontend` — regardless of which agent or session produces it:
 
