@@ -140,6 +140,14 @@ describe("deriveStreamView", () => {
 		expect(view.flatRows.map((row) => row.message)).toEqual([config, fenced]);
 	});
 
+	it("hides a fenced report with CRLF line endings", () => {
+		const json = JSON.stringify({ summary: "x", hypotheses: [] });
+		const view = deriveStreamView([
+			agentStep("main", 1, `Done.\r\n\`\`\`json\r\n${json}\r\n\`\`\`\r\n`),
+		]);
+		expect(view.flatRows.map((row) => row.message)).toEqual(["Report drafted"]);
+	});
+
 	it("hides a fenced report whose strings contain a backtick fence", () => {
 		const json = JSON.stringify(
 			{ summary: "ran ```kubectl get pods``` twice", hypotheses: [] },

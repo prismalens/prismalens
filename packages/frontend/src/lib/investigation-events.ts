@@ -54,7 +54,7 @@ function isReportJson(body: string): boolean {
  * line, so a backtick run inside a JSON string does not end the block early.
  */
 export function agentStepMessage(text: string): string {
-	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\n/gi))) {
+	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
 		const start = (open.index ?? 0) + open[0].length;
 		for (const close of Array.from(
 			text.slice(start).matchAll(/^```[ \t]*$/gm),
