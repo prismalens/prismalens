@@ -31,12 +31,17 @@ export interface EventRow {
 
 const REPORT_DRAFTED = "Report drafted";
 
-function isJsonObject(body: string): boolean {
+/**
+ * A report-shaped object: the fields the report contract always carries. Looser
+ * than `InvestigationReportSchema` on purpose, since the raw draft precedes the
+ * engine's normalisation; any other JSON the agent prints stays visible.
+ */
+function isReportJson(body: string): boolean {
 	const trimmed = body.trim();
 	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
 	try {
-		JSON.parse(trimmed);
-		return true;
+		const value = JSON.parse(trimmed) as Record<string, unknown>;
+		return typeof value.summary === "string" && Array.isArray(value.hypotheses);
 	} catch {
 		return false;
 	}
@@ -45,16 +50,22 @@ function isJsonObject(body: string): boolean {
 /**
  * The agent's last text is the report itself, as JSON: bare, fenced, or after
  * a line of prose (#659). The panel names that step instead of printing the
- * document; every other text shows as written.
+ * document; every other text shows as written. A fence closes only on its own
+ * line, so a backtick run inside a JSON string does not end the block early.
  */
 export function agentStepMessage(text: string): string {
-	for (const fence of Array.from(
-		text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi),
-	)) {
-		if (isJsonObject(fence[1])) return REPORT_DRAFTED;
+	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\n/gi))) {
+		const start = (open.index ?? 0) + open[0].length;
+		for (const close of Array.from(
+			text.slice(start).matchAll(/^```[ \t]*$/gm),
+		)) {
+			if (isReportJson(text.slice(start, start + (close.index ?? 0)))) {
+				return REPORT_DRAFTED;
+			}
+		}
 	}
 	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
-		if (isJsonObject(text.slice(line.index))) return REPORT_DRAFTED;
+		if (isReportJson(text.slice(line.index))) return REPORT_DRAFTED;
 	}
 	return text;
 }
