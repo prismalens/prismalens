@@ -82,11 +82,14 @@ jobs:
         run: |
           case "$EVENT_NAME" in
           release)
-            # `prismalens` is the only published package, so `prismalens@X.Y.Z`
-            # is the only release tag that maps to a verifiable npm artifact
-            # (the @prismalens/* closure is private + bundled, #193 — it never
-            # gets its own release tag). Guard anyway: skip any other tag.
+            # `prismalens` is the only published package. Releases are tagged
+            # `vX.Y.Z` from 0.5.0 on and `prismalens@X.Y.Z` before it; any other
+            # tag maps to no npm artifact and is skipped.
             case "$RELEASE_TAG" in
+            v[0-9]*)
+              echo "mode=registry" >> "$GITHUB_OUTPUT"
+              echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+              ;;
             prismalens@*)
               echo "mode=registry" >> "$GITHUB_OUTPUT"
               echo "version=${RELEASE_TAG#prismalens@}" >> "$GITHUB_OUTPUT"
@@ -106,6 +109,20 @@ jobs:
             echo "version=" >> "$GITHUB_OUTPUT"
             ;;
           esac
+
+      # The release event starts this run and release.yml's publish job at the
+      # same moment, so the version may not be on npm yet.
+      - name: Wait for the version on npm (release event)
+        if: github.event_name == 'release' && steps.resolve.outputs.mode == 'registry'
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          for _ in $(seq 1 60); do
+            npm view "prismalens@${VERSION}" version >/dev/null 2>&1 && exit 0
+            sleep 15
+          done
+          echo "::error::prismalens@${VERSION} did not appear on npm within 15 minutes"
+          exit 1
 
   pack:
     name: Pack prismalens tarball (tarball mode)
