@@ -22140,6 +22140,88 @@
         }
       }
     },
+    "/settings/delivery": {
+      "get": {
+        "operationId": "settings.delivery.get",
+        "summary": "Get report delivery settings",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slackConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slackConfigured"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "settings.delivery.update",
+        "summary": "Set or remove the Slack incoming webhook",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slackWebhookUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^https:\\/\\/hooks\\.slack(-gov)?\\.com\\/services\\/[A-Za-z0-9/_-]+$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "slackWebhookUrl"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slackConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slackConfigured"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/danger/reset-data": {
       "post": {
         "operationId": "settings.danger.resetData",
