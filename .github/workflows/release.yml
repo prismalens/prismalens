@@ -18,9 +18,9 @@ jobs:
     # (Settings -> Secrets and variables -> Actions -> Variables); no code change
     # and no PR needed to turn it back on.
     #
-    # When it IS re-armed, note that release-please will compute a MAJOR bump: the
-    # history carries a `BREAKING CHANGES` entry (#195) and #621 landed as
-    # `refactor!:`. Cutting 0.5.0 instead needs a `Release-As: 0.5.0` commit footer.
+    # Before 1.0 a breaking change bumps the minor version (`bump-minor-pre-major`
+    # in release-please-config.json). 0.5.0 itself was pinned with a
+    # `Release-As: 0.5.0` footer.
     #
     # The `publish` job below is deliberately NOT gated: it fires on a published
     # GitHub Release, which only exists if a human deliberately made one.
