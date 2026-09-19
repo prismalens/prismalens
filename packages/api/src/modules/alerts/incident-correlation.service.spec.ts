@@ -147,6 +147,31 @@ describe("IncidentCorrelationService", () => {
 			});
 		});
 
+		// #633 edge 12: the fingerprint is title + description, so "High error rate"
+		// on checkout and on billing share one. They are two incidents.
+		it("scopes a fingerprint match to the alert's own service", async () => {
+			const billing = alertRow({ id: "alert-2", fingerprint: "fp-shared", serviceId: "svc-billing" });
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockIncidentsService.create.mockResolvedValue({ id: "incident-2", number: 2 });
+
+			const result = await service.correlateAlert(billing);
+
+			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
+				.toMatchObject({ serviceId: "svc-billing" });
+			expect(result.isNewIncident).toBe(true);
+		});
+
+		it("matches a serviceless alert only against a serviceless incident", async () => {
+			const unmapped = alertRow({ id: "alert-3", fingerprint: "fp-shared", serviceId: null });
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockIncidentsService.create.mockResolvedValue({ id: "incident-3", number: 3 });
+
+			await service.correlateAlert(unmapped);
+
+			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
+				.toMatchObject({ serviceId: null });
+		});
+
 		it("opens a new incident for a different fingerprint even with an open incident already present", async () => {
 			const other = alertRow({ id: "alert-2", fingerprint: "fp-other" });
 
@@ -180,7 +205,9 @@ describe("IncidentCorrelationService", () => {
 			expect(mockPrismaService.alert.findFirst).toHaveBeenCalledWith(
 				expect.objectContaining({
 					where: expect.objectContaining({
-						incident: { status: { notIn: ["resolved", "closed"] } },
+						incident: expect.objectContaining({
+							status: { notIn: ["resolved", "closed"] },
+						}),
 					}),
 				}),
 			);
