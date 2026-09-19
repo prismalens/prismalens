@@ -12,9 +12,13 @@ export {
 	type HarnessId,
 	type HarnessRunEnv,
 	type HarnessSelectionFailure,
+	MODEL_SOURCES,
+	type ModelSource,
 	PERMISSION_MODES,
 	type PermissionFidelity,
 	type PermissionMode,
 	type PermissionOutcome,
+	type ResolvedModel,
+	resolveHarnessModel,
 	resolvePermissionOutcome,
 } from "./providers/harness.js";

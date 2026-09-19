@@ -106,6 +106,9 @@ export function HarnessSettings() {
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
+	const effectiveHarness = selected === "auto" ? selection?.harness : selected;
+	const defaultModel =
+		harnesses.find((h) => h.id === effectiveHarness)?.defaultModel ?? null;
 
 	async function handleSave() {
 		setSaveError(null);
@@ -177,7 +180,7 @@ export function HarnessSettings() {
 						</Alert>
 					)}
 
-				{selection?.pinned && (
+				{selection?.pinned && selection.pinnedBy === "env" && (
 					<Alert data-testid="harness-pinned-notice">
 						<AlertTriangle className="h-4 w-4" />
 						<AlertTitle>PRISMALENS_HARNESS overrides this picker</AlertTitle>
@@ -338,12 +341,14 @@ export function HarnessSettings() {
 							id="harness-model"
 							value={model}
 							onChange={(e) => setModel(e.target.value)}
-							placeholder="harness default"
+							placeholder={defaultModel ?? "harness default"}
 							className="w-full sm:w-80"
 						/>
 						<p className="text-xs text-muted-foreground">
-							Model id in the harness's own format. Leave empty to use the
-							harness default.
+							Model id in the harness's own format.{" "}
+							{defaultModel
+								? `Empty means ${defaultModel}, the model prismalens verified for this harness.`
+								: "Empty leaves the harness to its own default, which nobody verified."}
 						</p>
 					</div>
 

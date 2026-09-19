@@ -8,24 +8,33 @@
  * makes no model calls and has no webhook listener command any more. What is
  * left is what actually gates a boot:
  *  - Node version
- *  - the app data directory (created by `pl up` itself)
- *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4)
+ *  - the workspace directory (created by `pl up` itself); `--workspace` and
+ *    PRISMALENS_WORKSPACE_DIR are honoured the way `pl up` honours them
+ *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4),
+ *    and the model a run would ask it for
+ *  - the sandbox `auto` would pick, because the cooperative floor stops no
+ *    read outside the snapshot (#337 run e, G17)
  *  - the port/host `pl up` will bind, informational only
  */
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
 	ensureAppDataDir,
 	getAppDataDir,
 	secretFileName,
 } from "@prismalens/config";
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
+	HARNESS_REGISTRY,
+	type HarnessId,
+	resolveHarnessModel,
+} from "@prismalens/config/harness";
+import {
+	installHints,
 	isOnPath,
 	resolveHarnessSelection,
 	resolveOnPath,
 } from "@prismalens/config/harness-selection";
-import { probeHarness } from "@prismalens/engine";
+import { isSrtAvailable, probeHarness } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
@@ -59,14 +68,14 @@ function checkAppDataDir(): Check {
 	try {
 		const dir = ensureAppDataDir();
 		return {
-			name: "App data dir",
+			name: "Workspace",
 			pass: true,
 			detail: dir,
 			hard: true,
 		};
 	} catch (err) {
 		return {
-			name: "App data dir",
+			name: "Workspace",
 			pass: false,
 			detail: `${getAppDataDir()} — ${err instanceof Error ? err.message : String(err)}`,
 			hard: true,
@@ -85,10 +94,25 @@ export function checkHarnessesOnPath(): Check[] {
 			pass: resolved !== null,
 			detail: resolved
 				? `${descriptor.binary} found at ${resolved}`
-				: `${descriptor.binary} not found on PATH (${process.env.PATH || "PATH is empty"})`,
+				: `${descriptor.binary} not found on PATH`,
 			hard: false,
 		};
 	});
+}
+
+/** The PATH the harness scan used, once, so a bare sudo or service PATH shows without a dump per row. */
+function checkPath(): Check {
+	const entries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+	const head = entries.slice(0, 3).join(", ");
+	return {
+		name: "PATH",
+		pass: entries.length > 0,
+		detail:
+			entries.length === 0
+				? "empty"
+				: `${entries.length} entries, starting ${head}${entries.length > 3 ? ", …" : ""}`,
+		hard: false,
+	};
 }
 
 /**
@@ -97,17 +121,12 @@ export function checkHarnessesOnPath(): Check[] {
  */
 export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
 	const pass = perHarness.some((c) => c.pass);
-	const listing = (
-		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
-	)
-		.map((d) => d.id)
-		.join(", ");
 	return {
 		name: "Harness available",
 		pass,
 		detail: pass
 			? "at least one harness is installed"
-			: `no harness found on PATH — install one of: ${listing}`,
+			: `no harness found on PATH. Install one: ${installHints()}`,
 		hard: true,
 	};
 }
@@ -136,22 +155,57 @@ export async function checkHarnessHandshake(): Promise<Check[]> {
 	return results;
 }
 
-/** Which harness `pl up` would actually pick, per the shared selection gate. */
-function checkAutoSelection(): Check {
+/**
+ * Which harness `pl up` would pick, per the shared selection gate, and the model
+ * it would ask for. The doctor cannot see the app's persisted Settings → Harness
+ * choice, so it says so: a pin saved there wins over what is printed here.
+ */
+export function checkAutoSelection(): Check[] {
 	const envHarness = process.env.PRISMALENS_HARNESS;
-	const selection = resolveHarnessSelection({ envHarness });
-	if (selection.runnable) {
-		return {
-			name: "Auto-selected harness",
-			pass: true,
-			detail: `${selection.harness}${selection.auto ? " (auto)" : " (pinned by PRISMALENS_HARNESS)"}${selection.verified ? "" : ", not yet verified"}`,
-			hard: false,
-		};
+	const selection = resolveHarnessSelection({ envHarness, pinSource: "env" });
+	if (!selection.runnable) {
+		return [
+			{
+				name: "Selected harness",
+				pass: false,
+				detail: selection.reason,
+				hard: false,
+			},
+		];
 	}
+	const model = resolveHarnessModel(selection.harness);
+	return [
+		{
+			name: "Selected harness",
+			pass: true,
+			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${selection.verified ? "" : ", not yet verified"}`,
+			hard: false,
+		},
+		{
+			name: "Model",
+			pass: model.source === "product-default",
+			detail:
+				model.source === "product-default"
+					? `${model.model} (verified default; Settings → Harness → Model overrides it)`
+					: `${selection.harness} has no verified default, so the harness picks its own model unless Settings → Harness → Model sets one`,
+			hard: false,
+		},
+	];
+}
+
+/**
+ * The sandbox `auto` would pick. Without srt the run gets the cooperative
+ * process floor, which stops no read outside the snapshot; #337 run e watched
+ * `ls ../..` list every run in the workspace there.
+ */
+export function checkSandbox(): Check {
+	const srt = isSrtAvailable();
 	return {
-		name: "Auto-selected harness",
-		pass: false,
-		detail: selection.reason,
+		name: "Sandbox",
+		pass: srt,
+		detail: srt
+			? "srt found; runs get an enforced filesystem and egress boundary"
+			: "srt not found; runs use the cooperative process floor, which does not stop a read outside the snapshot. Install @anthropic-ai/sandbox-runtime for an enforced boundary (docs.prismalens.io/cli/sandboxing/)",
 		hard: false,
 	};
 }
@@ -186,10 +240,32 @@ export default defineCommand({
 		name: "doctor",
 		description: "Preflight check the `pl up` environment",
 	},
-	args: {},
+	args: {
+		port: {
+			type: "string",
+			description:
+				"Port `pl up` will listen on (default 3001, or PRISMALENS_PORT)",
+		},
+		host: {
+			type: "string",
+			description:
+				"Host `pl up` will bind (default localhost, or PRISMALENS_HOST)",
+		},
+		workspace: {
+			type: "string",
+			description:
+				"Data directory `pl up` will use (default ~/.prismalens, or PRISMALENS_WORKSPACE_DIR)",
+		},
+	},
 	async run({ args, cmd }) {
 		try {
 			assertKnownFlags(args, cmd);
+			// The same three knobs `pl up` takes, so the doctor reports the install `pl up` will run (#337 run e, G12).
+			if (args.port) process.env.PRISMALENS_PORT = String(args.port);
+			if (args.host) process.env.PRISMALENS_HOST = String(args.host);
+			if (args.workspace) {
+				process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
+			}
 
 			const harnessChecks = checkHarnessesOnPath();
 			const handshakeChecks = await checkHarnessHandshake();
@@ -197,10 +273,12 @@ export default defineCommand({
 			const checks: Check[] = [
 				checkNodeVersion(),
 				checkAppDataDir(),
+				checkPath(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
 				...handshakeChecks,
-				checkAutoSelection(),
+				...checkAutoSelection(),
+				checkSandbox(),
 				checkWebhookToken(),
 				checkPortHost(),
 			];
@@ -217,7 +295,7 @@ export default defineCommand({
 			const hardFailures = checks.filter((c) => c.hard && !c.pass);
 			if (hardFailures.length > 0) {
 				consola.error(
-					`${hardFailures.length} required check(s) failed — fix the above before running \`pl up\`.`,
+					`${hardFailures.length} required check(s) failed. \`pl up\` still starts without a harness, but Investigate stays disabled until one is on PATH.`,
 				);
 				process.exit(1);
 			}

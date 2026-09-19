@@ -47,11 +47,28 @@ describe("resolveHarnessSelection", () => {
 		});
 	});
 
+	it("names the Settings page, not PRISMALENS_HARNESS, when the pin came from there (#337 run e, G15)", () => {
+		const fromSettings = resolveHarnessSelection({ envHarness: "codex", pinSource: "settings", isOnPath: onPath([]) });
+		expect(fromSettings.runnable).toBe(false);
+		if (!fromSettings.runnable) {
+			expect(fromSettings.reason).toContain("Settings → Harness");
+			expect(fromSettings.reason).not.toContain("PRISMALENS_HARNESS");
+			expect(fromSettings.pinnedBy).toBe("settings");
+		}
+		const fromEnv = resolveHarnessSelection({ envHarness: "codex", isOnPath: onPath([]) });
+		if (!fromEnv.runnable) {
+			expect(fromEnv.reason).toContain('PRISMALENS_HARNESS="codex"');
+			expect(fromEnv.pinnedBy).toBe("env");
+		}
+		const ok = resolveHarnessSelection({ envHarness: "opencode", pinSource: "settings", isOnPath: onPath(["opencode"]) });
+		expect(ok).toMatchObject({ runnable: true, auto: false, pinnedBy: "settings" });
+	});
+
 	it("lists every registry row with installed and verified flags", () => {
 		const rows = listHarnessStatus({ isOnPath: onPath(["opencode"]) });
 		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
-		expect(rows[0]).toMatchObject({ installed: true, verified: true });
-		expect(rows[1]).toMatchObject({ installed: false });
+		expect(rows[0]).toMatchObject({ installed: true, verified: true, defaultModel: "opencode/muse-spark-1.3-contributor-free" });
+		expect(rows[1]).toMatchObject({ installed: false, defaultModel: null });
 	});
 });
 

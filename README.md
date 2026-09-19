@@ -62,14 +62,18 @@ A fresh install has nothing pointed at it, so no incidents arrive on their own.
 You do not need an Alertmanager to see it work:
 
 1. **Install and start.** `npm install -g prismalens`, then `pl up`, then sign in
-   as the owner. `pl doctor` says whether a coding agent is on PATH.
+   as the owner. `pl doctor` says whether a coding agent is on PATH, which model
+   a run will ask it for, and whether the sandbox is enforced. With OpenCode the
+   model is `opencode/muse-spark-1.3-contributor-free`, keyless, unless you set
+   another under Settings → Harness → Model.
 2. **Point a service at its code.** Services, then Add Service, then set
    **Repository** to a folder (`~/code/payments`) or a git URL
    (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
    on the service: `main at 3f2c9a1b04de`, or git's error word for word. A URL
    is mirrored under `~/.prismalens/repos/` with your own git credentials.
 3. **Write the incident.** Incidents, then Create Incident. A title is the only
-   required field; pick the service.
+   required field; pick the service, or Investigate has nothing to read and
+   says so.
 4. **Run.** Investigate takes a fresh snapshot of the repository's last commit
    into `~/.prismalens/runs/<id>/repo` and runs one agent session there. Your
    checkout is never the working directory, and uncommitted changes are not
@@ -86,10 +90,10 @@ name exactly. An alert that repeats the title and text of one already on an open
 incident joins that incident; otherwise it opens a new one, and only the alert
 that opens an incident decides whether an investigation starts. A new incident
 with no service runs nothing, and the timeline says so. A critical or high alert
-on a service starts an investigation on arrival; change that per service under
-Services → the service → Investigation (always, critical and high, critical only,
-never). When the policy says no, the incident's timeline names the policy and
-where to change it.
+on a service starts an investigation on arrival; change that on the service's
+Investigation tab (open the service from an incident, or from Settings →
+Services): always, critical and high, critical only, never. When the policy says
+no, the incident's timeline names the policy and where to change it.
 
 ### Or just the CLI
 

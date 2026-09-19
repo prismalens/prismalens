@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getHarnessProviderKeys, HARNESS_REGISTRY } from "./harness.js";
+import {
+	getHarnessProviderKeys,
+	HARNESS_REGISTRY,
+	resolveHarnessModel,
+} from "./harness.js";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -104,5 +108,23 @@ describe("gateway URL (claude-code)", () => {
 		expect(() =>
 			getHarnessProviderKeys("claude-code", { ANTHROPIC_BASE_URL: "http://127.0.0.1.evil.example/v1" }),
 		).toThrow(/must be https/);
+	});
+});
+
+describe("resolveHarnessModel (#337 run e, G11)", () => {
+	it("takes the operator's model first, with its source", () => {
+		expect(resolveHarnessModel("opencode", " zen/free ")).toEqual({ model: "zen/free", source: "operator" });
+	});
+
+	it("falls back to the row's verified default, never the harness's own", () => {
+		expect(resolveHarnessModel("opencode")).toEqual({
+			model: HARNESS_REGISTRY.opencode.defaultModel,
+			source: "product-default",
+		});
+		expect(HARNESS_REGISTRY.opencode.defaultModel).toBe("opencode/muse-spark-1.3-contributor-free");
+	});
+
+	it("names the harness default as the source when a row has none", () => {
+		expect(resolveHarnessModel("gemini", "")).toEqual({ source: "harness-default" });
 	});
 });

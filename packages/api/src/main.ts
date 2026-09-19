@@ -22,11 +22,12 @@ import {
 	WEBHOOK_RUNTIME_PATH_PREFIX,
 } from "./shared/constants/routes.js";
 import { isEaddrinuseError } from "./shared/utils/listen-error.js";
+import { resolveServiceVersion } from "./shared/utils/service-version.js";
 
 // Set service info for all loggers
 Logger.setServiceInfo({
 	name: "prismalens-api",
-	version: "0.1.0",
+	version: resolveServiceVersion(),
 	environment: process.env.NODE_ENV ?? "development",
 });
 

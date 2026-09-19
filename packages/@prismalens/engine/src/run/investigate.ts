@@ -14,6 +14,7 @@ import {
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
+	type ModelSource,
 	resolvePermissionOutcome,
 } from "@prismalens/config/harness";
 import type {
@@ -24,9 +25,14 @@ import type {
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
 import { AcpSession, type AcpStreamItem } from "../runner/acp-client.js";
 import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
-import { type PermissionPolicy, readOnlyPolicy } from "./permission.js";
+import { type PermissionPolicy, readOnlyPolicyFor } from "./permission.js";
 import { buildInvestigationPrompt } from "./prompt.js";
-import { parseReport, retryPrompt, stampReport } from "./report.js";
+import {
+	parseReport,
+	retryBudgetKey,
+	retryPrompt,
+	stampReport,
+} from "./report.js";
 
 export interface RunInvestigationOptions {
 	runId: string;
@@ -43,6 +49,8 @@ export interface RunInvestigationOptions {
 	runDir: string;
 	/** Model id in the harness's own format; undefined means the harness default. */
 	model?: string;
+	/** Where `model` came from; recorded in the run's fidelity. */
+	modelSource?: ModelSource;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
 	sandbox?: Sandbox;
@@ -71,12 +79,15 @@ export function buildRunFidelity(
 	harness: HarnessId,
 	sandbox?: Sandbox,
 	requestedSandbox?: string,
+	model?: { id?: string; source?: ModelSource },
 ): RunFidelity {
 	const outcome = resolvePermissionOutcome(harness, "read-only");
 	return {
 		harness,
 		mode: outcome.mode,
 		fidelity: outcome.fidelity,
+		...(model?.id ? { model: model.id } : {}),
+		...(model?.source ? { modelSource: model.source } : {}),
 		mechanism: sandbox
 			? `${outcome.mechanism} · sandbox=${sandbox.id} (${sandbox.fidelity})`
 			: outcome.mechanism,
@@ -141,6 +152,7 @@ export async function* runInvestigation(
 		opts.harness,
 		opts.sandbox,
 		opts.requestedSandbox,
+		{ id: opts.model, source: opts.modelSource },
 	);
 	const { env, runEnv } = prepareRunEnv(opts);
 	const transcript = join(opts.runDir, "transcript.jsonl");
@@ -162,7 +174,7 @@ export async function* runInvestigation(
 		env,
 		sandbox: opts.sandbox,
 		limits: opts.limits,
-		permission: opts.permission ?? readOnlyPolicy,
+		permission: opts.permission ?? readOnlyPolicyFor({ cwd: opts.cwd }),
 		sessionMeta: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -248,7 +260,13 @@ export async function* runInvestigation(
 		}
 
 		let parsed = parseReport(text);
-		if (!parsed.ok) {
+		const spent = { extraction: false, schema: false };
+		let retries = 0;
+		while (!parsed.ok) {
+			const key = retryBudgetKey(parsed);
+			if (spent[key]) break;
+			spent[key] = true;
+			retries += 1;
 			text = "";
 			const retry = yield* consume(session.prompt(retryPrompt(parsed)));
 			if ("error" in retry) {
@@ -259,7 +277,7 @@ export async function* runInvestigation(
 		}
 		if (!parsed.ok) {
 			yield adapter.error(
-				`report did not validate after one retry (${parsed.reason}: ${parsed.detail})`,
+				`report did not validate after ${retries === 1 ? "one retry" : "two retries"} (${parsed.reason}: ${parsed.detail})`,
 			);
 			return;
 		}

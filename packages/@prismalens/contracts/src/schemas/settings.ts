@@ -26,6 +26,8 @@ export const HarnessStatusSchema = z.object({
 	verified: z.boolean(),
 	/** One-line install hint, shown when not installed. */
 	install: z.string(),
+	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
+	defaultModel: z.string().nullable(),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
@@ -33,8 +35,9 @@ export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 export const HarnessSelectionStatusSchema = z.object({
 	runnable: z.boolean(),
 	harness: z.string().nullable(),
-	/** Set by PRISMALENS_HARNESS rather than auto-selected. */
+	/** Pinned rather than auto-selected, by PRISMALENS_HARNESS or by Settings → Harness. */
 	pinned: z.boolean(),
+	pinnedBy: z.enum(["env", "settings"]).nullable(),
 	blockedReason: z.string().nullable(),
 });
 export type HarnessSelectionStatus = z.infer<

@@ -5,6 +5,7 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
 import { Public } from "./core/auth/public.decorator.js";
+import { resolveServiceVersion } from "./shared/utils/service-version.js";
 
 @Public()
 @Controller()
@@ -20,7 +21,7 @@ export class AppController {
 	} {
 		return {
 			name: "PrismaLens API",
-			version: "0.1.0",
+			version: resolveServiceVersion(),
 			edition: "COMMUNITY", //TODO: Dynamically set based on license
 			docs: "/api",
 		};

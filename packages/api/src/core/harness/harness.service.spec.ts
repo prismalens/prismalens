@@ -191,6 +191,7 @@ describe("HarnessService", () => {
 				runnable: true,
 				harness: "opencode",
 				pinned: false,
+				pinnedBy: null,
 				blockedReason: null,
 			});
 		});

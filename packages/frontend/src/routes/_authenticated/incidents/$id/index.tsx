@@ -23,6 +23,9 @@ import {
 	useInvestigationReadiness,
 	useTimeline,
 } from "@/lib/api/hooks";
+import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
+import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
+import { recommendationKeys } from "@/lib/api/hooks/use-recommendations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 
@@ -46,6 +49,10 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/")({
 	}),
 	component: IncidentDetailPage,
 });
+
+/** The same refusal the API gives `investigate` for an incident with no service (#337 run e, G16). */
+const NO_SERVICE_REASON =
+	"This incident has no service, so there is no repository to investigate. Edit the incident and pick a service.";
 
 function IncidentDetailPage() {
 	const { id } = Route.useParams();
@@ -81,15 +88,18 @@ function IncidentDetailPage() {
 			replace: true,
 		});
 
+	// oRPC query keys start with a path array, so a string key such as ["incidents"] never
+	// matches and nothing refetches until a reload (#337 run e, G13). Use the key builders.
 	const updateMutation = useMutation({
 		...orpc.incidents.update.mutationOptions(),
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["incidents"] }),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
 	});
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
 		onSuccess: (data) => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
-			queryClient.invalidateQueries({ queryKey: ["investigations"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+			queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
 			if (data.investigationId) {
 				setStartedId(data.investigationId);
 				navigate({
@@ -111,12 +121,13 @@ function IncidentDetailPage() {
 	});
 	const resolveMutation = useMutation({
 		...orpc.incidents.resolve.mutationOptions(),
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: ["incidents"] }),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
 	});
 	const completeRecommendationMutation = useMutation({
 		...orpc.recommendations.update.mutationOptions(),
 		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: ["recommendations"] }),
+			queryClient.invalidateQueries({ queryKey: recommendationKeys.all() }),
 	});
 
 	const handleInvestigate = () => investigateMutation.mutate({ id });
@@ -158,8 +169,14 @@ function IncidentDetailPage() {
 				onInvestigate={handleInvestigate}
 				onResolve={() => resolveMutation.mutate({ id })}
 				isInvestigating={investigateMutation.isPending}
-				investigateDisabled={!canRunInvestigation}
-				investigateDisabledReason={blockedReason}
+				investigateDisabled={!canRunInvestigation || !incident.serviceId}
+				investigateDisabledReason={
+					!canRunInvestigation
+						? blockedReason
+						: incident.serviceId
+							? undefined
+							: NO_SERVICE_REASON
+				}
 			/>
 
 			<Tabs value={tab} onValueChange={setTab} className="space-y-4">

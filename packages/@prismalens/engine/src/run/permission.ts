@@ -68,7 +68,80 @@ function pick(
 	);
 }
 
-export const readOnlyPolicy: PermissionPolicy = (req) => {
+/**
+ * Path tokens a shell command can use to leave the snapshot: a `..` segment,
+ * a `~` home, `$HOME`, or an absolute path. Absolute paths under the snapshot
+ * itself, `/dev/null`, and the usual binary directories are fine. A text rule,
+ * not a boundary (the sandbox is the boundary); #337 run e saw `ls -la ../..`
+ * list every run in the workspace on the cooperative floor, and this is what
+ * would have refused it, with the refusal on the timeline.
+ */
+const OUTSIDE_TOKENS =
+	/(?:^|[\s=:"'`(])(\.\.(?:\/|$|[\s;&|)"'`])|~(?:\/|$|[\s;&|)"'`])|\$HOME\b|\$\{HOME\}|\/[A-Za-z0-9_.][^\s;&|)"'`]*)/g;
+const HARMLESS_ABSOLUTE = [
+	"/dev/null",
+	"/usr/bin/",
+	"/bin/",
+	"/usr/local/bin/",
+];
+
+function outsideSnapshotToken(text: string, cwd: string): string | null {
+	for (const m of text.matchAll(OUTSIDE_TOKENS)) {
+		const token = m[1] as string;
+		if (token.startsWith("/")) {
+			if (token === cwd || token.startsWith(`${cwd}/`)) continue;
+			if (HARMLESS_ABSOLUTE.some((p) => token === p || token.startsWith(p)))
+				continue;
+		}
+		return token.trim();
+	}
+	return null;
+}
+
+/** `cwd` params and file-path params the harness may pass beside the command. */
+function pathParamsOf(req: PermissionRequest): string[] {
+	const raw = req.toolCall?.rawInput;
+	if (!raw || typeof raw !== "object") return [];
+	const r = raw as Record<string, unknown>;
+	return ["cwd", "path", "filePath", "file_path", "file"].flatMap((k) =>
+		typeof r[k] === "string" ? [r[k] as string] : [],
+	);
+}
+
+function outsideSnapshot(
+	req: PermissionRequest,
+	cwd: string | undefined,
+): string | null {
+	if (!cwd) return null;
+	const kind = req.toolCall?.kind ?? "";
+	for (const p of pathParamsOf(req)) {
+		const abs = p.startsWith("/") ? p : null;
+		if (abs && abs !== cwd && !abs.startsWith(`${cwd}/`)) return p;
+		if (/(^|\/)\.\.(\/|$)/.test(p) || p.startsWith("~")) return p;
+	}
+	if (kind === "execute" || !kind) {
+		return outsideSnapshotToken(commandOf(req), cwd);
+	}
+	return null;
+}
+
+export interface ReadOnlyPolicyOptions {
+	/** The snapshot the run works in; paths outside it are refused. Absent means no path rule. */
+	cwd?: string;
+}
+
+export function readOnlyPolicyFor(
+	options: ReadOnlyPolicyOptions = {},
+): PermissionPolicy {
+	return (req) => decide(req, options.cwd);
+}
+
+export const readOnlyPolicy: PermissionPolicy = (req) => decide(req, undefined);
+
+function decide(
+	req: PermissionRequest,
+	cwd: string | undefined,
+): PermissionDecision {
 	const kind = req.toolCall?.kind ?? "";
 	const command = commandOf(req);
 	let why: string | null = null;
@@ -78,6 +151,10 @@ export const readOnlyPolicy: PermissionPolicy = (req) => {
 	else if (kind === "execute" && MUTATING_SHELL.test(command))
 		why = "shell command would mutate";
 	else if (!kind && MUTATING_SHELL.test(command)) why = "command would mutate";
+	else {
+		const outside = outsideSnapshot(req, cwd);
+		if (outside) why = `reads outside the snapshot: ${outside}`;
+	}
 
 	if (why) {
 		const reject = pick(req.options, "reject");
@@ -95,4 +172,4 @@ export const readOnlyPolicy: PermissionPolicy = (req) => {
 		optionId: allow.optionId,
 		warn: `allowed tool kind "${kind || "(none)"}", which the read-only policy does not name: ${req.toolCall?.title ?? command}`,
 	};
-};
+}

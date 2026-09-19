@@ -86,6 +86,7 @@ import { RepositoriesModule } from "./modules/repositories/repositories.module.j
 import { ServicesModule } from "./modules/services/services.module.js";
 import { TimelineModule } from "./modules/timeline/timeline.module.js";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module.js";
+import { resolveServiceVersion } from "./shared/utils/service-version.js";
 
 // Create a logger instance for oRPC error handling
 const orpcLogger = new Logger({ context: "oRPC" });
@@ -102,7 +103,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		LoggerModule.forRoot({
 			service: {
 				name: "prismalens-api",
-				version: "0.1.0",
+				version: resolveServiceVersion(),
 				environment: process.env.NODE_ENV ?? "development",
 			},
 		}),

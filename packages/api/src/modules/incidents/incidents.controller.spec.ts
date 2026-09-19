@@ -32,6 +32,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
+				serviceId: "123e4567-e89b-12d3-a456-426614174999",
 				number: 1,
 				title: "Storm Incident",
 				severity: "critical",

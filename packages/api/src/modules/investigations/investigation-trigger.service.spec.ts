@@ -219,7 +219,7 @@ describe("InvestigationTriggerService", () => {
 			const entry = mockTimelineService.create.mock.calls[0][0];
 			expect(entry.title).toBe("Auto-investigation skipped");
 			expect(entry.description).toContain("off for payments");
-			expect(entry.description).toContain("Services → payments → Investigation");
+			expect(entry.description).toContain("payments service's Investigation tab");
 		});
 
 		it("an alert correlated into an open incident neither runs nor writes: the opening alert decided", async () => {

@@ -13,6 +13,7 @@ import { useState } from "react";
 import { AlertFilters, AlertsTable } from "@/components/alerts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 
 type AlertsTab = "all" | "unmapped";
@@ -65,7 +66,7 @@ function AlertsPage() {
 	const acknowledgeMutation = useMutation({
 		...orpc.alerts.acknowledge.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["alerts"] });
+			queryClient.invalidateQueries({ queryKey: alertKeys.all() });
 		},
 	});
 
@@ -73,7 +74,7 @@ function AlertsPage() {
 	const resolveMutation = useMutation({
 		...orpc.alerts.resolve.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["alerts"] });
+			queryClient.invalidateQueries({ queryKey: alertKeys.all() });
 		},
 	});
 

@@ -119,6 +119,12 @@ export const RunFidelitySchema = z.object({
 	 * in-process Agent SDK harness, or no boundary requested at all).
 	 */
 	sandbox: RunFidelitySandboxSchema.optional(),
+	/** The model id the run asked the harness for; absent when the harness chose its own. */
+	model: z.string().optional(),
+	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
+	modelSource: z
+		.enum(["operator", "product-default", "harness-default"])
+		.optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 

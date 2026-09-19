@@ -8,7 +8,6 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,7 +16,6 @@ import { useUpdateService } from "@/lib/api/hooks";
 interface InvestigationPolicy {
 	trigger: TriggerPolicy;
 	context: string;
-	requireApproval: boolean;
 }
 
 interface ServiceInvestigationTabProps {
@@ -42,7 +40,6 @@ function parseInvestigationPolicy(
 	return {
 		trigger: investigation?.trigger ?? DEFAULT_TRIGGER_POLICY,
 		context: investigation?.context ?? "",
-		requireApproval: investigation?.requireApproval ?? true,
 	};
 }
 
@@ -53,9 +50,6 @@ export function ServiceInvestigationTab({
 	const defaults = parseInvestigationPolicy(metadata);
 	const [trigger, setTrigger] = useState<TriggerPolicy>(defaults.trigger);
 	const [context, setContext] = useState(defaults.context);
-	const [requireApproval, setRequireApproval] = useState(
-		defaults.requireApproval,
-	);
 
 	const updateService = useUpdateService();
 
@@ -73,7 +67,6 @@ export function ServiceInvestigationTab({
 					investigation: {
 						trigger,
 						context,
-						requireApproval,
 					},
 				},
 			},
@@ -129,26 +122,6 @@ export function ServiceInvestigationTab({
 						value={context}
 						onChange={(e) => setContext(e.target.value)}
 					/>
-				</CardContent>
-			</Card>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Approval Gate</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<div className="flex items-center space-x-2">
-						<Checkbox
-							id="require-approval"
-							checked={requireApproval}
-							onCheckedChange={(checked) =>
-								setRequireApproval(checked === true)
-							}
-						/>
-						<Label htmlFor="require-approval">
-							Require approval before automated actions
-						</Label>
-					</div>
 				</CardContent>
 			</Card>
 
