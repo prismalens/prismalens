@@ -6,7 +6,7 @@
 	"packages": {
 		"packages/cli": {
 			"package-name": "prismalens",
-			"release-as": "0.5.0"
+			"versioning": "always-bump-patch"
 		}
 	}
 }
