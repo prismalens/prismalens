@@ -51,5 +51,9 @@ export interface RunPorts {
 	/** A git token for the connection that discovered the repo, when one exists. */
 	repoToken(connectionId: string): Promise<string | null>;
 	/** A fresh clone of the source's committed HEAD into `dest`. */
-	snapshot(src: RepoSource, dest: string): Promise<Snapshot>;
+	snapshot(
+		src: RepoSource,
+		dest: string,
+		signal?: AbortSignal,
+	): Promise<Snapshot>;
 }

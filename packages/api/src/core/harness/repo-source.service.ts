@@ -159,22 +159,37 @@ export class RepoSourceService {
 		return { ...check, root, prefix: prefix.replace(/\/$/, "") };
 	}
 
-	/** A fresh clone of the committed HEAD into `dest`. Local clones hardlink objects, so both kinds are fast. */
-	async snapshot(src: RepoSource, dest: string): Promise<Snapshot> {
+	/**
+	 * A fresh clone of the committed HEAD into `dest`. Local clones hardlink objects, so both kinds are fast.
+	 * `signal` kills this run's git; a mirror refresh shared with other callers keeps going, this caller just stops waiting.
+	 */
+	async snapshot(
+		src: RepoSource,
+		dest: string,
+		signal?: AbortSignal,
+	): Promise<Snapshot> {
+		signal?.throwIfAborted();
 		const from =
-			src.kind === "folder" ? src.source : await this.ensureMirror(src);
+			src.kind === "folder"
+				? src.source
+				: await abortable(this.ensureMirror(src), signal);
 		rmSync(dest, { recursive: true, force: true });
 		mkdirSync(join(dest, ".."), { recursive: true });
 		const branch =
 			src.kind === "url" ? src.defaultBranch?.trim() || null : null;
-		await this.git([
-			"clone",
-			"--quiet",
-			...(branch ? ["--branch", branch] : []),
-			"--",
-			from,
-			dest,
-		]);
+		await this.git(
+			[
+				"clone",
+				"--quiet",
+				...(branch ? ["--branch", branch] : []),
+				"--",
+				from,
+				dest,
+			],
+			undefined,
+			{},
+			signal,
+		);
 		const check = await this.headOf(dest);
 		const removed = await this.stripAgentConfig(dest);
 		this.logger.log(
@@ -255,19 +270,34 @@ export class RepoSourceService {
 		args: string[],
 		cwd?: string,
 		extraEnv: Record<string, string> = {},
+		signal?: AbortSignal,
 	): Promise<{ stdout: string; stderr: string }> {
 		try {
 			return await run("git", args, {
 				cwd,
+				signal,
 				env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...extraEnv },
 				maxBuffer: 16 * 1024 * 1024,
 				timeout: GIT_TIMEOUT_MS,
 				killSignal: "SIGKILL",
 			});
 		} catch (err) {
+			if (signal?.aborted) throw signal.reason;
 			throw gitError(err);
 		}
 	}
+}
+
+/** Stop waiting on `op` when `signal` aborts, without cancelling `op` for anyone else. */
+function abortable<T>(op: Promise<T>, signal?: AbortSignal): Promise<T> {
+	if (!signal) return op;
+	return new Promise<T>((resolvePromise, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		op.then(resolvePromise, reject).finally(() =>
+			signal.removeEventListener("abort", onAbort),
+		);
+	});
 }
 
 /**

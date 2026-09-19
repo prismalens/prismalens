@@ -207,6 +207,20 @@ describe("repo-source.service", () => {
 			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
 		});
 
+		it("snapshot() with an aborted signal rejects with its reason and clones nothing (#605 edge 23)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			const controller = new AbortController();
+			controller.abort(new Error("cancelled"));
+
+			const service = new RepoSourceService();
+			const dest = join(tmp("pl-dest-"), "repo");
+			await expect(
+				service.snapshot({ kind: "folder", source: src }, dest, controller.signal),
+			).rejects.toThrow("cancelled");
+			expect(existsSync(dest)).toBe(false);
+		});
+
 		it("snapshot() removes repo-supplied agent config at any depth and keeps the code", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
