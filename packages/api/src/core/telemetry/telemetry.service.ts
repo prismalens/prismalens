@@ -19,6 +19,8 @@ const SETTING_KEY = "TELEMETRY";
 const POSTHOG_KEY = "phc_nhC5zGT87zGtNR7VCZUw9gKRdtRJmBfZMYaXNZM7sgy2";
 const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/i/v0/e/";
 const SEND_TIMEOUT_MS = 3_000;
+/** How long a terminal state is remembered, so one run reports once. */
+const DEDUP_TTL_MS = 60 * 60_000;
 
 export interface TelemetryEventProps {
 	setup_completed: Record<string, never>;
@@ -45,8 +47,12 @@ export function telemetryForcedOff(
 export class TelemetryService {
 	private readonly logger = new Logger(TelemetryService.name);
 	private readonly version = resolveServiceVersion();
-	/** Investigations already reported terminal; a run can report failure through two ports. */
-	private readonly finished = new Set<string>();
+	/**
+	 * Investigations already reported terminal (a run can report failure through
+	 * two ports), with the time each was recorded. Pruned by age so a long-lived
+	 * install does not accumulate one entry per investigation forever.
+	 */
+	private readonly finished = new Map<string, number>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -111,8 +117,12 @@ export class TelemetryService {
 		investigationId: string,
 		state: TelemetryEventProps["investigation_finished"]["state"],
 	): Promise<void> {
+		const now = Date.now();
+		for (const [id, at] of this.finished) {
+			if (now - at > DEDUP_TTL_MS) this.finished.delete(id);
+		}
 		if (this.finished.has(investigationId)) return;
-		this.finished.add(investigationId);
+		this.finished.set(investigationId, now);
 		await this.capture("investigation_finished", { state });
 	}
 
