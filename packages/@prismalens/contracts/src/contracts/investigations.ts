@@ -11,6 +11,7 @@ import {
 	IdParamSchema,
 	InvestigationEventsPageSchema,
 	InvestigationQuerySchema,
+	InvestigationReportMarkdownSchema,
 	InvestigationSchema,
 	InvestigationStatusSchema,
 	InvestigationWithRelationsSchema,
@@ -133,4 +134,18 @@ export const investigationsContract = {
 		})
 		.input(WriteInvestigationResultSchema)
 		.output(InvestigationWithRelationsSchema),
+
+	/**
+	 * A completed investigation's report as Markdown
+	 * GET /investigations/:id/report.md
+	 */
+	exportMarkdown: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/report.md",
+			summary: "Export the report as Markdown",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema)
+		.output(InvestigationReportMarkdownSchema),
 };
