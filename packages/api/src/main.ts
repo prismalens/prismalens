@@ -5,7 +5,12 @@ import * as fs from "node:fs";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config/dist/index.js";
 import { NestFactory } from "@nestjs/core";
-import { getConfig } from "@prismalens/config";
+import {
+	acquireWorkspaceLock,
+	ensureAppDataDir,
+	getConfig,
+	WorkspaceLockedError,
+} from "@prismalens/config";
 import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { LoggerService } from "@prismalens/logger/nestjs";
@@ -46,6 +51,15 @@ async function bootstrap() {
 	}
 
 	const logger = new Logger({ context: "Bootstrap" });
+
+	// One workspace, one process (#605 edge 5): before migrations touch the database.
+	try {
+		acquireWorkspaceLock(ensureAppDataDir());
+	} catch (error) {
+		if (!(error instanceof WorkspaceLockedError)) throw error;
+		logger.error(error.message);
+		process.exit(1);
+	}
 
 	/**
 	 * MIGRATE BEFORE ANYTHING OPENS THE DATABASE. `pl up` boots this process on
