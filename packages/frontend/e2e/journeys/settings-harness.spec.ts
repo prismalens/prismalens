@@ -84,6 +84,7 @@ async function serveHarnesses(
 		runnable: boolean;
 		harness: string | null;
 		pinned: boolean;
+		pinnedBy?: "env" | "settings" | null;
 		blockedReason: string | null;
 	},
 ): Promise<void> {
