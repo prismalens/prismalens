@@ -135,10 +135,10 @@ async function runJobInternal(
 			}
 		}
 
-		const { selection, model } = await ports.resolveHarness();
+		const { selection, model, modelSource } = await ports.resolveHarness();
 		if (!selection.runnable) throw new Error(selection.reason);
 		logger.info(
-			`harness: ${selection.harness} (${selection.auto ? "auto" : "pinned"}${selection.verified ? "" : ", unverified"})`,
+			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}${selection.verified ? "" : ", unverified"}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
 
 		let incident: Record<string, unknown> | null = null;
@@ -182,6 +182,7 @@ async function runJobInternal(
 				cwd: workspace.cwd,
 				runDir,
 				...(model ? { model } : {}),
+				...(modelSource ? { modelSource } : {}),
 				// Never process.env: the child gets only the process-floor allowlist
 				// (layered on by buildFloorEnv) plus this harness's own provider keys,
 				// never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
@@ -254,14 +255,16 @@ async function runJobInternal(
 			}
 		}
 		// A full clone per run fills the disk; the workspace note keeps source and HEAD, the transcript stays (#637 N3).
+		// The harness's per-run home and the packages it installs under its config dir go too:
+		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
-			try {
-				rmSync(join(runDirFor(unvalidated.investigationId), "repo"), {
-					recursive: true,
-					force: true,
-				});
-			} catch (e) {
-				logger.warn("Failed to remove the run snapshot", e);
+			const runDir = runDirFor(unvalidated.investigationId);
+			for (const rel of ["repo", "home", join("config", "node_modules")]) {
+				try {
+					rmSync(join(runDir, rel), { recursive: true, force: true });
+				} catch (e) {
+					logger.warn(`Failed to remove the run's ${rel}`, e);
+				}
 			}
 		}
 	}

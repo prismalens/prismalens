@@ -14,6 +14,7 @@ import { InvestigationStatusBadge } from "@/components/investigation/investigati
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { useInvestigationEventsHistory } from "@/lib/api/hooks/use-investigation-events";
 import { useInvestigationStream } from "@/lib/api/hooks/use-investigation-stream";
 import {
@@ -63,7 +64,7 @@ export function InvestigationPanel({
 				queryKey: investigationKeys.detail(investigationId),
 			});
 			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 		}
 	}, [stream.status, investigationId, queryClient]);
 
@@ -161,9 +162,9 @@ export function InvestigationPanel({
 							The last events the harness sent are in the ledger below. The raw
 							wire transcript is at{" "}
 							<code className="font-mono">
-								~/.prismalens/runs/{investigation.id}/transcript.jsonl
+								runs/{investigation.id}/transcript.jsonl
 							</code>{" "}
-							on the machine running prismalens.
+							under the workspace directory that pl up printed at start.
 						</p>
 					</CardContent>
 				</Card>

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { type PermissionRequest, readOnlyPolicy } from "./permission.js";
+import { type PermissionRequest, readOnlyPolicy, readOnlyPolicyFor } from "./permission.js";
 
 const options = [
 	{ optionId: "once", kind: "allow_once" },
@@ -59,6 +59,53 @@ describe("readOnlyPolicy", () => {
 		}
 		const read = readOnlyPolicy(req({ kind: "read", title: "read a" }));
 		expect(read.allow && read.warn).toBeUndefined();
+	});
+
+	it("refuses paths outside the snapshot when a cwd is given (#337 run e, G17)", () => {
+		const cwd = "/work/runs/abc/repo";
+		const policy = readOnlyPolicyFor({ cwd });
+		for (const command of [
+			"git log --oneline -10; git status; ls -la ..; ls -la ../..",
+			"cat ~/.bashrc",
+			"ls ~/.ssh",
+			"cat /etc/hostname",
+			"cat $HOME/.netrc",
+			"grep -r token /work/runs/other/transcript.jsonl",
+			"cd .. && ls",
+			"ls src/../../..",
+			"cat /bin/../etc/shadow",
+			"cat /bin\\..\\..\\etc\\shadow",
+			`cat ${cwd}/../../other/secret`,
+			"head --lines=3 ../transcript.jsonl",
+			"ls -la $PWD/..",
+			"cat ${PWD}/../transcript.jsonl",
+			"cat $REPO/../x",
+			"type ..\\..\\transcript.jsonl",
+		]) {
+			const d = policy(req({ kind: "execute", rawInput: { command } }));
+			expect(d.allow, command).toBe(false);
+			expect(!d.allow && d.why, command).toMatch(/outside the snapshot/);
+		}
+		for (const command of [
+			"pwd; ls -la",
+			"git log --oneline -20 -- src/",
+			`grep -rn createdAt ${cwd}/server`,
+			"ls src/../src",
+			"cat ./src/../package.json",
+			`ls ${cwd}/src/../server`,
+			"echo $PWD",
+			"grep -rn $PATTERN src/",
+			"cat package.json 2>/dev/null",
+			"/usr/bin/env node -v",
+		]) {
+			expect(policy(req({ kind: "execute", rawInput: { command } })), command).toEqual({ allow: true, optionId: "once" });
+		}
+		expect(policy(req({ kind: "execute", rawInput: { command: "ls", cwd: "/work/runs/abc" } })).allow).toBe(false);
+		expect(policy(req({ kind: "read", rawInput: { filePath: "/etc/passwd" } })).allow).toBe(false);
+		expect(policy(req({ kind: "read", rawInput: { filePath: `${cwd}/../transcript.jsonl` } })).allow).toBe(false);
+		expect(policy(req({ kind: "read", rawInput: { filePath: "src/../README.md" } })).allow).toBe(true);
+		expect(policy(req({ kind: "read", rawInput: { filePath: `${cwd}/README.md` } })).allow).toBe(true);
+		expect(readOnlyPolicy(req({ kind: "execute", rawInput: { command: "ls .." } })).allow).toBe(true);
 	});
 
 	it("never picks allow_always", () => {

@@ -73,10 +73,13 @@ export class HarnessService {
 	/** Env pin first, then the persisted pin, then auto. */
 	async resolveSelection(): Promise<HarnessSelection> {
 		const env = process.env.PRISMALENS_HARNESS?.trim();
-		if (env) return resolveHarnessSelection({ envHarness: env });
+		if (env)
+			return resolveHarnessSelection({ envHarness: env, pinSource: "env" });
 		const settings = await this.getSettings();
 		return resolveHarnessSelection(
-			settings.harness === "auto" ? {} : { envHarness: settings.harness },
+			settings.harness === "auto"
+				? {}
+				: { envHarness: settings.harness, pinSource: "settings" },
 		);
 	}
 
@@ -89,6 +92,7 @@ export class HarnessService {
 						runnable: true,
 						harness: selection.harness,
 						pinned: !selection.auto,
+						pinnedBy: selection.pinnedBy ?? null,
 						blockedReason: null,
 					}
 				: {
@@ -96,6 +100,7 @@ export class HarnessService {
 						harness: selection.harness ?? null,
 						// A pin failure (env or persisted) is pinned; only "no-harness" is auto.
 						pinned: selection.failure !== "no-harness",
+						pinnedBy: selection.pinnedBy ?? null,
 						blockedReason: selection.reason,
 					},
 		};

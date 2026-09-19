@@ -16,6 +16,7 @@ import {
 	OnModuleInit,
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
+import { resolveHarnessModel } from "@prismalens/config/harness";
 import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
@@ -106,9 +107,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					this.harnessService.resolveSelection(),
 					this.harnessService.getSettings(),
 				]);
+				if (!selection.runnable) return { selection };
+				const resolved = resolveHarnessModel(selection.harness, settings.model);
 				return {
 					selection,
-					...(settings.model ? { model: settings.model } : {}),
+					...(resolved.model ? { model: resolved.model } : {}),
+					modelSource: resolved.source,
 				};
 			},
 			incidentRepos: async (incidentId) => {

@@ -51,19 +51,37 @@ export function resolveOnPath(
 	return null;
 }
 
+/** Who pinned the harness: the env var, or the persisted Settings → Harness choice. */
+export type PinSource = "env" | "settings";
+
 export type HarnessSelection =
-	| { runnable: true; harness: HarnessId; auto: boolean; verified: boolean }
+	| {
+			runnable: true;
+			harness: HarnessId;
+			auto: boolean;
+			verified: boolean;
+			pinnedBy?: PinSource;
+	  }
 	| {
 			runnable: false;
 			failure: HarnessSelectionFailure;
 			reason: string;
 			harness?: HarnessId;
+			pinnedBy?: PinSource;
 	  };
 
 export interface HarnessSelectionInput {
-	/** PRISMALENS_HARNESS; the only override. */
+	/** The pinned harness id: PRISMALENS_HARNESS, or the persisted setting. */
 	envHarness?: string;
+	/** Which of the two pinned it; the refusal names that one (#337 run e, G15). */
+	pinSource?: PinSource;
 	isOnPath?: (bin: string) => boolean;
+}
+
+function pinLabel(source: PinSource, id: string): string {
+	return source === "settings"
+		? `Harness pinned to "${id}" under Settings → Harness`
+		: `PRISMALENS_HARNESS="${id}"`;
 }
 
 export interface HarnessStatus {
@@ -73,6 +91,8 @@ export interface HarnessStatus {
 	installed: boolean;
 	verified: boolean;
 	install: string;
+	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
+	defaultModel: string | null;
 }
 
 export function listHarnessStatus(
@@ -88,11 +108,13 @@ export function listHarnessStatus(
 			installed: check(d.binary),
 			verified: d.verified,
 			install: d.install,
+			defaultModel: d.defaultModel ?? null,
 		};
 	});
 }
 
-function installHints(): string {
+/** Every auto-order row's install line, for the doctor's ERROR and the app's tooltip. */
+export function installHints(): string {
 	return HARNESS_AUTO_ORDER.map(
 		(id) => `${HARNESS_REGISTRY[id].label}: ${HARNESS_REGISTRY[id].install}`,
 	).join("; ");
@@ -104,11 +126,13 @@ export function resolveHarnessSelection(
 	const check = input.isOnPath ?? isOnPath;
 	const pin = input.envHarness?.trim();
 	if (pin) {
+		const source = input.pinSource ?? "env";
 		if (!HARNESS_IDS.includes(pin as HarnessId)) {
 			return {
 				runnable: false,
 				failure: "invalid-env-harness",
-				reason: `PRISMALENS_HARNESS="${pin}" is not a known harness (${HARNESS_IDS.join(", ")})`,
+				reason: `${pinLabel(source, pin)} is not a known harness (${HARNESS_IDS.join(", ")})`,
+				pinnedBy: source,
 			};
 		}
 		const id = pin as HarnessId;
@@ -117,11 +141,18 @@ export function resolveHarnessSelection(
 			return {
 				runnable: false,
 				failure: "pinned-harness-missing",
-				reason: `PRISMALENS_HARNESS="${id}" but ${d.binary} is not on PATH. Install: ${d.install}`,
+				reason: `${pinLabel(source, id)} but ${d.binary} is not on PATH. Install: ${d.install}`,
 				harness: id,
+				pinnedBy: source,
 			};
 		}
-		return { runnable: true, harness: id, auto: false, verified: d.verified };
+		return {
+			runnable: true,
+			harness: id,
+			auto: false,
+			verified: d.verified,
+			pinnedBy: source,
+		};
 	}
 	for (const id of HARNESS_AUTO_ORDER) {
 		const d = HARNESS_REGISTRY[id];

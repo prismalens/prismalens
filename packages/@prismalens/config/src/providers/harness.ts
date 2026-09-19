@@ -65,6 +65,13 @@ export interface HarnessDescriptor {
 	sessionMeta?: () => Record<string, unknown>;
 	/** One line the doctor prints when the binary is missing. */
 	install: string;
+	/**
+	 * The model prismalens asks for when the operator set none: the id the
+	 * row's admission run passed on. Absent means the harness's own default,
+	 * which nobody verified (#337 run e: OpenCode's default ignored the report
+	 * schema twice). Recorded per run with its source in `RunFidelity`.
+	 */
+	defaultModel?: string;
 	readOnlyFidelity: PermissionFidelity;
 	readOnlyMechanism: string;
 	/** True once the registry admission run (ACP spike, prismalens#561) is green in CI. */
@@ -133,6 +140,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
+		// The keyless model every #337 walk and the CI admission run used.
+		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
 		verified: true,
@@ -255,6 +264,32 @@ function isSafeGatewayUrl(raw: string): boolean {
 		url.protocol === "http:" &&
 		(host === "localhost" || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host))
 	);
+}
+
+/** Where a run's model id came from; recorded in `RunFidelity` (#337 run e, G11). */
+export const MODEL_SOURCES = [
+	"operator",
+	"product-default",
+	"harness-default",
+] as const;
+export type ModelSource = (typeof MODEL_SOURCES)[number];
+
+export interface ResolvedModel {
+	/** The id passed to the harness; undefined leaves the harness to its own default. */
+	model?: string;
+	source: ModelSource;
+}
+
+/** Operator setting first, then the row's verified default, then the harness's own. */
+export function resolveHarnessModel(
+	harnessId: HarnessId,
+	operatorModel?: string,
+): ResolvedModel {
+	const operator = operatorModel?.trim();
+	if (operator) return { model: operator, source: "operator" };
+	const row = HARNESS_REGISTRY[harnessId]?.defaultModel;
+	if (row) return { model: row, source: "product-default" };
+	return { source: "harness-default" };
 }
 
 /** Auto-selection order; only `verified` rows are eligible without a pin. */

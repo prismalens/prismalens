@@ -4,8 +4,9 @@
 /**
  * The report is the last fenced json block of the harness's final message,
  * validated against InvestigationReportSchema (ADR 0002 §3). ACP has no
- * structured-output primitive, so this is the contract, with one in-session
- * retry that carries the validation errors back.
+ * structured-output primitive, so this is the contract, with in-session
+ * retries that carry the failure back: one for a message with no usable
+ * block, one for a block that fails the schema (see `retryBudgetKey`).
  */
 import {
 	type InvestigationReport,
@@ -23,17 +24,51 @@ export function reportJsonSchema(): string {
 	return JSON.stringify(z.toJSONSchema(ModelReportSchema));
 }
 
-const FENCE = /```json\s*([\s\S]*?)```/g;
+const OPEN_FENCE = /```json\b/gi;
+const CLOSE_FENCE = "```";
+
+type Located =
+	| { kind: "parsed"; value: unknown }
+	| { kind: "invalid"; error: string }
+	| { kind: "none" };
+
+/**
+ * The report block is the last ```json fence whose body is a JSON object. A
+ * fence the model merely mentions in prose ("reply with one ```json block")
+ * is not a block, so an opening whose body does not start with `{` is
+ * skipped; #337 run e lost a valid report to exactly that mention. A body
+ * that opens with `{` but stops at an inner ``` is retried against the last
+ * closing fence in the message.
+ */
+function locateReportBlock(text: string): Located {
+	const openings = [...text.matchAll(OPEN_FENCE)].map(
+		(m) => (m.index ?? 0) + m[0].length,
+	);
+	for (let i = openings.length - 1; i >= 0; i--) {
+		const start = openings[i] as number;
+		const close = text.indexOf(CLOSE_FENCE, start);
+		if (close === -1) continue;
+		const body = text.slice(start, close).trim();
+		if (!body.startsWith("{")) continue;
+		const candidates = [body];
+		const lastClose = text.lastIndexOf(CLOSE_FENCE);
+		if (lastClose > close) candidates.push(text.slice(start, lastClose).trim());
+		let error = "invalid JSON";
+		for (const raw of candidates) {
+			try {
+				return { kind: "parsed", value: JSON.parse(raw) };
+			} catch (err) {
+				error = err instanceof Error ? err.message : String(err);
+			}
+		}
+		return { kind: "invalid", error };
+	}
+	return { kind: "none" };
+}
 
 export function extractJsonBlock(text: string): unknown | undefined {
-	const blocks = [...text.matchAll(FENCE)];
-	if (blocks.length === 0) return undefined;
-	const raw = blocks[blocks.length - 1]?.[1] ?? "";
-	try {
-		return JSON.parse(raw);
-	} catch {
-		return undefined;
-	}
+	const located = locateReportBlock(text);
+	return located.kind === "parsed" ? located.value : undefined;
 }
 
 export type ReportParse =
@@ -45,25 +80,19 @@ export type ReportParse =
 	  };
 
 export function parseReport(text: string): ReportParse {
-	const blocks = [...text.matchAll(FENCE)];
-	if (blocks.length === 0) {
+	const located = locateReportBlock(text);
+	if (located.kind === "none") {
 		return {
 			ok: false,
 			reason: "no-json-block",
-			detail: "no fenced ```json block in the final message",
+			detail:
+				"no fenced ```json block holding a JSON object in the final message",
 		};
 	}
-	let candidate: unknown;
-	try {
-		candidate = JSON.parse(blocks[blocks.length - 1]?.[1] ?? "");
-	} catch (err) {
-		return {
-			ok: false,
-			reason: "invalid-json",
-			detail: err instanceof Error ? err.message : String(err),
-		};
+	if (located.kind === "invalid") {
+		return { ok: false, reason: "invalid-json", detail: located.error };
 	}
-	const parsed = ModelReportSchema.safeParse(candidate);
+	const parsed = ModelReportSchema.safeParse(located.value);
 	if (parsed.success) return { ok: true, report: parsed.data };
 	const detail = parsed.error.issues
 		.slice(0, 20)
@@ -72,9 +101,20 @@ export function parseReport(text: string): ReportParse {
 	return { ok: false, reason: "schema", detail };
 }
 
-export function retryPrompt(
-	failure: Extract<ReportParse, { ok: false }>,
-): string {
+export type ReportFailure = Extract<ReportParse, { ok: false }>;
+
+/**
+ * Which retry a failure spends. Extraction failures (no block, bad JSON) and
+ * schema failures each get one, so a message that hid its block does not use
+ * up the retry that carries the validation errors back (#337 run e, G10).
+ */
+export function retryBudgetKey(
+	failure: ReportFailure,
+): "extraction" | "schema" {
+	return failure.reason === "schema" ? "schema" : "extraction";
+}
+
+export function retryPrompt(failure: ReportFailure): string {
 	return `Your final message did not carry a valid report (${failure.reason}: ${failure.detail}).
 Reply with ONLY one fenced \`\`\`json block that validates against the schema you were given, and nothing else. Do not run more tools.`;
 }

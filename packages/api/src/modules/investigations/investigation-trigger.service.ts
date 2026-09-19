@@ -109,7 +109,7 @@ export class InvestigationTriggerService {
 			return {
 				shouldTrigger: false,
 				triggerType: null,
-				reason: `Auto-investigation is off for ${incident.service.name}. Change it under Services → ${incident.service.name} → Investigation, or press Investigate on this incident.`,
+				reason: `Auto-investigation is off for ${incident.service.name}. Change it on the ${incident.service.name} service's Investigation tab (open the service from this incident), or press Investigate on this incident.`,
 			};
 		}
 
@@ -144,7 +144,7 @@ export class InvestigationTriggerService {
 		return {
 			shouldTrigger: false,
 			triggerType: null,
-			reason: `Incident severity ${incident.severity} is below the policy of ${incident.service.name} (${policy.replace(/_/g, " ")}). Change it under Services → ${incident.service.name} → Investigation, or press Investigate on this incident.`,
+			reason: `Incident severity ${incident.severity} is below the policy of ${incident.service.name} (${policy.replace(/_/g, " ")}). Change it on the ${incident.service.name} service's Investigation tab (open the service from this incident), or press Investigate on this incident.`,
 		};
 	}
 

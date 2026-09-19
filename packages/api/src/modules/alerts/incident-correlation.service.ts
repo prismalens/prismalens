@@ -89,7 +89,7 @@ export class IncidentCorrelationService {
 			if (openMatch?.incident) {
 				await this.incidentsService.addAlert(openMatch.incident.id, alert.id);
 				this.logger.log(
-					`Alert ${alert.id} matched fingerprint on open incident ${openMatch.incident.id}`,
+					`Alert ${alert.id} matched the label set of open incident ${openMatch.incident.id}`,
 				);
 				return {
 					incidentId: openMatch.incident.id,

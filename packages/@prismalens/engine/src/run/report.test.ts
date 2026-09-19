@@ -22,6 +22,25 @@ describe("parseReport", () => {
 		if (r.ok) expect(r.report.summary).toBe("pool exhausted");
 	});
 
+	it("skips a ```json fence the model only mentioned in prose (#337 run e)", () => {
+		const text = `Final answer must be ONLY one \`\`\`json block; JSON schema requires summary.\nDone.\n\`\`\`json\n${JSON.stringify(VALID)}\n\`\`\`\n`;
+		const r = parseReport(text);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.report.summary).toBe("pool exhausted");
+	});
+
+	it("reads past a ``` inside a string when the block's own fence closes it", () => {
+		const withFence = { ...VALID, summary: "see the ``` marker in logs" };
+		const text = `\`\`\`json\n${JSON.stringify(withFence)}\n\`\`\`\n`;
+		const r = parseReport(text);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.report.summary).toContain("marker");
+	});
+
+	it("still reports invalid-json for an object block that does not parse", () => {
+		expect(parseReport("```json\n{\"summary\": \n```")).toMatchObject({ ok: false, reason: "invalid-json" });
+	});
+
 	it("names the failure kind: no block, bad json, schema", () => {
 		expect(parseReport("no report here")).toMatchObject({ ok: false, reason: "no-json-block" });
 		expect(parseReport("```json\n{oops\n```")).toMatchObject({ ok: false, reason: "invalid-json" });

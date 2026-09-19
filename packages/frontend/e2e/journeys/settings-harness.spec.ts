@@ -84,6 +84,7 @@ async function serveHarnesses(
 		runnable: boolean;
 		harness: string | null;
 		pinned: boolean;
+		pinnedBy?: "env" | "settings" | null;
 		blockedReason: string | null;
 	},
 ): Promise<void> {
@@ -147,6 +148,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -172,6 +174,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: false,
 			harness: null,
 			pinned: false,
+			pinnedBy: null,
 			blockedReason: NO_HARNESS_REASON,
 		});
 		await openHarnessSettings(page);
@@ -188,6 +191,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -204,6 +208,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "claude-code",
 			pinned: true,
+			pinnedBy: "env",
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -224,6 +229,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: false,
 			harness: null,
 			pinned: false,
+			pinnedBy: null,
 			blockedReason: NO_HARNESS_REASON,
 		});
 		await openHarnessSettings(page);
@@ -254,6 +260,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page, { harness: "auto" });
@@ -309,6 +316,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -384,6 +392,7 @@ test.describe("Design evidence (#501/#609)", () => {
 					runnable: harnesses === RUNNABLE,
 					harness: harnesses === RUNNABLE ? "opencode" : null,
 					pinned: false,
+					pinnedBy: null,
 					blockedReason: harnesses === RUNNABLE ? null : NO_HARNESS_REASON,
 				});
 			}

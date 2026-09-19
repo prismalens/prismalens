@@ -10,8 +10,10 @@ import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	checkAnyHarnessOnPath,
+	checkAutoSelection,
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
+	checkSandbox,
 	checkWebhookToken,
 } from "./doctor.js";
 
@@ -43,6 +45,28 @@ describe("doctor — harness detection", () => {
 		}
 	});
 
+	it("names the model a run would ask for, and that a saved Settings pin wins (#337 run e, G11, G15)", () => {
+		writeFileSync(join(tempPathDir, "opencode"), "#!/bin/sh\n");
+		chmodSync(join(tempPathDir, "opencode"), 0o755);
+		process.env.PATH = tempPathDir;
+		delete process.env.PRISMALENS_HARNESS;
+
+		const [selected, model] = checkAutoSelection();
+		expect(selected).toMatchObject({ name: "Selected harness", pass: true });
+		expect(selected?.detail).toContain("Settings → Harness");
+		expect(model).toMatchObject({ name: "Model", pass: true });
+		expect(model?.detail).toContain(HARNESS_REGISTRY.opencode.defaultModel);
+		expect(model?.detail).toContain("Settings → Harness → Model");
+	});
+
+	it("reports the sandbox auto would pick, and what the floor does not stop", () => {
+		const check = checkSandbox();
+		expect(check.name).toBe("Sandbox");
+		expect(check.hard).toBe(false);
+		expect(check.detail).toContain("srt");
+		if (!check.pass) expect(check.detail).toContain("outside the snapshot");
+	});
+
 	it("is a HARD failure, listing every registry harness, when none is on PATH", () => {
 		process.env.PATH = tempPathDir; // empty dir — nothing resolvable
 
@@ -52,8 +76,10 @@ describe("doctor — harness detection", () => {
 		const overall = checkAnyHarnessOnPath(perHarness);
 		expect(overall.pass).toBe(false);
 		expect(overall.hard).toBe(true);
-		for (const id of Object.keys(HARNESS_REGISTRY)) {
-			expect(overall.detail).toContain(id);
+		// The ERROR line carries the install commands themselves, not just the ids (#337 run e, G12).
+		expect(overall.detail).toContain("Install one:");
+		for (const descriptor of Object.values(HARNESS_REGISTRY)) {
+			expect(overall.detail).toContain(descriptor.install);
 		}
 	});
 

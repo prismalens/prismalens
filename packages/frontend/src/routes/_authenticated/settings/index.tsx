@@ -54,6 +54,16 @@ function SettingsPage() {
 				{/* Sidebar Navigation */}
 				<nav className="w-48 flex-shrink-0">
 					<ul className="space-y-1">
+						{/* The services registry is reached from here since the screen-survivors demotion; the top bar has no entry. */}
+						<li>
+							<button
+								type="button"
+								onClick={() => navigate({ to: "/services" })}
+								className="w-full text-left text-sm px-3 py-2 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+							>
+								Services
+							</button>
+						</li>
 						{TABS.map((t) => (
 							<li key={t.value}>
 								<button

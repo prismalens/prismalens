@@ -31,6 +31,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useInvestigationReadiness } from "@/lib/api/hooks";
+import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
+import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 
@@ -117,7 +119,7 @@ function IncidentsPage() {
 	const acknowledgeMutation = useMutation({
 		...orpc.incidents.update.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 		},
 	});
 
@@ -125,8 +127,8 @@ function IncidentsPage() {
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
 		onSuccess: (data, variables) => {
-			queryClient.invalidateQueries({ queryKey: ["incidents"] });
-			queryClient.invalidateQueries({ queryKey: ["investigations"] });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+			queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
 			navigate({
 				to: "/incidents/$id",
 				params: { id: variables.id },
