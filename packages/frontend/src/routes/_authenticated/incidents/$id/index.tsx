@@ -50,10 +50,6 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/")({
 	component: IncidentDetailPage,
 });
 
-/** The same refusal the API gives `investigate` for an incident with no service (#337 run e, G16). */
-const NO_SERVICE_REASON =
-	"This incident has no service, so there is no repository to investigate. Edit the incident and pick a service.";
-
 function IncidentDetailPage() {
 	const { id } = Route.useParams();
 	const search = Route.useSearch();
@@ -169,14 +165,8 @@ function IncidentDetailPage() {
 				onInvestigate={handleInvestigate}
 				onResolve={() => resolveMutation.mutate({ id })}
 				isInvestigating={investigateMutation.isPending}
-				investigateDisabled={!canRunInvestigation || !incident.serviceId}
-				investigateDisabledReason={
-					!canRunInvestigation
-						? blockedReason
-						: incident.serviceId
-							? undefined
-							: NO_SERVICE_REASON
-				}
+				investigateDisabled={!canRunInvestigation}
+				investigateDisabledReason={blockedReason}
 			/>
 
 			<Tabs value={tab} onValueChange={setTab} className="space-y-4">

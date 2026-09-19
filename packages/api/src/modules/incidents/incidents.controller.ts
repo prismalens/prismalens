@@ -115,17 +115,6 @@ export class IncidentsController {
 						});
 					}
 
-					// No service means no repository, so nothing to investigate: refuse like the auto path does,
-					// instead of running the harness in an empty directory (#337 run e, G16).
-					if (!incident.serviceId) {
-						const reason =
-							"This incident has no service, so there is no repository to investigate. Edit the incident and pick a service, then press Investigate.";
-						throw new ORPCError("PRECONDITION_FAILED", {
-							message: reason,
-							data: { failure: "no-service", reason },
-						});
-					}
-
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
 					const { investigation, created } =
 						await this.investigationsService.startOrGet({

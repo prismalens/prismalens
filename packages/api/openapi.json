@@ -4926,8 +4926,7 @@
                               "enum": [
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
-                                "no-harness",
-                                "no-service"
+                                "no-harness"
                               ],
                               "type": "string"
                             },

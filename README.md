@@ -72,8 +72,8 @@ You do not need an Alertmanager to see it work:
    on the service: `main at 3f2c9a1b04de`, or git's error word for word. A URL
    is mirrored under `~/.prismalens/repos/` with your own git credentials.
 3. **Write the incident.** Incidents, then Create Incident. A title is the only
-   required field; pick the service, or Investigate has nothing to read and
-   says so.
+   required field; pick the service, or the run has no repository to read and
+   the timeline says it ran unmapped.
 4. **Run.** Investigate takes a fresh snapshot of the repository's last commit
    into `~/.prismalens/runs/<id>/repo` and runs one agent session there. Your
    checkout is never the working directory, and uncommitted changes are not

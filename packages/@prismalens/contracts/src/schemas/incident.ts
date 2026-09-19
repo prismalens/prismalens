@@ -138,9 +138,8 @@ export const InvestigateIncidentResponseSchema = z.object({
  */
 export const HarnessSelectionFailureSchema = z.enum(HARNESS_SELECTION_FAILURES);
 
-/** Why `POST /incidents/:id/investigate` refused: a harness gate, or an incident with no service (#337 run e, G16). */
 export const InvestigationRefusalSchema = z.object({
-	failure: z.enum([...HARNESS_SELECTION_FAILURES, "no-service"]),
+	failure: HarnessSelectionFailureSchema,
 	reason: z.string(),
 	harness: z.enum(HARNESS_IDS).optional(),
 });
