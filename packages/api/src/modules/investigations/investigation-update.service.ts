@@ -12,6 +12,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 import type { Alert, Incident, Investigation } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
+import { TimelineService } from "../timeline/timeline.service.js";
 import { InvestigationTriggerService } from "./investigation-trigger.service.js";
 
 /**
@@ -46,6 +48,7 @@ export class InvestigationUpdateService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly triggerService: InvestigationTriggerService,
+		private readonly timeline: TimelineService,
 	) {}
 
 	/**
@@ -164,13 +167,11 @@ export class InvestigationUpdateService {
 		investigation: Investigation,
 		event: AlertAddedEvent,
 	): Promise<void> {
-		this.logger.warn(
-			`Investigation ${investigation.id} received alert ${event.alertId} ` +
-				`(severity: ${event.alert.severity}) — notification not yet implemented (Phase 5C-2)`,
+		await this.recordArrival(
+			investigation,
+			event,
+			"The running investigation does not read it: its report covers the alerts it started with. Re-run the investigation to include this one.",
 		);
-		this.logger.debug(`Alert ${event.alertId} title: ${event.alert.title}`);
-		// TODO(Phase-5C-2): When checkpoint persistence is implemented,
-		// inject pendingAlerts into LangGraph checkpoint state.
 	}
 
 	/**
@@ -178,18 +179,48 @@ export class InvestigationUpdateService {
 	 */
 	async queuePartialUpdate(
 		investigation: Investigation,
-		_event: AlertAddedEvent,
+		event: AlertAddedEvent,
 	): Promise<void> {
-		this.logger.log(
-			`Queuing partial update for investigation ${investigation.id}`,
+		await this.recordArrival(
+			investigation,
+			event,
+			"Partial re-analysis is not built, so nothing is queued. Re-run the investigation to include this alert.",
 		);
+	}
 
-		// TODO: enqueue a partial-update job on the JobStore
-		// await this.dispatchService.addInvestigationJob({
-		//   investigationId: investigation.id,
-		//   incidentId: event.incidentId,
-		//   triggerAlertId: event.alertId,
-		// });
+	/**
+	 * Say on the incident's own timeline that an alert arrived mid-run and what
+	 * happened to it. Both strategies above used to log server-side and return,
+	 * so an alert that arrived during a run vanished from the operator's view
+	 * (#564: an unfinished feature that ships broken). Honest and visible beats
+	 * a silent drop; neither strategy pretends to fold the alert into the report.
+	 */
+	private async recordArrival(
+		investigation: Investigation,
+		event: AlertAddedEvent,
+		consequence: string,
+	): Promise<void> {
+		this.logger.warn(
+			`Alert ${event.alertId} arrived during investigation ${investigation.id}: ${consequence}`,
+		);
+		try {
+			await this.timeline.create({
+				incidentId: event.incidentId,
+				type: TimelineEntryType.alert_added,
+				title: "Alert arrived during the investigation",
+				description: `${event.alert.title} (${event.alert.severity}). ${consequence}`,
+				source: TimelineSource.system,
+				metadata: {
+					investigationId: investigation.id,
+					alertId: event.alertId,
+				},
+			});
+		} catch (e) {
+			this.logger.error(
+				"Failed to record the alert arrival on the timeline",
+				e,
+			);
+		}
 	}
 
 	/**

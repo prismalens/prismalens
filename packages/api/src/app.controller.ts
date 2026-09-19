@@ -22,7 +22,10 @@ export class AppController {
 		return {
 			name: "PrismaLens API",
 			version: resolveServiceVersion(),
-			edition: "COMMUNITY", //TODO: Dynamically set based on license
+			// Always COMMUNITY here: a non-free edition never ships in this repo,
+			// it arrives through the capability-flag + dynamic-module seam (ADR 0023,
+			// #264), which sets this from outside. Not a pending TODO (#564).
+			edition: "COMMUNITY",
 			docs: "/api",
 		};
 	}
