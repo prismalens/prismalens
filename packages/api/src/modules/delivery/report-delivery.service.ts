@@ -20,6 +20,8 @@ import { TimelineService } from "../timeline/timeline.service.js";
 const SETTING_KEY = "REPORT_DELIVERY";
 const POST_TIMEOUT_MS = 10_000;
 const SLACK_TEXT_LIMIT = 3_000;
+/** How long a delivered run is remembered, so one run posts once. */
+const DEDUP_TTL_MS = 60 * 60_000;
 
 interface StoredDelivery {
 	slackWebhookUrlEnc?: string;
@@ -66,8 +68,11 @@ export function slackMessage(run: DeliverableRun): string {
 @Injectable()
 export class ReportDeliveryService {
 	private readonly logger = new Logger(ReportDeliveryService.name);
-	/** A failed run can reach both run ports; deliver it once. */
-	private readonly delivered = new Set<string>();
+	/**
+	 * Runs already delivered (a failed run reaches both run ports), with when.
+	 * Pruned by age so a long-lived install does not keep one entry per run.
+	 */
+	private readonly delivered = new Map<string, number>();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -106,8 +111,12 @@ export class ReportDeliveryService {
 
 	/** Deliver one terminal run, once. Never throws. */
 	async deliver(investigationId: string): Promise<void> {
+		const now = Date.now();
+		for (const [id, at] of this.delivered) {
+			if (now - at > DEDUP_TTL_MS) this.delivered.delete(id);
+		}
 		if (this.delivered.has(investigationId)) return;
-		this.delivered.add(investigationId);
+		this.delivered.set(investigationId, now);
 		try {
 			const { slackWebhookUrlEnc } = await this.read();
 			if (!slackWebhookUrlEnc) return;
