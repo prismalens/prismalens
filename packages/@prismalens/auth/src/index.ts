@@ -10,5 +10,6 @@
  * - Auth types and utilities
  */
 
+export { hashPassword, verifyPassword } from "better-auth/crypto";
 export type { Session, User } from "better-auth/types";
 export { type Auth, type AuthOptions, createAuth } from "./auth.js";
