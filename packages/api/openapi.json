@@ -14846,6 +14846,39 @@
         }
       }
     },
+    "/services/teams": {
+      "get": {
+        "operationId": "services.teams",
+        "summary": "List the distinct team names in the catalog",
+        "tags": [
+          "services"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "teams": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "teams"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/services/{id}": {
       "get": {
         "operationId": "services.get",

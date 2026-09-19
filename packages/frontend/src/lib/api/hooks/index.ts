@@ -107,6 +107,7 @@ export {
 	useRemoveServiceDependency,
 	useService,
 	useServices,
+	useServiceTeams,
 	useServiceTopology,
 	useUpdateService,
 	useUpdateServiceDependency,
