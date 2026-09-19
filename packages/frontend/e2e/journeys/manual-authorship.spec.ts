@@ -277,7 +277,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 						runnable: false,
 						harness: null,
 						pinned: false,
-					pinnedBy: null,
+						pinnedBy: null,
 						blockedReason: NO_HARNESS_REASON,
 					},
 				}),

@@ -148,7 +148,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
-					pinnedBy: null,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -174,7 +174,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: false,
 			harness: null,
 			pinned: false,
-					pinnedBy: null,
+			pinnedBy: null,
 			blockedReason: NO_HARNESS_REASON,
 		});
 		await openHarnessSettings(page);
@@ -191,7 +191,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
-					pinnedBy: null,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -208,7 +208,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "claude-code",
 			pinned: true,
-					pinnedBy: "env",
+			pinnedBy: "env",
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);
@@ -229,7 +229,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: false,
 			harness: null,
 			pinned: false,
-					pinnedBy: null,
+			pinnedBy: null,
 			blockedReason: NO_HARNESS_REASON,
 		});
 		await openHarnessSettings(page);
@@ -260,7 +260,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
-					pinnedBy: null,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page, { harness: "auto" });
@@ -316,7 +316,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
-					pinnedBy: null,
+			pinnedBy: null,
 			blockedReason: null,
 		});
 		await openHarnessSettings(page);

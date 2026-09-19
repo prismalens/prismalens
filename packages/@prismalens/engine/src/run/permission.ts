@@ -8,6 +8,8 @@
  * is the boundary and this is the guardrail.
  */
 
+import { posix } from "node:path";
+
 export interface PermissionOption {
 	optionId: string;
 	name?: string;
@@ -69,31 +71,45 @@ function pick(
 }
 
 /**
- * Path tokens a shell command can use to leave the snapshot: a `..` segment,
- * a `~` home, `$HOME`, or an absolute path. Absolute paths under the snapshot
- * itself, `/dev/null`, and the usual binary directories are fine. A text rule,
- * not a boundary (the sandbox is the boundary); #337 run e saw `ls -la ../..`
- * list every run in the workspace on the cooperative floor, and this is what
- * would have refused it, with the refusal on the timeline.
+ * Shell tokens that can leave the snapshot: a `~` home, `$HOME`, an absolute
+ * path, or any token holding a `..` segment. Every candidate is resolved
+ * against the snapshot before judging, so `src/../../..`, `/bin/../etc/shadow`
+ * and `<cwd>/../other` are caught and `src/../src` stays allowed. Absolute
+ * paths under the snapshot, `/dev/null` and the usual binary directories are
+ * fine. A text rule, not a boundary (the sandbox is the boundary); #337 run e
+ * saw `ls -la ../..` list every run in the workspace on the cooperative floor.
  */
-const OUTSIDE_TOKENS =
-	/(?:^|[\s=:"'`(])(\.\.(?:\/|$|[\s;&|)"'`])|~(?:\/|$|[\s;&|)"'`])|\$HOME\b|\$\{HOME\}|\/[A-Za-z0-9_.][^\s;&|)"'`]*)/g;
+const SHELL_SPLIT = /[\s;&|()<>'"`=]+/;
 const HARMLESS_ABSOLUTE = [
 	"/dev/null",
 	"/usr/bin/",
 	"/bin/",
 	"/usr/local/bin/",
 ];
+const DOTDOT_SEGMENT = /(^|\/)\.\.(\/|$)/;
 
+function insideSnapshot(resolved: string, cwd: string): boolean {
+	return resolved === cwd || resolved.startsWith(`${cwd}/`);
+}
+
+/** The first path in `text` that resolves outside `cwd`, or null. */
 function outsideSnapshotToken(text: string, cwd: string): string | null {
-	for (const m of text.matchAll(OUTSIDE_TOKENS)) {
-		const token = m[1] as string;
+	for (const token of text.split(SHELL_SPLIT)) {
+		if (!token) continue;
+		if (token.startsWith("~") || /\$\{?HOME\b/.test(token)) return token;
 		if (token.startsWith("/")) {
-			if (token === cwd || token.startsWith(`${cwd}/`)) continue;
-			if (HARMLESS_ABSOLUTE.some((p) => token === p || token.startsWith(p)))
+			const resolved = posix.normalize(token);
+			if (insideSnapshot(resolved, cwd)) continue;
+			if (
+				HARMLESS_ABSOLUTE.some((p) => resolved === p || resolved.startsWith(p))
+			)
 				continue;
+			return token;
 		}
-		return token.trim();
+		if (DOTDOT_SEGMENT.test(token)) {
+			if (insideSnapshot(posix.resolve(cwd, token), cwd)) continue;
+			return token;
+		}
 	}
 	return null;
 }
@@ -115,9 +131,8 @@ function outsideSnapshot(
 	if (!cwd) return null;
 	const kind = req.toolCall?.kind ?? "";
 	for (const p of pathParamsOf(req)) {
-		const abs = p.startsWith("/") ? p : null;
-		if (abs && abs !== cwd && !abs.startsWith(`${cwd}/`)) return p;
-		if (/(^|\/)\.\.(\/|$)/.test(p) || p.startsWith("~")) return p;
+		if (p.startsWith("~")) return p;
+		if (!insideSnapshot(posix.resolve(cwd, p), cwd)) return p;
 	}
 	if (kind === "execute" || !kind) {
 		return outsideSnapshotToken(commandOf(req), cwd);

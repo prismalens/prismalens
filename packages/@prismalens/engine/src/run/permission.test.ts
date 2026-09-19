@@ -72,6 +72,10 @@ describe("readOnlyPolicy", () => {
 			"cat $HOME/.netrc",
 			"grep -r token /work/runs/other/transcript.jsonl",
 			"cd .. && ls",
+			"ls src/../../..",
+			"cat /bin/../etc/shadow",
+			`cat ${cwd}/../../other/secret`,
+			"head --lines=3 ../transcript.jsonl",
 		]) {
 			const d = policy(req({ kind: "execute", rawInput: { command } }));
 			expect(d.allow, command).toBe(false);
@@ -82,6 +86,8 @@ describe("readOnlyPolicy", () => {
 			"git log --oneline -20 -- src/",
 			`grep -rn createdAt ${cwd}/server`,
 			"ls src/../src",
+			"cat ./src/../package.json",
+			`ls ${cwd}/src/../server`,
 			"cat package.json 2>/dev/null",
 			"/usr/bin/env node -v",
 		]) {
@@ -89,6 +95,8 @@ describe("readOnlyPolicy", () => {
 		}
 		expect(policy(req({ kind: "execute", rawInput: { command: "ls", cwd: "/work/runs/abc" } })).allow).toBe(false);
 		expect(policy(req({ kind: "read", rawInput: { filePath: "/etc/passwd" } })).allow).toBe(false);
+		expect(policy(req({ kind: "read", rawInput: { filePath: `${cwd}/../transcript.jsonl` } })).allow).toBe(false);
+		expect(policy(req({ kind: "read", rawInput: { filePath: "src/../README.md" } })).allow).toBe(true);
 		expect(policy(req({ kind: "read", rawInput: { filePath: `${cwd}/README.md` } })).allow).toBe(true);
 		expect(readOnlyPolicy(req({ kind: "execute", rawInput: { command: "ls .." } })).allow).toBe(true);
 	});
