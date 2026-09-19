@@ -31,24 +31,30 @@ export interface EventRow {
 
 const REPORT_DRAFTED = "Report drafted";
 
+function isJsonObject(body: string): boolean {
+	const trimmed = body.trim();
+	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
+	try {
+		JSON.parse(trimmed);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /**
- * The agent's last text is the report itself, as JSON (fenced or bare). The
- * panel names that step instead of printing the document; every other text
- * shows as written.
+ * The agent's last text is the report itself, as JSON: bare, fenced, or after
+ * a line of prose (#659). The panel names that step instead of printing the
+ * document; every other text shows as written.
  */
 export function agentStepMessage(text: string): string {
-	const body = text
-		.trim()
-		.replace(/^```(?:json)?\s*/i, "")
-		.replace(/```\s*$/, "")
-		.trim();
-	if (!body.startsWith("{") || !body.endsWith("}")) return text;
-	try {
-		JSON.parse(body);
-		return REPORT_DRAFTED;
-	} catch {
-		return text;
+	for (const fence of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+		if (isJsonObject(fence[1])) return REPORT_DRAFTED;
 	}
+	for (const line of text.matchAll(/^[ \t]*\{/gm)) {
+		if (isJsonObject(text.slice(line.index))) return REPORT_DRAFTED;
+	}
+	return text;
 }
 
 /** Map one canonical event to a row, or null when it shouldn't be shown. */
