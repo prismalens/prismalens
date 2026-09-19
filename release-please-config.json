@@ -5,8 +5,7 @@
 	"include-component-in-tag": false,
 	"packages": {
 		"packages/cli": {
-			"package-name": "prismalens",
-			"release-as": "0.5.0"
+			"package-name": "prismalens"
 		}
 	}
 }
