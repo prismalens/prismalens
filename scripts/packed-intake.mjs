@@ -127,7 +127,6 @@ async function main() {
 			PRISMALENS_LOG_CONSOLE: "verbose",
 			PRISMALENS_HOST: "127.0.0.1",
 			PRISMALENS_PORT: PORT,
-			NODE_ENV: "production",
 		},
 	});
 	child.stdout.on("data", (d) => {

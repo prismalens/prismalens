@@ -186,7 +186,7 @@ PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \
 PRISMALENS_PORT="$PORT" \
-NODE_ENV=production \
+NODE_ENV=development \
 	$SETSID "$BIN/pl" up > "$UP_LOG" 2>&1 &
 UP_PID=$!
 stop_up() {
@@ -230,6 +230,8 @@ until grep -q "Mapped {" "$APP_LOG" 2>/dev/null || [ "$i" -ge 10 ]; do
 	sleep 1
 done
 grep -q "Mapped {" "$APP_LOG" 2>/dev/null || fail "the API log file $APP_LOG is missing or has no route records"
+# Started under NODE_ENV=development above: pl up must run the packaged app as production anyway.
+grep -q '"environment":"production"' "$APP_LOG" || fail "pl up did not run as production under an inherited NODE_ENV=development"
 [ -L "$UP_DIR/workspace/logs/prismalens.log" ] && fail "a log symlink is back; it needs admin on Windows"
 echo "    log file: $APP_LOG"
 

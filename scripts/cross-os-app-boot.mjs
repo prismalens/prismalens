@@ -267,7 +267,6 @@ Object.assign(env, {
 	PRISMALENS_WORKSPACE_DIR: workspace,
 	PRISMALENS_HOST: "127.0.0.1",
 	PRISMALENS_PORT: String(port),
-	NODE_ENV: "production",
 });
 
 const binJs = join(pkgDir, "dist", "bin", "prismalens.js");
