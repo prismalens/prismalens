@@ -198,6 +198,43 @@ describe("GitHubAppFlow.getInstallationToken", () => {
 		});
 	});
 
+	// #346: an Invalid Date compares false against every refresh deadline, so a
+	// credential built from one would be treated as valid forever.
+	it.each([
+		["missing", undefined],
+		["not a date", "whenever"],
+		["not a string", 1_754_400_000],
+	])("refuses a 2xx whose expires_at is %s", async (_name, expires_at) => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				token: "ghs_t",
+				expires_at,
+				permissions: {},
+				repository_selection: "all",
+			}),
+		);
+
+		await expect(
+			GitHubAppFlow.getInstallationToken("jwt-value", "42"),
+		).rejects.toThrow("no usable expires_at");
+	});
+
+	it("degrades unusable permissions and repository_selection to the least access", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				token: "ghs_t",
+				expires_at: "2026-08-05T12:00:00Z",
+				permissions: ["contents"],
+				repository_selection: "everything",
+			}),
+		);
+
+		const result = await GitHubAppFlow.getInstallationToken("jwt-value", "42");
+
+		expect(result.permissions).toEqual({});
+		expect(result.repositorySelection).toBe("selected");
+	});
+
 	it("POSTs to the installation endpoint with the JWT as a bearer token", async () => {
 		fetchMock.mockResolvedValue(
 			jsonResponse({

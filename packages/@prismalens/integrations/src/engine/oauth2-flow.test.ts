@@ -65,9 +65,13 @@ class MemoryStateStore implements OAuth2StoreDeps {
 	}
 }
 
-function makeFlow(): { flow: OAuth2Flow; store: MemoryStateStore } {
+function makeFlow(): {
+	flow: OAuth2Flow;
+	store: MemoryStateStore;
+	vault: typeof VAULT;
+} {
 	const store = new MemoryStateStore();
-	return { flow: new OAuth2Flow(VAULT, store), store };
+	return { flow: new OAuth2Flow(VAULT, store), store, vault: VAULT };
 }
 
 const BASE_PARAMS = {
@@ -575,7 +579,32 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 	// threaded from the state row into the exchange) and belongs with the other
 	// escalations from this PR, not inside a test-only change. Tracked in #391 —
 	// update this test as part of that fix rather than deleting it.
-	it("throws on a templated tokenUrl — tokenUrl is NOT interpolated from the connection config, unlike authorizationUrl", async () => {
+	// #391: a templated tokenUrl now resolves from the same connection config the
+	// authorization URL used, carried encrypted on the state row. It used to throw
+	// here — after the user had already granted consent at the provider.
+	it("interpolates a templated tokenUrl from the state row's connection config", async () => {
+		const { flow, vault } = makeFlow();
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
+
+		await flow.exchangeCodeForTokens(
+			templateWith({
+				authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+				tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+			}),
+			"auth-code",
+			oauthState({
+				connectionConfigEnc: vault.encryptJSON({ subdomain: "acme-eu" }),
+			}),
+			"client-abc",
+			"secret-xyz",
+		);
+
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://acme-eu.acme.test/oauth/token",
+		);
+	});
+
+	it("still throws on a templated tokenUrl when the state row carries no config", async () => {
 		const { flow } = makeFlow();
 		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
 

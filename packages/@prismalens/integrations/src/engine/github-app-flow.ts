@@ -72,6 +72,15 @@ function generateJWT(appId: string, privateKey: string): string {
  * Exchange a JWT for an installation access token.
  * Optionally scope to specific permissions or repository IDs.
  */
+function isStringMap(value: unknown): value is Record<string, string> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.values(value).every((v) => typeof v === "string")
+	);
+}
+
 async function getInstallationToken(
 	jwt: string,
 	installationId: string,
@@ -125,11 +134,29 @@ async function getInstallationToken(
 		throw new Error("GitHub installation token response has no token");
 	}
 
+	// `expires_at` decides when this credential is refreshed. A missing or
+	// unparseable one becomes an Invalid Date, which compares false against every
+	// deadline: the token would be treated as valid forever (#346). Throw instead.
+	const expiresAt = new Date(data.expires_at);
+	if (
+		typeof data.expires_at !== "string" ||
+		Number.isNaN(expiresAt.getTime())
+	) {
+		throw new Error(
+			"GitHub installation token response has no usable expires_at",
+		);
+	}
+
 	return {
 		token: data.token,
-		expiresAt: new Date(data.expires_at),
-		permissions: data.permissions,
-		repositorySelection: data.repository_selection,
+		expiresAt,
+		// The other two are advisory, so they degrade to the least access rather
+		// than failing an exchange that produced a usable token (#346): an empty
+		// permission map fails every capability check, and an unrecognised
+		// selection is read as the narrower "selected".
+		permissions: isStringMap(data.permissions) ? data.permissions : {},
+		repositorySelection:
+			data.repository_selection === "all" ? "all" : "selected",
 	};
 }
 

@@ -168,7 +168,15 @@ export class OAuth2Flow {
 			tokenBody.client_secret = clientSecret;
 		}
 
-		const tokenUrl = interpolate(template.oauth2.tokenUrl, {});
+		// The same connection config `startAuthorization` interpolated the
+		// authorization URL with, carried on the state row. Without it a templated
+		// tokenUrl threw only AFTER the user had granted consent (#391).
+		const tokenContext = oauthState.connectionConfigEnc
+			? this.vault.decryptJSON<Record<string, string>>(
+					oauthState.connectionConfigEnc,
+				)
+			: {};
+		const tokenUrl = interpolate(template.oauth2.tokenUrl, tokenContext);
 		const response = await fetch(tokenUrl, {
 			method: "POST",
 			headers: tokenHeaders,
