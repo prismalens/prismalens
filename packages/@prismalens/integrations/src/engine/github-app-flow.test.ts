@@ -141,29 +141,14 @@ describe("GitHubAppFlow.generateJWT — forged variants do not verify", () => {
 		expect(verifyRS256(`${headerB64}.${escalated}.${signature}`)).toBe(false);
 	});
 
-	it("rejects the classic alg:none downgrade", () => {
-		const { payload } = decode(GitHubAppFlow.generateJWT(APP_ID, keyPair.privateKey));
-		const headerB64 = Buffer.from(
-			JSON.stringify({ alg: "none", typ: "JWT" }),
-		).toString("base64url");
-		const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-
-		expect(verifyRS256(`${headerB64}.${payloadB64}.`)).toBe(false);
-	});
-
-	it("rejects an HS256 substitution signed with the public key as the HMAC secret", () => {
-		const { payload } = decode(GitHubAppFlow.generateJWT(APP_ID, keyPair.privateKey));
-		const headerB64 = Buffer.from(
-			JSON.stringify({ alg: "HS256", typ: "JWT" }),
-		).toString("base64url");
-		const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-		const hmac = createHmac("sha256", keyPair.publicKey)
-			.update(`${headerB64}.${payloadB64}`)
-			.digest("base64url");
-
-		expect(verifyRS256(`${headerB64}.${payloadB64}.${hmac}`)).toBe(false);
-	});
 });
+
+	// #386: the two JWT-forgery tests that used to sit here (alg:none downgrade,
+	// HS256 substitution) asserted that this file's own `verifyRS256` helper
+	// rejects a forged token. Nothing in this package verifies a JWT — GitHub
+	// does — so they exercised node:crypto, not `generateJWT`, and could not fail
+	// on a defect here. Removed rather than rewritten: there is no package-side
+	// verification path to drive.
 
 describe("GitHubAppFlow.getInstallationToken", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;

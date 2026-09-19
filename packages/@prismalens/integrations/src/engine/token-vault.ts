@@ -124,8 +124,12 @@ function maskArrayItem(item: unknown, sensitive: boolean): unknown {
 	return item;
 }
 
+/**
+ * Masks a secret for display. Below 16 characters every character is hidden:
+ * showing 4 + 4 of a 9-to-12 character secret left most of it readable (#386).
+ */
 function maskString(value: string): string {
-	if (value.length <= 8) {
+	if (value.length < 16) {
 		return "*".repeat(value.length);
 	}
 	const visibleChars = 4;
