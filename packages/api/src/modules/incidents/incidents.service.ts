@@ -411,8 +411,24 @@ export class IncidentsService {
 	/**
 	 * Close an incident (after postmortem)
 	 */
-	async close(id: string): Promise<Incident | null> {
-		return this.update(id, { status: "closed" });
+	async close(
+		id: string,
+		cause: { actualCause?: string; actualCauseCategory?: string } = {},
+	): Promise<Incident | null> {
+		const incident = await this.update(id, { status: "closed" });
+		const actualCause = cause.actualCause?.trim() || undefined;
+		if (!incident || (!actualCause && !cause.actualCauseCategory)) {
+			return incident;
+		}
+		return this.prisma.incident.update({
+			where: { id },
+			data: {
+				...(actualCause ? { actualCause } : {}),
+				...(cause.actualCauseCategory
+					? { actualCauseCategory: cause.actualCauseCategory }
+					: {}),
+			},
+		});
 	}
 
 	/**

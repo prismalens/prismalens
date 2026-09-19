@@ -6,6 +6,7 @@
  */
 import { oc } from "@orpc/contract";
 import {
+	CloseIncidentSchema,
 	CreateIncidentSchema,
 	IdParamSchema,
 	IncidentQuerySchema,
@@ -119,6 +120,6 @@ export const incidentsContract = {
 			summary: "Close incident",
 			tags: ["incidents"],
 		})
-		.input(IdParamSchema)
+		.input(CloseIncidentSchema)
 		.output(IncidentSchema),
 };

@@ -114,6 +114,19 @@ export function IncidentDetailHeader({
 						</p>
 					)}
 
+					{incident.actualCause && (
+						<p className="max-w-2xl text-sm">
+							<span className="text-muted-foreground">
+								Actual cause
+								{incident.actualCauseCategory
+									? ` (${incident.actualCauseCategory})`
+									: ""}
+								:{" "}
+							</span>
+							{incident.actualCause}
+						</p>
+					)}
+
 					{/* Meta info */}
 					<div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
 						<span>

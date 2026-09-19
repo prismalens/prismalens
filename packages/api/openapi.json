@@ -2931,6 +2931,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -3021,6 +3048,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -3265,6 +3294,33 @@
                           "customerImpact": {
                             "anyOf": [
                               {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actualCause": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actualCauseCategory": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "code",
+                                  "config",
+                                  "infrastructure",
+                                  "external",
+                                  "unknown"
+                                ],
                                 "type": "string"
                               },
                               {
@@ -3802,6 +3858,8 @@
                           "correlationReason",
                           "tags",
                           "customerImpact",
+                          "actualCause",
+                          "actualCauseCategory",
                           "affectedSystems",
                           "triggeredAt",
                           "acknowledgedAt",
@@ -3983,6 +4041,33 @@
                     "customerImpact": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
                           "type": "string"
                         },
                         {
@@ -4520,6 +4605,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -4732,6 +4819,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -4822,6 +4936,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -5125,6 +5241,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -5215,6 +5358,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -5250,6 +5395,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actualCause": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "actualCauseCategory": {
+                    "enum": [
+                      "code",
+                      "config",
+                      "infrastructure",
+                      "external",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -5367,6 +5538,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -5457,6 +5655,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -6113,30 +6313,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -6144,8 +6344,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -6889,30 +7090,30 @@
                                         "title": {
                                           "type": "string"
                                         },
-                                        "score": {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
+                                        "rank": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 9007199254740991
                                         },
-                                        "factors": {
-                                          "type": "object",
-                                          "properties": {
-                                            "jaccard": {
-                                              "type": "number",
-                                              "minimum": 0,
-                                              "maximum": 1
+                                        "matchedOn": {
+                                          "type": "array",
+                                          "items": {
+                                            "enum": [
+                                              "alert labels",
+                                              "same service",
+                                              "same cause category"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        },
+                                        "actualCause": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
                                             },
-                                            "sameService": {
-                                              "type": "boolean"
-                                            },
-                                            "sharedCategory": {
-                                              "type": "boolean"
+                                            {
+                                              "type": "null"
                                             }
-                                          },
-                                          "required": [
-                                            "jaccard",
-                                            "sameService",
-                                            "sharedCategory"
                                           ]
                                         }
                                       },
@@ -6920,8 +7121,9 @@
                                         "incidentId",
                                         "incidentNumber",
                                         "title",
-                                        "score",
-                                        "factors"
+                                        "rank",
+                                        "matchedOn",
+                                        "actualCause"
                                       ]
                                     }
                                   },
@@ -7684,30 +7886,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -7715,8 +7917,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -8446,30 +8649,30 @@
                                       "title": {
                                         "type": "string"
                                       },
-                                      "score": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                      "rank": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 9007199254740991
                                       },
-                                      "factors": {
-                                        "type": "object",
-                                        "properties": {
-                                          "jaccard": {
-                                            "type": "number",
-                                            "minimum": 0,
-                                            "maximum": 1
+                                      "matchedOn": {
+                                        "type": "array",
+                                        "items": {
+                                          "enum": [
+                                            "alert labels",
+                                            "same service",
+                                            "same cause category"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "actualCause": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
                                           },
-                                          "sameService": {
-                                            "type": "boolean"
-                                          },
-                                          "sharedCategory": {
-                                            "type": "boolean"
+                                          {
+                                            "type": "null"
                                           }
-                                        },
-                                        "required": [
-                                          "jaccard",
-                                          "sameService",
-                                          "sharedCategory"
                                         ]
                                       }
                                     },
@@ -8477,8 +8680,9 @@
                                       "incidentId",
                                       "incidentNumber",
                                       "title",
-                                      "score",
-                                      "factors"
+                                      "rank",
+                                      "matchedOn",
+                                      "actualCause"
                                     ]
                                   }
                                 },
@@ -9266,30 +9470,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -9297,8 +9501,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -10852,30 +11057,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -10883,8 +11088,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -12059,30 +12265,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -12090,8 +12296,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },

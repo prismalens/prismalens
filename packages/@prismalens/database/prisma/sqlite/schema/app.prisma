@@ -197,6 +197,8 @@ model Incident {
   correlationReason String?
   tags              String? // JSON array
   customerImpact    String?
+  actualCause       String? // what the responder recorded as the real cause on close (#338)
+  actualCauseCategory String? // code, config, infrastructure, external, unknown
   affectedSystems   String? // JSON array
   triggeredAt       DateTime  @default(now())
   acknowledgedAt    DateTime?

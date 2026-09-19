@@ -206,6 +206,7 @@ export class OverlayService {
 			incidentId: pi.id,
 			incidentNumber: pi.number,
 			title: pi.title,
+			actualCause: pi.actualCause ?? null,
 			similarity: {
 				labels: buildLabelSet(
 					pi.alerts.map((a) => ({
@@ -214,7 +215,11 @@ export class OverlayService {
 					})),
 				),
 				serviceId: pi.serviceId ?? null,
-				rootCauseCategory: pi.investigations[0]?.rootCauseCategory ?? null,
+				// What someone recorded on close outranks the investigation's guess (#338).
+				rootCauseCategory:
+					pi.actualCauseCategory ??
+					pi.investigations[0]?.rootCauseCategory ??
+					null,
 			},
 		}));
 		const similarIncidents = selectSimilarIncidents(current, past);
@@ -226,7 +231,7 @@ export class OverlayService {
 		const overlay: Overlay = {
 			matchedChanges,
 			serviceProximity,
-			similarIncidents,
+			similarIncidents: similarIncidents.map(({ score: _score, ...s }) => s),
 			computedAt: new Date().toISOString(),
 		};
 		await this.prisma.investigation.update({
@@ -252,7 +257,7 @@ export class OverlayService {
 		similar: SimilarIncidentResult[],
 	): Promise<void> {
 		for (const s of similar) {
-			const matchFactors = JSON.stringify(s.factors);
+			const matchFactors = JSON.stringify({ matchedOn: s.matchedOn });
 			const similarityScore = toStoredScore(s.score);
 			await this.prisma.incidentSimilarity.upsert({
 				where: {

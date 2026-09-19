@@ -203,8 +203,10 @@ describe("OverlayService", () => {
 				incidentId: "inc-0",
 				incidentNumber: 0,
 				title: "Old outage",
+				rank: 1,
+				matchedOn: ["alert labels", "same service", "same cause category"],
+				actualCause: "Pool size dropped to 5 in deploy 41",
 				score: 0.82,
-				factors: { jaccard: 0.5, sameService: true, sharedCategory: true },
 			},
 		];
 
@@ -231,7 +233,9 @@ describe("OverlayService", () => {
 				},
 			});
 			expect(arg.create.similarityScore).toBe(82);
-			expect(JSON.parse(arg.update.matchFactors)).toEqual(similar[0].factors);
+			expect(JSON.parse(arg.update.matchFactors)).toEqual({
+				matchedOn: similar[0].matchedOn,
+			});
 		});
 
 		it("re-running produces identical upsert targets (idempotent, no growth)", async () => {

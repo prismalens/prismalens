@@ -199,16 +199,21 @@ function OverlaySection({
 											#{similar.incidentNumber} {similar.title}
 										</p>
 										<div className="mt-1 flex flex-wrap items-center gap-2">
-											<Badge variant="secondary">
-												{Math.round(similar.score * 100)}% match
-											</Badge>
-											{similar.factors.sameService && (
-												<Badge variant="outline">same service</Badge>
-											)}
-											{similar.factors.sharedCategory && (
-												<Badge variant="outline">same category</Badge>
-											)}
+											<Badge variant="secondary">closest #{similar.rank}</Badge>
+											{similar.matchedOn.map((reason) => (
+												<Badge key={reason} variant="outline">
+													{reason}
+												</Badge>
+											))}
 										</div>
+										{similar.actualCause && (
+											<p className="mt-2 text-sm">
+												<span className="text-muted-foreground">
+													Actual cause:{" "}
+												</span>
+												{similar.actualCause}
+											</p>
+										)}
 									</div>
 									<Link
 										to="/incidents/$id"
