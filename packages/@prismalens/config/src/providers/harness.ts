@@ -186,7 +186,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Codex",
 		binary: "codex-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir }) => ({ CODEX_HOME: dataDir }),
+		acpEnv: ({ dataDir }) => ({
+			CODEX_HOME: dataDir,
+			// codex-acp's own read-only mode, so the harness refuses writes before
+			// prismalens's permission answer is asked (codex-acp readme-dev.md, #634).
+			INITIAL_AGENT_MODE: "read-only",
+		}),
 		// codex-acp's own install line names this as its env-based login fallback.
 		providerKeys: ["OPENAI_API_KEY"],
 		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
@@ -210,14 +215,16 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	deepagents: {
 		id: "deepagents",
 		label: "deepagents",
-		binary: "deepagents-acp",
-		acpArgs: () => [],
+		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is
+		// the ACP server (entry points of deepagents-code 0.1.71 on PyPI, #634).
+		// --no-mcp: no MCP servers from the snapshot or the user's config.
+		binary: "dcode",
+		acpArgs: () => ["--acp", "--no-mcp"],
 		acpEnv: () => ({}),
-		// `deepagents-acp --help` lists exactly these two under ENVIRONMENT
-		// VARIABLES (verified against the installed binary, v0.x); its DEBUG and
-		// DEEPAGENTS_LOG_FILE knobs are not secrets and are not provider keys.
+		// The two keys `deepagents-acp --help` listed under ENVIRONMENT VARIABLES;
+		// not yet re-checked against `dcode`, which may read more providers.
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-		install: "pip install deepagents-acp",
+		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
 		verified: false,

@@ -90,6 +90,17 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).ANTHROPIC_MODEL).toBeUndefined();
 	});
 
+	it("codex starts in its own read-only mode (#634)", () => {
+		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBe(
+			"read-only",
+		);
+	});
+
+	it("deepagents runs dcode's ACP server with no MCP servers (#634)", () => {
+		expect(HARNESS_REGISTRY.deepagents.binary).toBe("dcode");
+		expect(HARNESS_REGISTRY.deepagents.acpArgs(runEnv)).toEqual(["--acp", "--no-mcp"]);
+	});
+
 	it("claude-code loads no setting sources from the snapshot", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: { options: { settingSources: [] } },
