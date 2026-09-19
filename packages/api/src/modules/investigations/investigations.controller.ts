@@ -10,7 +10,11 @@ import type {
 	RootCauseCategory,
 	WorkflowStatus,
 } from "@prismalens/contracts";
-import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
+import {
+	InvestigationReportSchema,
+	investigationsContract,
+	OverlaySchema,
+} from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
@@ -243,11 +247,13 @@ export class InvestigationsController {
 					const investigation = await this.investigationsService.findById(
 						input.id,
 					);
-					const report = investigation
-						? (safeParseJsonObject(
-								investigation.report,
-							) as InvestigationReport | null)
-						: null;
+					// Validated, not cast: a persisted report that no longer matches
+					// the schema must read as "no report", not throw inside the
+					// renderer when it reaches hypotheses or coverage.
+					const parsed = InvestigationReportSchema.safeParse(
+						safeParseJsonObject(investigation?.report),
+					);
+					const report = parsed.success ? parsed.data : null;
 					if (!investigation?.incident || !report) {
 						throw new ORPCError("NOT_FOUND", {
 							message: `Investigation ${input.id} has no report`,
