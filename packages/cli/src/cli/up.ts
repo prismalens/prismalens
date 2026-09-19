@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineCommand } from "citty";
 import consola from "consola";
+import { cliVersion } from "../version.js";
 import {
 	displayUrl,
 	healthUrl,
@@ -26,6 +27,7 @@ import {
 	resolveLogDir,
 	waitForReady,
 } from "./up-console.js";
+import { checkForUpdate, updateCheckEnabled } from "./update-notice.js";
 
 const require = createRequire(import.meta.url);
 const READY_TIMEOUT_MS = 60_000;
@@ -143,6 +145,13 @@ export default defineCommand({
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
 
+		// Overlaps boot; printed after the ready line, never awaited before it.
+		const updateNotice = updateCheckEnabled(process.env)
+			? checkForUpdate(cliVersion())
+			: Promise.resolve(null);
+		const printUpdateNotice = () =>
+			void updateNotice.then((line) => line && consola.info(line));
+
 		// One process (0005 §1-2): the API runs each investigation in-process.
 		// Bootstrap exits the process itself on a fatal error, so the poll below
 		// only ever ends in "ready" or "still starting".
@@ -152,6 +161,7 @@ export default defineCommand({
 		// the URL without the readiness line.
 		if (bind.protocol === "https") {
 			consola.info(`Starting at ${url}`);
+			printUpdateNotice();
 			return;
 		}
 		const ready = await waitForReady(healthUrl(bind), {
@@ -164,5 +174,6 @@ export default defineCommand({
 				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,
 			);
 		}
+		printUpdateNotice();
 	},
 });
