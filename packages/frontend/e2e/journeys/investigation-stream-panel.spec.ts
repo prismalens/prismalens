@@ -449,3 +449,41 @@ test.describe("#280 — the investigation stream panel", () => {
 		).toHaveText("Live stream unavailable — polling for progress");
 	});
 });
+
+/**
+ * #659 — the panel names the drafted report instead of printing it. Seen in the
+ * #337 stranger walk: the last streamed message was prose followed by the whole
+ * report JSON, above the rendered report.
+ */
+test.describe("#659 — the report JSON never reaches the panel", () => {
+	const REPORT = JSON.stringify(
+		{
+			summary: "checkout-api exhausted its connection pool",
+			rootCause: "deploy 41 dropped DB_POOL_SIZE from 50 to 5",
+			hypotheses: [],
+		},
+		null,
+		2,
+	);
+
+	test("names a prose-then-fenced-JSON final answer, and keeps other JSON", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const main = eventFactory("main");
+
+		await deliver(page, main.agentStep("root", 'Checked {"retries":3} first.'));
+		await deliver(
+			page,
+			main.agentStep("root", `The pool ran dry.\n\`\`\`json\n${REPORT}\n\`\`\``),
+		);
+
+		const rows = panel.getByTestId("stream-event-row");
+		await expect(rows).toHaveCount(2);
+		await expect(rows.last()).toHaveText("Report drafted");
+		await expect(panel).not.toContainText("DB_POOL_SIZE");
+		await expect(panel).not.toContainText("connection pool");
+		// Text that merely contains JSON is still the agent's own words.
+		await expect(rows.first()).toContainText('{"retries":3}');
+	});
+});
