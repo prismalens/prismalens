@@ -108,7 +108,7 @@ function outsideSnapshotToken(text: string, cwd: string): string | null {
 		const dotdot = DOTDOT_SEGMENT.test(token);
 		if (dotdot && SHELL_VARIABLE.test(token)) return token;
 		if (isAbsolute(token) || token.startsWith("/")) {
-			const resolved = normalize(token);
+			const resolved = normalize(token.replace(/\\/g, sep));
 			if (insideSnapshot(resolved, cwd)) continue;
 			const posixForm = resolved.replace(/\\/g, "/");
 			if (

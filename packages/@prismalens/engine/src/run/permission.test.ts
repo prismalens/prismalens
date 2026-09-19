@@ -74,6 +74,7 @@ describe("readOnlyPolicy", () => {
 			"cd .. && ls",
 			"ls src/../../..",
 			"cat /bin/../etc/shadow",
+			"cat /bin\\..\\..\\etc\\shadow",
 			`cat ${cwd}/../../other/secret`,
 			"head --lines=3 ../transcript.jsonl",
 			"ls -la $PWD/..",
