@@ -72,6 +72,7 @@ export class WebhooksController {
 										idempotencyKey === undefined
 											? undefined
 											: `${idempotencyKey}:${alert.fingerprint ?? index}`,
+										alert.startsAt,
 									);
 								if (resolved) alertIds.push(resolved.id);
 								continue;
@@ -97,6 +98,21 @@ export class WebhooksController {
 									: `${idempotencyKey}:${alert.fingerprint ?? index}`,
 							);
 							alertIds.push(result.alert.id);
+							// Its resolution already came, out of order (#633 edge 10).
+							if (
+								alert.fingerprint &&
+								this.webhooksService.takeEarlyResolution(
+									alert.fingerprint,
+									alert.startsAt,
+								)
+							) {
+								await this.webhooksService.resolvePrometheusAlert(
+									alert.fingerprint,
+									idempotencyKey === undefined
+										? undefined
+										: `${idempotencyKey}:${alert.fingerprint}:resolved`,
+								);
+							}
 						} catch (error) {
 							this.logger.error(`Failed to process Prometheus alert: ${error}`);
 						}

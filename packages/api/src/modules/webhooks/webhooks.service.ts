@@ -37,6 +37,42 @@ export interface WebhookResult {
  */
 const IN_FLIGHT_GRACE_MS = 30_000;
 
+/**
+ * Caps on sender-supplied text, applied before anything is stored (#633 edge 13).
+ * The description carries Alertmanager annotations verbatim and later reaches
+ * the investigation prompt, so one noisy rule must not store megabytes.
+ */
+export const MAX_TITLE_CHARS = 500;
+export const MAX_DESCRIPTION_CHARS = 8_000;
+export const MAX_LABEL_VALUE_CHARS = 1_000;
+
+export function capText(
+	text: string | undefined,
+	max: number,
+): string | undefined {
+	if (text === undefined || text.length <= max) return text;
+	return `${text.slice(0, max)}… [truncated ${text.length - max} chars]`;
+}
+
+function capLabels(
+	labels: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+	if (!labels) return labels;
+	return Object.fromEntries(
+		Object.entries(labels).map(([k, v]) => [
+			k,
+			capText(v, MAX_LABEL_VALUE_CHARS) ?? v,
+		]),
+	);
+}
+
+/**
+ * How long a `resolved` delivery for an alert we never saw fire is remembered
+ * (#633 edge 10). Alertmanager can deliver the resolution before a retried
+ * firing; without this the late firing opens an incident nothing ever resolves.
+ */
+export const EARLY_RESOLUTION_TTL_MS = 15 * 60_000;
+
 /** What a lookup by idempotency key says the caller should do next. */
 type IdempotentDelivery =
 	/** Already fully processed — return the cached result verbatim. */
@@ -49,6 +85,8 @@ type IdempotentDelivery =
 @Injectable()
 export class WebhooksService {
 	private readonly logger = new Logger(WebhooksService.name);
+	/** `fingerprint|startsAt` of resolutions that arrived before their firing, with expiry. */
+	private readonly earlyResolutions = new Map<string, number>();
 
 	constructor(
 		@Inject(forwardRef(() => AlertsService))
@@ -151,6 +189,7 @@ export class WebhooksService {
 	async resolvePrometheusAlert(
 		fingerprint: string | undefined,
 		idempotencyKey?: string,
+		startsAt?: string,
 	): Promise<Alert | null> {
 		if (!fingerprint) {
 			this.logger.warn(
@@ -171,8 +210,9 @@ export class WebhooksService {
 		const existing =
 			await this.alertsService.findAlertBySourceAlert(fingerprint);
 		if (!existing) {
+			if (startsAt) this.rememberEarlyResolution(fingerprint, startsAt);
 			this.logger.log(
-				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,
+				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; remembered in case its firing arrives late`,
 			);
 			return null;
 		}
@@ -206,10 +246,39 @@ export class WebhooksService {
 		return resolved;
 	}
 
+	private rememberEarlyResolution(fingerprint: string, startsAt: string): void {
+		const now = Date.now();
+		for (const [key, expires] of this.earlyResolutions) {
+			if (expires <= now) this.earlyResolutions.delete(key);
+		}
+		this.earlyResolutions.set(
+			`${fingerprint}|${startsAt}`,
+			now + EARLY_RESOLUTION_TTL_MS,
+		);
+	}
+
+	/**
+	 * True once for a firing whose own episode (same fingerprint and `startsAt`)
+	 * was already resolved. A new episode has a later `startsAt` and is untouched.
+	 */
+	takeEarlyResolution(fingerprint: string, startsAt: string): boolean {
+		const key = `${fingerprint}|${startsAt}`;
+		const expires = this.earlyResolutions.get(key);
+		if (expires === undefined) return false;
+		this.earlyResolutions.delete(key);
+		return expires > Date.now();
+	}
+
 	async processGenericWebhook(
 		dto: GenericWebhookDto,
 		idempotencyKey?: string,
 	): Promise<WebhookResult> {
+		dto = {
+			...dto,
+			title: capText(dto.title, MAX_TITLE_CHARS) ?? dto.title,
+			description: capText(dto.description, MAX_DESCRIPTION_CHARS),
+			labels: capLabels(dto.labels),
+		};
 		// 1. Create immutable event record
 		const ingested = await this.ingestEvent(idempotencyKey, () =>
 			this.eventsService.create({

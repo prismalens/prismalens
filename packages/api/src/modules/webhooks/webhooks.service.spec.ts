@@ -8,7 +8,13 @@ import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import { AlertsService } from "../alerts/alerts.service.js";
 import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import { EventsService } from "../events/events.service.js";
-import { WebhooksService } from "./webhooks.service.js";
+import {
+	EARLY_RESOLUTION_TTL_MS,
+	MAX_DESCRIPTION_CHARS,
+	MAX_LABEL_VALUE_CHARS,
+	MAX_TITLE_CHARS,
+	WebhooksService,
+} from "./webhooks.service.js";
 
 describe("WebhooksService", () => {
 	let service: WebhooksService;
@@ -370,4 +376,57 @@ describe("WebhooksService", () => {
 		});
 	});
 
+
+	describe("sender text caps (#633 edge 13)", () => {
+		it("caps title, description and label values before anything is stored", async () => {
+			await service.processGenericWebhook({
+				title: "t".repeat(MAX_TITLE_CHARS + 10),
+				description: "d".repeat(MAX_DESCRIPTION_CHARS + 5_000),
+				labels: { runbook: "r".repeat(MAX_LABEL_VALUE_CHARS + 1), env: "prod" },
+			});
+
+			const stored = vi.mocked(alertsService.create).mock.calls[0][0];
+			expect(stored.title).toHaveLength(MAX_TITLE_CHARS + "… [truncated 10 chars]".length);
+			expect(stored.description?.endsWith("… [truncated 5000 chars]")).toBe(true);
+			expect(stored.labels?.env).toBe("prod");
+			expect(stored.labels?.runbook?.startsWith("r".repeat(MAX_LABEL_VALUE_CHARS))).toBe(true);
+			const payload = vi.mocked(eventsService.create).mock.calls[0][0].payload as {
+				description: string;
+			};
+			expect(payload.description.length).toBeLessThan(MAX_DESCRIPTION_CHARS + 100);
+		});
+
+		it("leaves text under the caps untouched", async () => {
+			await service.processGenericWebhook({ title: "Short", description: "fine" });
+			const stored = vi.mocked(alertsService.create).mock.calls[0][0];
+			expect(stored.title).toBe("Short");
+			expect(stored.description).toBe("fine");
+		});
+	});
+
+	describe("resolution before firing (#633 edge 10)", () => {
+		const STARTS = "2026-09-19T10:00:00Z";
+
+		it("remembers an unknown fingerprint's resolution for its own episode only", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
+			await service.resolvePrometheusAlert("fp-late", undefined, STARTS);
+
+			expect(service.takeEarlyResolution("fp-late", "2026-09-19T10:05:00Z")).toBe(false);
+			expect(service.takeEarlyResolution("fp-late", STARTS)).toBe(true);
+			// Taken once: a second firing of the same episode is not auto-resolved again.
+			expect(service.takeEarlyResolution("fp-late", STARTS)).toBe(false);
+		});
+
+		it("forgets it after the window", async () => {
+			vi.useFakeTimers();
+			try {
+				vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
+				await service.resolvePrometheusAlert("fp-old", undefined, STARTS);
+				vi.advanceTimersByTime(EARLY_RESOLUTION_TTL_MS + 1);
+				expect(service.takeEarlyResolution("fp-old", STARTS)).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });

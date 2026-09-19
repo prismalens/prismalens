@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
 import { WebhookThrottleGuard } from "./webhook-throttle.guard.js";
 import { WebhooksController } from "./webhooks.controller.js";
+import type { WebhooksService } from "./webhooks.service.js";
 
 describe("WebhooksController guards (#637 edge 9)", () => {
 	it("rate-limits before authenticating", () => {
@@ -31,5 +32,64 @@ describe("WebhooksController guards (#637 edge 9)", () => {
 			ServiceUnavailableException,
 		);
 		expect(header).toHaveBeenCalledWith("Retry-After", "7");
+	});
+});
+
+describe("WebhooksController Prometheus intake (#633 edge 10)", () => {
+	function prometheusHandler(service: Partial<WebhooksService>) {
+		const controller = new WebhooksController(service as WebhooksService);
+		const procs = controller.webhooks() as unknown as Record<
+			string,
+			{ "~orpc": { handler: (a: { input: unknown; context: unknown }) => Promise<unknown> } }
+		>;
+		return procs.prometheus["~orpc"].handler;
+	}
+
+	const firing = {
+		status: "firing",
+		labels: { alertname: "HighLatency" },
+		annotations: {},
+		startsAt: "2026-09-19T10:00:00Z",
+		fingerprint: "fp-1",
+	};
+
+	it("resolves a late firing whose resolution already arrived", async () => {
+		const service = {
+			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
+			takeEarlyResolution: vi.fn(() => true),
+			resolvePrometheusAlert: vi.fn(async () => null),
+		};
+		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
+			input: { alerts: [firing] },
+			context: {},
+		});
+		expect(service.takeEarlyResolution).toHaveBeenCalledWith("fp-1", firing.startsAt);
+		expect(service.resolvePrometheusAlert).toHaveBeenCalledWith("fp-1", undefined);
+	});
+
+	it("leaves an ordinary firing open", async () => {
+		const service = {
+			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
+			takeEarlyResolution: vi.fn(() => false),
+			resolvePrometheusAlert: vi.fn(),
+		};
+		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
+			input: { alerts: [firing] },
+			context: {},
+		});
+		expect(service.resolvePrometheusAlert).not.toHaveBeenCalled();
+	});
+
+	it("passes a resolution's startsAt so an unknown fingerprint can be remembered", async () => {
+		const service = { resolvePrometheusAlert: vi.fn(async () => null) };
+		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
+			input: { alerts: [{ ...firing, status: "resolved" }] },
+			context: {},
+		});
+		expect(service.resolvePrometheusAlert).toHaveBeenCalledWith(
+			"fp-1",
+			undefined,
+			firing.startsAt,
+		);
 	});
 });
