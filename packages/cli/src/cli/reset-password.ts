@@ -8,7 +8,7 @@
  * run this can already read the workspace, so it grants nothing new.
  */
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, scrypt } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -19,6 +19,45 @@ interface CredentialAccount {
 	accountId: string;
 	userId: string;
 	email: string;
+}
+
+/**
+ * better-auth's own password format (`@better-auth/utils` password.node): scrypt
+ * N=16384 r=16 p=1, 64-byte key, 16-byte hex salt used as the salt string, NFKC
+ * password, stored `salt:key` in hex. Reimplemented because the CLI must not
+ * depend on the app's auth layer; the test checks it against a hash better-auth made.
+ */
+const SCRYPT = { N: 16384, r: 16, p: 1, dkLen: 64 } as const;
+
+function scryptKey(password: string, salt: string): Promise<Buffer> {
+	return new Promise((resolvePromise, reject) => {
+		scrypt(
+			password.normalize("NFKC"),
+			salt,
+			SCRYPT.dkLen,
+			{
+				N: SCRYPT.N,
+				r: SCRYPT.r,
+				p: SCRYPT.p,
+				maxmem: 128 * SCRYPT.N * SCRYPT.r * 2,
+			},
+			(err, key) => (err ? reject(err) : resolvePromise(key)),
+		);
+	});
+}
+
+export async function hashPassword(password: string): Promise<string> {
+	const salt = randomBytes(16).toString("hex");
+	return `${salt}:${(await scryptKey(password, salt)).toString("hex")}`;
+}
+
+export async function verifyPassword(
+	hash: string,
+	password: string,
+): Promise<boolean> {
+	const [salt, key] = hash.split(":");
+	if (!salt || !key) return false;
+	return (await scryptKey(password, salt)).toString("hex") === key;
 }
 
 export function generatePassword(): string {
@@ -119,9 +158,6 @@ export default defineCommand({
 				process.exit(1);
 			}
 			const [account] = accounts;
-			const { hashPassword } = (await import("@prismalens/auth")) as {
-				hashPassword: (password: string) => Promise<string>;
-			};
 			const password = generatePassword();
 			const signedOut = setPassword(db, account, await hashPassword(password));
 			consola.success(

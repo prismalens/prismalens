@@ -6,8 +6,14 @@ import { describe, expect, it } from "vitest";
 import {
 	findCredentialAccounts,
 	generatePassword,
+	hashPassword,
 	setPassword,
+	verifyPassword,
 } from "./reset-password.js";
+
+/** Made by better-auth 1.7.2's own hashPassword("correct horse battery staple"). */
+const BETTER_AUTH_HASH =
+	"f25084ea2d31d90341f909743a40c071:1ce993457187e6b9315a480835677fc6520318b6836b28ea2f4ec81f66127b719264af872ba94e7e139917d9bd3b64c13038a36bbaa5342014d9e84cb2ee2eb2";
 
 function fixture(): DatabaseSync {
 	const db = new DatabaseSync(":memory:");
@@ -48,5 +54,13 @@ describe("reset-password (#605 edge 8)", () => {
 		const password = generatePassword();
 		expect(password).toMatch(/^[A-Za-z0-9_-]{20}$/);
 		expect(generatePassword()).not.toBe(password);
+	});
+
+	it("hashes in better-auth's format: it verifies better-auth's own hash, and its own", async () => {
+		expect(await verifyPassword(BETTER_AUTH_HASH, "correct horse battery staple")).toBe(true);
+		expect(await verifyPassword(BETTER_AUTH_HASH, "wrong")).toBe(false);
+		const mine = await hashPassword("s3cret-Ω");
+		expect(mine).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/);
+		expect(await verifyPassword(mine, "s3cret-Ω")).toBe(true);
 	});
 });
