@@ -15,8 +15,11 @@ import {
 	type HarnessId,
 	type HarnessRunEnv,
 	type ModelSource,
+	type Placement,
 	resolvePermissionOutcome,
+	resolvePlacement,
 } from "@prismalens/config/harness";
+import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
 	CanonicalEvent,
 	InvestigationContext,
@@ -41,7 +44,12 @@ export interface RunInvestigationOptions {
 	/** Tests and the admission script swap the binary; the registry row is the default. */
 	descriptor?: Pick<
 		HarnessDescriptor,
-		"binary" | "acpArgs" | "acpEnv" | "configFiles" | "sessionMeta"
+		| "binary"
+		| "acpArgs"
+		| "acpEnv"
+		| "configFiles"
+		| "sessionMeta"
+		| "companionBinary"
 	>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
@@ -80,10 +88,12 @@ export function buildRunFidelity(
 	sandbox?: Sandbox,
 	requestedSandbox?: string,
 	model?: { id?: string; source?: ModelSource },
+	placement: Placement = resolvePlacement(),
 ): RunFidelity {
 	const outcome = resolvePermissionOutcome(harness, "read-only");
 	return {
 		harness,
+		placement,
 		mode: outcome.mode,
 		fidelity: outcome.fidelity,
 		...(model?.id ? { model: model.id } : {}),
@@ -124,11 +134,16 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	const dataDir = join(opts.runDir, "home");
 	mkdirSync(configDir, { recursive: true });
 	mkdirSync(dataDir, { recursive: true });
+	const companionPath = descriptor.companionBinary
+		? resolveOnPath(descriptor.companionBinary)
+		: null;
 	const runEnv: HarnessRunEnv = {
 		configDir,
 		dataDir,
 		cwd: opts.cwd,
+		placement: resolvePlacement(),
 		...(opts.model ? { model: opts.model } : {}),
+		...(companionPath ? { companionPath } : {}),
 	};
 	for (const [rel, content] of Object.entries(
 		descriptor.configFiles?.(runEnv) ?? {},

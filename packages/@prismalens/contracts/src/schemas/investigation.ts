@@ -125,6 +125,12 @@ export const RunFidelitySchema = z.object({
 	modelSource: z
 		.enum(["operator", "product-default", "harness-default"])
 		.optional(),
+	/**
+	 * Where the run executed, which decided its credential and isolation
+	 * (ADR 0003 §9, #650): `laptop` used the user's own harness sign-in,
+	 * `server` an empty config dir and an env key. Older records have none.
+	 */
+	placement: z.enum(["laptop", "server"]).optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 
