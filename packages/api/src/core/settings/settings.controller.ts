@@ -8,6 +8,7 @@ import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
 import { HarnessService } from "../harness/harness.service.js";
 import { HarnessProbeService } from "../harness/harness-probe.service.js";
+import { TelemetryService } from "../telemetry/telemetry.service.js";
 import { SettingsService } from "./settings.service.js";
 
 @UseGuards(ThrottlerGuard)
@@ -17,7 +18,21 @@ export class SettingsController {
 		private readonly settingsService: SettingsService,
 		private readonly harnessService: HarnessService,
 		private readonly harnessProbeService: HarnessProbeService,
+		private readonly telemetryService: TelemetryService,
 	) {}
+
+	/** Opt-in telemetry (#602) */
+	@Implement(settingsContract.telemetry)
+	telemetry() {
+		return {
+			get: implement(settingsContract.telemetry.get).handler(() =>
+				this.telemetryService.getSettings(),
+			),
+			update: implement(settingsContract.telemetry.update).handler(
+				({ input }) => this.telemetryService.setEnabled(input.enabled),
+			),
+		};
+	}
 
 	/**
 	 * Implement danger zone routes

@@ -21,6 +21,7 @@ import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
@@ -67,6 +68,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly telemetry: TelemetryService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -89,6 +91,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					dto.error,
 					dto.harnessThreadId,
 				);
+				await this.reportStatus(id, dto.status);
 			},
 			appendEvents: async (id, events) => {
 				await this.investigationsService.appendEvents(id, events);
@@ -98,6 +101,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
 				await this.investigationsService.writeResultWithRelations(id, dto);
+				await this.reportStatus(id, dto.status);
 			},
 			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
 				await this.timelineService.create(dto);
@@ -175,6 +179,24 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				},
 			},
 		);
+	}
+
+	/** Opt-in telemetry (#602): a run starting, and its one terminal state. */
+	private async reportStatus(id: string, status: string): Promise<void> {
+		if (status === "running") {
+			const selection = await this.harnessService
+				.resolveSelection()
+				.catch(() => null);
+			await this.telemetry.capture("investigation_started", {
+				harness: selection?.runnable ? selection.harness : null,
+			});
+		} else if (
+			status === "completed" ||
+			status === "failed" ||
+			status === "cancelled"
+		) {
+			await this.telemetry.captureFinished(id, status);
+		}
 	}
 
 	async onModuleInit(): Promise<void> {

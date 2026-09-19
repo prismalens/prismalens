@@ -232,3 +232,22 @@ export const TestMcpResultSchema = z.object({
 	toolCount: z.number().optional(),
 });
 export type TestMcpResult = z.infer<typeof TestMcpResultSchema>;
+
+/**
+ * Opt-in product telemetry (#602). Off until the owner says yes; `decided` is
+ * false until they answer once, which is what shows the consent line.
+ * `forcedOff` means PRISMALENS_TELEMETRY=off (`pl up --telemetry=off`) wins.
+ */
+export const TelemetrySettingsSchema = z.object({
+	enabled: z.boolean(),
+	decided: z.boolean(),
+	forcedOff: z.boolean(),
+});
+export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
+
+export const UpdateTelemetrySettingsSchema = z.object({
+	enabled: z.boolean(),
+});
+export type UpdateTelemetrySettings = z.infer<
+	typeof UpdateTelemetrySettingsSchema
+>;

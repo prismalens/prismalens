@@ -68,6 +68,7 @@ import { AuthGuard, AuthModule } from "./core/auth/index.js";
 import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
 import { SetupModule } from "./core/setup/setup.module.js";
+import { TelemetryModule } from "./core/telemetry/telemetry.module.js";
 import { UsersModule } from "./core/users/users.module.js";
 
 // Infrastructure modules
@@ -155,6 +156,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		UsersModule,
 		SetupModule, // Initial setup (oRPC)
 		SettingsModule,
+		TelemetryModule,
 
 		// Infrastructure
 		HealthModule,
