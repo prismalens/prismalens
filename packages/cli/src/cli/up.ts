@@ -99,6 +99,9 @@ export default defineCommand({
 	async run({ args }) {
 		const app = resolvePackagedApi();
 
+		// The packaged app always runs as production, whatever the shell exports;
+		// CI's packed smoke and app-boot runs set the same value.
+		process.env.NODE_ENV = "production";
 		if (args.port) process.env.PRISMALENS_PORT = String(args.port);
 		if (args.host) process.env.PRISMALENS_HOST = String(args.host);
 		if (args.workspace) {

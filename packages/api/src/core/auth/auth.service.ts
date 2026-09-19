@@ -65,14 +65,18 @@ export class AuthService implements OnModuleInit {
 		// and the very next page load was signed out again. Over https this is
 		// unchanged and still on.
 		const secureCookies = publicUrl.startsWith("https://");
+		const loopbackBind =
+			!this.configService.get<string>("PRISMALENS_PUBLIC_URL") &&
+			["localhost", "127.0.0.1", "::1"].includes(host);
 		// NODE_ENV no longer decides `Secure` — the resolved origin's scheme does.
 		// That makes PRISMALENS_PUBLIC_URL (or PRISMALENS_PROTOCOL) load-bearing for
 		// cookie security in any deployment that terminates TLS in front of this
 		// process: set NODE_ENV=production but leave those unset, and the session
-		// cookie silently loses `Secure`. Warn rather than fail closed — a local
-		// NODE_ENV=production run over plain HTTP (e.g. `pl up`) is legitimate.
+		// cookie silently loses `Secure`. Warn rather than fail closed, and only for
+		// a non-loopback bind: a default `pl up` on loopback is plain HTTP by design.
 		if (
 			!secureCookies &&
+			!loopbackBind &&
 			this.configService.get<string>("NODE_ENV") === "production"
 		) {
 			this.logger.warn(

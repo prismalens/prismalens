@@ -104,7 +104,6 @@ const child = spawn(bin, ["up"], {
 		PRISMALENS_WORKSPACE_DIR: workspace,
 		PRISMALENS_HOST: "127.0.0.1",
 		PRISMALENS_PORT: PORT,
-		NODE_ENV: "production",
 	},
 });
 

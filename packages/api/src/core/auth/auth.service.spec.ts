@@ -32,12 +32,13 @@ describe("AuthService", () => {
 		expect(auth).toBeDefined();
 	});
 
-	it("warns when NODE_ENV=production resolves to non-secure cookies (no PRISMALENS_PUBLIC_URL/PROTOCOL)", async () => {
+	it("warns when NODE_ENV=production resolves to non-secure cookies on a non-loopback bind", async () => {
 		const prodHttpConfigService = {
 			get: (key: string, defaultValue?: string) => {
 				if (key === "PRISMALENS_AUTH_SECRET")
 					return "test-secret-1234567890-test-secret-1234567890";
 				if (key === "NODE_ENV") return "production";
+				if (key === "PRISMALENS_HOST") return "0.0.0.0";
 				// No PRISMALENS_PUBLIC_URL/PROTOCOL — publicUrl derives to http://...,
 				// which is the gap: NODE_ENV=production but not actually behind TLS.
 				return defaultValue ?? "";
@@ -59,6 +60,38 @@ describe("AuthService", () => {
 		service.onModuleInit();
 
 		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("Secure attribute"),
+		);
+
+		warnSpy.mockRestore();
+	});
+
+	it("does not warn for the default pl up bind: production over http on loopback", async () => {
+		const prodLoopbackConfigService = {
+			get: (key: string, defaultValue?: string) => {
+				if (key === "PRISMALENS_AUTH_SECRET")
+					return "test-secret-1234567890-test-secret-1234567890";
+				if (key === "NODE_ENV") return "production";
+				if (key === "PRISMALENS_HOST") return "127.0.0.1";
+				return defaultValue ?? "";
+			},
+		};
+
+		const warnSpy = vi
+			.spyOn(Logger.prototype, "warn")
+			.mockImplementation(() => undefined);
+
+		const moduleRef = await Test.createTestingModule({
+			providers: [
+				AuthService,
+				{ provide: ConfigService, useValue: prodLoopbackConfigService },
+			],
+		}).compile();
+
+		const service = moduleRef.get(AuthService);
+		service.onModuleInit();
+
+		expect(warnSpy).not.toHaveBeenCalledWith(
 			expect.stringContaining("Secure attribute"),
 		);
 
