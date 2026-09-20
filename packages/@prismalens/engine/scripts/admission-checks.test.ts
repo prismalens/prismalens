@@ -7,6 +7,7 @@ import {
 	permissionDecisions,
 	proveCwd,
 	redactNonce,
+	initializeVersion,
 	type WireLine,
 } from "./admission-checks.js";
 
@@ -162,5 +163,42 @@ describe("redactNonce", () => {
 
 	it("is a no-op for an empty nonce", () => {
 		expect(redactNonce("untouched", "")).toBe("untouched");
+	});
+});
+
+describe("initializeVersion", () => {
+	it("extracts agentInfo.version from the initialize response", () => {
+		const lines: WireLine[] = [
+			{
+				t: 1,
+				d: "out",
+				m: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+			},
+			{
+				t: 2,
+				d: "in",
+				m: JSON.stringify({
+					jsonrpc: "2.0",
+					id: 1,
+					result: {
+						protocolVersion: 1,
+						agentInfo: { name: "opencode", version: "1.18.30" },
+					},
+				}),
+			},
+		];
+		expect(initializeVersion(lines)).toBe("1.18.30");
+	});
+
+	it("returns null when no initialize response or version is present", () => {
+		const lines: WireLine[] = [
+			{
+				t: 1,
+				d: "in",
+				m: JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }),
+			},
+			{ t: 2, d: "in", m: "plain text" },
+		];
+		expect(initializeVersion(lines)).toBeNull();
 	});
 });

@@ -100,8 +100,8 @@ export interface HarnessDescriptor {
 	defaultModel?: string;
 	readOnlyFidelity: PermissionFidelity;
 	readOnlyMechanism: string;
-	/** True once the registry admission run (ACP spike, prismalens#561) is green in CI. */
-	verified: boolean;
+	/** The unattended admission run this row passed (ADR 0003 §10), or absent: never admitted. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
+	admission?: { version: string; date: string; result: "pass" };
 	/**
 	 * Provider API-key env vars this harness actually reads from the host
 	 * (ADR 0004 §5: allowlist, never `process.env`). Never a bare wildcard —
@@ -170,7 +170,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
-		verified: true,
+		admission: { version: "1.18.30", date: "2026-09-20", result: "pass" },
 	},
 	"claude-code": {
 		id: "claude-code",
@@ -209,7 +209,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY on a server)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
-		verified: false,
 	},
 	codex: {
 		id: "codex",
@@ -227,7 +226,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
-		verified: false,
 	},
 	gemini: {
 		id: "gemini",
@@ -240,7 +238,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "npm i -g @google/gemini-cli",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
-		verified: false,
 	},
 	deepagents: {
 		id: "deepagents",
@@ -257,7 +254,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
-		verified: false,
 	},
 };
 
@@ -315,6 +311,10 @@ export interface ResolvedModel {
 	/** The id passed to the harness; undefined leaves the harness to its own default. */
 	model?: string;
 	source: ModelSource;
+}
+
+export function isAdmitted(d: HarnessDescriptor): boolean {
+	return d.admission?.result === "pass";
 }
 
 /** Operator setting first, then the row's verified default, then the harness's own. */
