@@ -313,4 +313,151 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			fullPage: true,
 		});
 	});
+
+	/**
+	 * #605 — the "Pull from Alertmanager" button on /alerts. The pull itself
+	 * is server-side (AlertPullService); the button only starts it and shows
+	 * the result as a toast. Both branches of that toast are asserted here.
+	 */
+	test("pull button reports sources/received/processed/caughtUp counts in a toast", async ({
+		page,
+	}) => {
+		await page.route(
+			(url) => url.pathname === "/api/alerts/pull",
+			async (route) => {
+				if (route.request().method() !== "POST") {
+					await route.fallback();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						sources: 1,
+						received: 2,
+						processed: 2,
+						caughtUp: 0,
+						errors: [],
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.getByTestId("alerts-pull").click();
+
+		await expect(
+			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.unroute("**/api/alerts/pull");
+	});
+
+	test("pull button reports no configured connection when sources is 0", async ({
+		page,
+	}) => {
+		await page.route(
+			(url) => url.pathname === "/api/alerts/pull",
+			async (route) => {
+				if (route.request().method() !== "POST") {
+					await route.fallback();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						sources: 0,
+						received: 0,
+						processed: 0,
+						caughtUp: 0,
+						errors: [],
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.getByTestId("alerts-pull").click();
+
+		await expect(
+			page.getByText("No Alertmanager or Prometheus connection is configured", {
+				exact: true,
+			}),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByRole("link", {
+				name: "Add a connection under Settings → Integrations",
+			}),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.unroute("**/api/alerts/pull");
+	});
+
+	test("design evidence: alerts pull toast in default and dark themes", async ({
+		page,
+	}) => {
+		const shot = (name: string) =>
+			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		await page.route(
+			(url) => url.pathname === "/api/alerts/pull",
+			async (route) => {
+				if (route.request().method() !== "POST") {
+					await route.fallback();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						sources: 1,
+						received: 2,
+						processed: 2,
+						caughtUp: 0,
+						errors: [],
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await setTheme("light");
+		await page.getByTestId("alerts-pull").click();
+		await expect(
+			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-pull-default");
+
+		await setTheme("dark");
+		await page.getByTestId("alerts-pull").click();
+		await expect(
+			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-pull-dark");
+
+		await page.unroute("**/api/alerts/pull");
+	});
 });
