@@ -6138,6 +6138,9 @@
                                         "server"
                                       ],
                                       "type": "string"
+                                    },
+                                    "harnessVersion": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -6921,6 +6924,9 @@
                                               "laptop",
                                               "server"
                                             ],
+                                            "type": "string"
+                                          },
+                                          "harnessVersion": {
                                             "type": "string"
                                           }
                                         },
@@ -7725,6 +7731,9 @@
                                         "server"
                                       ],
                                       "type": "string"
+                                    },
+                                    "harnessVersion": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -8494,6 +8503,9 @@
                                             "laptop",
                                             "server"
                                           ],
+                                          "type": "string"
+                                        },
+                                        "harnessVersion": {
                                           "type": "string"
                                         }
                                       },
@@ -9322,6 +9334,9 @@
                                         "laptop",
                                         "server"
                                       ],
+                                      "type": "string"
+                                    },
+                                    "harnessVersion": {
                                       "type": "string"
                                     }
                                   },
@@ -10378,6 +10393,9 @@
                                               "server"
                                             ],
                                             "type": "string"
+                                          },
+                                          "harnessVersion": {
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10923,6 +10941,9 @@
                                         "laptop",
                                         "server"
                                       ],
+                                      "type": "string"
+                                    },
+                                    "harnessVersion": {
                                       "type": "string"
                                     }
                                   },
@@ -11603,6 +11624,9 @@
                                   "server"
                                 ],
                                 "type": "string"
+                              },
+                              "harnessVersion": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -12145,6 +12169,9 @@
                                         "laptop",
                                         "server"
                                       ],
+                                      "type": "string"
+                                    },
+                                    "harnessVersion": {
                                       "type": "string"
                                     }
                                   },

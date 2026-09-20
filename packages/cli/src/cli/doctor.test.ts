@@ -153,7 +153,7 @@ describe("doctor — harness ACP handshake", () => {
 		expect(opencode).toEqual({
 			name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
 			pass: true,
-			detail: "answers ACP",
+			detail: "answers ACP, fake 0",
 			hard: false,
 		});
 	});
