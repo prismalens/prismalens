@@ -21,6 +21,7 @@ import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import type {
 	InternalInvestigationResultDto,
 	RecommendationDto,
@@ -52,6 +53,7 @@ export class InvestigationsController {
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
 		private readonly telemetry: TelemetryService,
+		private readonly githubComment: GitHubCommentService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -288,6 +290,13 @@ export class InvestigationsController {
 							completedAt: investigation.completedAt,
 						}),
 					};
+				},
+			),
+
+			// POST /investigations/:id/report/github - Post report to GitHub (#606)
+			postToGitHub: implement(investigationsContract.postToGitHub).handler(
+				async ({ input }) => {
+					return this.githubComment.post(input.id, input.target);
 				},
 			),
 
