@@ -121,6 +121,61 @@ describe("workspace lock (#605 edge 5)", () => {
 		expect(() => take(dir)).toThrow(/reclaiming/i);
 	});
 
+	// #662 review (claude lane): a SIGKILL inside the microseconds the `.steal`
+	// sidecar is held used to orphan it forever, and every later boot refused
+	// with "Another process is reclaiming…" naming only the main lock.
+	it("takes over a .steal sidecar whose recorder is dead", () => {
+		const dir = workspace();
+		writeFileSync(
+			lockIn(dir),
+			JSON.stringify({ pid: deadPid(), port: 3001, startedAt: "then" }),
+		);
+		writeFileSync(
+			`${lockIn(dir)}.steal`,
+			JSON.stringify({ pid: deadPid(), startedAt: "then" }),
+		);
+
+		const release = take(dir, 3164);
+		expect(readWorkspaceLock(dir)?.pid).toBe(process.pid);
+		expect(existsSync(`${lockIn(dir)}.steal`)).toBe(false);
+		release();
+	});
+
+	it("leaves a .steal sidecar alone while its recorder is alive", () => {
+		const dir = workspace();
+		writeFileSync(
+			lockIn(dir),
+			JSON.stringify({ pid: deadPid(), port: 3001, startedAt: "then" }),
+		);
+		// The parent of this test runner is alive and is not us.
+		writeFileSync(
+			`${lockIn(dir)}.steal`,
+			JSON.stringify({ pid: process.ppid, startedAt: "now" }),
+		);
+
+		expect(() => take(dir)).toThrow(/reclaiming/i);
+		// The refusal names the file an operator would actually have to remove.
+		expect(() => take(dir)).toThrow(`${lockIn(dir)}.steal`);
+	});
+
+	it("waits out the grace on an unreadable .steal, then takes it", () => {
+		const dir = workspace();
+		writeFileSync(
+			lockIn(dir),
+			JSON.stringify({ pid: deadPid(), port: 3001, startedAt: "then" }),
+		);
+		const stealPath = `${lockIn(dir)}.steal`;
+		writeFileSync(stealPath, "");
+
+		// Fresh and unreadable: no evidence it is dead, so it is left alone.
+		expect(() => take(dir)).toThrow(/reclaiming/i);
+
+		age(stealPath, MALFORMED_GRACE_MS + 60_000);
+		const release = take(dir, 3165);
+		expect(readWorkspaceLock(dir)?.pid).toBe(process.pid);
+		release();
+	});
+
 	it("classifies the states it acts on", () => {
 		const dir = workspace();
 		expect(readWorkspaceLockState(dir)).toEqual({ kind: "free" });

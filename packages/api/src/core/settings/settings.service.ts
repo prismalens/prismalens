@@ -44,9 +44,28 @@ export class SettingsService {
 	 * workspace; two processes cannot both be resetting the same database.
 	 */
 	private resetting = false;
+	/**
+	 * Bumped once per completed reset. A caller that saw one value before its
+	 * work and a different one after knows a reset landed in between, even
+	 * though {@link isResetting} is false again by then. That is what lets
+	 * `startOrGet` tell "the incident was deleted underneath me" from an
+	 * unrelated foreign-key violation, instead of blaming every P2003 on a
+	 * reset that may never have happened.
+	 */
+	private resets = 0;
 
 	isResetting(): boolean {
 		return this.resetting;
+	}
+
+	/** A token that changes whenever a reset completes. Opaque to callers. */
+	resetGeneration(): number {
+		return this.resets;
+	}
+
+	/** True if a reset is running now, or finished since `generation` was read. */
+	resetSince(generation: number): boolean {
+		return this.resetting || this.resets !== generation;
 	}
 
 	/** Holds {@link resetting} for the duration of `run`, whatever it throws. */
@@ -56,6 +75,7 @@ export class SettingsService {
 			return await run();
 		} finally {
 			this.resetting = false;
+			this.resets += 1;
 		}
 	}
 

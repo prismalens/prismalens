@@ -29,8 +29,20 @@ function prismaWith(
 	return { $transaction: transaction } as unknown as PrismaService;
 }
 
+type SettingsStub = Pick<
+	SettingsService,
+	"isResetting" | "resetGeneration" | "resetSince"
+>;
+
+/** A settings service that never resets, for the cases that are not about one. */
+const quiet = (isResetting = false): SettingsStub => ({
+	isResetting: () => isResetting,
+	resetGeneration: () => 0,
+	resetSince: () => isResetting,
+});
+
 function investigations(options: {
-	settings: Pick<SettingsService, "isResetting">;
+	settings: SettingsStub;
 	transaction?: () => Promise<unknown>;
 }) {
 	const prisma = prismaWith(
@@ -67,6 +79,35 @@ describe("the resetting flag", () => {
 		expect(service.isResetting()).toBe(false);
 	});
 
+	it("moves the generation on every reset, including one that throws", async () => {
+		let fail = false;
+		const service = new SettingsService(
+			prismaWith(async (fn) => {
+				if (fail) throw new Error("database is locked");
+				return fn({
+					recommendation: { deleteMany: vi.fn() },
+					investigation: { deleteMany: vi.fn(), count: async () => 0 },
+					timelineEntry: { deleteMany: vi.fn() },
+					incident: { deleteMany: vi.fn() },
+					alert: { deleteMany: vi.fn() },
+					event: { deleteMany: vi.fn() },
+				});
+			}),
+		);
+
+		const start = service.resetGeneration();
+		expect(service.resetSince(start)).toBe(false);
+
+		await service.resetData();
+		expect(service.resetSince(start)).toBe(true);
+
+		// A reset that throws may still have deleted rows, so it counts too.
+		const afterFirst = service.resetGeneration();
+		fail = true;
+		await expect(service.resetData()).rejects.toThrow("database is locked");
+		expect(service.resetSince(afterFirst)).toBe(true);
+	});
+
 	it("is cleared even when the reset throws", async () => {
 		const service = new SettingsService(
 			prismaWith(async () => {
@@ -86,7 +127,7 @@ describe("creating a run while a reset is in progress", () => {
 	it("is refused before the transaction is even opened", async () => {
 		const transaction = vi.fn();
 		const service = investigations({
-			settings: { isResetting: () => true },
+			settings: quiet(true),
 			transaction: transaction as never,
 		});
 
@@ -99,7 +140,11 @@ describe("creating a run while a reset is in progress", () => {
 	it("starts normally once the reset has finished", async () => {
 		let resetting = true;
 		const service = investigations({
-			settings: { isResetting: () => resetting },
+			settings: {
+				isResetting: () => resetting,
+				resetGeneration: () => 0,
+				resetSince: () => resetting,
+			},
 			transaction: async () => ({
 				investigation: { id: "inv-1", incidentId: "inc-1" },
 				created: true,
@@ -121,9 +166,17 @@ describe("creating a run while a reset is in progress", () => {
 	 * that is the same situation, so it gets the same answer rather than a 500.
 	 */
 	it("turns the foreign key violation of a deleted incident into the same error", async () => {
+		// A reset that started and finished while the create was in flight:
+		// `isResetting()` is false again by now, but the generation moved.
+		let generation = 0;
 		const service = investigations({
-			settings: { isResetting: () => false },
+			settings: {
+				isResetting: () => false,
+				resetGeneration: () => generation,
+				resetSince: (g: number) => g !== generation,
+			},
 			transaction: async () => {
+				generation = 1;
 				throw Object.assign(new Error("Foreign key constraint violated"), {
 					code: "P2003",
 				});
@@ -135,9 +188,33 @@ describe("creating a run while a reset is in progress", () => {
 		);
 	});
 
+	/**
+	 * #662 review (claude lane): `incidentId` is validated as a UUID and not for
+	 * existence, so a stale or mistyped one hits the same P2003. Answering that
+	 * with "a reset is in progress" is wrong and unactionable — retrying never
+	 * helps — and on the webhook path, which swallows this error, a genuine
+	 * referential problem would disappear into a log line.
+	 */
+	it("re-throws a foreign key violation when no reset happened", async () => {
+		const service = investigations({
+			settings: quiet(false),
+			transaction: async () => {
+				throw Object.assign(new Error("Foreign key constraint violated"), {
+					code: "P2003",
+				});
+			},
+		});
+
+		const failure = await service
+			.startOrGet({ incidentId: "no-such-incident" })
+			.catch((e: unknown) => e);
+		expect(failure).not.toBeInstanceOf(ResetInProgressError);
+		expect((failure as Error).message).toMatch(/Foreign key/);
+	});
+
 	it("does not swallow an unrelated database error", async () => {
 		const service = investigations({
-			settings: { isResetting: () => false },
+			settings: quiet(false),
 			transaction: async () => {
 				throw Object.assign(new Error("unique constraint"), { code: "P2002" });
 			},
@@ -184,7 +261,7 @@ describe("a status update that lands after a reset", () => {
 	 */
 	it("returns null instead of throwing when the row no longer exists", async () => {
 		const service = investigations({
-			settings: { isResetting: () => false },
+			settings: quiet(false),
 		});
 		(service as unknown as { prisma: unknown }).prisma = {
 			investigation: {

@@ -15,7 +15,12 @@
  *    place, which is atomic and fails when the lock already exists.
  *  - Reclaiming a stale lock is check-then-act. Two processes can both read
  *    "stale" and both unlink and create. Reclamation therefore happens while
- *    holding a second, exclusive `.steal` file, and re-checks inside it.
+ *    holding a second, exclusive `.steal` file, and re-checks inside it. That
+ *    sidecar carries the same crash story as the lock it guards — it records
+ *    the reclaiming pid, and one whose pid is dead (or which predates the
+ *    grace, for a record too old or too broken to read) is taken over.
+ *    Without that, a `SIGKILL` inside the microseconds it is held orphaned it
+ *    permanently and every later boot refused.
  *
  * The owner record is `{pid, port, startedAt}`. `port` is here for a launcher
  * rather than for this process: an Electron shell that finds the workspace
@@ -206,6 +211,78 @@ function createLock(lockPath: string, owner: WorkspaceLockOwner): void {
 	}
 }
 
+/**
+ * {@link createLock}, returning false instead of throwing when another process
+ * won the race. `linkSync` throws `EEXIST` then, and a raw `Error` escaping
+ * `acquireWorkspaceLock` would crash bootstrap: `main.ts` only converts a
+ * {@link WorkspaceLockedError} into its one-line refusal.
+ */
+function tryCreateLock(lockPath: string, owner: WorkspaceLockOwner): boolean {
+	try {
+		createLock(lockPath, owner);
+		return true;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+		throw e;
+	}
+}
+
+/**
+ * The reclaiming process's own record inside the `.steal` file, so a sidecar
+ * orphaned by a crash can be told from one a live process is holding.
+ */
+interface StealOwner {
+	pid: number;
+	startedAt: string;
+}
+
+/**
+ * Take the `.steal` sidecar, or report why not.
+ *
+ * The sidecar is held for microseconds, but a `SIGKILL` inside that window used
+ * to orphan it permanently: every later reclaim saw `EEXIST`, returned false,
+ * and `acquireWorkspaceLock` refused with "Another process is reclaiming…"
+ * forever — naming only the main lock, not the file actually stuck. It now
+ * carries the same crash story as the lock it guards: a recorded pid that is
+ * not alive, or a file older than the grace, is taken over.
+ */
+function takeStealLock(stealPath: string): number | null {
+	try {
+		return openSync(stealPath, "wx", 0o600);
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+	}
+	// Held by someone. Alive, or orphaned by a crash?
+	let orphaned = false;
+	try {
+		const raw = readFileSync(stealPath, "utf8");
+		const ageMs = Date.now() - statSync(stealPath).mtimeMs;
+		let holder: StealOwner | null = null;
+		try {
+			const parsed = JSON.parse(raw) as StealOwner;
+			holder = Number.isInteger(parsed.pid) ? parsed : null;
+		} catch {
+			holder = null;
+		}
+		orphaned = holder
+			? !isAlive(holder.pid)
+			: // No readable record: an older build, or a crash between create and
+				// write. Age is the only evidence, so wait out the grace first.
+				ageMs > MALFORMED_GRACE_MS;
+	} catch {
+		// Vanished or unreadable between the two calls; let the caller retry.
+		return null;
+	}
+	if (!orphaned) return null;
+	try {
+		unlinkSync(stealPath);
+		return openSync(stealPath, "wx", 0o600);
+	} catch {
+		// Another process cleared or retook it first; it is theirs now.
+		return null;
+	}
+}
+
 /** Reclaim a stale or long-unreadable lock, serialized by an exclusive `.steal` file. */
 function reclaim(
 	workspaceDir: string,
@@ -213,14 +290,17 @@ function reclaim(
 	owner: WorkspaceLockOwner,
 ): boolean {
 	const stealPath = `${lockPath}${STEAL_SUFFIX}`;
-	let stealFd: number;
+	const stealFd = takeStealLock(stealPath);
+	if (stealFd === null) return false;
 	try {
-		stealFd = openSync(stealPath, "wx", 0o600);
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
-		throw e;
-	}
-	try {
+		// Who is reclaiming, so the next process can tell a crash from a holder.
+		writeSync(
+			stealFd,
+			JSON.stringify({
+				pid: process.pid,
+				startedAt: new Date().toISOString(),
+			} satisfies StealOwner),
+		);
 		// Re-check inside the steal lock: the holder may have been replaced
 		// between the first read and here.
 		const state = readWorkspaceLockState(workspaceDir);
@@ -229,8 +309,8 @@ function reclaim(
 			(state.kind === "unreadable" && state.ageMs > MALFORMED_GRACE_MS);
 		if (!reclaimable) return false;
 		unlinkSync(lockPath);
-		createLock(lockPath, owner);
-		return true;
+		// A competing process can create it in this window; that is its lock now.
+		return tryCreateLock(lockPath, owner);
 	} finally {
 		closeSync(stealFd);
 		try {
@@ -293,8 +373,15 @@ export function acquireWorkspaceLock(
 	}
 	if (state.kind === "free") {
 		// It went away between the create and the read; one more try, no reclaim.
-		createLock(lockPath, owner);
-		return take();
+		// Losing this race is a refusal, never an EEXIST stack trace out of boot.
+		if (tryCreateLock(lockPath, owner)) return take();
+		const now = readWorkspaceLockState(workspaceDir);
+		throw new WorkspaceLockedError(
+			lockPath,
+			now.kind === "held"
+				? ownerBusy(lockPath, now.owner).message
+				: `Another process took the workspace lock at ${lockPath} while this one was starting. Retry in a few seconds.`,
+		);
 	}
 	if (!reclaim(workspaceDir, lockPath, owner)) {
 		const now = readWorkspaceLockState(workspaceDir);
@@ -302,7 +389,7 @@ export function acquireWorkspaceLock(
 			lockPath,
 			now.kind === "held"
 				? ownerBusy(lockPath, now.owner).message
-				: `Another process is reclaiming the workspace lock at ${lockPath}. Retry in a few seconds.`,
+				: `Another process is reclaiming the workspace lock at ${lockPath}. Retry in a few seconds. If this persists with no PrismaLens running, remove ${lockPath}${STEAL_SUFFIX}.`,
 		);
 	}
 	return take();

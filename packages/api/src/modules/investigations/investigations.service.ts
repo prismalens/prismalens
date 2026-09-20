@@ -81,6 +81,11 @@ export class InvestigationsService {
 		// single place a reset has to be able to stand in front of (#662 review).
 		if (this.settingsService.isResetting()) throw new ResetInProgressError();
 
+		// Read before the write, compared after: a reset that starts and
+		// finishes while the create is in flight is invisible to a check made
+		// afterwards, but it moves this token.
+		const generation = this.settingsService.resetGeneration();
+
 		let result: { investigation: Investigation; created: boolean };
 		try {
 			result = await this.prisma.$transaction(async (tx) => {
@@ -107,7 +112,19 @@ export class InvestigationsService {
 			// incident it points at is gone, and SQLite answers with a foreign
 			// key violation. That is the same situation, so it gets the same
 			// answer rather than a 500.
-			if (isForeignKeyViolation(error)) throw new ResetInProgressError();
+			//
+			// Only when a reset actually happened, though. `incidentId` is
+			// validated as a UUID and not for existence, so a stale or mistyped
+			// one reaches the same P2003 — and answering that with "a reset is
+			// in progress" is both wrong and unactionable, since retrying never
+			// helps. Worse on the webhook path, which swallows this error: a
+			// genuine referential problem would vanish into a log line.
+			if (
+				isForeignKeyViolation(error) &&
+				this.settingsService.resetSince(generation)
+			) {
+				throw new ResetInProgressError();
+			}
 			throw error;
 		}
 		if (!result.created) return result;
