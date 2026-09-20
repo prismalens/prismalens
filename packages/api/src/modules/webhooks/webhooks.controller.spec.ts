@@ -36,7 +36,7 @@ describe("WebhooksController guards (#637 edge 9)", () => {
 	});
 });
 
-describe("WebhooksController Prometheus intake (#633 edge 10)", () => {
+describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 	function prometheusHandler(service: Partial<WebhooksService>) {
 		const controller = new WebhooksController(
 			service as WebhooksService,
@@ -57,127 +57,41 @@ describe("WebhooksController Prometheus intake (#633 edge 10)", () => {
 		fingerprint: "fp-1",
 	};
 
-	it("resolves a late firing whose resolution already arrived", async () => {
+	it("processes alerts through webhooksService.processPrometheusAlert", async () => {
 		const service = {
-			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
-			hasEarlyResolution: vi.fn(() => true),
-			clearEarlyResolution: vi.fn(),
-			resolvePrometheusAlert: vi.fn(async () => ({ id: "a1" })),
+			processPrometheusAlert: vi.fn(async () => ({ alertId: "a1", isNew: true })),
 		};
-		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
+		const res = await prometheusHandler(service as unknown as Partial<WebhooksService>)({
 			input: { alerts: [firing] },
-			context: {},
+			context: { request: { headers: { "x-idempotency-key": "batch-key" } } },
 		});
-		expect(service.hasEarlyResolution).toHaveBeenCalledWith("fp-1", firing.startsAt);
-		expect(service.resolvePrometheusAlert).toHaveBeenCalledWith("fp-1", undefined);
-		expect(service.clearEarlyResolution).toHaveBeenCalledWith("fp-1", firing.startsAt);
-	});
-
-	it("leaves an ordinary firing open", async () => {
-		const service = {
-			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
-			hasEarlyResolution: vi.fn(() => false),
-			clearEarlyResolution: vi.fn(),
-			resolvePrometheusAlert: vi.fn(),
-		};
-		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
-			input: { alerts: [firing] },
-			context: {},
-		});
-		expect(service.resolvePrometheusAlert).not.toHaveBeenCalled();
-	});
-
-	/**
-	 * #664 review: the alert was created — and therefore correlated, and
-	 * therefore auto-investigated — *before* anyone asked whether its
-	 * resolution had already arrived. Every early-resolution episode on a
-	 * policy-matching service burned a harness run that is never cancelled: it
-	 * completes and is resolved microseconds later.
-	 *
-	 * The alert still has to be created (the resolve path finds it by
-	 * fingerprint), so the fix is a create-without-dispatch flag, not a
-	 * reordering of the two calls.
-	 */
-	it("records an early-resolved firing without dispatching a run", async () => {
-		const service = {
-			processGenericWebhook: vi.fn(
-				async (
-					_dto: unknown,
-					_key?: string,
-					_options?: { autoInvestigate?: boolean },
-				) => ({ alert: { id: "a1" } }),
-			),
-			hasEarlyResolution: vi.fn(() => true),
-			clearEarlyResolution: vi.fn(),
-			resolvePrometheusAlert: vi.fn(async () => ({ id: "a1" })),
-		};
-		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
-			input: { alerts: [firing] },
-			context: {},
-		});
-
-		// Still created, so the resolve path has something to resolve...
-		expect(service.processGenericWebhook).toHaveBeenCalledTimes(1);
-		// ...but explicitly told not to start anything.
-		expect(service.processGenericWebhook.mock.calls[0][2]).toEqual({
-			autoInvestigate: false,
-		});
-		// And the question was asked before the alert was created.
-		const askedAt = service.hasEarlyResolution.mock.invocationCallOrder[0];
-		const createdAt = service.processGenericWebhook.mock.invocationCallOrder[0];
-		expect(askedAt).toBeLessThan(createdAt);
-	});
-
-	it("lets an ordinary firing dispatch as before", async () => {
-		const service = {
-			processGenericWebhook: vi.fn(
-				async (
-					_dto: unknown,
-					_key?: string,
-					_options?: { autoInvestigate?: boolean },
-				) => ({ alert: { id: "a1" } }),
-			),
-			hasEarlyResolution: vi.fn(() => false),
-			clearEarlyResolution: vi.fn(),
-			resolvePrometheusAlert: vi.fn(),
-		};
-		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
-			input: { alerts: [firing] },
-			context: {},
-		});
-
-		expect(service.processGenericWebhook.mock.calls[0][2]).toEqual({
+		expect(service.processPrometheusAlert).toHaveBeenCalledWith(firing, {
+			idempotencyKey: "batch-key:fp-1",
+			source: "prometheus",
 			autoInvestigate: true,
 		});
+		expect(res).toEqual({
+			received: 1,
+			processed: 1,
+			alertIds: ["a1"],
+		});
 	});
 
-	// #664 review: dropping the record before the resolution meant a failed
-	// resolve lost it, and the retry left the alert open.
-	it("keeps the early-resolution record when the resolution did not happen", async () => {
+	it("handles errors thrown by processPrometheusAlert gracefully", async () => {
 		const service = {
-			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
-			hasEarlyResolution: vi.fn(() => true),
-			clearEarlyResolution: vi.fn(),
-			resolvePrometheusAlert: vi.fn(async () => null),
+			processPrometheusAlert: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("Database error"))
+				.mockResolvedValueOnce({ alertId: "a2", isNew: true }),
 		};
-		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
-			input: { alerts: [firing] },
+		const res = await prometheusHandler(service as unknown as Partial<WebhooksService>)({
+			input: { alerts: [firing, { ...firing, fingerprint: "fp-2" }] },
 			context: {},
 		});
-		expect(service.resolvePrometheusAlert).toHaveBeenCalled();
-		expect(service.clearEarlyResolution).not.toHaveBeenCalled();
-	});
-
-	it("passes a resolution's startsAt so an unknown fingerprint can be remembered", async () => {
-		const service = { resolvePrometheusAlert: vi.fn(async () => null) };
-		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
-			input: { alerts: [{ ...firing, status: "resolved" }] },
-			context: {},
+		expect(res).toEqual({
+			received: 2,
+			processed: 1,
+			alertIds: ["a2"],
 		});
-		expect(service.resolvePrometheusAlert).toHaveBeenCalledWith(
-			"fp-1",
-			undefined,
-			firing.startsAt,
-		);
 	});
 });
