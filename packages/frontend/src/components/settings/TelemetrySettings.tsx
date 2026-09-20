@@ -40,7 +40,10 @@ export function TelemetryConsent() {
 				Help improve PrismaLens? {TELEMETRY_DISCLOSURE} Change it any time in
 				Settings.
 			</p>
-			<div className="flex shrink-0 gap-2">
+			<div className="flex shrink-0 items-center gap-2">
+				{update.isError && (
+					<span className="text-destructive">Could not save — try again.</span>
+				)}
 				<Button
 					variant="outline"
 					size="sm"

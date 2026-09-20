@@ -86,6 +86,12 @@ export class TelemetryService {
 		});
 	}
 
+	/** Whether anything would be sent, so a caller can skip gathering properties. */
+	async isEnabled(): Promise<boolean> {
+		if (telemetryForcedOff()) return false;
+		return (await this.read())?.enabled === true;
+	}
+
 	async getSettings(): Promise<TelemetrySettings> {
 		const stored = await this.read();
 		const forcedOff = telemetryForcedOff();

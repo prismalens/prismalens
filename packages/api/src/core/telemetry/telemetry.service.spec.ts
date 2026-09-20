@@ -106,6 +106,15 @@ describe("TelemetryService (#602)", () => {
 		expect(sent().filter((e) => e.event === "investigation_finished")).toHaveLength(2);
 	});
 
+	it("isEnabled answers before a caller gathers properties", async () => {
+		const { service } = setup();
+		expect(await service.isEnabled()).toBe(false);
+		await service.setEnabled(true);
+		expect(await service.isEnabled()).toBe(true);
+		vi.stubEnv("PRISMALENS_TELEMETRY", "off");
+		expect(await service.isEnabled()).toBe(false);
+	});
+
 	it("PRISMALENS_TELEMETRY=off wins over an opt-in", async () => {
 		const { service, fetchImpl } = setup();
 		await service.setEnabled(true);

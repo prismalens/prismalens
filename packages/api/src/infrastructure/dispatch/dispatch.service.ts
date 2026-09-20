@@ -184,6 +184,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	/** Opt-in telemetry (#602): a run starting, and its one terminal state. */
 	private async reportStatus(id: string, status: string): Promise<void> {
 		if (status === "running") {
+			// The harness lookup scans PATH, so it only happens when something
+			// would actually be sent.
+			if (!(await this.telemetry.isEnabled())) return;
 			const selection = await this.harnessService
 				.resolveSelection()
 				.catch(() => null);
