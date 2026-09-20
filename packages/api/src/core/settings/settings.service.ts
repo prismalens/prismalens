@@ -14,9 +14,50 @@ export class ActiveRunsError extends Error {
 	}
 }
 
+/** Raised when something tries to create a run while a reset is in flight. */
+export class ResetInProgressError extends Error {
+	constructor() {
+		super(
+			"A reset is in progress. Wait for it to finish, then start the investigation again.",
+		);
+		this.name = "ResetInProgressError";
+	}
+}
+
 @Injectable()
 export class SettingsService {
 	constructor(private prisma: PrismaService) {}
+
+	/**
+	 * True while a reset transaction is open (#662 review).
+	 *
+	 * SQLite serialises writers and `startOrGet` does its check and its insert
+	 * in one transaction, so a count+delete and a create cannot interleave.
+	 * What is left is ordering: a create that commits *after* the reset commits
+	 * lands on an incident row the reset just deleted, and fails on the foreign
+	 * key (Prisma P2003) rather than telling anyone why. This flag closes that
+	 * window at the front — `investigations.service.ts::startOrGet` refuses
+	 * while it is set — and the P2003 mapping there covers the create that was
+	 * already in flight when it went up.
+	 *
+	 * In-memory is enough because the workspace lock guarantees one process per
+	 * workspace; two processes cannot both be resetting the same database.
+	 */
+	private resetting = false;
+
+	isResetting(): boolean {
+		return this.resetting;
+	}
+
+	/** Holds {@link resetting} for the duration of `run`, whatever it throws. */
+	private async whileResetting<T>(run: () => Promise<T>): Promise<T> {
+		this.resetting = true;
+		try {
+			return await run();
+		} finally {
+			this.resetting = false;
+		}
+	}
 
 	// =============================================================================
 	// DANGER ZONE OPERATIONS
@@ -45,6 +86,10 @@ export class SettingsService {
 	}
 
 	async resetData() {
+		return this.whileResetting(() => this.deleteAllData());
+	}
+
+	private async deleteAllData() {
 		await this.prisma.$transaction(async (tx) => {
 			await this.refuseIfRunning(tx as never);
 			await tx.recommendation.deleteMany({});
@@ -59,6 +104,10 @@ export class SettingsService {
 	}
 
 	async factoryReset() {
+		return this.whileResetting(() => this.deleteEverything());
+	}
+
+	private async deleteEverything() {
 		// FK-safe deletion order: children before parents.
 		// Includes auth tables so setup wizard can be re-entered after reset.
 		await this.prisma.$transaction(async (tx) => {

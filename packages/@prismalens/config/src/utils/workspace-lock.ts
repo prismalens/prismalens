@@ -16,6 +16,36 @@
  *  - Reclaiming a stale lock is check-then-act. Two processes can both read
  *    "stale" and both unlink and create. Reclamation therefore happens while
  *    holding a second, exclusive `.steal` file, and re-checks inside it.
+ *
+ * The owner record is `{pid, port, startedAt}`. `port` is here for a launcher
+ * rather than for this process: an Electron shell that finds the workspace
+ * already held is meant to connect to that backend instead of refusing, and the
+ * port is the only thing it would otherwise have to guess. Nothing in this
+ * repository attaches yet — that behaviour is Electron work (#83) and is
+ * deliberately not built here; this only makes sure the information exists when
+ * it is.
+ *
+ * ## Two known gaps, neither closed here
+ *
+ * 1. **Pid reuse after a crash.** Liveness is `kill(pid, 0)`, which answers
+ *    "some process has this pid", not "*our* process has this pid". After a
+ *    reboot or a deep crash the operating system can hand the recorded pid to
+ *    something unrelated, and this reads the lock as held by a live owner
+ *    forever. `startedAt` is not a fix: a pid reused within the same boot would
+ *    still pass any age test worth writing. The escape is in the refusal
+ *    message, which names the lock path so `rm <workspace>/prismalens.lock`
+ *    clears it. Closing it properly needs a boot id (`/proc/sys/kernel/random/boot_id`,
+ *    `kern.boottime`) recorded beside the pid, which is per-platform work.
+ * 2. **`link()` is not atomic everywhere.** Creation relies on `link(2)`
+ *    failing with `EEXIST` when the target exists, which holds on every local
+ *    POSIX filesystem and on NFS, and is why it is used instead of `open("wx")`.
+ *    It does not hold on exFAT (no hard links at all: creation throws `EPERM`
+ *    rather than `EEXIST`, so `pl up` fails outright rather than sharing a
+ *    workspace), and it is not trustworthy inside a cloud-synced folder
+ *    (Dropbox, OneDrive, iCloud Drive), where a second machine's lock arrives
+ *    by replication with no ordering guarantee at all. A workspace on
+ *    synchronised storage is outside what this protects — **UNVERIFIED** for
+ *    the specific behaviour of each sync client.
  */
 
 import {
@@ -40,6 +70,8 @@ export const MALFORMED_GRACE_MS = 30_000;
 
 export interface WorkspaceLockOwner {
 	pid: number;
+	/** The port the owner intends to serve on, so a launcher can reach it. */
+	port: number;
 	startedAt: string;
 }
 
@@ -66,7 +98,7 @@ export class WorkspaceLockedError extends Error {
 function ownerBusy(lockPath: string, owner: WorkspaceLockOwner): Error {
 	return new WorkspaceLockedError(
 		lockPath,
-		`Another PrismaLens process (pid ${owner.pid}, started ${owner.startedAt}) is using this workspace. Stop it first, or use --workspace for a separate one. Lock: ${lockPath}`,
+		`Another PrismaLens process (pid ${owner.pid}, port ${owner.port}, started ${owner.startedAt}) is using this workspace. Stop it first, or use --workspace for a separate one. Lock: ${lockPath}`,
 	);
 }
 
@@ -98,7 +130,11 @@ export function readWorkspaceLockState(
 	}
 	try {
 		const owner = JSON.parse(raw) as WorkspaceLockOwner;
-		if (!Number.isInteger(owner.pid) || typeof owner.startedAt !== "string") {
+		if (
+			!Number.isInteger(owner.pid) ||
+			!Number.isInteger(owner.port) ||
+			typeof owner.startedAt !== "string"
+		) {
 			return { kind: "unreadable", ageMs };
 		}
 		return isAlive(owner.pid)
@@ -176,10 +212,17 @@ function reclaim(
  * Take the lock for this process, or throw {@link WorkspaceLockedError}. Returns
  * the release function; it is also run on process exit.
  */
-export function acquireWorkspaceLock(workspaceDir: string): () => void {
+export function acquireWorkspaceLock(
+	workspaceDir: string,
+	options: { port: number },
+): () => void {
 	const lockPath = join(workspaceDir, WORKSPACE_LOCK_FILE);
 	const owner: WorkspaceLockOwner = {
 		pid: process.pid,
+		// The port this process is about to listen on. The lock is taken before
+		// `listen`, so this is an intent: if the bind then fails the process
+		// exits and the lock goes with it.
+		port: options.port,
 		startedAt: new Date().toISOString(),
 	};
 	const release = () => {

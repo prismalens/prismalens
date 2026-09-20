@@ -6,104 +6,15 @@
  * server (#605 edge 8). Sets a generated password on the owner's credential
  * account, signs every session out, and prints the password once. Whoever can
  * run this can already read the workspace, so it grants nothing new.
+ *
+ * All of the auth semantics live in `@prismalens/auth::resetOwnerPassword`,
+ * which hashes through better-auth's own `password.hash` rather than
+ * reimplementing it. This file is the terminal around it: flags, the workspace,
+ * and what gets printed.
  */
 
-import { randomBytes, scrypt } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { defineCommand } from "citty";
 import consola from "consola";
-
-interface CredentialAccount {
-	accountId: string;
-	userId: string;
-	email: string;
-}
-
-/**
- * better-auth's own password format (`@better-auth/utils` password.node): scrypt
- * N=16384 r=16 p=1, 64-byte key, 16-byte hex salt used as the salt string, NFKC
- * password, stored `salt:key` in hex. Reimplemented because the CLI must not
- * depend on the app's auth layer; the test checks it against a hash better-auth made.
- */
-const SCRYPT = { N: 16384, r: 16, p: 1, dkLen: 64 } as const;
-
-function scryptKey(password: string, salt: string): Promise<Buffer> {
-	return new Promise((resolvePromise, reject) => {
-		scrypt(
-			password.normalize("NFKC"),
-			salt,
-			SCRYPT.dkLen,
-			{
-				N: SCRYPT.N,
-				r: SCRYPT.r,
-				p: SCRYPT.p,
-				maxmem: 128 * SCRYPT.N * SCRYPT.r * 2,
-			},
-			(err, key) => (err ? reject(err) : resolvePromise(key)),
-		);
-	});
-}
-
-export async function hashPassword(password: string): Promise<string> {
-	const salt = randomBytes(16).toString("hex");
-	return `${salt}:${(await scryptKey(password, salt)).toString("hex")}`;
-}
-
-export async function verifyPassword(
-	hash: string,
-	password: string,
-): Promise<boolean> {
-	const [salt, key] = hash.split(":");
-	if (!salt || !key) return false;
-	return (await scryptKey(password, salt)).toString("hex") === key;
-}
-
-export function generatePassword(): string {
-	return randomBytes(15).toString("base64url");
-}
-
-/** Owner credential accounts, optionally narrowed to one email. */
-export function findCredentialAccounts(
-	db: DatabaseSync,
-	email?: string,
-): CredentialAccount[] {
-	const rows = db
-		.prepare(
-			`SELECT a."id" AS accountId, u."id" AS userId, u."email" AS email
-			 FROM "account" a JOIN "user" u ON u."id" = a."userId"
-			 WHERE a."providerId" = 'credential'
-			 ORDER BY u."createdAt"`,
-		)
-		.all() as unknown as CredentialAccount[];
-	return email
-		? rows.filter((r) => r.email.toLowerCase() === email.toLowerCase())
-		: rows;
-}
-
-/** Writes the hash and deletes the user's sessions in one transaction; returns sessions removed. */
-export function setPassword(
-	db: DatabaseSync,
-	account: CredentialAccount,
-	hash: string,
-): number {
-	db.exec("BEGIN");
-	try {
-		db.prepare(`UPDATE "account" SET "password" = ? WHERE "id" = ?`).run(
-			hash,
-			account.accountId,
-		);
-		const { changes } = db
-			.prepare(`DELETE FROM "session" WHERE "userId" = ?`)
-			.run(account.userId);
-		db.exec("COMMIT");
-		return Number(changes);
-	} catch (e) {
-		db.exec("ROLLBACK");
-		throw e;
-	}
-}
 
 export default defineCommand({
 	meta: {
@@ -129,44 +40,47 @@ export default defineCommand({
 		const { getAppDataDir } = (await import("@prismalens/config")) as {
 			getAppDataDir: () => string;
 		};
-		const dbPath = join(getAppDataDir(), "prismalens.db");
-		if (!existsSync(dbPath)) {
-			consola.error(
-				`No database at ${dbPath}. Run \`pl up\` and finish setup first.`,
-			);
-			process.exit(1);
-		}
+		const workspaceDir = getAppDataDir();
 
-		const db = new DatabaseSync(dbPath);
+		/**
+		 * The extraction seam is deliberately crossed here, and this is the
+		 * narrowest place to cross it.
+		 *
+		 * `biome.json` bans `@prismalens/auth` from `packages/cli` so auth
+		 * semantics stay out of the CLI. The previous version of this command
+		 * obeyed the letter of that rule by reimplementing better-auth's scrypt
+		 * parameters and writing the hash itself — the same coupling with none
+		 * of the safety, since it holds only while the two agree and breaks a
+		 * user's login rather than a build when they stop. Nothing about auth is
+		 * known here: the password is generated, hashed and verified inside
+		 * `@prismalens/auth`, and what comes back is an email, a string to print
+		 * and a count.
+		 *
+		 * **This needs the operator's ruling.** Either the rule gains a scoped
+		 * exception for this one import, or it drops `@prismalens/auth` and the
+		 * boundary is restated in the ADR.
+		 */
+		const { resetOwnerPassword, ResetOwnerPasswordError } = await import(
+			// biome-ignore lint/style/noRestrictedImports: see above — pending an operator ruling.
+			"@prismalens/auth"
+		);
+
 		try {
-			const accounts = findCredentialAccounts(
-				db,
+			const reset = await resetOwnerPassword(
+				workspaceDir,
 				args.email ? String(args.email) : undefined,
 			);
-			if (accounts.length === 0) {
-				consola.error(
-					args.email
-						? `No password account for ${args.email}.`
-						: "No password account yet. Open the app and finish setup.",
-				);
-				process.exit(1);
-			}
-			if (accounts.length > 1) {
-				consola.error(
-					`More than one account: ${accounts.map((a) => a.email).join(", ")}. Pass --email.`,
-				);
-				process.exit(1);
-			}
-			const [account] = accounts;
-			const password = generatePassword();
-			const signedOut = setPassword(db, account, await hashPassword(password));
 			consola.success(
-				`Password reset for ${account.email}; ${signedOut} session(s) signed out.`,
+				`Password reset for ${reset.email}; ${reset.sessionsSignedOut} session(s) signed out.`,
 			);
-			consola.log(`\n  New password: ${password}\n`);
+			consola.log(`\n  New password: ${reset.password}\n`);
 			consola.info("It is shown once. Sign in and store it somewhere safe.");
-		} finally {
-			db.close();
+		} catch (error) {
+			if (error instanceof ResetOwnerPasswordError) {
+				consola.error(error.message);
+				process.exit(1);
+			}
+			throw error;
 		}
 	},
 });

@@ -52,9 +52,14 @@ async function bootstrap() {
 
 	const logger = new Logger({ context: "Bootstrap" });
 
-	// One workspace, one process (#605 edge 5): before migrations touch the database.
+	// One workspace, one process (#605 edge 5): before migrations touch the
+	// database. The port goes into the lock so a launcher that finds the
+	// workspace held can reach the owner instead of guessing; see the two known
+	// gaps documented on `acquireWorkspaceLock`.
 	try {
-		acquireWorkspaceLock(ensureAppDataDir());
+		acquireWorkspaceLock(ensureAppDataDir(), {
+			port: Number(process.env.PRISMALENS_PORT ?? 3001),
+		});
 	} catch (error) {
 		if (!(error instanceof WorkspaceLockedError)) throw error;
 		logger.error(error.message);

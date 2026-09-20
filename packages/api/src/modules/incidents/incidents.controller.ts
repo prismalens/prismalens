@@ -14,6 +14,7 @@ import type {
 	Incident as PrismaIncident,
 } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
+import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -116,10 +117,21 @@ export class IncidentsController {
 					}
 
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
-					const { investigation, created } =
-						await this.investigationsService.startOrGet({
-							incidentId: input.id,
-						});
+					let investigation: Awaited<
+						ReturnType<InvestigationsService["startOrGet"]>
+					>["investigation"];
+					let created: boolean;
+					try {
+						({ investigation, created } =
+							await this.investigationsService.startOrGet({
+								incidentId: input.id,
+							}));
+					} catch (error) {
+						if (error instanceof ResetInProgressError) {
+							throw new ORPCError("CONFLICT", { message: error.message });
+						}
+						throw error;
+					}
 					if (!created) {
 						return {
 							incidentId: input.id,

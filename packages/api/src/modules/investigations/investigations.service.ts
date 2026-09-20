@@ -13,6 +13,10 @@ import {
 	type Recommendation,
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import {
+	ResetInProgressError,
+	SettingsService,
+} from "../../core/settings/settings.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { OverlayService } from "../overlay/overlay.service.js";
@@ -23,6 +27,18 @@ import {
 } from "./dto/index.js";
 
 export type { Investigation };
+
+/**
+ * Prisma P2003: a write referenced a row that does not exist. On this path it
+ * only ever means the incident was deleted underneath the create.
+ */
+function isForeignKeyViolation(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { code?: unknown }).code === "P2003"
+	);
+}
 
 export type InvestigationWithRelations = Investigation & {
 	incident: {
@@ -44,6 +60,7 @@ export class InvestigationsService {
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
 		private readonly overlayService: OverlayService,
+		private readonly settingsService: SettingsService,
 	) {}
 
 	/**
@@ -59,25 +76,40 @@ export class InvestigationsService {
 			triggerReason?: string;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
-		const result = await this.prisma.$transaction(async (tx) => {
-			const running = await tx.investigation.findFirst({
-				where: {
-					incidentId: dto.incidentId,
-					status: { in: ["pending", "running"] },
-				},
-				orderBy: { createdAt: "desc" },
+		// Every run starts here — the manual button, a webhook trigger and the
+		// incident route all funnel through this one method — so this is the
+		// single place a reset has to be able to stand in front of (#662 review).
+		if (this.settingsService.isResetting()) throw new ResetInProgressError();
+
+		let result: { investigation: Investigation; created: boolean };
+		try {
+			result = await this.prisma.$transaction(async (tx) => {
+				const running = await tx.investigation.findFirst({
+					where: {
+						incidentId: dto.incidentId,
+						status: { in: ["pending", "running"] },
+					},
+					orderBy: { createdAt: "desc" },
+				});
+				if (running) return { investigation: running, created: false };
+				const investigation = await tx.investigation.create({
+					data: {
+						incidentId: dto.incidentId,
+						status: "pending",
+						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
+						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
+					},
+				});
+				return { investigation, created: true };
 			});
-			if (running) return { investigation: running, created: false };
-			const investigation = await tx.investigation.create({
-				data: {
-					incidentId: dto.incidentId,
-					status: "pending",
-					...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
-					...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
-				},
-			});
-			return { investigation, created: true };
-		});
+		} catch (error) {
+			// The create that was already in flight when the flag went up: the
+			// incident it points at is gone, and SQLite answers with a foreign
+			// key violation. That is the same situation, so it gets the same
+			// answer rather than a 500.
+			if (isForeignKeyViolation(error)) throw new ResetInProgressError();
+			throw error;
+		}
 		if (!result.created) return result;
 		const { investigation } = result;
 

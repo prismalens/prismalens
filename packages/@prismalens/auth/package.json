@@ -25,6 +25,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@prismalens/config": "workspace:*",
 		"better-auth": "catalog:"
 	},
 	"peerDependencies": {
