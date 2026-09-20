@@ -15,6 +15,7 @@ import {
 	DateStringSchema,
 	IncidentStatusSchema,
 	PrioritySchema,
+	RootCauseCategorySchema,
 	SeveritySchema,
 } from "./common.js";
 import { ServiceSchema } from "./service.js";
@@ -36,6 +37,9 @@ export const IncidentSchema = z.object({
 	correlationReason: z.string().nullable(),
 	tags: z.array(z.string()).nullable(),
 	customerImpact: z.string().nullable(),
+	/** What the responder recorded as the real cause on close (#338); outranks the investigation's guess in similarity. */
+	actualCause: z.string().nullable(),
+	actualCauseCategory: RootCauseCategorySchema.nullable(),
 	affectedSystems: z.array(z.string()).nullable(),
 	triggeredAt: DateStringSchema,
 	acknowledgedAt: DateStringSchema.nullable(),
@@ -57,6 +61,14 @@ export const CreateIncidentSchema = z.object({
 	customerImpact: z.string().optional(),
 	affectedSystems: z.array(z.string()).optional(),
 });
+
+/** Closing records what actually happened, when the responder knows (#338). */
+export const CloseIncidentSchema = z.object({
+	id: z.string().uuid(),
+	actualCause: z.string().trim().max(2000).optional(),
+	actualCauseCategory: RootCauseCategorySchema.optional(),
+});
+export type CloseIncidentInput = z.infer<typeof CloseIncidentSchema>;
 
 export const UpdateIncidentSchema = z.object({
 	title: z.string().optional(),

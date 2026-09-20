@@ -259,6 +259,7 @@ describe("overlay.logic", () => {
 					incidentId: "i-strong",
 					incidentNumber: 10,
 					title: "strong",
+					actualCause: null,
 					similarity: {
 						labels: new Set(["severity=high", "svc=payments"]),
 						serviceId: "svc-1",
@@ -269,6 +270,7 @@ describe("overlay.logic", () => {
 					incidentId: "i-weak",
 					incidentNumber: 11,
 					title: "weak",
+					actualCause: null,
 					similarity: {
 						labels: new Set(["unrelated"]),
 						serviceId: "svc-9",
@@ -295,6 +297,7 @@ describe("overlay.logic", () => {
 				incidentId: `i-${n}`,
 				incidentNumber: n,
 				title: `t-${n}`,
+				actualCause: null,
 				similarity: sim,
 			}));
 			const result = selectSimilarIncidents(current, past, {
@@ -304,6 +307,52 @@ describe("overlay.logic", () => {
 			expect(result).toHaveLength(2);
 			// all identical score → highest incident numbers first
 			expect(result.map((r) => r.incidentNumber)).toEqual([13, 12]);
+		});
+	});
+
+	describe("selectSimilarIncidents ranks and explains, never scores (#338)", () => {
+		const current = {
+			labels: new Set(["svc=payments", "severity=high"]),
+			serviceId: "svc-1",
+			rootCauseCategory: "config",
+		};
+
+		it("ranks from 1, names why each matched, and carries the recorded cause", () => {
+			const result = selectSimilarIncidents(current, [
+				{
+					incidentId: "i-1",
+					incidentNumber: 1,
+					title: "pool exhausted",
+					actualCause: "DB_POOL_SIZE dropped to 5",
+					similarity: {
+						labels: new Set(["svc=payments", "severity=high"]),
+						serviceId: "svc-1",
+						rootCauseCategory: "config",
+					},
+				},
+				{
+					incidentId: "i-2",
+					incidentNumber: 2,
+					title: "same service only",
+					actualCause: null,
+					similarity: {
+						labels: new Set(["svc=payments"]),
+						serviceId: "svc-1",
+						rootCauseCategory: null,
+					},
+				},
+			]);
+			expect(result.map((r) => [r.rank, r.incidentId])).toEqual([
+				[1, "i-1"],
+				[2, "i-2"],
+			]);
+			expect(result[0].matchedOn).toEqual([
+				"alert labels",
+				"same service",
+				"same cause category",
+			]);
+			expect(result[0].actualCause).toBe("DB_POOL_SIZE dropped to 5");
+			expect(result[1].matchedOn).toEqual(["alert labels", "same service"]);
 		});
 	});
 

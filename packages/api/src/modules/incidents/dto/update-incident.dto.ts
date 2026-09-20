@@ -21,4 +21,7 @@ export class UpdateIncidentDto {
 	tags?: string[];
 	customerImpact?: string;
 	assignedToId?: string;
+	/** What actually caused it, recorded on close (#338). */
+	actualCause?: string;
+	actualCauseCategory?: string;
 }

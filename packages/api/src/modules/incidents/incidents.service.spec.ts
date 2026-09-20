@@ -187,6 +187,47 @@ describe("IncidentsService", () => {
 			expect(data.timeToResolve).toBeGreaterThanOrEqual(60);
 		});
 
+		it("records the actual cause when the responder gives one (#338)", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "resolved",
+				triggeredAt,
+				resolvedAt: new Date(),
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.close("inc-1", {
+				actualCause: "  DB_POOL_SIZE dropped to 5  ",
+				actualCauseCategory: "config",
+			});
+
+			// #667 review: one write, not two. Closing and recording the cause
+			// used to be separate updates, so a failure between them left the
+			// incident closed with the cause dropped while the API reported
+			// failure. Asserting the call count is what pins that shut.
+			expect(mockPrisma.incident.update).toHaveBeenCalledTimes(1);
+			const only = mockPrisma.incident.update.mock.calls[0]?.[0];
+			expect(only.data).toMatchObject({
+				status: "closed",
+				actualCause: "DB_POOL_SIZE dropped to 5",
+				actualCauseCategory: "config",
+			});
+		});
+
+		it("writes no cause when none is given", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "resolved",
+				triggeredAt,
+				resolvedAt: new Date(),
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.close("inc-1", { actualCause: "   " });
+
+			expect(mockPrisma.incident.update).toHaveBeenCalledTimes(1);
+		});
+
 		it("keeps the original resolvedAt when closing a resolved incident", async () => {
 			mockPrisma.incident.findUnique.mockResolvedValue({
 				id: "inc-1",

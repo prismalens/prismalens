@@ -413,9 +413,25 @@ export class IncidentsService {
 	/**
 	 * Close an incident (after postmortem)
 	 */
-	async close(id: string): Promise<Incident | null> {
-		const incident = await this.update(id, { status: "closed" });
-		// The fact that one was closed, with no identifier and no content.
+	async close(
+		id: string,
+		cause: { actualCause?: string; actualCauseCategory?: string } = {},
+	): Promise<Incident | null> {
+		// One update, not two (#667 review). Closing and recording the cause used
+		// to be separate writes, so a failure between them left the incident
+		// closed with the cause silently dropped while the API reported failure —
+		// the one outcome the operator cannot tell from the UI. `update` writes
+		// the status, the resolve timestamps and these fields in a single row
+		// write, so either all of it lands or none of it does.
+		const actualCause = cause.actualCause?.trim() || undefined;
+		const incident = await this.update(id, {
+			status: "closed",
+			...(actualCause ? { actualCause } : {}),
+			...(cause.actualCauseCategory
+				? { actualCauseCategory: cause.actualCauseCategory }
+				: {}),
+		});
+		// The fact that one was closed, with no identifier and no content (#602).
 		if (incident) await this.telemetry.capture("incident_closed", {});
 		return incident;
 	}

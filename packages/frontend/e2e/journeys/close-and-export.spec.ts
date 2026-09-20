@@ -43,7 +43,10 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await page.getByRole("button", { name: "Resolve" }).click();
 		await expect(close).toBeVisible({ timeout: 15_000 });
 
+		// #338 stacks a dialog on this button: Close asks what actually caused the
+		// incident first. Closing with both fields blank is allowed.
 		await close.click();
+		await page.getByTestId("confirm-close-incident").click();
 		await expect(page.getByRole("button", { name: "Resolve" })).toHaveCount(0, {
 			timeout: 15_000,
 		});

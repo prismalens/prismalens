@@ -8,13 +8,13 @@ import type {
 	Alert,
 	Incident,
 	IncidentWithRelations,
+	RootCauseCategory,
 } from "@prismalens/contracts/schemas";
 import type {
 	Alert as PrismaAlert,
 	Incident as PrismaIncident,
 } from "@prismalens/database";
 import { HarnessService } from "../../core/harness/harness.service.js";
-import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
@@ -117,21 +117,10 @@ export class IncidentsController {
 					}
 
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
-					let investigation: Awaited<
-						ReturnType<InvestigationsService["startOrGet"]>
-					>["investigation"];
-					let created: boolean;
-					try {
-						({ investigation, created } =
-							await this.investigationsService.startOrGet({
-								incidentId: input.id,
-							}));
-					} catch (error) {
-						if (error instanceof ResetInProgressError) {
-							throw new ORPCError("CONFLICT", { message: error.message });
-						}
-						throw error;
-					}
+					const { investigation, created } =
+						await this.investigationsService.startOrGet({
+							incidentId: input.id,
+						});
 					if (!created) {
 						return {
 							incidentId: input.id,
@@ -196,7 +185,10 @@ export class IncidentsController {
 
 			// POST /incidents/:id/close - Close a resolved incident
 			close: implement(incidentsContract.close).handler(async ({ input }) => {
-				const incident = await this.incidentsService.close(input.id);
+				const incident = await this.incidentsService.close(input.id, {
+					actualCause: input.actualCause,
+					actualCauseCategory: input.actualCauseCategory,
+				});
 				if (!incident) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Incident ${input.id} not found`,
@@ -233,6 +225,9 @@ export class IncidentsController {
 			assignedToId: incident.assignedToId ?? null,
 			correlationReason: incident.correlationReason ?? null,
 			customerImpact: incident.customerImpact ?? null,
+			actualCause: incident.actualCause ?? null,
+			actualCauseCategory:
+				(incident.actualCauseCategory as RootCauseCategory | null) ?? null,
 			affectedSystems: incident.affectedSystems
 				? JSON.parse(incident.affectedSystems)
 				: null,

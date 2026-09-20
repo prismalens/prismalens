@@ -333,11 +333,31 @@ export class InvestigationsController {
 		};
 	}
 
+	/**
+	 * An overlay degrades section by section, not all at once.
+	 *
+	 * `similarIncidents` changed shape in #338 (`score`/`factors` became
+	 * `rank`/`matchedOn`/`actualCause`), so every overlay written by an earlier
+	 * build fails `OverlaySchema`. Returning null for the whole object would
+	 * also drop `matchedChanges` and `serviceProximity`, which did not change —
+	 * and nothing would bring them back, because `computeOverlay` runs only when
+	 * an investigation *completes*. An investigation that finished before the
+	 * upgrade never completes again, so its Analysis tab would be permanently
+	 * empty rather than briefly stale. 0.5.0 is published, so those rows exist.
+	 *
+	 * Dropping just the stale section keeps the rest and lets the similar list
+	 * fill in on the next investigation that computes one.
+	 */
 	private parseOverlay(raw: Investigation["overlay"]) {
 		const obj = safeParseJsonObject(raw);
 		if (!obj) return null;
 		const parsed = OverlaySchema.safeParse(obj);
-		return parsed.success ? parsed.data : null;
+		if (parsed.success) return parsed.data;
+		const withoutSimilar = OverlaySchema.safeParse({
+			...obj,
+			similarIncidents: [],
+		});
+		return withoutSimilar.success ? withoutSimilar.data : null;
 	}
 
 	private serializeInvestigation(investigation: Investigation) {
