@@ -1,8 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
-import { type PermissionRequest, readOnlyPolicy, readOnlyPolicyFor } from "./permission.js";
+import {
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+	type PermissionRequest,
+	readOnlyPolicy,
+	readOnlyPolicyFor,
+} from "./permission.js";
 
 const options = [
 	{ optionId: "once", kind: "allow_once" },
@@ -113,3 +127,98 @@ describe("readOnlyPolicy", () => {
 		expect(d).toEqual({ allow: true, optionId: "once" });
 	});
 });
+
+describe.skipIf(process.platform === "win32")(
+	"readOnlyPolicyFor judges the real path (CVE-2026-39861 shape)",
+	() => {
+		// Skipped on Windows only because creating a symlink there needs a privilege; CI's test jobs are ubuntu and macos.
+		let base: string;
+		let cwd: string;
+		let cwdLink: string;
+		beforeAll(() => {
+			base = mkdtempSync(join(realpathSync(tmpdir()), "pl-perm-"));
+			cwd = join(base, "runs", "abc", "repo");
+			mkdirSync(join(cwd, "src"), { recursive: true });
+			writeFileSync(join(cwd, "src", "index.ts"), "");
+			writeFileSync(join(base, "secret"), "s");
+			symlinkSync(join(base, "secret"), join(cwd, "link")); // file symlink out of the snapshot
+			symlinkSync(base, join(cwd, "docs"), "dir"); // directory symlink out
+			symlinkSync(join(cwd, "src"), join(cwd, "alias"), "dir"); // symlink that stays inside
+			cwdLink = join(base, "repo-link");
+			symlinkSync(cwd, cwdLink, "dir"); // the snapshot reached through a symlink
+		});
+		afterAll(() => rmSync(base, { recursive: true, force: true }));
+
+		it("refuses paths pointing outside the snapshot through symlinks", () => {
+			const policy = readOnlyPolicyFor({ cwd });
+			for (const command of ["cat link", "cat ./link", "head docs/secret"]) {
+				const d = policy(req({ kind: "execute", rawInput: { command } }));
+				expect(d.allow, command).toBe(false);
+				expect(!d.allow && d.why, command).toMatch(/outside the snapshot/);
+			}
+			for (const filePath of ["link", `${cwd}/link`, "docs/secret"]) {
+				const d = policy(req({ kind: "read", rawInput: { filePath } }));
+				expect(d.allow, filePath).toBe(false);
+				expect(!d.allow && d.why, filePath).toMatch(/outside the snapshot/);
+			}
+		});
+
+		it("allows paths not existing yet, symlinks resolving inside, and cwd reached through a symlink", () => {
+			const policy = readOnlyPolicyFor({ cwd });
+			expect(
+				policy(req({ kind: "read", rawInput: { filePath: "new/file.md" } })),
+				"new/file.md",
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				policy(req({ kind: "execute", rawInput: { command: "cat src/new.ts" } })),
+				"cat src/new.ts",
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				policy(req({ kind: "read", rawInput: { filePath: "alias/x.ts" } })),
+				"alias/x.ts",
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				policy(
+					req({
+						kind: "execute",
+						rawInput: { command: "cat alias/index.ts" },
+					}),
+				),
+				"cat alias/index.ts",
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				policy(req({ kind: "execute", rawInput: { command: "ls src" } })),
+				"ls src",
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				policy(
+					req({
+						kind: "execute",
+						rawInput: { command: "cat src/index.ts" },
+					}),
+				),
+				"cat src/index.ts",
+			).toEqual({ allow: true, optionId: "once" });
+
+			const linkPolicy = readOnlyPolicyFor({ cwd: cwdLink });
+			expect(
+				linkPolicy(
+					req({
+						kind: "read",
+						rawInput: { filePath: `${cwdLink}/README.md` },
+					}),
+				),
+				`${cwdLink}/README.md`,
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				linkPolicy(
+					req({
+						kind: "read",
+						rawInput: { filePath: `${cwd}/README.md` },
+					}),
+				),
+				`${cwd}/README.md`,
+			).toEqual({ allow: true, optionId: "once" });
+		});
+	},
+);

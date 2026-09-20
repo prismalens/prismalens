@@ -7,8 +7,17 @@
  * policy, not the seam. Bash walks through any text rule, so the sandbox (0004)
  * is the boundary and this is the guardrail.
  */
-
-import { isAbsolute, normalize, resolve, sep } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	normalize,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
 
 export interface PermissionOption {
 	optionId: string;
@@ -92,12 +101,62 @@ const DOTDOT_SEGMENT = /(^|[/\\])\.\.([/\\]|$)/;
 const SHELL_VARIABLE = /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/;
 
 /**
- * `cwd` comes from the platform `node:path`, so the platform module resolves
- * and compares here as well (drive letters and backslashes on Windows).
+ * Where an absolute path really lives: the realpath of its deepest existing
+ * ancestor with the missing tail re-appended, so a path the harness is about
+ * to create is judged where it would land and a committed symlink is judged
+ * where it points (the CVE-2026-39861 shape). Null when the filesystem refuses
+ * to say (a loop, no permission); the caller treats null as outside.
  */
-function insideSnapshot(resolved: string, cwd: string): boolean {
-	const root = resolve(cwd);
-	return resolved === root || resolved.startsWith(root + sep);
+function realLocation(absolute: string): string | null {
+	const missing: string[] = [];
+	let cursor = absolute;
+	for (;;) {
+		try {
+			return join(realpathSync(cursor), ...missing);
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException).code;
+			if (code !== "ENOENT" && code !== "ENOTDIR") return null;
+			const parent = dirname(cursor);
+			if (parent === cursor) return null;
+			missing.unshift(basename(cursor));
+			cursor = parent;
+		}
+	}
+}
+
+/**
+ * `cwd` comes from the platform `node:path`, so the platform module resolves
+ * and compares here as well (drive letters and backslashes on Windows). Both
+ * sides are judged where they really live (`realLocation`), never lexically.
+ */
+function insideSnapshot(candidate: string, cwd: string): boolean {
+	const root = realLocation(resolve(cwd));
+	const real = realLocation(resolve(candidate));
+	if (root === null || real === null) return false;
+	return real === root || real.startsWith(root + sep);
+}
+
+/**
+ * True when `absolute` or any existing ancestor of it below `root` is a
+ * symlink. Non-symlink paths are already judged by the lexical rules, so the
+ * realpath walk is spent only on the CVE-2026-39861 shape. A component the
+ * filesystem refuses to describe counts as a symlink (judged, and refused by
+ * `realLocation` returning null).
+ */
+function symlinkBelow(root: string, absolute: string): boolean {
+	const rel = relative(root, absolute);
+	if (!rel || rel.startsWith("..")) return false;
+	let cursor = root;
+	for (const segment of rel.split(sep)) {
+		cursor = join(cursor, segment);
+		try {
+			if (lstatSync(cursor).isSymbolicLink()) return true;
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException).code;
+			return code !== "ENOENT" && code !== "ENOTDIR";
+		}
+	}
+	return false;
 }
 
 /** The first path in `text` that resolves outside `cwd`, or null. */
@@ -126,6 +185,13 @@ function outsideSnapshotToken(text: string, cwd: string): string | null {
 				continue;
 			return token;
 		}
+		// A token through a symlink is judged where it really lives; every other plain token is inside by construction.
+		const candidate = resolve(cwd, token.replace(/\\/g, sep));
+		if (
+			symlinkBelow(resolve(cwd), candidate) &&
+			!insideSnapshot(candidate, cwd)
+		)
+			return token;
 	}
 	return null;
 }
