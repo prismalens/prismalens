@@ -11,6 +11,7 @@
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
+import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
 	AppliedLimits,
 	Sandbox,
@@ -18,6 +19,62 @@ import type {
 	SandboxProcess,
 	SandboxSpawnOptions,
 } from "./types.js";
+
+/** `.cmd`/`.bat` — the npm shim extensions Node's own spawn cannot exec directly on Windows. */
+const CMD_SHIM_RE = /\.(cmd|bat)$/i;
+
+/** Every character cmd.exe's own parser treats specially, per the cross-spawn escaping rule. */
+const CMD_META_CHARS_RE = /[()%!^"<>&|]/g;
+
+/**
+ * Escape one argv token for a `cmd.exe /d /s /c "<whole line>"` invocation (the
+ * cross-spawn rule: github.com/moxystudio/node-cross-spawn `lib/util/escape.js`).
+ * Whitespace or an embedded `"` forces quoting; every cmd metacharacter — inside
+ * or outside the quotes — is prefixed with `^` so cmd's own re-parse of the outer
+ * quoted line (`/c "..."` strips one layer, then re-tokenizes) does not split the
+ * token or run a shell operator the caller never asked for.
+ */
+export function quoteForCmd(token: string): string {
+	let escaped = token.replace(/"/g, '\\"');
+	if (/[\s"]/.test(token)) escaped = `"${escaped}"`;
+	return escaped.replace(CMD_META_CHARS_RE, (ch) => `^${ch}`);
+}
+
+/**
+ * Windows cannot `execve` a `.cmd`/`.bat` shim directly (Node's own spawn throws
+ * `EINVAL` — the file has no PE header, only `cmd.exe` knows how to run it), which
+ * is exactly what an npm-installed harness binary is on that platform. On `win32`,
+ * when `command` itself ends `.cmd`/`.bat` or the copy `resolveOnPath` would find
+ * does, this re-plans the spawn as `cmd.exe /d /s /c "<quoted command + args>"`
+ * (`/d` skips AutoRun registry commands, `/s` keeps the quoting below literal) with
+ * `windowsVerbatimArguments: true` so Node does not re-escape what is already a
+ * hand-built cmd.exe command line. `shell: true` is never used — it is the
+ * injection surface CVE-2024-27980 closed, and this plan is the escaped
+ * alternative. Every other platform, and every non-shim command, is unchanged.
+ */
+export function windowsSpawnPlan(
+	command: string,
+	args: string[],
+	platform: NodeJS.Platform = process.platform,
+): {
+	command: string;
+	args: string[];
+	options: { windowsVerbatimArguments?: boolean };
+} {
+	if (platform !== "win32") return { command, args, options: {} };
+	const resolved = resolveOnPath(command);
+	const isShim =
+		CMD_SHIM_RE.test(command) ||
+		(resolved !== null && CMD_SHIM_RE.test(resolved));
+	if (!isShim) return { command, args, options: {} };
+	const comSpec = process.env.ComSpec ?? "cmd.exe";
+	const line = [command, ...args].map(quoteForCmd).join(" ");
+	return {
+		command: comSpec,
+		args: ["/d", "/s", "/c", `"${line}"`],
+		options: { windowsVerbatimArguments: true },
+	};
+}
 
 /** A child spawned with a fully-piped stdio tuple — non-null duplex streams. */
 type PipedChild = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -129,10 +186,12 @@ export function createProcessFloorSandbox(): Sandbox {
 		id: "process-floor",
 		fidelity: "cooperative",
 		spawn(command, args, options: SandboxSpawnOptions): SandboxProcess {
-			const child = spawn(command, args, {
+			const plan = windowsSpawnPlan(command, args);
+			const child = spawn(plan.command, plan.args, {
 				cwd: options.cwd,
 				env: buildFloorEnv(options.env),
 				stdio: ["pipe", "pipe", "pipe"],
+				...plan.options,
 			});
 			// The floor enforces ONLY wall-clock (userspace SIGKILL); memory/cpu need
 			// OS help it does not have, so they are reported as unapplied (ADR-0020).

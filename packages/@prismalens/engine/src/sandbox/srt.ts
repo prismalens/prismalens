@@ -33,7 +33,11 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { buildFloorEnv, withLimits } from "./process-floor.js";
+import {
+	buildFloorEnv,
+	windowsSpawnPlan,
+	withLimits,
+} from "./process-floor.js";
 import type {
 	AppliedLimits,
 	Sandbox,
@@ -417,13 +421,17 @@ export function createSrtSandbox(options: SrtSandboxOptions = {}): Sandbox {
 			// option parsing so harness flags (e.g. `-m <model>`) pass through verbatim.
 			// srt runs the child with inherited stdio, so our fully-piped stdio is the
 			// harness's duplex JSON-RPC channel across the OS boundary (spike 2026-07-03).
+			// The plan applies to this INNER command only — srt (or the systemd-run
+			// wrapper below) is still what Node's own spawn executes, so only the
+			// harness binary srt passes through needs the cmd.exe re-plan.
+			const innerPlan = windowsSpawnPlan(command, args);
 			const srtArgv = [
 				...entry.prefixArgs,
 				"--settings",
 				settingsPath,
 				"--",
-				command,
-				...args,
+				innerPlan.command,
+				...innerPlan.args,
 			];
 
 			// Resource limits (ADR-0020): srt exposes no memory/cpu knob, so cap those

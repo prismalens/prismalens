@@ -8,13 +8,26 @@
  */
 import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildFloorEnv, createProcessFloorSandbox } from "./process-floor.js";
+
+const mocks = vi.hoisted(() => ({ resolveOnPath: vi.fn(() => null as string | null) }));
+vi.mock("@prismalens/config/harness-selection", () => ({
+	resolveOnPath: mocks.resolveOnPath,
+}));
+
+const {
+	buildFloorEnv,
+	createProcessFloorSandbox,
+	quoteForCmd,
+	windowsSpawnPlan,
+} = await import("./process-floor.js");
 
 const SECRET = "PRISMALENS_FLOOR_TEST_SECRET";
 
 afterEach(() => {
 	delete process.env[SECRET];
 	vi.unstubAllEnvs();
+	mocks.resolveOnPath.mockReset();
+	mocks.resolveOnPath.mockReturnValue(null);
 });
 
 describe("buildFloorEnv (own-secret isolation, ADR-0009)", () => {
@@ -171,5 +184,67 @@ describe("createProcessFloorSandbox — resource limits (ADR-0020)", () => {
 		expect(child.appliedLimits?.cpuCores).toBeUndefined();
 		await once(child, "close");
 		await sandbox.destroy();
+	});
+});
+
+describe("windowsSpawnPlan (#634 — npm .cmd/.bat shims can't execve on Windows)", () => {
+	it("re-plans a .cmd command through cmd.exe with verbatim args", () => {
+		const plan = windowsSpawnPlan("opencode.cmd", ["acp", "--pure"], "win32");
+		expect(plan).toEqual({
+			command: process.env.ComSpec ?? "cmd.exe",
+			args: ["/d", "/s", "/c", '"opencode.cmd acp --pure"'],
+			options: { windowsVerbatimArguments: true },
+		});
+	});
+
+	it("re-plans a .bat command the same way, case-insensitively", () => {
+		const plan = windowsSpawnPlan("Foo.BAT", [], "win32");
+		expect(plan.command).toBe(process.env.ComSpec ?? "cmd.exe");
+		expect(plan.args).toEqual(["/d", "/s", "/c", '"Foo.BAT"']);
+	});
+
+	it("re-plans when the bare command isn't a shim but its resolved PATH copy is", () => {
+		mocks.resolveOnPath.mockReturnValue("C:\\npm\\opencode.cmd");
+		const plan = windowsSpawnPlan("opencode", ["acp"], "win32");
+		expect(plan.command).toBe(process.env.ComSpec ?? "cmd.exe");
+		expect(mocks.resolveOnPath).toHaveBeenCalledWith("opencode");
+	});
+
+	it("quotes and ^-escapes a token with a space and a cmd metacharacter", () => {
+		const plan = windowsSpawnPlan(
+			"foo.cmd",
+			["C:\\Program Files\\a & b.txt"],
+			"win32",
+		);
+		expect(plan.args).toEqual([
+			"/d",
+			"/s",
+			"/c",
+			'"foo.cmd ^"C:\\Program Files\\a ^& b.txt^""',
+		]);
+	});
+
+	it("is identity on linux, even for a .cmd-looking command", () => {
+		const plan = windowsSpawnPlan("opencode.cmd", ["acp"], "linux");
+		expect(plan).toEqual({ command: "opencode.cmd", args: ["acp"], options: {} });
+	});
+
+	it("is identity on win32 for a non-shim command not resolved to one either", () => {
+		const plan = windowsSpawnPlan("opencode.exe", ["acp"], "win32");
+		expect(plan).toEqual({ command: "opencode.exe", args: ["acp"], options: {} });
+	});
+});
+
+describe("quoteForCmd", () => {
+	it("leaves a plain token untouched", () => {
+		expect(quoteForCmd("opencode")).toBe("opencode");
+	});
+
+	it("wraps whitespace in quotes without needing a metacharacter", () => {
+		expect(quoteForCmd("hello world")).toBe('^"hello world^"');
+	});
+
+	it("backslash-escapes an embedded quote and ^-escapes every quote left standing", () => {
+		expect(quoteForCmd('say "hi"')).toBe('^"say \\^"hi\\^"^"');
 	});
 });
