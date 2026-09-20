@@ -8,6 +8,7 @@ import type { HarnessSelection } from "@prismalens/config";
  */
 import type { ModelSource } from "@prismalens/config/harness";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import type { ContextPack } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
 	RepoSource,
@@ -55,6 +56,8 @@ export interface RunPorts {
 	resolveConnectors(
 		serviceId: string | undefined,
 	): Promise<ResolvedConnector[]>;
+	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
+	contextPack(incidentId: string): Promise<ContextPack | null>;
 	/** A fresh clone of the source's committed HEAD into `dest`. */
 	snapshot(
 		src: RepoSource,

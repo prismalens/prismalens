@@ -83,6 +83,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		repoToken: vi.fn(async () => null),
 		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		resolveConnectors: vi.fn(async () => []),
+		contextPack: vi.fn(async () => null),
 		...overrides,
 	};
 }

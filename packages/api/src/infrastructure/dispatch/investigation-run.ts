@@ -23,6 +23,7 @@ import {
 	toFiringAlert,
 } from "@prismalens/contracts";
 import type {
+	ContextPack,
 	EffortEstimate,
 	RecommendationCategory,
 	RecommendationPriority,
@@ -160,10 +161,18 @@ async function runJobInternal(
 			logger.warn("Could not resolve connectors for investigation", e);
 			connectors = [];
 		}
+		let contextPack: ContextPack | null = null;
+		try {
+			contextPack = await ports.contextPack(data.incidentId);
+		} catch (e) {
+			logger.warn("Could not assemble the context pack for investigation", e);
+			contextPack = null;
+		}
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
 			connectors,
+			contextPack,
 		);
 		const workspace = await resolveWorkspace(data, ports, io.signal);
 		await recordWorkspace(data, workspace, ports, context);
@@ -503,6 +512,7 @@ async function assembleInvestigationContext(
 	incident: Record<string, unknown> | null,
 	data: InvestigationJobData,
 	connectors: ResolvedConnector[] = [],
+	contextPack: ContextPack | null = null,
 ): Promise<InvestigationContext> {
 	const rawAlerts = (
 		data.alerts && data.alerts.length > 0
@@ -529,6 +539,7 @@ async function assembleInvestigationContext(
 					},
 				}
 			: {}),
+		...(contextPack ? { contextPack } : {}),
 	});
 }
 
