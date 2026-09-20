@@ -29,6 +29,9 @@ type HarnessFixture = {
 	installed: boolean;
 	verified: boolean;
 	install: string;
+	admission: { version: string; date: string } | null;
+	modelVia: "config" | "env" | "unsupported";
+	loginHint: string;
 };
 
 const CLAUDE_INSTALLED: HarnessFixture = {
@@ -38,6 +41,10 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	installed: true,
 	verified: false,
 	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
+	admission: null,
+	modelVia: "env",
+	loginHint:
+		"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
 };
 
 const OPENCODE_INSTALLED: HarnessFixture = {
@@ -47,6 +54,22 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	installed: true,
 	verified: true,
 	install: "curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
+	admission: { version: "1.18.30", date: "2026-09-20" },
+	modelVia: "config",
+	loginHint:
+		"Keyless default model; `opencode auth login` or a provider key in env for others",
+};
+
+const CODEX_INSTALLED: HarnessFixture = {
+	id: "codex",
+	label: "Codex",
+	binary: "codex-acp",
+	installed: true,
+	verified: false,
+	install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
+	admission: null,
+	modelVia: "unsupported",
+	loginHint: "`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
 };
 
 const DEEPAGENTS_MISSING: HarnessFixture = {
@@ -56,12 +79,17 @@ const DEEPAGENTS_MISSING: HarnessFixture = {
 	installed: false,
 	verified: false,
 	install: "pip install deepagents-acp",
+	admission: null,
+	modelVia: "unsupported",
+	loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 };
 
-/** A machine with opencode (verified, on PATH) and nothing else. */
+/** A machine with opencode (CI-verified, on PATH), claude-code and codex (both
+ * installed but not admitted), and deepagents missing. */
 const RUNNABLE: HarnessFixture[] = [
 	OPENCODE_INSTALLED,
 	CLAUDE_INSTALLED,
+	CODEX_INSTALLED,
 	DEEPAGENTS_MISSING,
 ];
 
@@ -158,13 +186,46 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			registry.getByText("Claude Code", { exact: true }),
 		).toBeVisible();
+		await expect(registry.getByText("Codex", { exact: true })).toBeVisible();
 		await expect(registry.getByText("deepagents", { exact: true })).toBeVisible();
-		await expect(registry.getByText("Installed", { exact: true })).toHaveCount(2);
+		await expect(registry.getByText("Installed", { exact: true })).toHaveCount(3);
 		await expect(
 			registry.getByText("Not installed", { exact: true }),
 		).toHaveCount(1);
-		await expect(registry.getByText("Verified", { exact: true })).toHaveCount(1);
-		await expect(registry.getByText("Unverified", { exact: true })).toHaveCount(2);
+	});
+
+	test("shows admission and sign-in per row, and disables the Model field for a harness that ignores it (#634)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		await openHarnessSettings(page);
+
+		const registry = page.getByTestId("harness-registry");
+		await expect(registry.getByTestId("harness-admission-opencode")).toHaveText(
+			"CI-verified 1.18.30",
+		);
+		await expect(
+			registry.getByTestId("harness-admission-claude-code"),
+		).toHaveText("Not admitted");
+		await expect(registry.getByText(`Sign-in: ${OPENCODE_INSTALLED.loginHint}`, {
+			exact: true,
+		})).toBeVisible();
+
+		const modelInput = page.getByLabel("Model");
+		await expect(modelInput).toBeEnabled();
+
+		await page.locator("#harness-picker").click();
+		await page.getByRole("option", { name: "Codex" }).click();
+		await expect(modelInput).toBeDisabled();
+		await expect(
+			card(page).getByText("Codex ignores the Model setting; it uses its own configured model."),
+		).toBeVisible();
 	});
 
 	test("shows the install hint for a harness that is not installed", async ({
