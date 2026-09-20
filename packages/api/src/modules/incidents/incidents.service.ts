@@ -415,19 +415,19 @@ export class IncidentsService {
 		id: string,
 		cause: { actualCause?: string; actualCauseCategory?: string } = {},
 	): Promise<Incident | null> {
-		const incident = await this.update(id, { status: "closed" });
+		// One update, not two (#667 review). Closing and recording the cause used
+		// to be separate writes, so a failure between them left the incident
+		// closed with the cause silently dropped while the API reported failure —
+		// the one outcome the operator cannot tell from the UI. `update` writes
+		// the status, the resolve timestamps and these fields in a single row
+		// write, so either all of it lands or none of it does.
 		const actualCause = cause.actualCause?.trim() || undefined;
-		if (!incident || (!actualCause && !cause.actualCauseCategory)) {
-			return incident;
-		}
-		return this.prisma.incident.update({
-			where: { id },
-			data: {
-				...(actualCause ? { actualCause } : {}),
-				...(cause.actualCauseCategory
-					? { actualCauseCategory: cause.actualCauseCategory }
-					: {}),
-			},
+		return this.update(id, {
+			status: "closed",
+			...(actualCause ? { actualCause } : {}),
+			...(cause.actualCauseCategory
+				? { actualCauseCategory: cause.actualCauseCategory }
+				: {}),
 		});
 	}
 

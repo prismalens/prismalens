@@ -114,16 +114,24 @@ export function IncidentDetailHeader({
 						</p>
 					)}
 
-					{incident.actualCause && (
+					{/*
+					 * Either field alone is a valid close record — the dialog allows a
+					 * category with no prose — and similarity ranking uses the category
+					 * whether or not a description came with it. Showing only the
+					 * combined form hid what a responder had recorded (#667 review).
+					 */}
+					{(incident.actualCause || incident.actualCauseCategory) && (
 						<p className="max-w-2xl text-sm">
 							<span className="text-muted-foreground">
-								Actual cause
-								{incident.actualCauseCategory
-									? ` (${incident.actualCauseCategory})`
-									: ""}
-								:{" "}
+								{incident.actualCause
+									? `Actual cause${
+											incident.actualCauseCategory
+												? ` (${incident.actualCauseCategory})`
+												: ""
+										}: `
+									: "Actual cause category: "}
 							</span>
-							{incident.actualCause}
+							{incident.actualCause ?? incident.actualCauseCategory}
 						</p>
 					)}
 

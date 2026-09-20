@@ -198,8 +198,14 @@ describe("IncidentsService", () => {
 				actualCauseCategory: "config",
 			});
 
-			const last = mockPrisma.incident.update.mock.calls.at(-1)?.[0];
-			expect(last.data).toEqual({
+			// #667 review: one write, not two. Closing and recording the cause
+			// used to be separate updates, so a failure between them left the
+			// incident closed with the cause dropped while the API reported
+			// failure. Asserting the call count is what pins that shut.
+			expect(mockPrisma.incident.update).toHaveBeenCalledTimes(1);
+			const only = mockPrisma.incident.update.mock.calls[0]?.[0];
+			expect(only.data).toMatchObject({
+				status: "closed",
 				actualCause: "DB_POOL_SIZE dropped to 5",
 				actualCauseCategory: "config",
 			});

@@ -34,6 +34,12 @@ const CATEGORIES: RootCauseCategory[] = [
 ];
 
 /**
+ * Radix refuses an empty `SelectItem` value — it reserves it for "nothing
+ * selected" — so the way back to unset needs a sentinel of its own.
+ */
+const NO_CATEGORY = "__none";
+
+/**
  * Closing asks what actually caused the incident (#338). Both fields are
  * optional; what is recorded outranks the investigation's guess the next time a
  * similar incident is investigated.
@@ -52,14 +58,28 @@ export function CloseIncidentDialog({
 	const [actualCause, setActualCause] = useState("");
 	const [category, setCategory] = useState<RootCauseCategory | "">("");
 
+	// The dialog stays mounted when it closes, so without this a cancel kept
+	// whatever was typed and the next open could submit it against a different
+	// incident. Resetting when `open` goes false catches every close path,
+	// including the parent closing it programmatically after a successful
+	// confirm — which an `onOpenChange` wrapper would miss.
+	const [wasOpen, setWasOpen] = useState(open);
+	if (open !== wasOpen) {
+		setWasOpen(open);
+		if (!open) {
+			setActualCause("");
+			setCategory("");
+		}
+	}
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Close incident</DialogTitle>
 					<DialogDescription>
-						What actually caused it? Optional. The next similar incident's
-						report cites it.
+						What actually caused it? Optional. This can appear alongside similar
+						past incidents in future investigations.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
@@ -76,13 +96,16 @@ export function CloseIncidentDialog({
 					<div className="space-y-2">
 						<Label htmlFor="actual-cause-category">Category</Label>
 						<Select
-							value={category}
-							onValueChange={(v) => setCategory(v as RootCauseCategory)}
+							value={category || NO_CATEGORY}
+							onValueChange={(v) =>
+								setCategory(v === NO_CATEGORY ? "" : (v as RootCauseCategory))
+							}
 						>
 							<SelectTrigger id="actual-cause-category">
 								<SelectValue placeholder="Not set" />
 							</SelectTrigger>
 							<SelectContent>
+								<SelectItem value={NO_CATEGORY}>Not set</SelectItem>
 								{CATEGORIES.map((c) => (
 									<SelectItem key={c} value={c}>
 										{c}
