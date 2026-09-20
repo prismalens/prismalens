@@ -7,6 +7,21 @@ import { deriveStreamView } from "./investigation-events";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
 
+/**
+ * A report the contract actually accepts. The fixtures here used to be
+ * `{summary, hypotheses}` — which `InvestigationReportSchema` rejects, and
+ * which is precisely the shape the old duck-typed check hid by mistake.
+ */
+const VALID_REPORT = {
+	summary: "pool saturated",
+	rootCause: null,
+	rootCauseCategory: null,
+	hypotheses: [],
+	ruledOut: [],
+	coverage: { queried: [], notQueried: [] },
+	nextSteps: [],
+};
+
 function agentStep(branchId: string, seq: number, text: string): CanonicalEvent {
 	return {
 		kind: "agent_step",
@@ -97,7 +112,7 @@ describe("deriveStreamView", () => {
 	});
 
 	it("names the drafted report instead of printing its JSON, fenced or bare", () => {
-		const json = JSON.stringify({ summary: "pool saturated", hypotheses: [] });
+		const json = JSON.stringify(VALID_REPORT);
 		const view = deriveStreamView([
 			agentStep("main", 1, "Reading the workers next."),
 			agentStep("main", 2, json),
@@ -111,11 +126,7 @@ describe("deriveStreamView", () => {
 	});
 
 	it("names the drafted report when prose precedes its JSON (#659)", () => {
-		const json = JSON.stringify(
-			{ summary: "pool saturated", hypotheses: [] },
-			null,
-			2,
-		);
+		const json = JSON.stringify(VALID_REPORT, null, 2);
 		const view = deriveStreamView([
 			agentStep("main", 1, `The pool ran dry.\n\n\`\`\`json\n${json}\n\`\`\`\n`),
 			agentStep("main", 2, `Final report follows.\n${json}`),
@@ -140,8 +151,83 @@ describe("deriveStreamView", () => {
 		expect(view.flatRows.map((row) => row.message)).toEqual([config, fenced]);
 	});
 
+	/**
+	 * The counter-example from the #660 review. The old check asked only for a
+	 * string `summary` and an array `hypotheses`, so this object — which the
+	 * report schema rejects — was silently replaced by "Report drafted" and the
+	 * agent's text was lost.
+	 */
+	it("keeps an object that merely LOOKS report-shaped visible", () => {
+		const lookalike = JSON.stringify({
+			summary: "what I am about to do",
+			hypotheses: ["check the pool", "check the workers"],
+		});
+		const fenced = `\`\`\`json\n${lookalike}\n\`\`\``;
+		const view = deriveStreamView([
+			agentStep("main", 1, lookalike),
+			agentStep("main", 2, fenced),
+		]);
+		expect(view.flatRows.map((row) => row.message)).toEqual([
+			lookalike,
+			fenced,
+		]);
+	});
+
+	/**
+	 * Characterisation, not a regression: `summary` and `hypotheses` are both
+	 * schema-required, so the old check never rejected a real report — it was
+	 * strictly looser than the contract. This pins the other direction shut, so
+	 * a later tightening cannot start printing reports raw.
+	 */
+	it("hides a real report that omits every optional field", () => {
+		const json = JSON.stringify(VALID_REPORT);
+		const view = deriveStreamView([agentStep("main", 1, json)]);
+		expect(view.flatRows.map((row) => row.message)).toEqual(["Report drafted"]);
+	});
+
+	it("hides a report carrying the host-stamped fidelity field too", () => {
+		// `ModelReportSchema` omits `fidelity`; the stamped report has it. One
+		// schema has to accept both, and this is the half the model never writes.
+		// Also characterisation — it guards the choice of schema, not the bug.
+		const json = JSON.stringify({ ...VALID_REPORT, fidelity: null });
+		const view = deriveStreamView([agentStep("main", 1, json)]);
+		expect(view.flatRows.map((row) => row.message)).toEqual(["Report drafted"]);
+	});
+
+	/**
+	 * Partial text does not reach this path — `AcpAdapter` accumulates the ACP
+	 * deltas and flushes one complete turn per `agent_step` — but if a harness
+	 * ever split a report, the fragment is SHOWN, not swallowed. An unparseable
+	 * fragment is indistinguishable from prose starting with `{`, and losing the
+	 * agent's words is the worse failure.
+	 */
+	it("shows an incomplete report fragment rather than hiding it", () => {
+		const whole = JSON.stringify(VALID_REPORT, null, 2);
+		const head = whole.slice(0, Math.floor(whole.length / 2));
+		const view = deriveStreamView([
+			agentStep("main", 1, head),
+			agentStep("main", 2, `\`\`\`json\n${head}`),
+		]);
+		expect(view.flatRows.map((row) => row.message)).toEqual([
+			head,
+			`\`\`\`json\n${head}`,
+		]);
+	});
+
+	it("hides the report once the final chunk completes it", () => {
+		const whole = JSON.stringify(VALID_REPORT, null, 2);
+		const view = deriveStreamView([
+			agentStep("main", 1, whole.slice(0, 20)),
+			agentStep("main", 2, whole),
+		]);
+		expect(view.flatRows.map((row) => row.message)).toEqual([
+			whole.slice(0, 20),
+			"Report drafted",
+		]);
+	});
+
 	it("hides a fenced report with CRLF line endings", () => {
-		const json = JSON.stringify({ summary: "x", hypotheses: [] });
+		const json = JSON.stringify(VALID_REPORT);
 		const view = deriveStreamView([
 			agentStep("main", 1, `Done.\r\n\`\`\`json\r\n${json}\r\n\`\`\`\r\n`),
 		]);
@@ -150,7 +236,7 @@ describe("deriveStreamView", () => {
 
 	it("hides a fenced report whose strings contain a backtick fence", () => {
 		const json = JSON.stringify(
-			{ summary: "ran ```kubectl get pods``` twice", hypotheses: [] },
+			{ ...VALID_REPORT, summary: "ran ```kubectl get pods``` twice" },
 			null,
 			2,
 		);
