@@ -206,7 +206,10 @@ export class InvestigationUpdateService {
 		try {
 			await this.timeline.create({
 				incidentId: event.incidentId,
-				type: TimelineEntryType.alert_added,
+				// `custom`, not `alert_added`: IncidentsService.addAlert already wrote
+				// that entry for the same alert. This one is about the run, not the
+				// attachment.
+				type: TimelineEntryType.custom,
 				title: "Alert arrived during the investigation",
 				description: `${event.alert.title} (${event.alert.severity}). ${consequence}`,
 				source: TimelineSource.system,

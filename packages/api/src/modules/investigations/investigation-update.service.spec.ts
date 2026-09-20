@@ -46,6 +46,8 @@ describe("InvestigationUpdateService — an alert that arrives mid-run (#564)", 
 		const entry = timeline.create.mock.calls[0][0];
 		expect(entry).toMatchObject({
 			incidentId: "inc-1",
+			// Not `alert_added`: the incident's own add path already wrote that.
+			type: "custom",
 			title: "Alert arrived during the investigation",
 			metadata: { investigationId: "inv-1", alertId: "alert-2" },
 		});
