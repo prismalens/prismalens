@@ -60,6 +60,26 @@ export interface StartAuthorizationParams {
 	connectionConfig?: Record<string, string>;
 }
 
+/** A value that cannot change a URL's host, port, path, query or fragment. */
+const HOST_SAFE = /^[A-Za-z0-9._-]+$/;
+
+function hostSafeContext(
+	context: Record<string, string>,
+	templateId: string,
+): Record<string, string> {
+	const safe: Record<string, string> = {};
+	for (const [key, value] of Object.entries(context)) {
+		if (typeof value !== "string") continue;
+		if (!HOST_SAFE.test(value)) {
+			throw new Error(
+				`Connection config '${key}' for template '${templateId}' is not usable in an OAuth URL`,
+			);
+		}
+		safe[key] = value;
+	}
+	return safe;
+}
+
 export class OAuth2Flow {
 	constructor(
 		private readonly vault: TokenVault,
@@ -125,7 +145,15 @@ export class OAuth2Flow {
 			urlParams.set("code_challenge_method", "S256");
 		}
 
-		const authUrl = interpolate(template.oauth2.authorizationUrl, context);
+		// Same constraint as the token URL below, and the same values: `context`
+		// is the connection config. A value that moves the HOST here sends the
+		// user to someone else's consent screen, so the asymmetry of guarding
+		// only the token URL was not defensible. `redirect_uri`, `scope` and the
+		// rest go through URLSearchParams, not through interpolation.
+		const authUrl = interpolate(
+			template.oauth2.authorizationUrl,
+			hostSafeContext(context, template.id),
+		);
 		return { url: `${authUrl}?${urlParams.toString()}`, state };
 	}
 
@@ -168,7 +196,22 @@ export class OAuth2Flow {
 			tokenBody.client_secret = clientSecret;
 		}
 
-		const tokenUrl = interpolate(template.oauth2.tokenUrl, {});
+		// The same connection config `startAuthorization` interpolated the
+		// authorization URL with, carried on the state row. Without it a templated
+		// tokenUrl threw only AFTER the user had granted consent (#391).
+		const tokenContext = oauthState.connectionConfigEnc
+			? this.vault.decryptJSON<Record<string, string>>(
+					oauthState.connectionConfigEnc,
+				)
+			: {};
+		// This is the one request that carries the client secret and the
+		// authorization code, and interpolation is raw substitution: a value like
+		// `tenant.attacker.test#` would move the HOST of the token endpoint out of
+		// the template's own domain. Only host-safe labels may reach it.
+		const tokenUrl = interpolate(
+			template.oauth2.tokenUrl,
+			hostSafeContext(tokenContext, template.id),
+		);
 		const response = await fetch(tokenUrl, {
 			method: "POST",
 			headers: tokenHeaders,

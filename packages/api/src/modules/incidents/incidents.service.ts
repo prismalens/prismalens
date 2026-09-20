@@ -4,6 +4,7 @@
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
@@ -42,6 +43,7 @@ export class IncidentsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
+		private readonly telemetry: TelemetryService,
 	) {}
 
 	/**
@@ -422,13 +424,16 @@ export class IncidentsService {
 		// the status, the resolve timestamps and these fields in a single row
 		// write, so either all of it lands or none of it does.
 		const actualCause = cause.actualCause?.trim() || undefined;
-		return this.update(id, {
+		const incident = await this.update(id, {
 			status: "closed",
 			...(actualCause ? { actualCause } : {}),
 			...(cause.actualCauseCategory
 				? { actualCauseCategory: cause.actualCauseCategory }
 				: {}),
 		});
+		// The fact that one was closed, with no identifier and no content (#602).
+		if (incident) await this.telemetry.capture("incident_closed", {});
+		return incident;
 	}
 
 	/**

@@ -192,6 +192,43 @@ describe("run CANCEL path (ADR-0018)", () => {
 
 const MAPPED = "/home/dev/checkouts/api-gateway";
 
+describe("cancel during the snapshot (#605 edge 23)", () => {
+	it("an abort while cloning persists 'cancelled', never 'failed', and the harness never starts", async () => {
+		mocks.conductRun.mockReset();
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const controller = new AbortController();
+			const updateStatus = vi.fn(async () => {});
+			const ports = makePorts({
+				updateStatus,
+				incidentRepos: vi.fn(async () => [
+					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				]),
+				snapshot: vi.fn(async (_src, _dest, signal?: AbortSignal) => {
+					controller.abort(new Error("aborted"));
+					throw signal?.reason;
+				}),
+			});
+
+			const result = await runInvestigationJob(
+				makeJob("inv-1"),
+				makeData("inv-1", "inc-1"),
+				makeIo(controller.signal),
+				ports,
+			);
+
+			expect(result.success).toBe(false);
+			expect(mocks.conductRun).not.toHaveBeenCalled();
+			expect(updateStatus).toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "cancelled" }));
+			expect(updateStatus).not.toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "failed" }));
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("#331 workspace record (in-process run)", () => {
 	beforeEach(() => {
 		mocks.conductRun.mockReset();
@@ -224,6 +261,7 @@ describe("#331 workspace record (in-process run)", () => {
 			expect(snapshot).toHaveBeenCalledWith(
 				expect.objectContaining({ kind: "url", source: "https://github.com/acme/api-gateway" }),
 				join(tmp, "runs", "inv-1", "repo"),
+				expect.any(AbortSignal),
 			);
 
 			const entry = createTimelineEntry.mock.calls

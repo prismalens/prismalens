@@ -72,6 +72,38 @@ function generateJWT(appId: string, privateKey: string): string {
  * Exchange a JWT for an installation access token.
  * Optionally scope to specific permissions or repository IDs.
  */
+function isStringMap(value: unknown): value is Record<string, string> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.values(value).every((v) => typeof v === "string")
+	);
+}
+
+/**
+ * True when `parsed` still names the calendar day the string asked for.
+ *
+ * `new Date("2026-02-30T12:00:00Z")` is not an Invalid Date — it is March 2nd.
+ * Comparing the day back out is what separates a real date from a normalised
+ * one. Anything that does not look like an ISO date at all is rejected, which
+ * is correct for a field GitHub documents as RFC 3339.
+ */
+function isCalendarDate(value: string, parsed: Date): boolean {
+	const match = /^(\d{4})-(\d{2})-(\d{2})T/.exec(value);
+	if (!match) return false;
+	const [, year, month, day] = match;
+	// The literal fields are UTC in GitHub's responses; compare in UTC so an
+	// explicit offset cannot shift the day out from under the check.
+	const utc = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+	return (
+		utc.getUTCFullYear() === Number(year) &&
+		utc.getUTCMonth() === Number(month) - 1 &&
+		utc.getUTCDate() === Number(day) &&
+		!Number.isNaN(parsed.getTime())
+	);
+}
+
 async function getInstallationToken(
 	jwt: string,
 	installationId: string,
@@ -125,11 +157,38 @@ async function getInstallationToken(
 		throw new Error("GitHub installation token response has no token");
 	}
 
+	// `expires_at` decides when this credential is refreshed. A missing or
+	// unparseable one becomes an Invalid Date, which compares false against every
+	// deadline: the token would be treated as valid forever (#346). Throw instead.
+	//
+	// `Number.isNaN` is not enough on its own. `new Date` rejects a month or hour
+	// out of range but silently NORMALISES a day out of range, so
+	// "2026-02-30T12:00:00Z" becomes 2026-03-02 — a real Date, two days later
+	// than anything the sender meant, scheduling the refresh after the token has
+	// already expired. `isCalendarDate` re-reads the day back out to catch it.
+	const expiresAt =
+		typeof data.expires_at === "string"
+			? new Date(data.expires_at)
+			: new Date(Number.NaN);
+	if (
+		Number.isNaN(expiresAt.getTime()) ||
+		!isCalendarDate(data.expires_at, expiresAt)
+	) {
+		throw new Error(
+			"GitHub installation token response has no usable expires_at",
+		);
+	}
+
 	return {
 		token: data.token,
-		expiresAt: new Date(data.expires_at),
-		permissions: data.permissions,
-		repositorySelection: data.repository_selection,
+		expiresAt,
+		// The other two are advisory, so they degrade to the least access rather
+		// than failing an exchange that produced a usable token (#346): an empty
+		// permission map fails every capability check, and an unrecognised
+		// selection is read as the narrower "selected".
+		permissions: isStringMap(data.permissions) ? data.permissions : {},
+		repositorySelection:
+			data.repository_selection === "all" ? "all" : "selected",
 	};
 }
 

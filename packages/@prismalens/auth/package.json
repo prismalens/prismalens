@@ -25,12 +25,14 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@prismalens/config": "workspace:*",
 		"better-auth": "catalog:"
 	},
 	"peerDependencies": {
 		"@prismalens/database": "workspace:*"
 	},
 	"devDependencies": {
+		"@prismalens/database": "workspace:*",
 		"@types/node": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

@@ -50,6 +50,15 @@ export interface AcpSessionConfig {
 
 const DEFAULT_INIT_TIMEOUT_MS = 120_000;
 const DEFAULT_PROMPT_TIMEOUT_MS = 900_000;
+/** Write errors that mean "the child is gone", not "the pipe misbehaved". */
+const PIPE_GONE = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
+/** How long an EPIPE waits for the child's own `close` to explain itself. */
+const PIPE_DEATH_GRACE_MS = 50;
+
+function nodeErrorCode(err: Error): string {
+	return (err as NodeJS.ErrnoException).code ?? "";
+}
+
 const STDERR_TAIL = 500;
 
 interface JsonRpcMessage {
@@ -144,10 +153,24 @@ export class AcpSession {
 		] as const) {
 			stream.on("error", (err: Error) => {
 				if (this.closed) return;
-				const tail = this.stderrTail();
-				this.fail(
-					`harness ${name} failed (${err.message})${tail ? `: ${tail}` : ""}`,
-				);
+				const report = () => {
+					if (this.closed) return;
+					const tail = this.stderrTail();
+					this.fail(
+						`harness ${name} failed (${err.message})${tail ? `: ${tail}` : ""}`,
+					);
+				};
+				// A write to a harness that is already exiting fails with EPIPE
+				// BEFORE its `close` event and before its last stderr chunk lands,
+				// so `fail`'s first-message-wins would keep "stdin failed (write
+				// EPIPE)" — the one message that says nothing about why the harness
+				// died. Give `close` a moment to win with the exit code and stderr;
+				// if it never comes, this still reports.
+				if (name === "stdin" && PIPE_GONE.has(nodeErrorCode(err))) {
+					setTimeout(report, PIPE_DEATH_GRACE_MS).unref();
+					return;
+				}
+				report();
 			});
 		}
 		child.on("close", (code, signal) => {

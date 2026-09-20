@@ -22,12 +22,14 @@ import { cliVersion } from "../version.js";
 import {
 	displayUrl,
 	healthUrl,
+	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
+	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
-import { checkForUpdate, updateCheckEnabled } from "./update-notice.js";
+import { updateNotice } from "./update-notice.js";
 
 const require = createRequire(import.meta.url);
 const READY_TIMEOUT_MS = 60_000;
@@ -76,7 +78,9 @@ export default defineCommand({
 	meta: {
 		name: "up",
 		description:
-			"Run PrismaLens as a single process: API and dashboard on one port, SQLite, no external services",
+			"Run PrismaLens as a single process: API and dashboard on one port, SQLite, no external services.\n" +
+			"Once a day this checks GitHub Releases for a newer prismalens and prints one line; no identifier is sent. " +
+			"Turn it off with PRISMALENS_UPDATE_CHECK=off or DO_NOT_TRACK.",
 	},
 	args: {
 		port: {
@@ -97,6 +101,11 @@ export default defineCommand({
 			description:
 				"Stream every log record to the terminal as well as the log file (default: warnings and errors only)",
 		},
+		telemetry: {
+			type: "string",
+			description:
+				"`off` disables opt-in usage telemetry for this run whatever Settings says (or PRISMALENS_TELEMETRY=off)",
+		},
 	},
 	async run({ args }) {
 		const app = resolvePackagedApi();
@@ -108,6 +117,13 @@ export default defineCommand({
 		if (args.host) process.env.PRISMALENS_HOST = String(args.host);
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
+		}
+		if (args.telemetry !== undefined) {
+			if (String(args.telemetry) !== "off") {
+				consola.error("--telemetry takes only `off`; turn it on in Settings.");
+				process.exit(1);
+			}
+			process.env.PRISMALENS_TELEMETRY = "off";
 		}
 		process.env.PRISMALENS_STATIC_DIR = app.staticDir;
 		process.env.PRISMALENS_LOG_CONSOLE = resolveConsoleMode(
@@ -145,12 +161,16 @@ export default defineCommand({
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
 
-		// Overlaps boot; printed after the ready line, never awaited before it.
-		const updateNotice = updateCheckEnabled(process.env)
-			? checkForUpdate(cliVersion())
-			: Promise.resolve(null);
-		const printUpdateNotice = () =>
-			void updateNotice.then((line) => line && consola.info(line));
+		// Read from a cache written by an earlier run, so nothing here waits on
+		// the network; `refresh` updates that cache for the NEXT run and is
+		// deliberately never awaited.
+		const notice = updateNotice({
+			current: cliVersion(),
+			workspaceDir,
+		});
+		const printUpdateNotice = () => {
+			if (notice.line) consola.info(notice.line);
+		};
 
 		// One process (0005 §1-2): the API runs each investigation in-process.
 		// Bootstrap exits the process itself on a fatal error, so the poll below
@@ -169,6 +189,11 @@ export default defineCommand({
 		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
+			// One pointer at Settings, never a prompt: consent is an owner
+			// decision and the CLI has no way to take it (#602, ADR 0005).
+			if ((await readTelemetryState(healthUrl(bind))) === "undecided") {
+				consola.info(TELEMETRY_CONSENT_NOTICE);
+			}
 		} else {
 			consola.warn(
 				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,

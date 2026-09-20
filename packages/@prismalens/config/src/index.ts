@@ -51,6 +51,16 @@ export {
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
+export {
+	acquireWorkspaceLock,
+	armForcedExitOnSecondSignal,
+	disarmForcedExit,
+	readWorkspaceLock,
+	releaseWorkspaceLock,
+	WORKSPACE_LOCK_FILE,
+	WorkspaceLockedError,
+	type WorkspaceLockOwner,
+} from "./utils/workspace-lock.js";
 // Re-export app data utilities
 // Re-export encryption key and secret utilities
 export {

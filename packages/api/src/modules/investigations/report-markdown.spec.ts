@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { InvestigationReport } from "@prismalens/contracts";
+import { InvestigationReportSchema } from "@prismalens/contracts";
 import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 
 const REPORT: InvestigationReport = {
@@ -102,5 +103,25 @@ describe("reportToMarkdown", () => {
 describe("reportFilename", () => {
 	it("names the incident", () => {
 		expect(reportFilename(12)).toBe("INC-12-report.md");
+	});
+});
+
+/**
+ * The export route validates the persisted blob rather than casting it: a row
+ * written by an older schema must read as "no report" (404), not throw inside
+ * the renderer at `hypotheses` or `coverage` (CodeRabbit on #661).
+ */
+describe("a persisted report that no longer matches the schema", () => {
+	it("fails InvestigationReportSchema rather than rendering", () => {
+		const stale = { summary: "only a summary survived" };
+
+		expect(InvestigationReportSchema.safeParse(stale).success).toBe(false);
+		expect(() =>
+			reportToMarkdown({
+				incident: { number: 1, title: "t" },
+				report: stale as unknown as InvestigationReport,
+				completedAt: null,
+			}),
+		).toThrow();
 	});
 });

@@ -90,7 +90,12 @@ export async function probeHarness(
 	opts: {
 		descriptor?: Pick<
 			HarnessDescriptor,
-			"binary" | "acpArgs" | "acpEnv" | "configFiles" | "sessionMeta"
+			| "binary"
+			| "acpArgs"
+			| "acpEnv"
+			| "configFiles"
+			| "sessionMeta"
+			| "companionBinary"
 		>;
 		timeoutMs?: number;
 	} = {},

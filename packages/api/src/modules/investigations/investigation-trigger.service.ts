@@ -22,8 +22,14 @@ import {
 	TriggerPolicySchema,
 	toFiringAlert,
 } from "@prismalens/contracts";
-import type { Alert, Incident, Service } from "@prismalens/database";
+import type {
+	Alert,
+	Incident,
+	Investigation,
+	Service,
+} from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import {
@@ -219,12 +225,30 @@ export class InvestigationTriggerService {
 		incident: Incident & { service?: Service | null },
 		decision: TriggerDecision,
 	): Promise<void> {
-		const { investigation, created } =
-			await this.investigationsService.startOrGet({
-				incidentId: incident.id,
-				...(decision.triggerType ? { triggerType: decision.triggerType } : {}),
-				...(decision.reason ? { triggerReason: decision.reason } : {}),
-			});
+		let investigation: Investigation;
+		let created: boolean;
+		try {
+			({ investigation, created } = await this.investigationsService.startOrGet(
+				{
+					incidentId: incident.id,
+					...(decision.triggerType
+						? { triggerType: decision.triggerType }
+						: {}),
+					...(decision.reason ? { triggerReason: decision.reason } : {}),
+				},
+			));
+		} catch (error) {
+			// The webhook path is fire-and-forget: there is nobody to answer
+			// CONFLICT to. An alert that arrives while the workspace is being
+			// reset is dropped on purpose — its incident is being deleted.
+			if (error instanceof ResetInProgressError) {
+				this.logger.warn(
+					`Incident ${incident.number}: not triggering an investigation, a reset is in progress`,
+				);
+				return;
+			}
+			throw error;
+		}
 		if (!created) {
 			this.logger.log(
 				`Incident ${incident.number} already has investigation ${investigation.id} in progress; not triggering another`,

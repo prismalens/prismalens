@@ -5,6 +5,7 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
 import { Public } from "../../core/auth/public.decorator.js";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 
 interface HealthResponse {
@@ -14,15 +15,28 @@ interface HealthResponse {
 	services: {
 		api: boolean;
 	};
+	/**
+	 * Whether the owner has answered the usage-data question (#602). `pl up`
+	 * reads this from its readiness probe to print one pointer at Settings; it
+	 * never prompts, and there is no CLI way to answer. Carries the state of a
+	 * preference, no identifier and no install id.
+	 */
+	telemetry: "undecided" | "on" | "off";
 }
 
 @Public()
 @Controller("health")
 export class HealthController {
-	constructor(readonly _configService: ConfigService<EnvironmentVariables>) {}
+	constructor(
+		readonly _configService: ConfigService<EnvironmentVariables>,
+		private readonly telemetry: TelemetryService,
+	) {}
 
 	@Get()
-	health(): HealthResponse {
+	async health(): Promise<HealthResponse> {
+		const settings = await this.telemetry
+			.getSettings()
+			.catch(() => ({ enabled: false, decided: true, forcedOff: false }));
 		return {
 			status: "ok",
 			timestamp: new Date().toISOString(),
@@ -30,6 +44,11 @@ export class HealthController {
 			services: {
 				api: true,
 			},
+			telemetry: !settings.decided
+				? "undecided"
+				: settings.enabled
+					? "on"
+					: "off",
 		};
 	}
 

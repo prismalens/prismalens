@@ -21,6 +21,10 @@ import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import {
+	TelemetryService,
+	triggerFor,
+} from "../../core/telemetry/telemetry.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
@@ -68,6 +72,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
@@ -92,6 +97,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					dto.harnessThreadId,
 				);
 				if (dto.status === "failed") void this.reportDelivery.deliver(id);
+				await this.reportStatus(id, dto.status);
 			},
 			appendEvents: async (id, events) => {
 				await this.investigationsService.appendEvents(id, events);
@@ -103,6 +109,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.investigationsService.writeResultWithRelations(id, dto);
 				// Off the run's path: a slow or failing Slack never delays or fails it.
 				void this.reportDelivery.deliver(id);
+				await this.reportStatus(id, dto.status);
 			},
 			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
 				await this.timelineService.create(dto);
@@ -154,7 +161,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			repoToken: (connectionId) =>
 				this.integrationsService.gitToken(connectionId),
-			snapshot: (src, dest) => this.repoSource.snapshot(src, dest),
+			snapshot: (src, dest, signal) =>
+				this.repoSource.snapshot(src, dest, signal),
 			getIncident: async (id) => {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;
@@ -179,6 +187,38 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					error: (m, e) => this.logger.error(m, e),
 				},
 			},
+		);
+	}
+
+	/** Opt-in telemetry (#602): a run starting, and its one terminal state. */
+	private async reportStatus(id: string, status: string): Promise<void> {
+		const terminal =
+			status === "completed" || status === "failed" || status === "cancelled";
+		if (status !== "running" && !terminal) return;
+		// The harness lookup scans PATH and the row read is an extra query, so
+		// neither happens unless something would actually be sent.
+		if (!(await this.telemetry.isEnabled())) return;
+
+		const investigation = await this.investigationsService
+			.findById(id)
+			.catch(() => null);
+
+		if (status === "running") {
+			const selection = await this.harnessService
+				.resolveSelection()
+				.catch(() => null);
+			await this.telemetry.capture("investigation_started", {
+				harness: selection?.runnable ? selection.harness : null,
+				trigger: triggerFor(investigation?.triggerType),
+			});
+			return;
+		}
+		// `startedAt` becomes a bucket and `error` becomes a class inside the
+		// service; neither the duration nor the message leaves this process.
+		await this.telemetry.captureFinished(
+			id,
+			status as "completed" | "failed" | "cancelled",
+			{ startedAt: investigation?.startedAt, error: investigation?.error },
 		);
 	}
 
