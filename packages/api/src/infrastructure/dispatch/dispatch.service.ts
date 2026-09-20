@@ -16,7 +16,12 @@ import {
 	OnModuleInit,
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
-import { resolveHarnessModel } from "@prismalens/config/harness";
+import {
+	HARNESS_REGISTRY,
+	type HarnessId,
+	type ModelSource,
+	resolveHarnessModel,
+} from "@prismalens/config/harness";
 import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
@@ -55,6 +60,28 @@ const PRIORITY_ORDER: Record<string, number> = {
 
 /** The reason recorded on every job a restart abandoned mid-flight. */
 const RESTART_REASON = "API restarted while the run was in flight";
+
+/**
+ * The model-resolution branch `resolveHarness` uses, pulled out of the ports
+ * closure so a `modelVia: "unsupported"` harness's behaviour (drop the model,
+ * tell the caller to log it, never claim a `modelSource`) is unit-testable
+ * without constructing the whole service and running a job through it.
+ */
+export function resolveHarnessRunModel(
+	harnessId: HarnessId,
+	operatorModel: string | undefined,
+	onIgnored: (harnessId: HarnessId) => void,
+): { model?: string; modelSource?: ModelSource } {
+	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") {
+		if (operatorModel?.trim()) onIgnored(harnessId);
+		return {};
+	}
+	const resolved = resolveHarnessModel(harnessId, operatorModel);
+	return {
+		...(resolved.model ? { model: resolved.model } : {}),
+		modelSource: resolved.source,
+	};
+}
 
 @Injectable()
 export class DispatchService implements OnModuleInit, OnApplicationShutdown {
@@ -120,12 +147,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					this.harnessService.getSettings(),
 				]);
 				if (!selection.runnable) return { selection };
-				const resolved = resolveHarnessModel(selection.harness, settings.model);
-				return {
-					selection,
-					...(resolved.model ? { model: resolved.model } : {}),
-					modelSource: resolved.source,
-				};
+				const modelResult = resolveHarnessRunModel(
+					selection.harness,
+					settings.model,
+					(harness) => this.logger.warn(`model ignored by ${harness}`),
+				);
+				return { selection, ...modelResult };
 			},
 			incidentRepos: async (incidentId) => {
 				const incident = await this.prisma.incident.findUnique({

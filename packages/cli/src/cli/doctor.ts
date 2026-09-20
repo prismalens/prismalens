@@ -154,7 +154,7 @@ export async function checkHarnessHandshake(): Promise<Check[]> {
 		results.push({
 			name: `Harness ACP handshake: ${descriptor.label}`,
 			pass: probe.outcome === "answers-acp",
-			detail: probe.detail,
+			detail: `${probe.detail}; sign-in: ${descriptor.loginHint}`,
 			hard: false,
 		});
 	}

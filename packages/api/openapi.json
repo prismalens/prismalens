@@ -22812,6 +22812,17 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "modelVia": {
+                            "enum": [
+                              "config",
+                              "env",
+                              "unsupported"
+                            ],
+                            "type": "string"
+                          },
+                          "loginHint": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -22822,7 +22833,9 @@
                           "verified",
                           "admission",
                           "install",
-                          "defaultModel"
+                          "defaultModel",
+                          "modelVia",
+                          "loginHint"
                         ]
                       }
                     },

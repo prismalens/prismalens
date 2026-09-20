@@ -103,15 +103,21 @@ export interface HarnessDescriptor {
 	/** The unattended admission run this row passed (ADR 0003 §10), or absent: never admitted. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
 	admission?: { version: string; date: string; result: "pass" };
 	/**
+	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
+	 * `configFiles` writes), `env` (a var `acpEnv` sets), or `unsupported` (the
+	 * harness has no way to take it, so an operator-set model is logged and
+	 * dropped rather than silently ignored).
+	 */
+	modelVia: "config" | "env" | "unsupported";
+	/** One line the picker and the doctor show: how to sign this harness in. */
+	loginHint: string;
+	/**
 	 * Provider API-key env vars this harness actually reads from the host
 	 * (ADR 0004 §5: allowlist, never `process.env`). Never a bare wildcard —
 	 * each name is cited in the row's own doc pointer below.
 	 */
 	providerKeys?: readonly string[];
 }
-
-const READ_ONLY_MECHANISM =
-	"ACP session/request_permission answered by prismalens: edit, delete and move rejected, mutating shell commands rejected";
 
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
@@ -169,8 +175,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// The keyless model every #337 walk and the CI admission run used.
 		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism: READ_ONLY_MECHANISM,
+		readOnlyMechanism:
+			"opencode.json permission edit/bash=ask answered by prismalens; webfetch, websearch, external_directory denied; repo config disabled",
 		admission: { version: "1.18.30", date: "2026-09-20", result: "pass" },
+		modelVia: "config",
+		loginHint:
+			"Keyless default model; `opencode auth login` or a provider key in env for others",
 	},
 	"claude-code": {
 		id: "claude-code",
@@ -208,7 +218,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY on a server)",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism: READ_ONLY_MECHANISM,
+		readOnlyMechanism:
+			"ACP session/request_permission answered by prismalens; settingSources: [] keeps repo settings and hooks inert",
+		modelVia: "env",
+		loginHint:
+			"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
 	},
 	codex: {
 		id: "codex",
@@ -225,19 +239,31 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		providerKeys: ["OPENAI_API_KEY"],
 		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism: READ_ONLY_MECHANISM,
+		readOnlyMechanism:
+			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",
+		modelVia: "unsupported",
+		loginHint:
+			"`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
 	},
 	gemini: {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--experimental-acp"],
-		acpEnv: () => ({}),
+		// GEMINI_CLI_HOME is Gemini CLI's documented directory its own .gemini folder is
+		// created under (geminicli.com/docs/cli/enterprise); it isolates the user's
+		// approvalMode and other user-level settings. A project .gemini/settings.json in
+		// the snapshot still loads (Trusted Folders is a user setting) — recorded here,
+		// not fixed, until #639's login-vs-isolation ruling lands.
+		acpEnv: ({ dataDir }) => ({ GEMINI_CLI_HOME: dataDir }),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism: READ_ONLY_MECHANISM,
+		readOnlyMechanism:
+			"ACP permission answers; GEMINI_CLI_HOME isolates the user's approvalMode",
+		modelVia: "unsupported",
+		loginHint: "`GEMINI_API_KEY` in env",
 	},
 	deepagents: {
 		id: "deepagents",
@@ -253,7 +279,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism: READ_ONLY_MECHANISM,
+		readOnlyMechanism: "ACP permission answers; --no-mcp",
+		modelVia: "unsupported",
+		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 	},
 };
 

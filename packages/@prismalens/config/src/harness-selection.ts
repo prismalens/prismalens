@@ -95,6 +95,10 @@ export interface HarnessStatus {
 	install: string;
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
+	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
+	modelVia: "config" | "env" | "unsupported";
+	/** One line the picker and the doctor show: how to sign this harness in. */
+	loginHint: string;
 }
 
 export function listHarnessStatus(
@@ -114,6 +118,8 @@ export function listHarnessStatus(
 				: null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,
+			modelVia: d.modelVia,
+			loginHint: d.loginHint,
 		};
 	});
 }
