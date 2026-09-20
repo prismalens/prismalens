@@ -11,6 +11,7 @@
  * adopts it, so all three runtimes render the canonical stream identically.
  */
 import type { CanonicalEvent } from "@prismalens/contracts";
+import { InvestigationReportSchema } from "@prismalens/contracts/schemas";
 
 export type EventIcon =
 	| "activity"
@@ -32,23 +33,76 @@ export interface EventRow {
 const REPORT_DRAFTED = "Report drafted";
 
 /**
- * The agent's last text is the report itself, as JSON (fenced or bare). The
- * panel names that step instead of printing the document; every other text
- * shows as written.
+ * Is this block the report itself? The schema decides — not a guess at two of
+ * its field names.
+ *
+ * The previous version accepted any object with a string `summary` and an array
+ * `hypotheses`. Both names are schema-REQUIRED, so that check never rejected a
+ * real report — it was strictly looser than the contract, and its whole failure
+ * mode was over-hiding: an agent printing
+ * `{"summary":"what I'll do next","hypotheses":["a","b"]}` had that text
+ * silently replaced by "Report drafted" and lost. `safeParse` makes the answer
+ * exactly "what the contract calls a report", so there is no third opinion
+ * about the report's shape left to drift out of sync with the other two.
+ *
+ * `InvestigationReportSchema` rather than the engine's `ModelReportSchema`:
+ * the two differ only by `fidelity`, which is host-stamped and optional here,
+ * so this schema accepts the model's own draft *and* the stamped report — and
+ * it lives in `@prismalens/contracts`, which the browser bundle already
+ * carries, while the engine is server-only.
+ *
+ * Only a COMPLETE object is recognised. See {@link agentStepMessage} for what
+ * that means for a partial one.
+ */
+function isReportJson(body: string): boolean {
+	const trimmed = body.trim();
+	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
+	try {
+		return InvestigationReportSchema.safeParse(JSON.parse(trimmed)).success;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * The agent's last text is the report itself, as JSON: bare, fenced, or after
+ * a line of prose (#659). The panel names that step instead of printing the
+ * document; every other text shows as written. A fence closes only on its own
+ * line, so a backtick run inside a JSON string does not end the block early.
+ *
+ * ## Partial text
+ *
+ * This never sees a half-written report through the live stream. Assistant text
+ * arrives from ACP as incremental `agent_message_chunk` deltas, and
+ * `AcpAdapter` is the one place they accumulate: it flushes them as the `text`
+ * of a single `agent_step`, so a canonical event always carries a whole turn.
+ * The panel appends those events and upserts rows by `(branchId, seq)` for
+ * replay idempotency — it never grows one row's text in place. So there is no
+ * window in which a row holds an incomplete object, and nothing flashes raw
+ * JSON mid-stream.
+ *
+ * If a future harness did split a report across two steps, the fragment would
+ * fail `JSON.parse` and be shown as written rather than swallowed. That is the
+ * deliberate choice: an unparseable fragment is indistinguishable from prose
+ * that happens to start with `{`, and hiding text we cannot identify is the
+ * worse failure — it loses the agent's words with no way to get them back,
+ * whereas showing a fragment is merely ugly for one row.
  */
 export function agentStepMessage(text: string): string {
-	const body = text
-		.trim()
-		.replace(/^```(?:json)?\s*/i, "")
-		.replace(/```\s*$/, "")
-		.trim();
-	if (!body.startsWith("{") || !body.endsWith("}")) return text;
-	try {
-		JSON.parse(body);
-		return REPORT_DRAFTED;
-	} catch {
-		return text;
+	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
+		const start = (open.index ?? 0) + open[0].length;
+		for (const close of Array.from(
+			text.slice(start).matchAll(/^```[ \t]*$/gm),
+		)) {
+			if (isReportJson(text.slice(start, start + (close.index ?? 0)))) {
+				return REPORT_DRAFTED;
+			}
+		}
 	}
+	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
+		if (isReportJson(text.slice(line.index))) return REPORT_DRAFTED;
+	}
+	return text;
 }
 
 /** Map one canonical event to a row, or null when it shouldn't be shown. */

@@ -449,3 +449,79 @@ test.describe("#280 — the investigation stream panel", () => {
 		).toHaveText("Live stream unavailable — polling for progress");
 	});
 });
+
+/**
+ * #659 — the panel names the drafted report instead of printing it. Seen in the
+ * #337 stranger walk: the last streamed message was prose followed by the whole
+ * report JSON, above the rendered report.
+ */
+test.describe("#659 — the report JSON never reaches the panel", () => {
+	/**
+	 * A report the contract accepts. It must satisfy
+	 * `InvestigationReportSchema` in full: since #660's review the panel asks
+	 * the schema rather than guessing at two field names, so a fixture missing
+	 * `coverage` or `nextSteps` is no longer "the report" and would be printed.
+	 */
+	const REPORT = JSON.stringify(
+		{
+			summary: "checkout-api exhausted its connection pool",
+			rootCause: "deploy 41 dropped DB_POOL_SIZE from 50 to 5",
+			rootCauseCategory: "config",
+			hypotheses: [],
+			ruledOut: [],
+			coverage: { queried: [], notQueried: [] },
+			nextSteps: [],
+		},
+		null,
+		2,
+	);
+
+	/** Report-shaped to a guess, but not a report. Must stay on screen. */
+	const LOOKALIKE = JSON.stringify({
+		summary: "what I am about to check",
+		hypotheses: ["the pool", "the workers"],
+	});
+
+	test("names a prose-then-fenced-JSON final answer, and keeps other JSON", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const main = eventFactory("main");
+
+		await deliver(page, main.agentStep("root", 'Checked {"retries":3} first.'));
+		await deliver(
+			page,
+			main.agentStep("root", `The pool ran dry.\n\`\`\`json\n${REPORT}\n\`\`\``),
+		);
+
+		const rows = panel.getByTestId("stream-event-row");
+		await expect(rows).toHaveCount(2);
+		await expect(rows.last()).toHaveText("Report drafted");
+		await expect(panel).not.toContainText("DB_POOL_SIZE");
+		await expect(panel).not.toContainText("connection pool");
+		// Text that merely contains JSON is still the agent's own words.
+		await expect(rows.first()).toContainText('{"retries":3}');
+	});
+
+	/**
+	 * The #660 review's counter-example, on the real surface: an object with a
+	 * string `summary` and an array `hypotheses` that the schema rejects. The
+	 * duck-typed check swallowed this and the agent's words were lost.
+	 */
+	test("keeps a report-shaped object the schema rejects on screen", async ({
+		page,
+	}) => {
+		const panel = await openConnectedPanel(page);
+		const main = eventFactory("main");
+
+		await deliver(
+			page,
+			main.agentStep("root", `Planning.\n\`\`\`json\n${LOOKALIKE}\n\`\`\``),
+		);
+
+		const rows = panel.getByTestId("stream-event-row");
+		await expect(rows).toHaveCount(1);
+		await expect(rows.last()).not.toHaveText("Report drafted");
+		await expect(panel).toContainText("what I am about to check");
+	});
+});
