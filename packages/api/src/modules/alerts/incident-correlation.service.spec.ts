@@ -107,6 +107,52 @@ describe("IncidentCorrelationService", () => {
 			);
 		});
 
+		/**
+		 * #664 review: the auto-trigger listens on `alert.correlated`, so
+		 * withholding that one event is what turns a normal intake into a
+		 * create-without-dispatch. Everything else must still happen — the
+		 * incident is opened and the alert attached — because the resolve path
+		 * looks the alert up by fingerprint and closes the incident it is on.
+		 */
+		it("correlates but emits nothing when autoInvestigate is false", async () => {
+			const alert = alertRow({ id: "alert-1", fingerprint: "fp-new" });
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockIncidentsService.create.mockResolvedValue({
+				id: "incident-1",
+				number: 1,
+			});
+
+			const result = await service.correlateAlert(alert, {
+				autoInvestigate: false,
+			});
+
+			// The record is made in full...
+			expect(mockIncidentsService.create).toHaveBeenCalledTimes(1);
+			expect(mockIncidentsService.addAlert).toHaveBeenCalledWith(
+				"incident-1",
+				"alert-1",
+			);
+			expect(result.incidentId).toBe("incident-1");
+			// ...and nothing is asked to investigate it.
+			expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+		});
+
+		it("emits as normal when autoInvestigate is true or absent", async () => {
+			const alert = alertRow({ id: "alert-1", fingerprint: "fp-new" });
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockIncidentsService.create.mockResolvedValue({
+				id: "incident-1",
+				number: 1,
+			});
+
+			await service.correlateAlert(alert, { autoInvestigate: true });
+
+			expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+				"alert.correlated",
+				{ alertId: "alert-1", incidentId: "incident-1", isNewIncident: true },
+			);
+		});
+
 		it("does not re-emit alert.correlated for an alert that was already correlated", async () => {
 			const alert = alertRow({
 				id: "alert-1",

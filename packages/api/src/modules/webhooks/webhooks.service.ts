@@ -38,9 +38,23 @@ export interface WebhookResult {
 const IN_FLIGHT_GRACE_MS = 30_000;
 
 /**
- * Caps on sender-supplied text, applied before anything is stored (#633 edge 13).
- * The description carries Alertmanager annotations verbatim and later reaches
- * the investigation prompt, so one noisy rule must not store megabytes.
+ * Caps on the sender-supplied text that reaches the investigation prompt
+ * (#633 edge 13): `title`, `description` and label *values*, and nothing else.
+ * The description carries Alertmanager annotations verbatim, so one noisy rule
+ * must not store megabytes of them.
+ *
+ * Two fields are deliberately **not** capped, which an earlier version of this
+ * comment implied they were (#664 review):
+ *
+ * - `rawPayload` is the provider's original delivery, kept so a request can be
+ *   replayed and debugged. Truncating it would produce invalid JSON, which is
+ *   worse than storing it whole — a payload you cannot parse is not a record.
+ * - `tags` is matched against alert-mapping rules to resolve a service.
+ *   Truncating a tag could stop a rule matching and silently misroute an
+ *   alert, which costs more than the bytes it saves.
+ *
+ * Neither is unbounded: the global 1 MB JSON body limit is what bounds the
+ * worst case for both, and for the whole delivery.
  */
 export const MAX_TITLE_CHARS = 500;
 export const MAX_DESCRIPTION_CHARS = 8_000;
@@ -283,6 +297,7 @@ export class WebhooksService {
 	async processGenericWebhook(
 		dto: GenericWebhookDto,
 		idempotencyKey?: string,
+		options: { autoInvestigate?: boolean } = {},
 	): Promise<WebhookResult> {
 		dto = {
 			...dto,
@@ -337,9 +352,12 @@ export class WebhooksService {
 		// 5. Link event to alert
 		await this.eventsService.markProcessed(event.id, alert.id);
 
-		// 6. Correlate alert to incident
-		const correlationResult =
-			await this.incidentCorrelation.correlateAlert(alert);
+		// 6. Correlate alert to incident. `autoInvestigate` is forwarded, not
+		// interpreted: it only decides whether the auto-trigger hears about this.
+		const correlationResult = await this.incidentCorrelation.correlateAlert(
+			alert,
+			options,
+		);
 
 		return {
 			event,

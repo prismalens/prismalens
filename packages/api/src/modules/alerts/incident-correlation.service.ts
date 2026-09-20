@@ -42,10 +42,21 @@ export class IncidentCorrelationService {
 	 * already matches, otherwise open a new one. Emits `ALERT_CORRELATED_EVENT`
 	 * (consumed by investigation auto-trigger) whenever the alert lands on an
 	 * incident for the first time.
+	 *
+	 * `autoInvestigate: false` correlates exactly as normal but withholds that
+	 * event, so the alert and its incident are recorded and nothing is
+	 * dispatched. The one caller is a Prometheus firing whose resolution has
+	 * already arrived (#664 review): the alert row has to exist for the resolve
+	 * path to find it, but starting a harness run for an episode that is already
+	 * over is pure waste — the run is never cancelled, it completes and is
+	 * resolved microseconds later.
 	 */
-	async correlateAlert(alert: Alert): Promise<IncidentCorrelationResult> {
+	async correlateAlert(
+		alert: Alert,
+		options: { autoInvestigate?: boolean } = {},
+	): Promise<IncidentCorrelationResult> {
 		const result = await this.runCorrelation(alert);
-		if (!result.alreadyCorrelated) {
+		if (!result.alreadyCorrelated && options.autoInvestigate !== false) {
 			const payload: AlertCorrelatedEvent = {
 				alertId: alert.id,
 				incidentId: result.incidentId,

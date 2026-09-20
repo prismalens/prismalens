@@ -91,23 +91,31 @@ export class WebhooksController {
 								labels: alert.labels,
 								sourceEventId: alert.fingerprint,
 							};
+							// Decided BEFORE the alert is created, because it decides
+							// whether creating it may dispatch a run (#664 review).
+							// `hasEarlyResolution` only reads, so asking early is safe.
+							const resolutionAlreadyArrived = Boolean(
+								alert.fingerprint &&
+									this.webhooksService.hasEarlyResolution(
+										alert.fingerprint,
+										alert.startsAt,
+									),
+							);
 							const result = await this.webhooksService.processGenericWebhook(
 								genericDto,
 								idempotencyKey === undefined
 									? undefined
 									: `${idempotencyKey}:${alert.fingerprint ?? index}`,
+								// The alert and its incident are still recorded — the
+								// resolve path below looks the alert up by fingerprint —
+								// but an episode that is already over starts no run.
+								{ autoInvestigate: !resolutionAlreadyArrived },
 							);
 							alertIds.push(result.alert.id);
 							// Its resolution already came, out of order (#633 edge 10).
 							// The record is cleared only once the alert is really
 							// resolved, so a failure here leaves it for the retry.
-							if (
-								alert.fingerprint &&
-								this.webhooksService.hasEarlyResolution(
-									alert.fingerprint,
-									alert.startsAt,
-								)
-							) {
+							if (alert.fingerprint && resolutionAlreadyArrived) {
 								const resolved =
 									await this.webhooksService.resolvePrometheusAlert(
 										alert.fingerprint,
