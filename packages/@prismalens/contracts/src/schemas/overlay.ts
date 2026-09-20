@@ -56,15 +56,15 @@ export const ServiceProximitySchema = z.object({
 export type ServiceProximity = z.infer<typeof ServiceProximitySchema>;
 
 /**
- * A past incident scored similar to this one, deterministically: Jaccard on the
- * incidents' alert-label sets + a same-service bonus + a shared-root-cause-category
- * bonus. Mirrors the top-K written back to `IncidentSimilarity` (score there is the
- * 0-100 int; here it is the normalised 0..1 float for display).
- */
-/**
  * A past incident like this one, ranked, with the reasons it matched and what
  * actually caused it when someone recorded that (#338). No numeric score: the
  * report says why, not how sure (ADR-0002 epistemics).
+ *
+ * The ordering is still the deterministic one — Jaccard over the incidents'
+ * alert-label sets, plus a same-service and a shared-cause-category bonus — and
+ * the score it produces is still written to `IncidentSimilarity`. It just does
+ * not reach the reader: `rank` and `matchedOn` carry what the score was being
+ * used to say.
  */
 export const SimilarIncidentSchema = z.object({
 	incidentId: z.string(),
