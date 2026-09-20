@@ -25,7 +25,21 @@
  * deliberately not built here; this only makes sure the information exists when
  * it is.
  *
- * ## Two known gaps, neither closed here
+ * ## Releasing it
+ *
+ * The lock is released on an ordinary stop as well as a clean exit. `process`
+ * does not run `exit` listeners for a signal-terminated process, so an `exit`
+ * listener alone left the file behind on every `SIGTERM` and `SIGINT` — which
+ * made the stale-reclaim path below the common case rather than the rare one.
+ * The API therefore enables Nest's shutdown hooks and releases the lock from
+ * one, so the release happens **after** the app has finished closing: releasing
+ * earlier would let a second `pl up` in while this one is still writing.
+ * {@link releaseWorkspaceLock} is idempotent, never throws, and refuses to
+ * unlink a lock whose recorded pid is not ours — the same identity check
+ * {@link reclaim} makes, so a lock another process has since taken is left
+ * alone. A `SIGKILL` still leaves the file, which is what gap 1 covers.
+ *
+ * ## One known gap, not closed here
  *
  * 1. **Pid reuse after a crash.** Liveness is `kill(pid, 0)`, which answers
  *    "some process has this pid", not "*our* process has this pid". After a
@@ -84,6 +98,25 @@ export type WorkspaceLockState =
 	| { kind: "unreadable"; ageMs: number }
 	/** Present and readable, but we could not tell — never reclaimed. */
 	| { kind: "undecidable"; reason: string };
+
+/**
+ * The lock this process currently holds, if any. Module-level rather than
+ * closed over, so a shutdown hook can release it without the acquiring call
+ * having to thread its closure through the application container.
+ */
+let heldLockPath: string | null = null;
+
+/** Signal numbers for the conventional 128+n exit code. */
+const SIGNAL_NUMBERS: Readonly<Record<string, number>> = {
+	SIGHUP: 1,
+	SIGINT: 2,
+	SIGQUIT: 3,
+	SIGTERM: 15,
+	SIGBREAK: 21,
+};
+
+/** Removes the listeners armed by {@link armForcedExitOnSecondSignal}. */
+let disarmForcedExitFn: (() => void) | null = null;
 
 export class WorkspaceLockedError extends Error {
 	constructor(
@@ -225,31 +258,25 @@ export function acquireWorkspaceLock(
 		port: options.port,
 		startedAt: new Date().toISOString(),
 	};
-	const release = () => {
-		try {
-			const held = JSON.parse(
-				readFileSync(lockPath, "utf8"),
-			) as WorkspaceLockOwner;
-			if (held.pid === process.pid) unlinkSync(lockPath);
-		} catch {
-			// already gone, or not ours
-		}
+	// Records the lock as ours and keeps the `exit` listener as the fallback for
+	// a normal exit. Signals are handled by the application's shutdown hooks,
+	// which call `releaseWorkspaceLock` after the app has closed.
+	const take = (): (() => void) => {
+		heldLockPath = lockPath;
+		process.once("exit", releaseWorkspaceLock);
+		return releaseWorkspaceLock;
 	};
 
 	try {
 		createLock(lockPath, owner);
-		process.once("exit", release);
-		return release;
+		return take();
 	} catch (e) {
 		if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
 	}
 
 	const state = readWorkspaceLockState(workspaceDir);
 	if (state.kind === "held") {
-		if (state.owner.pid === process.pid) {
-			process.once("exit", release);
-			return release;
-		}
+		if (state.owner.pid === process.pid) return take();
 		throw ownerBusy(lockPath, state.owner);
 	}
 	if (state.kind === "undecidable") {
@@ -267,8 +294,7 @@ export function acquireWorkspaceLock(
 	if (state.kind === "free") {
 		// It went away between the create and the read; one more try, no reclaim.
 		createLock(lockPath, owner);
-		process.once("exit", release);
-		return release;
+		return take();
 	}
 	if (!reclaim(workspaceDir, lockPath, owner)) {
 		const now = readWorkspaceLockState(workspaceDir);
@@ -279,6 +305,80 @@ export function acquireWorkspaceLock(
 				: `Another process is reclaiming the workspace lock at ${lockPath}. Retry in a few seconds.`,
 		);
 	}
-	process.once("exit", release);
-	return release;
+	return take();
+}
+
+/**
+ * Release the lock this process holds. Idempotent, never throws, and a no-op
+ * when the lock was never acquired or has already been released.
+ *
+ * It re-reads the file and compares the recorded pid with ours before
+ * unlinking: between our shutdown starting and this running, the file may have
+ * been reclaimed by another process, and deleting *its* lock is the one thing
+ * this whole mechanism exists to prevent.
+ *
+ * @returns whether this call removed the file.
+ */
+export function releaseWorkspaceLock(): boolean {
+	const lockPath = heldLockPath;
+	// Cleared first, so a second call is a no-op even if the unlink below throws.
+	heldLockPath = null;
+	if (!lockPath) return false;
+	try {
+		const held = JSON.parse(
+			readFileSync(lockPath, "utf8"),
+		) as WorkspaceLockOwner;
+		if (held.pid !== process.pid) return false;
+		unlinkSync(lockPath);
+		return true;
+	} catch {
+		// Already gone, unreadable, or not ours.
+		return false;
+	}
+}
+
+/**
+ * Force an immediate exit if a second stop signal arrives while the first is
+ * still being handled, so a shutdown that hangs cannot trap the user at the
+ * terminal. The first signal is left entirely to the application's own
+ * shutdown hooks.
+ *
+ * Registering a listener for a signal the platform does not deliver is
+ * harmless — Windows never delivers `SIGTERM`, and `process.on` accepts it
+ * regardless — so no platform branching is needed here.
+ *
+ * @returns a disarm function, also reachable as {@link disarmForcedExit}.
+ */
+export function armForcedExitOnSecondSignal(
+	signals: readonly NodeJS.Signals[],
+): () => void {
+	let received = 0;
+	const handlers = new Map<NodeJS.Signals, () => void>();
+	for (const signal of signals) {
+		const handler = () => {
+			received += 1;
+			if (received < 2) return;
+			process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 15));
+		};
+		handlers.set(signal, handler);
+		process.on(signal, handler);
+	}
+	const disarm = () => {
+		for (const [signal, handler] of handlers) {
+			process.removeListener(signal, handler);
+		}
+		handlers.clear();
+		disarmForcedExitFn = null;
+	};
+	disarmForcedExitFn = disarm;
+	return disarm;
+}
+
+/**
+ * Disarm the forced-exit listeners. Called from the shutdown hook just before
+ * the framework re-raises the signal, so the re-raise is not mistaken for a
+ * second stop request and the process exits with the conventional code.
+ */
+export function disarmForcedExit(): void {
+	disarmForcedExitFn?.();
 }

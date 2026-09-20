@@ -7,6 +7,7 @@ import { ConfigService } from "@nestjs/config/dist/index.js";
 import { NestFactory } from "@nestjs/core";
 import {
 	acquireWorkspaceLock,
+	armForcedExitOnSecondSignal,
 	ensureAppDataDir,
 	getConfig,
 	WorkspaceLockedError,
@@ -254,6 +255,34 @@ async function bootstrap() {
 				"you reach it by in PRISMALENS_ALLOWED_HOSTS.",
 		);
 	}
+
+	/**
+	 * An ordinary stop releases the workspace lock (#605 edge 5).
+	 *
+	 * Node does not run `exit` listeners for a signal-terminated process, so
+	 * before this every Ctrl-C and every `systemctl stop` left the lock file
+	 * behind and the next boot had to reclaim it as stale. Nest's own shutdown
+	 * hooks are the path: they run `onApplicationShutdown` — where
+	 * `WorkspaceLockShutdownService` releases the lock, last, after the app has
+	 * closed — and then re-raise the signal with no listener attached, so the
+	 * process exits with the conventional 128+n code rather than 0.
+	 *
+	 * The signal list is explicit. Nest's default is all eleven of its
+	 * `ShutdownSignal` values, which includes `SIGILL`, `SIGBUS`, `SIGFPE` and
+	 * `SIGSEGV` — signals a process should not be catching. `SIGBREAK` is
+	 * Windows' Ctrl-Break; `SIGTERM` is never delivered there but registering
+	 * for it is harmless, so there is no platform branch beyond that.
+	 */
+	const stopSignals: NodeJS.Signals[] = [
+		"SIGTERM",
+		"SIGINT",
+		...(process.platform === "win32" ? (["SIGBREAK"] as const) : []),
+	];
+	app.enableShutdownHooks(stopSignals);
+	// A second signal while the first is still being handled exits immediately,
+	// so a shutdown that hangs cannot trap someone at the terminal. Disarmed by
+	// the shutdown hook just before Nest re-raises.
+	armForcedExitOnSecondSignal(stopSignals);
 
 	// Catch EADDRINUSE to print a clear error and exit 1 without stack trace (#237).
 	try {
