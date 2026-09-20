@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ExportReportButton } from "./ExportReportButton";
 import { PriorityBadge } from "./investigation.utils";
+import { PostToGitHubButton } from "./PostToGitHubButton";
 
 interface AnalysisTabProps {
 	investigation: InvestigationWithRelations;
@@ -249,7 +250,10 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 								<SandboxBadge sandbox={report.fidelity.sandbox} />
 							)}
 							{report && (
-								<ExportReportButton investigationId={investigation.id} />
+								<>
+									<ExportReportButton investigationId={investigation.id} />
+									<PostToGitHubButton investigationId={investigation.id} />
+								</>
 							)}
 						</div>
 					</div>
