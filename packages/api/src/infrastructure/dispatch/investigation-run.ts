@@ -31,10 +31,12 @@ import type {
 import {
 	conductRun,
 	type InvestigationSink,
+	type ResolvedConnector,
 	resolveSandbox,
 	SANDBOX_MODES,
 	type Sandbox,
 	type SandboxMode,
+	telemetryEndpointsFrom,
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
@@ -147,9 +149,24 @@ async function runJobInternal(
 		} catch {
 			incident = null;
 		}
-		const context = assembleInvestigationContext(incident, data);
+		let connectors: ResolvedConnector[] = [];
+		try {
+			const serviceId =
+				typeof incident?.serviceId === "string"
+					? incident.serviceId
+					: undefined;
+			connectors = await ports.resolveConnectors(serviceId);
+		} catch (e) {
+			logger.warn("Could not resolve connectors for investigation", e);
+			connectors = [];
+		}
+		const context = await assembleInvestigationContext(
+			incident,
+			data,
+			connectors,
+		);
 		const workspace = await resolveWorkspace(data, ports, io.signal);
-		await recordWorkspace(data, workspace, ports);
+		await recordWorkspace(data, workspace, ports, context);
 
 		const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
 		const sandboxSelection = await resolveSandbox(sandboxMode, {
@@ -360,8 +377,35 @@ async function recordWorkspace(
 	data: InvestigationJobData,
 	ws: Workspace,
 	ports: RunPorts,
+	context?: InvestigationContext,
 ): Promise<void> {
 	try {
+		const promHost = context?.telemetry?.prometheusUrl
+			? (() => {
+					try {
+						return new URL(context.telemetry.prometheusUrl).hostname;
+					} catch {
+						return undefined;
+					}
+				})()
+			: undefined;
+		const amHost = context?.telemetry?.alertmanagerUrl
+			? (() => {
+					try {
+						return new URL(context.telemetry.alertmanagerUrl).hostname;
+					} catch {
+						return undefined;
+					}
+				})()
+			: undefined;
+		const telemetry =
+			promHost || amHost
+				? {
+						...(promHost ? { prometheus: promHost } : {}),
+						...(amHost ? { alertmanager: amHost } : {}),
+					}
+				: undefined;
+
 		await ports.createTimelineEntry({
 			incidentId: data.incidentId,
 			type: "investigation_started",
@@ -376,6 +420,7 @@ async function recordWorkspace(
 				mapped: ws.mapped,
 				...(ws.repo ? { repo: ws.repo.url } : {}),
 				...(ws.head ? { head: ws.head } : {}),
+				...(telemetry ? { telemetry } : {}),
 			},
 		});
 	} catch (e) {
@@ -454,10 +499,11 @@ function probeUrl(context: InvestigationContext): string | undefined {
 	return undefined;
 }
 
-function assembleInvestigationContext(
+async function assembleInvestigationContext(
 	incident: Record<string, unknown> | null,
 	data: InvestigationJobData,
-): InvestigationContext {
+	connectors: ResolvedConnector[] = [],
+): Promise<InvestigationContext> {
 	const rawAlerts = (
 		data.alerts && data.alerts.length > 0
 			? data.alerts
@@ -472,7 +518,8 @@ function assembleInvestigationContext(
 		| { name?: string; tier?: string }
 		| null
 		| undefined;
-	return correlatedAlertsContext(firingAlerts, undefined, {
+	const telemetry = telemetryEndpointsFrom(connectors);
+	return correlatedAlertsContext(firingAlerts, telemetry, {
 		incident: incident ? incidentMeta(incident) : undefined,
 		...(service?.name
 			? {

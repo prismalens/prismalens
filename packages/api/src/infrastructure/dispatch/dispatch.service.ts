@@ -27,6 +27,7 @@ import {
 } from "../../core/telemetry/telemetry.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
+import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
@@ -72,6 +73,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly connectorResolver: ConnectorResolverService,
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
 	) {
@@ -167,6 +169,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;
 			},
+			resolveConnectors: (serviceId) =>
+				this.connectorResolver.resolve({ serviceId }),
 		};
 
 		this.dispatcher = new Dispatcher(

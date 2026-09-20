@@ -21,13 +21,17 @@ const CANCELLED_MESSAGE = "investigation cancelled by request";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
-vi.mock("@prismalens/engine", () => ({
-	conductRun: mocks.conductRun,
-	resolveSandbox: vi.fn(() => ({
-		sandbox: { destroy: vi.fn(async () => {}) },
-	})),
-	SANDBOX_MODES: ["process", "auto", "srt", "e2b"],
-}));
+vi.mock("@prismalens/engine", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@prismalens/engine")>();
+	return {
+		...actual,
+		conductRun: mocks.conductRun,
+		resolveSandbox: vi.fn(() => ({
+			sandbox: { destroy: vi.fn(async () => {}) },
+		})),
+		SANDBOX_MODES: ["process", "auto", "srt", "e2b"],
+	};
+});
 
 vi.mock("@prismalens/logger", () => ({
 	Logger: vi.fn(function MockLogger() {
@@ -78,6 +82,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		incidentRepos: vi.fn(async () => []),
 		repoToken: vi.fn(async () => null),
 		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
+		resolveConnectors: vi.fn(async () => []),
 		...overrides,
 	};
 }
