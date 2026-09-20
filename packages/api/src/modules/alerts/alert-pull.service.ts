@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import {
+	forwardRef,
+	Inject,
+	Injectable,
+	Logger,
+	OnApplicationBootstrap,
+} from "@nestjs/common";
 import type { PrometheusAlert } from "@prismalens/contracts";
 import {
 	PrometheusMetricsSegment,
@@ -37,7 +43,7 @@ export const ALERT_PULL_SETTING_KEY = "ALERT_PULL";
 export const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
-export class AlertPullService {
+export class AlertPullService implements OnApplicationBootstrap {
 	private readonly logger = new Logger(AlertPullService.name);
 
 	constructor(
@@ -47,6 +53,27 @@ export class AlertPullService {
 		@Inject(forwardRef(() => WebhooksService))
 		private readonly webhooksService: WebhooksService,
 	) {}
+
+	/**
+	 * Pull once on boot, fire-and-forget (#605). Never awaited and never blocks
+	 * Nest's bootstrap: a slow or unreachable Alertmanager/Prometheus must not
+	 * delay the app coming up. Skipped under CI and under the seeded e2e stack
+	 * (`PRISMALENS_SEED_DEMO=1`) so tests never depend on network access.
+	 */
+	onApplicationBootstrap(): void {
+		if (process.env.CI || process.env.PRISMALENS_SEED_DEMO === "1") {
+			return;
+		}
+		void this.pull()
+			.then((result) => {
+				this.logger.log(
+					`Boot pull: ${result.sources} source(s), ${result.received} received, ${result.processed} new, ${result.caughtUp} caught up, ${result.errors.length} error(s)`,
+				);
+			})
+			.catch((err) => {
+				this.logger.error(`Boot pull failed: ${err}`);
+			});
+	}
 
 	/**
 	 * Compute the catch-up window start time `since` based on the ALERT_PULL setting.

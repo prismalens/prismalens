@@ -5,16 +5,19 @@ import type { AlertStatus, Severity } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
+	Link,
 	useNavigate,
 	useSearch,
 } from "@tanstack/react-router";
-import { RefreshCw } from "lucide-react";
+import { CloudDownload, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { AlertFilters, AlertsTable } from "@/components/alerts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
 
 type AlertsTab = "all" | "unmapped";
 const ALERTS_TABS: AlertsTab[] = ["all", "unmapped"];
@@ -32,6 +35,7 @@ function AlertsPage() {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate({ from: "/alerts/" });
 	const { tab = "all" } = useSearch({ from: "/_authenticated/alerts/" });
+	const { toast } = useToast();
 	const [statusFilter, setStatusFilter] = useState<AlertStatus | "all">("all");
 	const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
 
@@ -78,6 +82,44 @@ function AlertsPage() {
 		},
 	});
 
+	// Pull mutation: fetch firing alerts from Alertmanager, catch up from Prometheus (#605)
+	const pullMutation = useMutation({
+		...orpc.alerts.pull.mutationOptions(),
+		onSuccess: (result) => {
+			if (result.sources === 0) {
+				toast({
+					title: "No Alertmanager or Prometheus connection is configured",
+					description: (
+						<Link to="/settings" search={{ tab: "integrations" }}>
+							Add a connection under Settings → Integrations
+						</Link>
+					),
+				});
+				return;
+			}
+			toast({
+				title: `Pulled ${result.received} alerts, ${result.processed} new, ${result.caughtUp} caught up`,
+				description:
+					result.errors.length > 0 ? (
+						<ul className="list-disc pl-4">
+							{result.errors.map((error) => (
+								<li key={error}>{error}</li>
+							))}
+						</ul>
+					) : undefined,
+				variant: result.errors.length > 0 ? "destructive" : undefined,
+			});
+			queryClient.invalidateQueries({ queryKey: alertKeys.all() });
+		},
+		onError: (error) => {
+			toast({
+				title: "Pull failed",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			});
+		},
+	});
+
 	const handleAcknowledge = (alertId: string) => {
 		acknowledgeMutation.mutate({ id: alertId });
 	};
@@ -101,17 +143,31 @@ function AlertsPage() {
 						Monitor and manage incoming alerts
 					</p>
 				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={() => refetch()}
-					disabled={isRefetching}
-				>
-					<RefreshCw
-						className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
-					/>
-					Refresh
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						data-testid="alerts-pull"
+						onClick={() => pullMutation.mutate({})}
+						disabled={pullMutation.isPending}
+					>
+						<CloudDownload
+							className={`h-4 w-4 mr-2 ${pullMutation.isPending ? "animate-pulse" : ""}`}
+						/>
+						Pull from Alertmanager
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => refetch()}
+						disabled={isRefetching}
+					>
+						<RefreshCw
+							className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
+						/>
+						Refresh
+					</Button>
+				</div>
 			</div>
 
 			{/* Stats Summary */}

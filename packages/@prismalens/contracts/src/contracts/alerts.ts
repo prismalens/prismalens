@@ -16,6 +16,7 @@ import {
 	CorrelateAlertResponseSchema,
 	CreateAlertSchema,
 	IdParamSchema,
+	PullResultSchema,
 	paginatedResponseSchema,
 	UpdateAlertSchema,
 } from "../schemas/index.js";
@@ -177,4 +178,19 @@ export const alertsContract = {
 		})
 		.input(IdParamSchema)
 		.output(z.void()),
+
+	/**
+	 * Pull firing alerts from Alertmanager and catch up from Prometheus
+	 * POST /alerts/pull
+	 */
+	pull: oc
+		.route({
+			method: "POST",
+			path: "/alerts/pull",
+			summary:
+				"Pull firing alerts from Alertmanager and catch up from Prometheus",
+			tags: ["alerts"],
+		})
+		.input(z.object({}))
+		.output(PullResultSchema),
 };
