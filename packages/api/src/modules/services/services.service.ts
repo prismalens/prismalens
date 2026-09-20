@@ -5,7 +5,6 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { Service, ServiceDependency } from "@prismalens/database";
 import { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import {
 	AddDependencyDto,
 	CreateServiceDto,
@@ -23,10 +22,7 @@ export type ServiceWithDependencies = Service & {
 export class ServicesService {
 	private readonly logger = new Logger(ServicesService.name);
 
-	constructor(
-		private readonly prisma: PrismaService,
-		private readonly telemetry: TelemetryService,
-	) {}
+	constructor(private readonly prisma: PrismaService) {}
 
 	/**
 	 * Create a new service in the catalog
@@ -47,7 +43,6 @@ export class ServicesService {
 		});
 
 		this.logger.log(`Created service ${service.id}: ${service.name}`);
-		await this.telemetry.capture("service_added", {});
 		return service;
 	}
 

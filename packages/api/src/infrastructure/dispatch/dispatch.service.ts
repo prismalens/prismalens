@@ -21,7 +21,10 @@ import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import {
+	TelemetryService,
+	triggerFor,
+} from "../../core/telemetry/telemetry.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
@@ -183,23 +186,34 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 
 	/** Opt-in telemetry (#602): a run starting, and its one terminal state. */
 	private async reportStatus(id: string, status: string): Promise<void> {
+		const terminal =
+			status === "completed" || status === "failed" || status === "cancelled";
+		if (status !== "running" && !terminal) return;
+		// The harness lookup scans PATH and the row read is an extra query, so
+		// neither happens unless something would actually be sent.
+		if (!(await this.telemetry.isEnabled())) return;
+
+		const investigation = await this.investigationsService
+			.findById(id)
+			.catch(() => null);
+
 		if (status === "running") {
-			// The harness lookup scans PATH, so it only happens when something
-			// would actually be sent.
-			if (!(await this.telemetry.isEnabled())) return;
 			const selection = await this.harnessService
 				.resolveSelection()
 				.catch(() => null);
 			await this.telemetry.capture("investigation_started", {
 				harness: selection?.runnable ? selection.harness : null,
+				trigger: triggerFor(investigation?.triggerType),
 			});
-		} else if (
-			status === "completed" ||
-			status === "failed" ||
-			status === "cancelled"
-		) {
-			await this.telemetry.captureFinished(id, status);
+			return;
 		}
+		// `startedAt` becomes a bucket and `error` becomes a class inside the
+		// service; neither the duration nor the message leaves this process.
+		await this.telemetry.captureFinished(
+			id,
+			status as "completed" | "failed" | "cancelled",
+			{ startedAt: investigation?.startedAt, error: investigation?.error },
+		);
 	}
 
 	async onModuleInit(): Promise<void> {

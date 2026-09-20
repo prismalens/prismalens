@@ -12,6 +12,7 @@ import type {
 } from "@prismalens/contracts";
 import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -44,6 +45,7 @@ export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
+		private readonly telemetry: TelemetryService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -89,6 +91,12 @@ export class InvestigationsController {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Investigation ${input.id} not found`,
 					});
+				}
+				// The report page polls this route, so the event is deduplicated per
+				// investigation rather than sent per request, and only once a report
+				// actually exists to look at.
+				if (investigation.report) {
+					await this.telemetry.captureReportViewed(investigation.id);
 				}
 				return this.serializeInvestigationWithRelations(investigation);
 			}),

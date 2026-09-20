@@ -50,9 +50,13 @@ test.describe("#602 — opt-in telemetry", () => {
 		await page.goto("/incidents");
 		const consent = page.getByTestId("telemetry-consent");
 		await expect(consent).toBeVisible({ timeout: 15_000 });
-		// It says what it sends, and what it does not.
-		await expect(consent).toContainText("random install id");
-		await expect(consent).toContainText("No alert text");
+		// The one-line summary says what it is and what it never carries; the
+		// full disclosure lives in Settings, asserted below.
+		await expect(consent).toContainText("Anonymous usage data");
+		await expect(consent).toContainText(
+			"never the content of an alert, a repository or a report",
+		);
+		await expect(consent).toContainText("Nothing is sent unless you say yes");
 
 		await consent.getByRole("button", { name: "Share usage data" }).click();
 
@@ -102,7 +106,7 @@ test.describe("#602 — opt-in telemetry", () => {
 		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
 	});
 
-	test("Settings → Usage data carries the same disclosure and the toggle", async ({
+	test("Settings → Usage data carries the full disclosure and the toggle", async ({
 		page,
 	}) => {
 		await serveTelemetry(page, {
@@ -114,7 +118,17 @@ test.describe("#602 — opt-in telemetry", () => {
 		await page.goto("/settings?tab=usage");
 		const checkbox = page.getByLabel("Share anonymous usage data");
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByText("random install id")).toBeVisible();
+		// Each thing the disclosure has to name (#602): what is sent, that the
+		// id is stable and pseudonymous, the basis, the retention, the withdrawal.
+		await expect(page.getByText("What is sent")).toBeVisible();
+		await expect(page.getByText("An install id:")).toBeVisible();
+		await expect(page.getByText("Never sent:")).toBeVisible();
+		await expect(
+			page.getByText("pseudonymous rather than anonymous"),
+		).toBeVisible();
+		await expect(page.getByText("your consent")).toHaveCount(2);
+		await expect(page.getByText("kept for 12 months")).toBeVisible();
+		await expect(page.getByText("withdraws consent")).toBeVisible();
 		await expect(checkbox).not.toBeChecked();
 	});
 });

@@ -21,9 +21,11 @@ import consola from "consola";
 import {
 	displayUrl,
 	healthUrl,
+	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
+	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
 
@@ -171,6 +173,11 @@ export default defineCommand({
 		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
+			// One pointer at Settings, never a prompt: consent is an owner
+			// decision and the CLI has no way to take it (#602, ADR 0005).
+			if ((await readTelemetryState(healthUrl(bind))) === "undecided") {
+				consola.info(TELEMETRY_CONSENT_NOTICE);
+			}
 		} else {
 			consola.warn(
 				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,
