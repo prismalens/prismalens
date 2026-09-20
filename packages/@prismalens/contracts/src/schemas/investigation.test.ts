@@ -2,11 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Hermetic parse round-trip for the structured honest-fidelity sandbox field
- * (ADR-0017 honest fidelity + ADR-0020 Sandbox port, B.1.1 follow-up):
- * `RunFidelitySchema.sandbox` is ADDITIVE — a run with no boundary wired must
- * still parse, and a run with one wired must round-trip losslessly. No
- * network/LLM.
+ * Hermetic parse tests for investigation schemas. No network/LLM.
  *
  * Also covers the context-pack contract (ADR-0016 §5): the pack is optional on
  * `InvestigationContext` (every pre-pack context still parses), its hard `.max()`
@@ -24,63 +20,19 @@ import {
 	toFiringAlert,
 } from "./investigation.js";
 
-describe("RunFidelitySchema (ADR-0017/ADR-0020 sandbox field)", () => {
-	it("parses without a sandbox (no boundary wired — e.g. the in-process harness)", () => {
-		const input = {
-			harness: "claude-code",
+describe("RunFidelitySchema", () => {
+	it("parses a fidelity record with placement and model, and strips a legacy sandbox key", () => {
+		const parsed = RunFidelitySchema.parse({
+			harness: "opencode",
 			mode: "read-only",
 			fidelity: "cooperative",
 			mechanism: "native permission flags",
-		};
-		const parsed = RunFidelitySchema.parse(input);
-		expect(parsed.sandbox).toBeUndefined();
-		expect(parsed).toEqual(input);
-	});
-
-	it("round-trips with a sandbox — requested === actual (no degrade)", () => {
-		const input = {
-			harness: "deepagents",
-			mode: "read-only",
-			fidelity: "cooperative",
-			mechanism:
-				"native permission flags · sandbox=process-floor (cooperative)",
-			sandbox: {
-				requested: "process",
-				actual: "process-floor",
-				fidelity: "cooperative",
-			},
-		};
-		const parsed = RunFidelitySchema.parse(input);
-		expect(parsed).toEqual(input);
-	});
-
-	it("round-trips with a sandbox — requested !== actual (the auto-degrade case)", () => {
-		const input = {
-			harness: "deepagents",
-			mode: "read-only",
-			fidelity: "cooperative",
-			mechanism:
-				"native permission flags · sandbox=process-floor (cooperative)",
-			sandbox: {
-				requested: "auto",
-				actual: "process-floor",
-				fidelity: "cooperative",
-			},
-		};
-		const parsed = RunFidelitySchema.parse(input);
-		expect(parsed).toEqual(input);
-		expect(parsed.sandbox?.requested).not.toBe(parsed.sandbox?.actual);
-	});
-
-	it("rejects an unknown sandbox.fidelity value (only enforced|cooperative — no 'advisory')", () => {
-		const input = {
-			harness: "deepagents",
-			mode: "read-only",
-			fidelity: "cooperative",
-			mechanism: "x",
-			sandbox: { requested: "auto", actual: "srt", fidelity: "advisory" },
-		};
-		expect(() => RunFidelitySchema.parse(input)).toThrow();
+			placement: "laptop",
+			model: "opencode/muse-spark-1.3-contributor-free",
+			sandbox: { requested: "auto", actual: "process-floor", fidelity: "cooperative" },
+		});
+		expect(parsed.placement).toBe("laptop");
+		expect("sandbox" in parsed).toBe(false);
 	});
 });
 

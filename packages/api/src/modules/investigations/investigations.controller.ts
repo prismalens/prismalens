@@ -168,7 +168,7 @@ export class InvestigationsController {
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
 			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
 			//     that holds the claim forwards it to the run's child, which aborts, tears
-			//     down the harness/sandbox, and owns the terminal "cancelled" write. The
+			//     down the harness, and owns the terminal "cancelled" write. The
 			//     bus has no retention, so the publish is only a cancel if someone RECEIVED
 			//     it — zero receivers after the grace retries means nobody holds the run
 			//     (a crashed child, a stuck record) and nobody else will ever write the

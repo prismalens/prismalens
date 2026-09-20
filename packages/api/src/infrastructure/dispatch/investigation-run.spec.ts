@@ -3,9 +3,8 @@
 
 /**
  * Hermetic tests for the one-ACP-run-per-investigation job (0005 §2, ADR 0002/0004):
- * `parseSandboxMode`, `deriveAllowedHosts` (the egress allowlist), `resolveWorkspace`
- * (the per-investigation clone under the app-data dir — ADR 0004 §2, no user checkout
- * as cwd), and `runInvestigationJob`'s schema-validation/failure-persistence paths.
+ * `resolveWorkspace` (the per-investigation clone under the app-data dir — ADR 0004 §2,
+ * no user checkout as cwd), and `runInvestigationJob`'s schema-validation/failure-persistence paths.
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
@@ -21,10 +20,6 @@ const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
 vi.mock("@prismalens/engine", () => ({
 	conductRun: mocks.conductRun,
-	resolveSandbox: vi.fn(() => ({
-		sandbox: { destroy: vi.fn(async () => {}) },
-	})),
-	SANDBOX_MODES: ["process", "auto", "srt", "e2b"],
 }));
 
 vi.mock("@prismalens/logger", () => ({
@@ -39,8 +34,6 @@ vi.mock("@prismalens/logger/standalone", () => ({
 }));
 
 const {
-	parseSandboxMode,
-	deriveAllowedHosts,
 	resolveWorkspace,
 	runDirFor,
 	default: runInvestigationJob,
@@ -65,71 +58,6 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		...overrides,
 	};
 }
-
-describe("parseSandboxMode (PRISMALENS_SANDBOX knob, ADR-0020 B.1.3)", () => {
-	it("defaults to auto when unset (B.1.1 egress-gate flip)", () => {
-		expect(parseSandboxMode(undefined)).toBe("auto");
-	});
-
-	it("accepts every selectable mode", () => {
-		expect(parseSandboxMode("process")).toBe("process");
-		expect(parseSandboxMode("auto")).toBe("auto");
-		expect(parseSandboxMode("srt")).toBe("srt");
-		expect(parseSandboxMode("e2b")).toBe("e2b");
-	});
-
-	it("rejects an unknown value loudly (never silently degrades)", () => {
-		expect(() => parseSandboxMode("docker")).toThrowError(
-			/Invalid PRISMALENS_SANDBOX/,
-		);
-	});
-});
-
-describe("deriveAllowedHosts (egress allowlist, ADR-0020)", () => {
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
-
-	it("includes hostnames from the context's telemetry and logs URLs", () => {
-		const hosts = deriveAllowedHosts({
-			alerts: [],
-			telemetry: {
-				prometheusUrl: "http://prometheus.internal:9090",
-				alertmanagerUrl: "http://alertmanager.internal:9093",
-			},
-			logs: { url: "http://loki.internal:3100" },
-		} as never);
-		expect(hosts).toContain("prometheus.internal");
-		expect(hosts).toContain("alertmanager.internal");
-		expect(hosts).toContain("loki.internal");
-	});
-
-	it("folds PRISMALENS_SANDBOX_ALLOWED_HOSTS (comma-separated) in too", () => {
-		vi.stubEnv("PRISMALENS_SANDBOX_ALLOWED_HOSTS", "api.example.com, other.example.com");
-		const hosts = deriveAllowedHosts({ alerts: [] } as never);
-		expect(hosts).toContain("api.example.com");
-		expect(hosts).toContain("other.example.com");
-	});
-
-	it("skips an unparseable telemetry URL rather than opening egress", () => {
-		const hosts = deriveAllowedHosts({
-			alerts: [],
-			telemetry: { prometheusUrl: "not a url" },
-		} as never);
-		expect(hosts).not.toContain("not a url");
-	});
-
-	it("dedupes hosts named more than once", () => {
-		const hosts = deriveAllowedHosts({
-			alerts: [],
-			telemetry: {
-				prometheusUrl: "http://shared.internal:9090",
-				alertmanagerUrl: "http://shared.internal:9093",
-			},
-		} as never);
-		expect(new Set(hosts).size).toBe(hosts.length);
-	});
-});
 
 /**
  * ADR 0004 §2: the harness runs in a fresh snapshot of prismalens's own repo,
