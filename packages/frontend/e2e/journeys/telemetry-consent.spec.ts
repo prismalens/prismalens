@@ -120,13 +120,20 @@ test.describe("#602 — opt-in telemetry", () => {
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
 		// Each thing the disclosure has to name (#602): what is sent, that the
 		// id is stable and pseudonymous, the basis, the retention, the withdrawal.
-		await expect(page.getByText("What is sent")).toBeVisible();
+		// Exact, because "what is sent" also appears inside the "Never sent"
+		// paragraph and a substring match would resolve to both.
+		await expect(
+			page.getByText("What is sent", { exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByText("The install id, and your consent", { exact: true }),
+		).toBeVisible();
 		await expect(page.getByText("An install id:")).toBeVisible();
 		await expect(page.getByText("Never sent:")).toBeVisible();
 		await expect(
 			page.getByText("pseudonymous rather than anonymous"),
 		).toBeVisible();
-		await expect(page.getByText("your consent")).toHaveCount(2);
+		await expect(page.getByText("is the only basis")).toBeVisible();
 		await expect(page.getByText("kept for 12 months")).toBeVisible();
 		await expect(page.getByText("withdraws consent")).toBeVisible();
 		await expect(checkbox).not.toBeChecked();
