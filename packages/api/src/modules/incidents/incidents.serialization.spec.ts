@@ -18,6 +18,7 @@ import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { TimelineService } from "../timeline/timeline.service.js";
 import { IncidentsController } from "./incidents.controller.js";
 import { IncidentsService } from "./incidents.service.js";
+import { telemetryStub } from "../../../test/factories/index.js";
 
 // Captured verbatim from a live `prisma.incident.findMany(...)` against a
 // freshly migrated + auto-seeded (#315) SQLite database. Every column the
@@ -147,6 +148,7 @@ describe("incidents query shape", () => {
 		const service = new IncidentsService(
 			prisma,
 			{} as unknown as TimelineService,
+			telemetryStub(),
 		);
 		return { service, calls };
 	}

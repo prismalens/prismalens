@@ -3,3 +3,4 @@
 
 export { AlertFactory } from "./alert.factory.js";
 export { RecommendationFactory } from "./recommendation.factory.js";
+export { telemetryStub } from "./telemetry.factory.js";

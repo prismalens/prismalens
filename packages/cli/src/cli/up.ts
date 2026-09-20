@@ -22,9 +22,11 @@ import { cliVersion } from "../version.js";
 import {
 	displayUrl,
 	healthUrl,
+	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
+	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
 import { updateNotice } from "./update-notice.js";
@@ -99,6 +101,11 @@ export default defineCommand({
 			description:
 				"Stream every log record to the terminal as well as the log file (default: warnings and errors only)",
 		},
+		telemetry: {
+			type: "string",
+			description:
+				"`off` disables opt-in usage telemetry for this run whatever Settings says (or PRISMALENS_TELEMETRY=off)",
+		},
 	},
 	async run({ args }) {
 		const app = resolvePackagedApi();
@@ -110,6 +117,13 @@ export default defineCommand({
 		if (args.host) process.env.PRISMALENS_HOST = String(args.host);
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
+		}
+		if (args.telemetry !== undefined) {
+			if (String(args.telemetry) !== "off") {
+				consola.error("--telemetry takes only `off`; turn it on in Settings.");
+				process.exit(1);
+			}
+			process.env.PRISMALENS_TELEMETRY = "off";
 		}
 		process.env.PRISMALENS_STATIC_DIR = app.staticDir;
 		process.env.PRISMALENS_LOG_CONSOLE = resolveConsoleMode(
@@ -175,6 +189,11 @@ export default defineCommand({
 		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
+			// One pointer at Settings, never a prompt: consent is an owner
+			// decision and the CLI has no way to take it (#602, ADR 0005).
+			if ((await readTelemetryState(healthUrl(bind))) === "undecided") {
+				consola.info(TELEMETRY_CONSENT_NOTICE);
+			}
 		} else {
 			consola.warn(
 				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,

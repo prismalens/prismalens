@@ -6,6 +6,7 @@ import { Throttle } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { Severity } from "../../shared/enums/index.js";
 import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
@@ -23,7 +24,10 @@ import { WebhookResult, WebhooksService } from "./webhooks.service.js";
 export class WebhooksController {
 	private readonly logger = new Logger(WebhooksController.name);
 
-	constructor(private readonly webhooksService: WebhooksService) {}
+	constructor(
+		private readonly webhooksService: WebhooksService,
+		private readonly telemetry: TelemetryService,
+	) {}
 
 	@Implement({
 		generic: webhooksContract.generic,
@@ -35,6 +39,7 @@ export class WebhooksController {
 			generic: implement(webhooksContract.generic).handler(
 				async ({ input, context }) => {
 					this.logger.log("Received generic webhook");
+					await this.telemetry.captureFirstWebhook("generic");
 					const idempotencyKey = this.idempotencyKeyFrom(context);
 
 					const result = await this.webhooksService.processGenericWebhook(
@@ -52,6 +57,9 @@ export class WebhooksController {
 					this.logger.log(
 						`Received Prometheus webhook with ${input.alerts?.length ?? 0} alerts`,
 					);
+					// Once per install, ever — never the alert, never per alert, and
+					// never a timestamp that would leak this install's alert cadence.
+					await this.telemetry.captureFirstWebhook("prometheus");
 					const idempotencyKey = this.idempotencyKeyFrom(context);
 
 					// Process each Prometheus alert through the generic webhook handler.
@@ -151,6 +159,7 @@ export class WebhooksController {
 		return implement(webhooksContract.render).handler(
 			async ({ input, context }) => {
 				this.logger.log("Received Render webhook");
+				await this.telemetry.captureFirstWebhook("render");
 				const idempotencyKey = this.idempotencyKeyFrom(context);
 
 				const result = await this.webhooksService.processRenderWebhook(

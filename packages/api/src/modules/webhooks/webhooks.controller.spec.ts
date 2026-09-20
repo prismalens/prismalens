@@ -9,6 +9,7 @@ import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
 import { WebhookThrottleGuard } from "./webhook-throttle.guard.js";
 import { WebhooksController } from "./webhooks.controller.js";
 import type { WebhooksService } from "./webhooks.service.js";
+import { telemetryStub } from "../../../test/factories/index.js";
 
 describe("WebhooksController guards (#637 edge 9)", () => {
 	it("rate-limits before authenticating", () => {
@@ -37,7 +38,10 @@ describe("WebhooksController guards (#637 edge 9)", () => {
 
 describe("WebhooksController Prometheus intake (#633 edge 10)", () => {
 	function prometheusHandler(service: Partial<WebhooksService>) {
-		const controller = new WebhooksController(service as WebhooksService);
+		const controller = new WebhooksController(
+			service as WebhooksService,
+			telemetryStub(),
+		);
 		const procs = controller.webhooks() as unknown as Record<
 			string,
 			{ "~orpc": { handler: (a: { input: unknown; context: unknown }) => Promise<unknown> } }
