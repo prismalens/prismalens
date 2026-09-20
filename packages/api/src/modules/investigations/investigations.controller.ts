@@ -10,8 +10,14 @@ import type {
 	RootCauseCategory,
 	WorkflowStatus,
 } from "@prismalens/contracts";
-import { investigationsContract, OverlaySchema } from "@prismalens/contracts";
+import {
+	InvestigationReportSchema,
+	investigationsContract,
+	OverlaySchema,
+} from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
+import { ResetInProgressError } from "../../core/settings/settings.service.js";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -23,6 +29,7 @@ import {
 	InvestigationsService,
 	type InvestigationWithRelations,
 } from "./investigations.service.js";
+import { reportFilename, reportToMarkdown } from "./report-markdown.js";
 
 /** Statuses a run cannot be cancelled from — it has already stopped. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -44,6 +51,7 @@ export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
+		private readonly telemetry: TelemetryService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -52,9 +60,16 @@ export class InvestigationsController {
 			// POST /investigations - Create a new investigation
 			create: implement(investigationsContract.create).handler(
 				async ({ input }) => {
-					const { investigation } =
-						await this.investigationsService.startOrGet(input);
-					return this.serializeInvestigation(investigation);
+					try {
+						const { investigation } =
+							await this.investigationsService.startOrGet(input);
+						return this.serializeInvestigation(investigation);
+					} catch (error) {
+						if (error instanceof ResetInProgressError) {
+							throw new ORPCError("CONFLICT", { message: error.message });
+						}
+						throw error;
+					}
 				},
 			),
 
@@ -89,6 +104,12 @@ export class InvestigationsController {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Investigation ${input.id} not found`,
 					});
+				}
+				// The report page polls this route, so the event is deduplicated per
+				// investigation rather than sent per request, and only once a report
+				// actually exists to look at.
+				if (investigation.report) {
+					await this.telemetry.captureReportViewed(investigation.id);
 				}
 				return this.serializeInvestigationWithRelations(investigation);
 			}),
@@ -236,6 +257,40 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/report.md - Report as Markdown (#606)
+			exportMarkdown: implement(investigationsContract.exportMarkdown).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					// Validated, not cast: a persisted report that no longer matches
+					// the schema must read as "no report", not throw inside the
+					// renderer when it reaches hypotheses or coverage.
+					const parsed = InvestigationReportSchema.safeParse(
+						safeParseJsonObject(investigation?.report),
+					);
+					const report = parsed.success ? parsed.data : null;
+					if (!investigation?.incident || !report) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} has no report`,
+						});
+					}
+					// That a report left the app, and by which route. No filename,
+					// no incident number, no content (#602).
+					await this.telemetry.capture("report_exported", {
+						target: "markdown",
+					});
+					return {
+						filename: reportFilename(investigation.incident.number),
+						markdown: reportToMarkdown({
+							incident: investigation.incident,
+							report,
+							completedAt: investigation.completedAt,
+						}),
+					};
+				},
+			),
+
 			// POST /investigations/:id/result - Write result (Worker)
 			writeResult: implement(investigationsContract.writeResult).handler(
 				async ({ input }) => {
@@ -278,11 +333,31 @@ export class InvestigationsController {
 		};
 	}
 
+	/**
+	 * An overlay degrades section by section, not all at once.
+	 *
+	 * `similarIncidents` changed shape in #338 (`score`/`factors` became
+	 * `rank`/`matchedOn`/`actualCause`), so every overlay written by an earlier
+	 * build fails `OverlaySchema`. Returning null for the whole object would
+	 * also drop `matchedChanges` and `serviceProximity`, which did not change —
+	 * and nothing would bring them back, because `computeOverlay` runs only when
+	 * an investigation *completes*. An investigation that finished before the
+	 * upgrade never completes again, so its Analysis tab would be permanently
+	 * empty rather than briefly stale. 0.5.0 is published, so those rows exist.
+	 *
+	 * Dropping just the stale section keeps the rest and lets the similar list
+	 * fill in on the next investigation that computes one.
+	 */
 	private parseOverlay(raw: Investigation["overlay"]) {
 		const obj = safeParseJsonObject(raw);
 		if (!obj) return null;
 		const parsed = OverlaySchema.safeParse(obj);
-		return parsed.success ? parsed.data : null;
+		if (parsed.success) return parsed.data;
+		const withoutSimilar = OverlaySchema.safeParse({
+			...obj,
+			similarIncidents: [],
+		});
+		return withoutSimilar.success ? withoutSimilar.data : null;
 	}
 
 	private serializeInvestigation(investigation: Investigation) {

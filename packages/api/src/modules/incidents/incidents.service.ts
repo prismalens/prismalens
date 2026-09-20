@@ -4,6 +4,7 @@
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
@@ -42,6 +43,7 @@ export class IncidentsService {
 		private readonly prisma: PrismaService,
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
+		private readonly telemetry: TelemetryService,
 	) {}
 
 	/**
@@ -237,7 +239,10 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
-				if (dto.status === "resolved" && !existing.resolvedAt) {
+				if (
+					(dto.status === "resolved" || dto.status === "closed") &&
+					!existing.resolvedAt
+				) {
 					updateData.resolvedAt = new Date();
 					updateData.timeToResolve = Math.floor(
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
@@ -408,8 +413,27 @@ export class IncidentsService {
 	/**
 	 * Close an incident (after postmortem)
 	 */
-	async close(id: string): Promise<Incident | null> {
-		return this.update(id, { status: "closed" });
+	async close(
+		id: string,
+		cause: { actualCause?: string; actualCauseCategory?: string } = {},
+	): Promise<Incident | null> {
+		// One update, not two (#667 review). Closing and recording the cause used
+		// to be separate writes, so a failure between them left the incident
+		// closed with the cause silently dropped while the API reported failure —
+		// the one outcome the operator cannot tell from the UI. `update` writes
+		// the status, the resolve timestamps and these fields in a single row
+		// write, so either all of it lands or none of it does.
+		const actualCause = cause.actualCause?.trim() || undefined;
+		const incident = await this.update(id, {
+			status: "closed",
+			...(actualCause ? { actualCause } : {}),
+			...(cause.actualCauseCategory
+				? { actualCauseCategory: cause.actualCauseCategory }
+				: {}),
+		});
+		// The fact that one was closed, with no identifier and no content (#602).
+		if (incident) await this.telemetry.capture("incident_closed", {});
+		return incident;
 	}
 
 	/**

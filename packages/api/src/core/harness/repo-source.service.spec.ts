@@ -29,6 +29,7 @@ import {
 	displayNameFor,
 	gitAuthEnv,
 	mirrorPathFor,
+	tokenUsernameFor,
 	RepoSourceService,
 } from "./repo-source.service.js";
 
@@ -177,6 +178,22 @@ describe("repo-source.service", () => {
 			);
 		});
 
+		it("sends each host's own token username (#634)", () => {
+			const header = (source: string) =>
+				gitAuthEnv({ kind: "url", source, token: "tok" }).GIT_CONFIG_VALUE_0;
+			const basic = (user: string) =>
+				`Authorization: Basic ${Buffer.from(`${user}:tok`).toString("base64")}`;
+			expect(header("https://gitlab.com/acme/api.git")).toBe(basic("oauth2"));
+			expect(header("https://gitlab.acme.internal/team/api.git")).toBe(basic("oauth2"));
+			expect(header("https://bitbucket.org/acme/api.git")).toBe(basic("x-token-auth"));
+			expect(header("https://github.com/acme/api.git")).toBe(basic("x-access-token"));
+		});
+
+		it("does not read a host that merely contains 'gitlab' as GitLab", () => {
+			expect(tokenUsernameFor("notgitlab.example.com")).toBe("x-access-token");
+			expect(tokenUsernameFor("GitLab.com")).toBe("oauth2");
+		});
+
 		it("sends nothing for ssh remotes or without a token", () => {
 			expect(
 				gitAuthEnv({ kind: "url", source: "git@github.com:acme/api.git", token: "tok" }),
@@ -205,6 +222,20 @@ describe("repo-source.service", () => {
 
 			expect(snap.head).toBe(head);
 			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
+		});
+
+		it("snapshot() with an aborted signal rejects with its reason and clones nothing (#605 edge 23)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			const controller = new AbortController();
+			controller.abort(new Error("cancelled"));
+
+			const service = new RepoSourceService();
+			const dest = join(tmp("pl-dest-"), "repo");
+			await expect(
+				service.snapshot({ kind: "folder", source: src }, dest, controller.signal),
+			).rejects.toThrow("cancelled");
+			expect(existsSync(dest)).toBe(false);
 		});
 
 		it("snapshot() removes repo-supplied agent config at any depth and keeps the code", async () => {

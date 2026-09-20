@@ -14,11 +14,73 @@ import {
 	HarnessesResponseSchema,
 	HarnessProbeResultSchema,
 	HarnessSettingsSchema,
+	ReportDeliverySettingsSchema,
 	ResetDataInputSchema,
+	TelemetrySettingsSchema,
 	UpdateHarnessSettingsSchema,
+	UpdateReportDeliverySchema,
+	UpdateTelemetrySettingsSchema,
 } from "../schemas/settings.js";
 
 export const settingsContract = {
+	telemetry: {
+		/**
+		 * Opt-in telemetry state (#602)
+		 * GET /settings/telemetry
+		 */
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/telemetry",
+				summary: "Get the opt-in telemetry setting",
+				tags: ["settings"],
+			})
+			.output(TelemetrySettingsSchema),
+
+		/**
+		 * Answer the telemetry question or flip the toggle
+		 * PUT /settings/telemetry
+		 */
+		update: oc
+			.route({
+				method: "PUT",
+				path: "/settings/telemetry",
+				summary: "Turn opt-in telemetry on or off",
+				tags: ["settings"],
+			})
+			.input(UpdateTelemetrySettingsSchema)
+			.output(TelemetrySettingsSchema),
+	},
+
+	delivery: {
+		/**
+		 * Whether a Slack webhook is set for finished reports (#606)
+		 * GET /settings/delivery
+		 */
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/delivery",
+				summary: "Get report delivery settings",
+				tags: ["settings"],
+			})
+			.output(ReportDeliverySettingsSchema),
+
+		/**
+		 * Set or remove the Slack incoming webhook
+		 * PUT /settings/delivery
+		 */
+		update: oc
+			.route({
+				method: "PUT",
+				path: "/settings/delivery",
+				summary: "Set or remove the Slack incoming webhook",
+				tags: ["settings"],
+			})
+			.input(UpdateReportDeliverySchema)
+			.output(ReportDeliverySettingsSchema),
+	},
+
 	danger: {
 		/**
 		 * Reset all data (alerts, incidents, investigations)

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
+	CloseIncidentDialog,
 	CorrelatedAlerts,
 	IncidentDetailHeader,
 	IncidentOverview,
@@ -120,6 +121,14 @@ function IncidentDetailPage() {
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
 	});
+	const [closeOpen, setCloseOpen] = useState(false);
+	const closeMutation = useMutation({
+		...orpc.incidents.close.mutationOptions(),
+		onSuccess: () => {
+			setCloseOpen(false);
+			return queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+		},
+	});
 	const completeRecommendationMutation = useMutation({
 		...orpc.recommendations.update.mutationOptions(),
 		onSuccess: () =>
@@ -164,9 +173,17 @@ function IncidentDetailPage() {
 				}
 				onInvestigate={handleInvestigate}
 				onResolve={() => resolveMutation.mutate({ id })}
+				onClose={() => setCloseOpen(true)}
 				isInvestigating={investigateMutation.isPending}
 				investigateDisabled={!canRunInvestigation}
 				investigateDisabledReason={blockedReason}
+			/>
+
+			<CloseIncidentDialog
+				open={closeOpen}
+				onOpenChange={setCloseOpen}
+				isPending={closeMutation.isPending}
+				onConfirm={(cause) => closeMutation.mutate({ id, ...cause })}
 			/>
 
 			<Tabs value={tab} onValueChange={setTab} className="space-y-4">

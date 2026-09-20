@@ -37,6 +37,23 @@ export type HarnessSelectionFailure =
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
 
 /**
+ * Where `pl up` runs decides the harness credential and isolation (ADR 0003 §9).
+ * `laptop`: the user's own config dir and sign-in. `server` (VM, cloud, CI): an
+ * empty per-run config dir and an API key in env; a subscription never runs there.
+ */
+export const PLACEMENTS = ["laptop", "server"] as const;
+export type Placement = (typeof PLACEMENTS)[number];
+
+/** `PRISMALENS_PLACEMENT` wins; otherwise CI is a server and anything else a laptop. */
+export function resolvePlacement(
+	env: NodeJS.ProcessEnv = process.env,
+): Placement {
+	const explicit = env.PRISMALENS_PLACEMENT?.trim();
+	if (explicit === "laptop" || explicit === "server") return explicit;
+	return env.CI && env.CI !== "false" ? "server" : "laptop";
+}
+
+/**
  * Per-run environment for the harness child. Config is isolated to what
  * prismalens generates; the user's own login and data home stay reachable
  * (ADR 0003 §2: prismalens never touches harness credentials).
@@ -48,6 +65,9 @@ export interface HarnessRunEnv {
 	cwd: string;
 	/** Model id in the harness's own format, when the operator set one; otherwise the harness default. */
 	model?: string;
+	placement: Placement;
+	/** Absolute path of the row's `companionBinary` on PATH, when found. */
+	companionPath?: string;
 }
 
 export interface HarnessDescriptor {
@@ -55,6 +75,12 @@ export interface HarnessDescriptor {
 	label: string;
 	/** Binary looked up on PATH for detection. */
 	binary: string;
+	/**
+	 * The vendor's own CLI the adapter drives, when it is a separate install. The
+	 * doctor names it when the adapter is missing, and the run hands its PATH copy
+	 * to the adapter so the adapter never ships a second one.
+	 */
+	companionBinary?: string;
 	/** argv for `binary` that starts an ACP server on stdio in `cwd`. */
 	acpArgs: (env: HarnessRunEnv) => string[];
 	/** Env vars that point the harness at prismalens's per-run config, never the user's. */
@@ -150,9 +176,13 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		id: "claude-code",
 		label: "Claude Code",
 		binary: "claude-agent-acp",
+		companionBinary: "claude",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir, model }) => ({
-			CLAUDE_CONFIG_DIR: dataDir,
+		acpEnv: ({ dataDir, model, placement, companionPath }) => ({
+			// A laptop keeps the user's own config dir, so their `claude /login` is what
+			// runs; isolation comes from `settingSources: []` below (ADR 0003 §9, #650).
+			...(placement === "server" ? { CLAUDE_CONFIG_DIR: dataDir } : {}),
+			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 			// Claude Code reads the model from env; one model for every tier and sub-agent.
 			...(model
@@ -167,8 +197,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		}),
 		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
 		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
-		// Anthropic SDK default env var (docs.anthropic.com). CLAUDE_CONFIG_DIR above is the
-		// empty per-run dir, so a `claude login` stored in the user's home is not visible.
+		// Anthropic SDK default env var (docs.anthropic.com); the only credential on a server
+		// placement, where CLAUDE_CONFIG_DIR is the empty per-run dir.
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		providerKeys: [
 			"ANTHROPIC_API_KEY",
@@ -176,7 +206,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"ANTHROPIC_AUTH_TOKEN",
 		],
 		install:
-			"npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
+			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY on a server)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
 		verified: false,
@@ -186,7 +216,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Codex",
 		binary: "codex-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir }) => ({ CODEX_HOME: dataDir }),
+		acpEnv: ({ dataDir }) => ({
+			CODEX_HOME: dataDir,
+			// codex-acp's own read-only mode, so the harness refuses writes before
+			// prismalens's permission answer is asked (codex-acp readme-dev.md, #634).
+			INITIAL_AGENT_MODE: "read-only",
+		}),
 		// codex-acp's own install line names this as its env-based login fallback.
 		providerKeys: ["OPENAI_API_KEY"],
 		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
@@ -210,14 +245,16 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	deepagents: {
 		id: "deepagents",
 		label: "deepagents",
-		binary: "deepagents-acp",
-		acpArgs: () => [],
+		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is
+		// the ACP server (entry points of deepagents-code 0.1.71 on PyPI, #634).
+		// --no-mcp: no MCP servers from the snapshot or the user's config.
+		binary: "dcode",
+		acpArgs: () => ["--acp", "--no-mcp"],
 		acpEnv: () => ({}),
-		// `deepagents-acp --help` lists exactly these two under ENVIRONMENT
-		// VARIABLES (verified against the installed binary, v0.x); its DEBUG and
-		// DEEPAGENTS_LOG_FILE knobs are not secrets and are not provider keys.
+		// The two keys `deepagents-acp --help` listed under ENVIRONMENT VARIABLES;
+		// not yet re-checked against `dcode`, which may read more providers.
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-		install: "pip install deepagents-acp",
+		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: READ_ONLY_MECHANISM,
 		verified: false,

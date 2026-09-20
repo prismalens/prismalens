@@ -64,12 +64,13 @@ declare module "@orpc/nest" {
 }
 
 import { AuthGuard, AuthModule } from "./core/auth/index.js";
+import { WorkspaceLockShutdownService } from "./core/lifecycle/workspace-lock-shutdown.service.js";
 // Core modules
 import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
 import { SetupModule } from "./core/setup/setup.module.js";
+import { TelemetryModule } from "./core/telemetry/telemetry.module.js";
 import { UsersModule } from "./core/users/users.module.js";
-
 // Infrastructure modules
 import { DispatchModule } from "./infrastructure/dispatch/dispatch.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
@@ -155,6 +156,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		UsersModule,
 		SetupModule, // Initial setup (oRPC)
 		SettingsModule,
+		TelemetryModule,
 
 		// Infrastructure
 		HealthModule,
@@ -182,7 +184,10 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		OpenAPIModule, // OpenAPI spec and documentation
 	],
 	controllers: [AppController],
-	providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
+	providers: [
+		{ provide: APP_GUARD, useClass: AuthGuard },
+		WorkspaceLockShutdownService,
+	],
 })
 export class AppModule implements NestModule {
 	configure(consumer: MiddlewareConsumer) {

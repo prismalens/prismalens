@@ -12,6 +12,7 @@ export {
 	ServiceDistributionChart,
 	SeverityDistributionChart,
 } from "./analytics";
+export { CloseIncidentDialog } from "./CloseIncidentDialog";
 export {
 	CorrelatedAlerts,
 	type CorrelatedAlertsProps,

@@ -2931,6 +2931,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -3021,6 +3048,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -3265,6 +3294,33 @@
                           "customerImpact": {
                             "anyOf": [
                               {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actualCause": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actualCauseCategory": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "code",
+                                  "config",
+                                  "infrastructure",
+                                  "external",
+                                  "unknown"
+                                ],
                                 "type": "string"
                               },
                               {
@@ -3802,6 +3858,8 @@
                           "correlationReason",
                           "tags",
                           "customerImpact",
+                          "actualCause",
+                          "actualCauseCategory",
                           "affectedSystems",
                           "triggeredAt",
                           "acknowledgedAt",
@@ -3983,6 +4041,33 @@
                     "customerImpact": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
                           "type": "string"
                         },
                         {
@@ -4520,6 +4605,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -4732,6 +4819,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -4822,6 +4936,8 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -5125,6 +5241,33 @@
                         }
                       ]
                     },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "affectedSystems": {
                       "anyOf": [
                         {
@@ -5215,6 +5358,305 @@
                     "correlationReason",
                     "tags",
                     "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
+                    "affectedSystems",
+                    "triggeredAt",
+                    "acknowledgedAt",
+                    "resolvedAt",
+                    "alertCount",
+                    "timeToAcknowledge",
+                    "timeToResolve",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{id}/close": {
+      "post": {
+        "operationId": "incidents.close",
+        "summary": "Close incident",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actualCause": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "actualCauseCategory": {
+                    "enum": [
+                      "code",
+                      "config",
+                      "infrastructure",
+                      "external",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "severity": {
+                      "enum": [
+                        "critical",
+                        "high",
+                        "medium",
+                        "low",
+                        "info"
+                      ],
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "triggered",
+                        "investigating",
+                        "identified",
+                        "monitoring",
+                        "resolved",
+                        "closed"
+                      ],
+                      "type": "string"
+                    },
+                    "priority": {
+                      "enum": [
+                        "p1",
+                        "p2",
+                        "p3",
+                        "p4",
+                        "p5"
+                      ],
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correlationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tags": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "customerImpact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "affectedSystems": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resolvedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alertCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "timeToAcknowledge": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToResolve": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "number",
+                    "title",
+                    "description",
+                    "severity",
+                    "status",
+                    "priority",
+                    "serviceId",
+                    "assignedToId",
+                    "correlationReason",
+                    "tags",
+                    "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
                     "affectedSystems",
                     "triggeredAt",
                     "acknowledgedAt",
@@ -5689,6 +6131,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -5871,30 +6320,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -5902,8 +6351,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -6465,6 +6915,13 @@
                                               "harness-default"
                                             ],
                                             "type": "string"
+                                          },
+                                          "placement": {
+                                            "enum": [
+                                              "laptop",
+                                              "server"
+                                            ],
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -6647,30 +7104,30 @@
                                         "title": {
                                           "type": "string"
                                         },
-                                        "score": {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
+                                        "rank": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 9007199254740991
                                         },
-                                        "factors": {
-                                          "type": "object",
-                                          "properties": {
-                                            "jaccard": {
-                                              "type": "number",
-                                              "minimum": 0,
-                                              "maximum": 1
+                                        "matchedOn": {
+                                          "type": "array",
+                                          "items": {
+                                            "enum": [
+                                              "alert labels",
+                                              "same service",
+                                              "same cause category"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        },
+                                        "actualCause": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
                                             },
-                                            "sameService": {
-                                              "type": "boolean"
-                                            },
-                                            "sharedCategory": {
-                                              "type": "boolean"
+                                            {
+                                              "type": "null"
                                             }
-                                          },
-                                          "required": [
-                                            "jaccard",
-                                            "sameService",
-                                            "sharedCategory"
                                           ]
                                         }
                                       },
@@ -6678,8 +7135,9 @@
                                         "incidentId",
                                         "incidentNumber",
                                         "title",
-                                        "score",
-                                        "factors"
+                                        "rank",
+                                        "matchedOn",
+                                        "actualCause"
                                       ]
                                     }
                                   },
@@ -7260,6 +7718,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -7442,30 +7907,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -7473,8 +7938,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -8022,6 +8488,13 @@
                                             "harness-default"
                                           ],
                                           "type": "string"
+                                        },
+                                        "placement": {
+                                          "enum": [
+                                            "laptop",
+                                            "server"
+                                          ],
+                                          "type": "string"
                                         }
                                       },
                                       "required": [
@@ -8204,30 +8677,30 @@
                                       "title": {
                                         "type": "string"
                                       },
-                                      "score": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                      "rank": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 9007199254740991
                                       },
-                                      "factors": {
-                                        "type": "object",
-                                        "properties": {
-                                          "jaccard": {
-                                            "type": "number",
-                                            "minimum": 0,
-                                            "maximum": 1
+                                      "matchedOn": {
+                                        "type": "array",
+                                        "items": {
+                                          "enum": [
+                                            "alert labels",
+                                            "same service",
+                                            "same cause category"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "actualCause": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
                                           },
-                                          "sameService": {
-                                            "type": "boolean"
-                                          },
-                                          "sharedCategory": {
-                                            "type": "boolean"
+                                          {
+                                            "type": "null"
                                           }
-                                        },
-                                        "required": [
-                                          "jaccard",
-                                          "sameService",
-                                          "sharedCategory"
                                         ]
                                       }
                                     },
@@ -8235,8 +8708,9 @@
                                       "incidentId",
                                       "incidentNumber",
                                       "title",
-                                      "score",
-                                      "factors"
+                                      "rank",
+                                      "matchedOn",
+                                      "actualCause"
                                     ]
                                   }
                                 },
@@ -8842,6 +9316,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -9024,30 +9505,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -9055,8 +9536,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -9889,6 +10371,13 @@
                                               "harness-default"
                                             ],
                                             "type": "string"
+                                          },
+                                          "placement": {
+                                            "enum": [
+                                              "laptop",
+                                              "server"
+                                            ],
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10428,6 +10917,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -10610,30 +11106,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -10641,8 +11137,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -11097,6 +11594,13 @@
                                   "operator",
                                   "product-default",
                                   "harness-default"
+                                ],
+                                "type": "string"
+                              },
+                              "placement": {
+                                "enum": [
+                                  "laptop",
+                                  "server"
                                 ],
                                 "type": "string"
                               }
@@ -11635,6 +12139,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -11817,30 +12328,30 @@
                                   "title": {
                                     "type": "string"
                                   },
-                                  "score": {
-                                    "type": "number",
-                                    "minimum": 0,
-                                    "maximum": 1
+                                  "rank": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
                                   },
-                                  "factors": {
-                                    "type": "object",
-                                    "properties": {
-                                      "jaccard": {
-                                        "type": "number",
-                                        "minimum": 0,
-                                        "maximum": 1
+                                  "matchedOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "alert labels",
+                                        "same service",
+                                        "same cause category"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
                                       },
-                                      "sameService": {
-                                        "type": "boolean"
-                                      },
-                                      "sharedCategory": {
-                                        "type": "boolean"
+                                      {
+                                        "type": "null"
                                       }
-                                    },
-                                    "required": [
-                                      "jaccard",
-                                      "sameService",
-                                      "sharedCategory"
                                     ]
                                   }
                                 },
@@ -11848,8 +12359,9 @@
                                   "incidentId",
                                   "incidentNumber",
                                   "title",
-                                  "score",
-                                  "factors"
+                                  "rank",
+                                  "matchedOn",
+                                  "actualCause"
                                 ]
                               }
                             },
@@ -11937,6 +12449,50 @@
                     "error",
                     "createdAt",
                     "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/report.md": {
+      "get": {
+        "operationId": "investigations.exportMarkdown",
+        "summary": "Export the report as Markdown",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string"
+                    },
+                    "markdown": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "markdown"
                   ]
                 }
               }
@@ -14838,6 +15394,39 @@
                   "required": [
                     "data",
                     "total"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services/teams": {
+      "get": {
+        "operationId": "services.teams",
+        "summary": "List the distinct team names in the catalog",
+        "tags": [
+          "services"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "teams": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "teams"
                   ]
                 }
               }
@@ -21846,6 +22435,178 @@
                     {
                       "not": {}
                     }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/telemetry": {
+      "get": {
+        "operationId": "settings.telemetry.get",
+        "summary": "Get the opt-in telemetry setting",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "decided": {
+                      "type": "boolean"
+                    },
+                    "forcedOff": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "decided",
+                    "forcedOff"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "settings.telemetry.update",
+        "summary": "Turn opt-in telemetry on or off",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "decided": {
+                      "type": "boolean"
+                    },
+                    "forcedOff": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "decided",
+                    "forcedOff"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/delivery": {
+      "get": {
+        "operationId": "settings.delivery.get",
+        "summary": "Get report delivery settings",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slackConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slackConfigured"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "settings.delivery.update",
+        "summary": "Set or remove the Slack incoming webhook",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slackWebhookUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^https:\\/\\/hooks\\.slack(-gov)?\\.com\\/services\\/[A-Za-z0-9/_-]+$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "slackWebhookUrl"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slackConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slackConfigured"
                   ]
                 }
               }

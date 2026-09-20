@@ -195,6 +195,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					token: "gh-token-123",
 				},
 				join(tmp, "runs", "inv-1", "repo"),
+				undefined,
 			);
 			expect(ws.mapped).toBe(true);
 			expect(ws.cwd).toBe(join("/app-data/repos/github.com/acme/api-gateway", "services/api"));
@@ -264,6 +265,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect(snapshot).toHaveBeenCalledWith(
 				{ kind: "url", source: "https://github.com/acme/x", defaultBranch: null, token: null },
 				join(tmp, "runs", "inv-1", "repo"),
+				undefined,
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -291,6 +293,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		expect(snapshot).toHaveBeenCalledWith(
 			expect.objectContaining({ source: "https://github.com/acme/primary" }),
 			expect.any(String),
+			undefined,
 		);
 	});
 
@@ -323,6 +326,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				token: null,
 			},
 			expect.any(String),
+			undefined,
 		);
 		expect(ws.note).toContain("folder");
 	});

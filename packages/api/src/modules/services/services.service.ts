@@ -47,6 +47,22 @@ export class ServicesService {
 	}
 
 	/**
+	 * The distinct, non-empty team names the catalog actually carries, sorted
+	 * (#325). The filter's options come from the data, never a hardcoded list.
+	 */
+	async listTeams(): Promise<string[]> {
+		const rows = await this.prisma.service.findMany({
+			where: { team: { not: null } },
+			distinct: ["team"],
+			select: { team: true },
+			orderBy: { team: "asc" },
+		});
+		return rows
+			.map((r) => r.team?.trim())
+			.filter((t): t is string => Boolean(t));
+	}
+
+	/**
 	 * Find service by ID with dependencies and repositories
 	 */
 	async findById(id: string) {

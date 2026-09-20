@@ -8,6 +8,7 @@ import type {
 	Alert,
 	Incident,
 	IncidentWithRelations,
+	RootCauseCategory,
 } from "@prismalens/contracts/schemas";
 import type {
 	Alert as PrismaAlert,
@@ -181,6 +182,20 @@ export class IncidentsController {
 					return this.serializeIncident(incident);
 				},
 			),
+
+			// POST /incidents/:id/close - Close a resolved incident
+			close: implement(incidentsContract.close).handler(async ({ input }) => {
+				const incident = await this.incidentsService.close(input.id, {
+					actualCause: input.actualCause,
+					actualCauseCategory: input.actualCauseCategory,
+				});
+				if (!incident) {
+					throw new ORPCError("NOT_FOUND", {
+						message: `Incident ${input.id} not found`,
+					});
+				}
+				return this.serializeIncident(incident);
+			}),
 		};
 	}
 
@@ -210,6 +225,9 @@ export class IncidentsController {
 			assignedToId: incident.assignedToId ?? null,
 			correlationReason: incident.correlationReason ?? null,
 			customerImpact: incident.customerImpact ?? null,
+			actualCause: incident.actualCause ?? null,
+			actualCauseCategory:
+				(incident.actualCauseCategory as RootCauseCategory | null) ?? null,
 			affectedSystems: incident.affectedSystems
 				? JSON.parse(incident.affectedSystems)
 				: null,

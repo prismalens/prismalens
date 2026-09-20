@@ -11,6 +11,8 @@
  * and hermetically testable.
  */
 
+import type { SimilarIncident } from "@prismalens/contracts";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // =============================================================================
@@ -295,14 +297,17 @@ export interface PastIncidentInput {
 	incidentNumber: number;
 	title: string;
 	similarity: SimilarityInput;
+	/** Recorded on close (#338); its category is already folded into `similarity`. */
+	actualCause: string | null;
 }
 
-export interface SimilarIncidentResult {
-	incidentId: string;
-	incidentNumber: number;
-	title: string;
+/**
+ * The overlay's view of a similar incident (rank, reasons, recorded cause) plus
+ * the internal score that orders it and is stored on IncidentSimilarity. The
+ * score never reaches the report (ADR-0002, #338).
+ */
+export interface SimilarIncidentResult extends SimilarIncident {
 	score: number;
-	factors: { jaccard: number; sameService: boolean; sharedCategory: boolean };
 }
 
 export interface SelectSimilarOptions {
@@ -315,10 +320,18 @@ export const DEFAULT_SIMILAR_OPTIONS: SelectSimilarOptions = {
 	threshold: 0.3,
 };
 
+function matchedOn(f: SimilarityFactors): SimilarIncident["matchedOn"] {
+	const reasons: SimilarIncident["matchedOn"] = [];
+	if (f.jaccard > 0) reasons.push("alert labels");
+	if (f.sameService) reasons.push("same service");
+	if (f.sharedCategory) reasons.push("same cause category");
+	return reasons;
+}
+
 /**
  * Score `current` against every `past` incident, keep those at or above the
- * threshold, and return the top-K by score (ties broken by higher incident number
- * for stable ordering).
+ * threshold, and return the top-K ranked 1..K (ties broken by higher incident
+ * number for stable ordering).
  */
 export function selectSimilarIncidents(
 	current: SimilarityInput,
@@ -328,21 +341,23 @@ export function selectSimilarIncidents(
 	return past
 		.map((p) => {
 			const f = scoreSimilarity(current, p.similarity);
-			return {
-				incidentId: p.incidentId,
-				incidentNumber: p.incidentNumber,
-				title: p.title,
-				score: f.score,
-				factors: {
-					jaccard: f.jaccard,
-					sameService: f.sameService,
-					sharedCategory: f.sharedCategory,
-				},
-			};
+			return { p, f };
 		})
-		.filter((r) => r.score >= opts.threshold)
-		.sort((a, b) => b.score - a.score || b.incidentNumber - a.incidentNumber)
-		.slice(0, opts.k);
+		.filter(({ f }) => f.score >= opts.threshold)
+		.sort(
+			(a, b) =>
+				b.f.score - a.f.score || b.p.incidentNumber - a.p.incidentNumber,
+		)
+		.slice(0, opts.k)
+		.map(({ p, f }, i) => ({
+			incidentId: p.incidentId,
+			incidentNumber: p.incidentNumber,
+			title: p.title,
+			rank: i + 1,
+			matchedOn: matchedOn(f),
+			actualCause: p.actualCause,
+			score: f.score,
+		}));
 }
 
 /** 0..1 float → the 0-100 integer stored on IncidentSimilarity.similarityScore. */
