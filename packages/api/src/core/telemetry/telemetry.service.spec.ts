@@ -63,9 +63,22 @@ function setup() {
 	return { prisma, service, fetchImpl, sent, propsOf };
 }
 
-// `CI` now forces telemetry off, and these tests run in CI. Clearing it is what
-// makes the send paths below reachable there as well as on a laptop.
-beforeEach(() => vi.stubEnv("CI", ""));
+/**
+ * Pin every force-off input, so what these tests assert depends on the code
+ * rather than on the shell that started them.
+ *
+ * All three are read from the live `process.env` on each capture, by design.
+ * `CI` is the one that bites hardest — it is set in GitHub Actions and not on a
+ * laptop, so a send-path test would pass locally and fail only in CI — but a
+ * developer with `PRISMALENS_TELEMETRY=off` or `DO_NOT_TRACK=1` exported would
+ * see the same class of failure, in the opposite direction. The individual
+ * force-off cases stub their own variable afterwards, which overrides this.
+ */
+beforeEach(() => {
+	vi.stubEnv("CI", "");
+	vi.stubEnv("PRISMALENS_TELEMETRY", "");
+	vi.stubEnv("DO_NOT_TRACK", "");
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("TelemetryService (#602)", () => {
