@@ -31,6 +31,10 @@
 		"./investigation": {
 			"types": "./dist/investigation.d.ts",
 			"import": "./dist/investigation.js"
+		},
+		"./model-catalogue": {
+			"types": "./dist/model-catalogue.d.ts",
+			"import": "./dist/model-catalogue.js"
 		}
 	},
 	"scripts": {

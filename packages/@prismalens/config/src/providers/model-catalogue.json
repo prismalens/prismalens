@@ -1,0 +1,32 @@
+{
+	"updatedAt": "2026-09-20",
+	"harnesses": {
+		"opencode": {
+			"idFormat": "provider/model, as `opencode models` prints it",
+			"models": [
+				{
+					"id": "opencode/muse-spark-1.3-contributor-free",
+					"label": "Muse Spark 1.3 (contributor free tier)",
+					"status": "current",
+					"note": "Keyless. The model every CI admission run uses (HARNESS_REGISTRY.opencode.defaultModel)."
+				}
+			]
+		},
+		"claude-code": {
+			"idFormat": "Anthropic model id, passed as ANTHROPIC_MODEL",
+			"models": []
+		},
+		"codex": {
+			"idFormat": "OpenAI model id",
+			"models": []
+		},
+		"gemini": {
+			"idFormat": "Gemini model id",
+			"models": []
+		},
+		"deepagents": {
+			"idFormat": "provider:model",
+			"models": []
+		}
+	}
+}
