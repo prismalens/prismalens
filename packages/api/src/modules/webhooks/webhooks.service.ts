@@ -37,6 +37,56 @@ export interface WebhookResult {
  */
 const IN_FLIGHT_GRACE_MS = 30_000;
 
+/**
+ * Caps on the sender-supplied text that reaches the investigation prompt
+ * (#633 edge 13): `title`, `description` and label *values*, and nothing else.
+ * The description carries Alertmanager annotations verbatim, so one noisy rule
+ * must not store megabytes of them.
+ *
+ * Two fields are deliberately **not** capped, which an earlier version of this
+ * comment implied they were (#664 review):
+ *
+ * - `rawPayload` is the provider's original delivery, kept so a request can be
+ *   replayed and debugged. Truncating it would produce invalid JSON, which is
+ *   worse than storing it whole — a payload you cannot parse is not a record.
+ * - `tags` is matched against alert-mapping rules to resolve a service.
+ *   Truncating a tag could stop a rule matching and silently misroute an
+ *   alert, which costs more than the bytes it saves.
+ *
+ * Neither is unbounded: the global 1 MB JSON body limit is what bounds the
+ * worst case for both, and for the whole delivery.
+ */
+export const MAX_TITLE_CHARS = 500;
+export const MAX_DESCRIPTION_CHARS = 8_000;
+export const MAX_LABEL_VALUE_CHARS = 1_000;
+
+export function capText(
+	text: string | undefined,
+	max: number,
+): string | undefined {
+	if (text === undefined || text.length <= max) return text;
+	return `${text.slice(0, max)}… [truncated ${text.length - max} chars]`;
+}
+
+function capLabels(
+	labels: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+	if (!labels) return labels;
+	return Object.fromEntries(
+		Object.entries(labels).map(([k, v]) => [
+			k,
+			capText(v, MAX_LABEL_VALUE_CHARS) ?? v,
+		]),
+	);
+}
+
+/**
+ * How long a `resolved` delivery for an alert we never saw fire is remembered
+ * (#633 edge 10). Alertmanager can deliver the resolution before a retried
+ * firing; without this the late firing opens an incident nothing ever resolves.
+ */
+export const EARLY_RESOLUTION_TTL_MS = 15 * 60_000;
+
 /** What a lookup by idempotency key says the caller should do next. */
 type IdempotentDelivery =
 	/** Already fully processed — return the cached result verbatim. */
@@ -49,6 +99,8 @@ type IdempotentDelivery =
 @Injectable()
 export class WebhooksService {
 	private readonly logger = new Logger(WebhooksService.name);
+	/** `fingerprint|startsAt` of resolutions that arrived before their firing, with expiry. */
+	private readonly earlyResolutions = new Map<string, number>();
 
 	constructor(
 		@Inject(forwardRef(() => AlertsService))
@@ -151,6 +203,7 @@ export class WebhooksService {
 	async resolvePrometheusAlert(
 		fingerprint: string | undefined,
 		idempotencyKey?: string,
+		startsAt?: string,
 	): Promise<Alert | null> {
 		if (!fingerprint) {
 			this.logger.warn(
@@ -171,8 +224,9 @@ export class WebhooksService {
 		const existing =
 			await this.alertsService.findAlertBySourceAlert(fingerprint);
 		if (!existing) {
+			if (startsAt) this.rememberEarlyResolution(fingerprint, startsAt);
 			this.logger.log(
-				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; ignoring`,
+				`Prometheus resolved delivery for unknown fingerprint ${fingerprint}; remembered in case its firing arrives late`,
 			);
 			return null;
 		}
@@ -206,10 +260,51 @@ export class WebhooksService {
 		return resolved;
 	}
 
+	private rememberEarlyResolution(fingerprint: string, startsAt: string): void {
+		const now = Date.now();
+		for (const [key, expires] of this.earlyResolutions) {
+			if (expires <= now) this.earlyResolutions.delete(key);
+		}
+		this.earlyResolutions.set(
+			`${fingerprint}|${startsAt}`,
+			now + EARLY_RESOLUTION_TTL_MS,
+		);
+	}
+
+	/**
+	 * True while a firing's own episode (same fingerprint and `startsAt`) has
+	 * already been resolved. A new episode has a later `startsAt` and is
+	 * untouched. This only READS: the record is dropped by
+	 * {@link clearEarlyResolution} once the resolution actually happened, so a
+	 * failed or retried delivery can still be resolved (#664 review).
+	 */
+	hasEarlyResolution(fingerprint: string, startsAt: string): boolean {
+		const key = `${fingerprint}|${startsAt}`;
+		const expires = this.earlyResolutions.get(key);
+		if (expires === undefined) return false;
+		if (expires <= Date.now()) {
+			this.earlyResolutions.delete(key);
+			return false;
+		}
+		return true;
+	}
+
+	/** Forget an early resolution that has been applied. */
+	clearEarlyResolution(fingerprint: string, startsAt: string): void {
+		this.earlyResolutions.delete(`${fingerprint}|${startsAt}`);
+	}
+
 	async processGenericWebhook(
 		dto: GenericWebhookDto,
 		idempotencyKey?: string,
+		options: { autoInvestigate?: boolean } = {},
 	): Promise<WebhookResult> {
+		dto = {
+			...dto,
+			title: capText(dto.title, MAX_TITLE_CHARS) ?? dto.title,
+			description: capText(dto.description, MAX_DESCRIPTION_CHARS),
+			labels: capLabels(dto.labels),
+		};
 		// 1. Create immutable event record
 		const ingested = await this.ingestEvent(idempotencyKey, () =>
 			this.eventsService.create({
@@ -257,9 +352,12 @@ export class WebhooksService {
 		// 5. Link event to alert
 		await this.eventsService.markProcessed(event.id, alert.id);
 
-		// 6. Correlate alert to incident
-		const correlationResult =
-			await this.incidentCorrelation.correlateAlert(alert);
+		// 6. Correlate alert to incident. `autoInvestigate` is forwarded, not
+		// interpreted: it only decides whether the auto-trigger hears about this.
+		const correlationResult = await this.incidentCorrelation.correlateAlert(
+			alert,
+			options,
+		);
 
 		return {
 			event,

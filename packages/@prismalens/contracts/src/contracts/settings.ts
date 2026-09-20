@@ -14,9 +14,11 @@ import {
 	HarnessesResponseSchema,
 	HarnessProbeResultSchema,
 	HarnessSettingsSchema,
+	ReportDeliverySettingsSchema,
 	ResetDataInputSchema,
 	TelemetrySettingsSchema,
 	UpdateHarnessSettingsSchema,
+	UpdateReportDeliverySchema,
 	UpdateTelemetrySettingsSchema,
 } from "../schemas/settings.js";
 
@@ -48,6 +50,35 @@ export const settingsContract = {
 			})
 			.input(UpdateTelemetrySettingsSchema)
 			.output(TelemetrySettingsSchema),
+	},
+
+	delivery: {
+		/**
+		 * Whether a Slack webhook is set for finished reports (#606)
+		 * GET /settings/delivery
+		 */
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/delivery",
+				summary: "Get report delivery settings",
+				tags: ["settings"],
+			})
+			.output(ReportDeliverySettingsSchema),
+
+		/**
+		 * Set or remove the Slack incoming webhook
+		 * PUT /settings/delivery
+		 */
+		update: oc
+			.route({
+				method: "PUT",
+				path: "/settings/delivery",
+				summary: "Set or remove the Slack incoming webhook",
+				tags: ["settings"],
+			})
+			.input(UpdateReportDeliverySchema)
+			.output(ReportDeliverySettingsSchema),
 	},
 
 	danger: {

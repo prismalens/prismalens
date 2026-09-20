@@ -37,6 +37,7 @@ describe("IncidentsService", () => {
 		incident: {
 			update: vi.fn(),
 			findFirst: vi.fn(),
+			findUnique: vi.fn(),
 			findMany: vi.fn(),
 			count: vi.fn(),
 		},
@@ -163,6 +164,43 @@ describe("IncidentsService", () => {
 			expect(mockTx.alert.updateMany).not.toHaveBeenCalled();
 			expect(mockTx.incident.update).not.toHaveBeenCalled();
 			expect(mockTx.timelineEntry.create).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("close", () => {
+		const triggeredAt = new Date(Date.now() - 60_000);
+
+		it("stamps resolvedAt when closing an incident that was never resolved", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "investigating",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.close("inc-1");
+
+			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			expect(data.status).toBe("closed");
+			expect(data.resolvedAt).toBeInstanceOf(Date);
+			expect(data.timeToResolve).toBeGreaterThanOrEqual(60);
+		});
+
+		it("keeps the original resolvedAt when closing a resolved incident", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "resolved",
+				triggeredAt,
+				resolvedAt: new Date(),
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.close("inc-1");
+
+			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			expect(data.status).toBe("closed");
+			expect(data.resolvedAt).toBeUndefined();
 		});
 	});
 

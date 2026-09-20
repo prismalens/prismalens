@@ -4,11 +4,17 @@
 "use client";
 
 import { IntegrationsTab } from "./IntegrationsTab";
+import { SlackDeliverySettings } from "./SlackDeliverySettings";
 
 /**
  * IntegrationsSettings — admin-level integration management.
  * Renders the IntegrationsTab for registering/deleting provider instances.
  */
 export function IntegrationsSettings() {
-	return <IntegrationsTab />;
+	return (
+		<>
+			<SlackDeliverySettings />
+			<IntegrationsTab />
+		</>
+	);
 }

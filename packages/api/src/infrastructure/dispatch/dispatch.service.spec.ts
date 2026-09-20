@@ -95,6 +95,7 @@ describe("DispatchService.onModuleInit", () => {
 			fakePrisma(rows),
 			integrationsService as any,
 			{ capture: vi.fn(), captureFinished: vi.fn() } as any,
+			{ deliver: vi.fn() } as any,
 		);
 
 		await service.onModuleInit();
@@ -138,6 +139,7 @@ describe("DispatchService.onModuleInit", () => {
 			fakePrisma([]),
 			{ getIntegrationsByConnectionIds: vi.fn(async () => []) } as any,
 			{ capture: vi.fn(), captureFinished: vi.fn() } as any,
+			{ deliver: vi.fn() } as any,
 		);
 
 		await service.onModuleInit();

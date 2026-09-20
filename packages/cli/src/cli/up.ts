@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defineCommand } from "citty";
 import consola from "consola";
+import { cliVersion } from "../version.js";
 import {
 	displayUrl,
 	healthUrl,
@@ -28,6 +29,7 @@ import {
 	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
+import { updateNotice } from "./update-notice.js";
 
 const require = createRequire(import.meta.url);
 const READY_TIMEOUT_MS = 60_000;
@@ -76,7 +78,9 @@ export default defineCommand({
 	meta: {
 		name: "up",
 		description:
-			"Run PrismaLens as a single process: API and dashboard on one port, SQLite, no external services",
+			"Run PrismaLens as a single process: API and dashboard on one port, SQLite, no external services.\n" +
+			"Once a day this checks GitHub Releases for a newer prismalens and prints one line; no identifier is sent. " +
+			"Turn it off with PRISMALENS_UPDATE_CHECK=off or DO_NOT_TRACK.",
 	},
 	args: {
 		port: {
@@ -157,6 +161,17 @@ export default defineCommand({
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
 
+		// Read from a cache written by an earlier run, so nothing here waits on
+		// the network; `refresh` updates that cache for the NEXT run and is
+		// deliberately never awaited.
+		const notice = updateNotice({
+			current: cliVersion(),
+			workspaceDir,
+		});
+		const printUpdateNotice = () => {
+			if (notice.line) consola.info(notice.line);
+		};
+
 		// One process (0005 §1-2): the API runs each investigation in-process.
 		// Bootstrap exits the process itself on a fatal error, so the poll below
 		// only ever ends in "ready" or "still starting".
@@ -166,6 +181,7 @@ export default defineCommand({
 		// the URL without the readiness line.
 		if (bind.protocol === "https") {
 			consola.info(`Starting at ${url}`);
+			printUpdateNotice();
 			return;
 		}
 		const ready = await waitForReady(healthUrl(bind), {
@@ -183,5 +199,6 @@ export default defineCommand({
 				`Not listening after ${READY_TIMEOUT_MS / 1000}s. Still starting, or stuck: see ${logDir}`,
 			);
 		}
+		printUpdateNotice();
 	},
 });

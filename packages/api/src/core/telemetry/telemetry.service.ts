@@ -29,7 +29,11 @@
  */
 import { randomUUID } from "node:crypto";
 import { Injectable, Logger } from "@nestjs/common";
-import { HARNESS_IDS } from "@prismalens/config/harness";
+import {
+	HARNESS_IDS,
+	PLACEMENTS,
+	resolvePlacement,
+} from "@prismalens/config/harness";
 import type { TelemetrySettings } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -47,7 +51,11 @@ const LIB_NAME = "prismalens-api";
 
 /**
  * How this install was launched. Fixed to `npm` until the Electron build of
- * #603 exists and declares itself; `placement` joins it once #663 lands.
+ * #603 exists and declares itself. `placement` sits beside it and is real:
+ * #663 landed `resolvePlacement()`, whose answer is a closed two-value set
+ * (`laptop` | `server`) resolved from `PRISMALENS_PLACEMENT` or, failing that,
+ * from `CI`. It says which kind of machine the backend runs on, never which
+ * machine.
  */
 export const RUN_MODE = "npm";
 
@@ -163,6 +171,7 @@ export const ALLOWED_PROPERTY_VALUES: Record<
 	error_class: ERROR_CLASSES,
 	target: EXPORT_TARGETS,
 	run_mode: [RUN_MODE],
+	placement: PLACEMENTS,
 	os: ["aix", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"],
 	arch: [
 		"arm",
@@ -422,6 +431,7 @@ export class TelemetryService {
 						...sanitize({
 							...props,
 							run_mode: RUN_MODE,
+							placement: resolvePlacement(),
 							os: process.platform,
 							arch: process.arch,
 							node_major: Number.parseInt(process.versions.node, 10),
