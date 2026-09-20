@@ -16,8 +16,6 @@ import { ORPCError } from "@orpc/nest";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
@@ -61,7 +59,6 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 			providers: [
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
-				{ provide: TelemetryService, useValue: telemetryStub() },
 			],
 		})
 			.overrideGuard(ThrottlerGuard)

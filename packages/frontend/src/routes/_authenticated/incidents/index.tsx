@@ -27,7 +27,6 @@ import {
 	IncidentStatsBar,
 } from "@/components/incidents";
 import { PageHeader } from "@/components/layout";
-import { TelemetryConsent } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -258,8 +257,6 @@ function IncidentsPage() {
 					</>
 				}
 			/>
-
-			<TelemetryConsent />
 
 			<CreateIncidentDialog
 				open={isCreateOpen}

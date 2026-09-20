@@ -6,11 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
 	displayUrl,
 	healthUrl,
-	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
-	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
 
@@ -127,43 +125,5 @@ describe("waitForReady", () => {
 				intervalMs: 1,
 			}),
 		).resolves.toBe(false);
-	});
-});
-
-describe("readTelemetryState (#602)", () => {
-	const health = (body: unknown, status = 200) =>
-		(async () =>
-			new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
-
-	it("reads the consent state out of /health", async () => {
-		for (const state of ["undecided", "on", "off"] as const) {
-			expect(
-				await readTelemetryState("http://localhost:3001/health", health({ telemetry: state })),
-			).toBe(state);
-		}
-	});
-
-	it("is null on an old API, a non-200, a bad body or a network failure", async () => {
-		expect(
-			await readTelemetryState("http://localhost:3001/health", health({ status: "ok" })),
-		).toBe(null);
-		expect(
-			await readTelemetryState("http://localhost:3001/health", health({ telemetry: "maybe" })),
-		).toBe(null);
-		expect(
-			await readTelemetryState("http://localhost:3001/health", health({}, 503)),
-		).toBe(null);
-		const offline = (async () => {
-			throw new TypeError("fetch failed");
-		}) as unknown as typeof fetch;
-		expect(await readTelemetryState("http://localhost:3001/health", offline)).toBe(
-			null,
-		);
-	});
-
-	it("points at Settings and never asks the terminal to decide", () => {
-		expect(TELEMETRY_CONSENT_NOTICE).toContain("Settings");
-		expect(TELEMETRY_CONSENT_NOTICE).toContain("nothing is sent");
-		expect(TELEMETRY_CONSENT_NOTICE).not.toMatch(/\[y\/n\]|\?$/);
 	});
 });

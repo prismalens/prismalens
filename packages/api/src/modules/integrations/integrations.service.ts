@@ -34,10 +34,6 @@ import {
 	hasCapability,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import {
-	integrationKindFor,
-	TelemetryService,
-} from "../../core/telemetry/telemetry.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
 import type {
 	CreateConnectionDto,
@@ -74,7 +70,6 @@ export class IntegrationsService implements OnModuleInit {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly credentialsService: CredentialsService,
-		private readonly telemetry: TelemetryService,
 	) {}
 
 	onModuleInit(): void {
@@ -355,7 +350,7 @@ export class IntegrationsService implements OnModuleInit {
 			);
 		}
 
-		const connection = await this.prisma.connection.create({
+		return this.prisma.connection.create({
 			data: {
 				integrationId: dto.integrationId,
 				label: dto.label,
@@ -367,11 +362,6 @@ export class IntegrationsService implements OnModuleInit {
 				status: "ACTIVE",
 			},
 		});
-		// The vendor only. Not the label, the template id, or anything encrypted.
-		await this.telemetry.capture("integration_configured", {
-			kind: integrationKindFor(integration.templateId),
-		});
-		return connection;
 	}
 
 	async findAllConnections(options?: {

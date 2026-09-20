@@ -16,7 +16,6 @@ import {
 	RepoSourceService,
 } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import type {
 	BatchCreateRepositoriesDto,
@@ -33,7 +32,6 @@ export class RepositoriesService {
 		private readonly prisma: PrismaService,
 		private readonly repoSource: RepoSourceService,
 		private readonly integrations: IntegrationsService,
-		private readonly telemetry: TelemetryService,
 	) {}
 
 	/**
@@ -137,12 +135,6 @@ export class RepositoriesService {
 		this.logger.log(
 			`Service ${input.serviceId} repository → ${kind} ${source}${sync.syncError ? ` (git: ${sync.syncError})` : ""}`,
 		);
-		// A service only becomes investigable once it has code behind it, so this
-		// is where "a service was added" is true. `folder`/`url` is the whole of
-		// what is sent — never the path or the repository name.
-		await this.telemetry.capture("service_added", {
-			source: kind === "folder" ? "local" : "git",
-		});
 		return repository;
 	}
 

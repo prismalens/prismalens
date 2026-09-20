@@ -17,7 +17,6 @@ import {
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -51,7 +50,6 @@ export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
-		private readonly telemetry: TelemetryService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -104,12 +102,6 @@ export class InvestigationsController {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Investigation ${input.id} not found`,
 					});
-				}
-				// The report page polls this route, so the event is deduplicated per
-				// investigation rather than sent per request, and only once a report
-				// actually exists to look at.
-				if (investigation.report) {
-					await this.telemetry.captureReportViewed(investigation.id);
 				}
 				return this.serializeInvestigationWithRelations(investigation);
 			}),
@@ -275,11 +267,6 @@ export class InvestigationsController {
 							message: `Investigation ${input.id} has no report`,
 						});
 					}
-					// That a report left the app, and by which route. No filename,
-					// no incident number, no content (#602).
-					await this.telemetry.capture("report_exported", {
-						target: "markdown",
-					});
 					return {
 						filename: reportFilename(investigation.incident.number),
 						markdown: reportToMarkdown({

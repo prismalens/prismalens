@@ -16,8 +16,6 @@ import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { RepositoriesService } from "./repositories.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
 
 describe("RepositoriesService.addSource", () => {
 	let service: RepositoriesService;
@@ -77,7 +75,6 @@ describe("RepositoriesService.addSource", () => {
 				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: RepoSourceService, useValue: mockRepoSource },
 				{ provide: IntegrationsService, useValue: mockIntegrations },
-				{ provide: TelemetryService, useValue: telemetryStub() },
 			],
 		}).compile();
 

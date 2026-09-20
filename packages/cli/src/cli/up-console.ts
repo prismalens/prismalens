@@ -103,32 +103,3 @@ export async function waitForReady(
 	}
 	return false;
 }
-
-/**
- * The usage-data consent state from `/health` (#602), or null when it cannot
- * be read. `pl up` never prompts: it prints one line pointing at Settings while
- * the question is unanswered, and nothing once it has been.
- */
-export async function readTelemetryState(
-	healthUrl: string,
-	fetchImpl: typeof fetch = fetch,
-): Promise<"undecided" | "on" | "off" | null> {
-	try {
-		const res = await fetchImpl(healthUrl, {
-			signal: AbortSignal.timeout(2_000),
-		});
-		if (res.status !== 200) return null;
-		const { telemetry } = (await res.json()) as { telemetry?: unknown };
-		return telemetry === "undecided" ||
-			telemetry === "on" ||
-			telemetry === "off"
-			? telemetry
-			: null;
-	} catch {
-		return null;
-	}
-}
-
-/** The one line `pl up` prints while consent is undecided. */
-export const TELEMETRY_CONSENT_NOTICE =
-	"Usage data is off. PrismaLens can count anonymous product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";

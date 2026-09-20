@@ -234,25 +234,6 @@ export const TestMcpResultSchema = z.object({
 export type TestMcpResult = z.infer<typeof TestMcpResultSchema>;
 
 /**
- * Opt-in product telemetry (#602). Off until the owner says yes; `decided` is
- * false until they answer once, which is what shows the consent line.
- * `forcedOff` means PRISMALENS_TELEMETRY=off (`pl up --telemetry=off`) wins.
- */
-export const TelemetrySettingsSchema = z.object({
-	enabled: z.boolean(),
-	decided: z.boolean(),
-	forcedOff: z.boolean(),
-});
-export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
-
-export const UpdateTelemetrySettingsSchema = z.object({
-	enabled: z.boolean(),
-});
-export type UpdateTelemetrySettings = z.infer<
-	typeof UpdateTelemetrySettingsSchema
->;
-
-/**
  * Where a finished report is posted (#606, ADR 0008 §1: a Slack incoming webhook
  * first). The URL is a secret; it is stored encrypted and never read back.
  */

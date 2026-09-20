@@ -7,8 +7,6 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { IncidentsService } from "./incidents.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
 
 describe("IncidentsService", () => {
 	let service: IncidentsService;
@@ -62,7 +60,6 @@ describe("IncidentsService", () => {
 				IncidentsService,
 				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: TimelineService, useValue: mockTimelineService },
-				{ provide: TelemetryService, useValue: telemetryStub() },
 			],
 		}).compile();
 

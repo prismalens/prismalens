@@ -12,7 +12,6 @@ import type {
 	ReportDeliverySettings,
 } from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { CredentialsService } from "../integrations/crypto/credentials.service.js";
@@ -79,7 +78,6 @@ export class ReportDeliveryService {
 		private readonly prisma: PrismaService,
 		private readonly credentials: CredentialsService,
 		private readonly timeline: TimelineService,
-		private readonly telemetry: TelemetryService,
 		private readonly fetchImpl: typeof fetch = fetch,
 	) {}
 
@@ -140,9 +138,6 @@ export class ReportDeliveryService {
 			const url =
 				this.credentials.decryptFromBase64<string>(slackWebhookUrlEnc);
 			const failure = await this.post(url, slackMessage(run));
-			// Counted on the attempt, not on success: what this measures is that
-			// the install uses Slack delivery at all. Only the target (#602).
-			await this.telemetry.capture("report_exported", { target: "slack" });
 			if (failure) {
 				await this.timeline.create({
 					incidentId: run.incident.id,

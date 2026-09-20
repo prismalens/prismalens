@@ -3,7 +3,6 @@
 
 import { Module } from "@nestjs/common";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { CredentialsService } from "../integrations/crypto/credentials.service.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
@@ -21,14 +20,8 @@ import { ReportDeliveryService } from "./report-delivery.service.js";
 				prisma: PrismaService,
 				credentials: CredentialsService,
 				timeline: TimelineService,
-				telemetry: TelemetryService,
-			) => new ReportDeliveryService(prisma, credentials, timeline, telemetry),
-			inject: [
-				PrismaService,
-				CredentialsService,
-				TimelineService,
-				TelemetryService,
-			],
+			) => new ReportDeliveryService(prisma, credentials, timeline),
+			inject: [PrismaService, CredentialsService, TimelineService],
 		},
 	],
 	exports: [ReportDeliveryService],

@@ -10,7 +10,6 @@ import {
 	ReportDeliveryService,
 	slackMessage,
 } from "./report-delivery.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
 
 const REPORT: InvestigationReport = {
 	summary: "Pool exhausted <!channel>",
@@ -57,15 +56,13 @@ function setup(opts: { configured?: boolean; response?: Response | Error } = {})
 		if (r instanceof Error) throw r;
 		return r;
 	});
-	const telemetry = telemetryStub();
 	const service = new ReportDeliveryService(
 		prisma as unknown as PrismaService,
 		credentials as unknown as CredentialsService,
 		timeline as unknown as TimelineService,
-		telemetry,
 		fetchImpl as unknown as typeof fetch,
 	);
-	return { service, fetchImpl, timeline, prisma, rows, telemetry };
+	return { service, fetchImpl, timeline, prisma, rows };
 }
 
 describe("slackMessage (#606)", () => {
@@ -150,27 +147,5 @@ describe("ReportDeliveryService (#606)", () => {
 			slackWebhookUrlEnc: `enc:${HOOK}`,
 		});
 		expect(await service.setSlackWebhook(null)).toEqual({ slackConfigured: false });
-	});
-});
-
-describe("report_exported telemetry (#602)", () => {
-	it("counts a Slack delivery once the post was attempted", async () => {
-		const { service, telemetry } = setup();
-
-		await service.deliver("inv-1");
-
-		expect(telemetry.capture).toHaveBeenCalledWith("report_exported", {
-			target: "slack",
-		});
-	});
-
-	it("counts nothing when no webhook is configured", async () => {
-		// It measures "this install posts reports to Slack", so an install that
-		// never configured one must not appear in the count at all.
-		const { service, telemetry } = setup({ configured: false });
-
-		await service.deliver("inv-2");
-
-		expect(telemetry.capture).not.toHaveBeenCalled();
 	});
 });

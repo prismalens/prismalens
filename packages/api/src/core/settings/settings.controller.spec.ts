@@ -7,7 +7,6 @@ import type { HarnessService } from "../harness/harness.service.js";
 import type { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { SettingsController } from "./settings.controller.js";
 import { ActiveRunsError, type SettingsService } from "./settings.service.js";
-import { telemetryStub } from "../../../test/factories/index.js";
 
 type Handler = (args: { input: { confirmation: string } }) => Promise<unknown>;
 
@@ -16,7 +15,6 @@ function dangerHandlers(settings: Partial<SettingsService>) {
 		settings as SettingsService,
 		{} as HarnessService,
 		{} as HarnessProbeService,
-		telemetryStub(),
 	);
 	const procedures = controller.danger() as unknown as Record<
 		string,
