@@ -107,4 +107,18 @@ export const incidentsContract = {
 		})
 		.input(IdParamSchema)
 		.output(IncidentSchema),
+
+	/**
+	 * Close a resolved incident
+	 * POST /incidents/:id/close
+	 */
+	close: oc
+		.route({
+			method: "POST",
+			path: "/incidents/{id}/close",
+			summary: "Close incident",
+			tags: ["incidents"],
+		})
+		.input(IdParamSchema)
+		.output(IncidentSchema),
 };

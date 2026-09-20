@@ -219,6 +219,12 @@ export const InvestigationSchema = z.object({
 	updatedAt: DateStringSchema,
 });
 
+/** A completed report rendered as Markdown for download (#606). */
+export const InvestigationReportMarkdownSchema = z.object({
+	filename: z.string(),
+	markdown: z.string(),
+});
+
 export const CreateInvestigationSchema = z.object({
 	incidentId: z.string().uuid(),
 });
@@ -426,6 +432,9 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 
 // ---- TYPE EXPORTS (ordered-evidence + canonical stream) ----
 export type Evidence = z.infer<typeof EvidenceSchema>;
+export type InvestigationReportMarkdown = z.infer<
+	typeof InvestigationReportMarkdownSchema
+>;
 export type Hypothesis = z.infer<typeof HypothesisSchema>;
 export type RuledOut = z.infer<typeof RuledOutSchema>;
 export type Coverage = z.infer<typeof CoverageSchema>;

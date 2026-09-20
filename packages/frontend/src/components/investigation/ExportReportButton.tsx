@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { useMutation } from "@tanstack/react-query";
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { orpc } from "@/lib/api/orpc-client";
+import { getErrorMessage } from "@/lib/get-error-message";
+
+function download(filename: string, markdown: string) {
+	const url = URL.createObjectURL(
+		new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
+	);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = filename;
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+/** Downloads the server-rendered Markdown of a completed report (#606). */
+export function ExportReportButton({
+	investigationId,
+}: {
+	investigationId: string;
+}) {
+	const { toast } = useToast();
+	const exportMutation = useMutation({
+		...orpc.investigations.exportMarkdown.mutationOptions(),
+		onSuccess: ({ filename, markdown }) => download(filename, markdown),
+		onError: (error) =>
+			toast({
+				title: "Export failed",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			}),
+	});
+
+	return (
+		<Button
+			variant="outline"
+			size="sm"
+			onClick={() => exportMutation.mutate({ id: investigationId })}
+			disabled={exportMutation.isPending}
+			data-testid="export-report-markdown"
+		>
+			<Download className="h-4 w-4 mr-2" />
+			Export Markdown
+		</Button>
+	);
+}

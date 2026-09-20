@@ -21,6 +21,7 @@ import type { InvestigationJobData } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
@@ -67,6 +68,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly reportDelivery: ReportDeliveryService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -89,6 +91,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					dto.error,
 					dto.harnessThreadId,
 				);
+				if (dto.status === "failed") void this.reportDelivery.deliver(id);
 			},
 			appendEvents: async (id, events) => {
 				await this.investigationsService.appendEvents(id, events);
@@ -98,6 +101,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
 				await this.investigationsService.writeResultWithRelations(id, dto);
+				// Off the run's path: a slow or failing Slack never delays or fails it.
+				void this.reportDelivery.deliver(id);
 			},
 			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
 				await this.timelineService.create(dto);

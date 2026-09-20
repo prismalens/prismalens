@@ -5232,6 +5232,248 @@
         }
       }
     },
+    "/incidents/{id}/close": {
+      "post": {
+        "operationId": "incidents.close",
+        "summary": "Close incident",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "severity": {
+                      "enum": [
+                        "critical",
+                        "high",
+                        "medium",
+                        "low",
+                        "info"
+                      ],
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "triggered",
+                        "investigating",
+                        "identified",
+                        "monitoring",
+                        "resolved",
+                        "closed"
+                      ],
+                      "type": "string"
+                    },
+                    "priority": {
+                      "enum": [
+                        "p1",
+                        "p2",
+                        "p3",
+                        "p4",
+                        "p5"
+                      ],
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correlationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tags": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "customerImpact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "affectedSystems": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resolvedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alertCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "timeToAcknowledge": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToResolve": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "number",
+                    "title",
+                    "description",
+                    "severity",
+                    "status",
+                    "priority",
+                    "serviceId",
+                    "assignedToId",
+                    "correlationReason",
+                    "tags",
+                    "customerImpact",
+                    "affectedSystems",
+                    "triggeredAt",
+                    "acknowledgedAt",
+                    "resolvedAt",
+                    "alertCount",
+                    "timeToAcknowledge",
+                    "timeToResolve",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/investigations": {
       "post": {
         "operationId": "investigations.create",
@@ -11937,6 +12179,50 @@
                     "error",
                     "createdAt",
                     "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/report.md": {
+      "get": {
+        "operationId": "investigations.exportMarkdown",
+        "summary": "Export the report as Markdown",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string"
+                    },
+                    "markdown": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "markdown"
                   ]
                 }
               }
@@ -21846,6 +22132,88 @@
                     {
                       "not": {}
                     }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/delivery": {
+      "get": {
+        "operationId": "settings.delivery.get",
+        "summary": "Get report delivery settings",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slackConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slackConfigured"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "settings.delivery.update",
+        "summary": "Set or remove the Slack incoming webhook",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slackWebhookUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^https:\\/\\/hooks\\.slack(-gov)?\\.com\\/services\\/[A-Za-z0-9/_-]+$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "slackWebhookUrl"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "slackConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "slackConfigured"
                   ]
                 }
               }
