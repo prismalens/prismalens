@@ -6,6 +6,7 @@ import {
 	existsSync,
 	mkdtempSync,
 	readFileSync,
+	unlinkSync,
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
@@ -124,20 +125,30 @@ describe("workspace lock (#605 edge 5)", () => {
 	// #662 review (claude lane): a SIGKILL inside the microseconds the `.steal`
 	// sidecar is held used to orphan it forever, and every later boot refused
 	// with "Another process is reclaiming…" naming only the main lock.
-	it("takes over a .steal sidecar whose recorder is dead", () => {
+	/**
+	 * An orphaned sidecar is surfaced, never seized. Taking it over means
+	 * `unlink` then `open("wx")`, and two processes that both judge the same
+	 * sidecar orphaned can both succeed — the second unlink removes the first
+	 * one's new file. So the refusal has to name the file instead.
+	 */
+	it("names an orphaned .steal sidecar and refuses, rather than seizing it", () => {
 		const dir = workspace();
 		writeFileSync(
 			lockIn(dir),
 			JSON.stringify({ pid: deadPid(), port: 3001, startedAt: "then" }),
 		);
-		writeFileSync(
-			`${lockIn(dir)}.steal`,
-			JSON.stringify({ pid: deadPid(), startedAt: "then" }),
-		);
+		const stealPath = `${lockIn(dir)}.steal`;
+		writeFileSync(stealPath, JSON.stringify({ pid: deadPid(), startedAt: "t" }));
 
+		expect(() => take(dir, 3164)).toThrow(/was interrupted/i);
+		expect(() => take(dir, 3164)).toThrow(stealPath);
+		// Untouched: only an operator removes it.
+		expect(existsSync(stealPath)).toBe(true);
+
+		// And once it is gone, the stale main lock is reclaimed normally.
+		unlinkSync(stealPath);
 		const release = take(dir, 3164);
 		expect(readWorkspaceLock(dir)?.pid).toBe(process.pid);
-		expect(existsSync(`${lockIn(dir)}.steal`)).toBe(false);
 		release();
 	});
 
@@ -158,7 +169,7 @@ describe("workspace lock (#605 edge 5)", () => {
 		expect(() => take(dir)).toThrow(`${lockIn(dir)}.steal`);
 	});
 
-	it("waits out the grace on an unreadable .steal, then takes it", () => {
+	it("distinguishes a fresh unreadable .steal from one past the grace", () => {
 		const dir = workspace();
 		writeFileSync(
 			lockIn(dir),
@@ -167,13 +178,13 @@ describe("workspace lock (#605 edge 5)", () => {
 		const stealPath = `${lockIn(dir)}.steal`;
 		writeFileSync(stealPath, "");
 
-		// Fresh and unreadable: no evidence it is dead, so it is left alone.
-		expect(() => take(dir)).toThrow(/reclaiming/i);
+		// Fresh and unreadable: no evidence it is dead, so it reads as held.
+		expect(() => take(dir)).toThrow(/Retry in a few seconds/i);
 
+		// Past the grace it is reported as an orphan — still not seized.
 		age(stealPath, MALFORMED_GRACE_MS + 60_000);
-		const release = take(dir, 3165);
-		expect(readWorkspaceLock(dir)?.pid).toBe(process.pid);
-		release();
+		expect(() => take(dir)).toThrow(/was interrupted/i);
+		expect(existsSync(stealPath)).toBe(true);
 	});
 
 	it("classifies the states it acts on", () => {

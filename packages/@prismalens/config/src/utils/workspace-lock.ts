@@ -44,7 +44,7 @@
  * {@link reclaim} makes, so a lock another process has since taken is left
  * alone. A `SIGKILL` still leaves the file, which is what gap 1 covers.
  *
- * ## One known gap, not closed here
+ * ## Two known gaps, neither closed here
  *
  * 1. **Pid reuse after a crash.** Liveness is `kill(pid, 0)`, which answers
  *    "some process has this pid", not "*our* process has this pid". After a
@@ -119,6 +119,9 @@ const SIGNAL_NUMBERS: Readonly<Record<string, number>> = {
 	SIGTERM: 15,
 	SIGBREAK: 21,
 };
+
+/** Why the last `reclaim` could not take the sidecar, for the refusal text. */
+let lastStealRefusal: StealRefusal | null = null;
 
 /** Removes the listeners armed by {@link armForcedExitOnSecondSignal}. */
 let disarmForcedExitFn: (() => void) | null = null;
@@ -236,24 +239,45 @@ interface StealOwner {
 	startedAt: string;
 }
 
+/** Why a `.steal` sidecar could not be taken, for the refusal message. */
+type StealRefusal = "held" | "orphaned";
+
 /**
- * Take the `.steal` sidecar, or report why not.
+ * Take the `.steal` sidecar, or say why not.
  *
- * The sidecar is held for microseconds, but a `SIGKILL` inside that window used
- * to orphan it permanently: every later reclaim saw `EEXIST`, returned false,
- * and `acquireWorkspaceLock` refused with "Another process is reclaiming…"
- * forever — naming only the main lock, not the file actually stuck. It now
- * carries the same crash story as the lock it guards: a recorded pid that is
- * not alive, or a file older than the grace, is taken over.
+ * Acquisition is `open("wx")` and nothing else — a single atomic syscall, the
+ * same shape as the lock it guards. It is deliberately **not** reclaimed
+ * automatically, and that is a reversal of an earlier attempt in this PR worth
+ * recording, because the attempt looked obviously right and was not.
+ *
+ * Taking over an orphan means `unlink` then `open("wx")`, which is two
+ * syscalls with no identity check between them. Two processes that both judge
+ * the same sidecar orphaned — precisely the crash case the takeover was added
+ * for — can both succeed: the second one's `unlink` removes the *first one's
+ * brand-new file* rather than the orphan, and its `open("wx")` then succeeds
+ * against the now-empty path. Both believe they hold the sidecar, both enter
+ * `reclaim`'s critical section, and the mutual exclusion the file exists to
+ * provide is gone. Reading the record back afterwards does not fix it either:
+ * the two reads can both land before the other's write.
+ *
+ * A filesystem compare-and-swap needs `link(2)` onto a name that does not yet
+ * exist, so a correct automatic takeover means naming the sidecar after the
+ * stale owner it is reclaiming — a redesign, not a patch. Until then the
+ * sidecar is never seized, and an orphan is surfaced instead: the refusal
+ * names the file and says to remove it. A wedged reclaim that tells the
+ * operator exactly which file to delete is strictly better than two processes
+ * silently sharing a workspace database.
  */
-function takeStealLock(stealPath: string): number | null {
+function takeStealLock(
+	stealPath: string,
+): { fd: number } | { refusal: StealRefusal } {
 	try {
-		return openSync(stealPath, "wx", 0o600);
+		return { fd: openSync(stealPath, "wx", 0o600) };
 	} catch (e) {
 		if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
 	}
-	// Held by someone. Alive, or orphaned by a crash?
-	let orphaned = false;
+	// Held by someone. Alive, or orphaned by a crash? Classified only so the
+	// refusal can say which; neither answer takes the file.
 	try {
 		const raw = readFileSync(stealPath, "utf8");
 		const ageMs = Date.now() - statSync(stealPath).mtimeMs;
@@ -264,22 +288,16 @@ function takeStealLock(stealPath: string): number | null {
 		} catch {
 			holder = null;
 		}
-		orphaned = holder
+		const orphaned = holder
 			? !isAlive(holder.pid)
 			: // No readable record: an older build, or a crash between create and
-				// write. Age is the only evidence, so wait out the grace first.
+				// write. Age is the only evidence.
 				ageMs > MALFORMED_GRACE_MS;
+		return { refusal: orphaned ? "orphaned" : "held" };
 	} catch {
-		// Vanished or unreadable between the two calls; let the caller retry.
-		return null;
-	}
-	if (!orphaned) return null;
-	try {
-		unlinkSync(stealPath);
-		return openSync(stealPath, "wx", 0o600);
-	} catch {
-		// Another process cleared or retook it first; it is theirs now.
-		return null;
+		// Vanished or unreadable between the two calls; treat it as held and let
+		// the caller retry rather than guessing.
+		return { refusal: "held" };
 	}
 }
 
@@ -290,8 +308,13 @@ function reclaim(
 	owner: WorkspaceLockOwner,
 ): boolean {
 	const stealPath = `${lockPath}${STEAL_SUFFIX}`;
-	const stealFd = takeStealLock(stealPath);
-	if (stealFd === null) return false;
+	const taken = takeStealLock(stealPath);
+	if ("refusal" in taken) {
+		lastStealRefusal = taken.refusal;
+		return false;
+	}
+	lastStealRefusal = null;
+	const stealFd = taken.fd;
 	try {
 		// Who is reclaiming, so the next process can tell a crash from a holder.
 		writeSync(
@@ -308,7 +331,15 @@ function reclaim(
 			state.kind === "stale" ||
 			(state.kind === "unreadable" && state.ageMs > MALFORMED_GRACE_MS);
 		if (!reclaimable) return false;
-		unlinkSync(lockPath);
+		try {
+			unlinkSync(lockPath);
+		} catch (e) {
+			// Someone else removed it first. Not our reclaim to finish, and an
+			// ENOENT escaping here would be a stack trace out of boot — the same
+			// class `tryCreateLock` exists to prevent.
+			if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+			return false;
+		}
 		// A competing process can create it in this window; that is its lock now.
 		return tryCreateLock(lockPath, owner);
 	} finally {
@@ -389,7 +420,9 @@ export function acquireWorkspaceLock(
 			lockPath,
 			now.kind === "held"
 				? ownerBusy(lockPath, now.owner).message
-				: `Another process is reclaiming the workspace lock at ${lockPath}. Retry in a few seconds. If this persists with no PrismaLens running, remove ${lockPath}${STEAL_SUFFIX}.`,
+				: lastStealRefusal === "orphaned"
+					? `A previous reclaim of the workspace lock was interrupted and left ${lockPath}${STEAL_SUFFIX} behind. No process holds it. Remove that file, then start again.`
+					: `Another process is reclaiming the workspace lock at ${lockPath}. Retry in a few seconds. If this persists with no PrismaLens running, remove ${lockPath}${STEAL_SUFFIX}.`,
 		);
 	}
 	return take();
