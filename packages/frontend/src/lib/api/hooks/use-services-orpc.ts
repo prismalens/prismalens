@@ -36,6 +36,14 @@ export function useServices(params?: Partial<ServiceListQuery>) {
 }
 
 /**
+ * The distinct team names the catalog carries — the team filter's options,
+ * from the data rather than a hardcoded list (#325).
+ */
+export function useServiceTeams() {
+	return useQuery(orpc.services.teams.queryOptions({ input: {} }));
+}
+
+/**
  * Fetch a single service by ID
  */
 export function useService(id: string) {

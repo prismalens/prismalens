@@ -41,6 +41,7 @@ import {
 	useConnections,
 	useRepositories,
 	useServices,
+	useServiceTeams,
 	useUnlinkedRepositoryCount,
 } from "@/lib/api/hooks";
 
@@ -68,6 +69,7 @@ const serviceTiers: { value: ServiceTier | "all"; label: string }[] = [
 type ServicesSearch = {
 	type?: string;
 	tier?: string;
+	team?: string;
 	search?: string;
 	page?: number;
 	view?: "table" | "grid";
@@ -77,6 +79,7 @@ export const Route = createFileRoute("/_authenticated/services/")({
 	validateSearch: (raw: Record<string, unknown>): ServicesSearch => ({
 		type: typeof raw.type === "string" ? raw.type : undefined,
 		tier: typeof raw.tier === "string" ? raw.tier : undefined,
+		team: typeof raw.team === "string" ? raw.team : undefined,
 		search: typeof raw.search === "string" ? raw.search : undefined,
 		page: typeof raw.page === "number" ? raw.page : 1,
 		view: raw.view === "grid" || raw.view === "table" ? raw.view : "table",
@@ -170,6 +173,7 @@ function ServicesPage() {
 
 	const typeFilter = (searchParams.type || "all") as ServiceType | "all";
 	const tierFilter = (searchParams.tier || "all") as ServiceTier | "all";
+	const teamFilter = searchParams.team || "all";
 	const currentPage = searchParams.page ?? 1;
 	const view = searchParams.view ?? "table";
 	const offset = (currentPage - 1) * PAGE_SIZE;
@@ -225,8 +229,18 @@ function ServicesPage() {
 		offset,
 		type: typeFilter !== "all" ? typeFilter : undefined,
 		tier: tierFilter !== "all" ? tierFilter : undefined,
+		team: teamFilter !== "all" ? teamFilter : undefined,
 		search: searchParams.search || undefined,
 	});
+
+	// Options come from the teams services actually carry (#325). A team that is
+	// filtered on but no longer present stays selectable, so the URL keeps working.
+	const { data: teamsResponse } = useServiceTeams();
+	const teams = teamsResponse?.teams ?? [];
+	const teamOptions =
+		teamFilter !== "all" && !teams.includes(teamFilter)
+			? [teamFilter, ...teams]
+			: teams;
 
 	const services = response?.data ?? [];
 	const total = response?.total ?? 0;
@@ -235,12 +249,16 @@ function ServicesPage() {
 	const showingTo = Math.min(offset + PAGE_SIZE, total);
 
 	const hasFilters =
-		typeFilter !== "all" || tierFilter !== "all" || !!searchParams.search;
+		typeFilter !== "all" ||
+		tierFilter !== "all" ||
+		teamFilter !== "all" ||
+		!!searchParams.search;
 
 	const handleClearFilters = () => {
 		updateSearch({
 			type: undefined,
 			tier: undefined,
+			team: undefined,
 			search: undefined,
 			page: 1,
 		});
@@ -363,6 +381,33 @@ function ServicesPage() {
 						))}
 					</SelectContent>
 				</Select>
+
+				{(teamOptions.length > 0 || teamFilter !== "all") && (
+					<Select
+						value={teamFilter}
+						onValueChange={(value) =>
+							updateSearch({
+								team: value === "all" ? undefined : value,
+								page: 1,
+							})
+						}
+					>
+						<SelectTrigger
+							className="w-[180px]"
+							data-testid="services-team-filter"
+						>
+							<SelectValue placeholder="Filter by team" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All teams</SelectItem>
+							{teamOptions.map((team) => (
+								<SelectItem key={team} value={team}>
+									{team}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				)}
 
 				{hasFilters && (
 					<Button variant="ghost" size="sm" onClick={handleClearFilters}>

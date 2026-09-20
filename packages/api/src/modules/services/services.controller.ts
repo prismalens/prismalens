@@ -63,6 +63,11 @@ export class ServicesController {
 				};
 			}),
 
+			// GET /services/teams - distinct team names (#325)
+			teams: implement(servicesContract.teams).handler(async () => ({
+				teams: await this.servicesService.listTeams(),
+			})),
+
 			// GET /services/:id - Get a single service by ID
 			get: implement(servicesContract.get).handler(async ({ input }) => {
 				const service = await this.servicesService.findById(input.id);

@@ -50,6 +50,20 @@ export const servicesContract = {
 		.output(ServiceListResponseSchema),
 
 	/**
+	 * The distinct team names services actually carry (#325)
+	 * GET /services/teams
+	 */
+	teams: oc
+		.route({
+			method: "GET",
+			path: "/services/teams",
+			summary: "List the distinct team names in the catalog",
+			tags: ["services"],
+		})
+		.input(z.object({}))
+		.output(z.object({ teams: z.array(z.string()) })),
+
+	/**
 	 * Get a single service by ID
 	 * GET /services/:id
 	 */
