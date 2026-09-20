@@ -60,6 +60,26 @@ export interface StartAuthorizationParams {
 	connectionConfig?: Record<string, string>;
 }
 
+/** A value that cannot change a URL's host, port, path, query or fragment. */
+const HOST_SAFE = /^[A-Za-z0-9._-]+$/;
+
+function hostSafeContext(
+	context: Record<string, string>,
+	templateId: string,
+): Record<string, string> {
+	const safe: Record<string, string> = {};
+	for (const [key, value] of Object.entries(context)) {
+		if (typeof value !== "string") continue;
+		if (!HOST_SAFE.test(value)) {
+			throw new Error(
+				`Connection config '${key}' for template '${templateId}' is not usable in a token URL`,
+			);
+		}
+		safe[key] = value;
+	}
+	return safe;
+}
+
 export class OAuth2Flow {
 	constructor(
 		private readonly vault: TokenVault,
@@ -176,7 +196,14 @@ export class OAuth2Flow {
 					oauthState.connectionConfigEnc,
 				)
 			: {};
-		const tokenUrl = interpolate(template.oauth2.tokenUrl, tokenContext);
+		// This is the one request that carries the client secret and the
+		// authorization code, and interpolation is raw substitution: a value like
+		// `tenant.attacker.test#` would move the HOST of the token endpoint out of
+		// the template's own domain. Only host-safe labels may reach it.
+		const tokenUrl = interpolate(
+			template.oauth2.tokenUrl,
+			hostSafeContext(tokenContext, template.id),
+		);
 		const response = await fetch(tokenUrl, {
 			method: "POST",
 			headers: tokenHeaders,

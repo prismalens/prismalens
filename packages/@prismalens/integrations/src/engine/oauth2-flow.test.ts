@@ -604,6 +604,32 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 		);
 	});
 
+	// The token exchange carries the client secret and the code, and interpolation
+	// is raw substitution, so a config value must not be able to move the host.
+	it("refuses a connection config value that would rewrite the token host", async () => {
+		const { flow, vault } = makeFlow();
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
+
+		await expect(
+			flow.exchangeCodeForTokens(
+				templateWith({
+					authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+					tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+				}),
+				"auth-code",
+				oauthState({
+					connectionConfigEnc: vault.encryptJSON({
+						subdomain: "tenant.attacker.test#",
+					}),
+				}),
+				"client-abc",
+				"secret-xyz",
+			),
+		).rejects.toThrow(/not usable in a token URL/);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("still throws on a templated tokenUrl when the state row carries no config", async () => {
 		const { flow } = makeFlow();
 		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
