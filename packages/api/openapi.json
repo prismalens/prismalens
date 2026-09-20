@@ -6131,6 +6131,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -6906,6 +6913,13 @@
                                               "operator",
                                               "product-default",
                                               "harness-default"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "placement": {
+                                            "enum": [
+                                              "laptop",
+                                              "server"
                                             ],
                                             "type": "string"
                                           }
@@ -7704,6 +7718,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -8465,6 +8486,13 @@
                                             "operator",
                                             "product-default",
                                             "harness-default"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "placement": {
+                                          "enum": [
+                                            "laptop",
+                                            "server"
                                           ],
                                           "type": "string"
                                         }
@@ -9286,6 +9314,13 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
                                       ],
                                       "type": "string"
                                     }
@@ -10336,6 +10371,13 @@
                                               "harness-default"
                                             ],
                                             "type": "string"
+                                          },
+                                          "placement": {
+                                            "enum": [
+                                              "laptop",
+                                              "server"
+                                            ],
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10873,6 +10915,13 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
                                       ],
                                       "type": "string"
                                     }
@@ -11547,6 +11596,13 @@
                                   "harness-default"
                                 ],
                                 "type": "string"
+                              },
+                              "placement": {
+                                "enum": [
+                                  "laptop",
+                                  "server"
+                                ],
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -12081,6 +12137,13 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
                                       ],
                                       "type": "string"
                                     }
@@ -22339,6 +22402,96 @@
                     {
                       "not": {}
                     }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/telemetry": {
+      "get": {
+        "operationId": "settings.telemetry.get",
+        "summary": "Get the opt-in telemetry setting",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "decided": {
+                      "type": "boolean"
+                    },
+                    "forcedOff": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "decided",
+                    "forcedOff"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "settings.telemetry.update",
+        "summary": "Turn opt-in telemetry on or off",
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "decided": {
+                      "type": "boolean"
+                    },
+                    "forcedOff": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "decided",
+                    "forcedOff"
                   ]
                 }
               }
