@@ -277,10 +277,25 @@ export class RepoSourceService {
 export function gitAuthEnv(src: RepoSource): Record<string, string> {
 	const token = src.token?.trim();
 	if (!token || !/^https:\/\//.test(src.source)) return {};
-	const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+	const user = tokenUsernameFor(new URL(src.source).hostname);
+	const basic = Buffer.from(`${user}:${token}`).toString("base64");
 	return {
 		GIT_CONFIG_COUNT: "1",
 		GIT_CONFIG_KEY_0: "http.extraheader",
 		GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
 	};
+}
+
+/**
+ * The username each host expects beside a token over HTTPS basic auth (#634):
+ * GitLab (gitlab.com and self-managed hosts named gitlab.*) takes `oauth2`,
+ * Bitbucket Cloud `x-token-auth`, GitHub and everything else `x-access-token`.
+ */
+export function tokenUsernameFor(hostname: string): string {
+	const host = hostname.toLowerCase();
+	if (host === "bitbucket.org") return "x-token-auth";
+	if (host === "gitlab.com" || host.split(".").includes("gitlab")) {
+		return "oauth2";
+	}
+	return "x-access-token";
 }
