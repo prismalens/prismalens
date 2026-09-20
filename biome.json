@@ -70,8 +70,7 @@
 		{
 			"includes": [
 				"packages/@prismalens/engine/src/**",
-				"packages/@prismalens/engine/eval/**",
-				"packages/cli/src/**"
+				"packages/@prismalens/engine/eval/**"
 			],
 			"linter": {
 				"rules": {
@@ -80,16 +79,42 @@
 							"level": "error",
 							"options": {
 								"paths": {
-									"@prismalens/database": "engine/cli must not depend on @prismalens/database — that couples them to the app's persistence layer.",
-									"@prismalens/integrations": "engine/cli must not depend on @prismalens/integrations — that couples them to app-side external services.",
-									"@prismalens/auth": "engine/cli must not depend on @prismalens/auth — that couples them to the app's auth layer.",
-									"@prismalens/api": "engine/cli must not depend on @prismalens/api — that couples them to the app.",
-									"@prismalens/frontend": "engine/cli must not depend on @prismalens/frontend — that couples them to the app."
+									"@prismalens/database": "the engine must not depend on @prismalens/database — it stays db-clean per ADR-0011.",
+									"@prismalens/integrations": "the engine must not depend on @prismalens/integrations — that couples it to app-side external services.",
+									"@prismalens/auth": "the engine must not depend on @prismalens/auth — that couples it to the app's auth layer.",
+									"@prismalens/api": "the engine must not depend on @prismalens/api — that couples it to the app.",
+									"@prismalens/frontend": "the engine must not depend on @prismalens/frontend — that couples it to the app."
 								},
 								"patterns": [
 									{
 										"group": ["../**/api/**", "../**/frontend/**"],
-										"message": "engine/cli must not reach into packages/api or packages/frontend via relative import — that breaks the extraction seam."
+										"message": "the engine must not reach into packages/api or packages/frontend via relative import — that breaks the extraction seam."
+									}
+								]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["packages/cli/src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"@prismalens/database": "the CLI must not depend on @prismalens/database — that couples it to the app's persistence layer.",
+									"@prismalens/integrations": "the CLI must not depend on @prismalens/integrations — that couples it to app-side external services.",
+									"@prismalens/api": "the CLI must not depend on @prismalens/api — that couples it to the app.",
+									"@prismalens/frontend": "the CLI must not depend on @prismalens/frontend — that couples it to the app."
+								},
+								"patterns": [
+									{
+										"group": ["../**/api/**", "../**/frontend/**"],
+										"message": "the CLI must not reach into packages/api or packages/frontend via relative import — that breaks the extraction seam."
 									}
 								]
 							}

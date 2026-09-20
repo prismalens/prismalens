@@ -43,25 +43,23 @@ export default defineCommand({
 		const workspaceDir = getAppDataDir();
 
 		/**
-		 * The extraction seam is deliberately crossed here, and this is the
-		 * narrowest place to cross it.
+		 * The CLI is allowed to reach `@prismalens/auth`, and only it.
 		 *
-		 * `biome.json` bans `@prismalens/auth` from `packages/cli` so auth
-		 * semantics stay out of the CLI. The previous version of this command
-		 * obeyed the letter of that rule by reimplementing better-auth's scrypt
-		 * parameters and writing the hash itself — the same coupling with none
-		 * of the safety, since it holds only while the two agree and breaks a
-		 * user's login rather than a build when they stop. Nothing about auth is
-		 * known here: the password is generated, hashed and verified inside
-		 * `@prismalens/auth`, and what comes back is an email, a string to print
-		 * and a count.
+		 * `biome.json` used to ban this import from `packages/cli` alongside the
+		 * engine's bans. That was an extraction boundary from #40, not a
+		 * dependency constraint — the workspace graph is acyclic and
+		 * `@prismalens/auth` depends on nothing but `config` and `database`. The
+		 * ban's only effect was that this command reimplemented better-auth's
+		 * scrypt parameters and wrote the hash itself: the same coupling with
+		 * none of the safety, holding only while the two agree and breaking a
+		 * user's login rather than a build when they stop. Ruled on 2026-09-20;
+		 * the engine keeps the full ban, and the CLI keeps the other four.
 		 *
-		 * **This needs the operator's ruling.** Either the rule gains a scoped
-		 * exception for this one import, or it drops `@prismalens/auth` and the
-		 * boundary is restated in the ADR.
+		 * Nothing about auth is known here. The password is generated, hashed
+		 * and verified inside `@prismalens/auth`; what comes back is an email, a
+		 * string to print and a count.
 		 */
 		const { resetOwnerPassword, ResetOwnerPasswordError } = await import(
-			// biome-ignore lint/style/noRestrictedImports: see above — pending an operator ruling.
 			"@prismalens/auth"
 		);
 
