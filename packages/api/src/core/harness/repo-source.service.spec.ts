@@ -29,6 +29,7 @@ import {
 	displayNameFor,
 	gitAuthEnv,
 	mirrorPathFor,
+	tokenUsernameFor,
 	RepoSourceService,
 } from "./repo-source.service.js";
 
@@ -175,6 +176,22 @@ describe("repo-source.service", () => {
 			expect(env.GIT_CONFIG_VALUE_0).toBe(
 				`Authorization: Basic ${Buffer.from("x-access-token:tok").toString("base64")}`,
 			);
+		});
+
+		it("sends each host's own token username (#634)", () => {
+			const header = (source: string) =>
+				gitAuthEnv({ kind: "url", source, token: "tok" }).GIT_CONFIG_VALUE_0;
+			const basic = (user: string) =>
+				`Authorization: Basic ${Buffer.from(`${user}:tok`).toString("base64")}`;
+			expect(header("https://gitlab.com/acme/api.git")).toBe(basic("oauth2"));
+			expect(header("https://gitlab.acme.internal/team/api.git")).toBe(basic("oauth2"));
+			expect(header("https://bitbucket.org/acme/api.git")).toBe(basic("x-token-auth"));
+			expect(header("https://github.com/acme/api.git")).toBe(basic("x-access-token"));
+		});
+
+		it("does not read a host that merely contains 'gitlab' as GitLab", () => {
+			expect(tokenUsernameFor("notgitlab.example.com")).toBe("x-access-token");
+			expect(tokenUsernameFor("GitLab.com")).toBe("oauth2");
 		});
 
 		it("sends nothing for ssh remotes or without a token", () => {

@@ -225,6 +225,22 @@ describe("TokenVault.mask", () => {
 		expect(masked.token).toBe("");
 	});
 
+	// #386: a 9-to-12 character secret used to show 4 + 4 of itself, i.e. most of it.
+	it("fully masks anything below 16 characters", () => {
+		const masked = TokenVault.mask({
+			tokenNine: "123456789",
+			tokenTwelve: "123456789012",
+			tokenFifteen: "123456789012345",
+			tokenSixteen: "1234567890123456",
+		});
+
+		expect(masked.tokenNine).toBe("*".repeat(9));
+		expect(masked.tokenTwelve).toBe("*".repeat(12));
+		expect(masked.tokenFifteen).toBe("*".repeat(15));
+		// 16 chars → first 4 + min(16-8, 20)=8 stars + last 4
+		expect(masked.tokenSixteen).toBe(`1234${"*".repeat(8)}3456`);
+	});
+
 	it("matches sensitive field names case-insensitively and as substrings", () => {
 		const masked = TokenVault.mask({
 			API_KEY: "abcdefghijklmnop",

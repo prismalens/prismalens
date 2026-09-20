@@ -193,6 +193,17 @@ export class IncidentsController {
 					return this.serializeIncident(incident);
 				},
 			),
+
+			// POST /incidents/:id/close - Close a resolved incident
+			close: implement(incidentsContract.close).handler(async ({ input }) => {
+				const incident = await this.incidentsService.close(input.id);
+				if (!incident) {
+					throw new ORPCError("NOT_FOUND", {
+						message: `Incident ${input.id} not found`,
+					});
+				}
+				return this.serializeIncident(incident);
+			}),
 		};
 	}
 

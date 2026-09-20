@@ -21,6 +21,7 @@ import { InvestigationsController } from "../../modules/investigations/investiga
 import type { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import { ResetInProgressError, SettingsService } from "./settings.service.js";
+import { telemetryStub } from "../../../test/factories/index.js";
 
 /** A Prisma client whose only job is to let one reset transaction run. */
 function prismaWith(
@@ -234,6 +235,7 @@ describe("creating a run while a reset is in progress", () => {
 		const controller = new InvestigationsController(
 			investigationsService,
 			{} as DispatchService,
+			telemetryStub(),
 		);
 		const create = (
 			controller.investigations() as unknown as Record<

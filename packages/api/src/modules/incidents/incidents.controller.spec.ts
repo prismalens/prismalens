@@ -408,7 +408,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				failure: "pinned-harness-missing",
 				harness: "deepagents",
 				reason:
-					'PRISMALENS_HARNESS="deepagents" but deepagents-acp is not on PATH. Install: pip install deepagents-acp',
+					'PRISMALENS_HARNESS="deepagents" but dcode is not on PATH. Install: uv tool install -U deepagents-code --with deepagents-acp',
 			} satisfies HarnessSelection),
 		};
 

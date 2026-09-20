@@ -89,12 +89,18 @@ export function checkHarnessesOnPath(): Check[] {
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
 	).map((descriptor) => {
 		const resolved = resolveOnPath(descriptor.binary);
+		const companion =
+			!resolved && descriptor.companionBinary
+				? resolveOnPath(descriptor.companionBinary)
+				: null;
 		return {
 			name: `Harness: ${descriptor.label}`,
 			pass: resolved !== null,
 			detail: resolved
 				? `${descriptor.binary} found at ${resolved}`
-				: `${descriptor.binary} not found on PATH`,
+				: companion
+					? `${descriptor.label} found at ${companion}, adapter missing. Install: ${descriptor.install}`
+					: `${descriptor.binary} not found on PATH`,
 			hard: false,
 		};
 	});

@@ -232,3 +232,50 @@ export const TestMcpResultSchema = z.object({
 	toolCount: z.number().optional(),
 });
 export type TestMcpResult = z.infer<typeof TestMcpResultSchema>;
+
+/**
+ * Opt-in product telemetry (#602). Off until the owner says yes; `decided` is
+ * false until they answer once, which is what shows the consent line.
+ * `forcedOff` means PRISMALENS_TELEMETRY=off (`pl up --telemetry=off`) wins.
+ */
+export const TelemetrySettingsSchema = z.object({
+	enabled: z.boolean(),
+	decided: z.boolean(),
+	forcedOff: z.boolean(),
+});
+export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
+
+export const UpdateTelemetrySettingsSchema = z.object({
+	enabled: z.boolean(),
+});
+export type UpdateTelemetrySettings = z.infer<
+	typeof UpdateTelemetrySettingsSchema
+>;
+
+/**
+ * Where a finished report is posted (#606, ADR 0008 §1: a Slack incoming webhook
+ * first). The URL is a secret; it is stored encrypted and never read back.
+ */
+export const ReportDeliverySettingsSchema = z.object({
+	slackConfigured: z.boolean(),
+});
+export type ReportDeliverySettings = z.infer<
+	typeof ReportDeliverySettingsSchema
+>;
+
+/** Only Slack's own webhook hosts, so the setting cannot point the server anywhere else. */
+export const SLACK_WEBHOOK_URL =
+	/^https:\/\/hooks\.slack(-gov)?\.com\/services\/[A-Za-z0-9/_-]+$/;
+
+export const UpdateReportDeliverySchema = z.object({
+	/** null removes the webhook. */
+	slackWebhookUrl: z
+		.string()
+		.trim()
+		.regex(
+			SLACK_WEBHOOK_URL,
+			"Must be a https://hooks.slack.com/services/… URL",
+		)
+		.nullable(),
+});
+export type UpdateReportDelivery = z.infer<typeof UpdateReportDeliverySchema>;
