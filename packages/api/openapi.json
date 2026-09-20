@@ -5931,6 +5931,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -6705,6 +6712,13 @@
                                               "operator",
                                               "product-default",
                                               "harness-default"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "placement": {
+                                            "enum": [
+                                              "laptop",
+                                              "server"
                                             ],
                                             "type": "string"
                                           }
@@ -7502,6 +7516,13 @@
                                         "harness-default"
                                       ],
                                       "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -8262,6 +8283,13 @@
                                             "operator",
                                             "product-default",
                                             "harness-default"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "placement": {
+                                          "enum": [
+                                            "laptop",
+                                            "server"
                                           ],
                                           "type": "string"
                                         }
@@ -9082,6 +9110,13 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
                                       ],
                                       "type": "string"
                                     }
@@ -10131,6 +10166,13 @@
                                               "harness-default"
                                             ],
                                             "type": "string"
+                                          },
+                                          "placement": {
+                                            "enum": [
+                                              "laptop",
+                                              "server"
+                                            ],
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10668,6 +10710,13 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
                                       ],
                                       "type": "string"
                                     }
@@ -11341,6 +11390,13 @@
                                   "harness-default"
                                 ],
                                 "type": "string"
+                              },
+                              "placement": {
+                                "enum": [
+                                  "laptop",
+                                  "server"
+                                ],
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -11875,6 +11931,13 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "placement": {
+                                      "enum": [
+                                        "laptop",
+                                        "server"
                                       ],
                                       "type": "string"
                                     }

@@ -83,6 +83,17 @@ describe("doctor — harness detection", () => {
 		}
 	});
 
+	it("names Claude Code when the claude binary is present and its ACP adapter is not (#650)", () => {
+		writeFileSync(join(tempPathDir, "claude"), "#!/bin/sh\n");
+		chmodSync(join(tempPathDir, "claude"), 0o755);
+		process.env.PATH = tempPathDir;
+
+		const row = checkHarnessesOnPath().find((c) => c.name === "Harness: Claude Code");
+		expect(row?.pass).toBe(false);
+		expect(row?.detail).toContain(`Claude Code found at ${join(tempPathDir, "claude")}, adapter missing`);
+		expect(row?.detail).toContain("claude /login");
+	});
+
 	it("passes when a registry harness binary is on PATH", () => {
 		const descriptor = Object.values(HARNESS_REGISTRY)[0];
 		const binPath = join(tempPathDir, descriptor.binary);
