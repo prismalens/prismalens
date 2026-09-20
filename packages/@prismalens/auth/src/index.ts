@@ -12,3 +12,14 @@
 
 export type { Session, User } from "better-auth/types";
 export { type Auth, type AuthOptions, createAuth } from "./auth.js";
+export {
+	type CredentialAccount,
+	generatePassword,
+	type OwnerAccountStore,
+	type OwnerPasswordReset,
+	type PasswordCapableAuth,
+	ResetOwnerPasswordError,
+	type ResetOwnerPasswordReason,
+	resetOwnerPassword,
+	resetOwnerPasswordWith,
+} from "./reset-password.js";

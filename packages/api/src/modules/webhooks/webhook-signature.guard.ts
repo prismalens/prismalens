@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	type CanActivate,
 	type ExecutionContext,
@@ -11,7 +13,12 @@ import {
 	UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { EnvironmentVariables } from "@prismalens/config";
+import {
+	type EnvironmentVariables,
+	getAppDataDir,
+	SecretEnvVars,
+	secretFileName,
+} from "@prismalens/config";
 import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
 import { RENDER_WEBHOOK_PATH } from "../../shared/constants/routes.js";
 
@@ -29,6 +36,7 @@ function safeCompare(a: string, b: string): boolean {
 export class WebhookSignatureGuard implements CanActivate {
 	private readonly logger = new Logger(WebhookSignatureGuard.name);
 	private readonly secret: string;
+	private driftReported = false;
 
 	constructor(
 		private readonly configService: ConfigService<EnvironmentVariables>,
@@ -81,7 +89,31 @@ export class WebhookSignatureGuard implements CanActivate {
 		}
 
 		this.logger.warn("Webhook rejected: no valid credential");
+		this.reportSecretDrift();
 		throw new ForbiddenException("Invalid webhook credentials");
+	}
+
+	/**
+	 * The secret is read once at boot. When the workspace file has since changed
+	 * (rotated, restored from a backup), every sender configured with the new
+	 * value is refused; say why once instead of failing silently (#605 edge 14).
+	 */
+	private reportSecretDrift(): void {
+		if (this.driftReported) return;
+		let onDisk: string;
+		try {
+			onDisk = readFileSync(
+				join(getAppDataDir(), secretFileName(SecretEnvVars.WEBHOOK_SECRET)),
+				"utf-8",
+			).trim();
+		} catch {
+			return;
+		}
+		if (!onDisk || safeCompare(onDisk, this.secret)) return;
+		this.driftReported = true;
+		this.logger.error(
+			"The webhook secret file changed after this process started; webhooks are still checked against the old value. Restart `pl up` to use the new one.",
+		);
 	}
 
 	/** Bearer token, or Basic auth with the secret as password (any username). */

@@ -48,6 +48,7 @@
 	},
 	"devDependencies": {
 		"@prismalens/api": "workspace:*",
+		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"@prismalens/database": "workspace:*",

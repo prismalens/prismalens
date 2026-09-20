@@ -18,6 +18,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { OverlayService } from "../overlay/overlay.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { InvestigationsService } from "./investigations.service.js";
+import { SettingsService } from "../../core/settings/settings.service.js";
 
 const INV_ID = "11111111-1111-4111-8111-111111111111";
 const RUN_ID = "33333333-3333-4333-8333-333333333333";
@@ -78,6 +79,7 @@ async function buildService(mockPrisma: ReturnType<typeof makeMockPrisma>) {
 			{ provide: PrismaService, useValue: mockPrisma },
 			{ provide: TimelineService, useValue: {} },
 			{ provide: OverlayService, useValue: {} },
+			{ provide: SettingsService, useValue: { isResetting: () => false } },
 		],
 	}).compile();
 	return module.get<InvestigationsService>(InvestigationsService);

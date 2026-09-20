@@ -161,7 +161,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			repoToken: (connectionId) =>
 				this.integrationsService.gitToken(connectionId),
-			snapshot: (src, dest) => this.repoSource.snapshot(src, dest),
+			snapshot: (src, dest, signal) =>
+				this.repoSource.snapshot(src, dest, signal),
 			getIncident: async (id) => {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;

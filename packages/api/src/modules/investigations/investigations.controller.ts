@@ -16,6 +16,7 @@ import {
 	OverlaySchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
+import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
@@ -59,9 +60,16 @@ export class InvestigationsController {
 			// POST /investigations - Create a new investigation
 			create: implement(investigationsContract.create).handler(
 				async ({ input }) => {
-					const { investigation } =
-						await this.investigationsService.startOrGet(input);
-					return this.serializeInvestigation(investigation);
+					try {
+						const { investigation } =
+							await this.investigationsService.startOrGet(input);
+						return this.serializeInvestigation(investigation);
+					} catch (error) {
+						if (error instanceof ResetInProgressError) {
+							throw new ORPCError("CONFLICT", { message: error.message });
+						}
+						throw error;
+					}
 				},
 			),
 

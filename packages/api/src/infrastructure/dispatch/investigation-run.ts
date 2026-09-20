@@ -148,7 +148,7 @@ async function runJobInternal(
 			incident = null;
 		}
 		const context = assembleInvestigationContext(incident, data);
-		const workspace = await resolveWorkspace(data, ports);
+		const workspace = await resolveWorkspace(data, ports, io.signal);
 		await recordWorkspace(data, workspace, ports);
 
 		const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
@@ -221,6 +221,17 @@ async function runJobInternal(
 		logger.info(`Job ${job.id} completed`);
 		return successResult(data, outcome.report);
 	} catch (error: unknown) {
+		// A cancel that lands before the harness starts (during the clone) is still a cancel (#605 edge 23).
+		const parsed = InvestigationJobDataSchema.safeParse(rawPayload);
+		if (io.signal.aborted && parsed.success) {
+			logger.info(`Job ${job.id} cancelled before the harness started`);
+			try {
+				await persistCancelled(parsed.data, ports);
+			} catch (e) {
+				logger.error("Failed to persist cancelled status", e);
+			}
+			return cancelledResult(parsed.data);
+		}
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`Job failed: ${errorMessage}`, error);
 		const investigationId = unvalidated?.investigationId;
@@ -297,6 +308,7 @@ export interface Workspace {
 export async function resolveWorkspace(
 	data: InvestigationJobData,
 	ports: RunPorts,
+	signal?: AbortSignal,
 ): Promise<Workspace> {
 	let repos: IncidentRepo[] = [];
 	try {
@@ -326,6 +338,7 @@ export async function resolveWorkspace(
 			token,
 		},
 		join(runDir, "repo"),
+		signal,
 	);
 	const cwd = repo.subPath ? resolve(snap.path, repo.subPath) : snap.path;
 	const inside = relative(snap.path, cwd);

@@ -9,7 +9,7 @@ import { settingsContract } from "@prismalens/contracts";
 import { HarnessService } from "../harness/harness.service.js";
 import { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
-import { SettingsService } from "./settings.service.js";
+import { ActiveRunsError, SettingsService } from "./settings.service.js";
 
 @UseGuards(ThrottlerGuard)
 @Controller()
@@ -35,6 +35,32 @@ export class SettingsController {
 	}
 
 	/**
+	 * A fast, friendly refusal before the work starts. It is not the guard: the
+	 * reset transaction repeats the check, because a run can be claimed between
+	 * this count and the deletes (#662 review). {@link runReset} maps that.
+	 */
+	private async refuseWhileRunning(): Promise<void> {
+		const active = await this.settingsService.activeRunCount();
+		if (active > 0) {
+			throw new ORPCError("CONFLICT", {
+				message: new ActiveRunsError(active).message,
+			});
+		}
+	}
+
+	/** Run a reset, turning a mid-transaction refusal into the same CONFLICT. */
+	private async runReset<T>(reset: () => Promise<T>): Promise<T> {
+		try {
+			return await reset();
+		} catch (error) {
+			if (error instanceof ActiveRunsError) {
+				throw new ORPCError("CONFLICT", { message: error.message });
+			}
+			throw error;
+		}
+	}
+
+	/**
 	 * Implement danger zone routes
 	 */
 	@Implement(settingsContract.danger)
@@ -47,7 +73,8 @@ export class SettingsController {
 							message: "Confirmation required",
 						});
 					}
-					return this.settingsService.resetData();
+					await this.refuseWhileRunning();
+					return this.runReset(() => this.settingsService.resetData());
 				},
 			),
 
@@ -58,7 +85,8 @@ export class SettingsController {
 							message: "Confirmation required",
 						});
 					}
-					return this.settingsService.factoryReset();
+					await this.refuseWhileRunning();
+					return this.runReset(() => this.settingsService.factoryReset());
 				},
 			),
 		};
