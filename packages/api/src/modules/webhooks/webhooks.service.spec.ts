@@ -411,10 +411,13 @@ describe("WebhooksService", () => {
 			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
 			await service.resolvePrometheusAlert("fp-late", undefined, STARTS);
 
-			expect(service.takeEarlyResolution("fp-late", "2026-09-19T10:05:00Z")).toBe(false);
-			expect(service.takeEarlyResolution("fp-late", STARTS)).toBe(true);
-			// Taken once: a second firing of the same episode is not auto-resolved again.
-			expect(service.takeEarlyResolution("fp-late", STARTS)).toBe(false);
+			expect(service.hasEarlyResolution("fp-late", "2026-09-19T10:05:00Z")).toBe(false);
+			expect(service.hasEarlyResolution("fp-late", STARTS)).toBe(true);
+			// Reading does not consume it: a delivery that fails to resolve must be
+			// able to try again (#664 review).
+			expect(service.hasEarlyResolution("fp-late", STARTS)).toBe(true);
+			service.clearEarlyResolution("fp-late", STARTS);
+			expect(service.hasEarlyResolution("fp-late", STARTS)).toBe(false);
 		});
 
 		it("forgets it after the window", async () => {
@@ -423,7 +426,7 @@ describe("WebhooksService", () => {
 				vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
 				await service.resolvePrometheusAlert("fp-old", undefined, STARTS);
 				vi.advanceTimersByTime(EARLY_RESOLUTION_TTL_MS + 1);
-				expect(service.takeEarlyResolution("fp-old", STARTS)).toBe(false);
+				expect(service.hasEarlyResolution("fp-old", STARTS)).toBe(false);
 			} finally {
 				vi.useRealTimers();
 			}

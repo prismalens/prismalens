@@ -99,19 +99,28 @@ export class WebhooksController {
 							);
 							alertIds.push(result.alert.id);
 							// Its resolution already came, out of order (#633 edge 10).
+							// The record is cleared only once the alert is really
+							// resolved, so a failure here leaves it for the retry.
 							if (
 								alert.fingerprint &&
-								this.webhooksService.takeEarlyResolution(
+								this.webhooksService.hasEarlyResolution(
 									alert.fingerprint,
 									alert.startsAt,
 								)
 							) {
-								await this.webhooksService.resolvePrometheusAlert(
-									alert.fingerprint,
-									idempotencyKey === undefined
-										? undefined
-										: `${idempotencyKey}:${alert.fingerprint}:resolved`,
-								);
+								const resolved =
+									await this.webhooksService.resolvePrometheusAlert(
+										alert.fingerprint,
+										idempotencyKey === undefined
+											? undefined
+											: `${idempotencyKey}:${alert.fingerprint}:resolved`,
+									);
+								if (resolved) {
+									this.webhooksService.clearEarlyResolution(
+										alert.fingerprint,
+										alert.startsAt,
+									);
+								}
 							}
 						} catch (error) {
 							this.logger.error(`Failed to process Prometheus alert: ${error}`);

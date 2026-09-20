@@ -56,21 +56,24 @@ describe("WebhooksController Prometheus intake (#633 edge 10)", () => {
 	it("resolves a late firing whose resolution already arrived", async () => {
 		const service = {
 			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
-			takeEarlyResolution: vi.fn(() => true),
-			resolvePrometheusAlert: vi.fn(async () => null),
+			hasEarlyResolution: vi.fn(() => true),
+			clearEarlyResolution: vi.fn(),
+			resolvePrometheusAlert: vi.fn(async () => ({ id: "a1" })),
 		};
 		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
 			input: { alerts: [firing] },
 			context: {},
 		});
-		expect(service.takeEarlyResolution).toHaveBeenCalledWith("fp-1", firing.startsAt);
+		expect(service.hasEarlyResolution).toHaveBeenCalledWith("fp-1", firing.startsAt);
 		expect(service.resolvePrometheusAlert).toHaveBeenCalledWith("fp-1", undefined);
+		expect(service.clearEarlyResolution).toHaveBeenCalledWith("fp-1", firing.startsAt);
 	});
 
 	it("leaves an ordinary firing open", async () => {
 		const service = {
 			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
-			takeEarlyResolution: vi.fn(() => false),
+			hasEarlyResolution: vi.fn(() => false),
+			clearEarlyResolution: vi.fn(),
 			resolvePrometheusAlert: vi.fn(),
 		};
 		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
@@ -78,6 +81,23 @@ describe("WebhooksController Prometheus intake (#633 edge 10)", () => {
 			context: {},
 		});
 		expect(service.resolvePrometheusAlert).not.toHaveBeenCalled();
+	});
+
+	// #664 review: dropping the record before the resolution meant a failed
+	// resolve lost it, and the retry left the alert open.
+	it("keeps the early-resolution record when the resolution did not happen", async () => {
+		const service = {
+			processGenericWebhook: vi.fn(async () => ({ alert: { id: "a1" } })),
+			hasEarlyResolution: vi.fn(() => true),
+			clearEarlyResolution: vi.fn(),
+			resolvePrometheusAlert: vi.fn(async () => null),
+		};
+		await prometheusHandler(service as unknown as Partial<WebhooksService>)({
+			input: { alerts: [firing] },
+			context: {},
+		});
+		expect(service.resolvePrometheusAlert).toHaveBeenCalled();
+		expect(service.clearEarlyResolution).not.toHaveBeenCalled();
 	});
 
 	it("passes a resolution's startsAt so an unknown fingerprint can be remembered", async () => {

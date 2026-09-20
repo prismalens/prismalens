@@ -258,15 +258,26 @@ export class WebhooksService {
 	}
 
 	/**
-	 * True once for a firing whose own episode (same fingerprint and `startsAt`)
-	 * was already resolved. A new episode has a later `startsAt` and is untouched.
+	 * True while a firing's own episode (same fingerprint and `startsAt`) has
+	 * already been resolved. A new episode has a later `startsAt` and is
+	 * untouched. This only READS: the record is dropped by
+	 * {@link clearEarlyResolution} once the resolution actually happened, so a
+	 * failed or retried delivery can still be resolved (#664 review).
 	 */
-	takeEarlyResolution(fingerprint: string, startsAt: string): boolean {
+	hasEarlyResolution(fingerprint: string, startsAt: string): boolean {
 		const key = `${fingerprint}|${startsAt}`;
 		const expires = this.earlyResolutions.get(key);
 		if (expires === undefined) return false;
-		this.earlyResolutions.delete(key);
-		return expires > Date.now();
+		if (expires <= Date.now()) {
+			this.earlyResolutions.delete(key);
+			return false;
+		}
+		return true;
+	}
+
+	/** Forget an early resolution that has been applied. */
+	clearEarlyResolution(fingerprint: string, startsAt: string): void {
+		this.earlyResolutions.delete(`${fingerprint}|${startsAt}`);
 	}
 
 	async processGenericWebhook(
