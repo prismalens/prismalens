@@ -10,6 +10,7 @@
 
 import type { DeploymentProvider } from "./deployment.interface.js";
 import type { GitProvider } from "./git.interface.js";
+import type { MetricsQueries } from "./metrics.interface.js";
 
 /**
  * Bound authenticated request function — created by binding
@@ -21,8 +22,8 @@ export type AuthenticatedRequestFn = (
 	options?: { body?: string; headers?: Record<string, string> },
 ) => Promise<Response>;
 
-/** Segment kind supported by adapters (#446: vcs and deployment only). */
-export type SegmentKind = "vcs" | "deployment";
+/** Segment kind supported by adapters (#446, #633). */
+export type SegmentKind = "vcs" | "deployment" | "metrics";
 
 /**
  * Provider adapter interface (#446).
@@ -34,6 +35,7 @@ export interface ProviderAdapter {
 	readonly name: string;
 	readonly vcs?: GitProvider;
 	readonly deployment?: DeploymentProvider;
+	readonly metrics?: MetricsQueries;
 }
 
 export type ProviderAdapterFactory = (

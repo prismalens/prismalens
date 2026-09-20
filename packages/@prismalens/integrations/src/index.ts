@@ -35,6 +35,7 @@ export {
 	TokenRefreshError,
 	TokenRefresher,
 	TokenVault,
+	urlOnlyRequestFn,
 } from "./engine/index.js";
 // Providers — deployment
 export type { DeploymentProvider } from "./providers/deployment.interface.js";
@@ -43,7 +44,7 @@ export type {
 	GitProvider,
 	GitProviderContext,
 } from "./providers/git.interface.js";
-// Providers — adapters & registry (#446)
+// Providers — adapters & registry (#446, #633)
 export {
 	adapterSegments,
 	createAdapter,
@@ -54,10 +55,17 @@ export {
 	getRegisteredTemplateIds,
 	getTemplatesForSegment,
 	isAdapterSupported,
+	PrometheusAdapter,
+	PrometheusMetricsSegment,
 	RenderAdapter,
 	RenderDeploymentSegment,
 	templatesForSegment,
 } from "./providers/index.js";
+// Providers — metrics (#633)
+export type {
+	MetricsQueries,
+	RangeSeries,
+} from "./providers/metrics.interface.js";
 // Providers — shared types
 export type {
 	AuthenticatedRequestFn,
@@ -67,12 +75,14 @@ export type {
 } from "./providers/types.js";
 // Templates
 export {
+	alertmanager,
 	getAllTemplates,
 	getTemplate,
 	getTemplatesByAuthMode,
 	getTemplatesByCategory,
 	githubApp,
 	githubToken,
+	prometheus,
 	render,
 } from "./templates/index.js";
 export type {

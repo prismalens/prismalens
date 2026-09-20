@@ -44,14 +44,14 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 	it("resolves unknown templateIds to null cleanly", () => {
 		expect(createAdapter("gitlab")).toBeNull();
 		expect(createAdapter("bitbucket")).toBeNull();
-		expect(createAdapter("prometheus")).toBeNull();
+		expect(createAdapter("datadog")).toBeNull();
 		expect(createAdapter("slack")).toBeNull();
 		expect(createAdapter("slack-token")).toBeNull();
 		expect(createAdapter("vercel")).toBeNull();
 		expect(createAdapter("nonsense")).toBeNull();
 
 		expect(isAdapterSupported("gitlab")).toBe(false);
-		expect(isAdapterSupported("prometheus")).toBe(false);
+		expect(isAdapterSupported("datadog")).toBe(false);
 		expect(isAdapterSupported("vercel")).toBe(false);
 		expect(isAdapterSupported("nonsense")).toBe(false);
 	});
@@ -78,6 +78,8 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(templatesForSegment("deployment")).toEqual(["render"]);
 		expect(getTemplatesForSegment("vcs")).toEqual(["github-app", "github-token"]);
 		expect(templatesForSegment("vcs")).toEqual(["github-app", "github-token"]);
+		expect(getTemplatesForSegment("metrics")).toEqual(["prometheus"]);
+		expect(templatesForSegment("metrics")).toEqual(["prometheus"]);
 
 		// templatesForCapability
 		expect(getTemplatesForCapability("deployment:list_services")).toEqual([
@@ -94,7 +96,9 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 			"github-app",
 			"github-token",
 		]);
-		expect(getTemplatesForCapability("monitoring:read")).toEqual([]);
+		expect(getTemplatesForCapability("monitoring:read")).toEqual([
+			"prometheus",
+		]);
 
 		// Template-level capability asymmetry
 		const appTemplate = getTemplate("github-app");
