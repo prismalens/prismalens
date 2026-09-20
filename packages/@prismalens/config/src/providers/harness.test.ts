@@ -6,6 +6,7 @@ import {
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	resolveHarnessModel,
+	resolvePlacement,
 } from "./harness.js";
 
 afterEach(() => {
@@ -65,7 +66,12 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 });
 
 describe("harness isolation (ADR 0004 §1, #637)", () => {
-	const runEnv = { configDir: "/c", dataDir: "/d", cwd: "/w" };
+	const runEnv = {
+		configDir: "/c",
+		dataDir: "/d",
+		cwd: "/w",
+		placement: "server" as const,
+	};
 
 	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
 		const row = HARNESS_REGISTRY.opencode;
@@ -90,10 +96,56 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).ANTHROPIC_MODEL).toBeUndefined();
 	});
 
+	it("claude-code on a laptop keeps the user's config dir, so their own sign-in runs (#650)", () => {
+		const env = HARNESS_REGISTRY["claude-code"].acpEnv({
+			...runEnv,
+			placement: "laptop",
+		});
+		expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
+		expect(env.HOME).toBeUndefined();
+	});
+
+	it("claude-code on a server gets the empty per-run config dir", () => {
+		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).CLAUDE_CONFIG_DIR).toBe(
+			"/d",
+		);
+	});
+
+	it("claude-code drives the PATH claude, never a second bundled binary (#650)", () => {
+		expect(
+			HARNESS_REGISTRY["claude-code"].acpEnv({
+				...runEnv,
+				companionPath: "/usr/local/bin/claude",
+			}).CLAUDE_CODE_EXECUTABLE,
+		).toBe("/usr/local/bin/claude");
+		expect(
+			HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).CLAUDE_CODE_EXECUTABLE,
+		).toBeUndefined();
+	});
+
 	it("claude-code loads no setting sources from the snapshot", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: { options: { settingSources: [] } },
 		});
+	});
+});
+
+describe("resolvePlacement (ADR 0003 §9)", () => {
+	it("defaults to laptop", () => {
+		expect(resolvePlacement({})).toBe("laptop");
+	});
+	it("treats CI as a server", () => {
+		expect(resolvePlacement({ CI: "true" })).toBe("server");
+		expect(resolvePlacement({ CI: "false" })).toBe("laptop");
+	});
+	it("lets PRISMALENS_PLACEMENT win either way", () => {
+		expect(resolvePlacement({ PRISMALENS_PLACEMENT: "server" })).toBe("server");
+		expect(resolvePlacement({ CI: "true", PRISMALENS_PLACEMENT: "laptop" })).toBe(
+			"laptop",
+		);
+	});
+	it("ignores an unknown value", () => {
+		expect(resolvePlacement({ PRISMALENS_PLACEMENT: "vm" })).toBe("laptop");
 	});
 });
 

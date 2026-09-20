@@ -25,6 +25,8 @@ const PACKAGE_FLOOR = {
 	lines: 26,
 };
 
+const NEW_CODE = { statements: 80, branches: 80, functions: 80, lines: 80 };
+
 export default defineConfig({
 	test: {
 		include: ["src/**/*.test.ts"],
@@ -33,7 +35,10 @@ export default defineConfig({
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.test.ts"],
 			reporter: ["text-summary", "lcov", "text"],
-			thresholds: { ...PACKAGE_FLOOR },
+			thresholds: {
+				...PACKAGE_FLOOR,
+				"src/cli/update-notice.ts": NEW_CODE,
+			},
 		},
 	},
 });

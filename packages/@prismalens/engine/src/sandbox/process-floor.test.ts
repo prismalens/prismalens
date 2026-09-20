@@ -43,6 +43,15 @@ describe("buildFloorEnv (own-secret isolation, ADR-0009)", () => {
 		expect(env.NODE_EXTRA_CA_CERTS).toBe("/etc/ssl/corp-ca.pem");
 	});
 
+	it("keeps a relocated Claude config dir for a laptop placement (#650)", () => {
+		vi.stubEnv("CLAUDE_CONFIG_DIR", "/home/dev/.config/claude");
+		expect(buildFloorEnv().CLAUDE_CONFIG_DIR).toBe("/home/dev/.config/claude");
+		// A server placement's row still wins: the caller's env is layered on top.
+		expect(buildFloorEnv({ CLAUDE_CONFIG_DIR: "/run/x/home" }).CLAUDE_CONFIG_DIR).toBe(
+			"/run/x/home",
+		);
+	});
+
 	it("skips undefined caller entries instead of stringifying them", () => {
 		const env = buildFloorEnv({ OPENAI_BASE_URL: undefined });
 		expect("OPENAI_BASE_URL" in env).toBe(false);

@@ -765,6 +765,36 @@ describe("TokenRefresher — concurrent refresh within the locked cron path (#25
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
+	// #386: the two readers of `tokenExpiresAt` must agree on what null means.
+	// The cron's `tokenExpiresAt: { lt: cutoff }` skips null rows and
+	// `resolveOrRefresh` treats null as not-due, so null is "no known expiry,
+	// refresh on demand". `expires_in: 0` is a different thing: already expired.
+	it.each([
+		["absent", undefined, null],
+		["not a number", "3600", null],
+		["zero", 0, 0],
+		["3600", 3600, 3_600_000],
+	])(
+		"stores the expiry for expires_in %s",
+		async (_name, expires_in, offsetMs) => {
+			const deps = new MemoryRefreshDeps();
+			seed(deps);
+			fetchMock.mockResolvedValue(jsonResponse({ access_token: "at_new", expires_in }));
+			const refresher = new TokenRefresher(VAULT, deps);
+			const before = Date.now();
+
+			await refresher.getValidToken("conn_1");
+
+			const stored = deps.updates[0].tokenExpiresAt;
+			if (offsetMs === null) {
+				expect(stored).toBeNull();
+			} else {
+				expect(stored).toBeInstanceOf(Date);
+				expect((stored as Date).getTime()).toBeGreaterThanOrEqual(before + offsetMs);
+			}
+		},
+	);
+
 	it("serves the refreshed token from cache to callers arriving after it settles", async () => {
 		const deps = new MemoryRefreshDeps();
 		seed(deps);

@@ -19,6 +19,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ExportReportButton } from "./ExportReportButton";
 import { PriorityBadge } from "./investigation.utils";
 
 interface AnalysisTabProps {
@@ -241,6 +242,9 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 							{report?.fidelity && <FidelityBadge fidelity={report.fidelity} />}
 							{report?.fidelity?.sandbox && (
 								<SandboxBadge sandbox={report.fidelity.sandbox} />
+							)}
+							{report && (
+								<ExportReportButton investigationId={investigation.id} />
 							)}
 						</div>
 					</div>

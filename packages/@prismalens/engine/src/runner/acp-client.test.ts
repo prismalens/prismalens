@@ -98,6 +98,27 @@ describe("AcpSession when the harness pipe dies", () => {
 		await expect(session.open()).rejects.toThrow(/harness/i);
 	});
 
+	// The harness exits, its pipe EPIPEs on our write, and its `close` follows a
+	// moment later. The EPIPE used to win and the reason lost the exit code and
+	// the stderr — the difference between "stdin failed (write EPIPE)" and
+	// "harness exited early (code=1): harness: fatal: not logged in", which is
+	// the line a user can act on. It also made a macOS CI run flaky (#661).
+	it("lets the child's own exit explain an EPIPE, not the write error", async () => {
+		const child = brokenPipeChild("EPIPE");
+		const session = sessionOver(child);
+		const opening = session.open();
+		setTimeout(() => child.emit("close", 1, null), 10);
+
+		await expect(opening).rejects.toThrow(
+			/harness exited early \(code=1[^)]*\).*not logged in/,
+		);
+	});
+
+	it("still reports an EPIPE the child never explains", async () => {
+		const session = sessionOver(brokenPipeChild("EPIPE"));
+		await expect(session.open()).rejects.toThrow(/harness/i);
+	});
+
 	it("hands every stderr chunk to onStderr as it arrives", async () => {
 		const child = brokenPipeChild("EPIPE");
 		const seen: string[] = [];

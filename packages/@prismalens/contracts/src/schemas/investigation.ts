@@ -125,6 +125,12 @@ export const RunFidelitySchema = z.object({
 	modelSource: z
 		.enum(["operator", "product-default", "harness-default"])
 		.optional(),
+	/**
+	 * Where the run executed, which decided its credential and isolation
+	 * (ADR 0003 §9, #650): `laptop` used the user's own harness sign-in,
+	 * `server` an empty config dir and an env key. Older records have none.
+	 */
+	placement: z.enum(["laptop", "server"]).optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 
@@ -217,6 +223,12 @@ export const InvestigationSchema = z.object({
 	schemaVersion: z.number().int().optional().default(1),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
+});
+
+/** A completed report rendered as Markdown for download (#606). */
+export const InvestigationReportMarkdownSchema = z.object({
+	filename: z.string(),
+	markdown: z.string(),
 });
 
 export const CreateInvestigationSchema = z.object({
@@ -426,6 +438,9 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 
 // ---- TYPE EXPORTS (ordered-evidence + canonical stream) ----
 export type Evidence = z.infer<typeof EvidenceSchema>;
+export type InvestigationReportMarkdown = z.infer<
+	typeof InvestigationReportMarkdownSchema
+>;
 export type Hypothesis = z.infer<typeof HypothesisSchema>;
 export type RuledOut = z.infer<typeof RuledOutSchema>;
 export type Coverage = z.infer<typeof CoverageSchema>;

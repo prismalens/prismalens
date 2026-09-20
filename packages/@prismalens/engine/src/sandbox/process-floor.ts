@@ -54,6 +54,11 @@ export const SAFE_ENV_ALLOWLIST = [
 	"REQUESTS_CA_BUNDLE",
 	// A relocated data home is where OpenCode keeps a `/connect` login (review N5).
 	"XDG_DATA_HOME",
+	// A laptop placement runs Claude Code on the user's own sign-in (ADR 0003 §9,
+	// #650), so a config dir they relocated themselves has to survive the floor.
+	// A server placement is unaffected: its registry row sets this explicitly and
+	// the row's env is layered over the floor.
+	"CLAUDE_CONFIG_DIR",
 ] as const;
 
 /**

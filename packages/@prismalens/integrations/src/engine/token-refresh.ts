@@ -170,10 +170,18 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 			tokenType: (data.token_type as string) ?? "bearer",
 		};
 
-		const expiresIn = data.expires_in as number | undefined;
-		const tokenExpiresAt = expiresIn
-			? new Date(Date.now() + expiresIn * 1000)
-			: null;
+		// A null expiry means "no known expiry", and both readers agree on it: the
+		// cron's `tokenExpiresAt: { lt: cutoff }` skips null rows, and
+		// `resolveOrRefresh` treats a null as not-due. So a provider that omits
+		// `expires_in` gets a credential refreshed on demand, never on a timer
+		// (#386). `expires_in: 0` is NOT that case — it is already expired, and
+		// the old truthiness check turned it into "never expires".
+		const expiresIn =
+			typeof data.expires_in === "number" && Number.isFinite(data.expires_in)
+				? data.expires_in
+				: null;
+		const tokenExpiresAt =
+			expiresIn === null ? null : new Date(Date.now() + expiresIn * 1000);
 
 		return {
 			accessToken: newAccessToken,
