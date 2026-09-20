@@ -22,7 +22,11 @@ export interface PermissionRequest {
 	toolCall?: {
 		title?: string;
 		toolCallId?: string;
-		/** ACP ToolKind: read | edit | delete | move | search | execute | think | fetch | other */
+		/**
+		 * ACP ToolKind: RequestPermissionRequest["toolCall"]["kind"]
+		 * (read | edit | delete | move | search | execute | think | fetch | other).
+		 * Kept as string for tolerant wire decoding.
+		 */
 		kind?: string;
 		rawInput?: unknown;
 	};

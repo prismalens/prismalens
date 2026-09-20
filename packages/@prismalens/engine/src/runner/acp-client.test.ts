@@ -14,10 +14,12 @@
  * through a spawned process.
  */
 import { EventEmitter } from "node:events";
+import { dirname, join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Sandbox, SandboxProcess } from "../sandbox/types.js";
-import { AcpSession } from "./acp-client.js";
+import { AcpSession, type AcpStreamItem } from "./acp-client.js";
 
 /** A child whose stdin fails every write the way a dead peer's pipe does. */
 function brokenPipeChild(code: string): SandboxProcess {
@@ -178,5 +180,56 @@ describe("AcpSession when the harness pipe dies", () => {
 		}
 
 		expect(uncaught.map((e) => e.message)).toEqual([]);
+	});
+});
+
+const FAKE = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"run",
+	"__fixtures__",
+	"fake-acp-harness.mjs",
+);
+
+describe("AcpSession tolerant wire decoding", () => {
+	it("an update with an unknown sessionUpdate kind, an unknown tool kind, an extra field and an unknown stopReason is passed through and the turn still ends with done", async () => {
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			env: { ...process.env, FAKE_ACP_MODE: "tolerant" },
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+		});
+
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) {
+			items.push(item);
+		}
+		await session.close();
+
+		expect(
+			items.some(
+				(i) =>
+					i.kind === "update" &&
+					(i.update as Record<string, unknown>).sessionUpdate ===
+						"unknown_session_update_kind" &&
+					(i.update as Record<string, unknown>).extraField === "extra_update_val",
+			),
+		).toBe(true);
+
+		expect(
+			items.some(
+				(i) =>
+					i.kind === "update" &&
+					(i.update as Record<string, unknown>).kind === "unknown_tool_kind" &&
+					(i.update as Record<string, unknown>).extraField === "extra_tool_val",
+			),
+		).toBe(true);
+
+		const last = items[items.length - 1];
+		expect(last).toEqual({ kind: "done", stopReason: "unknown_stop_reason" });
 	});
 });

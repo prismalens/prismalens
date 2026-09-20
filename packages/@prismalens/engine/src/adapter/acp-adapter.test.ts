@@ -207,6 +207,17 @@ describe("AcpAdapter.normalize", () => {
 		expect(adapter.normalize({ sessionUpdate: "plan" })).toBeNull();
 	});
 
+	it("returns null for an unknown update and does not throw", () => {
+		const adapter = new AcpAdapter(ctx);
+		const unknownUpdate: AcpUpdate = {
+			sessionUpdate: "unrecognized_session_update_kind",
+			kind: "unrecognized_tool_kind",
+			rawInput: { extra: true },
+		};
+		expect(() => adapter.normalize(unknownUpdate)).not.toThrow();
+		expect(adapter.normalize(unknownUpdate)).toBeNull();
+	});
+
 	it("flushText emits trailing text as a text-only agent_step", () => {
 		const adapter = new AcpAdapter(ctx);
 		adapter.normalize({

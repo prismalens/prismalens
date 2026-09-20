@@ -9,6 +9,11 @@
  * spawned into a Sandbox (ADR 0004); the process floor by default.
  */
 import { createInterface } from "node:readline";
+import type {
+	InitializeResponse,
+	RequestPermissionRequest,
+} from "@agentclientprotocol/sdk";
+import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import type { PermissionPolicy, PermissionRequest } from "../run/permission.js";
 import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
@@ -88,10 +93,9 @@ export class AcpRpcError extends Error {
 	}
 }
 
-export interface AcpAgentInfo {
-	name?: string;
-	version?: string;
-}
+export type AcpAgentInfo = Partial<
+	Pick<NonNullable<InitializeResponse["agentInfo"]>, "name" | "version">
+>;
 
 export interface AcpAuthMethod {
 	id: string;
@@ -196,15 +200,17 @@ export class AcpSession {
 		const init = (await this.request(
 			"initialize",
 			{
-				protocolVersion: 1,
+				protocolVersion: PROTOCOL_VERSION,
 				clientCapabilities: {
 					fs: { readTextFile: false, writeTextFile: false },
 				},
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-		)) as { agentInfo?: AcpAgentInfo; authMethods?: AcpAuthMethod[] } | null;
-		this.agent = init?.agentInfo ?? {};
-		this.authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
+		)) as InitializeResponse | null;
+		this.agent = (init?.agentInfo ?? {}) as AcpAgentInfo;
+		this.authMethods = Array.isArray(init?.authMethods)
+			? (init.authMethods as AcpAuthMethod[])
+			: [];
 		const session = (await this.request(
 			"session/new",
 			{
