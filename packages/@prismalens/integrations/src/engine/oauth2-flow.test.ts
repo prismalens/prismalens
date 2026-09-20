@@ -65,9 +65,13 @@ class MemoryStateStore implements OAuth2StoreDeps {
 	}
 }
 
-function makeFlow(): { flow: OAuth2Flow; store: MemoryStateStore } {
+function makeFlow(): {
+	flow: OAuth2Flow;
+	store: MemoryStateStore;
+	vault: typeof VAULT;
+} {
 	const store = new MemoryStateStore();
-	return { flow: new OAuth2Flow(VAULT, store), store };
+	return { flow: new OAuth2Flow(VAULT, store), store, vault: VAULT };
 }
 
 const BASE_PARAMS = {
@@ -119,6 +123,42 @@ describe("OAuth2Flow.startAuthorization", () => {
 		expect(parsed.searchParams.get("response_type")).toBe("code");
 		expect(parsed.searchParams.get("scope")).toBe("repo read:org");
 		expect(parsed.searchParams.get("state")).toBe(state);
+	});
+
+	/**
+	 * #668 hardened the token URL against a connection-config value that moves
+	 * the host, but left the authorization URL raw — and that is the one the
+	 * *user* is redirected to, so moving its host sends them to someone else's
+	 * consent screen. Same values, same constraint.
+	 */
+	it("refuses a connection config value that would rewrite the authorization host", async () => {
+		const { flow } = makeFlow();
+
+		await expect(
+			flow.startAuthorization({
+				...BASE_PARAMS,
+				template: templateWith({
+					authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+					tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+				}),
+				connectionConfig: { subdomain: "tenant.attacker.test#" },
+			}),
+		).rejects.toThrow(/not usable in an OAuth URL/);
+	});
+
+	it("interpolates a host-safe connection config into the authorization URL", async () => {
+		const { flow } = makeFlow();
+
+		const { url } = await flow.startAuthorization({
+			...BASE_PARAMS,
+			template: templateWith({
+				authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+				tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+			}),
+			connectionConfig: { subdomain: "tenant-a" },
+		});
+
+		expect(new URL(url).host).toBe("tenant-a.acme.test");
 	});
 
 	it("mints a high-entropy, non-repeating state token", async () => {
@@ -575,7 +615,58 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 	// threaded from the state row into the exchange) and belongs with the other
 	// escalations from this PR, not inside a test-only change. Tracked in #391 —
 	// update this test as part of that fix rather than deleting it.
-	it("throws on a templated tokenUrl — tokenUrl is NOT interpolated from the connection config, unlike authorizationUrl", async () => {
+	// #391: a templated tokenUrl now resolves from the same connection config the
+	// authorization URL used, carried encrypted on the state row. It used to throw
+	// here — after the user had already granted consent at the provider.
+	it("interpolates a templated tokenUrl from the state row's connection config", async () => {
+		const { flow, vault } = makeFlow();
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
+
+		await flow.exchangeCodeForTokens(
+			templateWith({
+				authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+				tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+			}),
+			"auth-code",
+			oauthState({
+				connectionConfigEnc: vault.encryptJSON({ subdomain: "acme-eu" }),
+			}),
+			"client-abc",
+			"secret-xyz",
+		);
+
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://acme-eu.acme.test/oauth/token",
+		);
+	});
+
+	// The token exchange carries the client secret and the code, and interpolation
+	// is raw substitution, so a config value must not be able to move the host.
+	it("refuses a connection config value that would rewrite the token host", async () => {
+		const { flow, vault } = makeFlow();
+		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
+
+		await expect(
+			flow.exchangeCodeForTokens(
+				templateWith({
+					authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+					tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+				}),
+				"auth-code",
+				oauthState({
+					connectionConfigEnc: vault.encryptJSON({
+						subdomain: "tenant.attacker.test#",
+					}),
+				}),
+				"client-abc",
+				"secret-xyz",
+			),
+		).rejects.toThrow(/not usable in an OAuth URL/);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("still throws on a templated tokenUrl when the state row carries no config", async () => {
 		const { flow } = makeFlow();
 		fetchMock.mockResolvedValue(jsonResponse({ access_token: "at" }));
 

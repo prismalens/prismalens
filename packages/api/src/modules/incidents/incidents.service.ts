@@ -237,7 +237,10 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
-				if (dto.status === "resolved" && !existing.resolvedAt) {
+				if (
+					(dto.status === "resolved" || dto.status === "closed") &&
+					!existing.resolvedAt
+				) {
 					updateData.resolvedAt = new Date();
 					updateData.timeToResolve = Math.floor(
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,

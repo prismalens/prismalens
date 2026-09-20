@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
-import { runInvestigation } from "./investigate.js";
+import { prepareRunEnv, runInvestigation } from "./investigate.js";
 
 const FAKE = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "fake-acp-harness.mjs");
 
@@ -135,5 +142,55 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(outcome.report?.hypotheses[0]?.statement).toBe("connection pool exhausted");
 		expect(finished).toBe(1);
 		expect(stored.at(-1)?.kind).toBe("report");
+	});
+});
+
+/**
+ * #650 — placement decides the Claude Code row's credential and isolation
+ * (ADR 0003 §9). `prepareRunEnv` is what materialises it, so it is asserted
+ * here rather than only on the registry row.
+ */
+describe("prepareRunEnv and the claude-code placement (#650)", () => {
+	function claudeOnPath(): string {
+		const dir = tmp("path");
+		const bin = join(dir, "claude");
+		writeFileSync(bin, "#!/bin/sh\n");
+		chmodSync(bin, 0o755);
+		return dir;
+	}
+
+	function envFor(placement: "laptop" | "server", pathDir?: string) {
+		vi.stubEnv("PRISMALENS_PLACEMENT", placement);
+		if (pathDir) vi.stubEnv("PATH", pathDir);
+		return prepareRunEnv({
+			harness: "claude-code",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+		}).env;
+	}
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("leaves the user's own config dir and HOME alone on a laptop", () => {
+		const env = envFor("laptop");
+		expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
+		expect(env.HOME).toBeUndefined();
+	});
+
+	it("isolates the config dir on a server", () => {
+		const env = envFor("server");
+		expect(env.CLAUDE_CONFIG_DIR).toBeTruthy();
+	});
+
+	it("hands the adapter the claude already on PATH", () => {
+		const env = envFor("laptop", claudeOnPath());
+		expect(env.CLAUDE_CODE_EXECUTABLE).toMatch(/\/claude$/);
+	});
+
+	it("passes no executable when none is on PATH", () => {
+		const env = envFor("laptop", tmp("empty-path"));
+		expect(env.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
 	});
 });

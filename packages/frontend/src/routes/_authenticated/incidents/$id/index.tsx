@@ -120,6 +120,11 @@ function IncidentDetailPage() {
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
 	});
+	const closeMutation = useMutation({
+		...orpc.incidents.close.mutationOptions(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
+	});
 	const completeRecommendationMutation = useMutation({
 		...orpc.recommendations.update.mutationOptions(),
 		onSuccess: () =>
@@ -164,6 +169,7 @@ function IncidentDetailPage() {
 				}
 				onInvestigate={handleInvestigate}
 				onResolve={() => resolveMutation.mutate({ id })}
+				onClose={() => closeMutation.mutate({ id })}
 				isInvestigating={investigateMutation.isPending}
 				investigateDisabled={!canRunInvestigation}
 				investigateDisabledReason={blockedReason}

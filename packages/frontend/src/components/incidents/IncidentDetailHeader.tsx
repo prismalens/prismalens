@@ -9,7 +9,14 @@
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, CheckCircle, Play, Search, XCircle } from "lucide-react";
+import {
+	Archive,
+	ArrowLeft,
+	CheckCircle,
+	Play,
+	Search,
+	XCircle,
+} from "lucide-react";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +33,7 @@ export interface IncidentDetailHeaderProps {
 	onAcknowledge?: () => void;
 	onInvestigate?: () => void;
 	onResolve?: () => void;
+	onClose?: () => void;
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
@@ -44,6 +52,7 @@ export function IncidentDetailHeader({
 	onAcknowledge,
 	onInvestigate,
 	onResolve,
+	onClose,
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
@@ -53,6 +62,7 @@ export function IncidentDetailHeader({
 		incident.status,
 	);
 	const canResolve = !["resolved", "closed"].includes(incident.status);
+	const canClose = incident.status === "resolved";
 
 	return (
 		<div className="space-y-4">
@@ -167,6 +177,12 @@ export function IncidentDetailHeader({
 						<Button variant="outline" onClick={onResolve}>
 							<XCircle className="h-4 w-4 mr-2" />
 							Resolve
+						</Button>
+					)}
+					{canClose && onClose && (
+						<Button variant="outline" onClick={onClose}>
+							<Archive className="h-4 w-4 mr-2" />
+							Close
 						</Button>
 					)}
 				</div>
