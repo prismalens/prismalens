@@ -6,34 +6,68 @@
  * a SQLite file, a dispatch loop that fails the other's "running" rows on boot,
  * and a webhook token. The lock is a file holding the owner's pid; a lock whose
  * pid is gone (crash, SIGKILL, reboot) is stale and taken over.
+ *
+ * Two races decide the shape of this (review on #662):
+ *
+ *  - The file must never be observable empty. `open("wx")` then `write` leaves a
+ *    window where a second process reads nothing and would call the live lock
+ *    stale. So the owner is written to a temp file first and `link`ed into
+ *    place, which is atomic and fails when the lock already exists.
+ *  - Reclaiming a stale lock is check-then-act. Two processes can both read
+ *    "stale" and both unlink and create. Reclamation therefore happens while
+ *    holding a second, exclusive `.steal` file, and re-checks inside it.
  */
 
 import {
 	closeSync,
+	linkSync,
 	openSync,
 	readFileSync,
+	statSync,
 	unlinkSync,
 	writeSync,
 } from "node:fs";
 import { join } from "node:path";
 
 export const WORKSPACE_LOCK_FILE = "prismalens.lock";
+const STEAL_SUFFIX = ".steal";
+/**
+ * How long an unreadable lock is left alone. With the link protocol above a
+ * lock is written before it exists, so unreadable means corruption or a lock
+ * from an older build — neither is urgent, and waiting costs one boot.
+ */
+export const MALFORMED_GRACE_MS = 30_000;
 
 export interface WorkspaceLockOwner {
 	pid: number;
 	startedAt: string;
 }
 
+/** What the lock file says right now. */
+export type WorkspaceLockState =
+	| { kind: "free" }
+	| { kind: "held"; owner: WorkspaceLockOwner }
+	| { kind: "stale"; owner: WorkspaceLockOwner }
+	/** Present but not parseable as an owner: corrupt, or written by another build. */
+	| { kind: "unreadable"; ageMs: number }
+	/** Present and readable, but we could not tell — never reclaimed. */
+	| { kind: "undecidable"; reason: string };
+
 export class WorkspaceLockedError extends Error {
 	constructor(
 		readonly lockPath: string,
-		readonly owner: WorkspaceLockOwner,
+		readonly detail: string,
 	) {
-		super(
-			`Another PrismaLens process (pid ${owner.pid}, started ${owner.startedAt}) is using this workspace. Stop it first, or use --workspace for a separate one. Lock: ${lockPath}`,
-		);
+		super(detail);
 		this.name = "WorkspaceLockedError";
 	}
+}
+
+function ownerBusy(lockPath: string, owner: WorkspaceLockOwner): Error {
+	return new WorkspaceLockedError(
+		lockPath,
+		`Another PrismaLens process (pid ${owner.pid}, started ${owner.startedAt}) is using this workspace. Stop it first, or use --workspace for a separate one. Lock: ${lockPath}`,
+	);
 }
 
 function isAlive(pid: number): boolean {
@@ -46,17 +80,95 @@ function isAlive(pid: number): boolean {
 	}
 }
 
-/** The live owner of the workspace lock, or null when unlocked or stale. */
+/** Classify the lock file without touching it. */
+export function readWorkspaceLockState(
+	workspaceDir: string,
+): WorkspaceLockState {
+	const lockPath = join(workspaceDir, WORKSPACE_LOCK_FILE);
+	let raw: string;
+	let ageMs: number;
+	try {
+		raw = readFileSync(lockPath, "utf8");
+		ageMs = Date.now() - statSync(lockPath).mtimeMs;
+	} catch (e) {
+		const code = (e as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") return { kind: "free" };
+		// EACCES, EIO and friends say nothing about the holder, so nothing is reclaimed.
+		return { kind: "undecidable", reason: code ?? "unreadable" };
+	}
+	try {
+		const owner = JSON.parse(raw) as WorkspaceLockOwner;
+		if (!Number.isInteger(owner.pid) || typeof owner.startedAt !== "string") {
+			return { kind: "unreadable", ageMs };
+		}
+		return isAlive(owner.pid)
+			? { kind: "held", owner }
+			: { kind: "stale", owner };
+	} catch {
+		return { kind: "unreadable", ageMs };
+	}
+}
+
+/** The live owner of the workspace lock, or null when unlocked, stale or unreadable. */
 export function readWorkspaceLock(
 	workspaceDir: string,
 ): WorkspaceLockOwner | null {
+	const state = readWorkspaceLockState(workspaceDir);
+	return state.kind === "held" ? state.owner : null;
+}
+
+/** A lock file appears with its content already in it: create elsewhere, then link. */
+function createLock(lockPath: string, owner: WorkspaceLockOwner): void {
+	const tmpPath = `${lockPath}.${process.pid}.tmp`;
+	const fd = openSync(tmpPath, "wx", 0o600);
 	try {
-		const owner = JSON.parse(
-			readFileSync(join(workspaceDir, WORKSPACE_LOCK_FILE), "utf8"),
-		) as WorkspaceLockOwner;
-		return Number.isInteger(owner.pid) && isAlive(owner.pid) ? owner : null;
-	} catch {
-		return null;
+		writeSync(fd, JSON.stringify(owner));
+	} finally {
+		closeSync(fd);
+	}
+	try {
+		linkSync(tmpPath, lockPath);
+	} finally {
+		try {
+			unlinkSync(tmpPath);
+		} catch {
+			// best effort
+		}
+	}
+}
+
+/** Reclaim a stale or long-unreadable lock, serialized by an exclusive `.steal` file. */
+function reclaim(
+	workspaceDir: string,
+	lockPath: string,
+	owner: WorkspaceLockOwner,
+): boolean {
+	const stealPath = `${lockPath}${STEAL_SUFFIX}`;
+	let stealFd: number;
+	try {
+		stealFd = openSync(stealPath, "wx", 0o600);
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+		throw e;
+	}
+	try {
+		// Re-check inside the steal lock: the holder may have been replaced
+		// between the first read and here.
+		const state = readWorkspaceLockState(workspaceDir);
+		const reclaimable =
+			state.kind === "stale" ||
+			(state.kind === "unreadable" && state.ageMs > MALFORMED_GRACE_MS);
+		if (!reclaimable) return false;
+		unlinkSync(lockPath);
+		createLock(lockPath, owner);
+		return true;
+	} finally {
+		closeSync(stealFd);
+		try {
+			unlinkSync(stealPath);
+		} catch {
+			// best effort
+		}
 	}
 }
 
@@ -70,30 +182,60 @@ export function acquireWorkspaceLock(workspaceDir: string): () => void {
 		pid: process.pid,
 		startedAt: new Date().toISOString(),
 	};
-	for (let attempt = 0; attempt < 2; attempt++) {
+	const release = () => {
 		try {
-			const fd = openSync(lockPath, "wx", 0o600);
-			writeSync(fd, JSON.stringify(owner));
-			closeSync(fd);
-			const release = () => {
-				try {
-					const held = JSON.parse(readFileSync(lockPath, "utf8"));
-					if (held.pid === process.pid) unlinkSync(lockPath);
-				} catch {
-					// already gone
-				}
-			};
+			const held = JSON.parse(
+				readFileSync(lockPath, "utf8"),
+			) as WorkspaceLockOwner;
+			if (held.pid === process.pid) unlinkSync(lockPath);
+		} catch {
+			// already gone, or not ours
+		}
+	};
+
+	try {
+		createLock(lockPath, owner);
+		process.once("exit", release);
+		return release;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+	}
+
+	const state = readWorkspaceLockState(workspaceDir);
+	if (state.kind === "held") {
+		if (state.owner.pid === process.pid) {
 			process.once("exit", release);
 			return release;
-		} catch (e) {
-			if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-			const live = readWorkspaceLock(workspaceDir);
-			if (live && live.pid !== process.pid) {
-				throw new WorkspaceLockedError(lockPath, live);
-			}
-			// Stale, unreadable, or our own leftover: remove and retry once.
-			unlinkSync(lockPath);
 		}
+		throw ownerBusy(lockPath, state.owner);
 	}
-	throw new Error(`Could not take the workspace lock at ${lockPath}`);
+	if (state.kind === "undecidable") {
+		throw new WorkspaceLockedError(
+			lockPath,
+			`Cannot read the workspace lock (${state.reason}), so it is not taken over. Fix its permissions, or remove ${lockPath} if no PrismaLens process is running.`,
+		);
+	}
+	if (state.kind === "unreadable" && state.ageMs <= MALFORMED_GRACE_MS) {
+		throw new WorkspaceLockedError(
+			lockPath,
+			`A workspace lock was just created and cannot be read yet. Retry in a few seconds, or remove ${lockPath} if no PrismaLens process is running.`,
+		);
+	}
+	if (state.kind === "free") {
+		// It went away between the create and the read; one more try, no reclaim.
+		createLock(lockPath, owner);
+		process.once("exit", release);
+		return release;
+	}
+	if (!reclaim(workspaceDir, lockPath, owner)) {
+		const now = readWorkspaceLockState(workspaceDir);
+		throw new WorkspaceLockedError(
+			lockPath,
+			now.kind === "held"
+				? ownerBusy(lockPath, now.owner).message
+				: `Another process is reclaiming the workspace lock at ${lockPath}. Retry in a few seconds.`,
+		);
+	}
+	process.once("exit", release);
+	return release;
 }
