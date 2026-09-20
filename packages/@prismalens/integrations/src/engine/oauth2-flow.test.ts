@@ -125,6 +125,42 @@ describe("OAuth2Flow.startAuthorization", () => {
 		expect(parsed.searchParams.get("state")).toBe(state);
 	});
 
+	/**
+	 * #668 hardened the token URL against a connection-config value that moves
+	 * the host, but left the authorization URL raw — and that is the one the
+	 * *user* is redirected to, so moving its host sends them to someone else's
+	 * consent screen. Same values, same constraint.
+	 */
+	it("refuses a connection config value that would rewrite the authorization host", async () => {
+		const { flow } = makeFlow();
+
+		await expect(
+			flow.startAuthorization({
+				...BASE_PARAMS,
+				template: templateWith({
+					authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+					tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+				}),
+				connectionConfig: { subdomain: "tenant.attacker.test#" },
+			}),
+		).rejects.toThrow(/not usable in an OAuth URL/);
+	});
+
+	it("interpolates a host-safe connection config into the authorization URL", async () => {
+		const { flow } = makeFlow();
+
+		const { url } = await flow.startAuthorization({
+			...BASE_PARAMS,
+			template: templateWith({
+				authorizationUrl: "https://{{subdomain}}.acme.test/oauth/authorize",
+				tokenUrl: "https://{{subdomain}}.acme.test/oauth/token",
+			}),
+			connectionConfig: { subdomain: "tenant-a" },
+		});
+
+		expect(new URL(url).host).toBe("tenant-a.acme.test");
+	});
+
 	it("mints a high-entropy, non-repeating state token", async () => {
 		const { flow } = makeFlow();
 		const states = new Set<string>();
@@ -625,7 +661,7 @@ describe("OAuth2Flow.exchangeCodeForTokens", () => {
 				"client-abc",
 				"secret-xyz",
 			),
-		).rejects.toThrow(/not usable in a token URL/);
+		).rejects.toThrow(/not usable in an OAuth URL/);
 
 		expect(fetchMock).not.toHaveBeenCalled();
 	});

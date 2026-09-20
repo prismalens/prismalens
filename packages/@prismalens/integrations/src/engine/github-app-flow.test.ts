@@ -183,12 +183,35 @@ describe("GitHubAppFlow.getInstallationToken", () => {
 		});
 	});
 
+	it("accepts a real leap day", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				token: "ghs_t",
+				// 2028 is a leap year, so this is a real date and must survive the
+				// calendar check that rejects 2027-02-29 above.
+				expires_at: "2028-02-29T12:00:00Z",
+				permissions: {},
+				repository_selection: "all",
+			}),
+		);
+
+		const result = await GitHubAppFlow.getInstallationToken("jwt-value", "42");
+		expect(result.expiresAt.toISOString()).toBe("2028-02-29T12:00:00.000Z");
+	});
+
 	// #346: an Invalid Date compares false against every refresh deadline, so a
 	// credential built from one would be treated as valid forever.
 	it.each([
 		["missing", undefined],
 		["not a date", "whenever"],
 		["not a string", 1_754_400_000],
+		// #668 review: `new Date` rejects a month or an hour out of range but
+		// silently NORMALISES a day out of range, so this one is not an Invalid
+		// Date — it is 2026-03-02, two days after anything the sender meant, and
+		// the refresh would be scheduled after the token had already expired.
+		["a day that does not exist", "2026-02-30T12:00:00Z"],
+		["a day that does not exist in a non-leap year", "2027-02-29T12:00:00Z"],
+		["a date-only value", "2026-08-05"],
 	])("refuses a 2xx whose expires_at is %s", async (_name, expires_at) => {
 		fetchMock.mockResolvedValue(
 			jsonResponse({

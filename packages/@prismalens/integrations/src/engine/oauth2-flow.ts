@@ -72,7 +72,7 @@ function hostSafeContext(
 		if (typeof value !== "string") continue;
 		if (!HOST_SAFE.test(value)) {
 			throw new Error(
-				`Connection config '${key}' for template '${templateId}' is not usable in a token URL`,
+				`Connection config '${key}' for template '${templateId}' is not usable in an OAuth URL`,
 			);
 		}
 		safe[key] = value;
@@ -145,7 +145,15 @@ export class OAuth2Flow {
 			urlParams.set("code_challenge_method", "S256");
 		}
 
-		const authUrl = interpolate(template.oauth2.authorizationUrl, context);
+		// Same constraint as the token URL below, and the same values: `context`
+		// is the connection config. A value that moves the HOST here sends the
+		// user to someone else's consent screen, so the asymmetry of guarding
+		// only the token URL was not defensible. `redirect_uri`, `scope` and the
+		// rest go through URLSearchParams, not through interpolation.
+		const authUrl = interpolate(
+			template.oauth2.authorizationUrl,
+			hostSafeContext(context, template.id),
+		);
 		return { url: `${authUrl}?${urlParams.toString()}`, state };
 	}
 
