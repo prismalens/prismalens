@@ -5,7 +5,6 @@ import type {
 	Culprit,
 	InvestigationWithRelations,
 	RunFidelity,
-	RunFidelitySandbox,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ListChecks } from "lucide-react";
@@ -52,36 +51,6 @@ function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 				<TooltipContent className="max-w-xs">
 					<span className="font-mono">{fidelity.harness}</span> —{" "}
 					{fidelity.mechanism}
-				</TooltipContent>
-			</Tooltip>
-		</TooltipProvider>
-	);
-}
-
-/**
- * The Sandbox boundary (ADR-0020), when the structured `fidelity.sandbox` field
- * is present. Requested-vs-actual on hover so a silent-looking degrade (e.g.
- * `auto` -> `process-floor`) is never invisible.
- */
-function SandboxBadge({ sandbox }: { sandbox: RunFidelitySandbox }) {
-	const tone =
-		sandbox.fidelity === "enforced"
-			? "border-green-600 text-green-700 dark:text-green-400"
-			: "border-amber-600 text-amber-700 dark:text-amber-400";
-
-	return (
-		<TooltipProvider>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<Badge variant="outline" className={`gap-1 ${tone}`}>
-						<span className="opacity-60">sandbox</span>
-						<span className="font-mono">{sandbox.actual}</span>
-					</Badge>
-				</TooltipTrigger>
-				<TooltipContent className="max-w-xs">
-					requested <span className="font-mono">{sandbox.requested}</span> →
-					actual <span className="font-mono">{sandbox.actual}</span> (
-					{sandbox.fidelity})
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>
@@ -245,9 +214,6 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 						<CardTitle className="text-base">Root Cause Analysis</CardTitle>
 						<div className="flex items-center gap-2">
 							{report?.fidelity && <FidelityBadge fidelity={report.fidelity} />}
-							{report?.fidelity?.sandbox && (
-								<SandboxBadge sandbox={report.fidelity.sandbox} />
-							)}
 							{report && (
 								<ExportReportButton investigationId={investigation.id} />
 							)}

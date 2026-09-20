@@ -12,8 +12,6 @@
  *    PRISMALENS_WORKSPACE_DIR are honoured the way `pl up` honours them
  *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4),
  *    and the model a run would ask it for
- *  - the sandbox `auto` would pick, because the cooperative floor stops no
- *    read outside the snapshot (#337 run e, G17)
  *  - the port/host `pl up` will bind, informational only
  */
 import { existsSync } from "node:fs";
@@ -34,7 +32,7 @@ import {
 	resolveHarnessSelection,
 	resolveOnPath,
 } from "@prismalens/config/harness-selection";
-import { isSrtAvailable, probeHarness } from "@prismalens/engine";
+import { probeHarness } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
@@ -199,23 +197,6 @@ export function checkAutoSelection(): Check[] {
 	];
 }
 
-/**
- * The sandbox `auto` would pick. Without srt the run gets the cooperative
- * process floor, which stops no read outside the snapshot; #337 run e watched
- * `ls ../..` list every run in the workspace there.
- */
-export function checkSandbox(): Check {
-	const srt = isSrtAvailable();
-	return {
-		name: "Sandbox",
-		pass: srt,
-		detail: srt
-			? "srt found; runs get an enforced filesystem and egress boundary"
-			: "srt not found; runs use the cooperative process floor, which does not stop a read outside the snapshot. Install @anthropic-ai/sandbox-runtime for an enforced boundary (docs.prismalens.io/cli/sandboxing/)",
-		hard: false,
-	};
-}
-
 export function checkWebhookToken(): Check {
 	const filePath = join(
 		getAppDataDir(),
@@ -284,7 +265,6 @@ export default defineCommand({
 				checkAnyHarnessOnPath(harnessChecks),
 				...handshakeChecks,
 				...checkAutoSelection(),
-				checkSandbox(),
 				checkWebhookToken(),
 				checkPortHost(),
 			];
