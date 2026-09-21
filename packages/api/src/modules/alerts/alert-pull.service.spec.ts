@@ -18,6 +18,8 @@ describe("AlertPullService (#605)", () => {
 	let prisma: {
 		connection: { findMany: ReturnType<typeof vi.fn> };
 		setting: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
+		alert: { findFirst: ReturnType<typeof vi.fn> };
+		event: { findFirst: ReturnType<typeof vi.fn> };
 	};
 	let integrationsService: { connectionBaseUrl: ReturnType<typeof vi.fn> };
 	let webhooksService: {
@@ -34,6 +36,12 @@ describe("AlertPullService (#605)", () => {
 			setting: {
 				findUnique: vi.fn().mockResolvedValue(null),
 				upsert: vi.fn().mockResolvedValue({}),
+			},
+			alert: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			event: {
+				findFirst: vi.fn().mockResolvedValue(null),
 			},
 		};
 		integrationsService = {
@@ -564,6 +572,247 @@ describe("AlertPullService (#605)", () => {
 			});
 			const sinceRecent = await service.getCatchupSince(now);
 			expect(sinceRecent.toISOString()).toBe(twoHoursAgo.toISOString());
+		});
+
+		it("two successive pulls of a continuously firing series with ALERTS_FOR_STATE reuse startsAt and create no new delivery or occurrence", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "prometheus") {
+					return [
+						{
+							id: "prom-1",
+							label: "Prometheus Main",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+
+			const activeAtSec = Math.floor(new Date("2026-09-20T09:30:00.000Z").getTime() / 1000);
+			const expectedStartsAt = new Date(activeAtSec * 1000).toISOString();
+			const labels = { alertname: "DiskSpaceLow", instance: "node1" };
+			const expectedFp = alertmanagerFingerprint(labels);
+			const expectedKey = `prometheus-catchup:${expectedFp}:${expectedStartsAt}`;
+
+			// Pull 1: 10:00 to 11:00
+			const now1 = new Date("2026-09-20T11:00:00.000Z");
+			const pull1StartSec = Math.floor(new Date("2026-09-20T10:00:00.000Z").getTime() / 1000);
+			const pull1EndSec = Math.floor(now1.getTime() / 1000);
+
+			const series1 = {
+				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+				values: [
+					[pull1StartSec, "1"],
+					[pull1EndSec, "1"],
+				],
+			};
+			const stateSeries1 = {
+				metric: { __name__: "ALERTS_FOR_STATE", ...labels },
+				values: [
+					[pull1StartSec, String(activeAtSec)],
+					[pull1EndSec, String(activeAtSec)],
+				],
+			};
+
+			const seenKeys = new Set<string>();
+			webhooksService.processPrometheusAlert.mockImplementation(
+				async (_alert: unknown, opts?: { idempotencyKey?: string }) => {
+					const isNew = opts?.idempotencyKey ? !seenKeys.has(opts.idempotencyKey) : true;
+					if (opts?.idempotencyKey) seenKeys.add(opts.idempotencyKey);
+					return { alertId: "alt-1", isNew };
+				},
+			);
+
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const urlStr = url.toString();
+				if (urlStr.includes("query=ALERTS_FOR_STATE")) {
+					return new Response(
+						JSON.stringify({ status: "success", data: { resultType: "matrix", result: [stateSeries1] } }),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				}
+				return new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series1] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			});
+
+			// Pull 1
+			const result1 = await service.pull(now1);
+			expect(result1.caughtUp).toBe(1);
+			expect(result1.processed).toBe(1);
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ startsAt: expectedStartsAt }),
+				expect.objectContaining({ idempotencyKey: expectedKey }),
+			);
+
+			// Pull 2: 11:00 to 12:00 (since is now advanced to 11:00)
+			const now2 = new Date("2026-09-20T12:00:00.000Z");
+			prisma.setting.findUnique.mockResolvedValue({
+				key: ALERT_PULL_SETTING_KEY,
+				value: JSON.stringify({ lastPulledAt: now1.toISOString() }),
+			});
+
+			const pull2StartSec = Math.floor(now1.getTime() / 1000);
+			const pull2EndSec = Math.floor(now2.getTime() / 1000);
+
+			const series2 = {
+				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+				values: [
+					[pull2StartSec, "1"],
+					[pull2EndSec, "1"],
+				],
+			};
+			const stateSeries2 = {
+				metric: { __name__: "ALERTS_FOR_STATE", ...labels },
+				values: [
+					[pull2StartSec, String(activeAtSec)],
+					[pull2EndSec, String(activeAtSec)],
+				],
+			};
+
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const urlStr = url.toString();
+				if (urlStr.includes("query=ALERTS_FOR_STATE")) {
+					return new Response(
+						JSON.stringify({ status: "success", data: { resultType: "matrix", result: [stateSeries2] } }),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				}
+				return new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series2] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			});
+
+			const result2 = await service.pull(now2);
+			expect(result2.caughtUp).toBe(1);
+			expect(result2.processed).toBe(0); // No new delivery or occurrence!
+			expect(webhooksService.processPrometheusAlert).toHaveBeenLastCalledWith(
+				expect.objectContaining({ startsAt: expectedStartsAt }),
+				expect.objectContaining({ idempotencyKey: expectedKey }),
+			);
+		});
+
+		it("two successive pulls of a continuously firing series without ALERTS_FOR_STATE reuse open alert startsAt when clipped and create no new delivery or occurrence", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "prometheus") {
+					return [
+						{
+							id: "prom-1",
+							label: "Prometheus Main",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+
+			const labels = { alertname: "MemoryHigh" };
+			const expectedFp = alertmanagerFingerprint(labels);
+
+			// Pull 1: 10:00 to 11:00
+			const now1 = new Date("2026-09-20T11:00:00.000Z");
+			const pull1StartSec = Math.floor(new Date("2026-09-20T10:00:00.000Z").getTime() / 1000);
+			const pull1EndSec = Math.floor(now1.getTime() / 1000);
+			const expectedStartsAt = new Date(pull1StartSec * 1000).toISOString();
+			const expectedKey = `prometheus-catchup:${expectedFp}:${expectedStartsAt}`;
+
+			const series1 = {
+				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+				values: [
+					[pull1StartSec, "1"],
+					[pull1EndSec, "1"],
+				],
+			};
+
+			const seenKeys = new Set<string>();
+			webhooksService.processPrometheusAlert.mockImplementation(
+				async (_alert: unknown, opts?: { idempotencyKey?: string }) => {
+					const isNew = opts?.idempotencyKey ? !seenKeys.has(opts.idempotencyKey) : true;
+					if (opts?.idempotencyKey) seenKeys.add(opts.idempotencyKey);
+					return { alertId: "alt-open", isNew };
+				},
+			);
+
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const urlStr = url.toString();
+				if (urlStr.includes("query=ALERTS_FOR_STATE")) {
+					return new Response(
+						JSON.stringify({ status: "success", data: { resultType: "matrix", result: [] } }),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				}
+				return new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series1] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			});
+
+			const result1 = await service.pull(now1);
+			expect(result1.caughtUp).toBe(1);
+			expect(result1.processed).toBe(1);
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ startsAt: expectedStartsAt }),
+				expect.objectContaining({ idempotencyKey: expectedKey }),
+			);
+
+			// Pull 2: 11:00 to 12:00. Since advanced to 11:00.
+			const now2 = new Date("2026-09-20T12:00:00.000Z");
+			prisma.setting.findUnique.mockResolvedValue({
+				key: ALERT_PULL_SETTING_KEY,
+				value: JSON.stringify({ lastPulledAt: now1.toISOString() }),
+			});
+
+			// DB now has the open alert from pull 1
+			prisma.alert.findFirst.mockResolvedValue({
+				id: "alt-open",
+				status: "triggered",
+				source: "prometheus-catchup",
+				externalId: expectedFp,
+				events: [
+					{
+						idempotencyKey: expectedKey,
+					},
+				],
+			});
+
+			const pull2StartSec = Math.floor(now1.getTime() / 1000); // 11:00:00 (within 1 step of since)
+			const pull2EndSec = Math.floor(now2.getTime() / 1000);
+
+			const series2 = {
+				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+				values: [
+					[pull2StartSec, "1"],
+					[pull2EndSec, "1"],
+				],
+			};
+
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const urlStr = url.toString();
+				if (urlStr.includes("query=ALERTS_FOR_STATE")) {
+					return new Response(
+						JSON.stringify({ status: "success", data: { resultType: "matrix", result: [] } }),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				}
+				return new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series2] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			});
+
+			const result2 = await service.pull(now2);
+			expect(result2.caughtUp).toBe(1);
+			expect(result2.processed).toBe(0); // No new delivery or occurrence!
+			expect(webhooksService.processPrometheusAlert).toHaveBeenLastCalledWith(
+				expect.objectContaining({ startsAt: expectedStartsAt }),
+				expect.objectContaining({ idempotencyKey: expectedKey }),
+			);
 		});
 	});
 });

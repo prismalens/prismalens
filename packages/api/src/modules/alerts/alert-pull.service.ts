@@ -122,6 +122,80 @@ export class AlertPullService implements OnApplicationBootstrap {
 		});
 	}
 
+	/**
+	 * Look up an existing open alert for this fingerprint created by a prior catch-up.
+	 * Returns its startsAt and idempotencyKey if found.
+	 */
+	async findExistingOpenCatchupAlert(
+		fingerprint: string,
+	): Promise<{ startsAt: string; idempotencyKey: string } | null> {
+		try {
+			if (this.prisma.alert?.findFirst) {
+				const alert = await this.prisma.alert.findFirst({
+					where: {
+						source: "prometheus-catchup",
+						status: { not: "resolved" },
+						OR: [
+							{ externalId: fingerprint },
+							{ members: { some: { sourceAlertId: fingerprint } } },
+						],
+					},
+					orderBy: { triggeredAt: "desc" },
+					include: {
+						events: {
+							where: {
+								source: "prometheus-catchup",
+								idempotencyKey: {
+									startsWith: `prometheus-catchup:${fingerprint}:`,
+								},
+							},
+							orderBy: { receivedAt: "desc" },
+							take: 1,
+						},
+					},
+				});
+
+				if (alert?.events?.[0]?.idempotencyKey) {
+					const key = alert.events[0].idempotencyKey;
+					const prefix = `prometheus-catchup:${fingerprint}:`;
+					if (key.startsWith(prefix)) {
+						const startsAt = key.slice(prefix.length);
+						return { startsAt, idempotencyKey: key };
+					}
+				}
+			}
+
+			if (this.prisma.event?.findFirst) {
+				const event = await this.prisma.event.findFirst({
+					where: {
+						source: "prometheus-catchup",
+						sourceEventId: fingerprint,
+						idempotencyKey: {
+							startsWith: `prometheus-catchup:${fingerprint}:`,
+						},
+						alert: {
+							status: { not: "resolved" },
+						},
+					},
+					orderBy: { receivedAt: "desc" },
+				});
+
+				if (event?.idempotencyKey) {
+					const key = event.idempotencyKey;
+					const prefix = `prometheus-catchup:${fingerprint}:`;
+					if (key.startsWith(prefix)) {
+						const startsAt = key.slice(prefix.length);
+						return { startsAt, idempotencyKey: key };
+					}
+				}
+			}
+
+			return null;
+		} catch {
+			return null;
+		}
+	}
+
 	async pull(now: Date = new Date()): Promise<PullResult> {
 		const result: PullResult = {
 			sources: 0,
@@ -320,6 +394,37 @@ export class AlertPullService implements OnApplicationBootstrap {
 					continue;
 				}
 
+				if (seriesList.length === 0) {
+					continue;
+				}
+
+				// a) Query ALERTS_FOR_STATE over the same range
+				let alertsForStateList: RangeSeries[] = [];
+				try {
+					alertsForStateList = await metricsSegment.rangeQuery(requestFn, {
+						expr: "ALERTS_FOR_STATE",
+						start: since,
+						end: now,
+						stepSeconds,
+					});
+				} catch (stateErr) {
+					this.logger.debug(
+						`ALERTS_FOR_STATE query failed for ${label}: ${stateErr}`,
+					);
+				}
+
+				const alertsForStateByFp = new Map<string, RangeSeries>();
+				for (const s of alertsForStateList) {
+					const sLabels: Record<string, string> = {};
+					for (const [k, v] of Object.entries(s.labels)) {
+						if (k !== "__name__" && k !== "alertstate") {
+							sLabels[k] = v;
+						}
+					}
+					const fp = alertmanagerFingerprint(sLabels);
+					alertsForStateByFp.set(fp, s);
+				}
+
 				for (const series of seriesList) {
 					if (!series.values || series.values.length === 0) {
 						continue;
@@ -335,9 +440,48 @@ export class AlertPullService implements OnApplicationBootstrap {
 
 					const firstSample = series.values[0];
 					const lastSample = series.values[series.values.length - 1];
-
-					const startsAt = new Date(firstSample[0] * 1000).toISOString();
+					const firstSampleSec = firstSample[0];
+					const lastSampleSec = lastSample[0];
 					const fingerprint = alertmanagerFingerprint(labels);
+
+					let startsAt: string | undefined;
+					let idempotencyKey: string | undefined;
+
+					// a) Check ALERTS_FOR_STATE for this fingerprint
+					const stateSeries = alertsForStateByFp.get(fingerprint);
+					if (stateSeries?.values && stateSeries.values.length > 0) {
+						const matchingSample = stateSeries.values.find(
+							(s) => s[0] >= firstSampleSec && s[0] <= lastSampleSec,
+						);
+						if (matchingSample) {
+							const activeAtSec = Number.parseFloat(matchingSample[1]);
+							if (!Number.isNaN(activeAtSec) && activeAtSec > 0) {
+								startsAt = new Date(activeAtSec * 1000).toISOString();
+								idempotencyKey = `prometheus-catchup:${fingerprint}:${startsAt}`;
+							}
+						}
+					}
+
+					// b) Fallback when there is no ALERTS_FOR_STATE value:
+					if (!startsAt) {
+						const sinceSec = Math.floor(since.getTime() / 1000);
+						const isClipped =
+							Math.abs(firstSampleSec - sinceSec) <= stepSeconds;
+
+						if (isClipped) {
+							const existing =
+								await this.findExistingOpenCatchupAlert(fingerprint);
+							if (existing) {
+								startsAt = existing.startsAt;
+								idempotencyKey = existing.idempotencyKey;
+							}
+						}
+
+						if (!startsAt) {
+							startsAt = new Date(firstSampleSec * 1000).toISOString();
+							idempotencyKey = `prometheus-catchup:${fingerprint}:${startsAt}`;
+						}
+					}
 
 					const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
 					const alertnameExpr = `ALERTS{alertname="${labels.alertname ?? ""}"}`;
@@ -351,8 +495,6 @@ export class AlertPullService implements OnApplicationBootstrap {
 						generatorURL,
 						fingerprint,
 					};
-
-					const idempotencyKey = `prometheus-catchup:${fingerprint}:${startsAt}`;
 
 					try {
 						const { isNew } = await this.webhooksService.processPrometheusAlert(
