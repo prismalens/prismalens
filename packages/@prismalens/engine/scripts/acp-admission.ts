@@ -232,11 +232,14 @@ console.log(
 		nonce,
 	),
 );
-if (pass) {
+if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
-	const versionStr = installedVersion ?? admittedVersion ?? "unknown";
 	console.log(
-		`admission: { version: "${versionStr}", date: "${today}", result: "pass" }`,
+		`admission: { version: "${installedVersion}", date: "${today}", result: "pass" }`,
+	);
+} else if (pass) {
+	console.error(
+		"no admission record: the harness reported no version in initialize, so there is nothing to admit",
 	);
 }
 process.exit(pass ? 0 : 1);
