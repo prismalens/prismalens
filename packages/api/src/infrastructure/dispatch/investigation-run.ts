@@ -447,7 +447,7 @@ async function assembleInvestigationContext(
 		| { name?: string; tier?: string }
 		| null
 		| undefined;
-	const telemetry = telemetryEndpointsFrom(connectors);
+	const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 	return correlatedAlertsContext(firingAlerts, telemetry, {
 		incident: incident ? incidentMeta(incident) : undefined,
 		...(service?.name

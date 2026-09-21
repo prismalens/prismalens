@@ -25,9 +25,9 @@ export const alertmanager: AuthTemplate = {
 			type: "string",
 			required: true,
 			placeholder: "http://alertmanager.internal:9093",
-			pattern: "^https?://[^@\\s/$.?#][^@\\s]*$",
+			pattern: "^https?://[^@\\s/$.?#][^@?#\\s]*$",
 			description:
-				"Credentials in the URL are not supported. Reachable from this machine without credentials. Put a read-only reverse proxy in front if your Alertmanager needs auth.",
+				"Credentials and query strings in the URL are not supported. Reachable from this machine without credentials. Put a read-only reverse proxy in front if your Alertmanager needs auth.",
 		},
 	],
 	connectionCredentialFields: [],

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type ResolvedConnector, telemetryEndpointsFrom } from "./connectors.js";
 
 describe("telemetryEndpointsFrom (#633)", () => {
@@ -144,5 +144,29 @@ describe("telemetryEndpointsFrom (#633)", () => {
 			},
 		];
 		expect(telemetryEndpointsFrom(pwOnly)).toBeUndefined();
+	});
+
+	it("drops a query or fragment and says which connection, without the secret", () => {
+		const warn = vi.fn();
+		const withQuery: ResolvedConnector[] = [
+			{
+				templateId: "prometheus",
+				connectionId: "conn-prom",
+				label: "Prometheus",
+				baseUrl: "http://prometheus.internal:9090/?api_key=SECRET",
+				segments: ["metrics"],
+			},
+			{
+				templateId: "alertmanager",
+				connectionId: "conn-am",
+				label: "Alertmanager",
+				baseUrl: "http://alertmanager.internal:9093/#token=SECRET",
+				segments: [],
+			},
+		];
+		expect(telemetryEndpointsFrom(withQuery, warn)).toBeUndefined();
+		expect(warn).toHaveBeenCalledTimes(2);
+		expect(warn.mock.calls.flat().join(" ")).toMatch(/^Prometheus: .*Alertmanager: /);
+		expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET");
 	});
 });

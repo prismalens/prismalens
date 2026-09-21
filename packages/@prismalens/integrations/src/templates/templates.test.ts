@@ -49,6 +49,9 @@ describe("observability templates (#633)", () => {
 			expect(regex.test("http://user@host:9090")).toBe(false);
 			expect(regex.test("http://:pass@host:9090")).toBe(false);
 			expect(regex.test("https://u:p@h")).toBe(false);
+			expect(regex.test("http://host:9090/?api_key=s")).toBe(false);
+			expect(regex.test("http://host:9090/#token=s")).toBe(false);
+			expect(regex.test("http://host:9090/prometheus")).toBe(true);
 		}
 	});
 
@@ -56,7 +59,7 @@ describe("observability templates (#633)", () => {
 		for (const t of [prometheus, alertmanager]) {
 			const baseUrlField = t.connectionFields?.find((f) => f.name === "baseUrl");
 			expect(baseUrlField?.description).toMatch(
-				/credentials in the url are not supported/i,
+				/credentials and query strings in the url are not supported/i,
 			);
 			expect(baseUrlField?.description).toMatch(/read-only reverse proxy/i);
 		}

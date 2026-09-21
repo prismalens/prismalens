@@ -16,35 +16,39 @@ export interface ConnectorProvider {
 	resolve(ctx: { serviceId?: string }): Promise<ResolvedConnector[]>;
 }
 
-function safeEndpointUrl(rawUrl: string): string | null {
+/** Why a base URL cannot go into the prompt: it carries a secret slot (userinfo, query, fragment) or does not parse. */
+function unsafeEndpointReason(rawUrl: string): string | null {
+	let parsed: URL;
 	try {
-		const parsed = new URL(rawUrl);
-		if (parsed.username || parsed.password) {
-			return null;
-		}
-		return rawUrl.replace(/\/+$/, "");
+		parsed = new URL(rawUrl);
 	} catch {
-		return null;
+		return "base URL does not parse";
 	}
+	if (parsed.username || parsed.password) return "base URL carries credentials";
+	if (parsed.search || parsed.hash)
+		return "base URL carries a query or fragment";
+	return null;
 }
 
 export function telemetryEndpointsFrom(
 	connectors: ResolvedConnector[],
+	warn: (message: string) => void = () => {},
 ): TelemetryEndpoints | undefined {
-	const prom = connectors.find((c) => c.templateId === "prometheus");
-	const am = connectors.find((c) => c.templateId === "alertmanager");
-
-	const promUrl = prom ? safeEndpointUrl(prom.baseUrl) : null;
-	const amUrl = am ? safeEndpointUrl(am.baseUrl) : null;
-
+	const usable = (templateId: string): string | undefined => {
+		const c = connectors.find((x) => x.templateId === templateId);
+		if (!c) return undefined;
+		const reason = unsafeEndpointReason(c.baseUrl);
+		if (reason) {
+			warn(`${c.label}: ${reason}; left out of the investigation`);
+			return undefined;
+		}
+		return c.baseUrl.replace(/\/+$/, "");
+	};
+	const promUrl = usable("prometheus");
+	const amUrl = usable("alertmanager");
 	if (!promUrl && !amUrl) return undefined;
-
-	const endpoints: TelemetryEndpoints = {};
-	if (promUrl) {
-		endpoints.prometheusUrl = promUrl;
-	}
-	if (amUrl) {
-		endpoints.alertmanagerUrl = amUrl;
-	}
-	return endpoints;
+	return {
+		...(promUrl ? { prometheusUrl: promUrl } : {}),
+		...(amUrl ? { alertmanagerUrl: amUrl } : {}),
+	};
 }
