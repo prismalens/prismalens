@@ -50,7 +50,6 @@
 		"@agentclientprotocol/sdk": "1.4.0",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
-		"cross-spawn": "^7.0.6",
 		"zod": "catalog:"
 	},
 	"//peerDependencies": "`e2b` is the cloud `enforced` sandbox provider (ADR-0020). src/sandbox/e2b.ts resolves it lazily through createRequire and refuses with an actionable message when it is absent, so it must NOT be a hard dependency — but it must be DECLARED, or the packaging import scan (scripts/pack-cli.mjs) cannot tell a deliberate optional apart from a missed hoist.",
@@ -63,8 +62,8 @@
 		}
 	},
 	"devDependencies": {
-		"@types/cross-spawn": "^6.0.6",
 		"@types/node": "catalog:",
+		"cross-spawn": "^7.0.6",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
