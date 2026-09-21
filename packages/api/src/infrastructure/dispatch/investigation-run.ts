@@ -23,12 +23,18 @@ import {
 	toFiringAlert,
 } from "@prismalens/contracts";
 import type {
+	ContextPack,
 	EffortEstimate,
 	RecommendationCategory,
 	RecommendationPriority,
 	Urgency,
 } from "@prismalens/contracts/schemas";
-import { conductRun, type InvestigationSink } from "@prismalens/engine";
+import {
+	conductRun,
+	type InvestigationSink,
+	type ResolvedConnector,
+	telemetryEndpointsFrom,
+} from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
@@ -139,9 +145,32 @@ async function runJobInternal(
 		} catch {
 			incident = null;
 		}
-		const context = assembleInvestigationContext(incident, data);
+		let connectors: ResolvedConnector[] = [];
+		try {
+			const serviceId =
+				typeof incident?.serviceId === "string"
+					? incident.serviceId
+					: undefined;
+			connectors = await ports.resolveConnectors(serviceId);
+		} catch (e) {
+			logger.warn("Could not resolve connectors for investigation", e);
+			connectors = [];
+		}
+		let contextPack: ContextPack | null = null;
+		try {
+			contextPack = await ports.contextPack(data.incidentId);
+		} catch (e) {
+			logger.warn("Could not assemble the context pack for investigation", e);
+			contextPack = null;
+		}
+		const context = await assembleInvestigationContext(
+			incident,
+			data,
+			connectors,
+			contextPack,
+		);
 		const workspace = await resolveWorkspace(data, ports, io.signal);
-		await recordWorkspace(data, workspace, ports);
+		await recordWorkspace(data, workspace, ports, context);
 
 		const runId = data.investigationId;
 		const runDir = runDirFor(runId);
@@ -329,8 +358,35 @@ async function recordWorkspace(
 	data: InvestigationJobData,
 	ws: Workspace,
 	ports: RunPorts,
+	context?: InvestigationContext,
 ): Promise<void> {
 	try {
+		const promHost = context?.telemetry?.prometheusUrl
+			? (() => {
+					try {
+						return new URL(context.telemetry.prometheusUrl).hostname;
+					} catch {
+						return undefined;
+					}
+				})()
+			: undefined;
+		const amHost = context?.telemetry?.alertmanagerUrl
+			? (() => {
+					try {
+						return new URL(context.telemetry.alertmanagerUrl).hostname;
+					} catch {
+						return undefined;
+					}
+				})()
+			: undefined;
+		const telemetry =
+			promHost || amHost
+				? {
+						...(promHost ? { prometheus: promHost } : {}),
+						...(amHost ? { alertmanager: amHost } : {}),
+					}
+				: undefined;
+
 		await ports.createTimelineEntry({
 			incidentId: data.incidentId,
 			type: "investigation_started",
@@ -345,6 +401,7 @@ async function recordWorkspace(
 				mapped: ws.mapped,
 				...(ws.repo ? { repo: ws.repo.url } : {}),
 				...(ws.head ? { head: ws.head } : {}),
+				...(telemetry ? { telemetry } : {}),
 			},
 		});
 	} catch (e) {
@@ -370,10 +427,12 @@ async function persistCancelled(
 	});
 }
 
-function assembleInvestigationContext(
+async function assembleInvestigationContext(
 	incident: Record<string, unknown> | null,
 	data: InvestigationJobData,
-): InvestigationContext {
+	connectors: ResolvedConnector[] = [],
+	contextPack: ContextPack | null = null,
+): Promise<InvestigationContext> {
 	const rawAlerts = (
 		data.alerts && data.alerts.length > 0
 			? data.alerts
@@ -388,7 +447,8 @@ function assembleInvestigationContext(
 		| { name?: string; tier?: string }
 		| null
 		| undefined;
-	return correlatedAlertsContext(firingAlerts, undefined, {
+	const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
+	return correlatedAlertsContext(firingAlerts, telemetry, {
 		incident: incident ? incidentMeta(incident) : undefined,
 		...(service?.name
 			? {
@@ -398,6 +458,7 @@ function assembleInvestigationContext(
 					},
 				}
 			: {}),
+		...(contextPack ? { contextPack } : {}),
 	});
 }
 

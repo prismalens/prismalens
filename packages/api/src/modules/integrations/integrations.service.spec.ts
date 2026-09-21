@@ -166,4 +166,23 @@ describe("IntegrationsService.testConnection (#633)", () => {
 			}),
 		});
 	});
+
+	it("github-app has verify and no connection credential fields, and still goes through verifyConnection", async () => {
+		const conn = {
+			id: "conn-gh-1",
+			integrationId: "int-gh-1",
+			consecutiveErrors: 0,
+			integration: { templateId: "github-app", label: "GitHub" },
+			connectionConfigEnc: null,
+		};
+
+		mockPrisma.connection.findFirst.mockResolvedValue(conn);
+		mockPrisma.connection.update.mockResolvedValue(conn);
+		mockAuthManager.verifyConnection.mockResolvedValue({ success: true });
+
+		const result = await service.testConnection("conn-gh-1");
+
+		expect(result).toEqual({ success: true });
+		expect(mockAuthManager.verifyConnection).toHaveBeenCalledWith("conn-gh-1");
+	});
 });

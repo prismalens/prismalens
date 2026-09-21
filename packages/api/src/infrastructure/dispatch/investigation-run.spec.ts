@@ -18,9 +18,13 @@ import type { RunPorts } from "./run-ports.js";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
-vi.mock("@prismalens/engine", () => ({
-	conductRun: mocks.conductRun,
-}));
+vi.mock("@prismalens/engine", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@prismalens/engine")>();
+	return {
+		...actual,
+		conductRun: mocks.conductRun,
+	};
+});
 
 vi.mock("@prismalens/logger", () => ({
 	Logger: vi.fn(function MockLogger() {
@@ -55,6 +59,8 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		incidentRepos: vi.fn(async () => []),
 		repoToken: vi.fn(async () => null),
 		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
+		resolveConnectors: vi.fn(async () => []),
+		contextPack: vi.fn(async () => null),
 		...overrides,
 	};
 }
@@ -496,3 +502,148 @@ describe("runDirFor (#643 review)", () => {
 		}
 	});
 });
+
+describe("connector resolution into investigation telemetry (#633)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("records telemetry.prometheus hostname in investigation_started metadata when resolver returns prometheus", async () => {
+		const timelineMock = vi.fn(async () => {});
+		const ports = fakePorts({
+			createTimelineEntry: timelineMock,
+			getIncident: vi.fn(async () => ({
+				id: "inc-telemetry",
+				title: "Prometheus alert",
+				serviceId: "svc-1",
+			})),
+			resolveConnectors: vi.fn(async () => [
+				{
+					templateId: "prometheus",
+					connectionId: "conn-1",
+					label: "Prometheus",
+					baseUrl: "http://prom.internal:9090",
+					segments: ["metrics"],
+				},
+			]),
+		});
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValueOnce({
+			failureKind: null,
+			report: { summary: "done", rootCause: null, nextSteps: [] },
+		});
+
+		await runInvestigationJob(
+			{ id: "job-telemetry", investigationId: "inv-telemetry", attempts: 1 },
+			{ investigationId: "inv-telemetry", incidentId: "inc-telemetry" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		expect(timelineMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "investigation_started",
+				metadata: expect.objectContaining({
+					telemetry: { prometheus: "prom.internal" },
+				}),
+			}),
+		);
+	});
+
+	it("proceeds with no telemetry when resolveConnectors throws", async () => {
+		const timelineMock = vi.fn(async () => {});
+		const ports = fakePorts({
+			createTimelineEntry: timelineMock,
+			getIncident: vi.fn(async () => ({
+				id: "inc-err",
+				title: "Prometheus alert",
+				serviceId: "svc-1",
+			})),
+			resolveConnectors: vi.fn(async () => {
+				throw new Error("DB error resolving connectors");
+			}),
+		});
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValueOnce({
+			failureKind: null,
+			report: { summary: "done", rootCause: null, nextSteps: [] },
+		});
+
+		const result = await runInvestigationJob(
+			{ id: "job-err", investigationId: "inv-err", attempts: 1 },
+			{ investigationId: "inv-err", incidentId: "inc-err" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		expect(result.success).toBe(true);
+		expect(timelineMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "investigation_started",
+				metadata: expect.not.objectContaining({
+					telemetry: expect.anything(),
+				}),
+			}),
+		);
+	});
+});
+
+describe("context pack reaches the run (#633)", () => {
+	const PACK = {
+		window: { start: "2026-09-19T00:00:00Z", end: "2026-09-20T00:00:00Z" },
+		changes: [],
+		neighbors: [],
+		priorIncidents: [],
+		unavailable: [],
+		assembledAt: "2026-09-20T00:00:00Z",
+	};
+
+	it("passes the assembled context pack into conductRun's context", async () => {
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValueOnce({
+			failureKind: null,
+			report: { summary: "done", rootCause: null, nextSteps: [] },
+		});
+		const ports = fakePorts({ contextPack: vi.fn(async () => PACK) });
+
+		await runInvestigationJob(
+			{ id: "job-pack", investigationId: "inv-pack", attempts: 1 },
+			{ investigationId: "inv-pack", incidentId: "inc-pack" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		expect(ports.contextPack).toHaveBeenCalledWith("inc-pack");
+		const [runArgs] = mocks.conductRun.mock.calls[0] as unknown as [
+			{ context: { contextPack?: unknown } },
+		];
+		expect(runArgs.context.contextPack).toEqual(PACK);
+	});
+
+	it("proceeds with no context pack when the port throws", async () => {
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValueOnce({
+			failureKind: null,
+			report: { summary: "done", rootCause: null, nextSteps: [] },
+		});
+		const ports = fakePorts({
+			contextPack: vi.fn(async () => {
+				throw new Error("DB error assembling context pack");
+			}),
+		});
+
+		const result = await runInvestigationJob(
+			{ id: "job-pack-err", investigationId: "inv-pack-err", attempts: 1 },
+			{ investigationId: "inv-pack-err", incidentId: "inc-pack-err" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		expect(result.success).toBe(true);
+		const [runArgs] = mocks.conductRun.mock.calls[0] as unknown as [
+			{ context: { contextPack?: unknown } },
+		];
+		expect(runArgs.context.contextPack).toBeUndefined();
+	});
+});
+

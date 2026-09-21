@@ -12,7 +12,11 @@ export function urlOnlyRequestFn(
 	fetchImpl: typeof fetch = fetch,
 ): AuthenticatedRequestFn {
 	return (method, path, options) => {
-		const targetUrl = new URL(path, baseUrl.replace(/\/?$/, "/")).href;
+		// Relative to the base path, so a reverse-proxy prefix (http://host/prometheus) survives.
+		const targetUrl = new URL(
+			path.replace(/^\/+/, ""),
+			baseUrl.replace(/\/?$/, "/"),
+		).href;
 		return fetchImpl(targetUrl, {
 			method,
 			headers: options?.headers,
