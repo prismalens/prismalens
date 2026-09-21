@@ -288,7 +288,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 /**
  * The child env for a harness invocation: the row's own `providerKeys` read out
  * of `sourceEnv` (the process floor's allowlist is layered on separately by
- * `buildFloorEnv`). Never widens to "everything but PRISMALENS_*" (ADR 0004 §5)
+ * `buildChildEnv`). Never widens to "everything but PRISMALENS_*" (ADR 0004 §5)
  * and always drops a `PRISMALENS_*` name even if a row were ever misconfigured
  * to list one.
  */

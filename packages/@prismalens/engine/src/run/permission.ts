@@ -4,8 +4,7 @@
 /**
  * The runtime gate (ADR 0003 §1, 0004): every ACP permission request is
  * answered here, for every harness. Read-only today; the act phase changes the
- * policy, not the seam. Bash walks through any text rule, so the sandbox (0004)
- * is the boundary and this is the guardrail.
+ * policy, not the seam. Bash walks through any text rule; there is no OS boundary (0004 §3), so this is a guardrail, not a boundary.
  */
 
 import { isAbsolute, normalize, resolve, sep } from "node:path";
@@ -47,7 +46,7 @@ const NAMED_KINDS = new Set(["read", "search", "think", "execute"]);
 /**
  * Shell commands that change the tree, the repo, or the machine. A regex is a
  * guardrail, not a boundary; it exists so an honest agent gets a clean refusal
- * instead of a sandbox error.
+ * instead of a failed write.
  */
 const MUTATING_SHELL =
 	/(^|[\s;&|(])(>|>>|\btee\b|\btouch\b|\brm\b|\bmv\b|\bcp\b|\bmkdir\b|\bchmod\b|\bchown\b|\bln\b|\bsed\s+-i|\bperl\s+-i|\bgit\s+(commit|push|pull|fetch|checkout|switch|reset|clean|rebase|merge|stash|apply|am|cherry-pick|tag\s+\S|branch(?!\s*(?:$|-(?:a|r|v+|l|-list|-all|-remotes|-show-current|-contains|-merged|-no-merged|-points-at)\b)))|\bnpm\s+(install|i|ci|uninstall|publish)|\bpnpm\s+(install|i|add|remove|publish)|\byarn\b|\bpip\s+install|\bapt(-get)?\b|\bbrew\b|\bdocker\b|\bkubectl\s+(apply|delete|scale|rollout|edit|patch|create|exec|cp)|\bhelm\s+(install|upgrade|uninstall|rollback)|\bterraform\s+(apply|destroy)|\bsystemctl\b|\bkill(all)?\b|\bcurl\b[^|]*\s(-X|--request)\s*(POST|PUT|PATCH|DELETE)|\bwget\b)/i;
@@ -80,7 +79,7 @@ function pick(
  * against the snapshot before judging, so `src/../../..`, `/bin/../etc/shadow`
  * and `<cwd>/../other` are caught and `src/../src` stays allowed. Absolute
  * paths under the snapshot, `/dev/null` and the usual binary directories are
- * fine. A text rule, not a boundary (the sandbox is the boundary); #337 run e
+ * fine. A text rule, not a boundary; #337 run e
  * saw `ls -la ../..` list every run in the workspace on the cooperative floor.
  */
 const SHELL_SPLIT = /[\s;&|()<>'"`=]+/;

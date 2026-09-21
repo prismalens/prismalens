@@ -69,5 +69,132 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 
 		await page.getByRole("tab", { name: "Investigation" }).click();
 		await expect(page.getByTestId("export-report-markdown")).toHaveCount(0);
+		await expect(page.getByTestId("post-report-github")).toHaveCount(0);
+	});
+
+	test("posts a completed report to a GitHub issue or PR (success and refusal)", async ({
+		page,
+	}) => {
+		const shot = (name: string) =>
+			page.screenshot({
+				path: `e2e/journeys/screenshots/${name}.png`,
+				fullPage: true,
+			});
+
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		// 1. Intercept route with 412 PRECONDITION_FAILED
+		await page.route("**/api/investigations/*/report/github", async (route) => {
+			if (route.request().method() === "POST") {
+				await route.fulfill({
+					status: 412,
+					contentType: "application/json",
+					body: JSON.stringify({
+						code: "PRECONDITION_FAILED",
+						message:
+							"No GitHub connection is configured (Settings → Integrations)",
+						data: {
+							code: "PRECONDITION_FAILED",
+							message:
+								"No GitHub connection is configured (Settings → Integrations)",
+						},
+					}),
+				});
+				return;
+			}
+			await route.fallback();
+		});
+
+		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
+		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+			timeout: 15_000,
+		});
+
+		// Buttons are visible beside each other
+		const postBtn = page.getByTestId("post-report-github");
+		await expect(postBtn).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("export-report-markdown")).toBeVisible();
+
+		// Default (light) theme screenshot with dialog open
+		await setTheme("light");
+		await expect(page.getByTestId("post-report-github")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.getByTestId("post-report-github").click();
+		await expect(page.getByRole("dialog")).toBeVisible();
+		await expect(page.getByTestId("post-report-github-url")).toBeVisible();
+		await page.waitForLoadState("networkidle");
+		await shot("post-github-default");
+
+		// Dark theme screenshot with dialog open
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+
+		await setTheme("dark");
+		await expect(page.getByTestId("post-report-github")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.getByTestId("post-report-github").click();
+		await expect(page.getByRole("dialog")).toBeVisible();
+		await page.waitForLoadState("networkidle");
+		await shot("post-github-dark");
+
+		// (b) 412-shaped oRPC error → not-configured line visible
+		await page.getByTestId("post-report-github-url").fill(
+			"https://github.com/prismalens/prismalens/issues/123",
+		);
+		await page.getByTestId("post-report-github-submit").click();
+
+		await expect(
+			page.getByText("No GitHub connection is configured"),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByRole("link", { name: /Settings → Integrations/ }),
+		).toBeVisible();
+
+		// Error screenshot
+		await shot("post-github-error");
+
+		// Unroute 412, close dialog
+		await page.unroute("**/api/investigations/*/report/github");
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+
+		// Switch back to light theme
+		await setTheme("light");
+
+		// (a) 201 success → toast text
+		const commentUrl =
+			"https://github.com/prismalens/prismalens/issues/123#issuecomment-9999";
+		await page.route("**/api/investigations/*/report/github", async (route) => {
+			if (route.request().method() === "POST") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ commentUrl }),
+				});
+				return;
+			}
+			await route.fallback();
+		});
+
+		await page.getByTestId("post-report-github").click();
+		await expect(page.getByRole("dialog")).toBeVisible();
+		await page.getByTestId("post-report-github-url").fill(
+			"https://github.com/prismalens/prismalens/issues/123",
+		);
+		await page.getByTestId("post-report-github-submit").click();
+
+		await expect(page.getByText("Posted")).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole("link", { name: commentUrl })).toBeVisible();
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+
+		await page.unroute("**/api/investigations/*/report/github");
 	});
 });

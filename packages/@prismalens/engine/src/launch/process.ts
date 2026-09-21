@@ -2,22 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The `process` floor (ADR-0020) — the lightweight, always-on Sandbox provider:
- * own-secret isolation (allowlist, not denylist — ADR-0009) + workspace-scoped cwd.
- * It is NOT an OS boundary (no FS/egress/pid isolation), so its fidelity is
- * `cooperative` and the honest-fidelity surface must say so. The `srt` provider
- * (enforced) supersedes it as the local default when present — Phase B.1.
+ * Launches the harness child: allowlisted env (ADR 0004 §5), cwd on the snapshot (§2), a wall-clock SIGKILL. No OS boundary (§3).
  */
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn, spawnSync } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
-	AppliedLimits,
-	Sandbox,
-	SandboxLimits,
-	SandboxProcess,
-	SandboxSpawnOptions,
+	HarnessChild,
+	HarnessLauncher,
+	LaunchOptions,
+	RunLimits,
 } from "./types.js";
 
 /** `.cmd`/`.bat` — the npm shim extensions Node's own spawn cannot exec directly on Windows. */
@@ -156,12 +151,11 @@ export const SAFE_ENV_ALLOWLIST = [
 ] as const;
 
 /**
- * The floor's child env: the safe allowlist from process.env, with the caller's
- * env (BYO-key) layered on top so it always wins. A `PRISMALENS_*` key in
- * `extra` is always dropped (ADR 0004 §5) — the harness never sees the app's
- * own secrets, even if a caller passes `process.env` here by mistake.
+ * The child env: the safe allowlist from process.env, with the caller's env
+ * layered on top so it always wins. A `PRISMALENS_*` key in `extra` is always
+ * dropped (ADR 0004 §5).
  */
-export function buildFloorEnv(
+export function buildChildEnv(
 	extra?: NodeJS.ProcessEnv,
 ): Record<string, string> {
 	const env: Record<string, string> = {};
@@ -245,34 +239,20 @@ export function wrapWithTreeKill<
 }
 
 /**
- * Decorate a freshly-spawned child with the {@link SandboxProcess} limit surface
- * (ADR-0020 resource-limits contract), shared by EVERY provider so wall-clock
- * enforcement + honest reporting live in one place:
- *  - arms a SIGKILL timer for `limits.wallClockMs` (the one limit every provider can
- *    enforce), cleared when the child closes on its own; when it fires it flips
- *    {@link SandboxProcess.timedOut} so the runner can distinguish a deadline kill
- *    from an early exit;
- *  - stamps {@link SandboxProcess.appliedLimits} — the wall-clock (if armed) plus any
- *    `enforced` memory/cpu the PROVIDER already arranged out-of-band (srt's
- *    systemd-run scope). The floor arranges none: it cannot cap memory/cpu without OS
- *    help and does not pretend to, so those stay absent from the report.
- * The child is augmented in place (same object identity) so `kill`/`killed` stay
- * bound to the live process.
+ * Arms a SIGKILL timer for `limits.wallClockMs`, cleared when the child closes on
+ * its own; when it fires it flips `timedOut` so the runner reports a deadline kill,
+ * not an early exit.
  */
-export function withLimits(
+export function withWallClock(
 	child: PipedChild,
-	limits: SandboxLimits | undefined,
-	enforced: Pick<AppliedLimits, "memoryMb" | "cpuCores"> = {},
-): SandboxProcess {
+	limits: RunLimits | undefined,
+): HarnessChild {
 	wrapWithTreeKill(child);
-	const applied: AppliedLimits = { ...enforced };
 	const proc = child as PipedChild & {
 		timedOut: boolean;
-		appliedLimits: AppliedLimits;
 	};
 	proc.timedOut = false;
 	if (limits?.wallClockMs && limits.wallClockMs > 0) {
-		applied.wallClockMs = limits.wallClockMs;
 		const timer = setTimeout(() => {
 			proc.timedOut = true;
 			proc.kill("SIGKILL");
@@ -280,28 +260,22 @@ export function withLimits(
 		timer.unref(); // a pending deadline must not keep the event loop alive
 		child.on("close", () => clearTimeout(timer));
 	}
-	proc.appliedLimits = applied;
 	return proc;
 }
 
-/** Create a `process`-floor boundary. One per run; `destroy()` reaps stragglers. */
-export function createProcessFloorSandbox(): Sandbox {
-	const children = new Set<SandboxProcess>();
+/** Spawns the harness as a child of the API. One per run; `destroy()` reaps stragglers. */
+export function createProcessLauncher(): HarnessLauncher {
+	const children = new Set<HarnessChild>();
 	return {
-		id: "process-floor",
-		fidelity: "cooperative",
-		spawn(command, args, options: SandboxSpawnOptions): SandboxProcess {
+		spawn(command, args, options: LaunchOptions): HarnessChild {
 			const plan = windowsSpawnPlan(command, args);
 			const child = spawn(plan.command, plan.args, {
 				cwd: options.cwd,
-				env: buildFloorEnv(options.env),
+				env: buildChildEnv(options.env),
 				stdio: ["pipe", "pipe", "pipe"],
 				...plan.options,
 			});
-			wrapWithTreeKill(child);
-			// The floor enforces ONLY wall-clock (userspace SIGKILL); memory/cpu need
-			// OS help it does not have, so they are reported as unapplied (ADR-0020).
-			const proc = withLimits(child, options.limits);
+			const proc = withWallClock(child, options.limits);
 			children.add(proc);
 			proc.on("close", () => children.delete(proc));
 			return proc;

@@ -26,8 +26,8 @@ import type {
 	RunFidelity,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
+import type { RunLimits } from "../launch/types.js";
 import { AcpSession, type AcpStreamItem } from "../runner/acp-client.js";
-import type { Sandbox, SandboxLimits } from "../sandbox/types.js";
 import { type PermissionPolicy, readOnlyPolicyFor } from "./permission.js";
 import { buildInvestigationPrompt } from "./prompt.js";
 import {
@@ -61,9 +61,7 @@ export interface RunInvestigationOptions {
 	modelSource?: ModelSource;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
-	sandbox?: Sandbox;
-	requestedSandbox?: string;
-	limits?: SandboxLimits;
+	limits?: RunLimits;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
 	permission?: PermissionPolicy;
@@ -85,8 +83,6 @@ export function isCancelledError(message: string): boolean {
 
 export function buildRunFidelity(
 	harness: HarnessId,
-	sandbox?: Sandbox,
-	requestedSandbox?: string,
 	model?: { id?: string; source?: ModelSource },
 	placement: Placement = resolvePlacement(),
 ): RunFidelity {
@@ -98,18 +94,7 @@ export function buildRunFidelity(
 		fidelity: outcome.fidelity,
 		...(model?.id ? { model: model.id } : {}),
 		...(model?.source ? { modelSource: model.source } : {}),
-		mechanism: sandbox
-			? `${outcome.mechanism} · sandbox=${sandbox.id} (${sandbox.fidelity})`
-			: outcome.mechanism,
-		...(sandbox
-			? {
-					sandbox: {
-						requested: requestedSandbox ?? sandbox.id,
-						actual: sandbox.id,
-						fidelity: sandbox.fidelity,
-					},
-				}
-			: {}),
+		mechanism: outcome.mechanism,
 	};
 }
 
@@ -163,12 +148,10 @@ export async function* runInvestigation(
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const adapter = new AcpAdapter({ runId: opts.runId, branchId: "run" });
-	let fidelity = buildRunFidelity(
-		opts.harness,
-		opts.sandbox,
-		opts.requestedSandbox,
-		{ id: opts.model, source: opts.modelSource },
-	);
+	let fidelity = buildRunFidelity(opts.harness, {
+		id: opts.model,
+		source: opts.modelSource,
+	});
 	const { env, runEnv } = prepareRunEnv(opts);
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	const wire = (direction: "in" | "out", line: string): void => {
@@ -187,7 +170,6 @@ export async function* runInvestigation(
 		args: descriptor.acpArgs(runEnv),
 		cwd: opts.cwd,
 		env,
-		sandbox: opts.sandbox,
 		limits: opts.limits,
 		permission: opts.permission ?? readOnlyPolicyFor({ cwd: opts.cwd }),
 		sessionMeta: descriptor.sessionMeta?.(),

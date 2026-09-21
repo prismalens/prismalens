@@ -21,6 +21,7 @@ import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
+import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import type {
 	InternalInvestigationResultDto,
 	RecommendationDto,
@@ -52,6 +53,7 @@ export class InvestigationsController {
 		private readonly investigationsService: InvestigationsService,
 		private readonly dispatchService: DispatchService,
 		private readonly telemetry: TelemetryService,
+		private readonly githubComment: GitHubCommentService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -168,7 +170,7 @@ export class InvestigationsController {
 			// Two terminal-write owners (CANCEL slice, ADR-0018), by run state:
 			//   - RUNNING: publish on the run's EventBus cancel topic. The dispatch loop
 			//     that holds the claim forwards it to the run's child, which aborts, tears
-			//     down the harness/sandbox, and owns the terminal "cancelled" write. The
+			//     down the harness, and owns the terminal "cancelled" write. The
 			//     bus has no retention, so the publish is only a cancel if someone RECEIVED
 			//     it — zero receivers after the grace retries means nobody holds the run
 			//     (a crashed child, a stuck record) and nobody else will ever write the
@@ -288,6 +290,13 @@ export class InvestigationsController {
 							completedAt: investigation.completedAt,
 						}),
 					};
+				},
+			),
+
+			// POST /investigations/:id/report/github - Post report to GitHub (#606)
+			postToGitHub: implement(investigationsContract.postToGitHub).handler(
+				async ({ input }) => {
+					return this.githubComment.post(input.id, input.target);
 				},
 			),
 

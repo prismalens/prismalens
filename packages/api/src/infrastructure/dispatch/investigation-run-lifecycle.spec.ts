@@ -23,10 +23,6 @@ const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
 vi.mock("@prismalens/engine", () => ({
 	conductRun: mocks.conductRun,
-	resolveSandbox: vi.fn(() => ({
-		sandbox: { destroy: vi.fn(async () => {}) },
-	})),
-	SANDBOX_MODES: ["process", "auto", "srt", "e2b"],
 }));
 
 vi.mock("@prismalens/logger", () => ({

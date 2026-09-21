@@ -28,14 +28,7 @@ import type {
 	RecommendationPriority,
 	Urgency,
 } from "@prismalens/contracts/schemas";
-import {
-	conductRun,
-	type InvestigationSink,
-	resolveSandbox,
-	SANDBOX_MODES,
-	type Sandbox,
-	type SandboxMode,
-} from "@prismalens/engine";
+import { conductRun, type InvestigationSink } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
@@ -100,7 +93,6 @@ async function runJobInternal(
 	ports: RunPorts,
 ): Promise<InvestigationResult> {
 	const unvalidated = rawPayload as Partial<InvestigationJobData> | undefined;
-	let sandbox: Sandbox | undefined;
 	try {
 		const data = InvestigationJobDataSchema.parse(rawPayload);
 		logger.info(
@@ -151,18 +143,6 @@ async function runJobInternal(
 		const workspace = await resolveWorkspace(data, ports, io.signal);
 		await recordWorkspace(data, workspace, ports);
 
-		const sandboxMode = parseSandboxMode(process.env.PRISMALENS_SANDBOX);
-		const sandboxSelection = await resolveSandbox(sandboxMode, {
-			allowedDomains: deriveAllowedHosts(context),
-			...(probeUrl(context) ? { probeUrl: probeUrl(context) as string } : {}),
-		});
-		if (sandboxSelection.degradeReason) {
-			logger.warn(
-				`Sandbox '${sandboxMode}' degraded to ${sandboxSelection.actual}: ${sandboxSelection.degradeReason}`,
-			);
-		}
-		sandbox = sandboxSelection.sandbox;
-
 		const runId = data.investigationId;
 		const runDir = runDirFor(runId);
 		mkdirSync(runDir, { recursive: true });
@@ -183,12 +163,8 @@ async function runJobInternal(
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
-				// Never process.env: the child gets only the process-floor allowlist
-				// (layered on by buildFloorEnv) plus this harness's own provider keys,
-				// never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
+				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
 				env: getHarnessProviderKeys(selection.harness, process.env),
-				sandbox,
-				requestedSandbox: sandboxMode,
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
 				promptTimeoutMs: INVESTIGATION_DEFAULTS.harnessWallClockMs,
@@ -258,13 +234,6 @@ async function runJobInternal(
 		}
 		throw error;
 	} finally {
-		if (sandbox) {
-			try {
-				await sandbox.destroy();
-			} catch (e) {
-				logger.error("Failed to destroy sandbox boundary", e);
-			}
-		}
 		// A full clone per run fills the disk; the workspace note keeps source and HEAD, the transcript stays (#637 N3).
 		// The harness's per-run home and the packages it installs under its config dir go too:
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
@@ -399,59 +368,6 @@ async function persistCancelled(
 		source: "ai_worker",
 		metadata: { investigationId: data.investigationId },
 	});
-}
-
-export function parseSandboxMode(raw: string | undefined): SandboxMode {
-	const value = raw ?? "auto";
-	if ((SANDBOX_MODES as readonly string[]).includes(value))
-		return value as SandboxMode;
-	throw new Error(
-		`Invalid PRISMALENS_SANDBOX="${raw}" — expected one of ${SANDBOX_MODES.join("|")}.`,
-	);
-}
-
-/**
- * Egress allowlist for an enforced sandbox: the configured telemetry hosts plus
- * PRISMALENS_SANDBOX_ALLOWED_HOSTS (comma-separated), where the harness's model
- * provider lives. The process floor ignores this.
- */
-export function deriveAllowedHosts(context: InvestigationContext): string[] {
-	const hosts = new Set<string>();
-	for (const url of telemetryUrls(context)) {
-		try {
-			hosts.add(new URL(url).hostname);
-		} catch {
-			// unparseable endpoint grants no egress
-		}
-	}
-	for (const h of (process.env.PRISMALENS_SANDBOX_ALLOWED_HOSTS ?? "").split(
-		",",
-	)) {
-		const host = h.trim();
-		if (host) hosts.add(host);
-	}
-	return [...hosts];
-}
-
-function telemetryUrls(context: InvestigationContext): string[] {
-	const t = context.telemetry;
-	return [
-		t?.prometheusUrl,
-		t?.alertmanagerUrl,
-		t?.apiUrl,
-		context.logs?.url,
-	].filter((u): u is string => typeof u === "string" && u.length > 0);
-}
-
-function probeUrl(context: InvestigationContext): string | undefined {
-	for (const url of telemetryUrls(context)) {
-		try {
-			return new URL(url).href;
-		} catch {
-			// skip
-		}
-	}
-	return undefined;
 }
 
 function assembleInvestigationContext(

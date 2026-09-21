@@ -16,6 +16,7 @@ import { ORPCError } from "@orpc/nest";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
+import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 
@@ -62,6 +63,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
+				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 			],
 		})
 			.overrideGuard(ThrottlerGuard)

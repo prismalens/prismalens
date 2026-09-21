@@ -8,7 +8,7 @@
  * uncaught exception. Under `pl up` one process serves the API, the UI and the
  * dispatch loop, so that ended the whole server instead of the one run.
  *
- * The sandbox port is injectable, so these drive the failure directly rather
+ * The launcher is injectable, so these drive the failure directly rather
  * than racing a real child's exit against a real write — which is exactly what
  * made this hard to catch: the same scenario reproduces only intermittently
  * through a spawned process.
@@ -18,12 +18,12 @@ import { dirname, join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { Sandbox, SandboxProcess } from "../sandbox/types.js";
+import type { HarnessChild, HarnessLauncher } from "../launch/types.js";
 import { AcpSession, type AcpStreamItem } from "./acp-client.js";
 
 /** A child whose stdin fails every write the way a dead peer's pipe does. */
-function brokenPipeChild(code: string): SandboxProcess {
-	const child = new EventEmitter() as EventEmitter & SandboxProcess;
+function brokenPipeChild(code: string): HarnessChild {
+	const child = new EventEmitter() as EventEmitter & HarnessChild;
 	child.stdin = new Writable({
 		write(_chunk, _enc, cb) {
 			const err: NodeJS.ErrnoException = new Error(`write ${code}`);
@@ -39,8 +39,8 @@ function brokenPipeChild(code: string): SandboxProcess {
 }
 
 /** A child that accepts writes fine — used to fail stdout in isolation. */
-function quietChild(): SandboxProcess {
-	const child = new EventEmitter() as EventEmitter & SandboxProcess;
+function quietChild(): HarnessChild {
+	const child = new EventEmitter() as EventEmitter & HarnessChild;
 	child.stdin = new Writable({ write: (_c, _e, cb) => cb() });
 	child.stdout = new PassThrough();
 	child.stderr = Readable.from([]);
@@ -49,21 +49,19 @@ function quietChild(): SandboxProcess {
 	return child;
 }
 
-function sandboxOf(child: SandboxProcess): Sandbox {
+function launcherOf(child: HarnessChild): HarnessLauncher {
 	return {
-		id: "test",
-		fidelity: "cooperative",
 		spawn: () => child,
 		destroy: async () => {},
 	};
 }
 
-function sessionOver(child: SandboxProcess): AcpSession {
+function sessionOver(child: HarnessChild): AcpSession {
 	return new AcpSession({
 		command: "harness",
 		args: [],
 		cwd: "/tmp",
-		sandbox: sandboxOf(child),
+		launcher: launcherOf(child),
 		permission: { mode: "readOnly" } as never,
 		initTimeoutMs: 250,
 	});
@@ -128,7 +126,7 @@ describe("AcpSession when the harness pipe dies", () => {
 			command: "harness",
 			args: [],
 			cwd: "/tmp",
-			sandbox: sandboxOf(child),
+			launcher: launcherOf(child),
 			permission: { mode: "readOnly" } as never,
 			initTimeoutMs: 250,
 			onStderr: (chunk) => seen.push(chunk),
@@ -149,7 +147,7 @@ describe("AcpSession when the harness pipe dies", () => {
 			command: "harness",
 			args: [],
 			cwd: "/tmp",
-			sandbox: sandboxOf(child),
+			launcher: launcherOf(child),
 			permission: { mode: "readOnly" } as never,
 			initTimeoutMs: 250,
 			onStderr: (chunk) => seen.push(chunk),
