@@ -9,6 +9,14 @@ updates:
       prefix: chore
       include: scope
     groups:
+      # One Nest major moves every @nestjs/* package at once; split bumps can
+      # never pass (@nestjs/common 12 against @nestjs/core 11). Listed first
+      # because the first matching group wins.
+      nestjs-major:
+        patterns:
+          - "@nestjs/*"
+        update-types:
+          - major
       # Group only low-risk minor/patch bumps so they can be reviewed and merged
       # in bulk. Majors are deliberately excluded here, so Dependabot opens them
       # individually — one reviewable PR per potentially-breaking change instead
