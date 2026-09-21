@@ -16,6 +16,8 @@ import {
 	InvestigationContextSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
+	PostReportToGitHubResultSchema,
+	PostReportToGitHubSchema,
 	RunFidelitySchema,
 	toFiringAlert,
 } from "./investigation.js";
@@ -342,3 +344,98 @@ describe("toFiringAlert", () => {
 		expect(alert.startsAt).toBe("2026-07-31T10:00:00.000Z");
 	});
 });
+
+describe("PostReportToGitHubSchema and PostReportToGitHubResultSchema (#606)", () => {
+	const validId = "123e4567-e89b-12d3-a456-426614174000";
+
+	it("accepts a standard GitHub issue URL", () => {
+		const parsed = PostReportToGitHubSchema.parse({
+			id: validId,
+			target: "https://github.com/prismalens/prismalens/issues/123",
+		});
+		expect(parsed.target).toBe(
+			"https://github.com/prismalens/prismalens/issues/123",
+		);
+	});
+
+	it("accepts a standard GitHub pull request URL", () => {
+		const parsed = PostReportToGitHubSchema.parse({
+			id: validId,
+			target: "https://github.com/prismalens/prismalens/pull/456",
+		});
+		expect(parsed.target).toBe(
+			"https://github.com/prismalens/prismalens/pull/456",
+		);
+	});
+
+	it("trims surrounding whitespace on the target URL", () => {
+		const parsed = PostReportToGitHubSchema.parse({
+			id: validId,
+			target: "  https://github.com/owner/repo/issues/42  ",
+		});
+		expect(parsed.target).toBe("https://github.com/owner/repo/issues/42");
+	});
+
+	it("refuses a GitHub Enterprise Server (GHES) URL", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://github.corp.example.com/owner/repo/issues/123",
+			}),
+		).toThrow(/Must be a https:\/\/github\.com/);
+	});
+
+	it("refuses a malformed URL without issue or PR number", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://github.com/owner/repo/issues/",
+			}),
+		).toThrow();
+	});
+
+	it("refuses a commit URL", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://github.com/owner/repo/commit/abc1234",
+			}),
+		).toThrow();
+	});
+
+	it("refuses a non-GitHub host URL", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://gitlab.com/owner/repo/issues/123",
+			}),
+		).toThrow();
+	});
+
+	it("refuses a non-UUID investigation ID", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: "not-a-uuid",
+				target: "https://github.com/owner/repo/issues/123",
+			}),
+		).toThrow();
+	});
+
+	it("validates PostReportToGitHubResultSchema with a valid URL", () => {
+		const parsed = PostReportToGitHubResultSchema.parse({
+			commentUrl: "https://github.com/owner/repo/issues/123#issuecomment-789",
+		});
+		expect(parsed.commentUrl).toBe(
+			"https://github.com/owner/repo/issues/123#issuecomment-789",
+		);
+	});
+
+	it("refuses PostReportToGitHubResultSchema with a non-URL", () => {
+		expect(() =>
+			PostReportToGitHubResultSchema.parse({
+				commentUrl: "not-a-url",
+			}),
+		).toThrow();
+	});
+});
+

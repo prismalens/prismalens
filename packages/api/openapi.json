@@ -12294,6 +12294,67 @@
         }
       }
     },
+    "/investigations/{id}/report/github": {
+      "post": {
+        "operationId": "investigations.postToGitHub",
+        "summary": "Post the report as a comment on a GitHub issue or PR",
+        "description": "Post the report as a comment on a GitHub issue or PR (github.com only in v1; GitHub Enterprise Server has no integration template today).",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "pattern": "^https:\\/\\/github\\.com\\/([A-Za-z0-9_.-]+)\\/([A-Za-z0-9_.-]+)\\/(issues|pull)\\/(\\d+)$"
+                  }
+                },
+                "required": [
+                  "target"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "commentUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "commentUrl"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/recommendations": {
       "get": {
         "operationId": "recommendations.list",

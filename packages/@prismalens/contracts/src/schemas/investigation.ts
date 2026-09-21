@@ -211,6 +211,27 @@ export const InvestigationReportMarkdownSchema = z.object({
 	markdown: z.string(),
 });
 
+export const GITHUB_ISSUE_OR_PR_URL =
+	/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/(issues|pull)\/(\d+)$/;
+export const PostReportToGitHubSchema = z.object({
+	id: z.string().uuid(),
+	target: z
+		.string()
+		.trim()
+		.regex(
+			GITHUB_ISSUE_OR_PR_URL,
+			"Must be a https://github.com/<owner>/<repo>/issues/<n> or /pull/<n> URL",
+		),
+});
+export const PostReportToGitHubResultSchema = z.object({
+	commentUrl: z.string().url(),
+});
+
+export type PostReportToGitHubInput = z.infer<typeof PostReportToGitHubSchema>;
+export type PostReportToGitHubResult = z.infer<
+	typeof PostReportToGitHubResultSchema
+>;
+
 export const CreateInvestigationSchema = z.object({
 	incidentId: z.string().uuid(),
 });

@@ -74,7 +74,7 @@ export const INVESTIGATION_STATES = [
 	"cancelled",
 ] as const;
 export const DURATION_BUCKETS = ["<1m", "1-5m", "5-15m", ">15m"] as const;
-export const EXPORT_TARGETS = ["markdown", "slack"] as const;
+export const EXPORT_TARGETS = ["markdown", "slack", "github"] as const;
 /**
  * A closed vocabulary for why a run ended badly. Derived from the error by
  * {@link classifyError}, which matches shapes and returns one of these — the
