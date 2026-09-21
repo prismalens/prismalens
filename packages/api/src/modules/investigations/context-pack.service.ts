@@ -296,7 +296,8 @@ export class ContextPackService {
 
 		return scored.map(({ c, sameService, sharedLabels }) => {
 			const matchedOn: string[] = [];
-			if (sameService && serviceName) matchedOn.push(`service: ${serviceName}`);
+			if (sameService && serviceName)
+				matchedOn.push(`service: ${serviceName}`.slice(0, 80));
 			for (const pair of sharedLabels) {
 				if (matchedOn.length >= 10) break;
 				matchedOn.push(pair.slice(0, 80));

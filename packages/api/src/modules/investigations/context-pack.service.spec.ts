@@ -277,4 +277,23 @@ describe("ContextPackService", () => {
 		expect(pack?.neighbors).toHaveLength(1);
 		expect(pack?.priorIncidents).toHaveLength(1);
 	});
+
+	it("caps matchedOn elements at 80 characters when service name is 200 characters", async () => {
+		const longServiceName = "a".repeat(200);
+		mockPrisma.service.findUnique.mockResolvedValueOnce({ name: longServiceName });
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.priorIncidents).not.toHaveLength(0);
+		for (const pi of pack?.priorIncidents ?? []) {
+			expect(pi.matchedOn.length).toBeGreaterThan(0);
+			for (const m of pi.matchedOn) {
+				expect(m.length).toBeLessThanOrEqual(80);
+			}
+		}
+		expect(pack?.priorIncidents?.[0].matchedOn[0]).toBe(
+			`service: ${longServiceName}`.slice(0, 80),
+		);
+		expect(pack?.priorIncidents?.[0].matchedOn[0].length).toBe(80);
+	});
 });
