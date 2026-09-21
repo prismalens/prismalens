@@ -180,6 +180,7 @@ export class ContextPackService {
 		const rows = await this.prisma.changeEvent.findMany({
 			where: {
 				serviceId: { in: affected },
+				type: { in: [...KNOWN_CHANGE_KINDS] },
 				timestamp: { gte: window.start, lte: window.end },
 			},
 			orderBy: { timestamp: "desc" },
@@ -202,9 +203,6 @@ export class ContextPackService {
 
 		const facts: ChangeFact[] = [];
 		for (const r of rows) {
-			// Commits are explicitly out of scope for the context pack; anything else
-			// unrecognised is dropped too rather than mis-typed onto a wrong kind.
-			if (!KNOWN_CHANGE_KINDS.has(r.type as ChangeFact["kind"])) continue;
 			const meta = safeParseJsonObject(r.metadata) ?? {};
 			const ref =
 				asIdentifier(meta.version) ??

@@ -57,26 +57,39 @@ function makeMockPrisma() {
 			]),
 		},
 		changeEvent: {
-			findMany: vi.fn().mockResolvedValue([
-				{
-					id: "chg-1",
-					type: "deployment",
-					source: "github",
-					description: "payments-api deploy abc123",
-					metadata: JSON.stringify({ sha: "abc123" }),
-					timestamp: new Date("2026-09-19T18:00:00Z"),
-					serviceId: "svc-pay",
+			findMany: vi.fn().mockImplementation(
+				async (args?: {
+					where?: { type?: { in?: string[] } };
+					take?: number;
+				}) => {
+					const rows = [
+						{
+							id: "chg-1",
+							type: "deployment",
+							source: "github",
+							description: "payments-api deploy abc123",
+							metadata: JSON.stringify({ sha: "abc123" }),
+							timestamp: new Date("2026-09-19T18:00:00Z"),
+							serviceId: "svc-pay",
+						},
+						{
+							id: "chg-commit",
+							type: "commit",
+							source: "github",
+							description: "a raw commit",
+							metadata: null,
+							timestamp: new Date("2026-09-19T17:00:00Z"),
+							serviceId: "svc-pay",
+						},
+					];
+					const filtered = args?.where?.type?.in
+						? rows.filter((r) => args.where!.type!.in!.includes(r.type))
+						: rows;
+					return typeof args?.take === "number"
+						? filtered.slice(0, args.take)
+						: filtered;
 				},
-				{
-					id: "chg-commit",
-					type: "commit",
-					source: "github",
-					description: "a raw commit",
-					metadata: null,
-					timestamp: new Date("2026-09-19T17:00:00Z"),
-					serviceId: "svc-pay",
-				},
-			]),
+			),
 		},
 		service: {
 			findMany: vi.fn().mockResolvedValue([{ id: "svc-pay", name: "payments-api" }]),
@@ -129,6 +142,60 @@ describe("ContextPackService", () => {
 			service: "payments-api",
 			source: "github",
 			ref: "abc123",
+		});
+		expect(mockPrisma.changeEvent.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({
+					type: { in: ["deployment", "config", "migration", "rollback"] },
+				}),
+				take: 20,
+			}),
+		);
+	});
+
+	it("returns deployment when 25 commit rows are newer than one deployment row", async () => {
+		const commits = Array.from({ length: 25 }, (_, i) => ({
+			id: `chg-commit-${i}`,
+			type: "commit",
+			source: "github",
+			description: `commit ${i}`,
+			metadata: null,
+			timestamp: new Date(
+				new Date("2026-09-19T19:00:00Z").getTime() + i * 60_000,
+			),
+			serviceId: "svc-pay",
+		}));
+		const deployment = {
+			id: "chg-deploy-1",
+			type: "deployment",
+			source: "github",
+			description: "payments-api deploy v1",
+			metadata: JSON.stringify({ sha: "deploy123" }),
+			timestamp: new Date("2026-09-19T18:00:00Z"),
+			serviceId: "svc-pay",
+		};
+		const allRows = [...commits.reverse(), deployment];
+
+		mockPrisma.changeEvent.findMany.mockImplementationOnce(
+			async (args?: {
+				where?: { type?: { in?: string[] } };
+				take?: number;
+			}) => {
+				const filtered = args?.where?.type?.in
+					? allRows.filter((r) => args.where!.type!.in!.includes(r.type))
+					: allRows;
+				return typeof args?.take === "number"
+					? filtered.slice(0, args.take)
+					: filtered;
+			},
+		);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.changes).toHaveLength(1);
+		expect(pack?.changes[0]).toMatchObject({
+			kind: "deployment",
+			ref: "deploy123",
 		});
 	});
 
