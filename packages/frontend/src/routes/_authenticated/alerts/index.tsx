@@ -86,6 +86,20 @@ function AlertsPage() {
 	const pullMutation = useMutation({
 		...orpc.alerts.pull.mutationOptions(),
 		onSuccess: (result) => {
+			if (result.errors.length > 0 && result.sources === 0) {
+				toast({
+					title: "Pull failed",
+					description: (
+						<ul className="list-disc pl-4">
+							{result.errors.map((error) => (
+								<li key={error}>{error}</li>
+							))}
+						</ul>
+					),
+					variant: "destructive",
+				});
+				return;
+			}
 			if (result.sources === 0) {
 				toast({
 					title: "No Alertmanager or Prometheus connection is configured",
@@ -97,8 +111,9 @@ function AlertsPage() {
 				});
 				return;
 			}
+			const totalPulled = result.received + result.caughtUp;
 			toast({
-				title: `Pulled ${result.received} alerts, ${result.processed} new, ${result.caughtUp} caught up`,
+				title: `Pulled ${totalPulled} alerts, ${result.processed} new, ${result.caughtUp} caught up`,
 				description:
 					result.errors.length > 0 ? (
 						<ul className="list-disc pl-4">
