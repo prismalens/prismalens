@@ -444,90 +444,121 @@ export class AlertPullService implements OnApplicationBootstrap {
 					const lastSampleSec = lastSample[0];
 					const fingerprint = alertmanagerFingerprint(labels);
 
-					let startsAt: string | undefined;
-					let idempotencyKey: string | undefined;
+					const gapThresholdSec = 2 * stepSeconds;
+					const episodes: Array<Array<[number, string]>> = [];
+					let currentEpisode: Array<[number, string]> = [series.values[0]];
 
-					// a) Check ALERTS_FOR_STATE for this fingerprint
-					const stateSeries = alertsForStateByFp.get(fingerprint);
-					if (stateSeries?.values && stateSeries.values.length > 0) {
-						const matchingSample = stateSeries.values.find(
-							(s) => s[0] >= firstSampleSec && s[0] <= lastSampleSec,
-						);
-						if (matchingSample) {
-							const activeAtSec = Number.parseFloat(matchingSample[1]);
-							if (!Number.isNaN(activeAtSec) && activeAtSec > 0) {
-								startsAt = new Date(activeAtSec * 1000).toISOString();
+					for (let i = 1; i < series.values.length; i++) {
+						const prevTime = series.values[i - 1][0];
+						const currTime = series.values[i][0];
+						if (currTime - prevTime > gapThresholdSec) {
+							episodes.push(currentEpisode);
+							currentEpisode = [series.values[i]];
+						} else {
+							currentEpisode.push(series.values[i]);
+						}
+					}
+					episodes.push(currentEpisode);
+
+					for (let epIdx = 0; epIdx < episodes.length; epIdx++) {
+						const episode = episodes[epIdx];
+						const isLastEpisode = epIdx === episodes.length - 1;
+
+						const firstSample = episode[0];
+						const lastSample = episode[episode.length - 1];
+						const firstSampleSec = firstSample[0];
+						const lastSampleSec = lastSample[0];
+
+						let startsAt: string | undefined;
+						let idempotencyKey: string | undefined;
+
+						// a) Check ALERTS_FOR_STATE for this fingerprint
+						const stateSeries = alertsForStateByFp.get(fingerprint);
+						if (stateSeries?.values && stateSeries.values.length > 0) {
+							const matchingSample = stateSeries.values.find(
+								(s) => s[0] >= firstSampleSec && s[0] <= lastSampleSec,
+							);
+							if (matchingSample) {
+								const activeAtSec = Number.parseFloat(matchingSample[1]);
+								if (!Number.isNaN(activeAtSec) && activeAtSec > 0) {
+									startsAt = new Date(activeAtSec * 1000).toISOString();
+									idempotencyKey = `prometheus-catchup:${fingerprint}:${startsAt}`;
+								}
+							}
+						}
+
+						// b) Fallback when there is no ALERTS_FOR_STATE value:
+						if (!startsAt) {
+							const sinceSec = Math.floor(since.getTime() / 1000);
+							const isClipped =
+								Math.abs(firstSampleSec - sinceSec) <= stepSeconds;
+
+							if (isClipped) {
+								const existing =
+									await this.findExistingOpenCatchupAlert(fingerprint);
+								if (existing) {
+									startsAt = existing.startsAt;
+									idempotencyKey = existing.idempotencyKey;
+								}
+							}
+
+							if (!startsAt) {
+								startsAt = new Date(firstSampleSec * 1000).toISOString();
 								idempotencyKey = `prometheus-catchup:${fingerprint}:${startsAt}`;
 							}
 						}
-					}
 
-					// b) Fallback when there is no ALERTS_FOR_STATE value:
-					if (!startsAt) {
-						const sinceSec = Math.floor(since.getTime() / 1000);
-						const isClipped =
-							Math.abs(firstSampleSec - sinceSec) <= stepSeconds;
+						const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
+						const alertnameExpr = `ALERTS{alertname="${labels.alertname ?? ""}"}`;
+						const generatorURL = `${cleanBaseUrl}/graph?g0.expr=${encodeURIComponent(alertnameExpr)}`;
 
-						if (isClipped) {
-							const existing =
-								await this.findExistingOpenCatchupAlert(fingerprint);
-							if (existing) {
-								startsAt = existing.startsAt;
-								idempotencyKey = existing.idempotencyKey;
+						const prometheusAlert: PrometheusAlert = {
+							status: "firing",
+							labels,
+							annotations: {},
+							startsAt,
+							generatorURL,
+							fingerprint,
+						};
+
+						try {
+							const { isNew } =
+								await this.webhooksService.processPrometheusAlert(
+									prometheusAlert,
+									{
+										idempotencyKey,
+										source: "prometheus-catchup",
+										autoInvestigate: false,
+									},
+								);
+							if (isNew) {
+								result.processed++;
 							}
-						}
+							result.caughtUp++;
 
-						if (!startsAt) {
-							startsAt = new Date(firstSampleSec * 1000).toISOString();
-							idempotencyKey = `prometheus-catchup:${fingerprint}:${startsAt}`;
-						}
-					}
+							// Resolution handling:
+							// All but the last episode are resolved;
+							// The last is resolved if its last sample is older than now − 2 × step.
+							const lastSampleTimeMs = lastSampleSec * 1000;
+							const endedThresholdMs = now.getTime() - 2 * stepSeconds * 1000;
+							const shouldResolve =
+								!isLastEpisode || lastSampleTimeMs < endedThresholdMs;
 
-					const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
-					const alertnameExpr = `ALERTS{alertname="${labels.alertname ?? ""}"}`;
-					const generatorURL = `${cleanBaseUrl}/graph?g0.expr=${encodeURIComponent(alertnameExpr)}`;
-
-					const prometheusAlert: PrometheusAlert = {
-						status: "firing",
-						labels,
-						annotations: {},
-						startsAt,
-						generatorURL,
-						fingerprint,
-					};
-
-					try {
-						const { isNew } = await this.webhooksService.processPrometheusAlert(
-							prometheusAlert,
-							{
-								idempotencyKey,
-								source: "prometheus-catchup",
-								autoInvestigate: false,
-							},
-						);
-						if (isNew) {
-							result.processed++;
-						}
-						result.caughtUp++;
-
-						// If the series' last sample is older than now − 2 × step, the episode ended while we were away:
-						const lastSampleTimeMs = lastSample[0] * 1000;
-						const endedThresholdMs = now.getTime() - 2 * stepSeconds * 1000;
-
-						if (lastSampleTimeMs < endedThresholdMs) {
-							await this.webhooksService.resolvePrometheusAlert(
-								fingerprint,
-								`${idempotencyKey}:resolved`,
-								startsAt,
+							if (shouldResolve) {
+								await this.webhooksService.resolvePrometheusAlert(
+									fingerprint,
+									`${idempotencyKey}:resolved`,
+									startsAt,
+								);
+							}
+						} catch (alertErr) {
+							this.logger.error(
+								`Failed to process catch-up alert ${fingerprint}: ${alertErr}`,
+							);
+							result.errors.push(
+								`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
 							);
 						}
-					} catch (alertErr) {
-						this.logger.error(
-							`Failed to process catch-up alert ${fingerprint}: ${alertErr}`,
-						);
-						result.errors.push(
-							`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
-						);
 					}
 				}
 			} catch (err) {

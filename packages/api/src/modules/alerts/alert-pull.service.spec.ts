@@ -410,23 +410,26 @@ describe("AlertPullService (#605)", () => {
 			};
 			const startSec = Math.floor(new Date("2026-09-20T11:30:00.000Z").getTime() / 1000);
 			const endSecEnded = Math.floor(new Date("2026-09-20T11:50:00.000Z").getTime() / 1000);
-			series1.values = [
-				[startSec, "1"],
-				[endSecEnded, "1"],
-			];
+			const series1Values: Array<[number, string]> = [];
+			for (let t = startSec; t <= endSecEnded; t += 60) {
+				series1Values.push([t, "1"]);
+			}
+			series1.values = series1Values;
 
 			// Series 2: still firing (last sample was at 11:59:30, within now - 2*step)
 			const endSecFiring = Math.floor(new Date("2026-09-20T11:59:30.000Z").getTime() / 1000);
+			const series2Values: Array<[number, string]> = [];
+			for (let t = startSec; t < endSecFiring; t += 60) {
+				series2Values.push([t, "1"]);
+			}
+			series2Values.push([endSecFiring, "1"]);
 			const series2 = {
 				metric: {
 					__name__: "ALERTS",
 					alertstate: "firing",
 					alertname: "CpuHigh",
 				},
-				values: [
-					[startSec, "1"],
-					[endSecFiring, "1"],
-				],
+				values: series2Values,
 			};
 
 			fetchSpy.mockResolvedValueOnce(
@@ -601,19 +604,20 @@ describe("AlertPullService (#605)", () => {
 			const pull1StartSec = Math.floor(new Date("2026-09-20T10:00:00.000Z").getTime() / 1000);
 			const pull1EndSec = Math.floor(now1.getTime() / 1000);
 
+			const series1Values: Array<[number, string]> = [];
+			const state1Values: Array<[number, string]> = [];
+			for (let t = pull1StartSec; t <= pull1EndSec; t += 60) {
+				series1Values.push([t, "1"]);
+				state1Values.push([t, String(activeAtSec)]);
+			}
+
 			const series1 = {
 				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
-				values: [
-					[pull1StartSec, "1"],
-					[pull1EndSec, "1"],
-				],
+				values: series1Values,
 			};
 			const stateSeries1 = {
 				metric: { __name__: "ALERTS_FOR_STATE", ...labels },
-				values: [
-					[pull1StartSec, String(activeAtSec)],
-					[pull1EndSec, String(activeAtSec)],
-				],
+				values: state1Values,
 			};
 
 			const seenKeys = new Set<string>();
@@ -658,19 +662,20 @@ describe("AlertPullService (#605)", () => {
 			const pull2StartSec = Math.floor(now1.getTime() / 1000);
 			const pull2EndSec = Math.floor(now2.getTime() / 1000);
 
+			const series2Values: Array<[number, string]> = [];
+			const state2Values: Array<[number, string]> = [];
+			for (let t = pull2StartSec; t <= pull2EndSec; t += 60) {
+				series2Values.push([t, "1"]);
+				state2Values.push([t, String(activeAtSec)]);
+			}
+
 			const series2 = {
 				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
-				values: [
-					[pull2StartSec, "1"],
-					[pull2EndSec, "1"],
-				],
+				values: series2Values,
 			};
 			const stateSeries2 = {
 				metric: { __name__: "ALERTS_FOR_STATE", ...labels },
-				values: [
-					[pull2StartSec, String(activeAtSec)],
-					[pull2EndSec, String(activeAtSec)],
-				],
+				values: state2Values,
 			};
 
 			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
@@ -722,12 +727,14 @@ describe("AlertPullService (#605)", () => {
 			const expectedStartsAt = new Date(pull1StartSec * 1000).toISOString();
 			const expectedKey = `prometheus-catchup:${expectedFp}:${expectedStartsAt}`;
 
+			const series1Values: Array<[number, string]> = [];
+			for (let t = pull1StartSec; t <= pull1EndSec; t += 60) {
+				series1Values.push([t, "1"]);
+			}
+
 			const series1 = {
 				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
-				values: [
-					[pull1StartSec, "1"],
-					[pull1EndSec, "1"],
-				],
+				values: series1Values,
 			};
 
 			const seenKeys = new Set<string>();
@@ -784,12 +791,14 @@ describe("AlertPullService (#605)", () => {
 			const pull2StartSec = Math.floor(now1.getTime() / 1000); // 11:00:00 (within 1 step of since)
 			const pull2EndSec = Math.floor(now2.getTime() / 1000);
 
+			const series2Values: Array<[number, string]> = [];
+			for (let t = pull2StartSec; t <= pull2EndSec; t += 60) {
+				series2Values.push([t, "1"]);
+			}
+
 			const series2 = {
 				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
-				values: [
-					[pull2StartSec, "1"],
-					[pull2EndSec, "1"],
-				],
+				values: series2Values,
 			};
 
 			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
@@ -812,6 +821,160 @@ describe("AlertPullService (#605)", () => {
 			expect(webhooksService.processPrometheusAlert).toHaveBeenLastCalledWith(
 				expect.objectContaining({ startsAt: expectedStartsAt }),
 				expect.objectContaining({ idempotencyKey: expectedKey }),
+			);
+		});
+
+		it("splits a series into episodes on gaps > 2*step: series 02:00-02:10 and 08:00-08:05 pulled at 09:00 yields two resolved episodes", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "prometheus") {
+					return [
+						{
+							id: "prom-1",
+							label: "Prometheus Main",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+
+			const pullTime = new Date("2026-09-20T09:00:00.000Z");
+			const labels = { alertname: "DatabaseHighCpu", service: "orders" };
+			const expectedFp = alertmanagerFingerprint(labels);
+
+			// 02:00 to 02:10 (60s steps)
+			const ep1Start = Math.floor(new Date("2026-09-20T02:00:00.000Z").getTime() / 1000);
+			const ep1End = Math.floor(new Date("2026-09-20T02:10:00.000Z").getTime() / 1000);
+			// 08:00 to 08:05 (60s steps)
+			const ep2Start = Math.floor(new Date("2026-09-20T08:00:00.000Z").getTime() / 1000);
+			const ep2End = Math.floor(new Date("2026-09-20T08:05:00.000Z").getTime() / 1000);
+
+			const values: Array<[number, string]> = [];
+			for (let t = ep1Start; t <= ep1End; t += 60) {
+				values.push([t, "1"]);
+			}
+			for (let t = ep2Start; t <= ep2End; t += 60) {
+				values.push([t, "1"]);
+			}
+
+			const series = {
+				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+				values,
+			};
+
+			fetchSpy.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			);
+
+			const result = await service.pull(pullTime);
+
+			expect(result.caughtUp).toBe(2); // Two episodes
+			expect(result.processed).toBe(2);
+
+			const ep1StartsAt = new Date(ep1Start * 1000).toISOString();
+			const ep2StartsAt = new Date(ep2Start * 1000).toISOString();
+
+			// Both episodes ingested
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ startsAt: ep1StartsAt }),
+				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${expectedFp}:${ep1StartsAt}` }),
+			);
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ startsAt: ep2StartsAt }),
+				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${expectedFp}:${ep2StartsAt}` }),
+			);
+
+			// Both episodes resolved (ep1 because it's not the last episode; ep2 because 08:05 < 09:00 - 2*step = 08:58)
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(2);
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
+				expectedFp,
+				`prometheus-catchup:${expectedFp}:${ep1StartsAt}:resolved`,
+				ep1StartsAt,
+			);
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
+				expectedFp,
+				`prometheus-catchup:${expectedFp}:${ep2StartsAt}:resolved`,
+				ep2StartsAt,
+			);
+		});
+
+		it("splits a series into episodes on gaps > 2*step: series 02:00-02:10 and second still firing at pull time 09:00 resolves first and keeps second open with startsAt 08:00", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "prometheus") {
+					return [
+						{
+							id: "prom-1",
+							label: "Prometheus Main",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+
+			const pullTime = new Date("2026-09-20T09:00:00.000Z");
+			const labels = { alertname: "DatabaseHighCpu", service: "orders" };
+			const expectedFp = alertmanagerFingerprint(labels);
+
+			// 02:00 to 02:10 (60s steps)
+			const ep1Start = Math.floor(new Date("2026-09-20T02:00:00.000Z").getTime() / 1000);
+			const ep1End = Math.floor(new Date("2026-09-20T02:10:00.000Z").getTime() / 1000);
+			// 08:00 to 09:00 (still firing at pull time)
+			const ep2Start = Math.floor(new Date("2026-09-20T08:00:00.000Z").getTime() / 1000);
+			const ep2End = Math.floor(new Date("2026-09-20T09:00:00.000Z").getTime() / 1000);
+
+			const values: Array<[number, string]> = [];
+			for (let t = ep1Start; t <= ep1End; t += 60) {
+				values.push([t, "1"]);
+			}
+			for (let t = ep2Start; t <= ep2End; t += 60) {
+				values.push([t, "1"]);
+			}
+
+			const series = {
+				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+				values,
+			};
+
+			fetchSpy.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			);
+
+			const result = await service.pull(pullTime);
+
+			expect(result.caughtUp).toBe(2);
+			expect(result.processed).toBe(2);
+
+			const ep1StartsAt = new Date(ep1Start * 1000).toISOString();
+			const ep2StartsAt = new Date(ep2Start * 1000).toISOString();
+
+			// Episode 1 is resolved
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
+				expectedFp,
+				`prometheus-catchup:${expectedFp}:${ep1StartsAt}:resolved`,
+				ep1StartsAt,
+			);
+
+			// Episode 2 is open with startsAt 08:00 (resolve NOT called for ep2)
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ startsAt: ep2StartsAt }),
+				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${expectedFp}:${ep2StartsAt}` }),
+			);
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalledWith(
+				expectedFp,
+				`prometheus-catchup:${expectedFp}:${ep2StartsAt}:resolved`,
+				ep2StartsAt,
 			);
 		});
 	});
