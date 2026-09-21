@@ -122,78 +122,23 @@ export class AlertPullService implements OnApplicationBootstrap {
 		});
 	}
 
-	/**
-	 * Look up an existing open alert for this fingerprint created by a prior catch-up.
-	 * Returns its startsAt and idempotencyKey if found.
-	 */
+	/** The startsAt and key a prior catch-up gave this fingerprint's still-open alert. */
 	async findExistingOpenCatchupAlert(
 		fingerprint: string,
 	): Promise<{ startsAt: string; idempotencyKey: string } | null> {
-		try {
-			if (this.prisma.alert?.findFirst) {
-				const alert = await this.prisma.alert.findFirst({
-					where: {
-						source: "prometheus-catchup",
-						status: { not: "resolved" },
-						OR: [
-							{ externalId: fingerprint },
-							{ members: { some: { sourceAlertId: fingerprint } } },
-						],
-					},
-					orderBy: { triggeredAt: "desc" },
-					include: {
-						events: {
-							where: {
-								source: "prometheus-catchup",
-								idempotencyKey: {
-									startsWith: `prometheus-catchup:${fingerprint}:`,
-								},
-							},
-							orderBy: { receivedAt: "desc" },
-							take: 1,
-						},
-					},
-				});
-
-				if (alert?.events?.[0]?.idempotencyKey) {
-					const key = alert.events[0].idempotencyKey;
-					const prefix = `prometheus-catchup:${fingerprint}:`;
-					if (key.startsWith(prefix)) {
-						const startsAt = key.slice(prefix.length);
-						return { startsAt, idempotencyKey: key };
-					}
-				}
-			}
-
-			if (this.prisma.event?.findFirst) {
-				const event = await this.prisma.event.findFirst({
-					where: {
-						source: "prometheus-catchup",
-						sourceEventId: fingerprint,
-						idempotencyKey: {
-							startsWith: `prometheus-catchup:${fingerprint}:`,
-						},
-						alert: {
-							status: { not: "resolved" },
-						},
-					},
-					orderBy: { receivedAt: "desc" },
-				});
-
-				if (event?.idempotencyKey) {
-					const key = event.idempotencyKey;
-					const prefix = `prometheus-catchup:${fingerprint}:`;
-					if (key.startsWith(prefix)) {
-						const startsAt = key.slice(prefix.length);
-						return { startsAt, idempotencyKey: key };
-					}
-				}
-			}
-
-			return null;
-		} catch {
-			return null;
-		}
+		const prefix = `prometheus-catchup:${fingerprint}:`;
+		const event = await this.prisma.event.findFirst({
+			where: {
+				source: "prometheus-catchup",
+				sourceEventId: fingerprint,
+				idempotencyKey: { startsWith: prefix },
+				alert: { status: { not: "resolved" } },
+			},
+			orderBy: { receivedAt: "desc" },
+		});
+		const key = event?.idempotencyKey;
+		if (!key?.startsWith(prefix)) return null;
+		return { startsAt: key.slice(prefix.length), idempotencyKey: key };
 	}
 
 	async pull(now: Date = new Date()): Promise<PullResult> {
@@ -441,10 +386,6 @@ export class AlertPullService implements OnApplicationBootstrap {
 						}
 					}
 
-					const firstSample = series.values[0];
-					const lastSample = series.values[series.values.length - 1];
-					const firstSampleSec = firstSample[0];
-					const lastSampleSec = lastSample[0];
 					const fingerprint = alertmanagerFingerprint(labels);
 
 					const gapThresholdSec = 2 * stepSeconds;

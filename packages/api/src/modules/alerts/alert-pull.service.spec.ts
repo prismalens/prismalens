@@ -18,7 +18,6 @@ describe("AlertPullService (#605)", () => {
 	let prisma: {
 		connection: { findMany: ReturnType<typeof vi.fn> };
 		setting: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
-		alert: { findFirst: ReturnType<typeof vi.fn> };
 		event: { findFirst: ReturnType<typeof vi.fn> };
 	};
 	let integrationsService: { connectionBaseUrl: ReturnType<typeof vi.fn> };
@@ -36,9 +35,6 @@ describe("AlertPullService (#605)", () => {
 			setting: {
 				findUnique: vi.fn().mockResolvedValue(null),
 				upsert: vi.fn().mockResolvedValue({}),
-			},
-			alert: {
-				findFirst: vi.fn().mockResolvedValue(null),
 			},
 			event: {
 				findFirst: vi.fn().mockResolvedValue(null),
@@ -876,17 +872,7 @@ describe("AlertPullService (#605)", () => {
 			});
 
 			// DB now has the open alert from pull 1
-			prisma.alert.findFirst.mockResolvedValue({
-				id: "alt-open",
-				status: "triggered",
-				source: "prometheus-catchup",
-				externalId: expectedFp,
-				events: [
-					{
-						idempotencyKey: expectedKey,
-					},
-				],
-			});
+			prisma.event.findFirst.mockResolvedValue({ idempotencyKey: expectedKey });
 
 			const pull2StartSec = Math.floor(now1.getTime() / 1000); // 11:00:00 (within 1 step of since)
 			const pull2EndSec = Math.floor(now2.getTime() / 1000);
