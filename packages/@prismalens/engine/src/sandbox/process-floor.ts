@@ -23,21 +23,56 @@ import type {
 /** `.cmd`/`.bat` — the npm shim extensions Node's own spawn cannot exec directly on Windows. */
 const CMD_SHIM_RE = /\.(cmd|bat)$/i;
 
-/** Every character cmd.exe's own parser treats specially, per the cross-spawn escaping rule. */
-const CMD_META_CHARS_RE = /[()%!^"<>&|]/g;
+// Exact port of escapeCommand and escapeArgument from cross-spawn 7.0.6 (node_modules/cross-spawn/lib/util/escape.js).
+// See http://www.robvanderwoude.com/escapechars.php
+const META_CHARS_RE = /([()\][%!^"`<>&|;, *?])/g;
 
 /**
- * Escape one argv token for a `cmd.exe /d /s /c "<whole line>"` invocation (the
- * cross-spawn rule: github.com/moxystudio/node-cross-spawn `lib/util/escape.js`).
- * Whitespace or an embedded `"` forces quoting; every cmd metacharacter — inside
- * or outside the quotes — is prefixed with `^` so cmd's own re-parse of the outer
- * quoted line (`/c "..."` strips one layer, then re-tokenizes) does not split the
- * token or run a shell operator the caller never asked for.
+ * Escape a command for a `cmd.exe /d /s /c "<line>"` invocation.
+ * Exact port from cross-spawn 7.0.6 `lib/util/escape.js`.
  */
-export function quoteForCmd(token: string): string {
-	let escaped = token.replace(/"/g, '\\"');
-	if (/[\s"]/.test(token)) escaped = `"${escaped}"`;
-	return escaped.replace(CMD_META_CHARS_RE, (ch) => `^${ch}`);
+export function escapeCommand(arg: string): string {
+	return arg.replace(META_CHARS_RE, "^$1");
+}
+
+/**
+ * Escape one argument token for a `cmd.exe /d /s /c "<whole line>"` invocation.
+ * Exact port from cross-spawn 7.0.6 `lib/util/escape.js`.
+ *
+ * Algorithm is based on https://qntm.org/cmd, slightly altered in cross-spawn
+ * (PR #160) to avoid catastrophic backtracking. Quotes the whole argument,
+ * doubles up backslashes before double-quotes and at the end of string, and
+ * escapes metacharacters with `^` (twice if doubleEscapeMetaChars is true for .cmd/.bat shims).
+ */
+export function escapeArgument(
+	arg: string,
+	doubleEscapeMetaChars = true,
+): string {
+	let str = `${arg}`;
+
+	// Sequence of backslashes followed by a double quote:
+	// double up all the backslashes and escape the double quote
+	str = str.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+
+	// Sequence of backslashes followed by the end of the string
+	// (which will become a double quote later):
+	// double up all the backslashes
+	str = str.replace(/(?=(\\+?)?)\1$/, "$1$1");
+
+	// All other backslashes occur literally
+
+	// Quote the whole thing:
+	str = `"${str}"`;
+
+	// Escape meta chars
+	str = str.replace(META_CHARS_RE, "^$1");
+
+	// Double escape meta chars if necessary
+	if (doubleEscapeMetaChars) {
+		str = str.replace(META_CHARS_RE, "^$1");
+	}
+
+	return str;
 }
 
 /**
@@ -68,7 +103,9 @@ export function windowsSpawnPlan(
 		(resolved !== null && CMD_SHIM_RE.test(resolved));
 	if (!isShim) return { command, args, options: {} };
 	const comSpec = process.env.ComSpec ?? "cmd.exe";
-	const line = [command, ...args].map(quoteForCmd).join(" ");
+	const escapedCmd = escapeCommand(command);
+	const escapedArgs = args.map((arg) => escapeArgument(arg, true));
+	const line = [escapedCmd, ...escapedArgs].join(" ");
 	return {
 		command: comSpec,
 		args: ["/d", "/s", "/c", `"${line}"`],

@@ -7,6 +7,7 @@
  * caller's env must win, and destroy() must reap live children. No network/LLM.
  */
 import { once } from "node:events";
+import { createRequire } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ resolveOnPath: vi.fn(() => null as string | null) }));
@@ -17,7 +18,8 @@ vi.mock("@prismalens/config/harness-selection", () => ({
 const {
 	buildFloorEnv,
 	createProcessFloorSandbox,
-	quoteForCmd,
+	escapeArgument,
+	escapeCommand,
 	windowsSpawnPlan,
 } = await import("./process-floor.js");
 
@@ -192,7 +194,7 @@ describe("windowsSpawnPlan (#634 — npm .cmd/.bat shims can't execve on Windows
 		const plan = windowsSpawnPlan("opencode.cmd", ["acp", "--pure"], "win32");
 		expect(plan).toEqual({
 			command: process.env.ComSpec ?? "cmd.exe",
-			args: ["/d", "/s", "/c", '"opencode.cmd acp --pure"'],
+			args: ["/d", "/s", "/c", '"opencode.cmd ^^^"acp^^^" ^^^"--pure^^^""'],
 			options: { windowsVerbatimArguments: true },
 		});
 	});
@@ -207,6 +209,7 @@ describe("windowsSpawnPlan (#634 — npm .cmd/.bat shims can't execve on Windows
 		mocks.resolveOnPath.mockReturnValue("C:\\npm\\opencode.cmd");
 		const plan = windowsSpawnPlan("opencode", ["acp"], "win32");
 		expect(plan.command).toBe(process.env.ComSpec ?? "cmd.exe");
+		expect(plan.args).toEqual(["/d", "/s", "/c", '"opencode ^^^"acp^^^""']);
 		expect(mocks.resolveOnPath).toHaveBeenCalledWith("opencode");
 	});
 
@@ -220,7 +223,7 @@ describe("windowsSpawnPlan (#634 — npm .cmd/.bat shims can't execve on Windows
 			"/d",
 			"/s",
 			"/c",
-			'"foo.cmd ^"C:\\Program Files\\a ^& b.txt^""',
+			'"foo.cmd ^^^"C:\\Program^^^ Files\\a^^^ ^^^&^^^ b.txt^^^""',
 		]);
 	});
 
@@ -235,16 +238,53 @@ describe("windowsSpawnPlan (#634 — npm .cmd/.bat shims can't execve on Windows
 	});
 });
 
-describe("quoteForCmd", () => {
-	it("leaves a plain token untouched", () => {
-		expect(quoteForCmd("opencode")).toBe("opencode");
+describe("windowsSpawnPlan cross-spawn quoting compliance", () => {
+	const crossSpawnRequire = createRequire(import.meta.url);
+	const crossSpawnEscape = crossSpawnRequire("cross-spawn/lib/util/escape.js") as {
+		command: (cmd: string) => string;
+		argument: (arg: string, doubleEscape: boolean) => string;
+	};
+
+	const testCases = [
+		"a&b",
+		"C:\\dir with space\\",
+		'he said "x"',
+		"%PATH%",
+		"a|b^c",
+	];
+
+	for (const input of testCases) {
+		it(`matches cross-spawn escaping for '${input}'`, () => {
+			const plan = windowsSpawnPlan("test.cmd", [input], "win32");
+			const expectedLine = `test.cmd ${crossSpawnEscape.argument(input, true)}`;
+			expect(plan.args).toEqual(["/d", "/s", "/c", `"${expectedLine}"`]);
+		});
+	}
+
+	it("matches cross-spawn escaping when all test cases are combined in one command", () => {
+		const plan = windowsSpawnPlan("test.cmd", testCases, "win32");
+		const expectedLine = [
+			crossSpawnEscape.command("test.cmd"),
+			...testCases.map((arg) => crossSpawnEscape.argument(arg, true)),
+		].join(" ");
+		expect(plan.args).toEqual(["/d", "/s", "/c", `"${expectedLine}"`]);
+	});
+});
+
+describe("escapeCommand and escapeArgument (cross-spawn port)", () => {
+	it("leaves a plain command untouched", () => {
+		expect(escapeCommand("opencode")).toBe("opencode");
 	});
 
-	it("wraps whitespace in quotes without needing a metacharacter", () => {
-		expect(quoteForCmd("hello world")).toBe('^"hello world^"');
+	it("escapes cmd metacharacters in a command", () => {
+		expect(escapeCommand("foo & bar.cmd")).toBe("foo^ ^&^ bar.cmd");
 	});
 
-	it("backslash-escapes an embedded quote and ^-escapes every quote left standing", () => {
-		expect(quoteForCmd('say "hi"')).toBe('^"say \\^"hi\\^"^"');
+	it("wraps an argument in quotes and escapes metacharacters with double escape for shims", () => {
+		expect(escapeArgument("hello world", true)).toBe('^^^"hello^^^ world^^^"');
+	});
+
+	it("backslash-escapes an embedded quote and doubles backslashes before quote", () => {
+		expect(escapeArgument('say "hi"', true)).toBe('^^^"say^^^ \\^^^"hi\\^^^"^^^"');
 	});
 });
