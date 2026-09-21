@@ -46,3 +46,4 @@ export {
 export type { RefreshableConnection, RefreshDeps } from "./token-refresh.js";
 export { TokenRefresher } from "./token-refresh.js";
 export { TokenVault } from "./token-vault.js";
+export { urlOnlyRequestFn } from "./url-only-request.js";

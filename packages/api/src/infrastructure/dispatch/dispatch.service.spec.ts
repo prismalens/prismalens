@@ -94,6 +94,8 @@ describe("DispatchService.onModuleInit", () => {
 			repoSource as any,
 			fakePrisma(rows),
 			integrationsService as any,
+			{ resolve: vi.fn(async () => []) } as any,
+			{ assemble: vi.fn(async () => null) } as any,
 			{ capture: vi.fn(), captureFinished: vi.fn() } as any,
 			{ deliver: vi.fn() } as any,
 		);
@@ -138,6 +140,8 @@ describe("DispatchService.onModuleInit", () => {
 			{ snapshot: vi.fn() } as any,
 			fakePrisma([]),
 			{ getIntegrationsByConnectionIds: vi.fn(async () => []) } as any,
+			{ resolve: vi.fn(async () => []) } as any,
+			{ assemble: vi.fn(async () => null) } as any,
 			{ capture: vi.fn(), captureFinished: vi.fn() } as any,
 			{ deliver: vi.fn() } as any,
 		);

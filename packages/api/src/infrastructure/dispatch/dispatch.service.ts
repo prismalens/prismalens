@@ -27,7 +27,9 @@ import {
 } from "../../core/telemetry/telemetry.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
+import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
 import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
+import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
@@ -72,6 +74,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
 		private readonly integrationsService: IntegrationsService,
+		private readonly connectorResolver: ConnectorResolverService,
+		private readonly contextPackService: ContextPackService,
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
 	) {
@@ -167,6 +171,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;
 			},
+			resolveConnectors: (serviceId) =>
+				this.connectorResolver.resolve({ serviceId }),
+			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
 		};
 
 		this.dispatcher = new Dispatcher(

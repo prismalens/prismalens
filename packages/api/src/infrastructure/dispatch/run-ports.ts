@@ -8,6 +8,8 @@ import type { HarnessSelection } from "@prismalens/config";
  */
 import type { ModelSource } from "@prismalens/config/harness";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import type { ContextPack } from "@prismalens/contracts/schemas";
+import type { ResolvedConnector } from "@prismalens/engine";
 import type {
 	RepoSource,
 	Snapshot,
@@ -50,6 +52,12 @@ export interface RunPorts {
 	incidentRepos(incidentId: string): Promise<IncidentRepo[]>;
 	/** A git token for the connection that discovered the repo, when one exists. */
 	repoToken(connectionId: string): Promise<string | null>;
+	/** The connectors (telemetry) available to the run. Implemented by ConnectorResolverService. */
+	resolveConnectors(
+		serviceId: string | undefined,
+	): Promise<ResolvedConnector[]>;
+	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
+	contextPack(incidentId: string): Promise<ContextPack | null>;
 	/** A fresh clone of the source's committed HEAD into `dest`. */
 	snapshot(
 		src: RepoSource,

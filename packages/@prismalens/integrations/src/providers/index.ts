@@ -6,6 +6,7 @@
  */
 
 import { GitHubAdapter } from "./github/github.adapter.js";
+import { PrometheusAdapter } from "./prometheus/prometheus.adapter.js";
 import { RenderAdapter } from "./render/render.adapter.js";
 import type { ProviderAdapter, SegmentKind } from "./types.js";
 
@@ -17,6 +18,12 @@ export type {
 	GitProviderContext,
 } from "./git.interface.js";
 export { GitHubAdapter, GitHubVcsSegment } from "./github/index.js";
+// Metrics provider (#633)
+export type { MetricsQueries, RangeSeries } from "./metrics.interface.js";
+export {
+	PrometheusAdapter,
+	PrometheusMetricsSegment,
+} from "./prometheus/index.js";
 export { RenderAdapter, RenderDeploymentSegment } from "./render/index.js";
 // Shared provider and adapter types
 export type {
@@ -31,6 +38,7 @@ export type {
 const ADAPTER_REGISTRY: Record<string, new () => ProviderAdapter> = {
 	"github-app": GitHubAdapter,
 	"github-token": GitHubAdapter,
+	prometheus: PrometheusAdapter,
 	render: RenderAdapter,
 };
 
@@ -53,11 +61,12 @@ export function getRegisteredTemplateIds(): string[] {
 	return Object.keys(ADAPTER_REGISTRY);
 }
 
-/** Derive segment kinds from adapter segment presence (#446). */
+/** Derive segment kinds from adapter segment presence (#446, #633). */
 export function getAdapterSegments(adapter: ProviderAdapter): SegmentKind[] {
 	const segments: SegmentKind[] = [];
 	if (adapter.vcs) segments.push("vcs");
 	if (adapter.deployment) segments.push("deployment");
+	if (adapter.metrics) segments.push("metrics");
 	return segments;
 }
 

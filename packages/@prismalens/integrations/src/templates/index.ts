@@ -2,15 +2,21 @@
 // Copyright 2026 Sumit Patel
 
 import type { AuthTemplate } from "../types.js";
+import { alertmanager } from "./alertmanager.js";
 import { githubApp, githubToken } from "./github.js";
+import { prometheus } from "./prometheus.js";
 import { render } from "./render.js";
 
+export { alertmanager } from "./alertmanager.js";
 export { githubApp, githubToken } from "./github.js";
+export { prometheus } from "./prometheus.js";
 export { render } from "./render.js";
 
 const TEMPLATES = new Map<string, AuthTemplate>([
+	[alertmanager.id, alertmanager],
 	[githubApp.id, githubApp],
 	[githubToken.id, githubToken],
+	[prometheus.id, prometheus],
 	[render.id, render],
 ]);
 

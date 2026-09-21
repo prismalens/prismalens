@@ -32,6 +32,7 @@ import {
 	getAllTemplates,
 	getTemplate,
 	hasCapability,
+	urlOnlyRequestFn,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -442,6 +443,22 @@ export class IntegrationsService implements OnModuleInit {
 		}
 	}
 
+	async connectionBaseUrl(connectionId: string): Promise<string | null> {
+		const conn = await this.prisma.connection.findUnique({
+			where: { id: connectionId },
+			select: { connectionConfigEnc: true },
+		});
+		if (!conn?.connectionConfigEnc) return null;
+		try {
+			const config = this.credentialsService.decrypt<Record<string, unknown>>(
+				Buffer.from(conn.connectionConfigEnc),
+			);
+			return typeof config.baseUrl === "string" ? config.baseUrl : null;
+		} catch {
+			return null;
+		}
+	}
+
 	async testConnection(
 		id: string,
 		userId?: string,
@@ -452,7 +469,28 @@ export class IntegrationsService implements OnModuleInit {
 		}
 
 		try {
-			const testResult = await this.getAuthManager().verifyConnection(id);
+			const template = getTemplate(connection.integration.templateId);
+			let testResult: { success: boolean; error?: string };
+
+			if (template?.urlOnly && template.verify) {
+				const base = await this.connectionBaseUrl(id);
+				if (!base) {
+					testResult = { success: false, error: "Connection has no baseUrl" };
+				} else {
+					const res = await urlOnlyRequestFn(base)(
+						template.verify.method,
+						template.verify.path,
+					);
+					testResult = res.ok
+						? { success: true }
+						: {
+								success: false,
+								error: `${template.name} answered ${res.status}`,
+							};
+				}
+			} else {
+				testResult = await this.getAuthManager().verifyConnection(id);
+			}
 
 			await this.prisma.connection.update({
 				where: { id },

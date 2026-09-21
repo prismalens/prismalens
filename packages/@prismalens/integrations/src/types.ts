@@ -119,6 +119,8 @@ export interface AuthTemplate {
 		method: "GET" | "POST";
 		path: string;
 	};
+	/** No credentials: the connection's baseUrl is reached directly and `verify` runs against it (#633). */
+	urlOnly?: true;
 	/** Permission requirements — single source of truth for capabilities, defaultPermissions, and scopes */
 	requiredPermissions?: PermissionRequirement[];
 	/** How connections are created for this template */
