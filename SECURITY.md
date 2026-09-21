@@ -47,9 +47,9 @@ valuable — are:
 
 - **Credential handling** — leakage of API keys, tokens, or connection strings
   into logs, telemetry, reports, or the UI.
-- **Shell / command execution** — command injection or sandbox escape in the
-  shell-first integration layer, or any path that turns a read-only integration
-  into a write.
+- **Shell / command execution** — command injection in the shell-first integration
+  layer, a harness child reaching an env var outside its allowlist, or any path
+  that turns a read-only integration into a write.
 - **Secret exposure in artifacts** — investigation reports or stored state that
   capture sensitive values they should have redacted.
 - **Path traversal** in any file-write path.

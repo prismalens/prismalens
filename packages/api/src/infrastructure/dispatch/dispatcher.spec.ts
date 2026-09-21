@@ -262,7 +262,7 @@ describe("Dispatcher", () => {
 			await dispatcher.tick();
 			finish.get("job-1")?.({
 				outcome: "failed",
-				error: "harness cannot honour the demanded sandbox",
+				error: "harness cannot honour the demanded posture",
 			});
 
 			await vi.waitFor(() => expect(store.completed).toHaveLength(1));

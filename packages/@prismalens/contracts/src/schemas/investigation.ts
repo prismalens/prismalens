@@ -91,20 +91,6 @@ export const NextStepSchema = z.object({
 });
 
 /**
- * The isolation-boundary slice of run-metadata (ADR-0020 Sandbox port + ADR-0017
- * honest fidelity): what the caller REQUESTED vs what boundary was ACTUALLY
- * obtained, plus its honest fidelity — the structured sibling of the
- * human-readable `mechanism` string on {@link RunFidelitySchema} (kept
- * consistent with it, never contradicting it).
- */
-export const RunFidelitySandboxSchema = z.object({
-	requested: z.string(),
-	actual: z.string(),
-	fidelity: z.enum(["enforced", "cooperative"]),
-});
-export type RunFidelitySandbox = z.infer<typeof RunFidelitySandboxSchema>;
-
-/**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
  * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
  */
@@ -113,12 +99,6 @@ export const RunFidelitySchema = z.object({
 	mode: z.string(),
 	fidelity: z.enum(["enforced", "cooperative", "advisory"]),
 	mechanism: z.string(),
-	/**
-	 * The Sandbox boundary (ADR-0020) the harness was spawned into, when one was
-	 * wired. Additive/optional — omitted when no sandbox applies (e.g. the
-	 * in-process Agent SDK harness, or no boundary requested at all).
-	 */
-	sandbox: RunFidelitySandboxSchema.optional(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
