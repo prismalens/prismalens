@@ -52,16 +52,16 @@
 	},
 	"devDependencies": {
 		"@faker-js/faker": "^10.6.0",
-		"@nestjs/cli": "^12.0.0",
-		"@nestjs/schematics": "^12.0.0",
+		"@nestjs/cli": "^12.0.3",
+		"@nestjs/schematics": "^12.0.3",
 		"@nestjs/testing": "^11.2.1",
 		"@swc/core": "^1.16.2",
 		"@types/express": "^5.0.6",
 		"@types/node": "catalog:",
-		"@vitest/coverage-v8": "^5.0.0",
+		"@vitest/coverage-v8": "^5.0.1",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
-		"unplugin-swc": "^1.5.11",
+		"unplugin-swc": "^1.6.0",
 		"vitest": "catalog:"
 	},
 	"engines": {
