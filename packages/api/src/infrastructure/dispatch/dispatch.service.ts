@@ -23,6 +23,7 @@ import {
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type { InvestigationJobData } from "@prismalens/contracts";
+import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -282,6 +283,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 
 	async onApplicationShutdown(): Promise<void> {
 		await this.dispatcher.stop();
+		// Aborting a run only asks the harness to stop; its own process group
+		// never saw the terminal's signal, so kill it before the API exits.
+		reapLiveHarnesses();
 	}
 
 	/**

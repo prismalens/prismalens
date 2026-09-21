@@ -281,8 +281,28 @@ export function withWallClock(
 	return proc;
 }
 
+/**
+ * Every harness any launcher still has running. A POSIX harness leads its own
+ * process group, so a terminal Ctrl-C no longer reaches it: the API has to reap
+ * it on the way out.
+ */
+const liveHarnesses = new Set<HarnessChild>();
+let exitReapArmed = false;
+
+/** Kills every live harness's process tree. Synchronous, so it is safe in an `exit` listener. */
+export function reapLiveHarnesses(): void {
+	for (const child of liveHarnesses) {
+		if (!child.killed) child.kill("SIGKILL");
+	}
+	liveHarnesses.clear();
+}
+
 /** Spawns the harness as a child of the API. One per run; `destroy()` reaps stragglers. */
 export function createProcessLauncher(): HarnessLauncher {
+	if (!exitReapArmed) {
+		exitReapArmed = true;
+		process.once("exit", reapLiveHarnesses);
+	}
 	const children = new Set<HarnessChild>();
 	return {
 		spawn(command, args, options: LaunchOptions): HarnessChild {
@@ -296,7 +316,11 @@ export function createProcessLauncher(): HarnessLauncher {
 			});
 			const proc = withWallClock(child, options.limits);
 			children.add(proc);
-			proc.on("close", () => children.delete(proc));
+			liveHarnesses.add(proc);
+			proc.on("close", () => {
+				children.delete(proc);
+				liveHarnesses.delete(proc);
+			});
 			return proc;
 		},
 		async destroy(): Promise<void> {

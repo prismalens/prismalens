@@ -21,6 +21,7 @@ const {
 	escapeArgument,
 	escapeCommand,
 	killProcessTree,
+	reapLiveHarnesses,
 	windowsSpawnPlan,
 	wrapWithTreeKill,
 } = await import("./process.js");
@@ -541,6 +542,34 @@ describe.skipIf(process.platform === "win32")(
 				await launcher.destroy();
 				await closed;
 				expect(child.killed).toBe(true);
+				await pollForEsrch(grandchildPid, 2000);
+			} finally {
+				try {
+					process.kill(grandchildPid, "SIGKILL");
+				} catch {
+					// ESRCH if already dead
+				}
+			}
+		});
+
+		it("reapLiveHarnesses() kills every launcher's harness tree on the way out", async () => {
+			const child = createProcessLauncher().spawn(
+				process.execPath,
+				[
+					"-e",
+					'const { spawn } = require("node:child_process"); const sub = spawn(process.execPath, ["-e", "setInterval(()=>{},1e3)"], { stdio: "ignore" }); process.stdout.write(String(sub.pid) + "\\n"); setInterval(()=>{}, 1e3);',
+				],
+				{ cwd: process.cwd() },
+			);
+
+			const [chunk] = (await once(child.stdout, "data")) as [Buffer];
+			const grandchildPid = Number.parseInt(chunk.toString().trim(), 10);
+			expect(grandchildPid).toBeGreaterThan(0);
+
+			const closed = once(child, "close");
+			try {
+				reapLiveHarnesses();
+				await closed;
 				await pollForEsrch(grandchildPid, 2000);
 			} finally {
 				try {
