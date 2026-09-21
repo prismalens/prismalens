@@ -6,17 +6,8 @@
  * answered here, for every harness. Read-only today; the act phase changes the
  * policy, not the seam. Bash walks through any text rule; there is no OS boundary (0004 §3), so this is a guardrail, not a boundary.
  */
-import { lstatSync, realpathSync } from "node:fs";
-import {
-	basename,
-	dirname,
-	isAbsolute,
-	join,
-	normalize,
-	relative,
-	resolve,
-	sep,
-} from "node:path";
+import { realpathSync } from "node:fs";
+import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 
 export interface PermissionOption {
 	optionId: string;
@@ -100,62 +91,63 @@ const DOTDOT_SEGMENT = /(^|[/\\])\.\.([/\\]|$)/;
 const SHELL_VARIABLE = /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/;
 
 /**
- * Where an absolute path really lives: the realpath of its deepest existing
- * ancestor with the missing tail re-appended, so a path the harness is about
- * to create is judged where it would land and a committed symlink is judged
- * where it points (the CVE-2026-39861 shape). Null when the filesystem refuses
- * to say (a loop, no permission); the caller treats null as outside.
+ * Where `path` (absolute, or relative to `base`) lands when the kernel walks it:
+ * one component at a time, each symlink replaced by its real target before the
+ * next `..` applies. `resolve` collapses `link/..` lexically, which is not where
+ * the kernel goes when `link` points out of the snapshot (the CVE-2026-39861
+ * shape). Past the first missing component the rest is appended as written, so
+ * a path about to be created is judged where it would land. Null when the
+ * filesystem refuses to say (a loop, no permission); callers treat null as outside.
  */
-function realLocation(absolute: string): string | null {
-	const missing: string[] = [];
-	let cursor = absolute;
-	for (;;) {
-		try {
-			return join(realpathSync(cursor), ...missing);
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			if (code !== "ENOENT" && code !== "ENOTDIR") return null;
-			const parent = dirname(cursor);
-			if (parent === cursor) return null;
-			missing.unshift(basename(cursor));
-			cursor = parent;
+function physicalLocation(base: string, path: string): string | null {
+	const root = isAbsolute(path) ? parse(path).root : resolve(base);
+	const realRoot = realpathOrMissing(root);
+	if (realRoot === null) return null;
+	let exists = realRoot !== undefined;
+	let cursor = realRoot ?? root;
+	for (const segment of path
+		.slice(isAbsolute(path) ? root.length : 0)
+		.split(/[/\\]/)) {
+		if (!segment || segment === ".") continue;
+		if (segment === "..") {
+			cursor = dirname(cursor);
+			continue;
 		}
+		const next = join(cursor, segment);
+		if (exists) {
+			const real = realpathOrMissing(next);
+			if (real === null) return null;
+			if (real !== undefined) {
+				cursor = real;
+				continue;
+			}
+			exists = false;
+		}
+		cursor = next;
+	}
+	return cursor;
+}
+
+/** The real path; undefined when it does not exist yet, null when the filesystem refuses. */
+function realpathOrMissing(path: string): string | undefined | null {
+	try {
+		return realpathSync(path);
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		return code === "ENOENT" || code === "ENOTDIR" ? undefined : null;
 	}
 }
 
 /**
  * `cwd` comes from the platform `node:path`, so the platform module resolves
  * and compares here as well (drive letters and backslashes on Windows). Both
- * sides are judged where they really live (`realLocation`), never lexically.
+ * sides are judged where they really live, never lexically.
  */
-function insideSnapshot(candidate: string, cwd: string): boolean {
-	const root = realLocation(resolve(cwd));
-	const real = realLocation(resolve(candidate));
+function insideSnapshot(path: string, cwd: string): boolean {
+	const root = physicalLocation(cwd, resolve(cwd));
+	const real = physicalLocation(cwd, path);
 	if (root === null || real === null) return false;
 	return real === root || real.startsWith(root + sep);
-}
-
-/**
- * True when `absolute` or any existing ancestor of it below `root` is a
- * symlink. Non-symlink paths are already judged by the lexical rules, so the
- * realpath walk is spent only on the CVE-2026-39861 shape. A component the
- * filesystem refuses to describe counts as a symlink (judged, and refused by
- * `realLocation` returning null).
- */
-function symlinkBelow(root: string, absolute: string): boolean {
-	const rel = relative(root, absolute);
-	if (!rel || rel.startsWith("..")) return false;
-	let cursor = root;
-	for (const segment of rel.split(sep)) {
-		cursor = join(cursor, segment);
-		try {
-			if (lstatSync(cursor).isSymbolicLink()) return true;
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			return code !== "ENOENT" && code !== "ENOTDIR";
-		}
-	}
-	return false;
 }
 
 /** The first path in `text` that resolves outside `cwd`, or null. */
@@ -163,34 +155,19 @@ function outsideSnapshotToken(text: string, cwd: string): string | null {
 	for (const token of text.split(SHELL_SPLIT)) {
 		if (!token) continue;
 		if (token.startsWith("~") || /\$\{?HOME\b/.test(token)) return token;
-		const dotdot = DOTDOT_SEGMENT.test(token);
-		if (dotdot && SHELL_VARIABLE.test(token)) return token;
+		if (DOTDOT_SEGMENT.test(token) && SHELL_VARIABLE.test(token)) return token;
+		// A backslash is a separator on Windows and a legal name character elsewhere;
+		// it is walked as a separator on every platform so the rule stays conservative.
+		if (insideSnapshot(token, cwd)) continue;
 		if (isAbsolute(token) || token.startsWith("/")) {
-			const resolved = normalize(token.replace(/\\/g, sep));
-			if (insideSnapshot(resolved, cwd)) continue;
-			const posixForm = resolved.replace(/\\/g, "/");
+			const real = physicalLocation(cwd, token)?.replace(/\\/g, "/");
 			if (
-				HARMLESS_ABSOLUTE.some(
-					(p) => posixForm === p || posixForm.startsWith(p),
-				)
+				real &&
+				HARMLESS_ABSOLUTE.some((p) => real.startsWith(p) || `${real}/` === p)
 			)
 				continue;
-			return token;
 		}
-		if (dotdot) {
-			// A backslash is a separator on Windows and a legal name character elsewhere;
-			// judge it as a separator on every platform so the rule stays conservative.
-			if (insideSnapshot(resolve(cwd, token.replace(/\\/g, sep)), cwd))
-				continue;
-			return token;
-		}
-		// A token through a symlink is judged where it really lives; every other plain token is inside by construction.
-		const candidate = resolve(cwd, token.replace(/\\/g, sep));
-		if (
-			symlinkBelow(resolve(cwd), candidate) &&
-			!insideSnapshot(candidate, cwd)
-		)
-			return token;
+		return token;
 	}
 	return null;
 }
@@ -213,7 +190,7 @@ function outsideSnapshot(
 	const kind = req.toolCall?.kind ?? "";
 	for (const p of pathParamsOf(req)) {
 		if (p.startsWith("~")) return p;
-		if (!insideSnapshot(resolve(cwd, p), cwd)) return p;
+		if (!insideSnapshot(p, cwd)) return p;
 	}
 	if (kind === "execute" || !kind) {
 		return outsideSnapshotToken(commandOf(req), cwd);

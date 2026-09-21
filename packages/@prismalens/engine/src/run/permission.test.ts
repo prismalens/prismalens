@@ -111,6 +111,7 @@ describe("readOnlyPolicy", () => {
 			"grep -rn $PATTERN src/",
 			"cat package.json 2>/dev/null",
 			"/usr/bin/env node -v",
+			"ls /usr/bin/",
 		]) {
 			expect(policy(req({ kind: "execute", rawInput: { command } })), command).toEqual({ allow: true, optionId: "once" });
 		}
@@ -151,12 +152,26 @@ describe.skipIf(process.platform === "win32")(
 
 		it("refuses paths pointing outside the snapshot through symlinks", () => {
 			const policy = readOnlyPolicyFor({ cwd });
-			for (const command of ["cat link", "cat ./link", "head docs/secret"]) {
+			for (const command of [
+				"cat link",
+				"cat ./link",
+				"head docs/secret",
+				"ls docs/..",
+				"cat docs/../x",
+				`ls ${cwd}/docs/..`,
+			]) {
 				const d = policy(req({ kind: "execute", rawInput: { command } }));
 				expect(d.allow, command).toBe(false);
 				expect(!d.allow && d.why, command).toMatch(/outside the snapshot/);
 			}
-			for (const filePath of ["link", `${cwd}/link`, "docs/secret"]) {
+			for (const filePath of [
+				"link",
+				`${cwd}/link`,
+				"docs/secret",
+				"docs/..",
+				"docs/../x",
+				`${cwd}/docs/..`,
+			]) {
 				const d = policy(req({ kind: "read", rawInput: { filePath } }));
 				expect(d.allow, filePath).toBe(false);
 				expect(!d.allow && d.why, filePath).toMatch(/outside the snapshot/);
@@ -185,6 +200,10 @@ describe.skipIf(process.platform === "win32")(
 					}),
 				),
 				"cat alias/index.ts",
+			).toEqual({ allow: true, optionId: "once" });
+			expect(
+				policy(req({ kind: "execute", rawInput: { command: "ls alias/.." } })),
+				"ls alias/..",
 			).toEqual({ allow: true, optionId: "once" });
 			expect(
 				policy(req({ kind: "execute", rawInput: { command: "ls src" } })),
