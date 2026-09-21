@@ -2,7 +2,7 @@
 	"name": "@prismalens/engine",
 	"version": "0.2.1",
 	"private": true,
-	"description": "Two-tier AI investigation engine for PrismaLens \u2014 a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
+	"description": "Two-tier AI investigation engine for PrismaLens — a supervisor that rents a coding-agent harness and reduces its evidence into an ordered-hypothesis report",
 	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -47,12 +47,14 @@
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
+		"@agentclientprotocol/sdk": "1.4.0",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"cross-spawn": "^7.0.6",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

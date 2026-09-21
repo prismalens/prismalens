@@ -107,3 +107,29 @@ export function redactNonce(text: string, nonce: string): string {
 	if (!nonce) return text;
 	return text.split(nonce).join("<nonce>");
 }
+
+/**
+ * Extract `agentInfo.version` from the ACP `initialize` JSON-RPC response on the wire.
+ * Returns the version string, or null if absent / not found.
+ */
+export function initializeVersion(lines: WireLine[]): string | null {
+	for (const line of lines) {
+		if (line.d !== "in") continue;
+		try {
+			const parsed = JSON.parse(line.m) as {
+				result?: {
+					agentInfo?: {
+						version?: string | null;
+					};
+				};
+			};
+			const version = parsed?.result?.agentInfo?.version;
+			if (typeof version === "string" && version.trim().length > 0) {
+				return version.trim();
+			}
+		} catch {
+			// skip non-JSON or unrelated frames
+		}
+	}
+	return null;
+}

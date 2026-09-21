@@ -107,8 +107,11 @@ export function HarnessSettings() {
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
 	const effectiveHarness = selected === "auto" ? selection?.harness : selected;
-	const defaultModel =
-		harnesses.find((h) => h.id === effectiveHarness)?.defaultModel ?? null;
+	const effectiveHarnessStatus = harnesses.find(
+		(h) => h.id === effectiveHarness,
+	);
+	const defaultModel = effectiveHarnessStatus?.defaultModel ?? null;
+	const modelIgnored = effectiveHarnessStatus?.modelVia === "unsupported";
 
 	async function handleSave() {
 		setSaveError(null);
@@ -231,9 +234,22 @@ export function HarnessSettings() {
 										>
 											{harness.installed ? "Installed" : "Not installed"}
 										</Badge>
-										<Badge variant={harness.verified ? "secondary" : "outline"}>
-											{harness.verified ? "Verified" : "Unverified"}
-										</Badge>
+										{harness.admission ? (
+											<Badge
+												variant="secondary"
+												title={harness.admission.date}
+												data-testid={`harness-admission-${harness.id}`}
+											>
+												{`CI-verified ${harness.admission.version}`}
+											</Badge>
+										) : (
+											<Badge
+												variant="outline"
+												data-testid={`harness-admission-${harness.id}`}
+											>
+												Not admitted
+											</Badge>
+										)}
 									</div>
 									{descriptor && (
 										<p className="mt-1 text-xs text-muted-foreground">
@@ -243,6 +259,9 @@ export function HarnessSettings() {
 											read-only
 										</p>
 									)}
+									<p className="text-xs text-muted-foreground">
+										Sign-in: {harness.loginHint}
+									</p>
 									{!harness.installed && (
 										<p className="mt-1 text-xs text-muted-foreground">
 											{harness.install}
@@ -343,12 +362,22 @@ export function HarnessSettings() {
 							onChange={(e) => setModel(e.target.value)}
 							placeholder={defaultModel ?? "harness default"}
 							className="w-full sm:w-80"
+							disabled={modelIgnored}
 						/>
 						<p className="text-xs text-muted-foreground">
-							Model id in the harness's own format.{" "}
-							{defaultModel
-								? `Empty means ${defaultModel}, the model prismalens verified for this harness.`
-								: "Empty leaves the harness to its own default, which nobody verified."}
+							{modelIgnored ? (
+								<>
+									{effectiveHarnessStatus?.label} ignores the Model setting; it
+									uses its own configured model.
+								</>
+							) : (
+								<>
+									Model id in the harness's own format.{" "}
+									{defaultModel
+										? `Empty means ${defaultModel}, the model prismalens verified for this harness.`
+										: "Empty leaves the harness to its own default, which nobody verified."}
+								</>
+							)}
 						</p>
 					</div>
 

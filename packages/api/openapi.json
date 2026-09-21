@@ -6115,6 +6115,9 @@
                                         "server"
                                       ],
                                       "type": "string"
+                                    },
+                                    "harnessVersion": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -6875,6 +6878,9 @@
                                               "laptop",
                                               "server"
                                             ],
+                                            "type": "string"
+                                          },
+                                          "harnessVersion": {
                                             "type": "string"
                                           }
                                         },
@@ -7656,6 +7662,9 @@
                                         "server"
                                       ],
                                       "type": "string"
+                                    },
+                                    "harnessVersion": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -8402,6 +8411,9 @@
                                             "laptop",
                                             "server"
                                           ],
+                                          "type": "string"
+                                        },
+                                        "harnessVersion": {
                                           "type": "string"
                                         }
                                       },
@@ -9207,6 +9219,9 @@
                                         "laptop",
                                         "server"
                                       ],
+                                      "type": "string"
+                                    },
+                                    "harnessVersion": {
                                       "type": "string"
                                     }
                                   },
@@ -10240,6 +10255,9 @@
                                               "server"
                                             ],
                                             "type": "string"
+                                          },
+                                          "harnessVersion": {
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10762,6 +10780,9 @@
                                         "laptop",
                                         "server"
                                       ],
+                                      "type": "string"
+                                    },
+                                    "harnessVersion": {
                                       "type": "string"
                                     }
                                   },
@@ -11419,6 +11440,9 @@
                                   "server"
                                 ],
                                 "type": "string"
+                              },
+                              "harnessVersion": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -11938,6 +11962,9 @@
                                         "laptop",
                                         "server"
                                       ],
+                                      "type": "string"
+                                    },
+                                    "harnessVersion": {
                                       "type": "string"
                                     }
                                   },
@@ -22605,6 +22632,28 @@
                           "verified": {
                             "type": "boolean"
                           },
+                          "admission": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "version": {
+                                    "type": "string"
+                                  },
+                                  "date": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "version",
+                                  "date"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "install": {
                             "type": "string"
                           },
@@ -22617,6 +22666,17 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "modelVia": {
+                            "enum": [
+                              "config",
+                              "env",
+                              "unsupported"
+                            ],
+                            "type": "string"
+                          },
+                          "loginHint": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -22625,8 +22685,11 @@
                           "binary",
                           "installed",
                           "verified",
+                          "admission",
                           "install",
-                          "defaultModel"
+                          "defaultModel",
+                          "modelVia",
+                          "loginHint"
                         ]
                       }
                     },

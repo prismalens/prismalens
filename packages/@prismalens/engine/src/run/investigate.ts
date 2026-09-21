@@ -148,7 +148,7 @@ export async function* runInvestigation(
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const adapter = new AcpAdapter({ runId: opts.runId, branchId: "run" });
-	const fidelity = buildRunFidelity(opts.harness, {
+	let fidelity = buildRunFidelity(opts.harness, {
 		id: opts.model,
 		source: opts.modelSource,
 	});
@@ -228,6 +228,9 @@ export async function* runInvestigation(
 
 	try {
 		await session.open();
+		if (session.agent.version) {
+			fidelity = { ...fidelity, harnessVersion: session.agent.version };
+		}
 		let outcome = yield* consume(
 			session.prompt(
 				buildInvestigationPrompt(opts.context) +

@@ -74,6 +74,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 		if (report?.kind !== "report") throw new Error("no report");
 		expect(report.report.summary).toContain(cwd);
 		expect(report.report.fidelity?.harness).toBe("opencode");
+		expect(report.report.fidelity?.harnessVersion).toBe("0");
 		const results = events.filter((e) => e.kind === "tool_result");
 		expect(results.map((r) => (r.kind === "tool_result" ? r.result.ok : null))).toEqual([true, false]);
 		expect(existsSync(join(cwd, "PRISMALENS_SPIKE.txt"))).toBe(false);

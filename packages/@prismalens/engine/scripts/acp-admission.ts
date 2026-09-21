@@ -24,13 +24,18 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HARNESS_IDS, type HarnessId } from "@prismalens/config/harness";
+import {
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
 import { runInvestigation } from "../src/run/investigate.js";
 import {
+	initializeVersion,
 	parseTranscript,
 	permissionDecisions,
 	proveCwd,
@@ -152,6 +157,18 @@ const transcriptFile = join(runDir, "transcript.jsonl");
 const wireLines = parseTranscript(
 	existsSync(transcriptFile) ? readFileSync(transcriptFile, "utf8") : "",
 );
+const installedVersion = initializeVersion(wireLines);
+const admittedVersion = HARNESS_REGISTRY[harness].admission?.version ?? null;
+const warnings: string[] = [];
+if (
+	installedVersion &&
+	admittedVersion &&
+	installedVersion !== admittedVersion
+) {
+	warnings.push(
+		`installed ${installedVersion} differs from admitted ${admittedVersion}`,
+	);
+}
 const decisions = permissionDecisions(wireLines);
 const cwdProof = proveCwd(wireLines, {
 	nonce,
@@ -190,6 +207,9 @@ console.log(
 			{
 				pass,
 				harness,
+				installedVersion,
+				admittedVersion,
+				warnings,
 				elapsedMs: Date.now() - started,
 				checks,
 				// Splits model non-compliance (never touched the probe) from a real
@@ -212,4 +232,14 @@ console.log(
 		nonce,
 	),
 );
+if (pass && installedVersion) {
+	const today = new Date().toISOString().slice(0, 10);
+	console.log(
+		`admission: { version: "${installedVersion}", date: "${today}", result: "pass" }`,
+	);
+} else if (pass) {
+	console.error(
+		"no admission record: the harness reported no version in initialize, so there is nothing to admit",
+	);
+}
 process.exit(pass ? 0 : 1);

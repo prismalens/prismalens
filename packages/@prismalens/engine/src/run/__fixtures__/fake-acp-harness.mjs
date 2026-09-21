@@ -7,8 +7,9 @@
 // valid), "never" (never valid), "crash" (exit mid-turn), "nowrite" (no tool
 // runs), "hang" (never answers the handshake — a doctor-probe timeout),
 // "unauthenticated" (exits immediately with a stderr line), "print-env" (exits
-// naming which of FAKE_ENV_PROBE's comma-separated vars it received), or "auth-required"
-// (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
+// naming which of FAKE_ENV_PROBE's comma-separated vars it received), "tolerant"
+// (emits unknown update kinds, unknown tool kinds, extra fields, and unknown stopReason),
+// or "auth-required" (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
 
@@ -72,6 +73,27 @@ let turns = 0;
 async function turn(sessionId, promptText) {
 	turns += 1;
 	if (mode === "crash") process.exit(3);
+	if (mode === "tolerant") {
+		notify(sessionId, {
+			sessionUpdate: "unknown_session_update_kind",
+			extraField: "extra_update_val",
+		});
+		notify(sessionId, {
+			sessionUpdate: "tool_call",
+			toolCallId: "t_custom",
+			title: "custom tool",
+			kind: "unknown_tool_kind",
+			status: "pending",
+			extraField: "extra_tool_val",
+			rawInput: { command: "custom" },
+		});
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text: "Turn done." },
+			extraField: "extra_chunk_val",
+		});
+		return { stopReason: "unknown_stop_reason", extraField: "extra_stop_val" };
+	}
 	if (turns === 1 && mode !== "nowrite") {
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",

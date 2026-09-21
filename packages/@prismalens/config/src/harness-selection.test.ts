@@ -24,10 +24,13 @@ describe("resolveHarnessSelection", () => {
 		expect(s).toMatchObject({ runnable: true, harness: "opencode", auto: true, verified: true });
 	});
 
-	it("never auto-selects an unverified harness, but names it in the refusal", () => {
-		const s = resolveHarnessSelection({ isOnPath: onPath(["gemini"]) });
+	it("never auto-selects an unadmitted (unverified) harness, but names it in the refusal", () => {
+		const s = resolveHarnessSelection({ isOnPath: onPath(["gemini", "codex", "claude-code", "deepagents"]) });
 		expect(s.runnable).toBe(false);
-		if (!s.runnable) expect(s.reason).toContain("PRISMALENS_HARNESS=<id>");
+		if (!s.runnable) {
+			expect(s.failure).toBe("no-harness");
+			expect(s.reason).toContain("PRISMALENS_HARNESS=<id>");
+		}
 	});
 
 	it("honours a pin to an unverified harness that is installed", () => {
@@ -64,11 +67,25 @@ describe("resolveHarnessSelection", () => {
 		expect(ok).toMatchObject({ runnable: true, auto: false, pinnedBy: "settings" });
 	});
 
-	it("lists every registry row with installed and verified flags", () => {
+	it("lists every registry row with installed, verified, and admission data", () => {
 		const rows = listHarnessStatus({ isOnPath: onPath(["opencode"]) });
 		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
-		expect(rows[0]).toMatchObject({ installed: true, verified: true, defaultModel: "opencode/muse-spark-1.3-contributor-free" });
-		expect(rows[1]).toMatchObject({ installed: false, defaultModel: null });
+		expect(rows[0]).toMatchObject({
+			installed: true,
+			verified: true,
+			admission: { version: "1.18.30", date: "2026-09-20" },
+			defaultModel: "opencode/muse-spark-1.3-contributor-free",
+		});
+		expect(rows[1]).toMatchObject({
+			installed: false,
+			verified: false,
+			admission: null,
+			defaultModel: null,
+		});
+		for (const row of rows.slice(1)) {
+			expect(row.admission).toBeNull();
+			expect(row.verified).toBe(false);
+		}
 	});
 });
 

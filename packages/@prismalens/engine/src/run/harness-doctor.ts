@@ -137,10 +137,12 @@ export async function probeHarness(
 		opening.catch(() => {});
 		try {
 			await Promise.race([opening, deadline]);
+			const agent = session.agent;
+			const detail = `answers ACP${agent.version ? `, ${agent.name ?? harness} ${agent.version}` : ""}`;
 			return {
 				id: harness,
 				outcome: "answers-acp",
-				detail: "answers ACP",
+				detail,
 				hard: false,
 			};
 		} catch (err) {

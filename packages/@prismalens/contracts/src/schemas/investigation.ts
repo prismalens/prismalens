@@ -111,6 +111,8 @@ export const RunFidelitySchema = z.object({
 	 * `server` an empty config dir and an env key. Older records have none.
 	 */
 	placement: z.enum(["laptop", "server"]).optional(),
+	/** ACP `initialize` `agentInfo.version`; absent when the harness did not report one. */
+	harnessVersion: z.string().optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 

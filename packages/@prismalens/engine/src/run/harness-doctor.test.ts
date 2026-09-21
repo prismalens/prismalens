@@ -33,7 +33,7 @@ describe("probeHarness", () => {
 		expect(result).toEqual({
 			id: "opencode",
 			outcome: "answers-acp",
-			detail: "answers ACP",
+			detail: "answers ACP, fake 0",
 			hard: false,
 		});
 		expect(result.detail).not.toMatch(/ready/i);

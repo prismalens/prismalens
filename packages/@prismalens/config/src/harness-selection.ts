@@ -14,6 +14,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type HarnessSelectionFailure,
+	isAdmitted,
 } from "./providers/harness.js";
 
 // Re-exported so the union stays importable from the module that produces it,
@@ -90,9 +91,14 @@ export interface HarnessStatus {
 	binary: string;
 	installed: boolean;
 	verified: boolean;
+	admission: { version: string; date: string } | null;
 	install: string;
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
+	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
+	modelVia: "config" | "env" | "unsupported";
+	/** One line the picker and the doctor show: how to sign this harness in. */
+	loginHint: string;
 }
 
 export function listHarnessStatus(
@@ -106,9 +112,14 @@ export function listHarnessStatus(
 			label: d.label,
 			binary: d.binary,
 			installed: check(d.binary),
-			verified: d.verified,
+			verified: isAdmitted(d),
+			admission: d.admission
+				? { version: d.admission.version, date: d.admission.date }
+				: null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,
+			modelVia: d.modelVia,
+			loginHint: d.loginHint,
 		};
 	});
 }
@@ -150,19 +161,19 @@ export function resolveHarnessSelection(
 			runnable: true,
 			harness: id,
 			auto: false,
-			verified: d.verified,
+			verified: isAdmitted(d),
 			pinnedBy: source,
 		};
 	}
 	for (const id of HARNESS_AUTO_ORDER) {
 		const d = HARNESS_REGISTRY[id];
-		if (d.verified && check(d.binary)) {
+		if (isAdmitted(d) && check(d.binary)) {
 			return { runnable: true, harness: id, auto: true, verified: true };
 		}
 	}
 	const unverifiedPresent = HARNESS_AUTO_ORDER.filter(
 		(id) =>
-			!HARNESS_REGISTRY[id].verified && check(HARNESS_REGISTRY[id].binary),
+			!isAdmitted(HARNESS_REGISTRY[id]) && check(HARNESS_REGISTRY[id].binary),
 	);
 	const pinHint =
 		unverifiedPresent.length > 0

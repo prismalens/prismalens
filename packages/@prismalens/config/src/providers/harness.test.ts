@@ -142,6 +142,32 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 			claudeCode: { options: { settingSources: [] } },
 		});
 	});
+
+	it("gemini isolates its config dir through GEMINI_CLI_HOME", () => {
+		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toEqual({
+			GEMINI_CLI_HOME: "/d",
+		});
+	});
+});
+
+describe("row data every reader needs (#634)", () => {
+	it("gives every row a non-empty loginHint and readOnlyMechanism", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			expect(descriptor.loginHint.length, `${id} loginHint`).toBeGreaterThan(0);
+			expect(
+				descriptor.readOnlyMechanism.length,
+				`${id} readOnlyMechanism`,
+			).toBeGreaterThan(0);
+		}
+	});
+
+	it("gives every row a modelVia matching how it actually takes a model", () => {
+		expect(HARNESS_REGISTRY.opencode.modelVia).toBe("config");
+		expect(HARNESS_REGISTRY["claude-code"].modelVia).toBe("env");
+		expect(HARNESS_REGISTRY.codex.modelVia).toBe("unsupported");
+		expect(HARNESS_REGISTRY.gemini.modelVia).toBe("unsupported");
+		expect(HARNESS_REGISTRY.deepagents.modelVia).toBe("unsupported");
+	});
 });
 
 describe("resolvePlacement (ADR 0003 §9)", () => {

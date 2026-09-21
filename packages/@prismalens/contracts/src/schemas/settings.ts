@@ -24,10 +24,20 @@ export const HarnessStatusSchema = z.object({
 	installed: z.boolean(),
 	/** Passed the registry admission run in CI; auto-selection considers only these. */
 	verified: z.boolean(),
+	admission: z
+		.object({
+			version: z.string(),
+			date: z.string(),
+		})
+		.nullable(),
 	/** One-line install hint, shown when not installed. */
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: z.string().nullable(),
+	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
+	modelVia: z.enum(["config", "env", "unsupported"]),
+	/** One line the picker and the doctor show: how to sign this harness in. */
+	loginHint: z.string(),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
