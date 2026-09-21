@@ -278,6 +278,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 						this.logger.error(
 							`Failed to process pulled alert ${fingerprint}: ${alertErr}`,
 						);
+						result.errors.push(
+							`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
+						);
 					}
 				}
 			} catch (err) {
@@ -379,6 +382,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 					} catch (alertErr) {
 						this.logger.error(
 							`Failed to process catch-up alert ${fingerprint}: ${alertErr}`,
+						);
+						result.errors.push(
+							`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
 						);
 					}
 				}

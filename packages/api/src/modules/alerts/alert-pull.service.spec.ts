@@ -315,6 +315,43 @@ describe("AlertPullService (#605)", () => {
 			expect(result.errors[0]).toContain("Alertmanager Staging");
 		});
 
+		it("a failed alert is recorded in errors and holds the checkpoint back", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "alertmanager") {
+					return [
+						{
+							id: "conn-1",
+							label: "Alertmanager Prod",
+							status: "ACTIVE",
+							integration: { templateId: "alertmanager" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockResolvedValue("http://alertmanager:9093");
+			webhooksService.processPrometheusAlert.mockRejectedValueOnce(new Error("db locked"));
+
+			fetchSpy.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify([
+						{
+							labels: { alertname: "DiskFull" },
+							startsAt: "2026-09-20T10:00:00Z",
+							fingerprint: "fp-1",
+							status: { state: "active" },
+						},
+					]),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			);
+
+			const result = await service.pull();
+
+			expect(result.errors).toEqual(["Alertmanager Prod: alert fp-1: db locked"]);
+			expect(prisma.setting.upsert).not.toHaveBeenCalled();
+		});
+
 		it("zero sources → { sources: 0 } and no fetch", async () => {
 			prisma.connection.findMany.mockResolvedValue([]);
 
