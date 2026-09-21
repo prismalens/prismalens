@@ -173,11 +173,13 @@ export class GitHubCommentService {
 		// 7. Parse response, record timeline, return commentUrl
 		// GitHub accepted the POST, so nothing below may invite a retry: a second
 		// POST is a second comment.
-		const data = (await res.json().catch(() => ({}))) as {
-			html_url?: unknown;
-		};
+		const data: unknown = await res.json().catch(() => null);
+		const htmlUrl =
+			data && typeof data === "object" && "html_url" in data
+				? data.html_url
+				: null;
 		const commentUrl =
-			typeof data.html_url === "string" && data.html_url ? data.html_url : null;
+			typeof htmlUrl === "string" && htmlUrl.trim() ? htmlUrl.trim() : null;
 
 		try {
 			await this.timeline.create({

@@ -437,10 +437,14 @@ describe("GitHubCommentService (#606)", () => {
 		expect(requestFn).not.toHaveBeenCalled();
 	});
 
-	it("an accepted post without html_url is reported unconfirmed, not as success", async () => {
+	it.each([
+		["{}"],
+		["null"],
+		['{"html_url":"   "}'],
+	])("an accepted post with body %s is reported unconfirmed, not as success", async (body) => {
 		const target = "https://github.com/prismalens/prismalens/issues/42";
 		const { service, requestFn, timeline } = setup({
-			response: new Response("{}", {
+			response: new Response(body, {
 				status: 201,
 				headers: { "content-type": "application/json" },
 			}),
