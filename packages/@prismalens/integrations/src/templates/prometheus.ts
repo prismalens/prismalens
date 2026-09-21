@@ -25,9 +25,9 @@ export const prometheus: AuthTemplate = {
 			type: "string",
 			required: true,
 			placeholder: "http://prometheus.internal:9090",
-			pattern: "^https?://[^\\s/$.?#].[^\\s]*$",
+			pattern: "^https?://[^@\\s/$.?#][^@\\s]*$",
 			description:
-				"Reachable from this machine without credentials. Put a read-only reverse proxy in front if your Prometheus needs auth.",
+				"Credentials in the URL are not supported. Reachable from this machine without credentials. Put a read-only reverse proxy in front if your Prometheus needs auth.",
 		},
 	],
 	connectionCredentialFields: [],

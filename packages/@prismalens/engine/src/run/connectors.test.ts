@@ -90,4 +90,59 @@ describe("telemetryEndpointsFrom (#633)", () => {
 			alertmanagerUrl: "http://am-first:9093",
 		});
 	});
+
+	it("drops endpoints when baseUrl contains credentials (userinfo)", () => {
+		const connectorsWithCreds: ResolvedConnector[] = [
+			{
+				templateId: "prometheus",
+				connectionId: "conn-prom",
+				label: "Prometheus",
+				baseUrl: "https://user:pass@prometheus.internal:9090",
+				segments: ["metrics"],
+			},
+			{
+				templateId: "alertmanager",
+				connectionId: "conn-am",
+				label: "Alertmanager",
+				baseUrl: "http://admin@alertmanager.internal:9093",
+				segments: [],
+			},
+		];
+		expect(telemetryEndpointsFrom(connectorsWithCreds)).toBeUndefined();
+	});
+
+	it("keeps clean endpoint when another endpoint has credentials", () => {
+		const mixed: ResolvedConnector[] = [
+			{
+				templateId: "prometheus",
+				connectionId: "conn-prom",
+				label: "Prometheus",
+				baseUrl: "https://user:pass@prometheus.internal:9090",
+				segments: ["metrics"],
+			},
+			{
+				templateId: "alertmanager",
+				connectionId: "conn-am",
+				label: "Alertmanager",
+				baseUrl: "http://alertmanager.internal:9093/",
+				segments: [],
+			},
+		];
+		expect(telemetryEndpointsFrom(mixed)).toEqual({
+			alertmanagerUrl: "http://alertmanager.internal:9093",
+		});
+	});
+
+	it("drops endpoint when only password is present in baseUrl", () => {
+		const pwOnly: ResolvedConnector[] = [
+			{
+				templateId: "prometheus",
+				connectionId: "conn-prom",
+				label: "Prometheus",
+				baseUrl: "http://:secret@prometheus.internal:9090",
+				segments: ["metrics"],
+			},
+		];
+		expect(telemetryEndpointsFrom(pwOnly)).toBeUndefined();
+	});
 });
