@@ -417,6 +417,60 @@ describe("GitHubCommentService (#606)", () => {
 		});
 	});
 
+	it("refuses a report whose investigation did not complete (PRECONDITION_FAILED)", async () => {
+		const { service, requestFn } = setup({
+			investigation: {
+				id: "inv-1",
+				status: "failed",
+				report: JSON.stringify(REPORT),
+				completedAt: null,
+				incident: { id: "inc-1", number: 7, title: "T" },
+			},
+		});
+
+		await expect(
+			service.post("inv-1", "https://github.com/prismalens/prismalens/issues/42"),
+		).rejects.toSatisfy(
+			(err: unknown) =>
+				err instanceof ORPCError && err.code === "PRECONDITION_FAILED",
+		);
+		expect(requestFn).not.toHaveBeenCalled();
+	});
+
+	it("an accepted post without html_url is reported unconfirmed, not as success", async () => {
+		const target = "https://github.com/prismalens/prismalens/issues/42";
+		const { service, requestFn, timeline } = setup({
+			response: new Response("{}", {
+				status: 201,
+				headers: { "content-type": "application/json" },
+			}),
+		});
+
+		await expect(service.post("inv-1", target)).rejects.toSatisfy(
+			(err: unknown) => err instanceof ORPCError && err.code === "BAD_GATEWAY",
+		);
+		expect(requestFn).toHaveBeenCalledTimes(1);
+		expect(timeline.create).toHaveBeenCalledWith(
+			expect.objectContaining({ title: "GitHub post unconfirmed" }),
+		);
+	});
+
+	it("a timeline failure after GitHub accepted the post still returns the comment URL", async () => {
+		const commentUrl =
+			"https://github.com/prismalens/prismalens/issues/42#issuecomment-999";
+		const { service, timeline } = setup({
+			response: new Response(JSON.stringify({ html_url: commentUrl }), {
+				status: 201,
+				headers: { "content-type": "application/json" },
+			}),
+		});
+		timeline.create.mockRejectedValueOnce(new Error("db locked"));
+
+		await expect(
+			service.post("inv-1", "https://github.com/prismalens/prismalens/issues/42"),
+		).resolves.toEqual({ commentUrl });
+	});
+
 	it("truncates a 70 000-character report with the marker", async () => {
 		const longReport: InvestigationReport = {
 			...REPORT,
@@ -425,6 +479,7 @@ describe("GitHubCommentService (#606)", () => {
 		const { service, requestFn } = setup({
 			investigation: {
 				id: "inv-1",
+				status: "completed",
 				report: JSON.stringify(longReport),
 				completedAt: new Date("2026-09-01T00:00:00Z"),
 				incident: { id: "inc-1", number: 7, title: "Long Report" },

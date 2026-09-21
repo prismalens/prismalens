@@ -252,7 +252,9 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 							{report && (
 								<>
 									<ExportReportButton investigationId={investigation.id} />
-									<PostToGitHubButton investigationId={investigation.id} />
+									{investigation.status === "completed" && (
+										<PostToGitHubButton investigationId={investigation.id} />
+									)}
 								</>
 							)}
 						</div>

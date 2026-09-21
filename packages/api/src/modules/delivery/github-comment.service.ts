@@ -6,7 +6,7 @@
  * Given a target URL at post time, picks an ACTIVE GitHub connection, formats
  * the Markdown report, and posts to GitHub's issue comments API.
  */
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import {
 	GITHUB_ISSUE_OR_PR_URL,
@@ -40,6 +40,8 @@ export function formatGitHubCommentBody(opts: {
 
 @Injectable()
 export class GitHubCommentService {
+	private readonly logger = new Logger(GitHubCommentService.name);
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly integrations: IntegrationsService,
@@ -75,6 +77,11 @@ export class GitHubCommentService {
 		if (!investigation?.incident || !report) {
 			throw new ORPCError("NOT_FOUND", {
 				message: `Investigation ${investigationId} has no report`,
+			});
+		}
+		if (investigation.status !== "completed") {
+			throw new ORPCError("PRECONDITION_FAILED", {
+				message: `Investigation ${investigationId} is ${investigation.status}; only a completed report is posted`,
 			});
 		}
 
@@ -164,20 +171,38 @@ export class GitHubCommentService {
 		}
 
 		// 7. Parse response, record timeline, return commentUrl
+		// GitHub accepted the POST, so nothing below may invite a retry: a second
+		// POST is a second comment.
 		const data = (await res.json().catch(() => ({}))) as {
-			html_url?: string;
+			html_url?: unknown;
 		};
-		const commentUrl = data.html_url ?? "";
+		const commentUrl =
+			typeof data.html_url === "string" && data.html_url ? data.html_url : null;
 
-		await this.timeline.create({
-			incidentId: investigation.incident.id,
-			type: TimelineEntryType.custom,
-			title: "Report posted to GitHub",
-			description: commentUrl,
-			source: TimelineSource.system,
-			metadata: { investigationId, target, commentUrl },
-		});
+		try {
+			await this.timeline.create({
+				incidentId: investigation.incident.id,
+				type: TimelineEntryType.custom,
+				title: commentUrl
+					? "Report posted to GitHub"
+					: "GitHub post unconfirmed",
+				description:
+					commentUrl ??
+					`GitHub answered ${res.status} without a comment URL; check ${target} before posting again`,
+				source: TimelineSource.system,
+				metadata: { investigationId, target, commentUrl },
+			});
+		} catch (err) {
+			this.logger.warn(
+				`Report posted to ${target} but the timeline entry failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 
+		if (!commentUrl) {
+			throw new ORPCError("BAD_GATEWAY", {
+				message: `GitHub answered ${res.status} without a comment URL; check ${target} before posting again`,
+			});
+		}
 		return { commentUrl };
 	}
 }
