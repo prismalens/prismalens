@@ -58,13 +58,15 @@ export class ConnectorResolverService implements ConnectorProvider {
 		}
 
 		const globalActiveConnections = await this.prisma.connection.findMany({
-			where: { status: "ACTIVE" },
+			where: {
+				status: "ACTIVE",
+				integration: { templateId: { in: [...SUPPORTED_TEMPLATES] } },
+			},
 			include: { integration: true },
 		});
 
 		for (const conn of globalActiveConnections) {
 			const templateId = conn.integration.templateId;
-			if (!SUPPORTED_TEMPLATES.has(templateId)) continue;
 			if (seenTemplates.has(templateId)) continue;
 
 			const baseUrl = await this.integrationsService.connectionBaseUrl(conn.id);

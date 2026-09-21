@@ -171,6 +171,14 @@ describe("ConnectorResolverService (#633)", () => {
 
 		const resolved = await service.resolve({ serviceId: "svc-1" });
 		expect(resolved).toEqual([]);
+		expect(mockPrisma.connection.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: {
+					status: "ACTIVE",
+					integration: { templateId: { in: ["prometheus", "alertmanager"] } },
+				},
+			}),
+		);
 	});
 
 	it("skips a connection with no baseUrl", async () => {

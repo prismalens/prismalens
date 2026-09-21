@@ -31,6 +31,7 @@ export const prometheus: AuthTemplate = {
 		},
 	],
 	connectionCredentialFields: [],
+	urlOnly: true,
 	authenticate: {},
 	proxy: { baseUrl: "{{baseUrl}}" },
 	verify: { method: "GET", path: "/-/ready" },

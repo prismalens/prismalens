@@ -35,6 +35,19 @@ describe("urlOnlyRequestFn (#633)", () => {
 		);
 	});
 
+	it("keeps a reverse-proxy path prefix on the base URL", async () => {
+		const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
+			return new Response("ok", { status: 200 });
+		});
+
+		const req = urlOnlyRequestFn("https://ops.example/prometheus", fetchMock as unknown as typeof fetch);
+		await req("GET", "/api/v1/query?query=up");
+		expect(fetchMock).toHaveBeenLastCalledWith(
+			"https://ops.example/prometheus/api/v1/query?query=up",
+			expect.objectContaining({ method: "GET" }),
+		);
+	});
+
 	it("passes a 10s AbortSignal timeout and options", async () => {
 		let capturedSignal: AbortSignal | null | undefined;
 		let capturedHeaders: Record<string, string> | undefined;

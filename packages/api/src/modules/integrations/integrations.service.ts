@@ -472,11 +472,7 @@ export class IntegrationsService implements OnModuleInit {
 			const template = getTemplate(connection.integration.templateId);
 			let testResult: { success: boolean; error?: string };
 
-			if (
-				template &&
-				(template.connectionCredentialFields ?? []).length === 0 &&
-				template.verify
-			) {
+			if (template?.urlOnly && template.verify) {
 				const base = await this.connectionBaseUrl(id);
 				if (!base) {
 					testResult = { success: false, error: "Connection has no baseUrl" };
