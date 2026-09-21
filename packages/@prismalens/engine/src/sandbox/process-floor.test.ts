@@ -20,7 +20,9 @@ const {
 	createProcessFloorSandbox,
 	escapeArgument,
 	escapeCommand,
+	killProcessTree,
 	windowsSpawnPlan,
+	wrapWithTreeKill,
 } = await import("./process-floor.js");
 
 const SECRET = "PRISMALENS_FLOOR_TEST_SECRET";
@@ -286,5 +288,109 @@ describe("escapeCommand and escapeArgument (cross-spawn port)", () => {
 
 	it("backslash-escapes an embedded quote and doubles backslashes before quote", () => {
 		expect(escapeArgument('say "hi"', true)).toBe('^^^"say^^^ \\^^^"hi\\^^^"^^^"');
+	});
+});
+
+describe("killProcessTree (win32 taskkill /T /F tree kill)", () => {
+	it("executes taskkill with /pid, String(pid), /T, /F on win32", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeSpawnSync = vi.fn(() => ({
+			status: 0,
+			error: undefined,
+		})) as unknown as typeof import("node:child_process").spawnSync;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(child, "SIGKILL", "win32", fakeSpawnSync);
+
+		expect(result).toBe(true);
+		expect(fakeSpawnSync).toHaveBeenCalledWith("taskkill", [
+			"/pid",
+			"4321",
+			"/T",
+			"/F",
+		]);
+		expect(fakeKill).not.toHaveBeenCalled();
+		expect(child.killed).toBe(true);
+	});
+
+	it("falls back to child.kill() on win32 if taskkill exits with non-zero status", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeSpawnSync = vi.fn(() => ({
+			status: 128,
+			error: undefined,
+		})) as unknown as typeof import("node:child_process").spawnSync;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(child, "SIGKILL", "win32", fakeSpawnSync);
+
+		expect(result).toBe(true);
+		expect(fakeSpawnSync).toHaveBeenCalledWith("taskkill", [
+			"/pid",
+			"4321",
+			"/T",
+			"/F",
+		]);
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("falls back to child.kill() on win32 if taskkill returns an error", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeSpawnSync = vi.fn(() => ({
+			status: null,
+			error: new Error("taskkill not found"),
+		})) as unknown as typeof import("node:child_process").spawnSync;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(child, "SIGKILL", "win32", fakeSpawnSync);
+
+		expect(result).toBe(true);
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("falls back to child.kill() on win32 if taskkill throws an exception", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeSpawnSync = vi.fn(() => {
+			throw new Error("spawnSync failure");
+		}) as unknown as typeof import("node:child_process").spawnSync;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(child, "SIGKILL", "win32", fakeSpawnSync);
+
+		expect(result).toBe(true);
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("falls back to child.kill() on win32 if child pid is undefined", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeSpawnSync = vi.fn() as unknown as typeof import("node:child_process").spawnSync;
+		const child = { pid: undefined, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(child, "SIGKILL", "win32", fakeSpawnSync);
+
+		expect(result).toBe(true);
+		expect(fakeSpawnSync).not.toHaveBeenCalled();
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("performs plain child.kill() on linux without calling taskkill", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeSpawnSync = vi.fn() as unknown as typeof import("node:child_process").spawnSync;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(child, "SIGKILL", "linux", fakeSpawnSync);
+
+		expect(result).toBe(true);
+		expect(fakeSpawnSync).not.toHaveBeenCalled();
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("wrapWithTreeKill delegates child.kill() through treeKill", () => {
+		const fakeKill = vi.fn(() => true);
+		const child = { pid: 9999, kill: fakeKill, killed: false };
+		const wrapped = wrapWithTreeKill(child);
+
+		// Calling wrapped.kill on linux routes to plain fakeKill
+		wrapped.kill("SIGTERM");
+		expect(fakeKill).toHaveBeenCalledWith("SIGTERM");
 	});
 });

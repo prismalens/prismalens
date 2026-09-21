@@ -9,7 +9,7 @@
  * (enforced) supersedes it as the local default when present — Phase B.1.
  */
 import type { ChildProcessByStdio } from "node:child_process";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
@@ -177,6 +177,73 @@ export function buildFloorEnv(
 	return env;
 }
 
+const TREE_KILL_WRAPPED = Symbol.for("prismalens.treeKillWrapped");
+
+/**
+ * Terminate a process, tree-killing on win32 via taskkill so cmd.exe shims do
+ * not orphan their underlying harness process when killed. Falls back to
+ * child.kill() if taskkill fails or on non-win32 platforms.
+ */
+export function killProcessTree(
+	child: {
+		pid?: number;
+		kill(signal?: NodeJS.Signals): boolean;
+		killed?: boolean;
+	},
+	signal?: NodeJS.Signals,
+	platform: NodeJS.Platform = process.platform,
+	syncSpawn: typeof spawnSync = spawnSync,
+): boolean {
+	if (platform === "win32" && child.pid !== undefined) {
+		try {
+			const res = syncSpawn("taskkill", [
+				"/pid",
+				String(child.pid),
+				"/T",
+				"/F",
+			]);
+			if (!res.error && res.status === 0) {
+				child.killed = true;
+				return true;
+			}
+		} catch {
+			// Fall through to child.kill() fallback
+		}
+	}
+	return child.kill(signal);
+}
+
+/**
+ * Wrap child.kill with tree-kill semantics on win32 while keeping the same
+ * object identity and ChildProcess contract.
+ */
+export function wrapWithTreeKill<
+	T extends {
+		pid?: number;
+		kill(signal?: NodeJS.Signals): boolean;
+		killed?: boolean;
+	},
+>(child: T): T {
+	if ((child as Record<symbol, unknown>)[TREE_KILL_WRAPPED]) return child;
+	const rawKill = child.kill.bind(child);
+	child.kill = (signal?: NodeJS.Signals): boolean =>
+		killProcessTree(
+			{
+				pid: child.pid,
+				kill: rawKill,
+				get killed() {
+					return child.killed ?? false;
+				},
+				set killed(val: boolean) {
+					child.killed = val;
+				},
+			},
+			signal,
+		);
+	(child as Record<symbol, unknown>)[TREE_KILL_WRAPPED] = true;
+	return child;
+}
+
 /**
  * Decorate a freshly-spawned child with the {@link SandboxProcess} limit surface
  * (ADR-0020 resource-limits contract), shared by EVERY provider so wall-clock
@@ -197,6 +264,7 @@ export function withLimits(
 	limits: SandboxLimits | undefined,
 	enforced: Pick<AppliedLimits, "memoryMb" | "cpuCores"> = {},
 ): SandboxProcess {
+	wrapWithTreeKill(child);
 	const applied: AppliedLimits = { ...enforced };
 	const proc = child as PipedChild & {
 		timedOut: boolean;
@@ -230,6 +298,7 @@ export function createProcessFloorSandbox(): Sandbox {
 				stdio: ["pipe", "pipe", "pipe"],
 				...plan.options,
 			});
+			wrapWithTreeKill(child);
 			// The floor enforces ONLY wall-clock (userspace SIGKILL); memory/cpu need
 			// OS help it does not have, so they are reported as unapplied (ADR-0020).
 			const proc = withLimits(child, options.limits);
