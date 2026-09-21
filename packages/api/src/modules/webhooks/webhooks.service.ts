@@ -3,6 +3,7 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
+import type { PrometheusAlert } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
 import { Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
@@ -21,6 +22,31 @@ export interface WebhookResult {
 	correlationReason?: string;
 	isNewIncident: boolean;
 	mappedServiceId?: string;
+}
+
+export interface ProcessPrometheusAlertResult {
+	alertId: string | null;
+	isNew: boolean;
+}
+
+export function mapPrometheusLabelToSeverity(
+	severityLabel?: string,
+): Severity | undefined {
+	switch (severityLabel?.toLowerCase()) {
+		case "critical":
+			return Severity.critical;
+		case "high":
+		case "warning":
+			return Severity.high;
+		case "medium":
+			return Severity.medium;
+		case "low":
+			return Severity.low;
+		case "info":
+			return Severity.info;
+		default:
+			return undefined;
+	}
 }
 
 /**
@@ -292,6 +318,83 @@ export class WebhooksService {
 	/** Forget an early resolution that has been applied. */
 	clearEarlyResolution(fingerprint: string, startsAt: string): void {
 		this.earlyResolutions.delete(`${fingerprint}|${startsAt}`);
+	}
+
+	/**
+	 * Process a single Prometheus alert, either from a webhook delivery,
+	 * an Alertmanager pull, or a Prometheus catch-up query (#605).
+	 */
+	async processPrometheusAlert(
+		alert: PrometheusAlert,
+		opts: {
+			idempotencyKey?: string;
+			source: "prometheus" | "alertmanager-pull" | "prometheus-catchup";
+			autoInvestigate: boolean;
+		},
+	): Promise<ProcessPrometheusAlertResult> {
+		// A `resolved` delivery closes an episode; it must never reach
+		// the dedup layer, which would read it as a refire and reopen
+		// the alert inside the flap window (#593).
+		if (alert.status === "resolved") {
+			const resolved = await this.resolvePrometheusAlert(
+				alert.fingerprint,
+				opts.idempotencyKey,
+				alert.startsAt,
+			);
+			return { alertId: resolved?.id ?? null, isNew: false };
+		}
+
+		const genericDto: GenericWebhookDto = {
+			title: alert.labels?.alertname ?? "Prometheus Alert",
+			description: alert.annotations?.description ?? alert.annotations?.summary,
+			severity: mapPrometheusLabelToSeverity(alert.labels?.severity),
+			source: opts.source,
+			// Alertmanager's link back to the firing expression (#592).
+			sourceUrl: alert.generatorURL,
+			labels: alert.labels,
+			sourceEventId: alert.fingerprint,
+		};
+		// Decided BEFORE the alert is created, because it decides
+		// whether creating it may dispatch a run (#664 review).
+		// `hasEarlyResolution` only reads, so asking early is safe.
+		const resolutionAlreadyArrived = Boolean(
+			alert.fingerprint &&
+				this.hasEarlyResolution(alert.fingerprint, alert.startsAt),
+		);
+		const autoInvestigate = opts.autoInvestigate && !resolutionAlreadyArrived;
+		const result = await this.processGenericWebhook(
+			genericDto,
+			opts.idempotencyKey,
+			// The alert and its incident are still recorded — the
+			// resolve path below looks the alert up by fingerprint —
+			// but an episode that is already over starts no run.
+			{ autoInvestigate },
+		);
+
+		// Its resolution already came, out of order (#633 edge 10).
+		// The record is cleared only once the alert is really
+		// resolved, so a failure here leaves it for the retry.
+		if (alert.fingerprint && resolutionAlreadyArrived) {
+			const resolved = await this.resolvePrometheusAlert(
+				alert.fingerprint,
+				opts.idempotencyKey === undefined
+					? undefined
+					: `${opts.idempotencyKey}:resolved`,
+			);
+			if (resolved) {
+				this.clearEarlyResolution(alert.fingerprint, alert.startsAt);
+			}
+		}
+
+		const isReplay =
+			result.correlationReason ===
+			"Idempotent replay of a previously processed webhook delivery";
+		const isNew = !isReplay && result.alert.occurrenceCount === 1;
+
+		return {
+			alertId: result.alert.id,
+			isNew,
+		};
 	}
 
 	async processGenericWebhook(

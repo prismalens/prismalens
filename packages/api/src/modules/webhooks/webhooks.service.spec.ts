@@ -432,4 +432,137 @@ describe("WebhooksService", () => {
 			}
 		});
 	});
+
+	describe("processPrometheusAlert (#605)", () => {
+		const STARTS = "2026-09-19T10:00:00Z";
+		const firing = {
+			status: "firing" as const,
+			labels: { alertname: "HighLatency", severity: "warning" },
+			annotations: { description: "High latency detected" },
+			startsAt: STARTS,
+			fingerprint: "fp-1",
+		};
+
+		it("resolves a late firing whose resolution already arrived", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
+			await service.resolvePrometheusAlert("fp-1", undefined, firing.startsAt);
+			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
+			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+			});
+
+			const result = await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result.alertId).toBe("alt-123");
+			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(false);
+			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-1");
+		});
+
+		it("leaves an ordinary firing open", async () => {
+			const result = await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result.alertId).toBe("alt-123");
+			expect(result.isNew).toBe(true);
+			expect(alertsService.resolveSourceAlert).not.toHaveBeenCalled();
+		});
+
+		it("marks an alert as not new when deduplicated onto an existing alert", async () => {
+			vi.mocked(alertsService.create).mockResolvedValueOnce({
+				...mockAlert,
+				occurrenceCount: 2,
+			});
+
+			const result = await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result.alertId).toBe("alt-123");
+			expect(result.isNew).toBe(false);
+		});
+
+		it("marks an alert as not new on idempotent replay", async () => {
+			vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce({
+				...mockEvent,
+				alertId: "alt-123",
+			});
+			vi.mocked(alertsService.findById).mockResolvedValueOnce(mockAlert);
+
+			const result = await service.processPrometheusAlert(firing, {
+				idempotencyKey: "replay-key",
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result.alertId).toBe("alt-123");
+			expect(result.isNew).toBe(false);
+		});
+
+		it("records an early-resolved firing without dispatching a run", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
+			await service.resolvePrometheusAlert("fp-1", undefined, firing.startsAt);
+
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(mockAlert);
+			vi.mocked(alertsService.resolveSourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "resolved",
+			});
+
+			await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "alt-123" }),
+				{ autoInvestigate: false },
+			);
+		});
+
+		it("lets an ordinary firing dispatch as before", async () => {
+			await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "alt-123" }),
+				{ autoInvestigate: true },
+			);
+		});
+
+		it("keeps the early-resolution record when the resolution did not happen", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValue(null);
+			await service.resolvePrometheusAlert("fp-1", undefined, firing.startsAt);
+			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+
+			await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+		});
+
+		it("passes a resolution's startsAt so an unknown fingerprint can be remembered", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce(null);
+			const resolvedAlert = { ...firing, status: "resolved" as const };
+			const result = await service.processPrometheusAlert(resolvedAlert, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(result.alertId).toBeNull();
+			expect(service.hasEarlyResolution("fp-1", firing.startsAt)).toBe(true);
+		});
+	});
 });

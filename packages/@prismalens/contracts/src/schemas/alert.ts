@@ -177,6 +177,18 @@ export const AlertStatsSchema = z.object({
 });
 
 // =============================================================================
+// ALERT PULL RESULT
+// =============================================================================
+
+export const PullResultSchema = z.object({
+	sources: z.number().int(),
+	received: z.number().int(),
+	processed: z.number().int(),
+	caughtUp: z.number().int(),
+	errors: z.array(z.string()),
+});
+
+// =============================================================================
 // UNASSIGNED ALERTS DEFINITION
 // =============================================================================
 
@@ -210,3 +222,4 @@ export type CorrelateAlertResponse = z.infer<
 	typeof CorrelateAlertResponseSchema
 >;
 export type AlertStats = z.infer<typeof AlertStatsSchema>;
+export type PullResult = z.infer<typeof PullResultSchema>;

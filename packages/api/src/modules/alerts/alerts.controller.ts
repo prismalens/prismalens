@@ -10,6 +10,7 @@ import type {
 	AlertWithRelations,
 } from "@prismalens/contracts/schemas";
 import type { Alert as PrismaAlert } from "@prismalens/database";
+import { AlertPullService } from "./alert-pull.service.js";
 import { AlertsService } from "./alerts.service.js";
 import type { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 import { IncidentCorrelationService } from "./incident-correlation.service.js";
@@ -19,6 +20,7 @@ export class AlertsController {
 	constructor(
 		private readonly alertsService: AlertsService,
 		private readonly incidentCorrelation: IncidentCorrelationService,
+		private readonly alertPullService: AlertPullService,
 	) {}
 
 	/**
@@ -185,6 +187,11 @@ export class AlertsController {
 					});
 				}
 				// Return void for DELETE
+			}),
+
+			// POST /alerts/pull - Pull firing alerts from Alertmanager and catch up from Prometheus
+			pull: implement(alertsContract.pull).handler(async () => {
+				return await this.alertPullService.pull();
 			}),
 		};
 	}

@@ -4,10 +4,10 @@
 import { Controller, Logger, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
+import type { PrometheusAlert } from "@prismalens/contracts";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import { Severity } from "../../shared/enums/index.js";
 import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
@@ -62,7 +62,7 @@ export class WebhooksController {
 					await this.telemetry.captureFirstWebhook("prometheus");
 					const idempotencyKey = this.idempotencyKeyFrom(context);
 
-					// Process each Prometheus alert through the generic webhook handler.
+					// Process each Prometheus alert through the Prometheus alert handler.
 					// The delivery-level X-Idempotency-Key covers the whole batch, so
 					// each alert gets its own derived key — reusing the batch key would
 					// make alerts 2..n replay alert 1 and report duplicate alertIds.
@@ -70,74 +70,19 @@ export class WebhooksController {
 					const alerts = input.alerts ?? [];
 					for (const [index, alert] of alerts.entries()) {
 						try {
-							// A `resolved` delivery closes an episode; it must never reach
-							// the dedup layer, which would read it as a refire and reopen
-							// the alert inside the flap window (#593).
-							if (alert.status === "resolved") {
-								const resolved =
-									await this.webhooksService.resolvePrometheusAlert(
-										alert.fingerprint,
-										idempotencyKey === undefined
-											? undefined
-											: `${idempotencyKey}:${alert.fingerprint ?? index}`,
-										alert.startsAt,
-									);
-								if (resolved) alertIds.push(resolved.id);
-								continue;
-							}
-
-							const genericDto: GenericWebhookDto = {
-								title: alert.labels?.alertname ?? "Prometheus Alert",
-								description:
-									alert.annotations?.description ?? alert.annotations?.summary,
-								severity: this.mapPrometheusLabelToSeverity(
-									alert.labels?.severity,
-								),
-								source: "prometheus",
-								// Alertmanager's link back to the firing expression (#592).
-								sourceUrl: alert.generatorURL,
-								labels: alert.labels,
-								sourceEventId: alert.fingerprint,
-							};
-							// Decided BEFORE the alert is created, because it decides
-							// whether creating it may dispatch a run (#664 review).
-							// `hasEarlyResolution` only reads, so asking early is safe.
-							const resolutionAlreadyArrived = Boolean(
-								alert.fingerprint &&
-									this.webhooksService.hasEarlyResolution(
-										alert.fingerprint,
-										alert.startsAt,
-									),
-							);
-							const result = await this.webhooksService.processGenericWebhook(
-								genericDto,
+							const derivedKey =
 								idempotencyKey === undefined
 									? undefined
-									: `${idempotencyKey}:${alert.fingerprint ?? index}`,
-								// The alert and its incident are still recorded — the
-								// resolve path below looks the alert up by fingerprint —
-								// but an episode that is already over starts no run.
-								{ autoInvestigate: !resolutionAlreadyArrived },
+									: `${idempotencyKey}:${alert.fingerprint ?? index}`;
+							const result = await this.webhooksService.processPrometheusAlert(
+								alert as PrometheusAlert,
+								{
+									idempotencyKey: derivedKey,
+									source: "prometheus",
+									autoInvestigate: true,
+								},
 							);
-							alertIds.push(result.alert.id);
-							// Its resolution already came, out of order (#633 edge 10).
-							// The record is cleared only once the alert is really
-							// resolved, so a failure here leaves it for the retry.
-							if (alert.fingerprint && resolutionAlreadyArrived) {
-								const resolved =
-									await this.webhooksService.resolvePrometheusAlert(
-										alert.fingerprint,
-										idempotencyKey === undefined
-											? undefined
-											: `${idempotencyKey}:${alert.fingerprint}:resolved`,
-									);
-								if (resolved) {
-									this.webhooksService.clearEarlyResolution(
-										alert.fingerprint,
-										alert.startsAt,
-									);
-								}
-							}
+							if (result.alertId) alertIds.push(result.alertId);
 						} catch (error) {
 							this.logger.error(`Failed to process Prometheus alert: ${error}`);
 						}
@@ -186,26 +131,6 @@ export class WebhooksController {
 		if (typeof raw !== "string") return undefined;
 		const key = raw.trim();
 		return key.length > 0 ? key : undefined;
-	}
-
-	private mapPrometheusLabelToSeverity(
-		severityLabel?: string,
-	): Severity | undefined {
-		switch (severityLabel?.toLowerCase()) {
-			case "critical":
-				return Severity.critical;
-			case "high":
-			case "warning":
-				return Severity.high;
-			case "medium":
-				return Severity.medium;
-			case "low":
-				return Severity.low;
-			case "info":
-				return Severity.info;
-			default:
-				return undefined;
-		}
 	}
 
 	private formatResponse(result: WebhookResult) {
