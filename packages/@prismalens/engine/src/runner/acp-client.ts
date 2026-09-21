@@ -6,17 +6,17 @@
  * investigation: `initialize` → `session/new` → one or more `session/prompt`
  * turns. Every `session/update` is yielded from the turn that caused it; every
  * `session/request_permission` is answered by the injected policy. The child is
- * spawned into a Sandbox (ADR 0004); the process floor by default.
+ * spawned as a child by the process launcher (ADR 0004 §5).
  */
 import { createInterface } from "node:readline";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
-import type { PermissionPolicy, PermissionRequest } from "../run/permission.js";
-import { createProcessFloorSandbox } from "../sandbox/process-floor.js";
+import { createProcessLauncher } from "../launch/process.js";
 import type {
-	Sandbox,
-	SandboxLimits,
-	SandboxProcess,
-} from "../sandbox/types.js";
+	HarnessChild,
+	HarnessLauncher,
+	RunLimits,
+} from "../launch/types.js";
+import type { PermissionPolicy, PermissionRequest } from "../run/permission.js";
 
 export type AcpStreamItem =
 	| { kind: "update"; update: AcpUpdate }
@@ -35,8 +35,8 @@ export interface AcpSessionConfig {
 	args: string[];
 	cwd: string;
 	env?: NodeJS.ProcessEnv;
-	sandbox?: Sandbox;
-	limits?: SandboxLimits;
+	launcher?: HarnessLauncher;
+	limits?: RunLimits;
 	permission: PermissionPolicy;
 	/** Sent as `_meta` on `session/new`. */
 	sessionMeta?: Record<string, unknown>;
@@ -99,9 +99,9 @@ export interface AcpAuthMethod {
 }
 
 export class AcpSession {
-	private readonly sandbox: Sandbox;
-	private readonly ownsSandbox: boolean;
-	private child: SandboxProcess | null = null;
+	private readonly launcher: HarnessLauncher;
+	private readonly ownsLauncher: boolean;
+	private child: HarnessChild | null = null;
 	private sessionId: string | null = null;
 	private nextId = 1;
 	private readonly pending = new Map<
@@ -117,13 +117,13 @@ export class AcpSession {
 	authMethods: AcpAuthMethod[] = [];
 
 	constructor(private readonly config: AcpSessionConfig) {
-		this.sandbox = config.sandbox ?? createProcessFloorSandbox();
-		this.ownsSandbox = config.sandbox === undefined;
+		this.launcher = config.launcher ?? createProcessLauncher();
+		this.ownsLauncher = config.launcher === undefined;
 	}
 
 	async open(): Promise<void> {
 		const { config } = this;
-		const child = this.sandbox.spawn(config.command, config.args, {
+		const child = this.launcher.spawn(config.command, config.args, {
 			cwd: config.cwd,
 			env: config.env,
 			...(config.limits ? { limits: config.limits } : {}),
@@ -272,7 +272,7 @@ export class AcpSession {
 			p.reject(new Error("ACP session closing"));
 		this.pending.clear();
 		if (this.child && !this.child.killed) this.child.kill();
-		if (this.ownsSandbox) await this.sandbox.destroy();
+		if (this.ownsLauncher) await this.launcher.destroy();
 	}
 
 	private push(item: AcpStreamItem): void {

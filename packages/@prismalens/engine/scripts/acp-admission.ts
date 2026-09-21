@@ -96,7 +96,7 @@ const events: CanonicalEvent[] = [];
 
 // Everything that can throw once the probe exists runs inside the cleanup
 // scope. Planting it outside meant a failure in between — a full `/tmp` on the
-// runner, a sandbox that will not start — left PRISMALENS_CWD_PROBE.txt in the
+// runner, a launcher that will not start — left PRISMALENS_CWD_PROBE.txt in the
 // checkout.
 let runDir = "";
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -144,8 +144,8 @@ try {
 }
 
 // `runInvestigation` catches a failed `session.open()` and YIELDS an error event
-// rather than throwing, and `sandbox.spawn()` runs before the first `onWire`
-// write. So a sandbox that never starts completes this loop normally with no
+// rather than throwing, and `launcher.spawn()` runs before the first `onWire`
+// write. So a launcher that never starts completes this loop normally with no
 // transcript on disk; reading it unguarded replaced the report below with an
 // ENOENT stack trace — losing the diagnostic exactly when it is most wanted.
 const transcriptFile = join(runDir, "transcript.jsonl");

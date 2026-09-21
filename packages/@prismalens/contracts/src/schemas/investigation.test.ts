@@ -2,11 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Hermetic parse round-trip for the structured honest-fidelity sandbox field
- * (ADR-0017 honest fidelity + ADR-0020 Sandbox port, B.1.1 follow-up):
- * `RunFidelitySchema.sandbox` is ADDITIVE — a run with no boundary wired must
- * still parse, and a run with one wired must round-trip losslessly. No
- * network/LLM.
+ * Hermetic parse tests for investigation schemas. No network/LLM.
  *
  * Also covers the context-pack contract (ADR-0016 §5): the pack is optional on
  * `InvestigationContext` (every pre-pack context still parses), its hard `.max()`
@@ -20,67 +16,25 @@ import {
 	InvestigationContextSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
+	PostReportToGitHubResultSchema,
+	PostReportToGitHubSchema,
 	RunFidelitySchema,
 	toFiringAlert,
 } from "./investigation.js";
 
-describe("RunFidelitySchema (ADR-0017/ADR-0020 sandbox field)", () => {
-	it("parses without a sandbox (no boundary wired — e.g. the in-process harness)", () => {
-		const input = {
-			harness: "claude-code",
+describe("RunFidelitySchema", () => {
+	it("parses a fidelity record with placement and model, and strips a legacy sandbox key", () => {
+		const parsed = RunFidelitySchema.parse({
+			harness: "opencode",
 			mode: "read-only",
 			fidelity: "cooperative",
 			mechanism: "native permission flags",
-		};
-		const parsed = RunFidelitySchema.parse(input);
-		expect(parsed.sandbox).toBeUndefined();
-		expect(parsed).toEqual(input);
-	});
-
-	it("round-trips with a sandbox — requested === actual (no degrade)", () => {
-		const input = {
-			harness: "deepagents",
-			mode: "read-only",
-			fidelity: "cooperative",
-			mechanism:
-				"native permission flags · sandbox=process-floor (cooperative)",
-			sandbox: {
-				requested: "process",
-				actual: "process-floor",
-				fidelity: "cooperative",
-			},
-		};
-		const parsed = RunFidelitySchema.parse(input);
-		expect(parsed).toEqual(input);
-	});
-
-	it("round-trips with a sandbox — requested !== actual (the auto-degrade case)", () => {
-		const input = {
-			harness: "deepagents",
-			mode: "read-only",
-			fidelity: "cooperative",
-			mechanism:
-				"native permission flags · sandbox=process-floor (cooperative)",
-			sandbox: {
-				requested: "auto",
-				actual: "process-floor",
-				fidelity: "cooperative",
-			},
-		};
-		const parsed = RunFidelitySchema.parse(input);
-		expect(parsed).toEqual(input);
-		expect(parsed.sandbox?.requested).not.toBe(parsed.sandbox?.actual);
-	});
-
-	it("rejects an unknown sandbox.fidelity value (only enforced|cooperative — no 'advisory')", () => {
-		const input = {
-			harness: "deepagents",
-			mode: "read-only",
-			fidelity: "cooperative",
-			mechanism: "x",
-			sandbox: { requested: "auto", actual: "srt", fidelity: "advisory" },
-		};
-		expect(() => RunFidelitySchema.parse(input)).toThrow();
+			placement: "laptop",
+			model: "opencode/muse-spark-1.3-contributor-free",
+			sandbox: { requested: "auto", actual: "process-floor", fidelity: "cooperative" },
+		});
+		expect(parsed.placement).toBe("laptop");
+		expect("sandbox" in parsed).toBe(false);
 	});
 });
 
@@ -390,3 +344,98 @@ describe("toFiringAlert", () => {
 		expect(alert.startsAt).toBe("2026-07-31T10:00:00.000Z");
 	});
 });
+
+describe("PostReportToGitHubSchema and PostReportToGitHubResultSchema (#606)", () => {
+	const validId = "123e4567-e89b-12d3-a456-426614174000";
+
+	it("accepts a standard GitHub issue URL", () => {
+		const parsed = PostReportToGitHubSchema.parse({
+			id: validId,
+			target: "https://github.com/prismalens/prismalens/issues/123",
+		});
+		expect(parsed.target).toBe(
+			"https://github.com/prismalens/prismalens/issues/123",
+		);
+	});
+
+	it("accepts a standard GitHub pull request URL", () => {
+		const parsed = PostReportToGitHubSchema.parse({
+			id: validId,
+			target: "https://github.com/prismalens/prismalens/pull/456",
+		});
+		expect(parsed.target).toBe(
+			"https://github.com/prismalens/prismalens/pull/456",
+		);
+	});
+
+	it("trims surrounding whitespace on the target URL", () => {
+		const parsed = PostReportToGitHubSchema.parse({
+			id: validId,
+			target: "  https://github.com/owner/repo/issues/42  ",
+		});
+		expect(parsed.target).toBe("https://github.com/owner/repo/issues/42");
+	});
+
+	it("refuses a GitHub Enterprise Server (GHES) URL", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://github.corp.example.com/owner/repo/issues/123",
+			}),
+		).toThrow(/Must be a https:\/\/github\.com/);
+	});
+
+	it("refuses a malformed URL without issue or PR number", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://github.com/owner/repo/issues/",
+			}),
+		).toThrow();
+	});
+
+	it("refuses a commit URL", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://github.com/owner/repo/commit/abc1234",
+			}),
+		).toThrow();
+	});
+
+	it("refuses a non-GitHub host URL", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: validId,
+				target: "https://gitlab.com/owner/repo/issues/123",
+			}),
+		).toThrow();
+	});
+
+	it("refuses a non-UUID investigation ID", () => {
+		expect(() =>
+			PostReportToGitHubSchema.parse({
+				id: "not-a-uuid",
+				target: "https://github.com/owner/repo/issues/123",
+			}),
+		).toThrow();
+	});
+
+	it("validates PostReportToGitHubResultSchema with a valid URL", () => {
+		const parsed = PostReportToGitHubResultSchema.parse({
+			commentUrl: "https://github.com/owner/repo/issues/123#issuecomment-789",
+		});
+		expect(parsed.commentUrl).toBe(
+			"https://github.com/owner/repo/issues/123#issuecomment-789",
+		);
+	});
+
+	it("refuses PostReportToGitHubResultSchema with a non-URL", () => {
+		expect(() =>
+			PostReportToGitHubResultSchema.parse({
+				commentUrl: "not-a-url",
+			}),
+		).toThrow();
+	});
+});
+

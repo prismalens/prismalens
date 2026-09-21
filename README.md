@@ -63,7 +63,7 @@ You do not need an Alertmanager to see it work:
 
 1. **Install and start.** `npm install -g prismalens`, then `pl up`, then sign in
    as the owner. `pl doctor` says whether a coding agent is on PATH, which model
-   a run will ask it for, and whether the sandbox is enforced. With OpenCode the
+   a run will ask it for. With OpenCode the
    model is `opencode/muse-spark-1.3-contributor-free`, keyless, unless you set
    another under Settings → Harness → Model.
 2. **Point a service at its code.** Services, then Add Service, then set
@@ -136,8 +136,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
   never reads or stores one.
 - **Runtime gate, not read-only.** Every ACP permission request is answered in
   PrismaLens code: edit, delete and move tools and mutating shell commands are
-  refused. It is a guardrail; `Bash` walks through text rules. The boundary is
-  an enforced `--sandbox`, which confines writes and allowlists egress.
+  refused. It is a guardrail; `Bash` walks through text rules. There is no sandbox: the agent runs as your user on the machine that runs `pl up`, with an allowlisted environment and its working directory on a throwaway clone of the repo. Give it read-only credentials and pick that machine accordingly.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
   with supporting/contradicting evidence per hypothesis — never a numeric
   confidence number.
@@ -150,7 +149,7 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | Package | What it is |
 | --- | --- |
 | `packages/cli` | The `prismalens`/`pl` binary — the released engine CLI. |
-| `packages/@prismalens/engine` | The investigation run: ACP session, permission policy, stream adapter, report validation, sandbox. |
+| `packages/@prismalens/engine` | The investigation run: ACP session, permission policy, stream adapter, report validation, child launch. |
 | `packages/@prismalens/contracts` | Shared Zod schemas and canonical event/report types. |
 | `packages/@prismalens/config` | Shared config and environment-variable resolution. |
 | `packages/@prismalens/auth` | Auth configuration and client (Better Auth), for the in-development server. |

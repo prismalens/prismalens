@@ -13,7 +13,6 @@ import {
 	checkAutoSelection,
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
-	checkSandbox,
 	checkWebhookToken,
 } from "./doctor.js";
 
@@ -57,14 +56,6 @@ describe("doctor — harness detection", () => {
 		expect(model).toMatchObject({ name: "Model", pass: true });
 		expect(model?.detail).toContain(HARNESS_REGISTRY.opencode.defaultModel);
 		expect(model?.detail).toContain("Settings → Harness → Model");
-	});
-
-	it("reports the sandbox auto would pick, and what the floor does not stop", () => {
-		const check = checkSandbox();
-		expect(check.name).toBe("Sandbox");
-		expect(check.hard).toBe(false);
-		expect(check.detail).toContain("srt");
-		if (!check.pass) expect(check.detail).toContain("outside the snapshot");
 	});
 
 	it("is a HARD failure, listing every registry harness, when none is on PATH", () => {
