@@ -10,12 +10,10 @@ export { ensureAppDataDir, getAppDataDir } from "./utils/app-data.js";
 /** ACP cold-start headroom: the first handshake (spawn + model warm-up) is slow. */
 export const HARNESS_INIT_TIMEOUT_MS = 120_000;
 /**
- * Wall-clock cap for a whole sandboxed harness run on the server (ADR-0020 resource
- * limits — the sandbox SIGKILLs the child past it). 15 min: generous enough for a
- * multi-step read-only investigation, tight enough to stop a wedged run from pinning
- * a worker slot forever. Unlike the CLI (opt-in via `agent.limits`), server runs are
- * unattended, so a sane default is the safe posture. Best-effort per provider.
- * It is also the only per-turn limit: the API passes it as the prompt timeout.
+ * Wall-clock cap for a whole harness run; the launcher SIGKILLs the child past
+ * it. 15 min: generous enough for a multi-step read-only investigation, tight
+ * enough to stop a wedged run from pinning a slot forever. It is also the only
+ * per-turn limit: the API passes it as the prompt timeout.
  */
 export const HARNESS_WALL_CLOCK_MS = 900_000;
 
