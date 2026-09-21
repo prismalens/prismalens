@@ -204,6 +204,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 			caughtUp: 0,
 			errors: [],
 		};
+		const catchupErrors: string[] = [];
 
 		const since = await this.getCatchupSince(now);
 
@@ -258,9 +259,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 				},
 			});
 		} catch (err) {
-			result.errors.push(
-				`Failed to query Prometheus connections: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			const errorMsg = `Failed to query Prometheus connections: ${err instanceof Error ? err.message : String(err)}`;
+			result.errors.push(errorMsg);
+			catchupErrors.push(errorMsg);
 		}
 
 		result.sources =
@@ -374,7 +375,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 					conn.id,
 				);
 				if (!baseUrl) {
-					result.errors.push(`${label}: Connection has no baseUrl`);
+					const errorMsg = `${label}: Connection has no baseUrl`;
+					result.errors.push(errorMsg);
+					catchupErrors.push(errorMsg);
 					continue;
 				}
 
@@ -388,9 +391,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 						stepSeconds,
 					});
 				} catch (queryErr) {
-					result.errors.push(
-						`${label}: ${queryErr instanceof Error ? queryErr.message : String(queryErr)}`,
-					);
+					const errorMsg = `${label}: ${queryErr instanceof Error ? queryErr.message : String(queryErr)}`;
+					result.errors.push(errorMsg);
+					catchupErrors.push(errorMsg);
 					continue;
 				}
 
@@ -555,21 +558,21 @@ export class AlertPullService implements OnApplicationBootstrap {
 							this.logger.error(
 								`Failed to process catch-up alert ${fingerprint}: ${alertErr}`,
 							);
-							result.errors.push(
-								`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
-							);
+							const errorMsg = `${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`;
+							result.errors.push(errorMsg);
+							catchupErrors.push(errorMsg);
 						}
 					}
 				}
 			} catch (err) {
-				result.errors.push(
-					`${label}: ${err instanceof Error ? err.message : String(err)}`,
-				);
+				const errorMsg = `${label}: ${err instanceof Error ? err.message : String(err)}`;
+				result.errors.push(errorMsg);
+				catchupErrors.push(errorMsg);
 			}
 		}
 
-		// 5. Update ALERT_PULL setting only after a pull with zero errors
-		if (result.errors.length === 0) {
+		// 5. Update ALERT_PULL setting only after catch-up completed without catch-up errors
+		if (catchupErrors.length === 0) {
 			try {
 				await this.updateLastPulledAt(now);
 			} catch (err) {

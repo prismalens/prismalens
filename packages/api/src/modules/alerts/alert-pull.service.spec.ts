@@ -323,7 +323,7 @@ describe("AlertPullService (#605)", () => {
 			expect(result.errors[0]).toContain("Alertmanager Staging");
 		});
 
-		it("a failed alert is recorded in errors and holds the checkpoint back", async () => {
+		it("a failed alert is recorded in errors but does not hold the Prometheus checkpoint back", async () => {
 			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
 				if (args?.where?.integration?.templateId === "alertmanager") {
 					return [
@@ -357,7 +357,7 @@ describe("AlertPullService (#605)", () => {
 			const result = await service.pull();
 
 			expect(result.errors).toEqual(["Alertmanager Prod: alert fp-1: db locked"]);
-			expect(prisma.setting.upsert).not.toHaveBeenCalled();
+			expect(prisma.setting.upsert).toHaveBeenCalled();
 		});
 
 		it("zero sources → { sources: 0 } and no fetch", async () => {
@@ -536,6 +536,106 @@ describe("AlertPullService (#605)", () => {
 			fetchSpy.mockRejectedValueOnce(new Error("Prometheus down"));
 			await service.pull(now);
 
+			expect(prisma.setting.upsert).not.toHaveBeenCalled();
+		});
+
+		it("failing Alertmanager + healthy Prometheus → checkpoint advances", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "alertmanager") {
+					return [
+						{
+							id: "conn-am",
+							label: "Alertmanager Prod",
+							status: "ACTIVE",
+							integration: { templateId: "alertmanager" },
+						},
+					];
+				}
+				if (args?.where?.integration?.templateId === "prometheus") {
+					return [
+						{
+							id: "conn-prom",
+							label: "Prometheus Main",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockImplementation(async (id: string) => {
+				if (id === "conn-am") return "http://alertmanager:9093";
+				if (id === "conn-prom") return "http://prometheus:9090";
+				return null;
+			});
+
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const urlStr = url.toString();
+				if (urlStr.includes("alertmanager:9093")) {
+					throw new Error("Alertmanager network timeout");
+				}
+				// Prometheus returns empty result
+				return new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			});
+
+			const result = await service.pull(now);
+
+			// Alertmanager error is recorded in result.errors
+			expect(result.errors).toHaveLength(1);
+			expect(result.errors[0]).toContain("Alertmanager network timeout");
+
+			// Checkpoint advances because Prometheus catch-up had zero errors
+			expect(prisma.setting.upsert).toHaveBeenCalledWith({
+				where: { key: ALERT_PULL_SETTING_KEY },
+				update: {
+					value: JSON.stringify({ lastPulledAt: now.toISOString() }),
+					type: "json",
+				},
+				create: {
+					key: ALERT_PULL_SETTING_KEY,
+					value: JSON.stringify({ lastPulledAt: now.toISOString() }),
+					type: "json",
+					category: "general",
+				},
+			});
+		});
+
+		it("a failed catch-up alert is recorded in errors and holds the checkpoint back", async () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
+				if (args?.where?.integration?.templateId === "prometheus") {
+					return [
+						{
+							id: "prom-1",
+							label: "Prometheus Main",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus" },
+						},
+					];
+				}
+				return [];
+			});
+			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+			webhooksService.processPrometheusAlert.mockRejectedValueOnce(new Error("db locked"));
+
+			const series = {
+				metric: { __name__: "ALERTS", alertstate: "firing", alertname: "DiskFull" },
+				values: [[Math.floor(now.getTime() / 1000), "1"]],
+			};
+
+			fetchSpy.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series] } }),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			);
+
+			const result = await service.pull(now);
+
+			const expectedFp = alertmanagerFingerprint({ alertname: "DiskFull" });
+			expect(result.errors).toEqual([`Prometheus Main: alert ${expectedFp}: db locked`]);
 			expect(prisma.setting.upsert).not.toHaveBeenCalled();
 		});
 
