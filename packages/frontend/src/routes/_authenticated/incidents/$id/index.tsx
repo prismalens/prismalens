@@ -384,7 +384,7 @@ function IncidentRecordPage() {
 				</div>
 
 				{surface !== null && (
-					<div className="hidden min-h-0 xl:grid">
+					<div className="hidden min-h-0 min-w-0 xl:grid">
 						<SurfacePane
 							surface={surface}
 							incident={incident}

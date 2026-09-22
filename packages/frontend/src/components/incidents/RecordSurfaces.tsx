@@ -133,7 +133,7 @@ export function SurfacePane({
 	const title = SURFACES.find((s) => s.id === surface)?.label ?? "";
 	return (
 		<div
-			className="flex min-h-0 flex-col border-l"
+			className="flex min-h-0 min-w-0 flex-col border-l"
 			data-testid={`surface-pane-${surface}`}
 		>
 			<h2 className="border-b px-3 py-2 text-record font-medium">{title}</h2>
