@@ -43,3 +43,7 @@ export {
 	resetOwnerPassword,
 	resetOwnerPasswordWith,
 } from "./reset-password.js";
+export {
+	createPairingLinkInWorkspace,
+	WorkspaceError,
+} from "./workspace.js";

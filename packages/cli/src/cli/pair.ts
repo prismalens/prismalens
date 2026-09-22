@@ -55,11 +55,10 @@ export default defineCommand({
 			lock.port,
 		);
 
-		const { prisma } = await import("@prismalens/database");
-		const { buildPairingUrl, createPairingLink, prismaPairingStore } =
+		const { buildPairingUrl, createPairingLinkInWorkspace, WorkspaceError } =
 			await import("@prismalens/auth");
 		try {
-			const link = await createPairingLink(prismaPairingStore(prisma), {
+			const link = await createPairingLinkInWorkspace(workspaceDir, {
 				label: args.label ? String(args.label) : undefined,
 			});
 			consola.log(`\n  ${buildPairingUrl(origin, link.token)}\n`);
@@ -71,8 +70,12 @@ export default defineCommand({
 					"This address reaches only this machine. Pass --address with an address the other device can reach (LAN IP, tailnet name).",
 				);
 			}
-		} finally {
-			await prisma.$disconnect();
+		} catch (error) {
+			if (error instanceof WorkspaceError) {
+				consola.error(error.message);
+				process.exit(1);
+			}
+			throw error;
 		}
 	},
 });
