@@ -7,7 +7,6 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFactoryReset, useResetData } from "@/lib/api/hooks";
 
 export function DangerZoneSettings() {
@@ -39,18 +38,18 @@ export function DangerZoneSettings() {
 
 	return (
 		<>
-			<Card className="border-destructive/30">
-				<CardHeader>
-					<div className="flex items-center gap-2">
-						<AlertTriangle className="h-5 w-5 text-destructive" />
-						<CardTitle className="text-destructive">Danger Zone</CardTitle>
-					</div>
-				</CardHeader>
-				<CardContent className="space-y-6">
+			<div className="rounded-lg border border-destructive/30 bg-card p-6 space-y-6">
+				<div className="flex items-center gap-2">
+					<AlertTriangle className="h-5 w-5 text-destructive" />
+					<h3 className="text-base font-semibold text-destructive">
+						Danger zone
+					</h3>
+				</div>
+				<div className="space-y-4">
 					{/* Reset Data */}
 					<div className="flex justify-between items-center p-4 border rounded-lg">
 						<div>
-							<h3 className="font-medium text-foreground">Reset All Data</h3>
+							<h4 className="font-medium text-foreground">Reset all data</h4>
 							<p className="text-sm text-muted-foreground">
 								Delete all alerts, incidents, and investigations. Services and
 								integrations will be preserved.
@@ -61,16 +60,16 @@ export function DangerZoneSettings() {
 							onClick={() => setShowResetDialog(true)}
 						>
 							<Trash2 className="mr-2 h-4 w-4" />
-							Reset Data
+							Reset data
 						</Button>
 					</div>
 
 					{/* Factory Reset */}
 					<div className="flex justify-between items-center p-4 border rounded-lg">
 						<div>
-							<h3 className="font-medium text-foreground">Factory Reset</h3>
+							<h4 className="font-medium text-foreground">Factory reset</h4>
 							<p className="text-sm text-muted-foreground">
-								Delete ALL data and return to initial setup state. This removes
+								Delete all data and return to initial setup state. This removes
 								users, services, and all configurations.
 							</p>
 						</div>
@@ -79,11 +78,11 @@ export function DangerZoneSettings() {
 							onClick={() => setShowFactoryResetDialog(true)}
 						>
 							<AlertTriangle className="mr-2 h-4 w-4" />
-							Factory Reset
+							Factory reset
 						</Button>
 					</div>
-				</CardContent>
-			</Card>
+				</div>
+			</div>
 
 			<DestructiveConfirm
 				open={showResetDialog}

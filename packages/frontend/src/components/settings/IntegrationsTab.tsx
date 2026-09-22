@@ -3,7 +3,10 @@
 
 "use client";
 
-import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
+import type {
+	AuthTemplateResponse,
+	Integration,
+} from "@prismalens/contracts/schemas";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	CheckCircle,
@@ -12,25 +15,21 @@ import {
 	Loader2,
 	Pencil,
 	Plus,
-	Settings2,
 	Trash2,
 	Zap,
 } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Mono } from "@/components/shared/Mono";
+import { StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import {
 	useConnections,
 	useDeleteIntegration,
 	useIntegrations,
 	useTemplates,
-	useUpdateIntegration,
 } from "@/lib/api/hooks";
-import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { DeleteIntegrationDialog } from "./DeleteIntegrationDialog";
-import { EditIntegrationDialog } from "./EditIntegrationDialog";
+import { IntegrationFormDialog } from "./IntegrationFormDialog";
 import { getTemplateIcon } from "./integration-utils";
 
 export function IntegrationsTab() {
@@ -38,23 +37,15 @@ export function IntegrationsTab() {
 	const { data: connections } = useConnections();
 	const { data: templates } = useTemplates();
 	const deleteIntegration = useDeleteIntegration();
-	const updateIntegration = useUpdateIntegration();
 	const navigate = useNavigate();
 
 	const [showAddDialog, setShowAddDialog] = useState(false);
+	const [showEditDialog, setShowEditDialog] = useState(false);
+	const [editTarget, setEditTarget] = useState<Integration | null>(null);
+
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 	const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<Error | null>(null);
-
-	// Edit state
-	const [showEditDialog, setShowEditDialog] = useState(false);
-	const [editTargetId, setEditTargetId] = useState<string | null>(null);
-	const [editLabel, setEditLabel] = useState("");
-	const [editCredentialValues, setEditCredentialValues] = useState<
-		Record<string, string>
-	>({});
-	const [showEditErrors, setShowEditErrors] = useState(false);
-	const [editError, setEditError] = useState<Error | null>(null);
 
 	// Webhook URLs
 	const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
@@ -130,76 +121,10 @@ export function IntegrationsTab() {
 		}
 	};
 
-	// --- Edit Integration ---
-	const handleEditIntegration = (integrationId: string) => {
-		const integration = integrations?.find((i) => i.id === integrationId);
-		if (!integration) return;
-		setEditTargetId(integrationId);
-		setEditLabel(integration.label);
-		setEditCredentialValues({});
-		setShowEditErrors(false);
-		setEditError(null);
+	const handleEditIntegration = (integration: Integration) => {
+		setEditTarget(integration);
 		setShowEditDialog(true);
 	};
-
-	const handleSaveEdit = async () => {
-		if (!editTargetId) return;
-		setEditError(null);
-
-		const integration = integrations?.find((i) => i.id === editTargetId);
-		const template = templates?.find(
-			(t: AuthTemplateResponse) => t.id === integration?.templateId,
-		);
-
-		if (!editLabel.trim()) {
-			setShowEditErrors(true);
-			return;
-		}
-
-		try {
-			const hasNewCredentials = Object.values(editCredentialValues).some(
-				(v) => v.trim() !== "",
-			);
-
-			let clientId: string | undefined;
-			let clientSecret: string | undefined;
-
-			if (hasNewCredentials && template) {
-				if (template.connectionCreationMode === "oauth_redirect") {
-					clientId = editCredentialValues.clientId || undefined;
-					clientSecret = editCredentialValues.clientSecret || undefined;
-				} else if ((template.integrationCredentialFields?.length ?? 0) > 0) {
-					clientId = editCredentialValues.appId || undefined;
-					const privateKey = editCredentialValues.privateKey;
-					const webhookSecret = editCredentialValues.webhookSecret;
-					if (privateKey) {
-						clientSecret = JSON.stringify({
-							privateKey,
-							...(webhookSecret ? { webhookSecret } : {}),
-						});
-					}
-				}
-			}
-
-			await updateIntegration.mutateAsync({
-				id: editTargetId,
-				label: editLabel,
-				clientId,
-				clientSecret,
-			});
-			setShowEditDialog(false);
-			setEditTargetId(null);
-		} catch (err) {
-			setEditError(
-				err instanceof Error ? err : new Error("Failed to update integration"),
-			);
-		}
-	};
-
-	const editIntegration = integrations?.find((i) => i.id === editTargetId);
-	const editTemplate = templates?.find(
-		(t: AuthTemplateResponse) => t.id === editIntegration?.templateId,
-	);
 
 	const deleteTarget = integrations?.find((i) => i.id === deleteTargetId);
 
@@ -214,31 +139,29 @@ export function IntegrationsTab() {
 	return (
 		<div className="space-y-6">
 			{/* Webhook URLs */}
-			<Card>
-				<CardHeader>
-					<div className="flex items-center gap-2">
-						<Link2 className="h-5 w-5 text-muted-foreground" />
-						<CardTitle>Webhook URLs</CardTitle>
-					</div>
-					<p className="text-sm text-muted-foreground">
-						Copy these URLs into your monitoring tools to send alerts to
-						PrismaLens. Each delivery must send the webhook token as
-						Authorization: Bearer &lt;token&gt; or as the basic auth password,
-						or use it as the HMAC-SHA256 key over the raw body and send
-						X-Hub-Signature-256: sha256=&lt;hex digest&gt;. The token is in
-						&lt;workspace&gt;/PRISMALENS_WEBHOOK_SECRET_FILE; pl up prints the
-						workspace path.
-					</p>
-				</CardHeader>
-				<CardContent className="space-y-4">
+			<div className="rounded-lg border bg-card p-6 space-y-4">
+				<div className="flex items-center gap-2">
+					<Link2 className="h-5 w-5 text-muted-foreground" />
+					<h3 className="text-base font-semibold">Webhook URLs</h3>
+				</div>
+				<p className="text-sm text-muted-foreground">
+					Copy these URLs into your monitoring tools to send alerts to
+					PrismaLens. Each delivery must send the webhook token as{" "}
+					<Mono>Authorization: Bearer &lt;token&gt;</Mono> or as the basic auth
+					password, or use it as the HMAC-SHA256 key over the raw body and send{" "}
+					<Mono>X-Hub-Signature-256: sha256=&lt;hex digest&gt;</Mono>. The token
+					is in <Mono>&lt;workspace&gt;/PRISMALENS_WEBHOOK_SECRET_FILE</Mono>;
+					pl up prints the workspace path.
+				</p>
+				<div className="space-y-3">
 					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
 						<div className="flex items-center gap-3">
 							<Zap className="h-5 w-5 text-muted-foreground" />
 							<div>
 								<p className="font-medium text-sm">Prometheus AlertManager</p>
-								<code className="text-xs text-muted-foreground break-all">
+								<Mono className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/prometheus
-								</code>
+								</Mono>
 							</div>
 						</div>
 						<Button
@@ -261,9 +184,9 @@ export function IntegrationsTab() {
 							<Link2 className="h-5 w-5 text-muted-foreground" />
 							<div>
 								<p className="font-medium text-sm">Generic Webhook</p>
-								<code className="text-xs text-muted-foreground break-all">
+								<Mono className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/generic
-								</code>
+								</Mono>
 							</div>
 						</div>
 						<Button
@@ -280,160 +203,136 @@ export function IntegrationsTab() {
 							)}
 						</Button>
 					</div>
-				</CardContent>
-			</Card>
+				</div>
+			</div>
 
 			{/* Integrations List */}
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2">
-							<Settings2 className="h-5 w-5 text-muted-foreground" />
-							<CardTitle>Integrations</CardTitle>
-						</div>
+			<div className="rounded-lg border bg-card p-6 space-y-4">
+				<div className="flex items-center justify-between">
+					<h3 className="text-base font-semibold">Integrations</h3>
+					<Button onClick={() => setShowAddDialog(true)}>
+						<Plus className="h-4 w-4 mr-2" />
+						Add Integration
+					</Button>
+				</div>
+				<p className="text-sm text-muted-foreground">
+					Register external service providers. Connections are managed in the
+					Connections tab.
+				</p>
+
+				{integrations && integrations.length > 0 ? (
+					<div className="border rounded-lg overflow-hidden">
+						<table className="w-full">
+							<thead>
+								<tr className="border-b bg-muted/50">
+									<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+										Provider
+									</th>
+									<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+										Label
+									</th>
+									<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+										Auth mode
+									</th>
+									<th className="text-center text-sm font-medium text-muted-foreground px-4 py-3">
+										Connections
+									</th>
+									<th className="text-right text-sm font-medium text-muted-foreground px-4 py-3">
+										Actions
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{integrations.map((integration) => {
+									const template = templates?.find(
+										(t) => t.id === integration.templateId,
+									);
+									const connCount = connectionCounts.get(integration.id) ?? 0;
+
+									return (
+										<tr
+											key={integration.id}
+											className="border-b last:border-b-0"
+										>
+											<td className="px-4 py-3">
+												<div className="flex items-center gap-2">
+													<span className="text-muted-foreground">
+														{getTemplateIcon(integration.templateId)}
+													</span>
+													<span className="font-medium text-sm">
+														{template?.name ?? integration.templateId}
+													</span>
+												</div>
+											</td>
+											<td className="px-4 py-3 text-sm">{integration.label}</td>
+											<td className="px-4 py-3">
+												<StateChip tone="neutral">
+													{template?.authModeLabel ?? "—"}
+												</StateChip>
+											</td>
+											<td className="px-4 py-3 text-center text-sm">
+												<Mono>{connCount}</Mono>
+											</td>
+											<td className="px-4 py-3 text-right">
+												<div className="flex items-center justify-end gap-1">
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleEditIntegration(integration)}
+													>
+														<Pencil className="h-4 w-4" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => {
+															setDeleteTargetId(integration.id);
+															setDeleteError(null);
+															setShowDeleteDialog(true);
+														}}
+													>
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
+												</div>
+											</td>
+										</tr>
+									);
+								})}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<div
+						className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-4"
+						data-testid="integrations-empty"
+					>
+						<p className="text-record text-muted-foreground">
+							No integrations registered yet.
+						</p>
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
 							Add Integration
 						</Button>
 					</div>
-					<p className="text-sm text-muted-foreground">
-						Register external service providers. Connections are managed in the
-						Connections tab.
-					</p>
-				</CardHeader>
-				<CardContent>
-					{integrations && integrations.length > 0 ? (
-						<div className="border rounded-lg overflow-hidden">
-							<table className="w-full">
-								<thead>
-									<tr className="border-b bg-muted/50">
-										<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-											Provider
-										</th>
-										<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-											Label
-										</th>
-										<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
-											Auth Mode
-										</th>
-										<th className="text-center text-sm font-medium text-muted-foreground px-4 py-3">
-											Connections
-										</th>
-										<th className="text-right text-sm font-medium text-muted-foreground px-4 py-3">
-											Actions
-										</th>
-									</tr>
-								</thead>
-								<tbody>
-									{integrations.map((integration) => {
-										const template = templates?.find(
-											(t) => t.id === integration.templateId,
-										);
-										const connCount = connectionCounts.get(integration.id) ?? 0;
+				)}
+			</div>
 
-										return (
-											<tr
-												key={integration.id}
-												className="border-b last:border-b-0"
-											>
-												<td className="px-4 py-3">
-													<div className="flex items-center gap-2">
-														<span className="text-muted-foreground">
-															{getTemplateIcon(integration.templateId)}
-														</span>
-														<span className="font-medium text-sm">
-															{template?.name ?? integration.templateId}
-														</span>
-													</div>
-												</td>
-												<td className="px-4 py-3 text-sm">
-													{integration.label}
-												</td>
-												<td className="px-4 py-3">
-													<Badge variant="outline">
-														{template?.authModeLabel ?? "—"}
-													</Badge>
-												</td>
-												<td className="px-4 py-3 text-center text-sm">
-													{connCount}
-												</td>
-												<td className="px-4 py-3 text-right">
-													<div className="flex items-center justify-end gap-1">
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() =>
-																handleEditIntegration(integration.id)
-															}
-														>
-															<Pencil className="h-4 w-4" />
-														</Button>
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() => {
-																setDeleteTargetId(integration.id);
-																setDeleteError(null);
-																setShowDeleteDialog(true);
-															}}
-														>
-															<Trash2 className="h-4 w-4 text-destructive" />
-														</Button>
-													</div>
-												</td>
-											</tr>
-										);
-									})}
-								</tbody>
-							</table>
-						</div>
-					) : (
-						<EmptyState
-							icon={Settings2}
-							title="No integrations registered"
-							description="Add a provider to get started"
-							actions={
-								<Button onClick={() => setShowAddDialog(true)}>
-									<Plus className="h-4 w-4 mr-2" />
-									Add Integration
-								</Button>
-							}
-						/>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Dialogs */}
-			<AddIntegrationDialog
+			{/* Form dialog for create and edit */}
+			<IntegrationFormDialog
 				open={showAddDialog}
 				onOpenChange={setShowAddDialog}
+				mode="create"
 				onCreated={handleCreated}
 			/>
 
-			<EditIntegrationDialog
+			<IntegrationFormDialog
 				open={showEditDialog}
 				onOpenChange={(open) => {
 					setShowEditDialog(open);
-					if (!open) {
-						setEditTargetId(null);
-						setEditCredentialValues({});
-						setShowEditErrors(false);
-						setEditError(null);
-					}
+					if (!open) setEditTarget(null);
 				}}
-				template={editTemplate}
-				label={editLabel}
-				onLabelChange={setEditLabel}
-				credentialValues={editCredentialValues}
-				onCredentialValuesChange={setEditCredentialValues}
-				showErrors={showEditErrors}
-				error={editError}
-				onSave={handleSaveEdit}
-				onCancel={() => {
-					setShowEditDialog(false);
-					setEditTargetId(null);
-				}}
-				isSaving={updateIntegration.isPending}
+				mode="edit"
+				integration={editTarget}
 			/>
 
 			<DeleteIntegrationDialog
