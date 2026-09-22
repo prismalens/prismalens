@@ -20,7 +20,7 @@
 		"@fontsource/ibm-plex-mono": "^5.3.0",
 		"@orpc/client": "catalog:",
 		"@orpc/contract": "catalog:",
-		"@orpc/openapi-client": "^1.15.0",
+		"@orpc/openapi-client": "^1.15.2",
 		"@orpc/tanstack-query": "^1.15.0",
 		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
