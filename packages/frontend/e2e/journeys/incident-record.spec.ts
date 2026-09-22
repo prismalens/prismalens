@@ -43,17 +43,20 @@ test.describe("#523 S1 — the incident record", () => {
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await setTheme(page, "light");
 
-		// The band: id, severity, title, run capsule.
+		// The band: id, severity, title, status. The run's own state lives in
+		// the rail (`rail-working-now` while live, `rail-run-summary` once the
+		// run has a terminal status), asserted below.
 		const band = page.getByTestId("incident-state-band");
 		await expect(band).toBeVisible({ timeout: 15_000 });
 		await expect(band).toContainText("INC-1");
-		await expect(band).toContainText("Critical");
+		// The severity dot carries its label as `aria-label`/`title`, not text.
+		await expect(band.getByLabel("Critical")).toBeVisible();
 		await expect(
 			band.getByRole("heading", {
 				name: "[demo] Storm: High 5xx error rate on API Gateway & Auth timeout",
 			}),
 		).toBeVisible();
-		await expect(band.getByTestId("run-capsule")).toBeVisible();
+		await expect(band.getByTestId("band-status")).toBeVisible();
 
 		// The sections, in document order.
 		const ids = ["#report", "#evidence", "#ledger", "#alerts", "#timeline"];

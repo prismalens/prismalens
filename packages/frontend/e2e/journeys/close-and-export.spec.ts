@@ -18,7 +18,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		const title = `Pool exhaustion ${Date.now()}`;
 
 		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.getByTestId("create-incident-button").click();
@@ -40,18 +44,24 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		});
 
 		// Close belongs to a resolved incident: it is the step after the
-		// postmortem, so it is not offered while the incident is still open.
-		const close = page.getByRole("button", { name: "Close", exact: true });
+		// postmortem, so it is not offered while the incident is still open —
+		// it is the band's primary action only once nothing earlier in the
+		// order (investigate/acknowledge/resolve) is still admitted.
+		const close = page.getByTestId("band-close");
 		await expect(close).toHaveCount(0);
 
-		await page.getByRole("button", { name: "Resolve" }).click();
+		// A freshly created (triggered) incident's band admits investigate,
+		// acknowledge and resolve, with investigate primary — resolve sits in
+		// the `band-more` menu, not a standalone button (#523).
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-resolve").click();
 		await expect(close).toBeVisible({ timeout: 15_000 });
 
 		// #338 stacks a dialog on this button: Close asks what actually caused the
 		// incident first. Closing with both fields blank is allowed.
 		await close.click();
 		await page.getByTestId("confirm-close-incident").click();
-		await expect(page.getByRole("button", { name: "Resolve" })).toHaveCount(0, {
+		await expect(page.getByTestId("band-investigate")).toHaveCount(0, {
 			timeout: 15_000,
 		});
 		await expect(close).toHaveCount(0);

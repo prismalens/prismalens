@@ -150,7 +150,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		});
 
 		// Header: disabled, and hovering names the reason.
-		const headerBtn = page.getByTestId("band-investigate-button");
+		const headerBtn = page.getByTestId("band-investigate");
 		await expect(headerBtn).toBeDisabled();
 		await headerBtn.hover({ force: true });
 		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible({
@@ -169,7 +169,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 
 		await page.goto(`/incidents/${id}`);
 		await expect(
-			page.getByTestId("band-investigate-button"),
+			page.getByTestId("band-investigate"),
 		).toBeEnabled({ timeout: 15_000 });
 		await expect(tabInvestigateButton(page)).toBeEnabled();
 	});
@@ -207,7 +207,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
 		await expect(
-			page.getByTestId("band-investigate-button"),
+			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
 		await shot("investigation-readiness-default");
@@ -215,15 +215,20 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
 		await expect(
-			page.getByTestId("band-investigate-button"),
+			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
 		await shot("investigation-readiness-dark");
 
 		// Empty — the detail record with no investigations on the incident,
 		// which is where the blocked affordance is the only thing on the card.
+		// Scoped to the empty-state card: the left pane can carry another
+		// incident from elsewhere in the suite whose title happens to contain
+		// this same text (#523 keeps the pane mounted beside every record).
 		await setTheme(page, "light");
-		await expect(page.getByText("No investigation yet")).toBeVisible({
+		await expect(
+			page.getByTestId("investigation-empty").getByText("No investigation yet"),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(tabInvestigateButton(page)).toBeDisabled();

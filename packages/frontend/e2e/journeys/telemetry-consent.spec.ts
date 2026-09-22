@@ -50,15 +50,16 @@ test.describe("#602 — opt-in telemetry", () => {
 		await page.goto("/incidents");
 		const consent = page.getByTestId("telemetry-consent");
 		await expect(consent).toBeVisible({ timeout: 15_000 });
-		// The one-line summary says what it is and what it never carries; the
-		// full disclosure lives in Settings, asserted below.
-		await expect(consent).toContainText("Anonymous usage data");
+		// The strip at the bottom of the sidebar carries a one-line summary of
+		// what it is and what it never carries (#523 moved the question off the
+		// page and onto the sidebar); the full disclosure lives in Settings,
+		// asserted below.
+		await expect(consent).toContainText("Share anonymous usage counts");
 		await expect(consent).toContainText(
-			"never the content of an alert, a repository or a report",
+			"Never an alert, a repo or a report",
 		);
-		await expect(consent).toContainText("Nothing is sent unless you say yes");
 
-		await consent.getByRole("button", { name: "Share usage data" }).click();
+		await consent.getByRole("button", { name: "Share", exact: true }).click();
 
 		await expect(consent).toHaveCount(0, { timeout: 15_000 });
 		expect(puts).toEqual([{ enabled: true }]);
@@ -89,7 +90,7 @@ test.describe("#602 — opt-in telemetry", () => {
 			forcedOff: false,
 		});
 		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
@@ -100,7 +101,7 @@ test.describe("#602 — opt-in telemetry", () => {
 			forcedOff: true,
 		});
 		await page.reload();
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
