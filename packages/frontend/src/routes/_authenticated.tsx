@@ -16,15 +16,12 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
-import { operatorQueryOptions } from "@/hooks/use-operator";
+import { readOperator } from "@/hooks/use-operator";
 
 export const Route = createFileRoute("/_authenticated")({
 	ssr: false,
 	beforeLoad: async ({ context }) => {
-		// fetchQuery, not ensureQueryData: pairing invalidates this answer and
-		// the gate must refetch a stale one rather than hand back the cached null.
-		// Within staleTime a navigation still does not re-ask.
-		const whoami = await context.queryClient.fetchQuery(operatorQueryOptions());
+		const whoami = await readOperator(context.queryClient);
 		if (!whoami.via) {
 			throw redirect({ to: "/pair" });
 		}

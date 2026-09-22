@@ -95,6 +95,11 @@ const env = {
 	PATH: `${harnessBinDir}${delimiter}${process.env.PATH ?? ""}`,
 	PRISMALENS_WORKSPACE_DIR: workspaceDir,
 	PRISMALENS_SEED_DEMO: "1",
+	// The suite is a laptop `pl up` with the browser on the same machine, so the
+	// browser is the operator by the loopback rule (ADR 0004 §8). CI would
+	// otherwise resolve the placement to `server`, where nothing is the
+	// operator until a device pairs, and every journey would time out.
+	PRISMALENS_PLACEMENT: "laptop",
 	// Both servers read these: the API binds PRISMALENS_PORT, and Vite both
 	// binds PRISMALENS_FRONTEND_PORT and proxies /api to PRISMALENS_PORT.
 	PRISMALENS_PORT: API_PORT,
@@ -132,7 +137,7 @@ export default defineConfig({
 				{
 					command: `node "${join(repoRoot, "scripts/pl-up-e2e.mjs")}"`,
 					url: `http://localhost:${PL_UP_PORT}/health`,
-					env: { ...process.env, PL_UP_PORT },
+					env: { ...process.env, PL_UP_PORT, PRISMALENS_PLACEMENT: "laptop" },
 					reuseExistingServer: false,
 					// Packing + a cold npm install of the tarball.
 					timeout: 300_000,

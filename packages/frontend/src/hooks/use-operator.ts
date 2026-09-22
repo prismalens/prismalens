@@ -7,7 +7,11 @@
  * route gate, the login page and the sidebar, so they cannot disagree.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import {
+	CancelledError,
+	type QueryClient,
+	useQuery,
+} from "@tanstack/react-query";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const operatorQueryOptions = () => ({
@@ -19,4 +23,21 @@ export const operatorQueryOptions = () => ({
 export function useOperator() {
 	const query = useQuery(operatorQueryOptions());
 	return { ...query, via: query.data?.via ?? null };
+}
+
+/**
+ * The route gate's read. `fetchQuery` honours staleTime, so a sign-in or a
+ * pairing that invalidated the answer is refetched instead of served from
+ * the cached null. The request is shared with any mounted `useOperator`
+ * observer; when the tree is regenerated after a hydration mismatch that
+ * observer unmounts and cancels it, so one cancellation is retried rather
+ * than surfaced as a route error.
+ */
+export async function readOperator(queryClient: QueryClient) {
+	try {
+		return await queryClient.fetchQuery(operatorQueryOptions());
+	} catch (error) {
+		if (!(error instanceof CancelledError)) throw error;
+		return queryClient.fetchQuery(operatorQueryOptions());
+	}
 }
