@@ -26,9 +26,7 @@ export const Route = createFileRoute("/auth/login")({
 	beforeLoad: async ({ context, search }) => {
 		// Already the operator (a session, or the host itself): nothing to sign
 		// in to.
-		const whoami = await context.queryClient.ensureQueryData(
-			operatorQueryOptions(),
-		);
+		const whoami = await context.queryClient.fetchQuery(operatorQueryOptions());
 		if (whoami.via) {
 			const safePath = isValidRedirect(search.redirect) ? search.redirect : "/";
 			throw redirect({ to: safePath });

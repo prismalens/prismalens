@@ -36,9 +36,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 		// Setup complete — verify the browser is the operator. Cached, so a
 		// navigation does not re-ask.
-		const whoami = await context.queryClient.ensureQueryData(
-			operatorQueryOptions(),
-		);
+		const whoami = await context.queryClient.fetchQuery(operatorQueryOptions());
 		if (!whoami.via) {
 			throw redirect({
 				to: "/auth/login",
