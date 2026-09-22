@@ -9,8 +9,9 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, Layers, LogOut, Settings, Siren } from "lucide-react";
-import type { ReactNode } from "react";
+import { Bell, Layers, LogOut, PanelLeft, Settings, Siren } from "lucide-react";
+import { type ReactNode, useEffect } from "react";
+import { TelemetryConsent } from "@/components/settings";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { orpc } from "@/lib/api/orpc-client";
 import { signOut, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -40,6 +42,25 @@ export function Sidebar() {
 function SidebarBody({ pathname }: { pathname: string }) {
 	const { data: session } = useSession();
 	const signedIn = !!session?.user;
+	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
+
+	// `[` folds the rail to icons, unless the operator is typing.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			const t = e.target as HTMLElement | null;
+			if (e.key !== "[" || e.metaKey || e.ctrlKey || e.altKey) return;
+			if (
+				t?.tagName === "INPUT" ||
+				t?.tagName === "TEXTAREA" ||
+				t?.isContentEditable
+			)
+				return;
+			e.preventDefault();
+			toggleSidebar();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [toggleSidebar]);
 	const incidents = useQuery({
 		...orpc.incidents.getStats.queryOptions({ input: {} }),
 		enabled: signedIn,
@@ -93,16 +114,20 @@ function SidebarBody({ pathname }: { pathname: string }) {
 					key={item.to}
 					to={item.to}
 					aria-current={active ? "page" : undefined}
+					title={sidebarFolded && !compact ? item.label : undefined}
 					className={cn(
 						"flex items-center gap-2.5 rounded-md px-2 py-1.5 text-record text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
 						active && "bg-muted text-foreground",
 						compact && "py-1",
+						sidebarFolded && !compact && "justify-center px-0",
 					)}
 					data-testid={`nav-${item.label.toLowerCase()}`}
 				>
 					{item.icon}
-					<span className="flex-1">{item.label}</span>
-					{item.count !== undefined && (
+					{!(sidebarFolded && !compact) && (
+						<span className="flex-1">{item.label}</span>
+					)}
+					{item.count !== undefined && !(sidebarFolded && !compact) && (
 						<span
 							className={cn(
 								"min-w-5 rounded px-1 text-center text-meta font-medium tabular-nums",
@@ -121,22 +146,59 @@ function SidebarBody({ pathname }: { pathname: string }) {
 	return (
 		<>
 			<aside
-				className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r bg-card md:flex"
+				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col border-r bg-card md:flex"
 				data-testid="sidebar"
+				data-folded={sidebarFolded ? "true" : undefined}
 			>
-				<Link
-					to="/incidents"
-					className="flex items-center gap-2 px-3 py-3 text-sm font-semibold tracking-tight"
-				>
-					<span className="flex h-6 w-6 items-center justify-center rounded bg-primary text-primary-foreground">
-						<Layers className="h-3.5 w-3.5" />
-					</span>
-					PrismaLens
-				</Link>
+				<div className="flex items-center gap-1 px-2 py-2">
+					<Link
+						to="/incidents"
+						className="flex min-w-0 flex-1 items-center gap-2 px-1 text-sm font-semibold tracking-tight"
+						title="PrismaLens"
+					>
+						<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground">
+							<Layers className="h-3.5 w-3.5" />
+						</span>
+						{!sidebarFolded && <span className="truncate">PrismaLens</span>}
+					</Link>
+					{!sidebarFolded && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-7 w-7 p-0"
+							aria-label="Fold the sidebar"
+							onClick={toggleSidebar}
+							data-testid="sidebar-fold"
+						>
+							<PanelLeft className="h-4 w-4" />
+						</Button>
+					)}
+				</div>
 				<nav className="flex flex-col gap-0.5 px-2">{nav(false)}</nav>
-				<div className="mt-auto flex items-center justify-between border-t px-2 py-2">
-					<ThemeToggle />
-					<UserMenu />
+				<div className="mt-auto">
+					{!sidebarFolded && <TelemetryConsent variant="strip" />}
+					<div
+						className={cn(
+							"flex items-center border-t px-2 py-2",
+							sidebarFolded ? "flex-col gap-2" : "justify-between",
+						)}
+					>
+						{sidebarFolded ? (
+							<Button
+								variant="ghost"
+								size="sm"
+								className="h-7 w-7 p-0"
+								aria-label="Unfold the sidebar"
+								onClick={toggleSidebar}
+								data-testid="sidebar-unfold"
+							>
+								<PanelLeft className="h-4 w-4" />
+							</Button>
+						) : (
+							<ThemeToggle />
+						)}
+						<UserMenu />
+					</div>
 				</div>
 			</aside>
 

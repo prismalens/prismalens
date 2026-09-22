@@ -3,22 +3,23 @@
 
 import {
 	canIncidentAction,
+	INCIDENT_STATUS_LABEL,
+	type IncidentAction,
+	type IncidentStatus,
 	type IncidentWithRelations,
-	isWorkflowLive,
+	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import {
-	Archive,
-	CheckCircle,
-	ChevronLeft,
-	Search,
-	XCircle,
-} from "lucide-react";
+import { ChevronLeft, MoreHorizontal, PanelRight } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StateChip } from "@/components/shared/StateChip";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
 	Tooltip,
 	TooltipContent,
@@ -26,185 +27,188 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ago, useNow } from "@/hooks/use-now";
-import { priorityTone, runStatusTone } from "@/lib/state-tone";
-
-export interface RunCapsule {
-	/** 1-based index of the run among the incident's runs, newest first. */
-	ordinal: number;
-	status: string;
-	branches: number;
-	harness?: string;
-	/** Elapsed for a live run; total duration for a finished one. */
-	elapsed?: string;
-	onCancel?: () => void;
-	isCancelling?: boolean;
-}
+import { incidentStatusTone } from "@/lib/state-tone";
 
 export interface IncidentStateBandProps {
 	incident: IncidentWithRelations;
-	run?: RunCapsule | null;
-	onAcknowledge?: () => void;
-	onInvestigate?: () => void;
-	onResolve?: () => void;
-	onClose?: () => void;
+	/** A run is in flight: Investigate is withheld and Cancel is offered in the menu. */
+	runLive: boolean;
+	onAcknowledge: () => void;
+	onInvestigate: () => void;
+	onResolve: () => void;
+	onClose: () => void;
+	onCancelRun?: () => void;
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
+	railHidden: boolean;
+	onToggleRail: () => void;
 }
 
+const ACTION_LABEL: Record<IncidentAction, string> = {
+	acknowledge: "Acknowledge",
+	investigate: "Investigate",
+	resolve: "Resolve",
+	close: "Close",
+};
+
 /**
- * The state band: identity, severity, status, age and the run capsule in one strip
- * that never scrolls away. Everything the operator needs to know *where they are*
- * lives here; everything they need to *read* lives in the record below.
+ * The state band: one row that never wraps. Where you are (id, severity,
+ * title, status, age) on the left; one primary action and a menu for the rest
+ * on the right. The run's state lives in the rail, not here.
  */
 export function IncidentStateBand({
 	incident,
-	run,
+	runLive,
 	onAcknowledge,
 	onInvestigate,
 	onResolve,
 	onClose,
+	onCancelRun,
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
+	railHidden,
+	onToggleRail,
 }: IncidentStateBandProps) {
 	const now = useNow();
-	const runLive = !!run && isWorkflowLive(run.status);
-	const canAcknowledge = canIncidentAction("acknowledge", incident.status);
-	const canInvestigate =
-		canIncidentAction("investigate", incident.status) && !runLive;
-	const canResolve = canIncidentAction("resolve", incident.status);
-	const canClose = canIncidentAction("close", incident.status);
+	const handlers: Record<IncidentAction, () => void> = {
+		acknowledge: onAcknowledge,
+		investigate: onInvestigate,
+		resolve: onResolve,
+		close: onClose,
+	};
+	// The one the status admits first, in the order the incident moves through.
+	const order: IncidentAction[] = [
+		"investigate",
+		"acknowledge",
+		"resolve",
+		"close",
+	];
+	const admitted = order.filter(
+		(a) =>
+			canIncidentAction(a, incident.status) &&
+			!(a === "investigate" && runLive),
+	);
+	const primary = admitted[0];
+	const rest = admitted.slice(1);
+	const primaryBlocked = primary === "investigate" && investigateDisabled;
 
 	return (
 		<div
 			data-testid="incident-state-band"
-			className="border-b bg-background px-4 sm:px-6"
+			className="flex h-10 items-center gap-2 overflow-hidden border-b bg-background px-3"
 		>
-			<div className="flex min-h-12 items-center gap-x-3 py-1.5">
-				<Link
-					to="/incidents"
-					aria-label="Back to incidents"
-					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-				>
-					<ChevronLeft className="h-4 w-4" />
-				</Link>
+			<Link
+				to="/incidents"
+				aria-label="Back to incidents"
+				className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+			>
+				<ChevronLeft className="h-4 w-4" />
+			</Link>
+			<Mono className="shrink-0 text-meta text-muted-foreground">
+				INC-{incident.number}
+			</Mono>
+			<span
+				aria-label={SEVERITY_LABEL[incident.severity]}
+				title={SEVERITY_LABEL[incident.severity]}
+				className="h-2 w-2 shrink-0 rounded-full"
+				style={{ background: `var(--sev-${incident.severity})` }}
+			/>
+			<h1
+				className="min-w-0 flex-1 truncate text-record font-semibold tracking-tight"
+				title={incident.title}
+			>
+				{incident.title}
+			</h1>
+			<StateWord
+				tone={incidentStatusTone(incident.status)}
+				className="shrink-0"
+				data-testid="band-status"
+			>
+				{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
+					incident.status}
+			</StateWord>
+			<span className="hidden shrink-0 text-meta text-muted-foreground tabular-nums sm:inline">
+				{ago(incident.triggeredAt, now)}
+			</span>
 
-				<Mono className="rounded border px-1.5 py-0.5 text-record text-muted-foreground">
-					INC-{incident.number}
-				</Mono>
-				<SeverityBadge severity={incident.severity} />
-
-				<div className="min-w-0 flex-1 basis-72">
-					<h1 className="line-clamp-2 text-base font-semibold leading-tight tracking-tight">
-						{incident.title}
-					</h1>
-					<div className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground tabular-nums">
-						<span>opened {ago(incident.triggeredAt, now)}</span>
-						{incident.service && (
-							<Link
-								to="/services/$id"
-								params={{ id: incident.service.id }}
-								search={{ tab: "overview" }}
-								className="text-primary hover:underline"
-							>
-								{incident.service.displayName || incident.service.name}
-							</Link>
-						)}
-					</div>
-				</div>
-
-				<div className="flex shrink-0 items-center gap-2">
-					<StatusBadge status={incident.status} />
-					<StateChip tone={priorityTone(incident.priority)}>
-						{incident.priority.toUpperCase()}
-					</StateChip>
-				</div>
-
-				{run && (
-					<div
-						data-testid="run-capsule"
-						className="flex items-center gap-2 rounded border border-(--chip)/35 bg-(--chip)/8 px-2 py-1 text-meta tabular-nums"
-						style={
-							{
-								"--chip": `var(--run-${runLive ? "active" : run.status === "completed" ? "done" : "failed"})`,
-							} as React.CSSProperties
-						}
-					>
-						<StateChip tone={runStatusTone(run.status)} pulse={runLive}>
-							Run #{run.ordinal}
-						</StateChip>
-						<span className="text-muted-foreground">{run.status}</span>
-						{run.elapsed && (
-							<span className="text-muted-foreground">· {run.elapsed}</span>
-						)}
-						{run.branches > 1 && (
-							<span className="text-muted-foreground">
-								· {run.branches} branches
-							</span>
-						)}
-						{run.harness && (
-							<span className="text-muted-foreground">· via {run.harness}</span>
-						)}
-						{runLive && run.onCancel && (
+			<div className="ml-1 flex shrink-0 items-center gap-1">
+				{primary && (
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span data-testid="band-investigate-trigger">
+									<Button
+										size="sm"
+										className="h-7"
+										onClick={handlers[primary]}
+										disabled={
+											primaryBlocked ||
+											(primary === "investigate" && isInvestigating)
+										}
+										data-testid={`band-${primary}`}
+									>
+										{primary === "investigate" && isInvestigating
+											? "Starting"
+											: ACTION_LABEL[primary]}
+									</Button>
+								</span>
+							</TooltipTrigger>
+							{primaryBlocked && investigateDisabledReason && (
+								<TooltipContent>
+									<p>{investigateDisabledReason}</p>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</TooltipProvider>
+				)}
+				{(rest.length > 0 || (runLive && onCancelRun)) && (
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
 							<Button
 								variant="ghost"
 								size="sm"
-								className="h-6 px-2 text-meta text-run-failed hover:text-run-failed"
-								onClick={run.onCancel}
-								disabled={run.isCancelling}
+								className="h-7 w-7 p-0"
+								aria-label="More actions"
+								data-testid="band-more"
 							>
-								<XCircle className="mr-1 h-3.5 w-3.5" />
-								{run.isCancelling ? "Cancelling" : "Cancel"}
+								<MoreHorizontal className="h-4 w-4" />
 							</Button>
-						)}
-					</div>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-44">
+							{rest.map((a) => (
+								<DropdownMenuItem
+									key={a}
+									onClick={handlers[a]}
+									data-testid={`band-menu-${a}`}
+								>
+									{ACTION_LABEL[a]}
+								</DropdownMenuItem>
+							))}
+							{runLive && onCancelRun && (
+								<DropdownMenuItem
+									onClick={onCancelRun}
+									className="text-run-failed"
+									data-testid="band-menu-cancel-run"
+								>
+									Cancel run
+								</DropdownMenuItem>
+							)}
+						</DropdownMenuContent>
+					</DropdownMenu>
 				)}
-
-				<div className="flex shrink-0 items-center gap-2">
-					{canAcknowledge && onAcknowledge && (
-						<Button variant="outline" size="sm" onClick={onAcknowledge}>
-							<CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-							Acknowledge
-						</Button>
-					)}
-					{canInvestigate && onInvestigate && (
-						<TooltipProvider>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<span data-testid="band-investigate-trigger">
-										<Button
-											size="sm"
-											onClick={onInvestigate}
-											disabled={isInvestigating || investigateDisabled}
-											data-testid="band-investigate-button"
-										>
-											<Search className="mr-1.5 h-3.5 w-3.5" />
-											{isInvestigating ? "Starting" : "Investigate"}
-										</Button>
-									</span>
-								</TooltipTrigger>
-								{investigateDisabled && investigateDisabledReason && (
-									<TooltipContent>
-										<p>{investigateDisabledReason}</p>
-									</TooltipContent>
-								)}
-							</Tooltip>
-						</TooltipProvider>
-					)}
-					{canResolve && onResolve && (
-						<Button variant="outline" size="sm" onClick={onResolve}>
-							<XCircle className="mr-1.5 h-3.5 w-3.5" />
-							Resolve
-						</Button>
-					)}
-					{canClose && onClose && (
-						<Button variant="outline" size="sm" onClick={onClose}>
-							<Archive className="mr-1.5 h-3.5 w-3.5" />
-							Close
-						</Button>
-					)}
-				</div>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="hidden h-7 w-7 p-0 xl:inline-flex"
+					aria-label={railHidden ? "Show the rail" : "Hide the rail"}
+					aria-pressed={!railHidden}
+					onClick={onToggleRail}
+					data-testid="band-rail-toggle"
+				>
+					<PanelRight className="h-4 w-4" />
+				</Button>
 			</div>
 		</div>
 	);

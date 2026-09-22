@@ -77,7 +77,7 @@ function RootLayout() {
 					<QueryClientProvider client={queryClient}>
 						<div className="min-h-dvh bg-background text-foreground">
 							<Sidebar />
-							<main className="min-w-0 md:pl-56">
+							<main className="min-w-0 md:pl-(--sidebar-w)">
 								<div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 									<Outlet />
 								</div>

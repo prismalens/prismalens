@@ -38,7 +38,6 @@ export { IncidentRail, type IncidentRailProps } from "./IncidentRail";
 export {
 	IncidentStateBand,
 	type IncidentStateBandProps,
-	type RunCapsule,
 } from "./IncidentStateBand";
 export { QueueStats, type QueueStatsProps } from "./QueueStats";
 export {

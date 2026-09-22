@@ -279,7 +279,10 @@ export function IncidentListPane({
 										}}
 									/>
 									<div className="min-w-0 flex-1">
-										<p className="line-clamp-2 text-record font-medium leading-snug">
+										<p
+											className="truncate text-record font-medium leading-snug"
+											title={incident.title}
+										>
 											<Mono className="mr-1.5 text-meta font-normal text-muted-foreground">
 												INC-{incident.number}
 											</Mono>

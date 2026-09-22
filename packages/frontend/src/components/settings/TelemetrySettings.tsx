@@ -40,9 +40,46 @@ export function useTelemetrySettings() {
 }
 
 /** The one-time question on /incidents, until the owner answers (#602). */
-export function TelemetryConsent() {
+export function TelemetryConsent({
+	variant = "card",
+}: {
+	variant?: "card" | "strip";
+}) {
 	const { query, update } = useTelemetrySettings();
 	if (!query.data || query.data.decided || query.data.forcedOff) return null;
+
+	if (variant === "strip") {
+		return (
+			<div
+				className="space-y-1.5 border-t px-3 py-2 text-meta text-muted-foreground"
+				data-testid="telemetry-consent"
+			>
+				<p>Share anonymous usage counts? Never an alert, a repo or a report.</p>
+				<div className="flex items-center gap-1">
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-6 flex-1 px-2 text-meta"
+						disabled={update.isPending}
+						onClick={() => update.mutate({ enabled: false })}
+					>
+						No thanks
+					</Button>
+					<Button
+						size="sm"
+						className="h-6 flex-1 px-2 text-meta"
+						disabled={update.isPending}
+						onClick={() => update.mutate({ enabled: true })}
+					>
+						Share
+					</Button>
+				</div>
+				{update.isError && (
+					<p className="text-destructive">Could not save — try again.</p>
+				)}
+			</div>
+		);
+	}
 
 	return (
 		<div

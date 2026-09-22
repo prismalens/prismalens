@@ -83,6 +83,7 @@
 
 	/* ── Layout ── */
 	--radius: 0.375rem;
+	--sidebar-w: 14rem;
 
 	/* ── Brand supplementary ── */
 	--pl-investigation-purple: oklch(0.627 0.265 303.9);

@@ -7,7 +7,7 @@
 import { canIncidentAction } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	CloseIncidentDialog,
 	CorrelatedAlerts,
@@ -27,6 +27,7 @@ import { useInvestigationRun } from "@/components/investigation/useInvestigation
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useCreateTimelineEntry,
@@ -58,8 +59,29 @@ function IncidentRecordPage() {
 	const navigate = Route.useNavigate();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const { railHidden, toggleRail } = useLayoutPrefs();
+	const [showAllAlerts, setShowAllAlerts] = useState(false);
+	const [showAllTimeline, setShowAllTimeline] = useState(false);
 	const { isReady: canRunInvestigation, blockedReason } =
 		useInvestigationReadiness();
+
+	// `]` hides or shows the rail, unless the operator is typing.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			const t = e.target as HTMLElement | null;
+			if (e.key !== "]" || e.metaKey || e.ctrlKey || e.altKey) return;
+			if (
+				t?.tagName === "INPUT" ||
+				t?.tagName === "TEXTAREA" ||
+				t?.isContentEditable
+			)
+				return;
+			e.preventDefault();
+			toggleRail();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [toggleRail]);
 
 	const {
 		data: incident,
@@ -228,29 +250,19 @@ function IncidentRecordPage() {
 		>
 			<IncidentStateBand
 				incident={incident}
-				run={
-					investigation
-						? {
-								ordinal:
-									runs.length -
-									runs.findIndex((r) => r.id === investigation.id),
-								status: investigation.status,
-								branches: 1,
-								harness: investigation.report?.fidelity?.harness,
-								onCancel: run.cancel,
-								isCancelling: run.isCancelling,
-							}
-						: null
-				}
+				runLive={runLive}
 				onAcknowledge={() =>
 					updateMutation.mutate({ id, status: "investigating" })
 				}
 				onInvestigate={handleInvestigate}
 				onResolve={() => resolveMutation.mutate({ id })}
 				onClose={() => setCloseOpen(true)}
+				onCancelRun={run.cancel}
 				isInvestigating={investigateMutation.isPending}
 				investigateDisabled={!canRunInvestigation}
 				investigateDisabledReason={blockedReason}
+				railHidden={railHidden}
+				onToggleRail={toggleRail}
 			/>
 
 			<CloseIncidentDialog
@@ -260,7 +272,13 @@ function IncidentRecordPage() {
 				onConfirm={(cause) => closeMutation.mutate({ id, ...cause })}
 			/>
 
-			<div className="grid min-h-0 xl:grid-cols-[minmax(0,1fr)_20rem]">
+			<div
+				className={
+					railHidden
+						? "grid min-h-0"
+						: "grid min-h-0 xl:grid-cols-[minmax(0,1fr)_20rem]"
+				}
+			>
 				<div
 					className="min-h-0 min-w-0 space-y-6 overflow-y-auto px-4 py-4 sm:px-6"
 					data-testid="incident-record"
@@ -355,18 +373,60 @@ function IncidentRecordPage() {
 						</RecordSection>
 					)}
 
-					<RecordSection id="alerts" title="Alerts" count={incident.alertCount}>
-						<CorrelatedAlerts alerts={incident.alerts || []} />
+					<RecordSection
+						id="alerts"
+						title="Alerts"
+						count={incident.alertCount}
+						actions={
+							(incident.alerts?.length ?? 0) > 5 ? (
+								<Button
+									variant="ghost"
+									size="sm"
+									className="h-6 px-2 text-meta"
+									onClick={() => setShowAllAlerts((v) => !v)}
+									data-testid="alerts-toggle"
+								>
+									{showAllAlerts
+										? "Show fewer"
+										: `Show all ${incident.alerts?.length}`}
+								</Button>
+							) : undefined
+						}
+					>
+						<CorrelatedAlerts
+							alerts={
+								showAllAlerts
+									? (incident.alerts ?? [])
+									: (incident.alerts ?? []).slice(0, 5)
+							}
+						/>
 					</RecordSection>
 
 					<RecordSection
 						id="timeline"
 						title="Timeline"
 						count={timelineEntries.length}
+						actions={
+							timelineEntries.length > 5 ? (
+								<Button
+									variant="ghost"
+									size="sm"
+									className="h-6 px-2 text-meta"
+									onClick={() => setShowAllTimeline((v) => !v)}
+									data-testid="timeline-toggle"
+								>
+									{showAllTimeline
+										? "Show fewer"
+										: `Show all ${timelineEntries.length}`}
+								</Button>
+							) : undefined
+						}
 					>
 						<TimelineTab
 							incidentId={id}
-							entries={timelineEntries}
+							entries={
+								showAllTimeline ? timelineEntries : timelineEntries.slice(0, 5)
+							}
 							isLoading={isLoadingTimeline}
 						/>
 					</RecordSection>
