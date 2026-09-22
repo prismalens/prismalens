@@ -99,7 +99,7 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	await page.locator("#email").fill(OWNER.email);
 	await page.locator("#password").fill(OWNER.password);
 	await page.locator("#confirmPassword").fill(`${OWNER.password}-typo`);
-	await page.getByRole("button", { name: /create account/i }).click();
+	await page.getByRole("button", { name: /create the owner account/i }).click();
 	await expect(page.getByText(/passwords do not match/i)).toBeVisible();
 	await expect(page).toHaveURL(/\/setup/);
 	await page.screenshot({
@@ -108,7 +108,7 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	});
 
 	await page.locator("#confirmPassword").fill(OWNER.password);
-	await page.getByRole("button", { name: /create account/i }).click();
+	await page.getByRole("button", { name: /create the owner account/i }).click();
 
 	// #358 already establishes the session at account-creation time (the
 	// controller applies Set-Cookie headers from a real sign-in before
@@ -149,5 +149,18 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	await page.screenshot({ path: `${SHOTS}/setup-complete-light.png`, fullPage: true });
 	await setTheme(page, "dark");
 	await page.screenshot({ path: `${SHOTS}/setup-complete-dark.png`, fullPage: true });
+	await clearTheme(page);
+
+	// First run panel: shown in the centre when no incident exists at all (#523)
+	const firstRun = page.getByTestId("first-run");
+	await expect(firstRun).toBeVisible({ timeout: 15_000 });
+	await expect(page.getByTestId("first-run-title")).toBeVisible();
+	await expect(page.getByTestId("first-run-submit")).toBeVisible();
+	await expect(page.getByText("Point a monitor at the webhook")).toBeVisible();
+	await expect(page.getByText("For the run to work")).toBeVisible();
+
+	await page.screenshot({ path: `${SHOTS}/first-run-default.png`, fullPage: true });
+	await setTheme(page, "dark");
+	await page.screenshot({ path: `${SHOTS}/first-run-dark.png`, fullPage: true });
 	await clearTheme(page);
 });

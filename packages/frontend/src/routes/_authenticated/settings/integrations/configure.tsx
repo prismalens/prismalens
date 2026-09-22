@@ -139,7 +139,7 @@ function GitHubAppInstallationWizard({
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
-							<CheckCircle className="h-8 w-8 text-green-500 mb-4" />
+							<CheckCircle className="h-8 w-8 text-run-done mb-4" />
 							<h2 className="text-lg font-semibold mb-2">
 								GitHub App Connected
 							</h2>

@@ -3,7 +3,11 @@
 
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { alertsContract } from "@prismalens/contracts";
+import {
+	ALERT_ACTION_FROM,
+	alertsContract,
+	canAlertAction,
+} from "@prismalens/contracts";
 import type {
 	Alert,
 	AlertDetail,
@@ -122,6 +126,7 @@ export class AlertsController {
 			// POST /alerts/:id/acknowledge - Acknowledge an alert
 			acknowledge: implement(alertsContract.acknowledge).handler(
 				async ({ input }) => {
+					await this.refuseUnless("acknowledge", input.id);
 					const alert = await this.alertsService.acknowledge(input.id);
 					if (!alert) {
 						throw new ORPCError("NOT_FOUND", {
@@ -134,6 +139,7 @@ export class AlertsController {
 
 			// POST /alerts/:id/resolve - Resolve an alert
 			resolve: implement(alertsContract.resolve).handler(async ({ input }) => {
+				await this.refuseUnless("resolve", input.id);
 				const alert = await this.alertsService.resolve(input.id);
 				if (!alert) {
 					throw new ORPCError("NOT_FOUND", {
@@ -200,6 +206,21 @@ export class AlertsController {
 	 * Serialize alert for API response
 	 * Converts Date objects to ISO strings
 	 */
+	/** The action rules are the contracts package's; the UI greys the same controls. */
+	private async refuseUnless(
+		action: keyof typeof ALERT_ACTION_FROM,
+		id: string,
+	): Promise<void> {
+		const alert = await this.alertsService.findById(id);
+		if (!alert) {
+			throw new ORPCError("NOT_FOUND", { message: `Alert ${id} not found` });
+		}
+		if (canAlertAction(action, alert.status)) return;
+		throw new ORPCError("CONFLICT", {
+			message: `Cannot ${action} an alert that is ${alert.status}; allowed from ${ALERT_ACTION_FROM[action].join(", ")}`,
+		});
+	}
+
 	private serializeAlert(alert: PrismaAlert): Alert {
 		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
 		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns

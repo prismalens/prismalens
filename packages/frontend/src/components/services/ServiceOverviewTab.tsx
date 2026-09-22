@@ -8,6 +8,7 @@ import type {
 } from "@prismalens/contracts";
 import { FolderGit2, GitBranch, Link2 } from "lucide-react";
 
+import { Mono } from "@/components/shared/Mono";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { tierLabels } from "./service-detail.utils";
@@ -71,11 +72,15 @@ export function ServiceOverviewTab({
 					)}
 					<div className="flex justify-between">
 						<span className="text-muted-foreground">Created</span>
-						<span>{new Date(service.createdAt).toLocaleDateString()}</span>
+						<span>
+							<Mono>{new Date(service.createdAt).toLocaleDateString()}</Mono>
+						</span>
 					</div>
 					<div className="flex justify-between">
 						<span className="text-muted-foreground">Updated</span>
-						<span>{new Date(service.updatedAt).toLocaleDateString()}</span>
+						<span>
+							<Mono>{new Date(service.updatedAt).toLocaleDateString()}</Mono>
+						</span>
 					</div>
 				</CardContent>
 			</Card>

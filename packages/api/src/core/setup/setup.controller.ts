@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller, Logger, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { type SetupStep, setupContract } from "@prismalens/contracts";
 import { AuthService } from "../auth/auth.service.js";
@@ -10,6 +9,7 @@ import { Public } from "../auth/public.decorator.js";
 import { applySetCookieHeaders } from "../auth/session-cookies.js";
 import { HarnessService } from "../harness/harness.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { UsersService } from "../users/users.service.js";
 
 // Public: setup runs before any user exists, so auth is not possible.
@@ -23,7 +23,7 @@ import { UsersService } from "../users/users.service.js";
 // operator got through the wizard. Before an owner exists it short-circuits and
 // probes nothing at all.
 @Public()
-@UseGuards(ThrottlerGuard)
+@UseGuards(MutationThrottleGuard)
 @Controller()
 export class SetupController {
 	private readonly logger = new Logger(SetupController.name);

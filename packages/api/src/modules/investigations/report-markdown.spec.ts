@@ -58,13 +58,13 @@ describe("reportToMarkdown", () => {
 		});
 		expect(md).toContain("# INC-7: Checkout 500s");
 		expect(md).toContain("Investigation completed 2026-09-19T10:00:00.000Z.");
-		expect(md).toContain("## Root cause (config)");
-		expect(md).toContain("1. **Pool size misconfigured** (confirmed)");
+		expect(md).toContain("## Root cause (Configuration)");
+		expect(md).toContain("1. **Pool size misconfigured** (Confirmed)");
 		expect(md).toContain(
-			"  - For (verified): DB_POOL_SIZE=5 in the new manifest — `git show 41:deploy.yaml`",
+			"  - For (Verified): DB_POOL_SIZE=5 in the new manifest — `git show 41:deploy.yaml`",
 		);
 		expect(md).toContain("- **Database outage**: Primary answered throughout");
-		expect(md).toContain("  - Against (inferred): No failover events — `logs`");
+		expect(md).toContain("  - Against (Inferred): No failover events — `logs`");
 		expect(md).toContain("- **Restore pool size** [high]: Set it back to 50");
 		expect(md).toContain("- Not queried: metrics");
 		expect(md).toContain(

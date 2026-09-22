@@ -13,12 +13,14 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 			timeout: 15_000,
 		});
 		await expect(
-			page.getByRole("button", { name: "Integrations" }),
+			page.getByTestId("settings-nav-integrations"),
 		).toBeVisible({ timeout: 15_000 });
 
 		// Switch to Integrations tab
-		await page.getByRole("button", { name: "Integrations" }).click();
-		await expect(page.getByText("Webhook URLs")).toBeVisible({
+		await page.getByTestId("settings-nav-integrations").click();
+		await expect(
+			page.getByRole("heading", { name: "Webhook URLs" }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(

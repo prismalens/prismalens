@@ -11,6 +11,10 @@ import type {
 	InvestigationReport,
 	ReportDeliverySettings,
 } from "@prismalens/contracts";
+import {
+	WORKFLOW_STATUS_LABEL,
+	type WorkflowStatus,
+} from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -53,7 +57,7 @@ export function slackMessage(run: DeliverableRun): string {
 	const head = `*INC-${run.incident.number}: ${e(run.incident.title)}*`;
 	if (run.status !== "completed" || !run.report) {
 		const why = run.error ? `: ${e(run.error)}` : ".";
-		return `${head}\nInvestigation ${run.status}${why}`.slice(
+		return `${head}\nInvestigation ${(WORKFLOW_STATUS_LABEL[run.status as WorkflowStatus] ?? run.status).toLowerCase()}${why}`.slice(
 			0,
 			SLACK_TEXT_LIMIT,
 		);

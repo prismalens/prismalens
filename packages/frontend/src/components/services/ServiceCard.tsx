@@ -10,6 +10,8 @@
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, GitBranch } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,11 +21,11 @@ export interface ServiceCardProps {
 	service: ServiceWithRelations;
 }
 
-const tierColors: Record<string, string> = {
-	tier_1: "bg-red-500 text-white",
-	tier_2: "bg-orange-500 text-white",
-	tier_3: "bg-yellow-500 text-black",
-	tier_4: "bg-gray-500 text-white",
+const tierTones: Record<string, ChipTone> = {
+	tier_1: "critical",
+	tier_2: "high",
+	tier_3: "medium",
+	tier_4: "neutral",
 };
 
 const tierLabels: Record<string, string> = {
@@ -54,18 +56,18 @@ export function ServiceCard({ service }: ServiceCardProps) {
 									{service.displayName || service.name}
 								</Link>
 							</CardTitle>
-							<p className="text-sm text-muted-foreground font-mono">
+							<Mono className="text-sm text-muted-foreground block">
 								{service.name}
-							</p>
+							</Mono>
 						</div>
 					</div>
 					<div className="flex flex-col items-end gap-1">
-						<Badge className={tierColors[service.tier] || "bg-gray-500"}>
+						<StateChip tone={tierTones[service.tier] || "neutral"}>
 							{tierLabels[service.tier] || service.tier}
-						</Badge>
-						<Badge variant="outline" className="text-xs capitalize">
+						</StateChip>
+						<StateChip tone="neutral" className="capitalize">
 							{service.type}
-						</Badge>
+						</StateChip>
 					</div>
 				</div>
 			</CardHeader>
@@ -81,9 +83,13 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				{repos.length > 0 && (
 					<div className="flex flex-wrap gap-1">
 						{repos.map((sr) => (
-							<Badge key={sr.id} variant="secondary" className="text-xs">
-								🔗 {sr.repository.fullName}
-							</Badge>
+							<span
+								key={sr.id}
+								className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
+							>
+								<span>🔗</span>
+								<Mono>{sr.repository.fullName}</Mono>
+							</span>
 						))}
 					</div>
 				)}
@@ -91,13 +97,13 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				{/* Stats Row */}
 				<div className="flex items-center gap-4 text-sm">
 					{service.alertCount !== undefined && service.alertCount > 0 && (
-						<div className="flex items-center gap-1 text-orange-500">
+						<div className="flex items-center gap-1 text-stale">
 							<AlertTriangle className="h-4 w-4" />
 							<span>{service.alertCount} alerts</span>
 						</div>
 					)}
 					{service.incidentCount !== undefined && service.incidentCount > 0 && (
-						<div className="flex items-center gap-1 text-red-500">
+						<div className="flex items-center gap-1 text-run-failed">
 							<AlertTriangle className="h-4 w-4" />
 							<span>{service.incidentCount} incidents</span>
 						</div>

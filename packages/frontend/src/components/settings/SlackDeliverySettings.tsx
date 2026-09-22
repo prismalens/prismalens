@@ -7,7 +7,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { orpc } from "@/lib/api/orpc-client";
@@ -30,57 +29,55 @@ export function SlackDeliverySettings() {
 	const configured = settings.data?.slackConfigured ?? false;
 
 	return (
-		<Card className="mb-6">
-			<CardHeader>
-				<CardTitle className="text-base">Post reports to Slack</CardTitle>
-			</CardHeader>
-			<CardContent className="space-y-3 text-sm">
-				<p className="text-muted-foreground">
-					Each finished or failed investigation posts its summary and root cause
-					to a Slack channel through an{" "}
-					<a
-						className="text-primary hover:underline"
-						href="https://api.slack.com/messaging/webhooks"
-						target="_blank"
-						rel="noreferrer"
-					>
-						incoming webhook
-					</a>
-					. A failed post shows on the incident timeline.{" "}
-					{configured ? "A webhook is set." : "No webhook set."}
-				</p>
-				<div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-					<div className="flex-1 space-y-1">
-						<Label htmlFor="slack-webhook">
-							{configured ? "Replace webhook URL" : "Webhook URL"}
-						</Label>
-						<Input
-							id="slack-webhook"
-							type="password"
-							autoComplete="off"
-							placeholder="https://hooks.slack.com/services/…"
-							value={url}
-							onChange={(e) => setUrl(e.target.value)}
-						/>
-					</div>
-					<Button
-						disabled={!url.trim() || update.isPending}
-						onClick={() => update.mutate({ slackWebhookUrl: url.trim() })}
-					>
-						Save
-					</Button>
-					{configured && (
-						<Button
-							variant="outline"
-							disabled={update.isPending}
-							onClick={() => update.mutate({ slackWebhookUrl: null })}
-						>
-							Remove
-						</Button>
-					)}
+		<div className="mb-6 rounded-lg border bg-card p-6 space-y-3 text-sm">
+			<h3 className="text-base font-semibold text-foreground">
+				Post reports to Slack
+			</h3>
+			<p className="text-muted-foreground">
+				Each finished or failed investigation posts its summary and root cause
+				to a Slack channel through an{" "}
+				<a
+					className="text-primary hover:underline"
+					href="https://api.slack.com/messaging/webhooks"
+					target="_blank"
+					rel="noreferrer"
+				>
+					incoming webhook
+				</a>
+				. A failed post shows on the incident timeline.{" "}
+				{configured ? "A webhook is set." : "No webhook set."}
+			</p>
+			<div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+				<div className="flex-1 space-y-1">
+					<Label htmlFor="slack-webhook">
+						{configured ? "Replace webhook URL" : "Webhook URL"}
+					</Label>
+					<Input
+						id="slack-webhook"
+						type="password"
+						autoComplete="off"
+						placeholder="https://hooks.slack.com/services/…"
+						value={url}
+						onChange={(e) => setUrl(e.target.value)}
+					/>
 				</div>
-				<MutationError error={update.error} />
-			</CardContent>
-		</Card>
+				<Button
+					disabled={!url.trim() || update.isPending}
+					onClick={() => update.mutate({ slackWebhookUrl: url.trim() })}
+				>
+					Save
+				</Button>
+				{configured && (
+					<Button
+						variant="outline"
+						disabled={update.isPending}
+						onClick={() => update.mutate({ slackWebhookUrl: null })}
+					>
+						Remove
+					</Button>
+				)}
+			</div>
+			<MutationError error={update.error} />
+		</div>
 	);
 }

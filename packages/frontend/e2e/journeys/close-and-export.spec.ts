@@ -18,7 +18,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		const title = `Pool exhaustion ${Date.now()}`;
 
 		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.getByTestId("create-incident-button").click();
@@ -31,23 +35,33 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
 			timeout: 15_000,
 		});
-		await expect(page.getByRole("heading", { name: title })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-state-band")
+				.getByRole("heading", { name: title }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 
 		// Close belongs to a resolved incident: it is the step after the
-		// postmortem, so it is not offered while the incident is still open.
-		const close = page.getByRole("button", { name: "Close", exact: true });
+		// postmortem, so it is not offered while the incident is still open —
+		// it is the band's primary action only once nothing earlier in the
+		// order (investigate/acknowledge/resolve) is still admitted.
+		const close = page.getByTestId("band-close");
 		await expect(close).toHaveCount(0);
 
-		await page.getByRole("button", { name: "Resolve" }).click();
+		// A freshly created (triggered) incident's band admits investigate,
+		// acknowledge and resolve, with investigate primary — resolve sits in
+		// the `band-more` menu, not a standalone button (#523).
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-resolve").click();
 		await expect(close).toBeVisible({ timeout: 15_000 });
 
 		// #338 stacks a dialog on this button: Close asks what actually caused the
 		// incident first. Closing with both fields blank is allowed.
 		await close.click();
 		await page.getByTestId("confirm-close-incident").click();
-		await expect(page.getByRole("button", { name: "Resolve" })).toHaveCount(0, {
+		await expect(page.getByTestId("band-investigate")).toHaveCount(0, {
 			timeout: 15_000,
 		});
 		await expect(close).toHaveCount(0);
@@ -67,7 +81,6 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			timeout: 15_000,
 		});
 
-		await page.getByRole("tab", { name: "Investigation" }).click();
 		await expect(page.getByTestId("export-report-markdown")).toHaveCount(0);
 		await expect(page.getByTestId("post-report-github")).toHaveCount(0);
 	});
@@ -112,9 +125,14 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		});
 
 		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		// The route redirects to the incident record (#523); the section is
+		// `#report`, headed "Report", and carries the root cause text.
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
+		await expect(page.locator("#report")).toContainText(
+			"Connection pool size in auth-service was misconfigured",
+		);
 
 		// Buttons are visible beside each other
 		const postBtn = page.getByTestId("post-report-github");

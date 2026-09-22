@@ -11,6 +11,8 @@ import {
 	IdParamSchema,
 	IncidentQuerySchema,
 	IncidentSchema,
+	IncidentStatsQuerySchema,
+	IncidentStatsSchema,
 	IncidentWithRelationsSchema,
 	InvestigateIncidentResponseSchema,
 	InvestigationRefusalSchema,
@@ -51,6 +53,17 @@ export const incidentsContract = {
 	 * Get a single incident by ID
 	 * GET /incidents/:id
 	 */
+	getStats: oc
+		.route({
+			method: "GET",
+			path: "/incidents/stats",
+			summary:
+				"Count incidents over a window: total, open, by status and severity, and what needs a human",
+			tags: ["incidents"],
+		})
+		.input(IncidentStatsQuerySchema)
+		.output(IncidentStatsSchema),
+
 	get: oc
 		.route({
 			method: "GET",

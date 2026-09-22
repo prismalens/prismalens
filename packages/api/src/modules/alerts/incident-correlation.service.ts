@@ -3,6 +3,10 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import {
+	OPEN_ALERT_STATUSES,
+	OPEN_INCIDENT_STATUSES,
+} from "@prismalens/contracts";
 import type { Alert } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -97,7 +101,7 @@ export class IncidentCorrelationService {
 					id: { not: alert.id },
 					incidentId: { not: null },
 					incident: {
-						status: { notIn: ["resolved", "closed"] },
+						status: { in: [...OPEN_INCIDENT_STATUSES] },
 						serviceId: alert.serviceId ?? null,
 					},
 				},
@@ -151,7 +155,7 @@ export class IncidentCorrelationService {
 	 */
 	async resolveIncidentIfNoFiringAlerts(incidentId: string): Promise<void> {
 		const firing = await this.prisma.alert.count({
-			where: { incidentId, status: { notIn: ["resolved", "suppressed"] } },
+			where: { incidentId, status: { in: [...OPEN_ALERT_STATUSES] } },
 		});
 		if (firing === 0) {
 			await this.incidentsService.resolve(incidentId);

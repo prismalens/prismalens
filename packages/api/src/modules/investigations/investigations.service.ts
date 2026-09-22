@@ -6,6 +6,9 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import {
 	CanonicalEventSchema,
 	INVESTIGATION_REPORT_BRANCH,
+	isWorkflowTerminal,
+	LIVE_WORKFLOW_STATUSES,
+	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
 import {
 	type Investigation,
@@ -92,7 +95,7 @@ export class InvestigationsService {
 				const running = await tx.investigation.findFirst({
 					where: {
 						incidentId: dto.incidentId,
-						status: { in: ["pending", "running"] },
+						status: { in: [...LIVE_WORKFLOW_STATUSES] },
 					},
 					orderBy: { createdAt: "desc" },
 				});
@@ -261,7 +264,7 @@ export class InvestigationsService {
 				updateData.startedAt = new Date();
 			}
 
-			if (status === "completed" || status === "failed") {
+			if (isWorkflowTerminal(status)) {
 				updateData.completedAt = new Date();
 			}
 
@@ -294,7 +297,7 @@ export class InvestigationsService {
 				updateData.startedAt = new Date();
 			}
 
-			if (status === "completed" || status === "failed") {
+			if (isWorkflowTerminal(status)) {
 				updateData.completedAt = new Date();
 			}
 
@@ -401,7 +404,7 @@ export class InvestigationsService {
 					await tx.incident.updateMany({
 						where: {
 							id: dto.incidentId,
-							status: { notIn: ["resolved", "closed"] },
+							status: { in: [...OPEN_INCIDENT_STATUSES] },
 						},
 						data: {
 							status: "identified",

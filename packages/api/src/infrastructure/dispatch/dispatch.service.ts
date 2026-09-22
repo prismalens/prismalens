@@ -23,6 +23,7 @@ import {
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type { InvestigationJobData } from "@prismalens/contracts";
+import { isWorkflowTerminal } from "@prismalens/contracts";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -226,9 +227,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 
 	/** Opt-in telemetry (#602): a run starting, and its one terminal state. */
 	private async reportStatus(id: string, status: string): Promise<void> {
-		const terminal =
-			status === "completed" || status === "failed" || status === "cancelled";
-		if (status !== "running" && !terminal) return;
+		if (status !== "running" && !isWorkflowTerminal(status)) return;
 		// The harness lookup scans PATH and the row read is an extra query, so
 		// neither happens unless something would actually be sent.
 		if (!(await this.telemetry.isEnabled())) return;

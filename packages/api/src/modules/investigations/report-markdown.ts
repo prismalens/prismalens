@@ -7,6 +7,12 @@
  */
 
 import type { Evidence, InvestigationReport } from "@prismalens/contracts";
+import {
+	EVIDENCE_DIRECTION_LABEL,
+	EVIDENCE_STATUS_LABEL,
+	HYPOTHESIS_STATUS_LABEL,
+	ROOT_CAUSE_CATEGORY_LABEL,
+} from "@prismalens/contracts";
 
 export interface ReportMarkdownInput {
 	incident: { number: number; title: string };
@@ -17,7 +23,7 @@ export interface ReportMarkdownInput {
 function evidenceLines(evidence: Evidence[]): string[] {
 	return evidence.map(
 		(e) =>
-			`  - ${e.direction === "contradicts" ? "Against" : "For"} (${e.status}): ${e.observation} — \`${e.source}\``,
+			`  - ${EVIDENCE_DIRECTION_LABEL[e.direction]} (${EVIDENCE_STATUS_LABEL[e.status]}): ${e.observation} — \`${e.source}\``,
 	);
 }
 
@@ -34,7 +40,7 @@ export function reportToMarkdown({
 
 	if (report.rootCause) {
 		const category = report.rootCauseCategory
-			? ` (${report.rootCauseCategory})`
+			? ` (${ROOT_CAUSE_CATEGORY_LABEL[report.rootCauseCategory]})`
 			: "";
 		out.push(`## Root cause${category}`, "", report.rootCause, "");
 	}
@@ -42,7 +48,9 @@ export function reportToMarkdown({
 	if (report.hypotheses.length > 0) {
 		out.push("## Hypotheses", "");
 		report.hypotheses.forEach((h, i) => {
-			out.push(`${i + 1}. **${h.statement}** (${h.status})`);
+			out.push(
+				`${i + 1}. **${h.statement}** (${HYPOTHESIS_STATUS_LABEL[h.status]})`,
+			);
 			out.push(...evidenceLines(h.evidence));
 		});
 		out.push("");

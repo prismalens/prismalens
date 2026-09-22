@@ -3,11 +3,10 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSession, signIn } from "@/lib/auth";
@@ -40,7 +39,7 @@ function LoginPage() {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<Error | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -55,7 +54,9 @@ function LoginPage() {
 			});
 
 			if (result.error) {
-				setError(result.error.message || "Invalid email or password");
+				setError(
+					new Error(result.error.message || "Invalid email or password"),
+				);
 				return;
 			}
 
@@ -67,88 +68,83 @@ function LoginPage() {
 			const safePath = isValidRedirect(redirectTo) ? redirectTo : "/";
 			navigate({ to: safePath });
 		} catch {
-			setError("An unexpected error occurred. Please try again.");
+			setError(new Error("An unexpected error occurred. Please try again."));
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
 	return (
-		<div className="min-h-[80vh] flex items-center justify-center">
-			<div className="w-full max-w-md">
-				<Card>
-					<CardHeader className="text-center">
-						<CardTitle className="text-2xl">Sign in to PrismaLens</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{/* Error Alert */}
-						{error && (
-							<Alert variant="destructive" className="mb-6">
-								<AlertCircle className="h-4 w-4" />
-								<AlertDescription>{error}</AlertDescription>
-							</Alert>
-						)}
+		<div className="flex min-h-[80vh] items-center justify-center px-4">
+			<div className="w-full max-w-sm" data-testid="login">
+				<h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+				<p className="mt-1 text-record text-muted-foreground">
+					The owner account for this PrismaLens.
+				</p>
 
-						{/* Login Form */}
-						<form onSubmit={handleSubmit} className="space-y-6">
-							<div className="space-y-2">
-								<Label htmlFor="email">Email address</Label>
-								<Input
-									id="email"
-									type="email"
-									value={email}
-									onChange={(e) => setEmail(e.target.value)}
-									required
-									autoComplete="email"
-									placeholder="you@example.com"
-								/>
-							</div>
+				<MutationError error={error} className="mt-4" />
 
-							<div className="space-y-2">
-								<Label htmlFor="password">Password</Label>
-								<div className="relative">
-									<Input
-										id="password"
-										type={showPassword ? "text" : "password"}
-										value={password}
-										onChange={(e) => setPassword(e.target.value)}
-										required
-										autoComplete="current-password"
-										placeholder="Enter your password"
-										className="pr-10"
-									/>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										onClick={() => setShowPassword(!showPassword)}
-										className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-										aria-label={
-											showPassword ? "Hide password" : "Show password"
-										}
-									>
-										{showPassword ? (
-											<EyeOff className="h-4 w-4 text-muted-foreground" />
-										) : (
-											<Eye className="h-4 w-4 text-muted-foreground" />
-										)}
-									</Button>
-								</div>
-							</div>
-
-							<Button type="submit" className="w-full" disabled={isLoading}>
-								{isLoading ? (
-									<>
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-										Signing in...
-									</>
+				<form onSubmit={handleSubmit} className="mt-5 space-y-3">
+					<div className="space-y-1">
+						<Label htmlFor="email" className="text-meta">
+							Email address
+						</Label>
+						<Input
+							id="email"
+							type="email"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							required
+							autoComplete="email"
+							placeholder="you@example.com"
+							className="h-9 text-record"
+						/>
+					</div>
+					<div className="space-y-1">
+						<Label htmlFor="password" className="text-meta">
+							Password
+						</Label>
+						<div className="relative">
+							<Input
+								id="password"
+								type={showPassword ? "text" : "password"}
+								value={password}
+								onChange={(e) => setPassword(e.target.value)}
+								required
+								autoComplete="current-password"
+								placeholder="Your password"
+								className="h-9 pr-9 text-record"
+							/>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => setShowPassword(!showPassword)}
+								className="absolute right-0 top-0 h-9 w-9 hover:bg-transparent"
+								aria-label={showPassword ? "Hide password" : "Show password"}
+							>
+								{showPassword ? (
+									<EyeOff className="h-4 w-4 text-muted-foreground" />
 								) : (
-									"Sign in"
+									<Eye className="h-4 w-4 text-muted-foreground" />
 								)}
 							</Button>
-						</form>
-					</CardContent>
-				</Card>
+						</div>
+					</div>
+					<div className="pt-1">
+						<Button
+							type="submit"
+							size="sm"
+							className="h-8"
+							disabled={isLoading}
+						>
+							{isLoading && (
+								<Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+							)}
+							Sign in
+						</Button>
+					</div>
+				</form>
 			</div>
 		</div>
 	);

@@ -9,7 +9,7 @@ setup("authenticate as owner", async ({ page }) => {
 	await page.goto("/auth/login");
 	// Ensure React hydration finishes before form submission
 	await page.waitForLoadState("networkidle");
-	await expect(page.getByText("Sign in to PrismaLens")).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 
 	await page.locator("#email").fill("admin@prismalens.dev");
 	await page.locator("#password").fill("admin123");

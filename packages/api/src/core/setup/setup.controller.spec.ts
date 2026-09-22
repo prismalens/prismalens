@@ -9,12 +9,12 @@
 
 import { Logger } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
-import { ThrottlerGuard } from "@nestjs/throttler";
 import { AuthService } from "../auth/auth.service.js";
 import { HarnessService } from "../harness/harness.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { UsersService } from "../users/users.service.js";
 import { SetupController } from "./setup.controller.js";
+import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 
 const OWNER = {
 	id: "user-1",
@@ -66,7 +66,7 @@ describe("SetupController", () => {
 				{ provide: HarnessService, useValue: mockHarnessService },
 			],
 		})
-			.overrideGuard(ThrottlerGuard)
+			.overrideGuard(MutationThrottleGuard)
 			.useValue({ canActivate: () => true })
 			.compile();
 

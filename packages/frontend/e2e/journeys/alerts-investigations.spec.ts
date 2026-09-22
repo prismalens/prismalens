@@ -18,9 +18,12 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 3. Open culprit investigation (d0111111) and verify culprit fields on Analysis tab
+		// 3. Open culprit investigation (d0111111) and verify culprit fields on
+		//    the record's Report section (#523 — the route redirects to the
+		//    incident record, and the section is `#report`, not a standalone
+		//    "Root Cause Analysis" heading).
 		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
@@ -38,7 +41,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		//    no service, change ref, or mechanism is invented (culprit: null
 		//    in the seed, so AnalysisTab must render no Culprit section at all).
 		await page.goto("/investigations/d0222222-2222-4222-8222-222222222222");
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
@@ -71,17 +74,17 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
 
-		const rows = page.locator("table tbody tr");
+		const rows = page.getByTestId("alert-row-link");
 		await expect(rows.first()).toBeVisible({ timeout: 15_000 });
 		const rowCount = await rows.count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThan(60); // fewer than the full 60-alert seed
-		// An unmapped alert renders no "INC-" incident link (AlertsTable).
+		// An unmapped alert renders no "INC-" incident link.
 		await expect(page.getByText(/^INC-/)).toHaveCount(0);
 
 		// 2. Switching tabs updates the URL and the result set.
 		await page.getByRole("tab", { name: "All Alerts" }).click();
-		await expect(page).toHaveURL(/tab=all/);
+		await expect(page).not.toHaveURL(/tab=unmapped/);
 		await expect(page.getByTestId("alerts-total-count")).toHaveText("60", {
 			timeout: 15_000,
 		});
@@ -163,7 +166,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByText("Acknowledged Alert Without Incident"),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("table tbody tr")).toHaveCount(2);
+		await expect(page.getByTestId("alert-row-link")).toHaveCount(2);
 
 		expect(requested.some((search) => search.includes("unassigned=true"))).toBe(
 			true,
@@ -215,7 +218,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("table tbody tr")).toHaveCount(
+		await expect(page.getByTestId("alert-row-link")).toHaveCount(
 			unassignedRows.length,
 		);
 		await expect(page.getByText("Unassigned Alert 1")).toBeVisible();
@@ -241,7 +244,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("table tbody tr").first()).toBeVisible({
+		await expect(page.getByTestId("alert-row-link").first()).toBeVisible({
 			timeout: 15_000,
 		});
 
@@ -295,7 +298,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
 		await setTheme("light");
@@ -394,8 +397,8 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			}),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(
-			page.getByRole("link", {
-				name: "Add a connection under Settings → Integrations",
+			page.getByText("Add a connection under Settings → Integrations.", {
+				exact: true,
 			}),
 		).toBeVisible({ timeout: 15_000 });
 

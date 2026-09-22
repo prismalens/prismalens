@@ -40,6 +40,8 @@ describe("IncidentsService", () => {
 			findUnique: vi.fn(),
 			findMany: vi.fn(),
 			count: vi.fn(),
+			groupBy: vi.fn(),
+			aggregate: vi.fn(),
 		},
 		$transaction: vi.fn(),
 	};
@@ -280,6 +282,74 @@ describe("IncidentsService", () => {
 			expect(include.investigations.take).toBeGreaterThanOrEqual(2);
 		});
 	});
+
+	describe("findAll open filter", () => {
+		it("narrows to the contracts' open statuses when asked and no status is set", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([]);
+			mockPrisma.incident.count.mockResolvedValue(0);
+			await service.findAll({ open: true });
+			expect(mockPrisma.incident.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({
+						status: { in: ["triggered", "investigating", "identified", "monitoring"] },
+					}),
+				}),
+			);
+		});
+
+		it("lets an explicit status win over open", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([]);
+			mockPrisma.incident.count.mockResolvedValue(0);
+			await service.findAll({ open: true, status: "closed" });
+			expect(mockPrisma.incident.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ status: "closed" }),
+				}),
+			);
+		});
+	});
+
+	describe("getStats", () => {
+		it("counts the window and names what needs a human with the shared predicate", async () => {
+			mockPrisma.incident.groupBy
+				.mockResolvedValueOnce([
+					{ status: "triggered", _count: 2 },
+					{ status: "investigating", _count: 1 },
+					{ status: "resolved", _count: 1 },
+					{ status: "closed", _count: 3 },
+				])
+				.mockResolvedValueOnce([
+					{ severity: "critical", _count: 1 },
+					{ severity: "medium", _count: 6 },
+				]);
+			mockPrisma.incident.aggregate.mockResolvedValue({
+				_avg: { timeToResolve: 900 },
+			});
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{ status: "triggered", investigations: [] },
+				{ status: "triggered", investigations: [{ status: "failed" }] },
+				{ status: "investigating", investigations: [{ status: "running" }] },
+				{ status: "resolved", investigations: [{ status: "completed" }] },
+			]);
+
+			const stats = await service.getStats({});
+
+			expect(stats).toEqual({
+				total: 7,
+				open: 3,
+				byStatus: { triggered: 2, investigating: 1, resolved: 1, closed: 3 },
+				bySeverity: { critical: 1, medium: 6 },
+				attention: { failed_run: 1, unacknowledged: 1, awaiting_close: 1 },
+				avgTimeToResolve: 900,
+			});
+			expect(mockPrisma.incident.aggregate).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({
+						status: { in: ["resolved", "closed"] },
+						timeToResolve: { not: null },
+					}),
+				}),
+			);
+		});
+	});
 });
-
-
