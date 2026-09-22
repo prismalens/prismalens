@@ -29,17 +29,8 @@ import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigat
 import { ServiceOverviewTab } from "@/components/services/ServiceOverviewTab";
 import { ServiceRepositoriesTab } from "@/components/services/ServiceRepositoriesTab";
 import { tierLabels } from "@/components/services/service-detail.utils";
+import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { MutationError } from "@/components/shared/MutationError";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -366,28 +357,18 @@ function ServiceDetailPage() {
 					currentCriticality={editingDep.criticality}
 				/>
 			)}
-			<AlertDialog
+			<DestructiveConfirm
 				open={!!removingDepId}
 				onOpenChange={(open) => {
 					if (!open) setRemovingDepId(null);
 				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Remove Dependency</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to remove this dependency? This action
-							cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleRemoveDependency}>
-							Remove
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				title="Remove dependency?"
+				description={
+					<p>The edge between the two services goes; both services stay.</p>
+				}
+				confirmLabel="Remove"
+				onConfirm={handleRemoveDependency}
+			/>
 			<ServiceIntegrationOverrideDialog
 				open={showOverrideDialog}
 				onOpenChange={(open) => {

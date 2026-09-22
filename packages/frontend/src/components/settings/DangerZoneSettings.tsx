@@ -3,29 +3,16 @@
 
 "use client";
 
-import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { MutationError } from "@/components/shared/MutationError";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useFactoryReset, useResetData } from "@/lib/api/hooks";
 
 export function DangerZoneSettings() {
 	const [showResetDialog, setShowResetDialog] = useState(false);
 	const [showFactoryResetDialog, setShowFactoryResetDialog] = useState(false);
-	const [confirmText, setConfirmText] = useState("");
 
 	const resetData = useResetData();
 	const factoryReset = useFactoryReset();
@@ -34,7 +21,6 @@ export function DangerZoneSettings() {
 		try {
 			await resetData.mutateAsync({ confirmation: "RESET" });
 			setShowResetDialog(false);
-			setConfirmText("");
 		} catch {
 			// error is surfaced via resetData.error
 		}
@@ -44,7 +30,6 @@ export function DangerZoneSettings() {
 		try {
 			await factoryReset.mutateAsync({ confirmation: "FACTORY RESET" });
 			setShowFactoryResetDialog(false);
-			setConfirmText("");
 			// Redirect to setup wizard
 			window.location.href = "/setup";
 		} catch {
@@ -100,111 +85,54 @@ export function DangerZoneSettings() {
 				</CardContent>
 			</Card>
 
-			{/* Reset Data Dialog */}
-			<AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Reset All Data?</AlertDialogTitle>
-						<AlertDialogDescription className="space-y-2">
-							<p>This will permanently delete:</p>
-							<ul className="list-disc list-inside text-sm">
-								<li>All alerts</li>
-								<li>All incidents</li>
-								<li>All investigations</li>
-								<li>All recommendations</li>
-							</ul>
-							<p className="pt-2">
-								Services, integrations, and settings will be preserved.
-							</p>
-							<div className="pt-4">
-								<Label htmlFor="confirm-reset">
-									Type <strong>RESET</strong> to confirm
-								</Label>
-								<Input
-									id="confirm-reset"
-									value={confirmText}
-									onChange={(e) => setConfirmText(e.target.value)}
-									placeholder="RESET"
-									className="mt-2"
-								/>
-							</div>
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<MutationError error={resetData.error} />
-					<AlertDialogFooter>
-						<AlertDialogCancel onClick={() => setConfirmText("")}>
-							Cancel
-						</AlertDialogCancel>
-						<AlertDialogAction
-							disabled={confirmText !== "RESET" || resetData.isPending}
-							onClick={handleResetData}
-							className="bg-destructive hover:bg-destructive/90"
-						>
-							{resetData.isPending && (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							)}
-							Reset All Data
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<DestructiveConfirm
+				open={showResetDialog}
+				onOpenChange={setShowResetDialog}
+				title="Reset all data?"
+				description={
+					<>
+						<p>This permanently deletes:</p>
+						<ul className="list-disc list-inside">
+							<li>All alerts</li>
+							<li>All incidents</li>
+							<li>All investigations</li>
+							<li>All recommendations</li>
+						</ul>
+						<p>Services, integrations and settings stay.</p>
+					</>
+				}
+				confirmWord="RESET"
+				confirmLabel="Reset all data"
+				onConfirm={handleResetData}
+				isPending={resetData.isPending}
+				error={resetData.error}
+			/>
 
-			{/* Factory Reset Dialog */}
-			<AlertDialog
+			<DestructiveConfirm
 				open={showFactoryResetDialog}
 				onOpenChange={setShowFactoryResetDialog}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Factory Reset?</AlertDialogTitle>
-						<AlertDialogDescription className="space-y-2">
-							<p>
-								This will permanently delete <strong>everything</strong>:
-							</p>
-							<ul className="list-disc list-inside text-sm">
-								<li>All users (except owner)</li>
-								<li>All services</li>
-								<li>All integrations</li>
-								<li>All alerts, incidents, and investigations</li>
-								<li>All settings and configurations</li>
-							</ul>
-							<p className="pt-2">
-								You will be redirected to the setup wizard to start fresh.
-							</p>
-							<div className="pt-4">
-								<Label htmlFor="confirm-factory-reset">
-									Type <strong>FACTORY RESET</strong> to confirm
-								</Label>
-								<Input
-									id="confirm-factory-reset"
-									value={confirmText}
-									onChange={(e) => setConfirmText(e.target.value)}
-									placeholder="FACTORY RESET"
-									className="mt-2"
-								/>
-							</div>
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<MutationError error={factoryReset.error} />
-					<AlertDialogFooter>
-						<AlertDialogCancel onClick={() => setConfirmText("")}>
-							Cancel
-						</AlertDialogCancel>
-						<AlertDialogAction
-							disabled={
-								confirmText !== "FACTORY RESET" || factoryReset.isPending
-							}
-							onClick={handleFactoryReset}
-							className="bg-destructive hover:bg-destructive/90"
-						>
-							{factoryReset.isPending && (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							)}
-							Factory Reset
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				title="Factory reset?"
+				description={
+					<>
+						<p>
+							This permanently deletes <strong>everything</strong>:
+						</p>
+						<ul className="list-disc list-inside">
+							<li>All users except the owner</li>
+							<li>All services</li>
+							<li>All integrations</li>
+							<li>All alerts, incidents and investigations</li>
+							<li>All settings</li>
+						</ul>
+						<p>You return to setup afterwards.</p>
+					</>
+				}
+				confirmWord="FACTORY RESET"
+				confirmLabel="Factory reset"
+				onConfirm={handleFactoryReset}
+				isPending={factoryReset.isPending}
+				error={factoryReset.error}
+			/>
 		</>
 	);
 }

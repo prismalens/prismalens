@@ -61,8 +61,28 @@
 	--sidebar-border: oklch(0.871 0.006 286.286);
 	--sidebar-ring: oklch(0.585 0.233 277.117);
 
+	/* ── State tones ── colour is state, never decoration ── */
+	--live: oklch(0.6 0.11 195);
+	--stale: oklch(0.72 0.16 70);
+	--sev-critical: oklch(0.577 0.245 27.325);
+	--sev-high: oklch(0.68 0.19 45);
+	--sev-medium: oklch(0.72 0.15 80);
+	--sev-low: oklch(0.6 0.15 250);
+	--sev-info: oklch(0.552 0.016 285.938);
+	--run-active: oklch(0.6 0.11 195);
+	--run-done: oklch(0.6 0.15 160);
+	--run-failed: oklch(0.577 0.245 27.325);
+
+	/* ── Type scale (4px baseline) ── */
+	--text-record: 0.8125rem;
+	--text-record--line-height: 1.25rem;
+	--text-meta: 0.6875rem;
+	--text-meta--line-height: 1rem;
+	--text-slot: 1.25rem;
+	--text-slot--line-height: 1.5rem;
+
 	/* ── Layout ── */
-	--radius: 0.5rem;
+	--radius: 0.375rem;
 
 	/* ── Brand supplementary ── */
 	--pl-investigation-purple: oklch(0.627 0.265 303.9);
@@ -113,6 +133,18 @@
 	--chart-3: oklch(0.696 0.17 162.48);
 	--chart-4: oklch(0.769 0.188 70.08);
 	--chart-5: oklch(0.577 0.245 27.325);
+
+	/* ── State tones (dark) ── */
+	--live: oklch(0.75 0.12 195);
+	--stale: oklch(0.8 0.15 75);
+	--sev-critical: oklch(0.68 0.2 25);
+	--sev-high: oklch(0.75 0.17 50);
+	--sev-medium: oklch(0.82 0.14 85);
+	--sev-low: oklch(0.72 0.13 250);
+	--sev-info: oklch(0.705 0.015 286.067);
+	--run-active: oklch(0.75 0.12 195);
+	--run-done: oklch(0.75 0.15 160);
+	--run-failed: oklch(0.68 0.2 25);
 
 	/* ── Sidebar (dark) ── */
 	--sidebar: oklch(0.141 0.005 285.823);

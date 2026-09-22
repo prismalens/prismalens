@@ -2,82 +2,35 @@
 // Copyright 2026 Sumit Patel
 
 import type { AlertStatus, IncidentStatus } from "@prismalens/contracts";
-
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { type ChipTone, StateChip } from "./StateChip";
 
 export interface StatusBadgeProps {
 	status: AlertStatus | IncidentStatus;
 	className?: string;
 }
 
-const statusConfig: Record<
-	string,
-	{
-		label: string;
-		variant: "default" | "destructive" | "outline" | "secondary";
-		className: string;
-	}
-> = {
+const statusTone: Record<string, { label: string; tone: ChipTone }> = {
 	// Alert statuses
-	triggered: {
-		label: "Triggered",
-		variant: "destructive",
-		className: "bg-red-600 hover:bg-red-600 text-white",
-	},
-	acknowledged: {
-		label: "Acknowledged",
-		variant: "default",
-		className: "bg-blue-600 hover:bg-blue-600 text-white",
-	},
-	correlated: {
-		label: "Correlated",
-		variant: "secondary",
-		className: "bg-purple-600 hover:bg-purple-600 text-white",
-	},
-	resolved: {
-		label: "Resolved",
-		variant: "outline",
-		className: "bg-green-600 hover:bg-green-600 text-white",
-	},
-	suppressed: {
-		label: "Suppressed",
-		variant: "outline",
-		className: "bg-gray-500 hover:bg-gray-500 text-white",
-	},
+	triggered: { label: "Triggered", tone: "critical" },
+	acknowledged: { label: "Acknowledged", tone: "low" },
+	correlated: { label: "Correlated", tone: "primary" },
+	resolved: { label: "Resolved", tone: "done" },
+	suppressed: { label: "Suppressed", tone: "neutral" },
 	// Incident statuses
-	investigating: {
-		label: "Investigating",
-		variant: "default",
-		className: "bg-yellow-600 hover:bg-yellow-600 text-white",
-	},
-	identified: {
-		label: "Identified",
-		variant: "default",
-		className: "bg-orange-500 hover:bg-orange-500 text-white",
-	},
-	monitoring: {
-		label: "Monitoring",
-		variant: "secondary",
-		className: "bg-cyan-600 hover:bg-cyan-600 text-white",
-	},
-	closed: {
-		label: "Closed",
-		variant: "outline",
-		className: "bg-gray-600 hover:bg-gray-600 text-white",
-	},
+	investigating: { label: "Investigating", tone: "active" },
+	identified: { label: "Identified", tone: "high" },
+	monitoring: { label: "Monitoring", tone: "low" },
+	closed: { label: "Closed", tone: "neutral" },
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-	const config = statusConfig[status] || {
+	const config = statusTone[status] || {
 		label: status,
-		variant: "outline" as const,
-		className: "bg-gray-500 hover:bg-gray-500 text-white",
+		tone: "neutral" as const,
 	};
-
 	return (
-		<Badge variant={config.variant} className={cn(config.className, className)}>
+		<StateChip tone={config.tone} className={className}>
 			{config.label}
-		</Badge>
+		</StateChip>
 	);
 }

@@ -7,17 +7,8 @@ import type {
 } from "@prismalens/contracts";
 import { FolderGit2, Link2, Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { MutationError } from "@/components/shared/MutationError";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -177,38 +168,24 @@ export function UnlinkedReposDialog({
 				</DialogContent>
 			</Dialog>
 
-			<AlertDialog
+			<DestructiveConfirm
 				open={!!deletingRepoId}
 				onOpenChange={(open) => {
 					if (!open) setDeletingRepoId(null);
 				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete repository</AlertDialogTitle>
-						<AlertDialogDescription>
-							Delete <strong>{repoToDelete?.fullName}</strong>? This removes it
-							from PrismaLens. It does not affect the actual repository on
-							GitHub/GitLab.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-							onClick={() => {
-								if (deletingRepoId) handleDelete(deletingRepoId);
-							}}
-							disabled={deleteRepo.isPending}
-						>
-							{deleteRepo.isPending ? (
-								<Loader2 className="h-4 w-4 animate-spin mr-1" />
-							) : null}
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				title="Delete repository?"
+				description={
+					<p>
+						<strong>{repoToDelete?.fullName}</strong> leaves PrismaLens. The
+						repository on GitHub or GitLab is untouched.
+					</p>
+				}
+				confirmLabel="Delete"
+				onConfirm={() => {
+					if (deletingRepoId) handleDelete(deletingRepoId);
+				}}
+				isPending={deleteRepo.isPending}
+			/>
 		</>
 	);
 }
