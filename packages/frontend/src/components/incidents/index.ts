@@ -39,7 +39,6 @@ export {
 	type IncidentStateBandProps,
 	type RunCapsule,
 } from "./IncidentStateBand";
-export { IncidentTable, type IncidentTableProps } from "./IncidentTable";
 export { QueueStats, type QueueStatsProps } from "./QueueStats";
 export {
 	RecommendationCard,
