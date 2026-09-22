@@ -56,10 +56,12 @@ export {
 	armForcedExitOnSecondSignal,
 	disarmForcedExit,
 	readWorkspaceLock,
+	readWorkspaceLockState,
 	releaseWorkspaceLock,
 	WORKSPACE_LOCK_FILE,
 	WorkspaceLockedError,
 	type WorkspaceLockOwner,
+	type WorkspaceLockState,
 } from "./utils/workspace-lock.js";
 // Re-export app data utilities
 // Re-export encryption key and secret utilities

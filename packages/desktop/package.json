@@ -1,0 +1,53 @@
+{
+	"name": "@prismalens/desktop",
+	"version": "0.0.1",
+	"private": true,
+	"description": "The Electron launcher: spawns the same backend `pl up` runs, declares the laptop placement, opens a window on it, and adds presence.",
+	"type": "module",
+	"main": "dist/main.js",
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"start": "electron .",
+		"stage:backend": "node scripts/pack-desktop.mjs",
+		"dist": "electron-builder --dir"
+	},
+	"dependencies": {
+		"@prismalens/config": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"electron": "^44.4.4",
+		"electron-builder": "^26.15.3",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"build": {
+		"appId": "io.prismalens.desktop",
+		"productName": "PrismaLens",
+		"directories": {
+			"output": "release"
+		},
+		"files": [
+			"dist/**",
+			"package.json"
+		],
+		"extraResources": [
+			{
+				"from": "resources/prismalens",
+				"to": "prismalens"
+			}
+		],
+		"asar": true,
+		"mac": {
+			"target": "dir"
+		},
+		"linux": {
+			"target": "dir"
+		},
+		"win": {
+			"target": "dir"
+		}
+	}
+}
