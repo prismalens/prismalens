@@ -270,7 +270,6 @@ function ServicesPage() {
 		data: response,
 		isLoading,
 		refetch: refetchServices,
-		isRefetching,
 	} = useServices({
 		limit: PAGE_SIZE,
 		offset,

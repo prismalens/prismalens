@@ -204,13 +204,14 @@ export function AgentPicker({
 					aria-label="Search agents"
 					className="h-9 w-full border-b bg-transparent px-3 text-record outline-none placeholder:text-muted-foreground"
 				/>
-				<ul role="listbox" className="max-h-72 overflow-y-auto py-1">
+				<div role="listbox" className="max-h-72 overflow-y-auto py-1">
 					{choices.map((c, i) => {
 						const active = c.value === setting;
 						return (
-							<li
+							<div
 								key={c.value}
 								role="option"
+								tabIndex={-1}
 								aria-selected={active}
 								aria-disabled={c.disabled}
 								data-testid={`agent-option-${c.value}`}
@@ -236,15 +237,15 @@ export function AgentPicker({
 										{c.line}
 									</span>
 								</span>
-							</li>
+							</div>
 						);
 					})}
 					{choices.length === 0 && (
-						<li className="px-3 py-2 text-record text-muted-foreground">
+						<p className="px-3 py-2 text-record text-muted-foreground">
 							No agent matches.
-						</li>
+						</p>
 					)}
-				</ul>
+				</div>
 				<div className="flex items-center gap-3 border-t px-3 py-1.5 text-meta text-muted-foreground">
 					<span className="flex items-center gap-1">
 						<Kbd>↑</Kbd>
