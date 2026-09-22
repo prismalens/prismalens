@@ -86,19 +86,22 @@ export function SurfaceRail({
 									onClick={() => onPick(s.id)}
 									data-testid={`surface-${s.id}`}
 									className={cn(
-										"relative flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground",
+										"flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground",
 										on &&
 											"bg-muted text-foreground shadow-[inset_-2px_0_0_var(--primary)]",
 									)}
 								>
 									{s.icon}
-									{count !== undefined && count > 0 && (
-										<span className="absolute -right-0.5 -top-0.5 rounded bg-background px-0.5 text-[10px] leading-none text-muted-foreground tabular-nums">
-											{count}
-										</span>
-									)}
 								</button>
 							</TooltipTrigger>
+							{count !== undefined && count > 0 && (
+								<span
+									aria-hidden
+									className="-mt-1 mb-0.5 text-[10px] leading-none text-muted-foreground tabular-nums"
+								>
+									{count}
+								</span>
+							)}
 							<TooltipContent side="left" className="flex items-center gap-2">
 								{s.label}
 								<kbd className="rounded border bg-muted px-1 font-mono text-[10px]">
