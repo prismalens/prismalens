@@ -3,11 +3,10 @@
 
 import { type ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
-import type { Session, User } from "@prismalens/auth";
+import type { DeviceRecord } from "@prismalens/auth";
 import type { Request } from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthGuard } from "./auth.guard.js";
-import type { AuthService } from "./auth.service.js";
 import type { OperatorResolver } from "./operator.resolver.js";
 import { IS_PUBLIC_KEY } from "./public.decorator.js";
 
@@ -15,7 +14,6 @@ describe("AuthGuard", () => {
 	let guard: AuthGuard;
 	let mockReflector: { getAllAndOverride: ReturnType<typeof vi.fn> };
 	let mockOperator: { resolve: ReturnType<typeof vi.fn> };
-	let mockAuthService: AuthService;
 	let request: Request;
 	let mockContext: ExecutionContext;
 
@@ -26,7 +24,6 @@ describe("AuthGuard", () => {
 		mockOperator = {
 			resolve: vi.fn(),
 		};
-		mockAuthService = {} as AuthService;
 
 		request = {} as Request;
 		mockContext = {
@@ -38,7 +35,6 @@ describe("AuthGuard", () => {
 		} as unknown as ExecutionContext;
 
 		guard = new AuthGuard(
-			mockAuthService,
 			mockOperator as unknown as OperatorResolver,
 			mockReflector as unknown as Reflector,
 		);
@@ -57,38 +53,32 @@ describe("AuthGuard", () => {
 		expect(mockOperator.resolve).not.toHaveBeenCalled();
 	});
 
-	it('resolver returns {operator:{via:"loopback"}, user} -> true and request.operator/user set, request.session undefined', async () => {
+	it('resolver returns {via:"loopback"} -> true, request.operator set', async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
-		const user = { id: "user-1", email: "operator@example.com" } as User;
-		mockOperator.resolve.mockResolvedValue({
-			operator: { via: "loopback" },
-			user,
-		});
+		mockOperator.resolve.mockResolvedValue({ via: "loopback" });
 
 		const result = await guard.canActivate(mockContext);
 
 		expect(result).toBe(true);
 		expect(request.operator).toEqual({ via: "loopback" });
-		expect(request.user).toBe(user);
-		expect(request.session).toBeUndefined();
 	});
 
-	it('resolver returns {operator:{via:"session"}, user, session} -> true, all three set', async () => {
+	it('resolver returns {via:"device", device} -> true, request.operator set', async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
-		const user = { id: "user-2", email: "session-user@example.com" } as User;
-		const session = { id: "session-1", userId: "user-2" } as Session;
-		mockOperator.resolve.mockResolvedValue({
-			operator: { via: "session" },
-			user,
-			session,
-		});
+		const device = {
+			id: "device-1",
+			name: "Ada's phone",
+			scopes: [],
+			createdAt: new Date(),
+			lastSeenAt: null,
+			revokedAt: null,
+		} as DeviceRecord;
+		mockOperator.resolve.mockResolvedValue({ via: "device", device });
 
 		const result = await guard.canActivate(mockContext);
 
 		expect(result).toBe(true);
-		expect(request.operator).toEqual({ via: "session" });
-		expect(request.user).toBe(user);
-		expect(request.session).toBe(session);
+		expect(request.operator).toEqual({ via: "device", device });
 	});
 
 	it("resolver returns null -> throws UnauthorizedException", async () => {
