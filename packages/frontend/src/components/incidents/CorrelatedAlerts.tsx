@@ -40,7 +40,13 @@ export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 						<StatusBadge status={alert.status} kind="alert" />
 					</div>
 					<div className="min-w-0 flex-1">
-						<p className="truncate text-record font-medium">{alert.title}</p>
+						<Link
+							to="/alerts/$id"
+							params={{ id: alert.id }}
+							className="block truncate text-record font-medium hover:text-primary hover:underline"
+						>
+							{alert.title}
+						</Link>
 						{alert.description && (
 							<p className="line-clamp-2 text-record text-muted-foreground">
 								{alert.description}

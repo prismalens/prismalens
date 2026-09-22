@@ -9,8 +9,11 @@
 
 import {
 	canIncidentAction,
+	INCIDENT_ATTENTION_LABEL,
+	type IncidentAttention,
 	type IncidentStatus,
 	type IncidentWithRelations,
+	incidentAttention,
 	isWorkflowLive,
 	isWorkflowTerminal,
 	type Severity,
@@ -43,7 +46,7 @@ import {
 	Plus,
 	Search,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { SetupNextStepHint } from "@/components/setup";
 import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
@@ -72,13 +75,17 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { priorityTone } from "@/lib/state-tone";
+import { cn } from "@/lib/utils";
 
 export interface IncidentDataTableProps {
 	incidents: IncidentWithRelations[];
 	isLoading?: boolean;
 	onAcknowledge?: (id: string) => void;
 	onInvestigate?: (id: string) => void;
+	/** Opens a row: the row click, and Enter on the keyboard cursor. */
+	onOpen?: (id: string) => void;
 	/** When provided, the empty state offers a way out of it. */
 	onCreate?: () => void;
 	investigateDisabled?: boolean;
@@ -163,6 +170,33 @@ function InvestigationsBadge({
 	);
 }
 
+const attentionTone: Record<IncidentAttention, "failed" | "critical" | "done"> =
+	{
+		failed_run: "failed",
+		unacknowledged: "critical",
+		awaiting_close: "done",
+	};
+
+/** Why this row wants a human: the same predicate the stats route counts with. */
+export function attentionFor(
+	incident: IncidentWithRelations,
+): IncidentAttention | null {
+	return incidentAttention(
+		incident.status,
+		incident.investigations?.[0]?.status,
+	);
+}
+
+function AttentionChip({ incident }: { incident: IncidentWithRelations }) {
+	const why = attentionFor(incident);
+	if (!why) return null;
+	return (
+		<StateChip tone={attentionTone[why]} data-testid="incident-attention">
+			{INCIDENT_ATTENTION_LABEL[why]}
+		</StateChip>
+	);
+}
+
 // Column definitions
 const createColumns = (
 	onAcknowledge?: (id: string) => void,
@@ -183,13 +217,16 @@ const createColumns = (
 		header: ({ column }) => <SortableHeader column={column} title="Title" />,
 		cell: ({ row }) => (
 			<div>
-				<Link
-					to="/incidents/$id"
-					params={{ id: row.original.id }}
-					className="font-medium hover:underline hover:text-primary"
-				>
-					{row.original.title}
-				</Link>
+				<div className="flex flex-wrap items-center gap-2">
+					<Link
+						to="/incidents/$id"
+						params={{ id: row.original.id }}
+						className="font-medium hover:underline hover:text-primary"
+					>
+						{row.original.title}
+					</Link>
+					<AttentionChip incident={row.original} />
+				</div>
 				{row.original.description && (
 					<p className="text-sm text-muted-foreground truncate max-w-[300px]">
 						{row.original.description}
@@ -360,6 +397,7 @@ export function IncidentDataTable({
 	isLoading,
 	onAcknowledge,
 	onInvestigate,
+	onOpen,
 	onCreate,
 	investigateDisabled,
 	investigateDisabledReason,
@@ -367,6 +405,12 @@ export function IncidentDataTable({
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: "triggeredAt", desc: true },
 	]);
+	// Rows that want a human sit above the rest, whatever the sort says.
+	const ordered = useMemo(() => {
+		const needsYou = incidents.filter((i) => attentionFor(i) !== null);
+		const rest = incidents.filter((i) => attentionFor(i) === null);
+		return { needsYou, rest, data: [...needsYou, ...rest] };
+	}, [incidents]);
 	const [pagination, setPagination] = useState<PaginationState>({
 		pageIndex: 0,
 		pageSize: 10,
@@ -389,7 +433,7 @@ export function IncidentDataTable({
 	);
 
 	const table = useReactTable({
-		data: incidents,
+		data: ordered.data,
 		columns,
 		state: {
 			sorting,
@@ -400,6 +444,12 @@ export function IncidentDataTable({
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
+	});
+
+	const pageRows = table.getRowModel().rows;
+	const { cursor, setCursor } = useListKeyboard(pageRows.length, (index) => {
+		const row = pageRows[index];
+		if (row) onOpen?.(row.original.id);
 	});
 
 	if (isLoading) {
@@ -463,18 +513,57 @@ export function IncidentDataTable({
 							))}
 						</TableHeader>
 						<TableBody>
-							{table.getRowModel().rows.map((row) => (
-								<TableRow key={row.id}>
-									{row.getVisibleCells().map((cell) => (
-										<TableCell key={cell.id}>
-											{flexRender(
-												cell.column.columnDef.cell,
-												cell.getContext(),
+							{pageRows.map((row, index) => {
+								const onFirstPage = pagination.pageIndex === 0;
+								const needsYouHeader =
+									onFirstPage && index === 0 && ordered.needsYou.length > 0;
+								const restHeader =
+									onFirstPage &&
+									ordered.needsYou.length > 0 &&
+									index === ordered.needsYou.length;
+								return (
+									<Fragment key={row.id}>
+										{needsYouHeader && (
+											<GroupRow
+												label="Needs you"
+												count={ordered.needsYou.length}
+												testId="group-needs-you"
+											/>
+										)}
+										{restHeader && (
+											<GroupRow
+												label="Everything else"
+												count={ordered.rest.length}
+												testId="group-rest"
+											/>
+										)}
+										<TableRow
+											data-cursor={cursor === index ? "true" : undefined}
+											aria-selected={cursor === index}
+											onMouseEnter={() => setCursor(index)}
+											onClick={(e) => {
+												if ((e.target as HTMLElement).closest("a, button"))
+													return;
+												onOpen?.(row.original.id);
+											}}
+											className={cn(
+												onOpen && "cursor-pointer",
+												cursor === index &&
+													"bg-muted/60 shadow-[inset_2px_0_0_var(--primary)]",
 											)}
-										</TableCell>
-									))}
-								</TableRow>
-							))}
+										>
+											{row.getVisibleCells().map((cell) => (
+												<TableCell key={cell.id}>
+													{flexRender(
+														cell.column.columnDef.cell,
+														cell.getContext(),
+													)}
+												</TableCell>
+											))}
+										</TableRow>
+									</Fragment>
+								);
+							})}
 						</TableBody>
 					</Table>
 				</div>
@@ -566,6 +655,26 @@ export function IncidentDataTable({
 
 // Loading skeleton
 const SKELETON_ROWS = ["row-1", "row-2", "row-3", "row-4", "row-5"];
+
+function GroupRow({
+	label,
+	count,
+	testId,
+}: {
+	label: string;
+	count: number;
+	testId: string;
+}) {
+	return (
+		<TableRow className="hover:bg-transparent" data-testid={testId}>
+			<TableCell colSpan={99} className="bg-muted/30 py-1">
+				<span className="text-meta font-medium text-muted-foreground">
+					{label} <Mono>{count}</Mono>
+				</span>
+			</TableCell>
+		</TableRow>
+	);
+}
 
 function IncidentTableSkeleton() {
 	return (

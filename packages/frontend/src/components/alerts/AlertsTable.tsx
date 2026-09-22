@@ -110,12 +110,15 @@ export function AlertsTable({
 								<TableRow key={alert.id}>
 									<TableCell className="font-medium">
 										<div className="flex flex-col gap-1">
-											<span
-												className="truncate max-w-[280px]"
+											<Link
+												to="/alerts/$id"
+												params={{ id: alert.id }}
+												className="max-w-[280px] truncate hover:text-primary hover:underline"
 												title={alert.title}
+												data-testid="alert-row-link"
 											>
 												{alert.title}
-											</span>
+											</Link>
 											{alert.incident && (
 												<Link
 													to="/incidents/$id"
