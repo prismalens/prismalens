@@ -3,7 +3,7 @@
 
 "use client";
 
-import { ArrowRight, Eye, EyeOff, Loader2, Shield } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
@@ -69,44 +69,30 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 	};
 
 	return (
-		<div className="rounded-lg border p-6">
-			<div className="text-center mb-6">
-				<div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-					<Shield className="h-8 w-8 text-primary" />
-				</div>
-				<h2 className="text-xl font-semibold">Welcome to PrismaLens</h2>
-				<p className="text-sm text-muted-foreground mt-1">
-					Create your administrator account to get started
-				</p>
-			</div>
+		<div className="w-full max-w-sm" data-testid="setup-owner">
+			<h1 className="text-xl font-semibold tracking-tight">
+				Create the owner account
+			</h1>
+			<p className="mt-1 text-record text-muted-foreground">
+				The only account on this PrismaLens. Sign-up closes after it.
+			</p>
 
-			<MutationError error={error} className="mb-4" />
+			<MutationError error={error} className="mt-4" />
 
 			{/* Render form only after client mount to avoid hydration mismatch from password manager extensions */}
 			{!isMounted ? (
-				<div className="space-y-4">
-					<div className="space-y-2">
-						<div className="h-4 w-16 bg-muted rounded animate-pulse" />
-						<div className="h-10 w-full bg-muted rounded animate-pulse" />
-					</div>
-					<div className="space-y-2">
-						<div className="h-4 w-24 bg-muted rounded animate-pulse" />
-						<div className="h-10 w-full bg-muted rounded animate-pulse" />
-					</div>
-					<div className="space-y-2">
-						<div className="h-4 w-20 bg-muted rounded animate-pulse" />
-						<div className="h-10 w-full bg-muted rounded animate-pulse" />
-					</div>
-					<div className="space-y-2">
-						<div className="h-4 w-32 bg-muted rounded animate-pulse" />
-						<div className="h-10 w-full bg-muted rounded animate-pulse" />
-					</div>
-					<div className="h-10 w-full bg-muted rounded animate-pulse" />
+				<div className="mt-5 space-y-3">
+					{[1, 2, 3, 4].map((k) => (
+						<div
+							key={k}
+							className="h-9 w-full animate-pulse rounded bg-muted"
+						/>
+					))}
 				</div>
 			) : (
-				<form onSubmit={handleSubmit} className="space-y-4">
-					<div className="space-y-2">
-						<Label htmlFor="name">
+				<form onSubmit={handleSubmit} className="mt-5 space-y-3">
+					<div className="space-y-1">
+						<Label htmlFor="name" className="text-meta">
 							Name <span className="text-muted-foreground">(optional)</span>
 						</Label>
 						<Input
@@ -115,23 +101,27 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							placeholder="Your name"
+							className="h-9 text-record"
 						/>
 					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="email">Email address</Label>
+					<div className="space-y-1">
+						<Label htmlFor="email" className="text-meta">
+							Email address
+						</Label>
 						<Input
 							id="email"
 							type="email"
 							value={email}
 							onChange={(e) => setEmail(e.target.value)}
-							placeholder="admin@example.com"
+							placeholder="you@example.com"
 							required
+							className="h-9 text-record"
 						/>
 					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="password">Password</Label>
+					<div className="space-y-1">
+						<Label htmlFor="password" className="text-meta">
+							Password
+						</Label>
 						<div className="relative">
 							<Input
 								id="password"
@@ -141,14 +131,14 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 								placeholder="At least 8 characters"
 								required
 								minLength={8}
-								className="pr-10"
+								className="h-9 pr-9 text-record"
 							/>
 							<Button
 								type="button"
 								variant="ghost"
 								size="icon"
 								onClick={() => setShowPassword(!showPassword)}
-								className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+								className="absolute right-0 top-0 h-9 w-9 hover:bg-transparent"
 								aria-label={showPassword ? "Hide password" : "Show password"}
 							>
 								{showPassword ? (
@@ -159,44 +149,35 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 							</Button>
 						</div>
 					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="confirmPassword">Confirm Password</Label>
+					<div className="space-y-1">
+						<Label htmlFor="confirmPassword" className="text-meta">
+							Confirm password
+						</Label>
 						<Input
 							id="confirmPassword"
 							type={showPassword ? "text" : "password"}
 							value={confirmPassword}
 							onChange={(e) => setConfirmPassword(e.target.value)}
-							placeholder="Confirm your password"
+							placeholder="Once more"
 							required
+							className="h-9 text-record"
 						/>
 					</div>
-
-					<Button
-						type="submit"
-						className="w-full"
-						disabled={createOwner.isPending}
-					>
-						{createOwner.isPending ? (
-							<>
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-								Creating the owner account...
-							</>
-						) : (
-							<>
-								Create the owner account
-								<ArrowRight className="ml-2 h-4 w-4" />
-							</>
-						)}
-					</Button>
+					<div className="pt-1">
+						<Button
+							type="submit"
+							size="sm"
+							className="h-8"
+							disabled={createOwner.isPending}
+						>
+							{createOwner.isPending && (
+								<Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+							)}
+							Create the owner account
+						</Button>
+					</div>
 				</form>
 			)}
-
-			<div className="mt-6 p-4 bg-muted/50 rounded-lg">
-				<p className="text-sm text-muted-foreground">
-					This account will have full administrative access to PrismaLens.
-				</p>
-			</div>
 		</div>
 	);
 }

@@ -15,7 +15,6 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth";
 import { SetupStepOwner } from "./SetupStepOwner";
@@ -57,27 +56,24 @@ export function SetupWizard({ redirect }: SetupWizardProps) {
 	// `/_authenticated` will not bounce them back — just send them on.
 	if (!sessionPending && session?.user) {
 		return (
-			<div className="min-h-[80vh] flex items-center justify-center">
-				<div className="w-full max-w-md">
-					<div className="rounded-lg border p-6 text-center">
-						<div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-							<LogIn className="h-8 w-8 text-primary" />
-						</div>
-						<h2 className="text-xl font-semibold">Setup is already complete</h2>
-						<p className="text-sm text-muted-foreground mt-1 mb-6">
-							PrismaLens is ready to use.
-						</p>
-						<Button asChild>
-							<Link to="/incidents">Go to incidents</Link>
-						</Button>
-					</div>
+			<div className="flex min-h-[80vh] items-center justify-center px-4">
+				<div className="w-full max-w-sm">
+					<h1 className="text-xl font-semibold tracking-tight">
+						Setup is done
+					</h1>
+					<p className="mt-1 text-record text-muted-foreground">
+						The owner account exists. Nothing else is needed here.
+					</p>
+					<Button asChild size="sm" className="mt-4 h-8">
+						<Link to="/incidents">Go to incidents</Link>
+					</Button>
 				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-[80vh] flex items-center justify-center py-8">
+		<div className="flex min-h-[80vh] items-center justify-center px-4 py-8">
 			<div className="w-full max-w-2xl px-4">
 				<SetupStepOwner onComplete={handleAccountCreated} />
 			</div>

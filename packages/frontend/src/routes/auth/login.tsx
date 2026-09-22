@@ -75,72 +75,76 @@ function LoginPage() {
 	};
 
 	return (
-		<div className="min-h-[80vh] flex items-center justify-center">
-			<div className="w-full max-w-md">
-				<div className="rounded-lg border p-6">
-					<h1 className="text-2xl font-semibold text-center mb-6">
-						Sign in to PrismaLens
-					</h1>
+		<div className="flex min-h-[80vh] items-center justify-center px-4">
+			<div className="w-full max-w-sm" data-testid="login">
+				<h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+				<p className="mt-1 text-record text-muted-foreground">
+					The owner account for this PrismaLens.
+				</p>
 
-					<MutationError error={error} className="mb-6" />
+				<MutationError error={error} className="mt-4" />
 
-					{/* Login Form */}
-					<form onSubmit={handleSubmit} className="space-y-6">
-						<div className="space-y-2">
-							<Label htmlFor="email">Email address</Label>
+				<form onSubmit={handleSubmit} className="mt-5 space-y-3">
+					<div className="space-y-1">
+						<Label htmlFor="email" className="text-meta">
+							Email address
+						</Label>
+						<Input
+							id="email"
+							type="email"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							required
+							autoComplete="email"
+							placeholder="you@example.com"
+							className="h-9 text-record"
+						/>
+					</div>
+					<div className="space-y-1">
+						<Label htmlFor="password" className="text-meta">
+							Password
+						</Label>
+						<div className="relative">
 							<Input
-								id="email"
-								type="email"
-								value={email}
-								onChange={(e) => setEmail(e.target.value)}
+								id="password"
+								type={showPassword ? "text" : "password"}
+								value={password}
+								onChange={(e) => setPassword(e.target.value)}
 								required
-								autoComplete="email"
-								placeholder="you@example.com"
+								autoComplete="current-password"
+								placeholder="Your password"
+								className="h-9 pr-9 text-record"
 							/>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => setShowPassword(!showPassword)}
+								className="absolute right-0 top-0 h-9 w-9 hover:bg-transparent"
+								aria-label={showPassword ? "Hide password" : "Show password"}
+							>
+								{showPassword ? (
+									<EyeOff className="h-4 w-4 text-muted-foreground" />
+								) : (
+									<Eye className="h-4 w-4 text-muted-foreground" />
+								)}
+							</Button>
 						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="password">Password</Label>
-							<div className="relative">
-								<Input
-									id="password"
-									type={showPassword ? "text" : "password"}
-									value={password}
-									onChange={(e) => setPassword(e.target.value)}
-									required
-									autoComplete="current-password"
-									placeholder="Enter your password"
-									className="pr-10"
-								/>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									onClick={() => setShowPassword(!showPassword)}
-									className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-									aria-label={showPassword ? "Hide password" : "Show password"}
-								>
-									{showPassword ? (
-										<EyeOff className="h-4 w-4 text-muted-foreground" />
-									) : (
-										<Eye className="h-4 w-4 text-muted-foreground" />
-									)}
-								</Button>
-							</div>
-						</div>
-
-						<Button type="submit" className="w-full" disabled={isLoading}>
-							{isLoading ? (
-								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									Signing in...
-								</>
-							) : (
-								"Sign in"
+					</div>
+					<div className="pt-1">
+						<Button
+							type="submit"
+							size="sm"
+							className="h-8"
+							disabled={isLoading}
+						>
+							{isLoading && (
+								<Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
 							)}
+							Sign in
 						</Button>
-					</form>
-				</div>
+					</div>
+				</form>
 			</div>
 		</div>
 	);
