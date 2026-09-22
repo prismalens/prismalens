@@ -7,7 +7,10 @@
  * Displays incidents in a table with actions
  */
 
-import type { IncidentWithRelations } from "@prismalens/contracts";
+import {
+	canIncidentAction,
+	type IncidentWithRelations,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
@@ -19,7 +22,7 @@ import {
 } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
+import { StateChip } from "@/components/shared/StateChip";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -38,6 +41,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { priorityTone } from "@/lib/state-tone";
 
 export interface IncidentTableProps {
 	incidents: IncidentWithRelations[];
@@ -47,14 +51,6 @@ export interface IncidentTableProps {
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
 }
-
-const priorityTone: Record<string, ChipTone> = {
-	p1: "critical",
-	p2: "high",
-	p3: "medium",
-	p4: "low",
-	p5: "neutral",
-};
 
 function formatDuration(ms: number | null): string {
 	if (!ms) return "-";
@@ -144,14 +140,12 @@ export function IncidentTable({
 									<SeverityBadge severity={incident.severity} />
 								</TableCell>
 								<TableCell>
-									<StateChip
-										tone={priorityTone[incident.priority] || "neutral"}
-									>
+									<StateChip tone={priorityTone(incident.priority)}>
 										{incident.priority.toUpperCase()}
 									</StateChip>
 								</TableCell>
 								<TableCell>
-									<StatusBadge status={incident.status} />
+									<StatusBadge status={incident.status} kind="incident" />
 								</TableCell>
 								<TableCell>
 									{incident.service ? (
@@ -209,22 +203,23 @@ export function IncidentTable({
 											<TooltipContent>View Details</TooltipContent>
 										</Tooltip>
 
-										{incident.status === "triggered" && onAcknowledge && (
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() => onAcknowledge(incident.id)}
-													>
-														<CheckCircle className="h-4 w-4" />
-													</Button>
-												</TooltipTrigger>
-												<TooltipContent>Acknowledge</TooltipContent>
-											</Tooltip>
-										)}
+										{canIncidentAction("acknowledge", incident.status) &&
+											onAcknowledge && (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<Button
+															variant="ghost"
+															size="icon"
+															onClick={() => onAcknowledge(incident.id)}
+														>
+															<CheckCircle className="h-4 w-4" />
+														</Button>
+													</TooltipTrigger>
+													<TooltipContent>Acknowledge</TooltipContent>
+												</Tooltip>
+											)}
 
-										{["triggered", "investigating"].includes(incident.status) &&
+										{canIncidentAction("investigate", incident.status) &&
 											onInvestigate && (
 												<Tooltip>
 													<TooltipTrigger asChild>

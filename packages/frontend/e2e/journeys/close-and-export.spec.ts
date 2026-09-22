@@ -31,7 +31,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
 			timeout: 15_000,
 		});
-		await expect(page.getByRole("heading", { name: title })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-state-band")
+				.getByRole("heading", { name: title }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 
@@ -67,7 +71,6 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			timeout: 15_000,
 		});
 
-		await page.getByRole("tab", { name: "Investigation" }).click();
 		await expect(page.getByTestId("export-report-markdown")).toHaveCount(0);
 		await expect(page.getByTestId("post-report-github")).toHaveCount(0);
 	});

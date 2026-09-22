@@ -7,10 +7,13 @@
  * TanStack Table implementation with sorting and pagination
  */
 
-import type {
-	IncidentStatus,
-	IncidentWithRelations,
-	Severity,
+import {
+	canIncidentAction,
+	type IncidentStatus,
+	type IncidentWithRelations,
+	isWorkflowLive,
+	isWorkflowTerminal,
+	type Severity,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
@@ -44,7 +47,7 @@ import { useMemo, useState } from "react";
 import { SetupNextStepHint } from "@/components/setup";
 import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
+import { StateChip } from "@/components/shared/StateChip";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,6 +72,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { priorityTone } from "@/lib/state-tone";
 
 export interface IncidentDataTableProps {
 	incidents: IncidentWithRelations[];
@@ -80,14 +84,6 @@ export interface IncidentDataTableProps {
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
 }
-
-const priorityTone: Record<string, ChipTone> = {
-	p1: "critical",
-	p2: "high",
-	p3: "medium",
-	p4: "low",
-	p5: "neutral",
-};
 
 function formatTimeAgo(date: string): string {
 	const now = new Date();
@@ -139,9 +135,9 @@ function InvestigationsBadge({
 		return <span className="text-muted-foreground">-</span>;
 	}
 
-	const running = investigations.filter((i) => i.status === "running").length;
-	const completed = investigations.filter(
-		(i) => i.status === "completed",
+	const running = investigations.filter((i) => isWorkflowLive(i.status)).length;
+	const completed = investigations.filter((i) =>
+		isWorkflowTerminal(i.status),
 	).length;
 	const failed = investigations.filter((i) => i.status === "failed").length;
 
@@ -221,7 +217,7 @@ const createColumns = (
 		accessorKey: "priority",
 		header: ({ column }) => <SortableHeader column={column} title="Priority" />,
 		cell: ({ row }) => (
-			<StateChip tone={priorityTone[row.original.priority] || "neutral"}>
+			<StateChip tone={priorityTone(row.original.priority)}>
 				{row.original.priority.toUpperCase()}
 			</StateChip>
 		),
@@ -231,7 +227,10 @@ const createColumns = (
 		accessorKey: "status",
 		header: ({ column }) => <SortableHeader column={column} title="Status" />,
 		cell: ({ row }) => (
-			<StatusBadge status={row.original.status as IncidentStatus} />
+			<StatusBadge
+				status={row.original.status as IncidentStatus}
+				kind="incident"
+			/>
 		),
 		size: 120,
 	},
@@ -306,22 +305,23 @@ const createColumns = (
 					<TooltipContent>View Details</TooltipContent>
 				</Tooltip>
 
-				{row.original.status === "triggered" && onAcknowledge && (
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={() => onAcknowledge(row.original.id)}
-							>
-								<CheckCircle className="h-4 w-4" />
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>Acknowledge</TooltipContent>
-					</Tooltip>
-				)}
+				{canIncidentAction("acknowledge", row.original.status) &&
+					onAcknowledge && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => onAcknowledge(row.original.id)}
+								>
+									<CheckCircle className="h-4 w-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Acknowledge</TooltipContent>
+						</Tooltip>
+					)}
 
-				{["triggered", "investigating"].includes(row.original.status) &&
+				{canIncidentAction("investigate", row.original.status) &&
 					onInvestigate && (
 						<Tooltip>
 							<TooltipTrigger asChild>

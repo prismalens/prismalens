@@ -7,27 +7,25 @@
  * Shows AI-generated recommendations for the incident
  */
 
-import type { RecommendationWithRelations } from "@prismalens/contracts";
+import {
+	RECOMMENDATION_STATUS_LABEL,
+	type RecommendationStatus,
+	type RecommendationWithRelations,
+} from "@prismalens/contracts";
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle, Clock, Lightbulb, Play, XCircle } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
+import { StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { recommendationPriorityTone } from "@/lib/state-tone";
 
 export interface RecommendationsListProps {
 	recommendations: RecommendationWithRelations[];
 	onComplete?: (id: string) => void;
 	onDismiss?: (id: string) => void;
 }
-
-const priorityTone: Record<string, ChipTone> = {
-	critical: "critical",
-	high: "high",
-	medium: "medium",
-	low: "low",
-};
 
 const categoryLabels: Record<string, string> = {
 	immediate_action: "Immediate Action",
@@ -37,12 +35,12 @@ const categoryLabels: Record<string, string> = {
 	monitoring: "Monitoring",
 };
 
-const statusConfig: Record<string, { icon: React.ReactNode; label: string }> = {
-	pending: { icon: <Clock className="h-4 w-4" />, label: "Pending" },
-	in_progress: { icon: <Play className="h-4 w-4" />, label: "In Progress" },
-	completed: { icon: <CheckCircle className="h-4 w-4" />, label: "Completed" },
-	rejected: { icon: <XCircle className="h-4 w-4" />, label: "Rejected" },
-	deferred: { icon: <Clock className="h-4 w-4" />, label: "Deferred" },
+const statusIcons: Record<string, React.ReactNode> = {
+	pending: <Clock className="h-4 w-4" />,
+	in_progress: <Play className="h-4 w-4" />,
+	completed: <CheckCircle className="h-4 w-4" />,
+	rejected: <XCircle className="h-4 w-4" />,
+	deferred: <Clock className="h-4 w-4" />,
 };
 
 export function RecommendationsList({
@@ -80,7 +78,10 @@ export function RecommendationsList({
 
 			<div className="grid gap-3">
 				{recommendations.map((rec) => {
-					const status = statusConfig[rec.status] || statusConfig.pending;
+					const icon = statusIcons[rec.status] ?? statusIcons.pending;
+					const statusLabel =
+						RECOMMENDATION_STATUS_LABEL[rec.status as RecommendationStatus] ??
+						rec.status;
 					const isPending = rec.status === "pending";
 					const isActionable = rec.actionable && isPending;
 
@@ -100,7 +101,7 @@ export function RecommendationsList({
 										)}
 									</div>
 									<div className="flex flex-col items-end gap-1">
-										<StateChip tone={priorityTone[rec.priority] || "neutral"}>
+										<StateChip tone={recommendationPriorityTone(rec.priority)}>
 											{rec.priority.charAt(0).toUpperCase() +
 												rec.priority.slice(1)}
 										</StateChip>
@@ -116,8 +117,8 @@ export function RecommendationsList({
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-4 text-sm text-muted-foreground">
 										<span className="flex items-center gap-1">
-											{status.icon}
-											{status.label}
+											{icon}
+											{statusLabel}
 										</span>
 										{rec.estimatedEffort && (
 											<span>Effort: {rec.estimatedEffort}</span>

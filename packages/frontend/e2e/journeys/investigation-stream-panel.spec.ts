@@ -204,7 +204,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		// Navigate to B the way a reader does — no full page load. The list is
 		// gone (#609); leave through the incident, which unmounts the panel, then
 		// enter B client-side so the route mounts fresh.
-		await page.getByRole("link", { name: "Back to incident" }).click();
+		await page.getByRole("link", { name: /Back to incident/ }).click();
 		await expect(page).toHaveURL(/\/incidents\//);
 		await navigateToInvestigation(page, SECOND_INVESTIGATION_ID);
 		await expect(panel).toBeVisible({ timeout: 20_000 });

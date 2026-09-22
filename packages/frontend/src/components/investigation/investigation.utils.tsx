@@ -1,54 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import {
+	WORKFLOW_STATUS_LABEL,
+	type WorkflowStatus,
+} from "@prismalens/contracts";
 import { Activity, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { StateChip } from "@/components/shared/StateChip";
+import { recommendationPriorityTone, runStatusTone } from "@/lib/state-tone";
 
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
-
-const statusConfig: Record<
-	string,
-	{ icon: typeof CheckCircle; tone: ChipTone }
-> = {
-	completed: {
-		icon: CheckCircle,
-		tone: "done",
-	},
-	running: {
-		icon: Activity,
-		tone: "active",
-	},
-	failed: {
-		icon: AlertCircle,
-		tone: "failed",
-	},
-	pending: {
-		icon: Clock,
-		tone: "neutral",
-	},
+const statusIcons: Record<string, typeof CheckCircle> = {
+	completed: CheckCircle,
+	running: Activity,
+	failed: AlertCircle,
+	pending: Clock,
 };
 
 export function InvestigationStatusBadge({ status }: { status: string }) {
-	const config =
-		statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-	const Icon = config.icon;
+	const Icon = statusIcons[status] ?? Clock;
+	const label = WORKFLOW_STATUS_LABEL[status as WorkflowStatus] ?? status;
 
 	return (
-		<StateChip tone={config.tone}>
+		<StateChip tone={runStatusTone(status)}>
 			<Icon className="w-3 h-3 mr-1" />
-			{status}
+			{label}
 		</StateChip>
 	);
 }
 
-const priorityTone: Record<string, ChipTone> = {
-	critical: "critical",
-	high: "high",
-	medium: "medium",
-	low: "low",
-};
-
 export function PriorityBadge({ priority }: { priority: string }) {
-	const tone = priorityTone[priority.toLowerCase()] || "medium";
-
-	return <StateChip tone={tone}>{priority}</StateChip>;
+	return (
+		<StateChip tone={recommendationPriorityTone(priority)}>
+			{priority}
+		</StateChip>
+	);
 }

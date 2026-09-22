@@ -113,21 +113,22 @@ export function IncidentComposer({
 			data-testid="incident-composer"
 		>
 			{isCommand && (
-				<ul
+				<div
 					id={listId}
 					role="listbox"
 					className="mb-2 max-w-xl overflow-hidden rounded-md border bg-popover shadow-sm"
 					data-testid="composer-commands"
 				>
 					{matches.length === 0 && (
-						<li className="px-3 py-2 text-record text-muted-foreground">
+						<div className="px-3 py-2 text-record text-muted-foreground">
 							No command matches <Mono>/{query}</Mono>
-						</li>
+						</div>
 					)}
 					{matches.map((command, i) => (
-						<li
+						<div
 							key={command.name}
 							role="option"
+							tabIndex={-1}
 							aria-selected={i === highlight}
 							aria-disabled={!!command.disabledReason}
 							data-testid={`composer-command-${command.name}`}
@@ -146,9 +147,9 @@ export function IncidentComposer({
 							<span className="text-muted-foreground">
 								{command.disabledReason ?? command.hint}
 							</span>
-						</li>
+						</div>
 					))}
-				</ul>
+				</div>
 			)}
 			<form onSubmit={submit} className="flex items-center gap-2">
 				<Mono className="shrink-0 text-record text-primary">
@@ -156,6 +157,7 @@ export function IncidentComposer({
 				</Mono>
 				<input
 					ref={inputRef}
+					role="combobox"
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					onKeyDown={onKeyDown}

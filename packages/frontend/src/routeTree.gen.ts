@@ -17,6 +17,7 @@ import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
+import { Route as AuthenticatedAlertsIdIndexRouteImport } from './routes/_authenticated/alerts/$id/index'
 import { Route as AuthenticatedIncidentsIdIndexRouteImport } from './routes/_authenticated/incidents/$id/index'
 import { Route as AuthenticatedInvestigationsIdIndexRouteImport } from './routes/_authenticated/investigations/$id/index'
 import { Route as AuthenticatedServicesIdIndexRouteImport } from './routes/_authenticated/services/$id/index'
@@ -65,6 +66,12 @@ const AuthenticatedSettingsIndexRoute =
     path: '/settings/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAlertsIdIndexRoute =
+  AuthenticatedAlertsIdIndexRouteImport.update({
+    id: '/alerts/$id/',
+    path: '/alerts/$id/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedIncidentsIdIndexRoute =
   AuthenticatedIncidentsIdIndexRouteImport.update({
     id: '/incidents/$id/',
@@ -99,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/services/': typeof AuthenticatedServicesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/settings/integrations/configure': typeof AuthenticatedSettingsIntegrationsConfigureRoute
+  '/alerts/$id/': typeof AuthenticatedAlertsIdIndexRoute
   '/incidents/$id/': typeof AuthenticatedIncidentsIdIndexRoute
   '/investigations/$id/': typeof AuthenticatedInvestigationsIdIndexRoute
   '/services/$id/': typeof AuthenticatedServicesIdIndexRoute
@@ -112,6 +120,7 @@ export interface FileRoutesByTo {
   '/services': typeof AuthenticatedServicesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/settings/integrations/configure': typeof AuthenticatedSettingsIntegrationsConfigureRoute
+  '/alerts/$id': typeof AuthenticatedAlertsIdIndexRoute
   '/incidents/$id': typeof AuthenticatedIncidentsIdIndexRoute
   '/investigations/$id': typeof AuthenticatedInvestigationsIdIndexRoute
   '/services/$id': typeof AuthenticatedServicesIdIndexRoute
@@ -127,6 +136,7 @@ export interface FileRoutesById {
   '/_authenticated/services/': typeof AuthenticatedServicesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/settings/integrations/configure': typeof AuthenticatedSettingsIntegrationsConfigureRoute
+  '/_authenticated/alerts/$id/': typeof AuthenticatedAlertsIdIndexRoute
   '/_authenticated/incidents/$id/': typeof AuthenticatedIncidentsIdIndexRoute
   '/_authenticated/investigations/$id/': typeof AuthenticatedInvestigationsIdIndexRoute
   '/_authenticated/services/$id/': typeof AuthenticatedServicesIdIndexRoute
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/services/'
     | '/settings/'
     | '/settings/integrations/configure'
+    | '/alerts/$id/'
     | '/incidents/$id/'
     | '/investigations/$id/'
     | '/services/$id/'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/services'
     | '/settings'
     | '/settings/integrations/configure'
+    | '/alerts/$id'
     | '/incidents/$id'
     | '/investigations/$id'
     | '/services/$id'
@@ -169,6 +181,7 @@ export interface FileRouteTypes {
     | '/_authenticated/services/'
     | '/_authenticated/settings/'
     | '/_authenticated/settings/integrations/configure'
+    | '/_authenticated/alerts/$id/'
     | '/_authenticated/incidents/$id/'
     | '/_authenticated/investigations/$id/'
     | '/_authenticated/services/$id/'
@@ -238,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/alerts/$id/': {
+      id: '/_authenticated/alerts/$id/'
+      path: '/alerts/$id'
+      fullPath: '/alerts/$id/'
+      preLoaderRoute: typeof AuthenticatedAlertsIdIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/incidents/$id/': {
       id: '/_authenticated/incidents/$id/'
       path: '/incidents/$id'
@@ -276,6 +296,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedServicesIndexRoute: typeof AuthenticatedServicesIndexRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
   AuthenticatedSettingsIntegrationsConfigureRoute: typeof AuthenticatedSettingsIntegrationsConfigureRoute
+  AuthenticatedAlertsIdIndexRoute: typeof AuthenticatedAlertsIdIndexRoute
   AuthenticatedIncidentsIdIndexRoute: typeof AuthenticatedIncidentsIdIndexRoute
   AuthenticatedInvestigationsIdIndexRoute: typeof AuthenticatedInvestigationsIdIndexRoute
   AuthenticatedServicesIdIndexRoute: typeof AuthenticatedServicesIdIndexRoute
@@ -289,6 +310,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   AuthenticatedSettingsIntegrationsConfigureRoute:
     AuthenticatedSettingsIntegrationsConfigureRoute,
+  AuthenticatedAlertsIdIndexRoute: AuthenticatedAlertsIdIndexRoute,
   AuthenticatedIncidentsIdIndexRoute: AuthenticatedIncidentsIdIndexRoute,
   AuthenticatedInvestigationsIdIndexRoute:
     AuthenticatedInvestigationsIdIndexRoute,

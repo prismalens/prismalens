@@ -3,10 +3,15 @@
 
 "use client";
 
-import type {
-	TimelineEntryType,
-	TimelineEntryWithRelations,
-	TimelineSource,
+import {
+	enumOptions,
+	TIMELINE_ENTRY_TYPE_LABEL,
+	TIMELINE_SOURCE_LABEL,
+	type TimelineEntryType,
+	TimelineEntryTypeSchema,
+	type TimelineEntryWithRelations,
+	type TimelineSource,
+	TimelineSourceSchema,
 } from "@prismalens/contracts";
 import { format, isToday, isYesterday } from "date-fns";
 import { ClipboardList } from "lucide-react";
@@ -34,22 +39,13 @@ type TypeFilter = TimelineEntryType | "all";
 type SourceFilter = TimelineSource | "all";
 
 const typeFilterOptions: { value: TypeFilter; label: string }[] = [
-	{ value: "all", label: "All Types" },
-	{ value: "incident_created", label: "Incident Created" },
-	{ value: "status_changed", label: "Status Changes" },
-	{ value: "alert_added", label: "Alerts Added" },
-	{ value: "investigation_started", label: "Investigation Started" },
-	{ value: "investigation_completed", label: "Investigation Completed" },
-	{ value: "recommendation_added", label: "Recommendations" },
-	{ value: "comment", label: "Comments" },
-	{ value: "custom", label: "Custom" },
+	{ value: "all", label: "All types" },
+	...enumOptions(TimelineEntryTypeSchema, TIMELINE_ENTRY_TYPE_LABEL),
 ];
 
 const sourceFilterOptions: { value: SourceFilter; label: string }[] = [
-	{ value: "all", label: "All Sources" },
-	{ value: "system", label: "System" },
-	{ value: "user", label: "User" },
-	{ value: "ai_worker", label: "AI" },
+	{ value: "all", label: "All sources" },
+	...enumOptions(TimelineSourceSchema, TIMELINE_SOURCE_LABEL),
 ];
 
 function formatDateHeader(dateString: string): string {

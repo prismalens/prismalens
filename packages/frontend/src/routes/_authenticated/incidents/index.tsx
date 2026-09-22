@@ -8,7 +8,12 @@
  * date range filtering, and TanStack Table.
  */
 
-import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
+import {
+	type IncidentStatus,
+	isIncidentOpen,
+	type Priority,
+	type Severity,
+} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -213,9 +218,7 @@ function IncidentsPage() {
 	};
 
 	// Calculate active count for header
-	const activeCount = incidents.filter(
-		(i) => !["resolved", "closed"].includes(i.status),
-	).length;
+	const activeCount = incidents.filter((i) => isIncidentOpen(i.status)).length;
 
 	return (
 		<div className="space-y-6">

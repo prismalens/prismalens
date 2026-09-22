@@ -4,9 +4,12 @@
 "use client";
 
 import {
+	enumOptions,
 	SERVICE_TIER_METADATA,
+	SERVICE_TYPE_LABEL,
 	type ServiceTier,
 	type ServiceType,
+	ServiceTypeSchema,
 	type ServiceWithRelations,
 } from "@prismalens/contracts";
 import { Loader2 } from "lucide-react";
@@ -45,15 +48,7 @@ export interface ServiceFormDialogProps {
 	onSuccess?: () => void;
 }
 
-const SERVICE_TYPES: { value: ServiceType; label: string }[] = [
-	{ value: "service", label: "Service" },
-	{ value: "database", label: "Database" },
-	{ value: "queue", label: "Queue" },
-	{ value: "cache", label: "Cache" },
-	{ value: "gateway", label: "Gateway" },
-	{ value: "external", label: "External" },
-	{ value: "infrastructure", label: "Infrastructure" },
-];
+const SERVICE_TYPES = enumOptions(ServiceTypeSchema, SERVICE_TYPE_LABEL);
 
 const SERVICE_TIERS: { value: ServiceTier; label: string }[] = Object.entries(
 	SERVICE_TIER_METADATA,

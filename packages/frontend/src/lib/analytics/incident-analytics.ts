@@ -8,7 +8,11 @@
  * for analytics charts and dashboards.
  */
 
-import type { Incident, IncidentWithRelations } from "@prismalens/contracts";
+import {
+	type Incident,
+	type IncidentWithRelations,
+	isIncidentEnded,
+} from "@prismalens/contracts";
 import { format, parseISO, startOfDay, startOfWeek, subDays } from "date-fns";
 import { chartColors } from "@/styles/colors";
 
@@ -75,7 +79,7 @@ export const SEVERITY_COLORS: Record<string, string> = {
  */
 export function calculateMTTR(incidents: Incident[]): number | null {
 	const resolvedWithTime = incidents.filter(
-		(i) => i.status === "resolved" && i.timeToResolve != null,
+		(i) => isIncidentEnded(i.status) && i.timeToResolve != null,
 	);
 
 	if (resolvedWithTime.length === 0) return null;
@@ -207,7 +211,7 @@ export function groupMTTRByDate(
 
 	// Sum timeToResolve per date
 	for (const incident of incidents) {
-		if (incident.status !== "resolved" || !incident.resolvedAt) continue;
+		if (!isIncidentEnded(incident.status) || !incident.resolvedAt) continue;
 		if (!incident.timeToResolve) continue;
 
 		const resolvedDate = parseISO(incident.resolvedAt);

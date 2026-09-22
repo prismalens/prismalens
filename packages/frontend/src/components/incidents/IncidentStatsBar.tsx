@@ -7,7 +7,10 @@
  * Displays incident statistics with clickable stats that filter the list.
  */
 
-import type { IncidentWithRelations } from "@prismalens/contracts";
+import {
+	type IncidentWithRelations,
+	isIncidentOpen,
+} from "@prismalens/contracts";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -63,15 +66,7 @@ export function IncidentStatsBar({
 }: IncidentStatsBarProps) {
 	// Calculate stats
 	const total = incidents.length;
-	const activeStatuses = [
-		"triggered",
-		"investigating",
-		"identified",
-		"monitoring",
-	];
-	const activeCount = incidents.filter((i) =>
-		activeStatuses.includes(i.status),
-	).length;
+	const activeCount = incidents.filter((i) => isIncidentOpen(i.status)).length;
 
 	// Count by severity
 	const bySeverity = incidents.reduce(

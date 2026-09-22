@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	CloseIncidentInput,
-	RootCauseCategory,
+import {
+	type CloseIncidentInput,
+	enumOptions,
+	ROOT_CAUSE_CATEGORY_LABEL,
+	type RootCauseCategory,
+	RootCauseCategorySchema,
 } from "@prismalens/contracts";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,13 +28,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const CATEGORIES: RootCauseCategory[] = [
-	"code",
-	"config",
-	"infrastructure",
-	"external",
-	"unknown",
-];
+const CATEGORIES = enumOptions(
+	RootCauseCategorySchema,
+	ROOT_CAUSE_CATEGORY_LABEL,
+);
 
 /**
  * Radix refuses an empty `SelectItem` value — it reserves it for "nothing
@@ -107,8 +107,8 @@ export function CloseIncidentDialog({
 							<SelectContent>
 								<SelectItem value={NO_CATEGORY}>Not set</SelectItem>
 								{CATEGORIES.map((c) => (
-									<SelectItem key={c} value={c}>
-										{c}
+									<SelectItem key={c.value} value={c.value}>
+										{c.label}
 									</SelectItem>
 								))}
 							</SelectContent>

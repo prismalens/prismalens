@@ -7,7 +7,18 @@
  * Filter controls for the incidents list page
  */
 
-import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
+import {
+	enumOptions,
+	INCIDENT_STATUS_LABEL,
+	type IncidentStatus,
+	IncidentStatusSchema,
+	PRIORITY_LABEL,
+	type Priority,
+	PrioritySchema,
+	SEVERITY_LABEL,
+	type Severity,
+	SeveritySchema,
+} from "@prismalens/contracts";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,30 +41,17 @@ export interface IncidentFiltersProps {
 
 const incidentStatuses: { value: IncidentStatus | "all"; label: string }[] = [
 	{ value: "all", label: "All Statuses" },
-	{ value: "triggered", label: "Triggered" },
-	{ value: "investigating", label: "Investigating" },
-	{ value: "identified", label: "Identified" },
-	{ value: "monitoring", label: "Monitoring" },
-	{ value: "resolved", label: "Resolved" },
-	{ value: "closed", label: "Closed" },
+	...enumOptions(IncidentStatusSchema, INCIDENT_STATUS_LABEL),
 ];
 
 const severities: { value: Severity | "all"; label: string }[] = [
 	{ value: "all", label: "All Severities" },
-	{ value: "critical", label: "Critical" },
-	{ value: "high", label: "High" },
-	{ value: "medium", label: "Medium" },
-	{ value: "low", label: "Low" },
-	{ value: "info", label: "Info" },
+	...enumOptions(SeveritySchema, SEVERITY_LABEL),
 ];
 
 const priorities: { value: Priority | "all"; label: string }[] = [
 	{ value: "all", label: "All Priorities" },
-	{ value: "p1", label: "P1 - Critical" },
-	{ value: "p2", label: "P2 - High" },
-	{ value: "p3", label: "P3 - Medium" },
-	{ value: "p4", label: "P4 - Low" },
-	{ value: "p5", label: "P5 - Planning" },
+	...enumOptions(PrioritySchema, PRIORITY_LABEL),
 ];
 
 export function IncidentFilters({

@@ -13,6 +13,9 @@
 
 import { queryOptions } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useCallback, useState } from "react";
+import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
+import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { orpc } from "@/lib/api/orpc-client";
 import { getSession } from "@/lib/auth";
 
@@ -56,5 +59,12 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-	return <Outlet />;
+	const [helpOpen, setHelpOpen] = useState(false);
+	useGlobalShortcuts(useCallback(() => setHelpOpen(true), []));
+	return (
+		<>
+			<Outlet />
+			<ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} />
+		</>
+	);
 }

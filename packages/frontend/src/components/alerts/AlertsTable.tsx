@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AlertWithRelations } from "@prismalens/contracts";
+import { type AlertWithRelations, canAlertAction } from "@prismalens/contracts";
 
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
@@ -164,36 +164,35 @@ export function AlertsTable({
 									</TableCell>
 									<TableCell className="text-right">
 										<div className="flex items-center justify-end gap-2">
-											{alert.status === "triggered" && onAcknowledge && (
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<Button
-															variant="outline"
-															size="sm"
-															onClick={() => onAcknowledge(alert.id)}
-														>
-															<Eye className="h-4 w-4" />
-														</Button>
-													</TooltipTrigger>
-													<TooltipContent>Acknowledge</TooltipContent>
-												</Tooltip>
-											)}
-											{(alert.status === "triggered" ||
-												alert.status === "acknowledged") &&
-												onResolve && (
+											{canAlertAction("acknowledge", alert.status) &&
+												onAcknowledge && (
 													<Tooltip>
 														<TooltipTrigger asChild>
 															<Button
 																variant="outline"
 																size="sm"
-																onClick={() => onResolve(alert.id)}
+																onClick={() => onAcknowledge(alert.id)}
 															>
-																<CheckCircle className="h-4 w-4" />
+																<Eye className="h-4 w-4" />
 															</Button>
 														</TooltipTrigger>
-														<TooltipContent>Resolve</TooltipContent>
+														<TooltipContent>Acknowledge</TooltipContent>
 													</Tooltip>
 												)}
+											{canAlertAction("resolve", alert.status) && onResolve && (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => onResolve(alert.id)}
+														>
+															<CheckCircle className="h-4 w-4" />
+														</Button>
+													</TooltipTrigger>
+													<TooltipContent>Resolve</TooltipContent>
+												</Tooltip>
+											)}
 											{alert.incident && (
 												<Tooltip>
 													<TooltipTrigger asChild>
