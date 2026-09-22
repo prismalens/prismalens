@@ -202,3 +202,37 @@ export const ALERT_ACTION_FROM: Record<AlertAction, readonly AlertStatus[]> = {
 export function canAlertAction(action: AlertAction, status: string): boolean {
 	return (ALERT_ACTION_FROM[action] as readonly string[]).includes(status);
 }
+
+/**
+ * Why an incident wants a human right now, derived from data the list already
+ * carries. The queue groups these first and the stats route counts them; both
+ * read this one predicate so the number and the rows never disagree.
+ */
+export type IncidentAttention =
+	| "unacknowledged"
+	| "failed_run"
+	| "awaiting_close";
+
+export const INCIDENT_ATTENTIONS: readonly IncidentAttention[] = [
+	"failed_run",
+	"unacknowledged",
+	"awaiting_close",
+];
+
+export function incidentAttention(
+	status: string,
+	latestRunStatus?: string | null,
+): IncidentAttention | null {
+	if (!isIncidentOpen(status) && status !== "resolved") return null;
+	if (
+		latestRunStatus &&
+		isWorkflowTerminal(latestRunStatus) &&
+		latestRunStatus !== "completed"
+	) {
+		return "failed_run";
+	}
+	if (INCIDENT_STATUS_PHASE[status as IncidentStatus] === "new")
+		return "unacknowledged";
+	if (status === "resolved") return "awaiting_close";
+	return null;
+}

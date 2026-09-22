@@ -15,6 +15,7 @@ import {
 	DateStringSchema,
 	IncidentStatusSchema,
 	PrioritySchema,
+	QueryBooleanSchema,
 	RootCauseCategorySchema,
 	SeveritySchema,
 } from "./common.js";
@@ -117,6 +118,8 @@ export const IncidentWithRelationsSchema = IncidentSchema.extend({
 
 export const IncidentQuerySchema = z.object({
 	status: IncidentStatusSchema.optional(),
+	/** Only incidents still wanting work (OPEN_INCIDENT_STATUSES); ignored when `status` is set. */
+	open: QueryBooleanSchema.optional(),
 	severity: SeveritySchema.optional(),
 	priority: PrioritySchema.optional(),
 	serviceId: z.string().uuid().optional(),
@@ -124,6 +127,27 @@ export const IncidentQuerySchema = z.object({
 	toDate: CoerceDateSchema.optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const IncidentStatsQuerySchema = IncidentQuerySchema.pick({
+	serviceId: true,
+	fromDate: true,
+	toDate: true,
+});
+
+/** Counts over the whole window, never over one page of the list. */
+export const IncidentStatsSchema = z.object({
+	total: z.number().int(),
+	open: z.number().int(),
+	byStatus: z.record(z.string(), z.number().int()),
+	bySeverity: z.record(z.string(), z.number().int()),
+	attention: z.object({
+		failed_run: z.number().int(),
+		unacknowledged: z.number().int(),
+		awaiting_close: z.number().int(),
+	}),
+	/** Mean timeToResolve in seconds over ended incidents that recorded one; null when none did. */
+	avgTimeToResolve: z.number().nullable(),
 });
 
 // =============================================================================
@@ -172,3 +196,5 @@ export type HarnessSelectionFailure = z.infer<
 	typeof HarnessSelectionFailureSchema
 >;
 export type InvestigationRefusal = z.infer<typeof InvestigationRefusalSchema>;
+export type IncidentStats = z.infer<typeof IncidentStatsSchema>;
+export type IncidentStatsQuery = z.infer<typeof IncidentStatsQuerySchema>;

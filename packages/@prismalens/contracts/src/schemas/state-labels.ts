@@ -25,6 +25,7 @@ import type {
 	WorkflowStatus,
 } from "./common.js";
 import type { RunFidelity } from "./investigation.js";
+import type { IncidentAttention } from "./state-semantics.js";
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
 	critical: "Critical",
@@ -147,6 +148,12 @@ export const FIDELITY_LABEL: Record<RunFidelity["fidelity"], string> = {
 	enforced: "Enforced",
 	cooperative: "Cooperative",
 	advisory: "Advisory",
+};
+
+export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
+	failed_run: "Run failed",
+	unacknowledged: "Needs acknowledging",
+	awaiting_close: "Awaiting close",
 };
 
 export interface EnumOption<V extends string> {

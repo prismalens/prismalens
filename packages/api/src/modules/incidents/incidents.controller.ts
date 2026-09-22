@@ -66,6 +66,7 @@ export class IncidentsController {
 			list: implement(incidentsContract.list).handler(async ({ input }) => {
 				const { data, total } = await this.incidentsService.findAll({
 					status: input.status,
+					open: input.open,
 					severity: input.severity,
 					priority: input.priority,
 					serviceId: input.serviceId,
@@ -86,6 +87,16 @@ export class IncidentsController {
 					},
 				};
 			}),
+
+			// GET /incidents/stats - Counts over the window, not the page
+			getStats: implement(incidentsContract.getStats).handler(
+				async ({ input }) =>
+					this.incidentsService.getStats({
+						serviceId: input.serviceId,
+						fromDate: input.fromDate,
+						toDate: input.toDate,
+					}),
+			),
 
 			// GET /incidents/:id - Get a single incident
 			get: implement(incidentsContract.get).handler(async ({ input }) => {

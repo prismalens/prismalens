@@ -16,6 +16,7 @@ import {
 	canAlertAction,
 	canIncidentAction,
 	ENDED_INCIDENT_STATUSES,
+	incidentAttention,
 	INCIDENT_ACTION_FROM,
 	INCIDENT_STATUS_PHASE,
 	isIncidentOpen,
@@ -92,5 +93,15 @@ describe("state semantics", () => {
 		expect(canIncidentAction("acknowledge", "identified")).toBe(false);
 		expect(canAlertAction("resolve", "acknowledged")).toBe(true);
 		expect(canAlertAction("acknowledge", "correlated")).toBe(false);
+	});
+
+	it("names why an incident wants a human, failed run first", () => {
+		expect(incidentAttention("triggered", null)).toBe("unacknowledged");
+		expect(incidentAttention("triggered", "failed")).toBe("failed_run");
+		expect(incidentAttention("investigating", "cancelled")).toBe("failed_run");
+		expect(incidentAttention("investigating", "completed")).toBeNull();
+		expect(incidentAttention("investigating", "running")).toBeNull();
+		expect(incidentAttention("resolved", null)).toBe("awaiting_close");
+		expect(incidentAttention("closed", "failed")).toBeNull();
 	});
 });
