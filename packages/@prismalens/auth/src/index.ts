@@ -4,14 +4,10 @@
 /**
  * @prismalens/auth
  *
- * Authentication configuration and utilities for PrismaLens using Better Auth.
- * This package exports:
- * - Server-side auth configuration (for API)
- * - Auth types and utilities
+ * Device pairing for a single-operator instance (ADR 0004 §8). There is no
+ * account: the host is the operator, other devices pair.
  */
 
-export type { Session, User } from "better-auth/types";
-export { type Auth, type AuthOptions, createAuth } from "./auth.js";
 export {
 	authenticateDevice,
 	buildPairingUrl,
@@ -32,17 +28,6 @@ export {
 	type RedeemedDevice,
 	redeemPairingLink,
 } from "./pairing.js";
-export {
-	type CredentialAccount,
-	generatePassword,
-	type OwnerAccountStore,
-	type OwnerPasswordReset,
-	type PasswordCapableAuth,
-	ResetOwnerPasswordError,
-	type ResetOwnerPasswordReason,
-	resetOwnerPassword,
-	resetOwnerPasswordWith,
-} from "./reset-password.js";
 export {
 	createPairingLinkInWorkspace,
 	WorkspaceError,

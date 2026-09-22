@@ -5,15 +5,14 @@
  * Operator route contracts
  *
  * Who the caller is to this instance. `via` is `loopback` for a request from
- * the host itself (ADR 0004 §8), `session` for a signed-in browser, `device`
- * for a paired device, and null for anyone else. The frontend gate reads this instead of the session alone,
- * so a laptop operator never sees a login page.
+ * the host itself (ADR 0004 §8), `device` for a paired device, and null for
+ * anyone else. There is no account (ADR 0001 §2): the frontend gate reads this.
  */
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-export const OperatorViaEnum = z.enum(["loopback", "session", "device"]);
+export const OperatorViaEnum = z.enum(["loopback", "device"]);
 export type OperatorVia = z.infer<typeof OperatorViaEnum>;
 
 const WhoamiSchema = z.object({

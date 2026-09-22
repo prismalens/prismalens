@@ -8,25 +8,15 @@
  * to a top strip.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, Layers, LogOut, PanelLeft, Settings, Siren } from "lucide-react";
+import { Link, useLocation } from "@tanstack/react-router";
+import { Bell, Layers, PanelLeft, Settings, Siren } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { TelemetryConsent } from "@/components/settings";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
-import { signOut, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
@@ -198,7 +188,6 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						) : (
 							<ThemeToggle />
 						)}
-						<UserMenu />
 					</div>
 				</div>
 			</aside>
@@ -212,7 +201,6 @@ function SidebarBody({ pathname }: { pathname: string }) {
 				</Link>
 				<nav className="flex flex-1 items-center gap-0.5">{nav(true)}</nav>
 				<ThemeToggle />
-				<UserMenu />
 			</div>
 		</>
 	);
@@ -227,48 +215,4 @@ function getInitials(name: string | null | undefined): string {
 		.slice(0, 2)
 		.join("")
 		.toUpperCase();
-}
-
-function UserMenu() {
-	const { data: session } = useSession();
-	const navigate = useNavigate();
-	if (!session?.user) return null;
-	const { user } = session;
-	const handleSignOut = async () => {
-		await signOut();
-		navigate({ to: "/auth/login", search: { redirect: undefined } });
-	};
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button
-					variant="ghost"
-					size="icon"
-					className="h-8 w-8 rounded-full"
-					aria-label="User menu"
-				>
-					<Avatar className="h-7 w-7">
-						<AvatarFallback className="bg-primary text-primary-foreground text-xs">
-							{getInitials(user.name)}
-						</AvatarFallback>
-					</Avatar>
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-56">
-				<DropdownMenuLabel className="font-normal">
-					<div className="flex flex-col space-y-1">
-						<p className="text-sm font-medium leading-none">{user.name}</p>
-						<p className="text-xs leading-none text-muted-foreground">
-							{user.email}
-						</p>
-					</div>
-				</DropdownMenuLabel>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
-					<LogOut className="mr-2 h-4 w-4" />
-					Sign out
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
 }

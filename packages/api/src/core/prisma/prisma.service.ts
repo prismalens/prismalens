@@ -117,15 +117,6 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.deviceSession;
 	}
 
-	// Better Auth models
-	get session() {
-		return prisma.session;
-	}
-
-	get account() {
-		return prisma.account;
-	}
-
 	get verification() {
 		return prisma.verification;
 	}

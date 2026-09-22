@@ -24,7 +24,7 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | # | Journey | Route(s) | Capability | Covering spec | Verdict |
 |---|---|---|---|---|---|
 | J1 | First-run setup (owner account) | `/setup` | C11 | — | ⬜ |
-| J2 | Sign in & session guard | `/auth/login`, `/_authenticated` | — | `auth.setup.ts` | 🟦 happy path only |
+| J2 | Operator gate | `/_authenticated`, `/pair` | — | — | ⬜ loopback is the operator; pairing not yet covered |
 | J3 | Command center (landing) | `/` | C5, C6 | — | ⬜ |
 | J4 | Service catalog & discovery | `/services`, `/services/discovery` | C1 | `services-discovery.spec.ts` | 🟦 |
 | J5 | Service detail — repos, deployments, dependencies | `/services/$id` | C1 | `services-discovery.spec.ts` | 🟦 title + tier only |
@@ -66,21 +66,21 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
   is never reached in any spec. **This is the single most important gap**: it is the first screen
   a `pl up` user sees, and the only one where failure means the product never starts.
 
-### J2 — Sign in & session guard
+### J2 — Operator gate
 
-- **Entry point**: `/auth/login`, or any authenticated route without a session.
-- **Routes**: `/auth/login` (has its own `beforeLoad` + `redirect`), `/_authenticated` guard.
-- **Goal**: obtain a Better Auth session (cookie, 7-day lifetime; cached in TanStack Query with a
-  60s `staleTime`).
-- **States**: unauthenticated → redirect carrying `?redirect=<href>`; invalid credentials → inline
-  error; submitting; already-signed-in → redirect away from `/auth/login`; expired session
-  mid-session.
-- **Coverage**: `e2e/auth.setup.ts` performs the happy path once to mint the storage state. No spec
-  asserts the failure state, the `?redirect` round-trip, or sign-out.
+- **Entry point**: any authenticated route; `/pair#<token>` from a pairing link.
+- **Routes**: `/_authenticated` guard (`operator.whoami`), `/pair`.
+- **Goal**: be the operator. On the host itself the browser is the operator by the loopback rule
+  (ADR 0004 §8), so there is no sign-in. Another device pairs once and holds a device cookie until
+  revoked (Settings → Devices, or `pl pair`).
+- **States**: loopback → straight in; paired device → straight in; anyone else → `/pair` with an
+  explanation; used or expired link → inline error on `/pair`; revoked device → 401, back to `/pair`.
+- **Coverage**: the chromium project runs on loopback and inherits the operator gate on every spec.
+  No spec covers pairing, revocation or the `/pair` error states.
 
 ### J3 — Command center (landing)
 
-- **Entry point**: `/` after sign-in — the app's front door.
+- **Entry point**: `/` — the app's front door.
 - **Route**: `/_authenticated/` (423 lines, the largest route in the app).
 - **Goal**: see what needs attention now — active incidents, triggered alerts, pending
   recommendations — and launch an investigation from it (`incidents.investigate`).
@@ -88,8 +88,7 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
   (`DashboardEmptyState`); **LLM not configured** (`LLMWarningBanner`, driven by
   `llmSettings.activeProvider`); **API down** (`ApiStatusCheck`); incident selected → detail panel;
   investigate-in-flight.
-- **Coverage**: none. `auth.setup.ts` incidentally asserts the string `Services` is visible after
-  landing on `/`, which is a navbar assertion, not a dashboard one. The empty state and the
+- **Coverage**: none. The empty state and the
   LLM-warning banner — the two states a brand-new `pl up` install renders — are untested.
 
 ### J4 — Service catalog & discovery

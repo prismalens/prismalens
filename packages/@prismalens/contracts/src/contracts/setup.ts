@@ -4,9 +4,9 @@
 /**
  * Setup route contracts
  *
- * The first-run wizard (#332). Four steps, in order:
+ * The on-ramp (#332). Three steps, in order:
  *
- *   account → ai_provider → code_location → first_incident → complete
+ *   ai_provider → code_location → first_incident → complete
  *
  * The step a reload resumes on is DERIVED on the server from durable state
  * (a user row, a stored credential, a mapped checkout, an incident row) — the
@@ -14,11 +14,8 @@
  * across a reload, a sign-in bounce, or a different browser without a
  * `SETUP_PROGRESS` row that can disagree with reality.
  *
- * `setupComplete` deliberately means ONLY "an owner account exists". It is the
- * auth gate (`/_authenticated` bounces to `/setup` when it is false), so
- * widening it to the later steps would lock an operator who never configures a
- * provider out of the whole app. The later steps drive `currentStep` and the
- * on-ramp hints in empty states; they never gate access.
+ * There is no account and nothing here gates the app (ADR 0001 §2). The steps
+ * drive `currentStep` and the on-ramp hints in empty states.
  */
 import { oc } from "@orpc/contract";
 import { z } from "zod";
@@ -28,7 +25,6 @@ import { z } from "zod";
 // =============================================================================
 
 export const SetupStepEnum = z.enum([
-	"account",
 	"ai_provider",
 	"code_location",
 	"first_incident",
@@ -36,11 +32,7 @@ export const SetupStepEnum = z.enum([
 ]);
 
 const SetupStatusSchema = z.object({
-	/** An owner account exists. This — and only this — gates the app. */
-	setupComplete: z.boolean(),
 	steps: z.object({
-		/** The instance's account exists. */
-		owner: z.boolean(),
 		/** A harness is on PATH and would run right now. */
 		aiProvider: z.boolean(),
 		/** At least one service has a repository linked. */
@@ -50,20 +42,6 @@ const SetupStatusSchema = z.object({
 	}),
 	/** The first incomplete step, or `complete` when none remain. */
 	currentStep: SetupStepEnum,
-});
-
-const CreateOwnerInputSchema = z.object({
-	email: z.string().email(),
-	password: z.string().min(8),
-	name: z.string().optional(),
-});
-
-const CreateOwnerResponseSchema = z.object({
-	user: z.object({
-		id: z.string(),
-		email: z.string(),
-		name: z.string().nullable(),
-	}),
 });
 
 // =============================================================================
@@ -84,20 +62,6 @@ export const setupContract = {
 		})
 		.input(z.object({}))
 		.output(SetupStatusSchema),
-
-	/**
-	 * Create the first admin account
-	 * POST /setup
-	 */
-	createOwner: oc
-		.route({
-			method: "POST",
-			path: "/setup",
-			summary: "Create the first admin account during initial setup",
-			tags: ["setup"],
-		})
-		.input(CreateOwnerInputSchema)
-		.output(CreateOwnerResponseSchema),
 };
 
 // =============================================================================

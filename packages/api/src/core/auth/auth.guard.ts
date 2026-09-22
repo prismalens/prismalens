@@ -5,8 +5,8 @@
  * Auth Guard
  *
  * Global NestJS guard. A request is the operator when it comes from the host
- * itself (the loopback rule, ADR 0004 §8) or carries a valid Better Auth
- * session. Respects the @Public() decorator to skip authentication.
+ * itself (the loopback rule, ADR 0004 §8) or from a paired device. Respects
+ * the @Public() decorator to skip authentication.
  */
 
 import {
@@ -37,13 +37,11 @@ export class AuthGuard implements CanActivate {
 		const request = context.switchToHttp().getRequest<Request>();
 
 		try {
-			const resolved = await this.operator.resolve(request);
-			if (!resolved) {
+			const operator = await this.operator.resolve(request);
+			if (!operator) {
 				throw new UnauthorizedException("Authentication required");
 			}
-			request.operator = resolved.operator;
-			request.user = resolved.user;
-			request.session = resolved.session;
+			request.operator = operator;
 			return true;
 		} catch (error) {
 			// Re-throw UnauthorizedException as-is; wrap other errors

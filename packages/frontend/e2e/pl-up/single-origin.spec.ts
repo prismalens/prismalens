@@ -7,8 +7,8 @@
  * an empty workspace.
  *
  * They are serial, and they assert nothing about whether an owner exists: the
- * first-run journey — walking the wizard to a signed-in dashboard — lives in
- * `setup-first-run.spec.ts` (#358), which is the only file here that creates an
+ * There is no first-run wizard and no account: opening the app on the host is
+ * being the operator (ADR 0001 §2, 0004 §8).
  * account. That keeps the two files order-independent.
  */
 
@@ -29,11 +29,11 @@ test("first run: a fresh artifact serves the SPA from the same origin as its API
 	// A prerendered shell hydrating into the router — no SSR, no server functions.
 	await expect(page.locator("html")).toHaveAttribute("class", /dark|light/);
 
-	// The root is guarded, so the artifact must resolve that guard in the browser
-	// and land on a public entry point — the wizard while the instance is empty,
-	// the login form once an owner exists. Either proves the bundle loaded and
-	// reached the API on this same origin; a blank page proves it did not.
-	await page.waitForURL(/\/setup|\/auth\/login/, { timeout: 30_000 });
+	// The root is guarded; on loopback the browser is the operator, so the guard
+	// resolves in the browser and lands on the incidents list. That proves the
+	// bundle loaded and reached the API on this same origin; a blank page proves
+	// it did not.
+	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
 	await expect(page.locator("body")).not.toBeEmpty();
 });
 
@@ -53,10 +53,10 @@ test("read journey: a deep client route is served by the SPA fallback, and its d
 	expect(missing.headers()["content-type"]).toContain("application/json");
 
 	// And the client router takes over from that shell: a deep link to a guarded
-	// route resolves its guard in the browser and redirects, which it can only do
-	// after the SPA bundle loaded and reached the API on this same origin.
+	// route resolves its guard in the browser, which it can only do after the
+	// SPA bundle loaded and reached the API on this same origin.
 	await page.goto("/incidents");
-	await page.waitForURL(/\/auth\/login|\/incidents/, { timeout: 30_000 });
+	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
 	await expect(page.locator("body")).not.toBeEmpty();
 });
 

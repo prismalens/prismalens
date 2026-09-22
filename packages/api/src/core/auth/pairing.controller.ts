@@ -10,6 +10,7 @@
  */
 
 import { Controller, UseGuards } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	buildPairingUrl,
@@ -22,7 +23,6 @@ import { pairingContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
-import { AuthService } from "./auth.service.js";
 import { deviceCookieHeader } from "./device-cookie.js";
 import { Public } from "./public.decorator.js";
 
@@ -97,8 +97,15 @@ export class PairingController {
 export class PairingRedeemController {
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly authService: AuthService,
+		private readonly config: ConfigService,
 	) {}
+
+	/** `Secure` follows the resolved origin's scheme, never NODE_ENV. */
+	private get secureCookies(): boolean {
+		const publicUrl = this.config.get<string>("PRISMALENS_PUBLIC_URL");
+		if (publicUrl) return publicUrl.startsWith("https://");
+		return this.config.get<string>("PRISMALENS_PROTOCOL") === "https";
+	}
 
 	@Implement(pairingContract.redeem)
 	redeem() {
@@ -116,7 +123,7 @@ export class PairingRedeemController {
 					);
 					request.res?.append(
 						"Set-Cookie",
-						deviceCookieHeader(redeemed.token, this.authService.secureCookies),
+						deviceCookieHeader(redeemed.token, this.secureCookies),
 					);
 					return {
 						device: { id: redeemed.device.id, name: redeemed.device.name },

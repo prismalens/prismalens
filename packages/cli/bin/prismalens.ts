@@ -53,7 +53,6 @@ const main = defineCommand({
 		doctor: lazy("doctor"),
 		pair: lazy("pair"),
 		reset: lazy("reset"),
-		"reset-password": lazy("reset-password"),
 	},
 });
 

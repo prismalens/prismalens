@@ -30,7 +30,7 @@ pl up                 # http://localhost:3001
 pl up --port 8080     # or wherever you like
 ```
 
-Open the URL and setup asks for one thing: the owner account. Everything else is
+Open the URL: on that machine the browser is the operator, no account. Everything else is
 configured after sign-in. A coding agent must be installed on the machine for
 investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
 PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
@@ -61,8 +61,8 @@ curl -X POST http://localhost:3001/api/webhooks/prometheus \
 A fresh install has nothing pointed at it, so no incidents arrive on their own.
 You do not need an Alertmanager to see it work:
 
-1. **Install and start.** `npm install -g prismalens`, then `pl up`, then sign in
-   as the owner. `pl doctor` says whether a coding agent is on PATH, which model
+1. **Install and start.** `npm install -g prismalens`, then `pl up`; the browser
+   on that machine is the operator, no sign-in. `pl doctor` says whether a coding agent is on PATH, which model
    a run will ask it for. With OpenCode the
    model is `opencode/muse-spark-1.3-contributor-free`, keyless, unless you set
    another under Settings → Harness → Model.

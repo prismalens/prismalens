@@ -158,24 +158,19 @@ export default defineConfig({
 	projects: PL_UP
 		? [
 				{
-					// The artifact starts with no owner account, so the journey that
-					// covers it IS the setup flow — no storageState, no setup project.
 					name: "pl-up",
 					testDir: "./e2e/pl-up",
 					use: { ...devices["Desktop Chrome"] },
 				},
 			]
 		: [
-				{ name: "setup", testMatch: /auth\.setup\.ts/ },
 				{
 					// Note: Firefox and WebKit projects are a deliberate follow-up for broader browser coverage.
+					// The suite runs against loopback, so the browser is the operator
+					// with no sign-in (ADR 0004 §8).
 					name: "chromium",
 					testIgnore: /pl-up\//,
-					use: {
-						...devices["Desktop Chrome"],
-						storageState: "e2e/.auth/owner.json",
-					},
-					dependencies: ["setup"],
+					use: { ...devices["Desktop Chrome"] },
 				},
 			],
 });

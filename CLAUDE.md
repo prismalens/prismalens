@@ -7,7 +7,7 @@ You should be critical of users ideas. Not eveything the is asked to be done sho
 This is a project that is still in development phase
 * No deperecation/legacy/dead code needed
 * Clean upgrade/update/change only
-* DEV user - admin@prismalens.dev/admin123
+* No account: the host is the operator (ADR 0001 §2). Opening the dev app on localhost is signed in.
 
 ## DB migrations: append-only (#335)
 0.5.0 is on npm (2026-09-19), so installed databases exist:
