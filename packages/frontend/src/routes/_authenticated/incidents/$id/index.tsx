@@ -157,7 +157,7 @@ function IncidentRecordPage() {
 	if (isLoadingIncident) return <IncidentRecordSkeleton />;
 	if (incidentError || !incident) {
 		return (
-			<div className="flex flex-col items-center justify-center py-12">
+			<div className="flex h-full flex-col items-center justify-center p-8">
 				<p className="text-lg font-medium text-run-failed">
 					Failed to load incident
 				</p>
@@ -222,7 +222,10 @@ function IncidentRecordPage() {
 	];
 
 	return (
-		<div className="-mt-6">
+		<div
+			className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto]"
+			data-testid="incident-record-frame"
+		>
 			<IncidentStateBand
 				incident={incident}
 				run={
@@ -257,8 +260,11 @@ function IncidentRecordPage() {
 				onConfirm={(cause) => closeMutation.mutate({ id, ...cause })}
 			/>
 
-			<div className="grid gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-				<div className="min-w-0 space-y-6" data-testid="incident-record">
+			<div className="grid min-h-0 xl:grid-cols-[minmax(0,1fr)_20rem]">
+				<div
+					className="min-h-0 min-w-0 space-y-6 overflow-y-auto px-4 py-4 sm:px-6"
+					data-testid="incident-record"
+				>
 					{incident.description && (
 						<p className="max-w-3xl text-record text-muted-foreground">
 							{incident.description}
@@ -386,7 +392,7 @@ function IncidentRecordPage() {
 
 function IncidentRecordSkeleton() {
 	return (
-		<div className="space-y-6">
+		<div className="space-y-6 p-4">
 			<div className="flex items-center gap-3">
 				<Skeleton className="h-6 w-16" />
 				<Skeleton className="h-5 w-14" />

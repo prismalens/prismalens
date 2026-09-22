@@ -79,7 +79,7 @@ export function IncidentStateBand({
 	return (
 		<div
 			data-testid="incident-state-band"
-			className="sticky top-0 z-30 -mx-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+			className="border-b bg-background px-4 sm:px-6"
 		>
 			<div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 py-2">
 				<Link

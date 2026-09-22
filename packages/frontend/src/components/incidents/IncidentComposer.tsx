@@ -109,7 +109,7 @@ export function IncidentComposer({
 
 	return (
 		<div
-			className="sticky bottom-0 z-20 -mx-4 border-t bg-background/95 px-4 pb-3 pt-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+			className="border-t bg-background px-4 pb-2 pt-2 sm:px-6"
 			data-testid="incident-composer"
 		>
 			{isCommand && (

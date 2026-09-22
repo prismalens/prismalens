@@ -28,11 +28,12 @@ export {
 	IncidentComposer,
 	type IncidentComposerProps,
 } from "./IncidentComposer";
-export {
-	IncidentDataTable,
-	type IncidentDataTableProps,
-} from "./IncidentDataTable";
 export { IncidentFilters, type IncidentFiltersProps } from "./IncidentFilters";
+export {
+	IncidentListPane,
+	type IncidentListPaneProps,
+	useIncidentWindow,
+} from "./IncidentListPane";
 export { IncidentRail, type IncidentRailProps } from "./IncidentRail";
 export {
 	IncidentStateBand,
