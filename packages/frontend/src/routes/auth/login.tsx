@@ -66,7 +66,11 @@ function LoginPage() {
 			}
 
 			// Invalidate session cache so _authenticated beforeLoad gets the fresh session
-			await queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+			// The gate caches "who am I" for a minute; a fresh session must not
+			// answer from that cache or the browser bounces back here.
+			await queryClient.invalidateQueries({
+				queryKey: operatorQueryOptions().queryKey,
+			});
 
 			// Redirect to original page or dashboard on success
 			// Only allow same-origin relative paths to prevent open redirect
