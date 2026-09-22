@@ -3,7 +3,7 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
-import type { PrometheusAlert } from "@prismalens/contracts";
+import { httpUrlOrNull, type PrometheusAlert } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
 import { Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
@@ -350,7 +350,7 @@ export class WebhooksService {
 			severity: mapPrometheusLabelToSeverity(alert.labels?.severity),
 			source: opts.source,
 			// Alertmanager's link back to the firing expression (#592).
-			sourceUrl: alert.generatorURL,
+			sourceUrl: httpUrlOrNull(alert.generatorURL) ?? undefined,
 			labels: alert.labels,
 			sourceEventId: alert.fingerprint,
 		};
@@ -444,7 +444,7 @@ export class WebhooksService {
 			description: dto.description,
 			severity: dto.severity ?? Severity.medium,
 			source: dto.source ?? "webhook",
-			sourceUrl: dto.sourceUrl,
+			sourceUrl: httpUrlOrNull(dto.sourceUrl) ?? undefined,
 			sourceAlertId: dto.sourceEventId,
 			tags: dto.tags,
 			labels: dto.labels,

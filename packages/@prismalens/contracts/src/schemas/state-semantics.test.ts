@@ -15,9 +15,11 @@ import {
 	ALERT_STATUS_PHASE,
 	canAlertAction,
 	canIncidentAction,
+	canSetIncidentStatus,
 	ENDED_INCIDENT_STATUSES,
 	incidentAttention,
 	INCIDENT_ACTION_FROM,
+	INCIDENT_STATUS_SET_FROM,
 	INCIDENT_STATUS_PHASE,
 	isIncidentOpen,
 	isWorkflowLive,
@@ -95,8 +97,24 @@ describe("state semantics", () => {
 		expect(canAlertAction("acknowledge", "correlated")).toBe(false);
 	});
 
-	it("names why an incident wants a human, failed run first", () => {
+	it("lets a generic update move only forward through the working phases", () => {
+		for (const statuses of Object.values(INCIDENT_STATUS_SET_FROM)) {
+			for (const s of statuses) expect(IncidentStatusSchema.options).toContain(s);
+		}
+		expect(canSetIncidentStatus("triggered", "investigating")).toBe(true);
+		expect(canSetIncidentStatus("investigating", "identified")).toBe(true);
+		expect(canSetIncidentStatus("monitoring", "investigating")).toBe(true);
+		expect(canSetIncidentStatus("identified", "identified")).toBe(true);
+		expect(canSetIncidentStatus("investigating", "triggered")).toBe(false);
+		expect(canSetIncidentStatus("triggered", "closed")).toBe(false);
+		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
+		expect(canSetIncidentStatus("resolved", "closed")).toBe(true);
+		expect(canSetIncidentStatus("triggered", "bogus")).toBe(false);
+	});
+
+	it("names why an incident wants a human: a failed run first while open, closing once resolved", () => {
 		expect(incidentAttention("triggered", null)).toBe("unacknowledged");
+		expect(incidentAttention("resolved", "failed")).toBe("awaiting_close");
 		expect(incidentAttention("triggered", "failed")).toBe("failed_run");
 		expect(incidentAttention("investigating", "cancelled")).toBe("failed_run");
 		expect(incidentAttention("investigating", "completed")).toBeNull();

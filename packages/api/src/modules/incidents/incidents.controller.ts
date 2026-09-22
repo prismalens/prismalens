@@ -5,7 +5,9 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	canIncidentAction,
+	canSetIncidentStatus,
 	INCIDENT_ACTION_FROM,
+	INCIDENT_STATUS_SET_FROM,
 	incidentsContract,
 	toFiringAlert,
 } from "@prismalens/contracts";
@@ -112,6 +114,19 @@ export class IncidentsController {
 			// PATCH /incidents/:id - Update an incident
 			update: implement(incidentsContract.update).handler(async ({ input }) => {
 				const { id, ...updateData } = input;
+				if (updateData.status) {
+					const existing = await this.incidentsService.findById(id);
+					if (!existing) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Incident ${id} not found`,
+						});
+					}
+					if (!canSetIncidentStatus(existing.status, updateData.status)) {
+						throw new ORPCError("CONFLICT", {
+							message: `Cannot set an incident that is ${existing.status} to ${updateData.status}; allowed from ${INCIDENT_STATUS_SET_FROM[updateData.status].join(", ") || "nothing"}`,
+						});
+					}
+				}
 				const incident = await this.incidentsService.update(
 					id,
 					updateData as UpdateIncidentDto,

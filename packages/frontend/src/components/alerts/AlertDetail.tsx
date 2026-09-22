@@ -4,6 +4,7 @@
 import {
 	ALERT_STATUS_LABEL,
 	canAlertAction,
+	httpUrlOrNull,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -108,6 +109,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 	}
 
 	const labels = Object.entries(alert.labels ?? {});
+	const sourceHref = httpUrlOrNull(alert.sourceUrl);
 
 	return (
 		<div
@@ -253,14 +255,14 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 					<RecordSection id="identity" title="Identity">
 						<dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
 							<Field label="Source">
-								{alert.sourceUrl ? (
+								{sourceHref ? (
 									<a
-										href={alert.sourceUrl}
+										href={sourceHref}
 										target="_blank"
 										rel="noreferrer"
 										className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
 									>
-										{alert.source ?? alert.sourceUrl}
+										{alert.source ?? sourceHref}
 										<ExternalLink className="h-3 w-3" />
 									</a>
 								) : (

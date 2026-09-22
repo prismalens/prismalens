@@ -20,6 +20,7 @@ export * from "./investigation.js";
 export * from "./overlay.js";
 export * from "./recommendation.js";
 export * from "./repository.js";
+export * from "./safe-url.js";
 // Entity schemas
 export * from "./service.js";
 export * from "./settings.js";

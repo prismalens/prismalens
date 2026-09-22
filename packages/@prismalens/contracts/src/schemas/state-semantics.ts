@@ -192,6 +192,31 @@ export function canIncidentAction(
 	return (INCIDENT_ACTION_FROM[action] as readonly string[]).includes(status);
 }
 
+/**
+ * Which statuses a generic update may move an incident *from*, per target.
+ * Resolving and closing keep their own routes (they stamp the times); this is
+ * the rule for a status set on `PATCH /incidents/:id`, which the record uses
+ * to acknowledge and to move between the working phases. Never backwards to
+ * triggered, never out of closed.
+ */
+export const INCIDENT_STATUS_SET_FROM: Record<
+	IncidentStatus,
+	readonly IncidentStatus[]
+> = {
+	triggered: [],
+	investigating: ["triggered", "identified", "monitoring"],
+	identified: ["investigating", "monitoring"],
+	monitoring: ["investigating", "identified"],
+	resolved: INCIDENT_ACTION_FROM.resolve,
+	closed: INCIDENT_ACTION_FROM.close,
+};
+
+export function canSetIncidentStatus(from: string, to: string): boolean {
+	if (from === to) return true;
+	const allowed = INCIDENT_STATUS_SET_FROM[to as IncidentStatus];
+	return allowed !== undefined && (allowed as readonly string[]).includes(from);
+}
+
 export type AlertAction = "acknowledge" | "resolve";
 
 export const ALERT_ACTION_FROM: Record<AlertAction, readonly AlertStatus[]> = {
@@ -223,7 +248,8 @@ export function incidentAttention(
 	status: string,
 	latestRunStatus?: string | null,
 ): IncidentAttention | null {
-	if (!isIncidentOpen(status) && status !== "resolved") return null;
+	if (status === "resolved") return "awaiting_close";
+	if (!isIncidentOpen(status)) return null;
 	if (
 		latestRunStatus &&
 		isWorkflowTerminal(latestRunStatus) &&
@@ -233,6 +259,5 @@ export function incidentAttention(
 	}
 	if (INCIDENT_STATUS_PHASE[status as IncidentStatus] === "new")
 		return "unacknowledged";
-	if (status === "resolved") return "awaiting_close";
 	return null;
 }
