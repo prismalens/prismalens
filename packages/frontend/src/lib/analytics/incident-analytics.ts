@@ -382,7 +382,7 @@ export function getTrendColor(
 	if (trend === 0) return "text-muted-foreground";
 
 	if (lowerIsBetter) {
-		return trend < 0 ? "text-green-600" : "text-red-600";
+		return trend < 0 ? "text-run-done" : "text-run-failed";
 	}
-	return trend > 0 ? "text-green-600" : "text-red-600";
+	return trend > 0 ? "text-run-done" : "text-run-failed";
 }

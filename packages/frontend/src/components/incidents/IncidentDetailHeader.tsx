@@ -17,9 +17,10 @@ import {
 	Search,
 	XCircle,
 } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
@@ -39,12 +40,12 @@ export interface IncidentDetailHeaderProps {
 	investigateDisabledReason?: string;
 }
 
-const priorityColors: Record<string, string> = {
-	p1: "bg-red-600 text-white",
-	p2: "bg-orange-500 text-white",
-	p3: "bg-yellow-500 text-black",
-	p4: "bg-blue-500 text-white",
-	p5: "bg-gray-500 text-white",
+const priorityTone: Record<string, ChipTone> = {
+	p1: "critical",
+	p2: "high",
+	p3: "medium",
+	p4: "low",
+	p5: "neutral",
 };
 
 export function IncidentDetailHeader({
@@ -80,20 +81,18 @@ export function IncidentDetailHeader({
 				<div className="space-y-2">
 					{/* Number and Title */}
 					<div className="flex items-center gap-3">
-						<span className="font-mono text-lg text-muted-foreground">
+						<Mono className="text-lg text-muted-foreground">
 							INC-{incident.number}
-						</span>
+						</Mono>
 						<h1 className="text-2xl font-bold">{incident.title}</h1>
 					</div>
 
 					{/* Badges */}
 					<div className="flex flex-wrap items-center gap-2">
 						<SeverityBadge severity={incident.severity} />
-						<Badge
-							className={priorityColors[incident.priority] || "bg-gray-500"}
-						>
+						<StateChip tone={priorityTone[incident.priority] || "neutral"}>
 							{incident.priority.toUpperCase()}
-						</Badge>
+						</StateChip>
 						<StatusBadge status={incident.status} />
 						{incident.service && (
 							<Link
@@ -138,17 +137,21 @@ export function IncidentDetailHeader({
 					{/* Meta info */}
 					<div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
 						<span>
-							Triggered: {new Date(incident.triggeredAt).toLocaleString()}
+							Triggered:{" "}
+							<Mono>{new Date(incident.triggeredAt).toLocaleString()}</Mono>
 						</span>
 						{incident.acknowledgedAt && (
 							<span>
 								Acknowledged:{" "}
-								{new Date(incident.acknowledgedAt).toLocaleString()}
+								<Mono>
+									{new Date(incident.acknowledgedAt).toLocaleString()}
+								</Mono>
 							</span>
 						)}
 						{incident.resolvedAt && (
 							<span>
-								Resolved: {new Date(incident.resolvedAt).toLocaleString()}
+								Resolved:{" "}
+								<Mono>{new Date(incident.resolvedAt).toLocaleString()}</Mono>
 							</span>
 						)}
 						<span>{incident.alertCount} alert(s)</span>

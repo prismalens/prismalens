@@ -573,7 +573,7 @@ export function ImportFromVcsDialog({
 						</label>
 
 						{!createServices && (
-							<p className="text-xs text-amber-600 dark:text-amber-400">
+							<p className="text-xs text-stale">
 								Repositories imported without services can be linked later from
 								the services list page.
 							</p>
@@ -646,8 +646,8 @@ export function ImportFromVcsDialog({
 										className={cn(
 											"flex items-center gap-2 text-sm p-2 rounded",
 											result.success
-												? "text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/30"
-												: "text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/30",
+												? "text-run-done bg-run-done/12"
+												: "text-run-failed bg-run-failed/12",
 										)}
 									>
 										{result.success ? (

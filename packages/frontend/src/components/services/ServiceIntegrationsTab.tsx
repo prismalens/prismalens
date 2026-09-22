@@ -23,7 +23,7 @@ import {
 	Settings2,
 	Trash2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -54,27 +54,27 @@ function ConnectionStatusBadge({ status }: { status: string }) {
 	switch (status) {
 		case "connected":
 			return (
-				<Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+				<StateChip tone="done">
 					<Check className="h-3 w-3 mr-1" />
 					Connected
-				</Badge>
+				</StateChip>
 			);
 		case "error":
 			return (
-				<Badge variant="destructive">
+				<StateChip tone="failed">
 					<AlertCircle className="h-3 w-3 mr-1" />
 					Error
-				</Badge>
+				</StateChip>
 			);
 		case "pending":
 			return (
-				<Badge variant="secondary">
+				<StateChip tone="active">
 					<Loader2 className="h-3 w-3 mr-1 animate-spin" />
 					Pending
-				</Badge>
+				</StateChip>
 			);
 		default:
-			return <Badge variant="outline">{status}</Badge>;
+			return <StateChip tone="neutral">{status}</StateChip>;
 	}
 }
 
@@ -198,8 +198,8 @@ export function ServiceIntegrationsTab({
 			<Card>
 				<CardHeader>
 					<div className="flex items-center gap-3">
-						<div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
-							<Settings2 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+						<div className="w-10 h-10 bg-stale/12 rounded-lg flex items-center justify-center">
+							<Settings2 className="h-5 w-5 text-stale" />
 						</div>
 						<div>
 							<CardTitle className="text-base">
@@ -230,7 +230,7 @@ export function ServiceIntegrationsTab({
 									key={integration.overrideId}
 									className={cn(
 										"flex items-center justify-between p-3 border rounded-lg",
-										"border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-900/10",
+										"border-stale/35 bg-stale/5",
 									)}
 								>
 									<div className="flex items-center gap-3">
@@ -242,12 +242,7 @@ export function ServiceIntegrationsTab({
 												<span className="font-medium">
 													{integration.connectionName}
 												</span>
-												<Badge
-													variant="outline"
-													className="text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-700"
-												>
-													Override
-												</Badge>
+												<StateChip tone="stale">Override</StateChip>
 												<ConnectionStatusBadge status={integration.status} />
 											</div>
 											<p className="text-sm text-muted-foreground">

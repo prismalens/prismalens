@@ -15,6 +15,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -267,7 +268,7 @@ export function ConnectionsTab() {
 					className={cn(
 						"flex items-center gap-2 p-3 rounded-lg text-sm",
 						oauthMessage.type === "success"
-							? "bg-green-500/10 text-green-700 dark:text-green-400"
+							? "bg-run-done/12 text-run-done"
 							: "bg-destructive/10 text-destructive",
 					)}
 				>
@@ -364,9 +365,11 @@ export function ConnectionsTab() {
 														<>
 															{" "}
 															• Last refreshed:{" "}
-															{new Date(
-																connection.lastRefreshedAt,
-															).toLocaleString()}
+															<Mono>
+																{new Date(
+																	connection.lastRefreshedAt,
+																).toLocaleString()}
+															</Mono>
 														</>
 													)}
 												</p>

@@ -89,13 +89,13 @@ export function InvestigationStreamPanel({
 				<div className="flex items-center justify-between">
 					<CardTitle className="text-base flex items-center gap-2">
 						{status === "streaming" && (
-							<Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+							<Loader2 className="h-4 w-4 animate-spin text-run-active" />
 						)}
 						{status === "completed" && (
-							<CheckCircle className="h-4 w-4 text-green-500" />
+							<CheckCircle className="h-4 w-4 text-run-done" />
 						)}
 						{status === "failed" && (
-							<AlertTriangle className="h-4 w-4 text-red-500" />
+							<AlertTriangle className="h-4 w-4 text-run-failed" />
 						)}
 						Investigation Progress
 						{isMultiBranch && (
@@ -194,12 +194,12 @@ function BranchSection({ group }: { group: BranchGroup }) {
 }
 
 const ICON_MAP: Record<EventRowData["icon"], React.ReactNode> = {
-	activity: <Activity className="h-3.5 w-3.5 text-blue-500 shrink-0" />,
-	brain: <Brain className="h-3.5 w-3.5 text-purple-500 shrink-0" />,
-	tool: <Wrench className="h-3.5 w-3.5 text-blue-500 shrink-0" />,
-	lightbulb: <Lightbulb className="h-3.5 w-3.5 text-green-500 shrink-0" />,
-	warning: <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
-	check: <CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />,
+	activity: <Activity className="h-3.5 w-3.5 text-run-active shrink-0" />,
+	brain: <Brain className="h-3.5 w-3.5 text-primary shrink-0" />,
+	tool: <Wrench className="h-3.5 w-3.5 text-sev-low shrink-0" />,
+	lightbulb: <Lightbulb className="h-3.5 w-3.5 text-run-done shrink-0" />,
+	warning: <AlertTriangle className="h-3.5 w-3.5 text-stale shrink-0" />,
+	check: <CheckCircle className="h-3.5 w-3.5 text-run-done shrink-0" />,
 };
 
 function EventRow({ row }: { row: EventRowData }) {

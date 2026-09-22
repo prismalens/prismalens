@@ -22,11 +22,11 @@ export interface IncidentStatsBarProps {
 
 // Severity colors for the mini badges
 const severityColors: Record<string, string> = {
-	critical: "bg-red-500",
-	high: "bg-orange-500",
-	medium: "bg-yellow-500",
-	low: "bg-blue-500",
-	info: "bg-gray-500",
+	critical: "bg-sev-critical",
+	high: "bg-sev-high",
+	medium: "bg-sev-medium",
+	low: "bg-sev-low",
+	info: "bg-sev-info",
 };
 
 // Calculate MTTR from resolved incidents
@@ -115,7 +115,7 @@ export function IncidentStatsBar({
 						activeStatusFilter === "active" && "bg-muted",
 					)}
 				>
-					<span className="text-2xl font-bold text-orange-500">
+					<span className="text-2xl font-bold text-run-active">
 						{activeCount}
 					</span>
 					<span className="text-xs text-muted-foreground">Active</span>

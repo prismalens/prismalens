@@ -7,6 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { Bell, CheckCircle, ExternalLink, Eye } from "lucide-react";
 import { SetupNextStepHint } from "@/components/setup";
+import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -122,7 +123,7 @@ export function AlertsTable({
 													className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
 												>
 													<ExternalLink className="h-3 w-3" />
-													INC-{alert.incident.number}
+													<Mono>INC-{alert.incident.number}</Mono>
 												</Link>
 											)}
 										</div>
@@ -155,7 +156,9 @@ export function AlertsTable({
 												})}
 											</TooltipTrigger>
 											<TooltipContent>
-												{new Date(alert.triggeredAt).toLocaleString()}
+												<Mono>
+													{new Date(alert.triggeredAt).toLocaleString()}
+												</Mono>
 											</TooltipContent>
 										</Tooltip>
 									</TableCell>

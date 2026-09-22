@@ -10,6 +10,8 @@
 import type { RecommendationWithRelations } from "@prismalens/contracts";
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle, Clock, Lightbulb, Play, XCircle } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,11 +22,11 @@ export interface RecommendationsListProps {
 	onDismiss?: (id: string) => void;
 }
 
-const priorityColors: Record<string, string> = {
-	critical: "bg-red-600 text-white",
-	high: "bg-orange-500 text-white",
-	medium: "bg-yellow-500 text-black",
-	low: "bg-blue-500 text-white",
+const priorityTone: Record<string, ChipTone> = {
+	critical: "critical",
+	high: "high",
+	medium: "medium",
+	low: "low",
 };
 
 const categoryLabels: Record<string, string> = {
@@ -88,7 +90,7 @@ export function RecommendationsList({
 								<div className="flex items-start justify-between gap-4">
 									<div className="space-y-1">
 										<CardTitle className="text-base font-medium flex items-center gap-2">
-											<Lightbulb className="h-4 w-4 text-yellow-500" />
+											<Lightbulb className="h-4 w-4 text-stale" />
 											{rec.title}
 										</CardTitle>
 										{rec.description && (
@@ -98,12 +100,10 @@ export function RecommendationsList({
 										)}
 									</div>
 									<div className="flex flex-col items-end gap-1">
-										<Badge
-											className={priorityColors[rec.priority] || "bg-gray-500"}
-										>
+										<StateChip tone={priorityTone[rec.priority] || "neutral"}>
 											{rec.priority.charAt(0).toUpperCase() +
 												rec.priority.slice(1)}
-										</Badge>
+										</StateChip>
 										{rec.category && (
 											<Badge variant="outline" className="text-xs">
 												{categoryLabels[rec.category] || rec.category}
@@ -161,7 +161,9 @@ export function RecommendationsList({
 								{rec.implementedAt && rec.implementedBy && (
 									<div className="mt-2 text-xs text-muted-foreground">
 										Implemented by {rec.implementedBy} on{" "}
-										{new Date(rec.implementedAt).toLocaleDateString()}
+										<Mono>
+											{new Date(rec.implementedAt).toLocaleDateString()}
+										</Mono>
 									</div>
 								)}
 							</CardContent>

@@ -9,6 +9,8 @@ import type {
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ListChecks } from "lucide-react";
 
+import { Mono } from "@/components/shared/Mono";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,28 +28,29 @@ interface AnalysisTabProps {
 	investigation: InvestigationWithRelations;
 }
 
+const fidelityToneMap: Record<RunFidelity["fidelity"], ChipTone> = {
+	enforced: "done",
+	cooperative: "stale",
+	advisory: "failed",
+};
+
 /**
  * Honest run-metadata badge (ADR-0017) — surfaces the enforcement the rented
  * harness actually applied. Green = enforced, amber = cooperative, red = advisory.
  * Mechanism is shown on hover; nothing is inferred client-side.
  */
 function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
-	const tone =
-		fidelity.fidelity === "enforced"
-			? "border-green-600 text-green-700 dark:text-green-400"
-			: fidelity.fidelity === "cooperative"
-				? "border-amber-600 text-amber-700 dark:text-amber-400"
-				: "border-red-600 text-red-700 dark:text-red-500";
+	const tone = fidelityToneMap[fidelity.fidelity] ?? "neutral";
 
 	return (
 		<TooltipProvider>
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<Badge variant="outline" className={`gap-1 ${tone}`}>
+					<StateChip tone={tone}>
 						<span className="font-mono">{fidelity.mode}</span>
 						<span className="opacity-60">·</span>
 						<span className="capitalize">{fidelity.fidelity}</span>
-					</Badge>
+					</StateChip>
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs">
 					<span className="font-mono">{fidelity.harness}</span> —{" "}
@@ -140,7 +143,9 @@ function OverlaySection({
 											</>
 										)}
 										<span className="opacity-60">·</span>
-										<span>{new Date(change.timestamp).toLocaleString()}</span>
+										<span>
+											<Mono>{new Date(change.timestamp).toLocaleString()}</Mono>
+										</span>
 										<span className="opacity-60">·</span>
 										<span>
 											hypothesis #{change.hypothesisIndex + 1} (matched{" "}
@@ -228,15 +233,15 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 				</CardHeader>
 				<CardContent>
 					{investigation.rootCause ? (
-						<div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
-							<p className="text-purple-900 dark:text-purple-100 font-medium">
+						<div className="p-4 bg-primary/10 rounded-lg border border-primary/30">
+							<p className="text-primary font-medium">
 								{investigation.rootCause}
 							</p>
 							{investigation.rootCauseCategory && (
 								<div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
 									<Badge
 										variant="outline"
-										className="border-purple-300 dark:border-purple-700 text-purple-900 dark:text-purple-100"
+										className="border-primary/30 text-primary"
 									>
 										{investigation.rootCauseCategory}
 									</Badge>
@@ -499,29 +504,41 @@ export function AnalysisTab({ investigation }: AnalysisTabProps) {
 						<div>
 							<span className="text-muted-foreground">Started</span>
 							<p className="font-medium">
-								{investigation.startedAt
-									? new Date(investigation.startedAt).toLocaleString()
-									: "-"}
+								{investigation.startedAt ? (
+									<Mono>
+										{new Date(investigation.startedAt).toLocaleString()}
+									</Mono>
+								) : (
+									"-"
+								)}
 							</p>
 						</div>
 						<div>
 							<span className="text-muted-foreground">Completed</span>
 							<p className="font-medium">
-								{investigation.completedAt
-									? new Date(investigation.completedAt).toLocaleString()
-									: "-"}
+								{investigation.completedAt ? (
+									<Mono>
+										{new Date(investigation.completedAt).toLocaleString()}
+									</Mono>
+								) : (
+									"-"
+								)}
 							</p>
 						</div>
 						<div>
 							<span className="text-muted-foreground">Created</span>
 							<p className="font-medium">
-								{new Date(investigation.createdAt).toLocaleString()}
+								<Mono>
+									{new Date(investigation.createdAt).toLocaleString()}
+								</Mono>
 							</p>
 						</div>
 						<div>
 							<span className="text-muted-foreground">Last Updated</span>
 							<p className="font-medium">
-								{new Date(investigation.updatedAt).toLocaleString()}
+								<Mono>
+									{new Date(investigation.updatedAt).toLocaleString()}
+								</Mono>
 							</p>
 						</div>
 						<div>

@@ -42,9 +42,10 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SetupNextStepHint } from "@/components/setup";
+import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -80,12 +81,12 @@ export interface IncidentDataTableProps {
 	investigateDisabledReason?: string;
 }
 
-const priorityColors: Record<string, string> = {
-	p1: "bg-red-600 text-white",
-	p2: "bg-orange-500 text-white",
-	p3: "bg-yellow-500 text-black",
-	p4: "bg-blue-500 text-white",
-	p5: "bg-gray-500 text-white",
+const priorityTone: Record<string, ChipTone> = {
+	p1: "critical",
+	p2: "high",
+	p3: "medium",
+	p4: "low",
+	p5: "neutral",
 };
 
 function formatTimeAgo(date: string): string {
@@ -151,7 +152,7 @@ function InvestigationsBadge({
 					<Brain className="h-3 w-3 text-muted-foreground" />
 					<span>{count}</span>
 					{running > 0 && (
-						<span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+						<span className="h-2 w-2 rounded-full bg-run-active animate-pulse" />
 					)}
 				</div>
 			</TooltipTrigger>
@@ -177,7 +178,7 @@ const createColumns = (
 		accessorKey: "number",
 		header: ({ column }) => <SortableHeader column={column} title="#" />,
 		cell: ({ row }) => (
-			<span className="font-mono text-sm">INC-{row.original.number}</span>
+			<Mono className="text-sm">INC-{row.original.number}</Mono>
 		),
 		size: 80,
 	},
@@ -220,9 +221,9 @@ const createColumns = (
 		accessorKey: "priority",
 		header: ({ column }) => <SortableHeader column={column} title="Priority" />,
 		cell: ({ row }) => (
-			<Badge className={priorityColors[row.original.priority] || "bg-gray-500"}>
+			<StateChip tone={priorityTone[row.original.priority] || "neutral"}>
 				{row.original.priority.toUpperCase()}
-			</Badge>
+			</StateChip>
 		),
 		size: 100,
 	},
@@ -283,7 +284,7 @@ const createColumns = (
 					</div>
 				</TooltipTrigger>
 				<TooltipContent>
-					{new Date(row.original.triggeredAt).toLocaleString()}
+					<Mono>{new Date(row.original.triggeredAt).toLocaleString()}</Mono>
 				</TooltipContent>
 			</Tooltip>
 		),

@@ -10,6 +10,7 @@
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, GitBranch } from "lucide-react";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,11 +20,11 @@ export interface ServiceCardProps {
 	service: ServiceWithRelations;
 }
 
-const tierColors: Record<string, string> = {
-	tier_1: "bg-red-500 text-white",
-	tier_2: "bg-orange-500 text-white",
-	tier_3: "bg-yellow-500 text-black",
-	tier_4: "bg-gray-500 text-white",
+const tierTones: Record<string, ChipTone> = {
+	tier_1: "critical",
+	tier_2: "high",
+	tier_3: "medium",
+	tier_4: "neutral",
 };
 
 const tierLabels: Record<string, string> = {
@@ -60,9 +61,9 @@ export function ServiceCard({ service }: ServiceCardProps) {
 						</div>
 					</div>
 					<div className="flex flex-col items-end gap-1">
-						<Badge className={tierColors[service.tier] || "bg-gray-500"}>
+						<StateChip tone={tierTones[service.tier] || "neutral"}>
 							{tierLabels[service.tier] || service.tier}
-						</Badge>
+						</StateChip>
 						<Badge variant="outline" className="text-xs capitalize">
 							{service.type}
 						</Badge>
@@ -91,13 +92,13 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				{/* Stats Row */}
 				<div className="flex items-center gap-4 text-sm">
 					{service.alertCount !== undefined && service.alertCount > 0 && (
-						<div className="flex items-center gap-1 text-orange-500">
+						<div className="flex items-center gap-1 text-stale">
 							<AlertTriangle className="h-4 w-4" />
 							<span>{service.alertCount} alerts</span>
 						</div>
 					)}
 					{service.incidentCount !== undefined && service.incidentCount > 0 && (
-						<div className="flex items-center gap-1 text-red-500">
+						<div className="flex items-center gap-1 text-run-failed">
 							<AlertTriangle className="h-4 w-4" />
 							<span>{service.incidentCount} incidents</span>
 						</div>

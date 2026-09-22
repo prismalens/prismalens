@@ -17,9 +17,10 @@ import {
 	FileText,
 	Search,
 } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,12 +48,12 @@ export interface IncidentTableProps {
 	investigateDisabledReason?: string;
 }
 
-const priorityColors: Record<string, string> = {
-	p1: "bg-red-600 text-white",
-	p2: "bg-orange-500 text-white",
-	p3: "bg-yellow-500 text-black",
-	p4: "bg-blue-500 text-white",
-	p5: "bg-gray-500 text-white",
+const priorityTone: Record<string, ChipTone> = {
+	p1: "critical",
+	p2: "high",
+	p3: "medium",
+	p4: "low",
+	p5: "neutral",
 };
 
 function formatDuration(ms: number | null): string {
@@ -122,8 +123,8 @@ export function IncidentTable({
 					<TableBody>
 						{incidents.map((incident) => (
 							<TableRow key={incident.id}>
-								<TableCell className="font-mono text-sm">
-									INC-{incident.number}
+								<TableCell className="text-sm">
+									<Mono>INC-{incident.number}</Mono>
 								</TableCell>
 								<TableCell>
 									<Link
@@ -143,13 +144,11 @@ export function IncidentTable({
 									<SeverityBadge severity={incident.severity} />
 								</TableCell>
 								<TableCell>
-									<Badge
-										className={
-											priorityColors[incident.priority] || "bg-gray-500"
-										}
+									<StateChip
+										tone={priorityTone[incident.priority] || "neutral"}
 									>
 										{incident.priority.toUpperCase()}
-									</Badge>
+									</StateChip>
 								</TableCell>
 								<TableCell>
 									<StatusBadge status={incident.status} />
@@ -183,7 +182,9 @@ export function IncidentTable({
 											</div>
 										</TooltipTrigger>
 										<TooltipContent>
-											{new Date(incident.triggeredAt).toLocaleString()}
+											<Mono>
+												{new Date(incident.triggeredAt).toLocaleString()}
+											</Mono>
 										</TooltipContent>
 									</Tooltip>
 								</TableCell>

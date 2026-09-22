@@ -34,11 +34,7 @@ export function ApiStatusCheck() {
 	}
 
 	if (isError) {
-		return (
-			<div className="text-sm text-red-600 dark:text-red-400">
-				API disconnected
-			</div>
-		);
+		return <div className="text-sm text-run-failed">API disconnected</div>;
 	}
 
 	return (

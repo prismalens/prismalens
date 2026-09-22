@@ -10,7 +10,7 @@
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { Brain, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -38,27 +38,27 @@ export interface InvestigationProgressProps {
 
 const statusConfig: Record<
 	string,
-	{ label: string; icon: React.ReactNode; color: string }
+	{ label: string; icon: React.ReactNode; tone: ChipTone }
 > = {
 	pending: {
 		label: "Pending",
 		icon: <Clock className="h-4 w-4" />,
-		color: "bg-gray-500",
+		tone: "neutral",
 	},
 	running: {
 		label: "Running",
 		icon: <Loader2 className="h-4 w-4 animate-spin" />,
-		color: "bg-blue-500",
+		tone: "active",
 	},
 	completed: {
 		label: "Completed",
 		icon: <CheckCircle className="h-4 w-4" />,
-		color: "bg-green-500",
+		tone: "done",
 	},
 	failed: {
 		label: "Failed",
 		icon: <XCircle className="h-4 w-4" />,
-		color: "bg-red-500",
+		tone: "failed",
 	},
 };
 
@@ -179,12 +179,12 @@ export function InvestigationProgress({
 										<Brain className="h-4 w-4" />
 										AI Investigation
 									</CardTitle>
-									<Badge className={`${config.color} text-white`}>
+									<StateChip tone={config.tone}>
 										<span className="flex items-center gap-1">
 											{config.icon}
 											{config.label}
 										</span>
-									</Badge>
+									</StateChip>
 								</div>
 							</CardHeader>
 							<CardContent className="space-y-3">
