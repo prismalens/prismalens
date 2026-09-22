@@ -10,6 +10,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
+import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Alert, Incident, Investigation } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -60,7 +61,7 @@ export class InvestigationUpdateService {
 		return this.prisma.investigation.findFirst({
 			where: {
 				incidentId,
-				status: { in: ["pending", "running"] },
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
 			},
 		});
 	}

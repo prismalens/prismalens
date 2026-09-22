@@ -134,8 +134,8 @@ function IncidentsPage() {
 				to: "/incidents/$id",
 				params: { id: variables.id },
 				search: data?.investigationId
-					? { tab: "investigation", investigation: data.investigationId }
-					: { tab: "investigation" },
+					? { investigation: data.investigationId }
+					: {},
 			});
 		},
 		onError: (error) => {

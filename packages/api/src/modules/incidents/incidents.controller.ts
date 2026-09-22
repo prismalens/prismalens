@@ -3,7 +3,12 @@
 
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { incidentsContract, toFiringAlert } from "@prismalens/contracts";
+import {
+	canIncidentAction,
+	INCIDENT_ACTION_FROM,
+	incidentsContract,
+	toFiringAlert,
+} from "@prismalens/contracts";
 import type {
 	Alert,
 	Incident,
@@ -20,6 +25,21 @@ import { IntegrationsService } from "../integrations/integrations.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 import { IncidentsService } from "./incidents.service.js";
+
+/**
+ * The action rules are the contracts package's (state-semantics); the UI greys
+ * the same controls for the same reason, so a refusal here means a stale page,
+ * a second client, or a hand-written request.
+ */
+function refuseUnless(
+	action: keyof typeof INCIDENT_ACTION_FROM,
+	status: string,
+): void {
+	if (canIncidentAction(action, status)) return;
+	throw new ORPCError("CONFLICT", {
+		message: `Cannot ${action} an incident that is ${status}; allowed from ${INCIDENT_ACTION_FROM[action].join(", ")}`,
+	});
+}
 
 @Controller()
 export class IncidentsController {
@@ -103,6 +123,8 @@ export class IncidentsController {
 						});
 					}
 
+					refuseUnless("investigate", incident.status);
+
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
 					const selection = await this.harnessService.resolveSelection();
 					if (!selection.runnable) {
@@ -173,6 +195,13 @@ export class IncidentsController {
 			// POST /incidents/:id/resolve - Resolve an incident
 			resolve: implement(incidentsContract.resolve).handler(
 				async ({ input }) => {
+					const existing = await this.incidentsService.findById(input.id);
+					if (!existing) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Incident ${input.id} not found`,
+						});
+					}
+					refuseUnless("resolve", existing.status);
 					const incident = await this.incidentsService.resolve(input.id);
 					if (!incident) {
 						throw new ORPCError("NOT_FOUND", {
@@ -185,6 +214,13 @@ export class IncidentsController {
 
 			// POST /incidents/:id/close - Close a resolved incident
 			close: implement(incidentsContract.close).handler(async ({ input }) => {
+				const existing = await this.incidentsService.findById(input.id);
+				if (!existing) {
+					throw new ORPCError("NOT_FOUND", {
+						message: `Incident ${input.id} not found`,
+					});
+				}
+				refuseUnless("close", existing.status);
 				const incident = await this.incidentsService.close(input.id, {
 					actualCause: input.actualCause,
 					actualCauseCategory: input.actualCauseCategory,

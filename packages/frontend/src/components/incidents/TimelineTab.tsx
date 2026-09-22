@@ -9,10 +9,9 @@ import type {
 	TimelineSource,
 } from "@prismalens/contracts";
 import { format, isToday, isYesterday } from "date-fns";
-import { ClipboardList, Plus } from "lucide-react";
+import { ClipboardList } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
@@ -22,19 +21,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { AddTimelineEntryDialog } from "./AddTimelineEntryDialog";
 import { TimelineEntry } from "./TimelineEntry";
 
 export interface TimelineTabProps {
 	incidentId: string;
 	entries: TimelineEntryWithRelations[];
 	isLoading?: boolean;
-	onCreateEntry?: (entry: {
-		title: string;
-		description?: string;
-		type: TimelineEntryType;
-	}) => void;
-	isCreating?: boolean;
 	className?: string;
 }
 
@@ -86,13 +78,10 @@ export function TimelineTab({
 	incidentId,
 	entries,
 	isLoading,
-	onCreateEntry,
-	isCreating,
 	className,
 }: TimelineTabProps) {
 	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 	const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-	const [isDialogOpen, setIsDialogOpen] = useState(false);
 
 	// Apply filters
 	const filteredEntries = entries.filter((entry) => {
@@ -110,24 +99,12 @@ export function TimelineTab({
 	// Group by date
 	const groupedEntries = groupEntriesByDate(sortedEntries);
 
-	const handleCreateEntry = (data: {
-		title: string;
-		description?: string;
-		type: TimelineEntryType;
-	}) => {
-		onCreateEntry?.(data);
-		setIsDialogOpen(false);
-	};
-
 	if (isLoading) {
 		return (
 			<div className={cn("space-y-4", className)}>
-				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-2">
-						<Skeleton className="h-9 w-32" />
-						<Skeleton className="h-9 w-32" />
-					</div>
-					<Skeleton className="h-9 w-28" />
+				<div className="flex items-center gap-2">
+					<Skeleton className="h-9 w-32" />
+					<Skeleton className="h-9 w-32" />
 				</div>
 				<div className="space-y-4">
 					{[1, 2, 3, 4].map((i) => (
@@ -149,8 +126,7 @@ export function TimelineTab({
 
 	return (
 		<div className={cn("space-y-4", className)}>
-			{/* Filters and Add Button */}
-			<div className="flex items-center justify-between gap-4 flex-wrap">
+			<div className="flex flex-wrap items-center gap-2">
 				<div className="flex items-center gap-2">
 					<Select
 						value={typeFilter}
@@ -184,40 +160,15 @@ export function TimelineTab({
 						</SelectContent>
 					</Select>
 				</div>
-
-				{onCreateEntry && (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => setIsDialogOpen(true)}
-					>
-						<Plus className="w-4 h-4 mr-1" />
-						Add Entry
-					</Button>
-				)}
 			</div>
 
 			{/* Timeline Entries */}
 			{sortedEntries.length === 0 ? (
-				<div className="flex flex-col items-center justify-center py-12 text-center">
-					<ClipboardList className="w-12 h-12 text-muted-foreground mb-4" />
-					<h3 className="text-lg font-medium">No activity yet</h3>
-					<p className="text-sm text-muted-foreground max-w-sm mt-1">
-						Timeline entries will appear here as the incident progresses. System
-						events, investigation updates, and user actions are all recorded
-						automatically.
-					</p>
-					{onCreateEntry && (
-						<Button
-							variant="outline"
-							className="mt-4"
-							onClick={() => setIsDialogOpen(true)}
-						>
-							<Plus className="w-4 h-4 mr-1" />
-							Add Entry
-						</Button>
-					)}
-				</div>
+				<p className="flex items-center gap-2 rounded-md border border-dashed p-3 text-record text-muted-foreground">
+					<ClipboardList className="h-4 w-4 shrink-0" />
+					Nothing recorded yet. Status changes, runs and alerts land here on
+					their own; type a note in the composer to add your own.
+				</p>
 			) : (
 				<div className="space-y-6">
 					{Array.from(groupedEntries.entries()).map(([dateKey, dayEntries]) => (
@@ -243,14 +194,6 @@ export function TimelineTab({
 					))}
 				</div>
 			)}
-
-			{/* Add Entry Dialog */}
-			<AddTimelineEntryDialog
-				open={isDialogOpen}
-				onOpenChange={setIsDialogOpen}
-				onSubmit={handleCreateEntry}
-				isSubmitting={isCreating}
-			/>
 		</div>
 	);
 }

@@ -2,10 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 export {
-	AddTimelineEntryDialog,
-	type AddTimelineEntryDialogProps,
-} from "./AddTimelineEntryDialog";
-export {
 	IncidentAnalytics,
 	IncidentsOverTimeChart,
 	MTTRTrendChart,
@@ -28,27 +24,26 @@ export {
 	type QuickRange,
 } from "./DateRangeFilter";
 export {
+	type ComposerCommand,
+	IncidentComposer,
+	type IncidentComposerProps,
+} from "./IncidentComposer";
+export {
 	IncidentDataTable,
 	type IncidentDataTableProps,
 } from "./IncidentDataTable";
-export {
-	IncidentDetailHeader,
-	type IncidentDetailHeaderProps,
-} from "./IncidentDetailHeader";
 export { IncidentFilters, type IncidentFiltersProps } from "./IncidentFilters";
+export { IncidentRail, type IncidentRailProps } from "./IncidentRail";
 export {
-	IncidentOverview,
-	type IncidentOverviewProps,
-} from "./IncidentOverview";
+	IncidentStateBand,
+	type IncidentStateBandProps,
+	type RunCapsule,
+} from "./IncidentStateBand";
 export {
 	IncidentStatsBar,
 	type IncidentStatsBarProps,
 } from "./IncidentStatsBar";
 export { IncidentTable, type IncidentTableProps } from "./IncidentTable";
-export {
-	InvestigationProgress,
-	type InvestigationProgressProps,
-} from "./InvestigationProgress";
 export {
 	RecommendationCard,
 	type RecommendationCardProps,
@@ -58,15 +53,7 @@ export {
 	type RecommendationsListProps,
 } from "./RecommendationsList";
 export {
-	RootCauseAnalysis,
-	type RootCauseAnalysisProps,
-} from "./RootCauseAnalysis";
-export {
 	TimelineEntry,
 	type TimelineEntryProps,
 } from "./TimelineEntry";
-export {
-	TimelinePreview,
-	type TimelinePreviewProps,
-} from "./TimelinePreview";
 export { TimelineTab, type TimelineTabProps } from "./TimelineTab";

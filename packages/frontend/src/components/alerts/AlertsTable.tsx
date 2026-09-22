@@ -132,7 +132,7 @@ export function AlertsTable({
 										<SeverityBadge severity={alert.severity} />
 									</TableCell>
 									<TableCell>
-										<StatusBadge status={alert.status} />
+										<StatusBadge status={alert.status} kind="alert" />
 									</TableCell>
 									<TableCell>
 										{alert.service ? (

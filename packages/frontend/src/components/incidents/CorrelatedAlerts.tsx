@@ -10,10 +10,9 @@
 import type { AlertWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { Bell } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export interface CorrelatedAlertsProps {
 	alerts: AlertWithRelations[];
@@ -22,71 +21,52 @@ export interface CorrelatedAlertsProps {
 export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 	if (alerts.length === 0) {
 		return (
-			<Card>
-				<CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-					<Bell className="h-12 w-12 mb-4 opacity-50" />
-					<p className="text-lg font-medium">No correlated alerts</p>
-					<p className="text-sm">
-						Alerts will appear here when they are correlated to this incident
-					</p>
-				</CardContent>
-			</Card>
+			<p className="rounded-md border border-dashed p-3 text-record text-muted-foreground">
+				No alerts are correlated to this incident yet. Alerts that match land
+				here on intake.
+			</p>
 		);
 	}
 
 	return (
-		<div className="space-y-4">
-			<div className="text-sm text-muted-foreground">
-				{alerts.length} alert{alerts.length !== 1 ? "s" : ""} correlated to this
-				incident
-			</div>
-
-			<div className="grid gap-3">
-				{alerts.map((alert) => (
-					<Card key={alert.id}>
-						<CardHeader className="pb-2">
-							<div className="flex items-start justify-between">
-								<div className="space-y-1">
-									<CardTitle className="text-base font-medium">
-										{alert.title}
-									</CardTitle>
-									{alert.description && (
-										<p className="text-sm text-muted-foreground line-clamp-2">
-											{alert.description}
-										</p>
-									)}
-								</div>
-								<div className="flex items-center gap-2">
-									<SeverityBadge severity={alert.severity} />
-									<StatusBadge status={alert.status} />
-								</div>
-							</div>
-						</CardHeader>
-						<CardContent>
-							<div className="flex items-center justify-between">
-								<div className="flex items-center gap-4 text-sm text-muted-foreground">
-									{alert.service && (
-										<Link
-											to="/services/$id"
-											params={{ id: alert.service.id }}
-											search={{ tab: "overview" }}
-											className="hover:text-primary"
-										>
-											{alert.service.displayName || alert.service.name}
-										</Link>
-									)}
-									<span>
-										{formatDistanceToNow(new Date(alert.triggeredAt), {
-											addSuffix: true,
-										})}
-									</span>
-									{alert.source && <span>Source: {alert.source}</span>}
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-				))}
-			</div>
-		</div>
+		<ul className="divide-y rounded-md border">
+			{alerts.map((alert) => (
+				<li
+					key={alert.id}
+					className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2"
+				>
+					<div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+						<SeverityBadge severity={alert.severity} />
+						<StatusBadge status={alert.status} kind="alert" />
+					</div>
+					<div className="min-w-0 flex-1">
+						<p className="truncate text-record font-medium">{alert.title}</p>
+						{alert.description && (
+							<p className="line-clamp-2 text-record text-muted-foreground">
+								{alert.description}
+							</p>
+						)}
+					</div>
+					<div className="flex shrink-0 items-center gap-3 font-mono text-meta text-muted-foreground">
+						{alert.service && (
+							<Link
+								to="/services/$id"
+								params={{ id: alert.service.id }}
+								search={{ tab: "overview" }}
+								className="hover:text-primary"
+							>
+								{alert.service.displayName || alert.service.name}
+							</Link>
+						)}
+						{alert.source && <span>{alert.source}</span>}
+						<Mono title={new Date(alert.triggeredAt).toLocaleString()}>
+							{formatDistanceToNow(new Date(alert.triggeredAt), {
+								addSuffix: true,
+							})}
+						</Mono>
+					</div>
+				</li>
+			))}
+		</ul>
 	);
 }

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import { isIncidentEnded } from "@prismalens/contracts";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -239,10 +240,7 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
-				if (
-					(dto.status === "resolved" || dto.status === "closed") &&
-					!existing.resolvedAt
-				) {
+				if (isIncidentEnded(dto.status) && !existing.resolvedAt) {
 					updateData.resolvedAt = new Date();
 					updateData.timeToResolve = Math.floor(
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,

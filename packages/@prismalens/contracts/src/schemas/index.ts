@@ -23,5 +23,7 @@ export * from "./repository.js";
 // Entity schemas
 export * from "./service.js";
 export * from "./settings.js";
+export * from "./state-labels.js";
+export * from "./state-semantics.js";
 export * from "./timeline.js";
 export * from "./webhook.js";

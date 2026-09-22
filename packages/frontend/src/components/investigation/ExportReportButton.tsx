@@ -6,18 +6,8 @@ import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
+import { download } from "@/lib/download";
 import { getErrorMessage } from "@/lib/get-error-message";
-
-function download(filename: string, markdown: string) {
-	const url = URL.createObjectURL(
-		new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
-	);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = filename;
-	a.click();
-	URL.revokeObjectURL(url);
-}
 
 /** Downloads the server-rendered Markdown of a completed report (#606). */
 export function ExportReportButton({
