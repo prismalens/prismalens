@@ -56,9 +56,7 @@ function publish(next: LayoutPrefs) {
 		"--sidebar-w",
 		next.sidebarFolded ? SIDEBAR_WIDTH.folded : SIDEBAR_WIDTH.open,
 	);
-	listeners.forEach((l) => {
-		l();
-	});
+	listeners.forEach((l) => l());
 }
 
 function subscribe(l: () => void) {

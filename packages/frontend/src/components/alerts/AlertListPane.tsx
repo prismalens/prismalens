@@ -311,7 +311,6 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 							>
 								<div className="flex items-start gap-2">
 									<span
-										role="img"
 										aria-label={SEVERITY_LABEL[alert.severity]}
 										title={SEVERITY_LABEL[alert.severity]}
 										className="mt-1.5 h-2 w-2 shrink-0 rounded-full"

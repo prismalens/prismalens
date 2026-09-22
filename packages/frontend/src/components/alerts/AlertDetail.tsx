@@ -123,7 +123,6 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 					<ChevronLeft className="h-4 w-4" />
 				</Link>
 				<span
-					role="img"
 					aria-label={SEVERITY_LABEL[alert.severity]}
 					title={SEVERITY_LABEL[alert.severity]}
 					className="h-2 w-2 shrink-0 rounded-full"

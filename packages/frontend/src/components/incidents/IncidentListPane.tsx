@@ -349,7 +349,6 @@ export function IncidentListPane({
 										<div className="min-w-0">
 											<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
 												<span
-													role="img"
 													aria-label={SEVERITY_LABEL[incident.severity]}
 													title={SEVERITY_LABEL[incident.severity]}
 													className="h-2 w-2 shrink-0 rounded-full"
