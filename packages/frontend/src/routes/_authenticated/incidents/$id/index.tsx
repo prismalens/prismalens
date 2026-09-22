@@ -325,7 +325,7 @@ function IncidentRecordPage() {
 						/>
 					)}
 
-					{(recommendations.length > 0 || hasReport) && (
+					{recommendations.length > 0 && (
 						<RecordSection
 							id="recommendations"
 							title="Recommendations"
