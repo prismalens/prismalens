@@ -182,6 +182,7 @@ else
 fi
 # The gates below read info-level records off the console; quiet (the default) sends
 # those only to the log file, which is asserted separately (#610).
+CI="${CI:-true}" \
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \
@@ -239,6 +240,7 @@ grep -q "CORS enabled for origins" "$UP_LOG" && fail "the vestigial CORS allowli
 
 HTTP_PROBE_MJS="$PKG/prismalens-smoke-http-probe.mjs"
 cat > "$HTTP_PROBE_MJS" <<'PROBE'
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { resolveHarnessSelection } from "@prismalens/config/harness-selection";
@@ -252,8 +254,8 @@ const bootLog = process.argv[2];
 const { assertRefusalGate } = await import(
 	pathToFileURL(process.argv[3]).href
 );
-const email = "smoke@prismalens.test";
-const password = "smoke-password-12345";
+const plBin = process.argv[4];
+const workspaceDir = process.argv[5];
 let failed = 0;
 
 const ok = (name, detail = "") => console.log(`    OK   ${name}${detail ? " — " + detail : ""}`);
@@ -322,28 +324,75 @@ const json = (path, init) =>
 		? ok("/api/webhooks/generic reaches Nest", `status ${webhook.status}`)
 		: bad("/api/webhooks/generic", "the SPA fallback swallowed a webhook");
 
-	// --- first-run: create the owner, then sign in ----------------------------
-	const setup = await json("/api/setup", {
-		method: "POST",
-		body: JSON.stringify({ email, password, name: "Packed Smoke" }),
+	// --- pairing: pair a device instead of creating an owner ------------------
+	const pairOut = execFileSync(plBin, ["pair", "--workspace", workspaceDir], {
+		encoding: "utf8",
 	});
-	if (setup.status >= 200 && setup.status < 300) ok("POST /api/setup", `status ${setup.status}`);
-	else bad("POST /api/setup", `status ${setup.status}: ${(await setup.text()).slice(0, 200)}`);
+	const token = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 
-	const signIn = await json("/api/auth/sign-in/email", {
+	const redeem = await json("/api/pairing/redeem", {
 		method: "POST",
-		body: JSON.stringify({ email, password }),
+		body: JSON.stringify({ token, name: "packed smoke" }),
 	});
-	const signInBody = await signIn.text();
-	const setCookie = signIn.headers.getSetCookie?.() ?? [];
-	const sessionCookie = setCookie.find((c) => /session/i.test(c));
-	const hasToken = /"token"\s*:\s*"[^"]+"/.test(signInBody) || Boolean(sessionCookie);
-	if (signIn.status === 200 && hasToken) {
-		ok("POST /api/auth/sign-in/email 200 with a session token");
+	const setCookie = redeem.headers.getSetCookie?.() ?? [];
+	const deviceCookie = setCookie.find((c) =>
+		c.startsWith("prismalens.device="),
+	);
+	const cookie = deviceCookie ? deviceCookie.split(";")[0] : "";
+	if (redeem.status === 200 && cookie) {
+		ok("POST /api/pairing/redeem 200 with device cookie");
 	} else {
-		bad("sign-in", `status ${signIn.status}, cookies ${setCookie.length}, body ${signInBody.slice(0, 200)}`);
+		bad(
+			"POST /api/pairing/redeem",
+			`status ${redeem.status}, cookies ${setCookie.length}, body ${(await redeem.text()).slice(0, 200)}`,
+		);
 	}
-	const cookie = setCookie.map((c) => c.split(";")[0]).join("; ");
+
+	const whoamiWith = await json("/api/operator/whoami", {
+		headers: { cookie },
+	});
+	const whoamiWithBody = await whoamiWith.json().catch(() => ({}));
+	if (whoamiWith.status === 200 && whoamiWithBody.via === "device") {
+		ok("GET /api/operator/whoami with cookie says device");
+	} else {
+		bad(
+			"GET /api/operator/whoami with cookie",
+			`status ${whoamiWith.status}, via ${whoamiWithBody.via}`,
+		);
+	}
+
+	const whoamiWithout = await json("/api/operator/whoami");
+	const whoamiWithoutBody = await whoamiWithout.json().catch(() => ({}));
+	if (whoamiWithout.status === 200 && whoamiWithoutBody.via === null) {
+		ok("GET /api/operator/whoami without cookie says null");
+	} else {
+		bad(
+			"GET /api/operator/whoami without cookie",
+			`status ${whoamiWithout.status}, via ${whoamiWithoutBody.via}`,
+		);
+	}
+
+	const redeemAgain = await json("/api/pairing/redeem", {
+		method: "POST",
+		body: JSON.stringify({ token, name: "packed smoke" }),
+	});
+	if (redeemAgain.status === 400) {
+		ok("POST /api/pairing/redeem again 400");
+	} else {
+		bad(
+			"POST /api/pairing/redeem again",
+			`status ${redeemAgain.status}: ${(await redeemAgain.text()).slice(0, 200)}`,
+		);
+	}
+
+	const devices = await fetch(base + "/api/pairing/devices", {
+		headers: { cookie },
+	});
+	if (devices.status === 403) {
+		ok("GET /api/pairing/devices with device cookie 403");
+	} else {
+		bad("GET /api/pairing/devices", `status ${devices.status}`);
+	}
 
 	// --- an authenticated call, i.e. the global APP_GUARD is satisfiable -------
 	const incidents = await fetch(base + "/api/incidents", { headers: { cookie } });
@@ -389,7 +438,7 @@ const json = (path, init) =>
 	process.exit(1);
 });
 PROBE
-PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" "$REFUSAL_GATE_LIB" || {
+PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" "$REFUSAL_GATE_LIB" "$BIN/pl" "$UP_DIR/workspace" || {
 	echo "----- pl up log -----" >&2
 	tail -60 "$UP_LOG" >&2
 	fail "the pl up HTTP contract is broken"
