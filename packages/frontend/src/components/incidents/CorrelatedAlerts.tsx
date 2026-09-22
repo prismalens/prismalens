@@ -39,6 +39,7 @@ export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 				<li key={alert.id} className="px-3 py-2">
 					<div className="flex items-center gap-2 text-meta text-muted-foreground">
 						<span
+							role="img"
 							aria-label={SEVERITY_LABEL[alert.severity]}
 							title={SEVERITY_LABEL[alert.severity]}
 							className="h-2 w-2 shrink-0 rounded-full"
