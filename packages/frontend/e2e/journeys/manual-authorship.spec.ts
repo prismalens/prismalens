@@ -89,15 +89,22 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// 3. A hand-authored incident carries no alerts, and the UI says so
 		//    rather than implying a correlation that never happened.
-		const alertsSection = page.locator("#alerts");
-		await expect(alertsSection).toContainText("Alerts");
-		await expect(alertsSection).toContainText("0");
+		await page.getByTestId("surface-alerts").click();
+		const alertsPane = page.getByTestId("surface-pane-alerts");
+		await expect(alertsPane).toBeVisible();
+		await expect(alertsPane).toContainText(
+			"No alerts are correlated to this incident yet",
+		);
 
 		// Author a timeline note via the composer
 		const note = "Authored by hand from the composer";
 		await page.getByTestId("composer-input").fill(note);
 		await page.getByTestId("composer-input").press("Enter");
-		await expect(page.locator("#timeline")).toContainText(note);
+		await page.getByTestId("composer-input").blur();
+
+		// Open timeline surface ('t') before asserting the note
+		await page.keyboard.press("t");
+		await expect(page.getByTestId("surface-pane-timeline")).toContainText(note);
 
 		// 4. Start the investigation — incidents.investigate must accept an
 		//    incident that has zero alerts.

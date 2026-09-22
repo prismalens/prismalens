@@ -58,8 +58,8 @@ test.describe("#523 S1 — the incident record", () => {
 		).toBeVisible();
 		await expect(band.getByTestId("band-status")).toBeVisible();
 
-		// The sections, in document order.
-		const ids = ["#report", "#evidence", "#ledger", "#alerts", "#timeline"];
+		// The sections, in document order (#alerts and #timeline moved to surfaces).
+		const ids = ["#report", "#evidence", "#ledger"];
 		const ys: number[] = [];
 		for (const id of ids) {
 			const box = await page.locator(id).boundingBox();
@@ -79,19 +79,36 @@ test.describe("#523 S1 — the incident record", () => {
 		await expect(panel).not.toHaveAttribute("data-folded", "true");
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
 
-		// The rail.
-		const rail = page.getByTestId("incident-rail");
+		// The surfaces: surface-rail and surface-pane-run.
+		const rail = page.getByTestId("surface-rail");
 		await expect(rail).toBeVisible();
-		await expect(rail.getByTestId("rail-run-summary")).toBeVisible();
-		await expect(rail.getByTestId("rail-details")).toBeVisible();
-		const liveSlot = rail.getByTestId("live-slot").first();
+		await expect(page.getByTestId("surface-run")).toBeVisible();
+		await expect(page.getByTestId("surface-alerts")).toBeVisible();
+		await expect(page.getByTestId("surface-timeline")).toBeVisible();
+		await expect(page.getByTestId("surface-telemetry")).toBeVisible();
+
+		const runPane = page.getByTestId("surface-pane-run");
+		await expect(runPane).toBeVisible();
+		await expect(runPane.getByTestId("rail-run-summary")).toBeVisible();
+		await expect(runPane.getByTestId("rail-details")).toBeVisible();
+
+		// Telemetry surface holds live-slot
+		await page.keyboard.press("m");
+		const telemetryPane = page.getByTestId("surface-pane-telemetry");
+		await expect(telemetryPane).toBeVisible();
+		const liveSlot = telemetryPane.getByTestId("live-slot").first();
 		await expect(liveSlot).toHaveAttribute("data-state", "not-configured");
 
 		// The composer: a plain note lands on the timeline.
 		const note = `Design evidence note ${Date.now()}`;
 		await page.getByTestId("composer-input").fill(note);
 		await page.getByTestId("composer-input").press("Enter");
-		await expect(page.locator("#timeline")).toContainText(note);
+		await page.getByTestId("composer-input").blur();
+		// Open timeline surface ('t') before asserting note
+		await page.keyboard.press("t");
+		const timelinePane = page.getByTestId("surface-pane-timeline");
+		await expect(timelinePane).toBeVisible();
+		await expect(timelinePane).toContainText(note);
 
 		// `/` opens the command palette.
 		await page.getByTestId("composer-input").fill("/");
@@ -107,6 +124,42 @@ test.describe("#523 S1 — the incident record", () => {
 		await expect(panel).toBeVisible();
 		await page.waitForLoadState("networkidle");
 		await shot(page, "incident-record-dark");
+	});
+
+	test("record surfaces keyboard navigation (r, a, t, m, and ])", async ({
+		page,
+	}) => {
+		await page.goto(`/incidents/${INCIDENT_ID}`);
+		await expect(page.getByTestId("surface-rail")).toBeVisible({
+			timeout: 15_000,
+		});
+
+		// Default surface is run
+		await expect(page.getByTestId("surface-pane-run")).toBeVisible();
+
+		// 'a' switches to alerts surface
+		await page.keyboard.press("a");
+		await expect(page.getByTestId("surface-pane-alerts")).toBeVisible();
+
+		// 't' switches to timeline surface
+		await page.keyboard.press("t");
+		await expect(page.getByTestId("surface-pane-timeline")).toBeVisible();
+
+		// 'm' switches to telemetry surface
+		await page.keyboard.press("m");
+		await expect(page.getByTestId("surface-pane-telemetry")).toBeVisible();
+
+		// 'r' switches to run surface
+		await page.keyboard.press("r");
+		await expect(page.getByTestId("surface-pane-run")).toBeVisible();
+
+		// ']' hides the surface pane
+		await page.keyboard.press("]");
+		await expect(page.getByTestId("surface-pane-run")).toHaveCount(0);
+
+		// ']' shows the surface pane again
+		await page.keyboard.press("]");
+		await expect(page.getByTestId("surface-pane-run")).toBeVisible();
 	});
 
 	test("empty — an incident with no run", async ({ page }) => {

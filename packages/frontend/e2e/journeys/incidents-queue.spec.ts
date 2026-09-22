@@ -194,7 +194,7 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		// `g` then `a` goes to the alerts front door.
 		await page.keyboard.press("g");
 		await page.keyboard.press("a");
-		await expect(page).toHaveURL(/\/alerts(\?|$)/);
+		await expect(page).toHaveURL(/\/alerts(\/|\?|$)/);
 
 		// `j` then `Enter` from the analytics overview opens the highlighted
 		// (first) row. `useListKeyboard` clamps the cursor to `count - 1`, so a

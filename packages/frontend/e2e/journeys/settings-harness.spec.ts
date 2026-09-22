@@ -4,7 +4,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 /**
- * Investigation-agent surface (#501, ADR-0031; narrowed by #337/#609).
+ * Investigation-agent surface (#501, ADR-0031; narrowed by #337/#609/#523).
  *
  * The AI-provider card, its per-provider credential UI, and the raw-report
  * banner are gone — there is no LLM router any more. What is left is
@@ -29,6 +29,7 @@ type HarnessFixture = {
 	installed: boolean;
 	verified: boolean;
 	install: string;
+	defaultModel: string | null;
 	admission: { version: string; date: string } | null;
 	modelVia: "config" | "env" | "unsupported";
 	loginHint: string;
@@ -41,6 +42,7 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	installed: true,
 	verified: false,
 	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
+	defaultModel: null,
 	admission: null,
 	modelVia: "env",
 	loginHint:
@@ -54,6 +56,7 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	installed: true,
 	verified: true,
 	install: "curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
+	defaultModel: null,
 	admission: { version: "1.18.30", date: "2026-09-20" },
 	modelVia: "config",
 	loginHint:
@@ -67,6 +70,7 @@ const CODEX_INSTALLED: HarnessFixture = {
 	installed: true,
 	verified: false,
 	install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
+	defaultModel: null,
 	admission: null,
 	modelVia: "unsupported",
 	loginHint: "`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
@@ -79,6 +83,7 @@ const DEEPAGENTS_MISSING: HarnessFixture = {
 	installed: false,
 	verified: false,
 	install: "pip install deepagents-acp",
+	defaultModel: null,
 	admission: null,
 	modelVia: "unsupported",
 	loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
@@ -130,7 +135,11 @@ async function failHarnesses(page: Page): Promise<void> {
 		await route.fulfill({
 			status: 500,
 			contentType: "application/json",
-			body: JSON.stringify({ message: "harness status unavailable" }),
+			body: JSON.stringify({
+				code: "INTERNAL_SERVER_ERROR",
+				message: "harness status unavailable",
+				status: 500,
+			}),
 		});
 	});
 }
@@ -142,16 +151,27 @@ async function serveHarnessSettings(
 	page: Page,
 	settings: { harness: string; model?: string },
 ): Promise<void> {
+	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
-		if (route.request().method() !== "GET") {
-			await route.fallback();
+		if (route.request().method() === "PATCH") {
+			const body = (route.request().postDataJSON() || {}) as Record<string, unknown>;
+			current = { ...current, ...body } as typeof current;
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(current),
+			});
 			return;
 		}
-		await route.fulfill({
-			status: 200,
-			contentType: "application/json",
-			body: JSON.stringify(settings),
-		});
+		if (route.request().method() === "GET") {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(current),
+			});
+			return;
+		}
+		await route.fallback();
 	});
 }
 
@@ -162,7 +182,7 @@ async function openHarnessSettings(
 	await serveHarnessSettings(page, settings);
 	await page.goto("/settings?tab=harness");
 	await expect(
-		page.getByRole("heading", { name: "Investigation agent", exact: true }),
+		page.getByRole("heading", { name: "Agent", exact: true }),
 	).toBeVisible({ timeout: 15_000 });
 }
 
@@ -182,15 +202,25 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page);
 
 		const registry = page.getByTestId("harness-registry");
-		await expect(registry.getByText("OpenCode", { exact: true })).toBeVisible();
+		// The opencode row's own login hint contains the string "opencode"
+		// (the binary name), so a plain case-insensitive getByText("OpenCode")
+		// resolves to two elements. Scope to the label span, which is the only
+		// element carrying exactly these three utility classes together.
 		await expect(
-			registry.getByText("Claude Code", { exact: true }),
+			registry.locator("span.flex.items-center.gap-2").filter({ hasText: "OpenCode" }),
 		).toBeVisible();
-		await expect(registry.getByText("Codex", { exact: true })).toBeVisible();
-		await expect(registry.getByText("deepagents", { exact: true })).toBeVisible();
-		await expect(registry.getByText("Installed", { exact: true })).toHaveCount(3);
 		await expect(
-			registry.getByText("Not installed", { exact: true }),
+			registry.getByText("Claude Code"),
+		).toBeVisible();
+		await expect(registry.getByText("Codex")).toBeVisible();
+		// Same collision as opencode above: the binary "deepagents-acp" and the
+		// install hint "pip install deepagents-acp" both contain "deepagents".
+		await expect(
+			registry.locator("span.flex.items-center.gap-2").filter({ hasText: "deepagents" }),
+		).toBeVisible();
+		await expect(registry.getByText("installed", { exact: true })).toHaveCount(3);
+		await expect(
+			registry.getByText("not installed", { exact: true }),
 		).toHaveCount(1);
 	});
 
@@ -208,24 +238,21 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		const registry = page.getByTestId("harness-registry");
 		await expect(registry.getByTestId("harness-admission-opencode")).toHaveText(
-			"CI-verified 1.18.30",
+			"verified 1.18.30",
 		);
 		await expect(
 			registry.getByTestId("harness-admission-claude-code"),
-		).toHaveText("Not admitted");
-		await expect(registry.getByText(`Sign-in: ${OPENCODE_INSTALLED.loginHint}`, {
-			exact: true,
+		).toHaveText("not verified");
+		await expect(registry.getByText(OPENCODE_INSTALLED.loginHint, {
+			exact: false,
 		})).toBeVisible();
 
-		const modelInput = page.getByLabel("Model");
-		await expect(modelInput).toBeEnabled();
+		const modelPill = page.getByTestId("model-pill");
+		await expect(modelPill).toBeEnabled();
 
-		await page.locator("#harness-picker").click();
-		await page.getByRole("option", { name: "Codex" }).click();
-		await expect(modelInput).toBeDisabled();
-		await expect(
-			card(page).getByText("Codex ignores the Model setting; it uses its own configured model."),
-		).toBeVisible();
+		await page.getByTestId("agent-picker").click();
+		await page.getByTestId("agent-option-codex").click();
+		await expect(modelPill).toBeDisabled();
 	});
 
 	test("shows the install hint for a harness that is not installed", async ({
@@ -258,7 +285,8 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page);
 
 		const verdict = page.getByTestId("harness-selection");
-		await expect(verdict).toContainText("An investigation would start with opencode");
+		await expect(verdict).toContainText("Would start with OpenCode");
+		await expect(verdict).toContainText("ready");
 		await expect(page.getByTestId("harness-pinned-notice")).toHaveCount(0);
 	});
 
@@ -275,9 +303,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page);
 
 		const verdict = page.getByTestId("harness-selection");
-		await expect(verdict).toContainText(
-			"An investigation would start with claude-code",
-		);
+		await expect(verdict).toContainText("Would start with Claude Code");
 		await expect(page.getByTestId("harness-pinned-notice")).toContainText(
 			"PRISMALENS_HARNESS",
 		);
@@ -299,9 +325,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(banner).toBeVisible();
 
 		const verdict = page.getByTestId("harness-selection");
-		await expect(verdict).toContainText(
-			"An investigation would not start right now",
-		);
+		await expect(verdict).toContainText("blocked");
 		await expect(verdict).toContainText(NO_HARNESS_REASON);
 	});
 
@@ -311,7 +335,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await failHarnesses(page);
 		await openHarnessSettings(page);
 
-		await expect(page.getByTestId("harness-status-error")).toBeVisible();
+		await expect(page.getByTestId("harness-status-error")).toBeVisible({
+			timeout: 15_000,
+		});
 	});
 
 	test("saves the picked harness and model through PATCH /settings/harness", async ({
@@ -326,16 +352,13 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page, { harness: "auto" });
 
-		// Stateful: the "Saved" line reads back through a GET the update hook
-		// re-fires on success, so the fixture has to actually remember the write —
-		// a GET that always answers with the pre-save value would leave the
-		// picker "dirty" forever and the confirmation text would never appear.
-		let savedBody: Record<string, unknown> | undefined;
+		const patches: Record<string, unknown>[] = [];
 		let current: { harness: string; model?: string } = { harness: "auto" };
 		await page.route(isHarnessSettingsUrl, async (route) => {
 			if (route.request().method() === "PATCH") {
-				savedBody = route.request().postDataJSON();
-				current = { harness: "opencode", model: "sonnet-4" };
+				const body = route.request().postDataJSON() as Record<string, unknown>;
+				patches.push(body);
+				current = { ...current, ...body };
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -354,20 +377,21 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			await route.fallback();
 		});
 
-		const saveButton = page.getByRole("button", { name: "Save agent" });
-		await expect(saveButton).toBeDisabled();
+		// Pick agent through agent-picker -> agent-option-opencode (saves at once)
+		await page.getByTestId("agent-picker").click();
+		await page.getByTestId("agent-option-opencode").click();
+		await expect.poll(() => patches.length).toBeGreaterThanOrEqual(1);
+		expect(patches[0]).toMatchObject({ harness: "opencode" });
 
-		await page.locator("#harness-picker").click();
-		await page.getByRole("option", { name: "OpenCode" }).click();
-		await page.getByLabel("Model").fill("sonnet-4");
-		await expect(saveButton).toBeEnabled();
-		await saveButton.click();
-
-		await expect.poll(() => savedBody).toBeTruthy();
-		expect(savedBody).toMatchObject({ harness: "opencode", model: "sonnet-4" });
-		await expect(
-			card(page).getByText(/Saved — investigations use OpenCode \(sonnet-4\)/),
-		).toBeVisible();
+		// Set model through model-pill -> input Model -> Use
+		await page.getByTestId("model-pill").click();
+		const modelInput = page.getByLabel("Model");
+		await expect(modelInput).toBeVisible();
+		await modelInput.fill("sonnet-4");
+		await page.getByRole("button", { name: "Use", exact: true }).click();
+		await expect.poll(() => patches.length).toBeGreaterThanOrEqual(2);
+		expect(patches[1]).toMatchObject({ model: "sonnet-4" });
+		await expect(page.getByTestId("model-pill")).toContainText("sonnet-4");
 	});
 
 	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
@@ -460,7 +484,7 @@ test.describe("Design evidence (#501/#609)", () => {
 			await page.goto("/settings?tab=harness");
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 			await expect(card(page)).toBeVisible({ timeout: 15_000 });
-			await page.waitForLoadState("networkidle");
+			await page.waitForTimeout(500);
 			await card(page).screenshot({ path: `${SHOTS}/${name}.png` });
 			await page.unroute(isHarnessesUrl);
 		};

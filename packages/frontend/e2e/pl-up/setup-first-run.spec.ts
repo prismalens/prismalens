@@ -150,4 +150,17 @@ test("completing the setup wizard leaves a session that survives a reload", asyn
 	await setTheme(page, "dark");
 	await page.screenshot({ path: `${SHOTS}/setup-complete-dark.png`, fullPage: true });
 	await clearTheme(page);
+
+	// First run panel: shown in the centre when no incident exists at all (#523)
+	const firstRun = page.getByTestId("first-run");
+	await expect(firstRun).toBeVisible({ timeout: 15_000 });
+	await expect(page.getByTestId("first-run-title")).toBeVisible();
+	await expect(page.getByTestId("first-run-submit")).toBeVisible();
+	await expect(page.getByText("Point a monitor at the webhook")).toBeVisible();
+	await expect(page.getByText("For the run to work")).toBeVisible();
+
+	await page.screenshot({ path: `${SHOTS}/first-run-default.png`, fullPage: true });
+	await setTheme(page, "dark");
+	await page.screenshot({ path: `${SHOTS}/first-run-dark.png`, fullPage: true });
+	await clearTheme(page);
 });
