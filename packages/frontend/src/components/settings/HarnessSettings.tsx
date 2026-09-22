@@ -206,7 +206,7 @@ export function HarnessSettings() {
 										</StateWord>
 									)}
 									{descriptor && (
-										<span className="capitalize">
+										<span className="lowercase">
 											{descriptor.readOnlyFidelity} read-only
 										</span>
 									)}

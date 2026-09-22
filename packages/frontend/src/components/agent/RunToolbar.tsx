@@ -102,7 +102,7 @@ export function RunToolbar() {
 						title="How the agent's read-only limit is enforced"
 					>
 						<Lock className="h-3 w-3" />
-						{fidelity} read-only
+						<span className="lowercase">{fidelity}</span> read-only
 					</span>
 				</>
 			)}

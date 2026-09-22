@@ -2,14 +2,19 @@
 // Copyright 2026 Sumit Patel
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { Check, CloudDownload, Copy, Plus } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Check, CloudDownload, Copy } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { RunToolbar } from "@/components/agent/RunToolbar";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useConnections, useSetupStatus } from "@/lib/api/hooks";
+import {
+	useConnections,
+	useCreateIncident,
+	useSetupStatus,
+} from "@/lib/api/hooks";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { orpc } from "@/lib/api/orpc-client";
@@ -72,9 +77,12 @@ function CopyUrl({ url, label }: { url: string; label: string }) {
  * get the first one and what still blocks an investigation, each with its real
  * status. It replaces zero-value numbers and empty charts, which say nothing.
  */
-export function FirstRunPanel({ onCreate }: { onCreate: () => void }) {
+export function FirstRunPanel() {
 	const { toast } = useToast();
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
+	const create = useCreateIncident();
+	const [title, setTitle] = useState("");
 	const { data: setup } = useSetupStatus();
 	const { data: alertmanager } = useConnections({ templateId: "alertmanager" });
 	const { data: prometheus } = useConnections({ templateId: "prometheus" });
@@ -103,13 +111,61 @@ export function FirstRunPanel({ onCreate }: { onCreate: () => void }) {
 	const codeLinked = !!setup?.steps.codeLocation;
 
 	return (
-		<div className="mx-auto max-w-xl px-4 py-8 sm:px-6" data-testid="first-run">
-			<h2 className="text-base font-semibold tracking-tight">
-				No incidents yet
+		<div
+			className="mx-auto flex h-full max-w-xl flex-col justify-center px-4 py-8 sm:px-6"
+			data-testid="first-run"
+		>
+			<h2 className="text-center text-xl font-semibold tracking-tight">
+				What is on fire?
 			</h2>
-			<p className="mt-1 text-record text-muted-foreground">
-				An incident starts from an alert. Three ways to get the first one, and
-				what a run needs once it exists.
+			<form
+				className="mt-4 rounded-lg border bg-card p-2"
+				onSubmit={(e) => {
+					e.preventDefault();
+					const t = title.trim();
+					if (!t) return;
+					create.mutate(
+						{ title: t },
+						{
+							onSuccess: (incident) =>
+								navigate({
+									to: "/incidents/$id",
+									params: { id: incident.id },
+									search: {},
+								}),
+							onError: (err) =>
+								toast({
+									title: "Could not create the incident",
+									description: getErrorMessage(err),
+									variant: "destructive",
+								}),
+						},
+					);
+				}}
+			>
+				<input
+					value={title}
+					onChange={(e) => setTitle(e.target.value)}
+					placeholder="Describe the incident in one line and press Enter"
+					aria-label="Incident title"
+					className="h-9 w-full bg-transparent px-2 text-record outline-none placeholder:text-muted-foreground"
+					data-testid="first-run-title"
+				/>
+				<div className="flex items-center justify-between gap-2 px-1 pt-1">
+					<RunToolbar />
+					<Button
+						type="submit"
+						size="sm"
+						className="h-7"
+						disabled={!title.trim() || create.isPending}
+						data-testid="first-run-submit"
+					>
+						{create.isPending ? "Creating" : "Create"}
+					</Button>
+				</div>
+			</form>
+			<p className="mt-2 text-center text-meta text-muted-foreground">
+				Or let an alert start one:
 			</p>
 
 			<div className="mt-5 rounded-md border px-4">
@@ -172,23 +228,6 @@ export function FirstRunPanel({ onCreate }: { onCreate: () => void }) {
 					{hasSource
 						? "An Alertmanager or Prometheus connection exists; pull its firing alerts."
 						: "Connect Alertmanager or Prometheus and pull its firing alerts."}
-				</Row>
-				<Row
-					done={false}
-					title="Or write one by hand"
-					action={
-						<Button
-							size="sm"
-							className="h-7"
-							onClick={onCreate}
-							data-testid="first-run-create"
-						>
-							<Plus className="mr-1 h-3.5 w-3.5" />
-							Create incident
-						</Button>
-					}
-				>
-					Useful to try the run before any monitor is wired.
 				</Row>
 			</div>
 

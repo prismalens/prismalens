@@ -6,9 +6,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { BarChart3, List } from "lucide-react";
-import { useState } from "react";
 import {
-	CreateIncidentDialog,
 	DateRangeFilter,
 	FirstRunPanel,
 	IncidentAnalytics,
@@ -37,7 +35,6 @@ function IncidentsOverview() {
 	const { data: list, isLoading: listLoading } = useQuery(
 		orpc.incidents.list.queryOptions({ input: listInput }),
 	);
-	const [createOpen, setCreateOpen] = useState(false);
 
 	const setSearch = (patch: Partial<typeof search>) =>
 		navigate({
@@ -72,14 +69,7 @@ function IncidentsOverview() {
 	if (stats.data && stats.data.total === 0) {
 		return (
 			<div className="h-full overflow-y-auto">
-				<FirstRunPanel onCreate={() => setCreateOpen(true)} />
-				<CreateIncidentDialog
-					open={createOpen}
-					onOpenChange={setCreateOpen}
-					onCreated={(id) =>
-						navigate({ to: "/incidents/$id", params: { id }, search: {} })
-					}
-				/>
+				<FirstRunPanel />
 			</div>
 		);
 	}

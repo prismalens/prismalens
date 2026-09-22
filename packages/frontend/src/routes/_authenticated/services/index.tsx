@@ -550,20 +550,6 @@ function ServicesPage() {
 							Nothing waiting. Fetch from VCS to find repositories without a
 							service.
 						</p>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleFetchVcs}
-							disabled={isFetchingVcs}
-						>
-							<RefreshCw
-								className={cn(
-									"mr-1.5 h-3.5 w-3.5",
-									isFetchingVcs && "animate-spin",
-								)}
-							/>
-							Fetch from VCS
-						</Button>
 					</div>
 				) : (
 					<div className="space-y-2">

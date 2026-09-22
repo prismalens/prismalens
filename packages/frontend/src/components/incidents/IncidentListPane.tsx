@@ -6,13 +6,21 @@ import {
 	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
 	type IncidentWithRelations,
+	isWorkflowLive,
 	type Priority,
 	SEVERITY_LABEL,
 	type Severity,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { BarChart3, Plus, SlidersHorizontal } from "lucide-react";
+import {
+	BarChart3,
+	Loader2,
+	Plus,
+	Search,
+	SlidersHorizontal,
+	Sparkles,
+} from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
@@ -97,6 +105,7 @@ export function IncidentListPane({
 		!!(search.status || search.severity || search.priority),
 	);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [q, setQ] = useState("");
 
 	const { data, isLoading, error } = useQuery(
 		orpc.incidents.list.queryOptions({ input: listInput }),
@@ -107,11 +116,40 @@ export function IncidentListPane({
 	const nothingYet = stats?.total === 0;
 	const incidents = data?.data ?? [];
 
+	// The text filter narrows the loaded window client-side; the API has no text search.
 	const ordered = useMemo(() => {
-		const needsYou = incidents.filter((i) => attentionFor(i) !== null);
-		const rest = incidents.filter((i) => attentionFor(i) === null);
+		const needle = q.trim().toLowerCase();
+		const visible = needle
+			? incidents.filter(
+					(i) =>
+						i.title.toLowerCase().includes(needle) ||
+						`inc-${i.number}`.includes(needle) ||
+						(i.service?.name ?? "").toLowerCase().includes(needle),
+				)
+			: incidents;
+		const needsYou = visible.filter((i) => attentionFor(i) !== null);
+		const rest = visible.filter((i) => attentionFor(i) === null);
 		return { needsYou, rest, rows: [...needsYou, ...rest] };
-	}, [incidents]);
+	}, [incidents, q]);
+	const windowValue = search.from
+		? Math.round((Date.now() - new Date(search.from).getTime()) / 86_400_000) <=
+			1
+			? "1d"
+			: Math.round(
+						(Date.now() - new Date(search.from).getTime()) / 86_400_000,
+					) <= 7
+				? "7d"
+				: "30d"
+		: "all";
+	const setWindow = (v: string) => {
+		const days = v === "1d" ? 1 : v === "7d" ? 7 : v === "30d" ? 30 : 0;
+		setFilter({
+			from: days
+				? new Date(Date.now() - days * 86_400_000).toISOString()
+				: undefined,
+			to: undefined,
+		});
+	};
 
 	const open = (incident: IncidentWithRelations) =>
 		navigate({
@@ -175,6 +213,32 @@ export function IncidentListPane({
 						New
 					</Button>
 				</div>
+			</div>
+
+			<div className="flex items-center gap-1 border-b px-2 py-1.5">
+				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-muted/40 px-2">
+					<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+					<input
+						value={q}
+						onChange={(e) => setQ(e.target.value)}
+						placeholder="Filter"
+						aria-label="Filter incidents"
+						className="h-6 min-w-0 flex-1 bg-transparent text-meta outline-none placeholder:text-muted-foreground"
+						data-testid="incident-list-search"
+					/>
+				</label>
+				<select
+					value={windowValue}
+					onChange={(e) => setWindow(e.target.value)}
+					aria-label="Window"
+					className="h-6 rounded border bg-muted/40 px-1 text-meta text-muted-foreground outline-none"
+					data-testid="incident-list-window"
+				>
+					<option value="all">All time</option>
+					<option value="1d">24 hours</option>
+					<option value="7d">7 days</option>
+					<option value="30d">30 days</option>
+				</select>
 			</div>
 
 			{filtersOpen && (
@@ -278,52 +342,84 @@ export function IncidentListPane({
 										"bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
 								)}
 							>
-								<div className="flex items-start gap-2">
-									<span
-										aria-label={SEVERITY_LABEL[incident.severity]}
-										title={SEVERITY_LABEL[incident.severity]}
-										className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-										style={{
-											background: `var(--sev-${incident.severity})`,
-										}}
-									/>
-									<div className="min-w-0 flex-1">
-										<p
-											className="truncate text-record font-medium leading-snug"
-											title={incident.title}
-										>
-											<Mono className="mr-1.5 text-meta font-normal text-muted-foreground">
-												INC-{incident.number}
-											</Mono>
-											{incident.title}
-										</p>
-										<div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
-											{why ? (
-												<StateWord
-													tone={attentionTone[why]}
-													data-testid="incident-attention"
-												>
-													{INCIDENT_ATTENTION_LABEL[why]}
-												</StateWord>
-											) : (
-												<StateWord tone={incidentStatusTone(incident.status)}>
-													{INCIDENT_STATUS_LABEL[
-														incident.status as IncidentStatus
-													] ?? incident.status}
-												</StateWord>
-											)}
-											{incident.service && (
+								{(() => {
+									const run = incident.investigations?.[0];
+									const live = !!run && isWorkflowLive(run.status);
+									return (
+										<div className="min-w-0">
+											<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
+												<span
+													aria-label={SEVERITY_LABEL[incident.severity]}
+													title={SEVERITY_LABEL[incident.severity]}
+													className="h-2 w-2 shrink-0 rounded-full"
+													style={{
+														background: `var(--sev-${incident.severity})`,
+													}}
+												/>
 												<span className="truncate">
-													{incident.service.displayName ||
-														incident.service.name}
+													{incident.service?.displayName ||
+														incident.service?.name ||
+														"no service"}
 												</span>
-											)}
-											<span className="ml-auto tabular-nums">
-												{ago(incident.triggeredAt, now)}
-											</span>
+												<span className="ml-auto flex shrink-0 items-center gap-1">
+													{live ? (
+														<StateWord tone="active">
+															<Loader2 className="-ml-0.5 h-3 w-3 animate-spin" />
+															{
+																INCIDENT_STATUS_LABEL[
+																	incident.status as IncidentStatus
+																]
+															}{" "}
+															{ago(run.createdAt, now).replace(" ago", "")}
+														</StateWord>
+													) : why ? (
+														<StateWord
+															tone={attentionTone[why]}
+															data-testid="incident-attention"
+														>
+															{INCIDENT_ATTENTION_LABEL[why]}
+														</StateWord>
+													) : (
+														<StateWord
+															tone={incidentStatusTone(incident.status)}
+														>
+															{INCIDENT_STATUS_LABEL[
+																incident.status as IncidentStatus
+															] ?? incident.status}
+														</StateWord>
+													)}
+												</span>
+											</div>
+											<p
+												className="mt-0.5 truncate text-record font-medium leading-snug"
+												title={incident.title}
+											>
+												{incident.title}
+											</p>
+											<div className="mt-0.5 flex items-center gap-2 text-meta text-muted-foreground">
+												<Mono>INC-{incident.number}</Mono>
+												{incident.alertCount > 0 && (
+													<span className="tabular-nums">
+														{incident.alertCount} alert
+														{incident.alertCount === 1 ? "" : "s"}
+													</span>
+												)}
+												{(incident.investigations?.length ?? 0) > 0 && (
+													<Sparkles
+														className="h-3 w-3"
+														aria-label="Investigated"
+														style={{
+															color: `var(--run-${live ? "active" : run?.status === "completed" ? "done" : "failed"})`,
+														}}
+													/>
+												)}
+												<span className="ml-auto tabular-nums">
+													{ago(incident.triggeredAt, now)}
+												</span>
+											</div>
 										</div>
-									</div>
-								</div>
+									);
+								})()}
 							</Link>
 						</Fragment>
 					);
