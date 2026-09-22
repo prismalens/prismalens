@@ -15,11 +15,20 @@ import { AuthGuard } from "./auth.guard.js";
 import { AuthService } from "./auth.service.js";
 import { OperatorController } from "./operator.controller.js";
 import { OperatorResolver } from "./operator.resolver.js";
+import {
+	PairingController,
+	PairingRedeemController,
+} from "./pairing.controller.js";
 
 @Global()
 @Module({
 	imports: [ConfigModule],
-	controllers: [AuthController, OperatorController],
+	controllers: [
+		AuthController,
+		OperatorController,
+		PairingController,
+		PairingRedeemController,
+	],
 	providers: [AuthService, OperatorResolver, AuthGuard],
 	exports: [AuthService, OperatorResolver, AuthGuard],
 })

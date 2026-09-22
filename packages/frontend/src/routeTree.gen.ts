@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as PairRouteImport } from './routes/pair'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenticated/alerts/route'
 import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authenticated/incidents/route'
@@ -28,6 +29,11 @@ import { Route as AuthenticatedSettingsIntegrationsConfigureRouteImport } from '
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -120,6 +126,7 @@ const AuthenticatedSettingsIntegrationsConfigureRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/pair': typeof PairRoute
   '/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
@@ -136,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/services/$id/': typeof AuthenticatedServicesIdIndexRoute
 }
 export interface FileRoutesByTo {
+  '/pair': typeof PairRoute
   '/auth/login': typeof AuthLoginRoute
   '/': typeof AuthenticatedIndexRoute
   '/setup': typeof SetupIndexRoute
@@ -152,6 +160,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/pair': typeof PairRoute
   '/_authenticated/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/pair'
     | '/alerts'
     | '/incidents'
     | '/settings'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/services/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/pair'
     | '/auth/login'
     | '/'
     | '/setup'
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/pair'
     | '/_authenticated/alerts'
     | '/_authenticated/incidents'
     | '/_authenticated/settings'
@@ -222,6 +234,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  PairRoute: typeof PairRoute
   AuthLoginRoute: typeof AuthLoginRoute
   SetupIndexRoute: typeof SetupIndexRoute
 }
@@ -233,6 +246,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -420,6 +440,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  PairRoute: PairRoute,
   AuthLoginRoute: AuthLoginRoute,
   SetupIndexRoute: SetupIndexRoute,
 }
