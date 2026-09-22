@@ -4,8 +4,9 @@
 /**
  * Auth Guard
  *
- * Global NestJS guard that validates Better Auth sessions.
- * Respects the @Public() decorator to skip authentication.
+ * Global NestJS guard. A request is the operator when it comes from the host
+ * itself (the loopback rule, ADR 0004 §8) or carries a valid Better Auth
+ * session. Respects the @Public() decorator to skip authentication.
  */
 
 import {
@@ -17,12 +18,14 @@ import {
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
+import { OperatorResolver } from "./operator.resolver.js";
 import { IS_PUBLIC_KEY } from "./public.decorator.js";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
 	constructor(
 		private readonly authService: AuthService,
+		private readonly operator: OperatorResolver,
 		private readonly reflector: Reflector,
 	) {}
 
@@ -36,18 +39,13 @@ export class AuthGuard implements CanActivate {
 		const request = context.switchToHttp().getRequest<Request>();
 
 		try {
-			// Get session from Better Auth
-			const session = await this.authService.auth.api.getSession({
-				headers: request.headers as Record<string, string>,
-			});
-
-			if (!session?.user) {
-				throw new UnauthorizedException("Invalid session");
+			const resolved = await this.operator.resolve(request);
+			if (!resolved) {
+				throw new UnauthorizedException("Authentication required");
 			}
-
-			request.user = session.user;
-			request.session = session.session;
-
+			request.operator = resolved.operator;
+			request.user = resolved.user;
+			request.session = resolved.session;
 			return true;
 		} catch (error) {
 			// Re-throw UnauthorizedException as-is; wrap other errors

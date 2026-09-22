@@ -7,6 +7,12 @@ export { eventsContract } from "./events.js";
 export { incidentsContract } from "./incidents.js";
 export { integrationsContract, oauthContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
+export {
+	type OperatorVia,
+	OperatorViaEnum,
+	operatorContract,
+	type Whoami,
+} from "./operator.js";
 export { recommendationsContract } from "./recommendations.js";
 export { repositoriesContract } from "./repositories.js";
 export { servicesContract } from "./services.js";
@@ -27,6 +33,7 @@ import { eventsContract } from "./events.js";
 import { incidentsContract } from "./incidents.js";
 import { integrationsContract, oauthContract } from "./integrations.js";
 import { investigationsContract } from "./investigations.js";
+import { operatorContract } from "./operator.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
 import { servicesContract } from "./services.js";
@@ -53,6 +60,7 @@ export const contract = {
 	oauth: oauthContract,
 	settings: settingsContract,
 	setup: setupContract,
+	operator: operatorContract,
 };
 
 export type Contract = typeof contract;

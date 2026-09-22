@@ -24,6 +24,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 import { signOut, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -40,8 +41,8 @@ export function Sidebar() {
 }
 
 function SidebarBody({ pathname }: { pathname: string }) {
-	const { data: session } = useSession();
-	const signedIn = !!session?.user;
+	const { via } = useOperator();
+	const signedIn = via !== null;
 	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
 
 	// `[` folds the rail to icons, unless the operator is typing.

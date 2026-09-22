@@ -6,28 +6,19 @@
  *
  * Pathless layout route that protects all child routes:
  * 1. Checks if initial setup is complete — redirects to /setup if not
- * 2. Verifies the user has a valid Better Auth session — redirects to /auth/login if not
+ * 2. Verifies the browser is the operator (`operator.whoami`: the host itself
+ *    by the loopback rule, or a Better Auth session) — redirects to
+ *    /auth/login if not
  *
  * SSR is disabled because auth checks require browser cookies.
  */
 
-import { queryOptions } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
+import { operatorQueryOptions } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
-import { getSession } from "@/lib/auth";
-
-const sessionQueryOptions = queryOptions({
-	queryKey: ["auth", "session"],
-	queryFn: async () => {
-		const session = await getSession();
-		return session.data ?? null;
-	},
-	staleTime: 60_000, // 1 minute — avoids re-fetching on every navigation
-	retry: 1,
-});
 
 export const Route = createFileRoute("/_authenticated")({
 	ssr: false,
@@ -43,12 +34,12 @@ export const Route = createFileRoute("/_authenticated")({
 			});
 		}
 
-		// Setup complete — verify the user has a valid session.
-		// Uses TanStack Query cache to avoid re-fetching on every navigation.
-		// Actual session lifetime is managed by Better Auth cookies (7 days).
-		const session =
-			await context.queryClient.ensureQueryData(sessionQueryOptions);
-		if (!session) {
+		// Setup complete — verify the browser is the operator. Cached, so a
+		// navigation does not re-ask.
+		const whoami = await context.queryClient.ensureQueryData(
+			operatorQueryOptions(),
+		);
+		if (!whoami.via) {
 			throw redirect({
 				to: "/auth/login",
 				search: { redirect: location.href },

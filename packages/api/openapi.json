@@ -23297,6 +23297,47 @@
           }
         }
       }
+    },
+    "/operator/whoami": {
+      "get": {
+        "operationId": "operator.whoami",
+        "summary": "Whether the caller is this instance's operator, and why",
+        "tags": [
+          "operator"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "via": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "loopback",
+                            "session"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "via"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
