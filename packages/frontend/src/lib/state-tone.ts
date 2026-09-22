@@ -58,11 +58,6 @@ export function severityTone(severity: Severity | string): ChipTone {
 	return weight ? weightTone[weight] : "info";
 }
 
-export function priorityTone(priority: Priority | string): ChipTone {
-	const weight = lookup(PRIORITY_WEIGHT, priority.toLowerCase());
-	return weight ? weightTone[weight] : "neutral";
-}
-
 export function recommendationPriorityTone(
 	priority: RecommendationPriority | string,
 ): ChipTone {
