@@ -7,3 +7,5 @@ review:
   path_filters:
     - "packages/@prismalens/database/**"
     - ".github/workflows/**"
+    # Playwright specs and their committed screenshots: the suite is the review.
+    - "packages/frontend/e2e/**"

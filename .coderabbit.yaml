@@ -66,6 +66,8 @@ reviews:
   path_filters:
     - "!.changeset/**"
     - "!pnpm-lock.yaml"
+    # Playwright specs and their committed screenshots: the suite is the review.
+    - "!packages/frontend/e2e/**"
   path_instructions:
     - path: "packages/*/src/**"
       instructions: >-
