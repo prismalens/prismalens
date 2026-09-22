@@ -14,7 +14,7 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { AlertTriangle, Frown, ServerOff } from "lucide-react";
-import { Navbar } from "@/components/Navbar";
+import { Sidebar } from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
@@ -75,10 +75,12 @@ function RootLayout() {
 			<body className="font-sans">
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
-						<div className="min-h-screen bg-background text-foreground">
-							<Navbar />
-							<main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-								<Outlet />
+						<div className="min-h-dvh bg-background text-foreground">
+							<Sidebar />
+							<main className="min-w-0 md:pl-56">
+								<div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+									<Outlet />
+								</div>
 							</main>
 						</div>
 						<Toaster />

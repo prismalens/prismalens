@@ -29,13 +29,14 @@ export function ExportReportButton({
 
 	return (
 		<Button
-			variant="outline"
+			variant="ghost"
 			size="sm"
+			className="h-7 px-2 text-meta"
 			onClick={() => exportMutation.mutate({ id: investigationId })}
 			disabled={exportMutation.isPending}
 			data-testid="export-report-markdown"
 		>
-			<Download className="h-4 w-4 mr-2" />
+			<Download className="mr-1.5 h-3.5 w-3.5" />
 			Export Markdown
 		</Button>
 	);

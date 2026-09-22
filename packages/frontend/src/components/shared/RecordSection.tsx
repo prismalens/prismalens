@@ -45,7 +45,7 @@ export function RecordSection({
 				>
 					{title}
 					{count !== undefined && (
-						<span className="font-mono text-meta text-muted-foreground tabular-nums">
+						<span className="text-meta font-normal text-muted-foreground tabular-nums">
 							{count}
 						</span>
 					)}

@@ -53,7 +53,7 @@ export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 							</p>
 						)}
 					</div>
-					<div className="flex shrink-0 items-center gap-3 font-mono text-meta text-muted-foreground">
+					<div className="flex shrink-0 items-center gap-3 text-meta text-muted-foreground">
 						{alert.service && (
 							<Link
 								to="/services/$id"

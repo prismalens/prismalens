@@ -91,9 +91,9 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 					<p className="text-record">
 						{run.latestText ?? "Waiting for the first step"}
 					</p>
-					<Mono className="mt-1 block text-meta text-muted-foreground">
+					<p className="mt-1 text-meta text-muted-foreground tabular-nums">
 						{run.events.length} events · {run.ledgerStatus}
-					</Mono>
+					</p>
 				</RailBlock>
 			)}
 
@@ -130,7 +130,7 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 							</Mono>
 						</Detail>
 						<Detail label="Events">
-							<Mono>{run?.events.length ?? 0}</Mono>
+							<span className="tabular-nums">{run?.events.length ?? 0}</span>
 						</Detail>
 						<Detail label="Origin">
 							<Mono>{investigation.origin}</Mono>
@@ -161,7 +161,7 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 							: "Metrics"
 					}
 					state="not-configured"
-					reason="No metrics integration answers for this service. The report's numbers are the run's own captures."
+					reason="No metrics integration for this service yet."
 					action={{
 						label: "Connect one in Settings",
 						to: "/settings?tab=integrations",
@@ -193,7 +193,7 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 						</Detail>
 					)}
 					<Detail label="Alerts">
-						<Mono>{incident.alertCount}</Mono>
+						<span className="tabular-nums">{incident.alertCount}</span>
 					</Detail>
 					<Detail label="Assigned to">
 						{incident.assignedTo

@@ -82,3 +82,33 @@ export function StateChip({
 		</span>
 	);
 }
+
+/**
+ * A state as a coloured word with a dot, for dense rows where a chip is too loud.
+ * Same tone tokens as the chip, so the colour means the same thing everywhere.
+ */
+export function StateWord({
+	tone,
+	className,
+	style,
+	children,
+	...props
+}: StateChipProps) {
+	return (
+		<span
+			data-tone={tone}
+			style={{ "--chip": toneVar[tone], ...style } as CSSProperties}
+			className={cn(
+				"inline-flex items-center gap-1.5 whitespace-nowrap text-meta font-medium text-(--chip)",
+				className,
+			)}
+			{...props}
+		>
+			<span
+				aria-hidden
+				className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--chip)"
+			/>
+			{children}
+		</span>
+	);
+}

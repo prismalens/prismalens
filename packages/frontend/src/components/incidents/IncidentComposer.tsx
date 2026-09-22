@@ -170,7 +170,7 @@ export function IncidentComposer({
 					data-testid="composer-input"
 					className="h-9 min-w-0 flex-1 bg-transparent text-record outline-none placeholder:text-muted-foreground disabled:opacity-60"
 				/>
-				<span className="hidden items-center gap-1 font-mono text-meta text-muted-foreground sm:inline-flex">
+				<span className="hidden items-center gap-1 text-meta text-muted-foreground sm:inline-flex">
 					<CornerDownLeft className="h-3 w-3" />
 					{isCommand ? "run" : "note"}
 				</span>

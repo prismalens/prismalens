@@ -108,8 +108,13 @@ export function PostToGitHubButton({
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogTrigger asChild>
-				<Button variant="outline" size="sm" data-testid="post-report-github">
-					<Share2 className="h-4 w-4 mr-2" />
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-7 px-2 text-meta"
+					data-testid="post-report-github"
+				>
+					<Share2 className="mr-1.5 h-3.5 w-3.5" />
 					Post to GitHub
 				</Button>
 			</DialogTrigger>

@@ -3,26 +3,27 @@
 
 import {
 	INCIDENT_ATTENTION_LABEL,
+	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
 	type IncidentWithRelations,
 	type Priority,
+	SEVERITY_LABEL,
 	type Severity,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Plus, SlidersHorizontal } from "lucide-react";
+import { BarChart3, Plus, SlidersHorizontal } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { SetupNextStepHint } from "@/components/setup";
 import { Mono } from "@/components/shared/Mono";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { StateChip } from "@/components/shared/StateChip";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor, attentionTone } from "@/lib/incident-attention";
+import { incidentStatusTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 import { CreateIncidentDialog } from "./CreateIncidentDialog";
 import { IncidentFilters } from "./IncidentFilters";
@@ -61,6 +62,13 @@ export function useIncidentWindow() {
 					? `since ${from.toLocaleDateString()}`
 					: "all time",
 	};
+}
+
+/** The ones that want a human first, then the rest in the API's order. */
+export function orderIncidents(incidents: IncidentWithRelations[]) {
+	const needsYou = incidents.filter((i) => attentionFor(i) !== null);
+	const rest = incidents.filter((i) => attentionFor(i) === null);
+	return [...needsYou, ...rest];
 }
 
 /**
@@ -138,6 +146,21 @@ export function IncidentListPane({
 						data-testid="incident-list-filters-toggle"
 					>
 						<SlidersHorizontal className="h-3.5 w-3.5" />
+					</Button>
+					<Button
+						asChild
+						variant={search.view === "analytics" ? "secondary" : "ghost"}
+						size="sm"
+						className="h-7 w-7 p-0"
+					>
+						<Link
+							to="/incidents"
+							search={{ ...keep, view: "analytics" }}
+							aria-label="Overview and analytics"
+							data-testid="incidents-view-analytics"
+						>
+							<BarChart3 className="h-3.5 w-3.5" />
+						</Link>
 					</Button>
 					<Button
 						size="sm"
@@ -246,36 +269,48 @@ export function IncidentListPane({
 										"bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
 								)}
 							>
-								<div className="flex items-center gap-2">
-									<Mono className="text-meta text-muted-foreground">
-										INC-{incident.number}
-									</Mono>
-									<SeverityBadge severity={incident.severity} />
-									<span className="ml-auto font-mono text-meta text-muted-foreground tabular-nums">
-										{ago(incident.triggeredAt, now)}
-									</span>
-								</div>
-								<p className="mt-0.5 line-clamp-2 text-record font-medium leading-snug">
-									{incident.title}
-								</p>
-								<div className="mt-1 flex flex-wrap items-center gap-1.5">
-									<StatusBadge
-										status={incident.status as IncidentStatus}
-										kind="incident"
+								<div className="flex items-start gap-2">
+									<span
+										aria-label={SEVERITY_LABEL[incident.severity]}
+										title={SEVERITY_LABEL[incident.severity]}
+										className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+										style={{
+											background: `var(--sev-${incident.severity})`,
+										}}
 									/>
-									{why && (
-										<StateChip
-											tone={attentionTone[why]}
-											data-testid="incident-attention"
-										>
-											{INCIDENT_ATTENTION_LABEL[why]}
-										</StateChip>
-									)}
-									{incident.service && (
-										<span className="truncate font-mono text-meta text-muted-foreground">
-											{incident.service.displayName || incident.service.name}
-										</span>
-									)}
+									<div className="min-w-0 flex-1">
+										<p className="line-clamp-2 text-record font-medium leading-snug">
+											<Mono className="mr-1.5 text-meta font-normal text-muted-foreground">
+												INC-{incident.number}
+											</Mono>
+											{incident.title}
+										</p>
+										<div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
+											{why ? (
+												<StateWord
+													tone={attentionTone[why]}
+													data-testid="incident-attention"
+												>
+													{INCIDENT_ATTENTION_LABEL[why]}
+												</StateWord>
+											) : (
+												<StateWord tone={incidentStatusTone(incident.status)}>
+													{INCIDENT_STATUS_LABEL[
+														incident.status as IncidentStatus
+													] ?? incident.status}
+												</StateWord>
+											)}
+											{incident.service && (
+												<span className="truncate">
+													{incident.service.displayName ||
+														incident.service.name}
+												</span>
+											)}
+											<span className="ml-auto tabular-nums">
+												{ago(incident.triggeredAt, now)}
+											</span>
+										</div>
+									</div>
 								</div>
 							</Link>
 						</Fragment>
@@ -283,7 +318,7 @@ export function IncidentListPane({
 				})}
 			</div>
 
-			<div className="flex items-center justify-between border-t px-3 py-1.5 font-mono text-meta text-muted-foreground">
+			<div className="flex items-center justify-between border-t px-3 py-1.5 text-meta text-muted-foreground">
 				<span>
 					{incidents.length} in window
 					{data?.pagination.hasMore ? " · more not shown" : ""}
@@ -324,5 +359,3 @@ function GroupLabel({
 		</div>
 	);
 }
-
-export type { IncidentStatus, Priority, Severity };

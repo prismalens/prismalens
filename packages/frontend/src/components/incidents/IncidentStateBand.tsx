@@ -96,10 +96,10 @@ export function IncidentStateBand({
 				<SeverityBadge severity={incident.severity} />
 
 				<div className="min-w-0 flex-1 basis-72">
-					<h1 className="truncate text-base font-semibold leading-tight">
+					<h1 className="line-clamp-2 text-base font-semibold leading-tight tracking-tight">
 						{incident.title}
 					</h1>
-					<div className="flex flex-wrap items-center gap-x-2 font-mono text-meta text-muted-foreground tabular-nums">
+					<div className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground tabular-nums">
 						<span>opened {ago(incident.triggeredAt, now)}</span>
 						{incident.service && (
 							<Link
@@ -116,7 +116,7 @@ export function IncidentStateBand({
 
 				<div className="flex flex-wrap items-center gap-2">
 					<StatusBadge status={incident.status} />
-					<StateChip tone={priorityTone(incident.priority)} mono>
+					<StateChip tone={priorityTone(incident.priority)}>
 						{incident.priority.toUpperCase()}
 					</StateChip>
 				</div>
@@ -124,7 +124,7 @@ export function IncidentStateBand({
 				{run && (
 					<div
 						data-testid="run-capsule"
-						className="flex items-center gap-2 rounded border border-(--chip)/35 bg-(--chip)/8 px-2 py-1 font-mono text-meta tabular-nums"
+						className="flex items-center gap-2 rounded border border-(--chip)/35 bg-(--chip)/8 px-2 py-1 text-meta tabular-nums"
 						style={
 							{
 								"--chip": `var(--run-${runLive ? "active" : run.status === "completed" ? "done" : "failed"})`,
@@ -150,7 +150,7 @@ export function IncidentStateBand({
 							<Button
 								variant="ghost"
 								size="sm"
-								className="h-6 px-2 font-sans text-meta text-run-failed hover:text-run-failed"
+								className="h-6 px-2 text-meta text-run-failed hover:text-run-failed"
 								onClick={run.onCancel}
 								disabled={run.isCancelling}
 							>

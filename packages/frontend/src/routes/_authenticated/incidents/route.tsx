@@ -7,6 +7,7 @@
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
+import { TelemetryConsent } from "@/components/settings";
 import { cn } from "@/lib/utils";
 
 export interface IncidentsSearch {
@@ -46,14 +47,22 @@ function IncidentsFrame() {
 
 	return (
 		<div
-			className="fixed inset-x-0 bottom-0 top-16 grid grid-cols-1 bg-background lg:grid-cols-[20rem_minmax(0,1fr)]"
+			className="fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-0 md:left-56 lg:grid-cols-[19rem_minmax(0,1fr)]"
 			data-testid="incidents-frame"
 		>
 			<IncidentListPane
 				selectedId={record?.params.id ?? null}
 				className={cn("min-h-0 border-r", recordOpen && "hidden lg:flex")}
 			/>
-			<div className={cn("min-h-0 min-w-0", !recordOpen && "hidden lg:block")}>
+			<div
+				className={cn(
+					"grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]",
+					!recordOpen && "hidden lg:grid",
+				)}
+			>
+				<div className="[&>*]:mx-4 [&>*]:mt-3 [&>*]:sm:mx-6">
+					<TelemetryConsent />
+				</div>
 				<Outlet />
 			</div>
 		</div>

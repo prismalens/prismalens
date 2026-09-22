@@ -346,7 +346,7 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 					<Check className="h-3.5 w-3.5 text-run-done" />
 					Content integrity: 0 items flagged across alert payloads and
 					repository files
-					<Mono className="ml-auto">report.flaggedContent</Mono>
+					<Mono className="ml-auto text-meta">report.flaggedContent</Mono>
 				</p>
 			)}
 		</RecordSection>

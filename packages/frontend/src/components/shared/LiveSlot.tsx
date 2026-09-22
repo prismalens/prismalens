@@ -125,7 +125,7 @@ export function LiveSlot(props: LiveSlotProps) {
 				</p>
 			)}
 
-			<div className="flex items-center justify-between gap-2 font-mono text-meta text-muted-foreground tabular-nums">
+			<div className="flex items-center justify-between gap-2 text-meta text-muted-foreground tabular-nums">
 				{props.state === "live" && (
 					<span className="truncate">
 						{props.source}

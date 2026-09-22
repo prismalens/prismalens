@@ -129,13 +129,11 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 					</h1>
 					<div className="flex flex-wrap items-center gap-2">
 						<StatusBadge status={alert.status} kind="alert" />
-						<span className="font-mono text-meta text-muted-foreground tabular-nums">
+						<span className="text-meta text-muted-foreground tabular-nums">
 							fired {ago(alert.triggeredAt, now)}
 						</span>
 						{alert.occurrenceCount > 1 && (
-							<StateChip tone="neutral" mono>
-								×{alert.occurrenceCount}
-							</StateChip>
+							<StateChip tone="neutral">×{alert.occurrenceCount}</StateChip>
 						)}
 					</div>
 					<div className="ml-auto flex items-center gap-2">

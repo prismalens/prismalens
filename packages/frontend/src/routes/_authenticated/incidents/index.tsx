@@ -4,16 +4,17 @@
  * a row in the left pane replaces this with the record.
  */
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { BarChart3, List } from "lucide-react";
 import {
 	DateRangeFilter,
 	IncidentAnalytics,
 	QueueStats,
 } from "@/components/incidents";
-import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
-import { TelemetryConsent } from "@/components/settings";
-import { Mono } from "@/components/shared/Mono";
+import {
+	orderIncidents,
+	useIncidentWindow,
+} from "@/components/incidents/IncidentListPane";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -30,10 +31,9 @@ function IncidentsOverview() {
 		refetchInterval: 30_000,
 	});
 	const analytics = search.view === "analytics";
-	const { data: list } = useQuery({
-		...orpc.incidents.list.queryOptions({ input: listInput }),
-		enabled: analytics,
-	});
+	const { data: list, isLoading: listLoading } = useQuery(
+		orpc.incidents.list.queryOptions({ input: listInput }),
+	);
 
 	const setSearch = (patch: Partial<typeof search>) =>
 		navigate({
@@ -42,11 +42,31 @@ function IncidentsOverview() {
 			replace: true,
 		});
 
+	// With nothing chosen, land on the row that needs a human most; the numbers
+	// stay one click away behind the overview. An empty window shows the numbers.
+	const top = !analytics && list ? orderIncidents(list.data)[0] : undefined;
+	if (top) {
+		return (
+			<Navigate
+				to="/incidents/$id"
+				params={{ id: top.id }}
+				search={{
+					status: search.status,
+					severity: search.severity,
+					priority: search.priority,
+					open: search.open,
+					from: search.from,
+					to: search.to,
+				}}
+				replace
+			/>
+		);
+	}
+	if (!analytics && listLoading) return null;
+
 	return (
 		<div className="h-full overflow-y-auto" data-testid="incidents-overview">
-			<div className="mx-auto max-w-4xl space-y-6 px-4 py-4 sm:px-6">
-				<TelemetryConsent />
-
+			<div className="mx-auto max-w-4xl space-y-4 px-4 py-4 sm:px-6">
 				<div className="flex flex-wrap items-center justify-between gap-3">
 					<DateRangeFilter
 						value={{ from, to }}
@@ -100,7 +120,7 @@ function IncidentsOverview() {
 					}
 				/>
 
-				{analytics ? (
+				{analytics && (
 					<IncidentAnalytics
 						incidents={list?.data ?? []}
 						days={
@@ -122,14 +142,6 @@ function IncidentsOverview() {
 							})
 						}
 					/>
-				) : (
-					<p
-						className="rounded-md border border-dashed p-4 text-record text-muted-foreground"
-						data-testid="incidents-pick-hint"
-					>
-						Pick an incident on the left, or press <Mono>j</Mono> then{" "}
-						<Mono>↵</Mono>. The ones that need you are at the top.
-					</p>
 				)}
 			</div>
 		</div>
