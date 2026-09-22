@@ -70,8 +70,7 @@ function AlertsEmptyState() {
 			variant="table-cell"
 			colSpan={6}
 			icon={Bell}
-			title="No alerts found"
-			description="Alerts will appear here when received from your monitoring tools"
+			title="No alerts found — they arrive here from a connected monitoring tool."
 			// Without this the screen is a dead end on a fresh instance: it names a
 			// source of alerts the operator has not connected, and offers no way to
 			// connect one (#332).

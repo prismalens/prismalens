@@ -458,26 +458,21 @@ export function IncidentDataTable({
 
 	if (incidents.length === 0) {
 		return (
-			<div
-				className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground"
-				data-testid="incidents-empty-state"
-			>
-				<FileText className="h-12 w-12 mb-4 opacity-50" />
-				<p className="text-lg font-medium">No incidents found</p>
-				<p className="text-sm">
-					Incidents appear here when alerts are correlated
-					{onCreate ? " — or create one by hand to try it out" : ""}
-				</p>
-				{onCreate && (
-					<Button
-						className="mt-4"
-						onClick={onCreate}
-						data-testid="incidents-empty-create"
-					>
-						<Plus className="h-4 w-4 mr-2" />
-						Create Incident
-					</Button>
-				)}
+			<div data-testid="incidents-empty-state">
+				<div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-4">
+					<div className="flex items-center gap-3">
+						<FileText className="h-8 w-8 text-muted-foreground/50" />
+						<p className="text-record text-muted-foreground">
+							No incidents yet. Alerts get correlated into them automatically.
+						</p>
+					</div>
+					{onCreate && (
+						<Button onClick={onCreate} data-testid="incidents-empty-create">
+							<Plus className="h-4 w-4 mr-2" />
+							Create incident
+						</Button>
+					)}
+				</div>
 				{/*
 				 * The sentence above is only true once something can raise an alert.
 				 * On a fresh instance this was a dead end; the hint names whichever
