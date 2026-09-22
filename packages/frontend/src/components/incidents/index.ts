@@ -35,7 +35,12 @@ export {
 	type IncidentListPaneProps,
 	useIncidentWindow,
 } from "./IncidentListPane";
-export { IncidentRail, type IncidentRailProps } from "./IncidentRail";
+export {
+	DetailsBlock,
+	RunBlock,
+	SimilarBlock,
+	TelemetryBlock,
+} from "./IncidentRail";
 export {
 	IncidentStateBand,
 	type IncidentStateBandProps,
@@ -49,6 +54,7 @@ export {
 	RecommendationsList,
 	type RecommendationsListProps,
 } from "./RecommendationsList";
+export { SurfacePane, SurfaceRail } from "./RecordSurfaces";
 export {
 	TimelineEntry,
 	type TimelineEntryProps,

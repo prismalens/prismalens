@@ -41,8 +41,8 @@ export interface IncidentStateBandProps {
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
-	railHidden: boolean;
-	onToggleRail: () => void;
+	surfaceOpen: boolean;
+	onToggleSurfaces: () => void;
 }
 
 const ACTION_LABEL: Record<IncidentAction, string> = {
@@ -68,8 +68,8 @@ export function IncidentStateBand({
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
-	railHidden,
-	onToggleRail,
+	surfaceOpen,
+	onToggleSurfaces,
 }: IncidentStateBandProps) {
 	const now = useNow();
 	const handlers: Record<IncidentAction, () => void> = {
@@ -202,9 +202,9 @@ export function IncidentStateBand({
 					variant="ghost"
 					size="sm"
 					className="hidden h-7 w-7 p-0 xl:inline-flex"
-					aria-label={railHidden ? "Show the rail" : "Hide the rail"}
-					aria-pressed={!railHidden}
-					onClick={onToggleRail}
+					aria-label={surfaceOpen ? "Hide the side pane" : "Show the side pane"}
+					aria-pressed={surfaceOpen}
+					onClick={onToggleSurfaces}
 					data-testid="band-rail-toggle"
 				>
 					<PanelRight className="h-4 w-4" />

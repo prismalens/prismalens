@@ -26,7 +26,11 @@ const ROWS: { keys: string[]; label: string }[] = [
 	{ keys: ["j", "k"], label: "Move down / up a row" },
 	{ keys: ["Enter"], label: "Open the highlighted row" },
 	{ keys: ["["], label: "Fold or unfold the sidebar" },
-	{ keys: ["]"], label: "Hide or show the rail on a record" },
+	{
+		keys: ["r", "a", "t", "m"],
+		label: "Open a surface on a record: run, alerts, timeline, telemetry",
+	},
+	{ keys: ["]"], label: "Hide or show the side pane on a record" },
 	{ keys: ["/"], label: "Focus the composer on a record" },
 	{ keys: ["Esc"], label: "Clear the highlight or the composer" },
 	{ keys: ["?"], label: "This sheet" },

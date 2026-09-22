@@ -57,27 +57,19 @@ function formatDuration(ms: number | null): string {
 	return `${minutes}m`;
 }
 
-export interface IncidentRailProps {
-	incident: IncidentWithRelations;
-	run: InvestigationRun | null;
-}
-
-/**
- * The sidecar rail: what is live now. During a run, the step in flight; after it,
- * the run's summary and what past incidents it resembles. Anything here that
- * matters later is already in the record as an event; the rail never holds the
- * only copy of anything.
- */
-export function IncidentRail({ incident, run }: IncidentRailProps) {
+/** What the run is doing now, or what it did: the first block of the Run surface. */
+export function RunBlock({ run }: { run: InvestigationRun | null }) {
 	const investigation = run?.investigation ?? null;
-	const similar = investigation?.overlay?.similarIncidents ?? [];
-	const isActive = isIncidentOpen(incident.status);
-	const duration = isActive
-		? Date.now() - new Date(incident.triggeredAt).getTime()
-		: incident.timeToResolve;
-
+	if (!investigation) {
+		return (
+			<p className="rounded-md border border-dashed p-3 text-record text-muted-foreground">
+				No run yet. Investigate from the band, or type /investigate in the
+				composer.
+			</p>
+		);
+	}
 	return (
-		<aside className="space-y-3" data-testid="incident-rail">
+		<>
 			{run?.isActive && investigation && (
 				<RailBlock
 					title="Working now"
@@ -138,7 +130,16 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 					</dl>
 				</RailBlock>
 			)}
+		</>
+	);
+}
 
+/** Past incidents the reduce step ranked as similar, with their recorded cause. */
+export function SimilarBlock({ run }: { run: InvestigationRun | null }) {
+	const similar = run?.investigation?.overlay?.similarIncidents ?? [];
+	if (similar.length === 0) return null;
+	return (
+		<>
 			{similar.length > 0 && (
 				<RailBlock
 					title="Similar past incidents"
@@ -151,24 +152,47 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 					</ul>
 				</RailBlock>
 			)}
+		</>
+	);
+}
 
-			<div className="space-y-2">
-				<h2 className="px-1 text-record font-medium">Live telemetry</h2>
-				<LiveSlot
-					label={
-						incident.service
-							? `Metrics · ${incident.service.displayName || incident.service.name}`
-							: "Metrics"
-					}
-					state="not-configured"
-					reason="No metrics integration for this service yet."
-					action={{
-						label: "Connect one in Settings",
-						to: "/settings?tab=integrations",
-					}}
-				/>
-			</div>
+/** The live slots: what is true now, as distinct from the run's captures. */
+export function TelemetryBlock({
+	incident,
+}: {
+	incident: IncidentWithRelations;
+}) {
+	return (
+		<div className="space-y-2">
+			<LiveSlot
+				label={
+					incident.service
+						? `Metrics · ${incident.service.displayName || incident.service.name}`
+						: "Metrics"
+				}
+				state="not-configured"
+				reason="No metrics integration for this service yet."
+				action={{
+					label: "Connect one in Settings",
+					to: "/settings?tab=integrations",
+				}}
+			/>
+		</div>
+	);
+}
 
+/** The incident's own fields. */
+export function DetailsBlock({
+	incident,
+}: {
+	incident: IncidentWithRelations;
+}) {
+	const isActive = isIncidentOpen(incident.status);
+	const duration = isActive
+		? Date.now() - new Date(incident.triggeredAt).getTime()
+		: incident.timeToResolve;
+	return (
+		<>
 			<RailBlock title="Details" testId="rail-details">
 				<dl>
 					<Detail label={isActive ? "Open for" : "Time to resolve"}>
@@ -249,6 +273,6 @@ export function IncidentRail({ incident, run }: IncidentRailProps) {
 					</div>
 				)}
 			</RailBlock>
-		</aside>
+		</>
 	);
 }

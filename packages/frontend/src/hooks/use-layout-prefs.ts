@@ -13,12 +13,16 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 const KEY = "pl.layout";
 const SIDEBAR_WIDTH = { open: "14rem", folded: "3.5rem" } as const;
 
+export type RecordSurface = "run" | "alerts" | "timeline" | "telemetry";
+
 interface LayoutPrefs {
 	sidebarFolded: boolean;
-	railHidden: boolean;
+	/** The record's open surface; null means the pane is hidden. */
+	surface: RecordSurface | null;
 }
 
-const DEFAULTS: LayoutPrefs = { sidebarFolded: false, railHidden: false };
+const SURFACES: RecordSurface[] = ["run", "alerts", "timeline", "telemetry"];
+const DEFAULTS: LayoutPrefs = { sidebarFolded: false, surface: "run" };
 let current: LayoutPrefs = DEFAULTS;
 const listeners = new Set<() => void>();
 
@@ -29,7 +33,12 @@ function read(): LayoutPrefs {
 		const parsed = JSON.parse(raw) as Partial<LayoutPrefs>;
 		return {
 			sidebarFolded: !!parsed.sidebarFolded,
-			railHidden: !!parsed.railHidden,
+			surface:
+				parsed.surface === null
+					? null
+					: SURFACES.includes(parsed.surface as RecordSurface)
+						? (parsed.surface as RecordSurface)
+						: DEFAULTS.surface,
 		};
 	} catch {
 		return DEFAULTS;
@@ -68,7 +77,7 @@ export function useLayoutPrefs() {
 			const stored = read();
 			if (
 				stored.sidebarFolded !== DEFAULTS.sidebarFolded ||
-				stored.railHidden !== DEFAULTS.railHidden
+				stored.surface !== DEFAULTS.surface
 			) {
 				publish(stored);
 			}
@@ -79,10 +88,20 @@ export function useLayoutPrefs() {
 		() => publish({ ...current, sidebarFolded: !current.sidebarFolded }),
 		[],
 	);
-	const toggleRail = useCallback(
-		() => publish({ ...current, railHidden: !current.railHidden }),
+	/** Open a surface; the open one closes the pane. */
+	const pickSurface = useCallback(
+		(s: RecordSurface) =>
+			publish({ ...current, surface: current.surface === s ? null : s }),
+		[],
+	);
+	const toggleSurfacePane = useCallback(
+		() =>
+			publish({
+				...current,
+				surface: current.surface === null ? DEFAULTS.surface : null,
+			}),
 		[],
 	);
 
-	return { ...prefs, toggleSidebar, toggleRail };
+	return { ...prefs, toggleSidebar, pickSurface, toggleSurfacePane };
 }

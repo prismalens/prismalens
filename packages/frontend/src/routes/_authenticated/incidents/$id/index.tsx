@@ -10,14 +10,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
 	CloseIncidentDialog,
-	CorrelatedAlerts,
 	IncidentComposer,
-	IncidentRail,
 	IncidentStateBand,
 	RecommendationsList,
-	TimelineTab,
 } from "@/components/incidents";
 import type { ComposerCommand } from "@/components/incidents/IncidentComposer";
+import {
+	SURFACES,
+	SurfacePane,
+	SurfaceRail,
+} from "@/components/incidents/RecordSurfaces";
 import {
 	EvidenceSection,
 	ReportSection,
@@ -59,9 +61,7 @@ function IncidentRecordPage() {
 	const navigate = Route.useNavigate();
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
-	const { railHidden, toggleRail } = useLayoutPrefs();
-	const [showAllAlerts, setShowAllAlerts] = useState(false);
-	const [showAllTimeline, setShowAllTimeline] = useState(false);
+	const { surface, pickSurface, toggleSurfacePane } = useLayoutPrefs();
 	const { isReady: canRunInvestigation, blockedReason } =
 		useInvestigationReadiness();
 
@@ -69,19 +69,28 @@ function IncidentRecordPage() {
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
-			if (e.key !== "]" || e.metaKey || e.ctrlKey || e.altKey) return;
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
 			if (
 				t?.tagName === "INPUT" ||
 				t?.tagName === "TEXTAREA" ||
+				t?.tagName === "SELECT" ||
 				t?.isContentEditable
 			)
 				return;
-			e.preventDefault();
-			toggleRail();
+			if (e.key === "]") {
+				e.preventDefault();
+				toggleSurfacePane();
+				return;
+			}
+			const hit = SURFACES.find((s) => s.key === e.key);
+			if (hit) {
+				e.preventDefault();
+				pickSurface(hit.id);
+			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [toggleRail]);
+	}, [pickSurface, toggleSurfacePane]);
 
 	const {
 		data: incident,
@@ -261,8 +270,8 @@ function IncidentRecordPage() {
 				isInvestigating={investigateMutation.isPending}
 				investigateDisabled={!canRunInvestigation}
 				investigateDisabledReason={blockedReason}
-				railHidden={railHidden}
-				onToggleRail={toggleRail}
+				surfaceOpen={surface !== null}
+				onToggleSurfaces={toggleSurfacePane}
 			/>
 
 			<CloseIncidentDialog
@@ -274,9 +283,9 @@ function IncidentRecordPage() {
 
 			<div
 				className={
-					railHidden
-						? "grid min-h-0"
-						: "grid min-h-0 xl:grid-cols-[minmax(0,1fr)_20rem]"
+					surface === null
+						? "grid min-h-0 grid-cols-[minmax(0,1fr)_2.5rem]"
+						: "grid min-h-0 grid-cols-[minmax(0,1fr)_2.5rem] xl:grid-cols-[minmax(0,1fr)_20rem_2.5rem]"
 				}
 			>
 				<div
@@ -372,72 +381,27 @@ function IncidentRecordPage() {
 							/>
 						</RecordSection>
 					)}
-
-					<RecordSection
-						id="alerts"
-						title="Alerts"
-						count={incident.alertCount}
-						actions={
-							(incident.alerts?.length ?? 0) > 5 ? (
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-6 px-2 text-meta"
-									onClick={() => setShowAllAlerts((v) => !v)}
-									data-testid="alerts-toggle"
-								>
-									{showAllAlerts
-										? "Show fewer"
-										: `Show all ${incident.alerts?.length}`}
-								</Button>
-							) : undefined
-						}
-					>
-						<CorrelatedAlerts
-							alerts={
-								showAllAlerts
-									? (incident.alerts ?? [])
-									: (incident.alerts ?? []).slice(0, 5)
-							}
-						/>
-					</RecordSection>
-
-					<RecordSection
-						id="timeline"
-						title="Timeline"
-						count={timelineEntries.length}
-						actions={
-							timelineEntries.length > 5 ? (
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-6 px-2 text-meta"
-									onClick={() => setShowAllTimeline((v) => !v)}
-									data-testid="timeline-toggle"
-								>
-									{showAllTimeline
-										? "Show fewer"
-										: `Show all ${timelineEntries.length}`}
-								</Button>
-							) : undefined
-						}
-					>
-						<TimelineTab
-							incidentId={id}
-							entries={
-								showAllTimeline ? timelineEntries : timelineEntries.slice(0, 5)
-							}
-							isLoading={isLoadingTimeline}
-						/>
-					</RecordSection>
 				</div>
 
-				<div className="lg:sticky lg:top-16 lg:self-start">
-					<IncidentRail
-						incident={incident}
-						run={investigationId ? run : null}
-					/>
-				</div>
+				{surface !== null && (
+					<div className="hidden min-h-0 xl:grid">
+						<SurfacePane
+							surface={surface}
+							incident={incident}
+							run={investigationId ? run : null}
+							timeline={timelineEntries}
+							timelineLoading={isLoadingTimeline}
+						/>
+					</div>
+				)}
+				<SurfaceRail
+					active={surface}
+					counts={{
+						alerts: incident.alertCount,
+						timeline: timelineEntries.length,
+					}}
+					onPick={pickSurface}
+				/>
 			</div>
 
 			<IncidentComposer
