@@ -2,4 +2,4 @@
 // Copyright 2026 Sumit Patel
 
 export { AlertFilters } from "./AlertFilters";
-export { AlertsTable } from "./AlertsTable";
+export { AlertListPane, orderAlerts, useAlertWindow } from "./AlertListPane";

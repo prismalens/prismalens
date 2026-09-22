@@ -14,7 +14,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { BarChart3, Plus, SlidersHorizontal } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
-import { SetupNextStepHint } from "@/components/setup";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
@@ -102,6 +101,10 @@ export function IncidentListPane({
 	const { data, isLoading, error } = useQuery(
 		orpc.incidents.list.queryOptions({ input: listInput }),
 	);
+	const { data: stats } = useQuery(
+		orpc.incidents.getStats.queryOptions({ input: {} }),
+	);
+	const nothingYet = stats?.total === 0;
 	const incidents = data?.data ?? [];
 
 	const ordered = useMemo(() => {
@@ -216,11 +219,18 @@ export function IncidentListPane({
 						The list did not load: {error.message}
 					</p>
 				)}
-				{!isLoading && !error && incidents.length === 0 && (
+				{!isLoading && !error && incidents.length === 0 && nothingYet && (
+					<p
+						className="p-3 text-record text-muted-foreground"
+						data-testid="incidents-none"
+					>
+						No incidents yet.
+					</p>
+				)}
+				{!isLoading && !error && incidents.length === 0 && !nothingYet && (
 					<div className="p-3" data-testid="incidents-empty-state">
 						<div className="rounded-md border border-dashed p-3 text-record text-muted-foreground">
-							No incidents in this window. They appear when alerts correlate, or
-							you can create one by hand.
+							Nothing in this window.
 							<Button
 								size="sm"
 								className="mt-2 w-full"
@@ -231,7 +241,6 @@ export function IncidentListPane({
 								Create incident
 							</Button>
 						</div>
-						<SetupNextStepHint className="mt-3" />
 					</div>
 				)}
 				{ordered.rows.map((incident, index) => {

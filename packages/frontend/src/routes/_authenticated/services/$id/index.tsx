@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	FolderGit2,
 	GitBranch,
@@ -15,7 +15,6 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import { DetailPage, PageHeader } from "@/components/layout";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { ServiceDependenciesTab } from "@/components/services/ServiceDependenciesTab";
 import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
@@ -25,6 +24,7 @@ import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigat
 import { ServiceOverviewTab } from "@/components/services/ServiceOverviewTab";
 import { ServiceRepositoriesTab } from "@/components/services/ServiceRepositoriesTab";
 import { tierLabels } from "@/components/services/service-detail.utils";
+import { SettingsFrame } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
 import { type ChipTone, StateChip } from "@/components/shared/StateChip";
@@ -40,6 +40,7 @@ import {
 	useServiceIntegrations,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
+import { cn } from "@/lib/utils";
 
 type ServiceTab =
 	| "overview"
@@ -130,61 +131,84 @@ function ServiceDetailPage() {
 		);
 	}
 
-	const header = (
-		<PageHeader
-			backLink={{ label: "Services", to: "/services" }}
-			title={service.displayName || service.name}
-			subtitle={
-				<span className="flex items-center gap-2">
-					<Mono className="text-muted-foreground">{service.name}</Mono>
-					<StateChip tone={tierTones[service.tier] || "neutral"}>
-						{tierLabels[service.tier] || service.tier}
-					</StateChip>
-					<StateChip tone="neutral" className="capitalize">
-						{service.type}
-					</StateChip>
-					{service.team && <span>{service.team}</span>}
-				</span>
-			}
-			actions={
-				<>
+	const actions = (
+		<>
+			<Button
+				variant="outline"
+				size="sm"
+				className="h-7"
+				onClick={() => setShowEditDialog(true)}
+			>
+				<Pencil className="mr-1 h-3.5 w-3.5" />
+				Edit
+			</Button>
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
 					<Button
 						variant="outline"
 						size="sm"
-						onClick={() => setShowEditDialog(true)}
+						className="h-7 w-7 p-0"
+						aria-label="More"
 					>
-						<Pencil className="h-4 w-4 mr-1" />
-						Edit
+						<MoreHorizontal className="h-4 w-4" />
 					</Button>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button variant="outline" size="sm">
-								<MoreHorizontal className="h-4 w-4" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							<DropdownMenuItem
-								className="text-destructive"
-								onClick={() => setShowDeleteDialog(true)}
-							>
-								<Trash2 className="h-4 w-4 mr-2" />
-								Delete Service
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</>
-			}
-		/>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end">
+					<DropdownMenuItem
+						className="text-destructive"
+						onClick={() => setShowDeleteDialog(true)}
+					>
+						<Trash2 className="mr-2 h-4 w-4" />
+						Delete service
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</>
 	);
 
 	return (
 		<>
-			<DetailPage
-				tabs={TABS}
-				activeTab={tab}
-				onTabChange={(t) => navigate({ search: { tab: t } })}
-				header={header}
+			<SettingsFrame
+				section="services"
+				title={service.displayName || service.name}
+				intro={
+					<span className="flex flex-wrap items-center gap-2">
+						<Link to="/services" className="hover:underline">
+							Services
+						</Link>
+						<span>/</span>
+						<Mono>{service.name}</Mono>
+						<StateChip tone={tierTones[service.tier] || "neutral"}>
+							{tierLabels[service.tier] || service.tier}
+						</StateChip>
+						<StateChip tone="neutral" className="capitalize">
+							{service.type}
+						</StateChip>
+						{service.team && <span>{service.team}</span>}
+					</span>
+				}
+				actions={actions}
 			>
+				<div className="flex flex-wrap gap-1 border-b" role="tablist">
+					{TABS.map((t) => (
+						<button
+							key={t.value}
+							type="button"
+							role="tab"
+							aria-selected={tab === t.value}
+							onClick={() => navigate({ search: { tab: t.value } })}
+							className={cn(
+								"-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-record",
+								tab === t.value
+									? "border-primary text-foreground"
+									: "border-transparent text-muted-foreground hover:text-foreground",
+							)}
+						>
+							<t.icon className="h-3.5 w-3.5" />
+							{t.label}
+						</button>
+					))}
+				</div>
 				{tab === "overview" && (
 					<ServiceOverviewTab
 						service={service}
@@ -214,7 +238,7 @@ function ServiceDetailPage() {
 						onRefresh={() => refetch()}
 					/>
 				)}
-			</DetailPage>
+			</SettingsFrame>
 
 			{/* Dialogs */}
 			<ServiceFormDialog

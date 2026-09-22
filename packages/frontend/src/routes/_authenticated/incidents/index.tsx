@@ -6,8 +6,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { BarChart3, List } from "lucide-react";
+import { useState } from "react";
 import {
+	CreateIncidentDialog,
 	DateRangeFilter,
+	FirstRunPanel,
 	IncidentAnalytics,
 	QueueStats,
 } from "@/components/incidents";
@@ -34,6 +37,7 @@ function IncidentsOverview() {
 	const { data: list, isLoading: listLoading } = useQuery(
 		orpc.incidents.list.queryOptions({ input: listInput }),
 	);
+	const [createOpen, setCreateOpen] = useState(false);
 
 	const setSearch = (patch: Partial<typeof search>) =>
 		navigate({
@@ -63,6 +67,23 @@ function IncidentsOverview() {
 		);
 	}
 	if (!analytics && listLoading) return null;
+
+	// Nothing exists yet, in any window: the on-ramp, not numbers.
+	if (stats.data && stats.data.total === 0) {
+		return (
+			<div className="h-full overflow-y-auto">
+				<FirstRunPanel onCreate={() => setCreateOpen(true)} />
+				<CreateIncidentDialog
+					open={createOpen}
+					onOpenChange={setCreateOpen}
+					onCreated={(id) =>
+						navigate({ to: "/incidents/$id", params: { id }, search: {} })
+					}
+				/>
+			</div>
+		);
+	}
+	const windowEmpty = !!list && list.data.length === 0;
 
 	return (
 		<div className="h-full overflow-y-auto" data-testid="incidents-overview">
@@ -100,27 +121,44 @@ function IncidentsOverview() {
 					</div>
 				</div>
 
-				<QueueStats
-					stats={stats.data}
-					isLoading={stats.isLoading}
-					error={stats.error}
-					updatedAt={stats.dataUpdatedAt}
-					onRetry={() => stats.refetch()}
-					window={windowLabel}
-					openFilter={search.open === "1"}
-					onToggleOpen={() =>
-						setSearch({
-							open: search.open === "1" ? undefined : "1",
-							status: undefined,
-						})
-					}
-					severityFilter={search.severity}
-					onSeverity={(severity) =>
-						setSearch({ severity: severity as typeof search.severity })
-					}
-				/>
+				{!windowEmpty && (
+					<QueueStats
+						stats={stats.data}
+						isLoading={stats.isLoading}
+						error={stats.error}
+						updatedAt={stats.dataUpdatedAt}
+						onRetry={() => stats.refetch()}
+						window={windowLabel}
+						openFilter={search.open === "1"}
+						onToggleOpen={() =>
+							setSearch({
+								open: search.open === "1" ? undefined : "1",
+								status: undefined,
+							})
+						}
+						severityFilter={search.severity}
+						onSeverity={(severity) =>
+							setSearch({ severity: severity as typeof search.severity })
+						}
+					/>
+				)}
 
-				{analytics && (
+				{windowEmpty && (
+					<p
+						className="rounded-md border border-dashed p-3 text-record text-muted-foreground"
+						data-testid="incidents-window-empty"
+					>
+						Nothing in this window.{" "}
+						<button
+							type="button"
+							className="text-primary hover:underline"
+							onClick={() => setSearch({ from: undefined, to: undefined })}
+						>
+							Show all time
+						</button>
+					</p>
+				)}
+				{analytics && !windowEmpty && (
 					<IncidentAnalytics
 						incidents={list?.data ?? []}
 						days={

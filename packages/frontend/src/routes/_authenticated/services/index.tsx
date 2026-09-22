@@ -18,10 +18,10 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { PageHeader } from "@/components/layout";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ServiceList } from "@/components/services/ServiceList";
 import { tierLabels } from "@/components/services/service-detail.utils";
+import { SettingsFrame } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
@@ -504,31 +504,21 @@ function ServicesPage() {
 	};
 
 	return (
-		<div className="space-y-6">
-			<PageHeader
-				title="Services"
-				subtitle={`${total} services in catalog`}
-				actions={
-					<>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => refetchServices()}
-							disabled={isRefetching}
-						>
-							<RefreshCw
-								className={`h-4 w-4 mr-1 ${isRefetching ? "animate-spin" : ""}`}
-							/>
-							Refresh
-						</Button>
-						<Button size="sm" onClick={() => setShowAddDialog(true)}>
-							<Plus className="h-4 w-4 mr-1" />
-							Add Service
-						</Button>
-					</>
-				}
-			/>
-
+		<SettingsFrame
+			section="services"
+			title="Services"
+			intro={`${total} in the catalog. A run reads the repository a service names; nothing else.`}
+			actions={
+				<Button
+					size="sm"
+					className="h-7"
+					onClick={() => setShowAddDialog(true)}
+				>
+					<Plus className="mr-1 h-3.5 w-3.5" />
+					Add service
+				</Button>
+			}
+		>
 			{/* Review Queue */}
 			<RecordSection
 				id="review-queue"
@@ -826,6 +816,6 @@ function ServicesPage() {
 				onConfirm={handleConfirmDelete}
 				isPending={deleteRepository.isPending}
 			/>
-		</div>
+		</SettingsFrame>
 	);
 }

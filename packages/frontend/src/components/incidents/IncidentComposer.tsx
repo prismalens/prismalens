@@ -11,6 +11,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { RunToolbar } from "@/components/agent/RunToolbar";
 import { Mono } from "@/components/shared/Mono";
 import { cn } from "@/lib/utils";
 
@@ -151,7 +152,7 @@ export function IncidentComposer({
 					))}
 				</div>
 			)}
-			<form onSubmit={submit} className="flex items-center gap-2">
+			<form onSubmit={submit} className="flex items-center gap-2 pb-1">
 				<Mono className="shrink-0 text-record text-primary">
 					INC-{incidentNumber} ›
 				</Mono>
@@ -175,6 +176,7 @@ export function IncidentComposer({
 					{isCommand ? "run" : "note"}
 				</span>
 			</form>
+			<RunToolbar />
 		</div>
 	);
 }

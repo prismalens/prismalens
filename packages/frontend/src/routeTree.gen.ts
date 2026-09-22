@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenticated/alerts/route'
 import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authenticated/incidents/route'
+import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
@@ -33,10 +35,22 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAlertsRouteRoute =
+  AuthenticatedAlertsRouteRouteImport.update({
+    id: '/alerts',
+    path: '/alerts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedIncidentsRouteRoute =
   AuthenticatedIncidentsRouteRouteImport.update({
     id: '/incidents',
     path: '/incidents',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsRouteRoute =
+  AuthenticatedSettingsRouteRouteImport.update({
+    id: '/settings',
+    path: '/settings',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
@@ -51,9 +65,9 @@ const SetupIndexRoute = SetupIndexRouteImport.update({
 } as any)
 const AuthenticatedAlertsIndexRoute =
   AuthenticatedAlertsIndexRouteImport.update({
-    id: '/alerts/',
-    path: '/alerts/',
-    getParentRoute: () => AuthenticatedRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAlertsRouteRoute,
   } as any)
 const AuthenticatedIncidentsIndexRoute =
   AuthenticatedIncidentsIndexRouteImport.update({
@@ -69,15 +83,15 @@ const AuthenticatedServicesIndexRoute =
   } as any)
 const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
-    id: '/settings/',
-    path: '/settings/',
-    getParentRoute: () => AuthenticatedRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 const AuthenticatedAlertsIdIndexRoute =
   AuthenticatedAlertsIdIndexRouteImport.update({
-    id: '/alerts/$id/',
-    path: '/alerts/$id/',
-    getParentRoute: () => AuthenticatedRoute,
+    id: '/$id/',
+    path: '/$id/',
+    getParentRoute: () => AuthenticatedAlertsRouteRoute,
   } as any)
 const AuthenticatedIncidentsIdIndexRoute =
   AuthenticatedIncidentsIdIndexRouteImport.update({
@@ -99,14 +113,16 @@ const AuthenticatedServicesIdIndexRoute =
   } as any)
 const AuthenticatedSettingsIntegrationsConfigureRoute =
   AuthenticatedSettingsIntegrationsConfigureRouteImport.update({
-    id: '/settings/integrations/configure',
-    path: '/settings/integrations/configure',
-    getParentRoute: () => AuthenticatedRoute,
+    id: '/integrations/configure',
+    path: '/integrations/configure',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
+  '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/auth/login': typeof AuthLoginRoute
   '/setup/': typeof SetupIndexRoute
   '/alerts/': typeof AuthenticatedAlertsIndexRoute
@@ -136,7 +152,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/_authenticated/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
+  '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/auth/login': typeof AuthLoginRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -154,7 +172,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/alerts'
     | '/incidents'
+    | '/settings'
     | '/auth/login'
     | '/setup/'
     | '/alerts/'
@@ -183,7 +203,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/_authenticated/alerts'
     | '/_authenticated/incidents'
+    | '/_authenticated/settings'
     | '/auth/login'
     | '/_authenticated/'
     | '/setup/'
@@ -220,11 +242,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/alerts': {
+      id: '/_authenticated/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AuthenticatedAlertsRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/incidents': {
       id: '/_authenticated/incidents'
       path: '/incidents'
       fullPath: '/incidents'
       preLoaderRoute: typeof AuthenticatedIncidentsRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/auth/login': {
@@ -243,10 +279,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/alerts/': {
       id: '/_authenticated/alerts/'
-      path: '/alerts'
+      path: '/'
       fullPath: '/alerts/'
       preLoaderRoute: typeof AuthenticatedAlertsIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      parentRoute: typeof AuthenticatedAlertsRouteRoute
     }
     '/_authenticated/incidents/': {
       id: '/_authenticated/incidents/'
@@ -264,17 +300,17 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/settings/': {
       id: '/_authenticated/settings/'
-      path: '/settings'
+      path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
     '/_authenticated/alerts/$id/': {
       id: '/_authenticated/alerts/$id/'
-      path: '/alerts/$id'
+      path: '/$id'
       fullPath: '/alerts/$id/'
       preLoaderRoute: typeof AuthenticatedAlertsIdIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      parentRoute: typeof AuthenticatedAlertsRouteRoute
     }
     '/_authenticated/incidents/$id/': {
       id: '/_authenticated/incidents/$id/'
@@ -299,13 +335,29 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/settings/integrations/configure': {
       id: '/_authenticated/settings/integrations/configure'
-      path: '/settings/integrations/configure'
+      path: '/integrations/configure'
       fullPath: '/settings/integrations/configure'
       preLoaderRoute: typeof AuthenticatedSettingsIntegrationsConfigureRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
     }
   }
 }
+
+interface AuthenticatedAlertsRouteRouteChildren {
+  AuthenticatedAlertsIndexRoute: typeof AuthenticatedAlertsIndexRoute
+  AuthenticatedAlertsIdIndexRoute: typeof AuthenticatedAlertsIdIndexRoute
+}
+
+const AuthenticatedAlertsRouteRouteChildren: AuthenticatedAlertsRouteRouteChildren =
+  {
+    AuthenticatedAlertsIndexRoute: AuthenticatedAlertsIndexRoute,
+    AuthenticatedAlertsIdIndexRoute: AuthenticatedAlertsIdIndexRoute,
+  }
+
+const AuthenticatedAlertsRouteRouteWithChildren =
+  AuthenticatedAlertsRouteRoute._addFileChildren(
+    AuthenticatedAlertsRouteRouteChildren,
+  )
 
 interface AuthenticatedIncidentsRouteRouteChildren {
   AuthenticatedIncidentsIndexRoute: typeof AuthenticatedIncidentsIndexRoute
@@ -323,28 +375,40 @@ const AuthenticatedIncidentsRouteRouteWithChildren =
     AuthenticatedIncidentsRouteRouteChildren,
   )
 
-interface AuthenticatedRouteChildren {
-  AuthenticatedIncidentsRouteRoute: typeof AuthenticatedIncidentsRouteRouteWithChildren
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
-  AuthenticatedAlertsIndexRoute: typeof AuthenticatedAlertsIndexRoute
-  AuthenticatedServicesIndexRoute: typeof AuthenticatedServicesIndexRoute
+interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
   AuthenticatedSettingsIntegrationsConfigureRoute: typeof AuthenticatedSettingsIntegrationsConfigureRoute
-  AuthenticatedAlertsIdIndexRoute: typeof AuthenticatedAlertsIdIndexRoute
+}
+
+const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren =
+  {
+    AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+    AuthenticatedSettingsIntegrationsConfigureRoute:
+      AuthenticatedSettingsIntegrationsConfigureRoute,
+  }
+
+const AuthenticatedSettingsRouteRouteWithChildren =
+  AuthenticatedSettingsRouteRoute._addFileChildren(
+    AuthenticatedSettingsRouteRouteChildren,
+  )
+
+interface AuthenticatedRouteChildren {
+  AuthenticatedAlertsRouteRoute: typeof AuthenticatedAlertsRouteRouteWithChildren
+  AuthenticatedIncidentsRouteRoute: typeof AuthenticatedIncidentsRouteRouteWithChildren
+  AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedServicesIndexRoute: typeof AuthenticatedServicesIndexRoute
   AuthenticatedInvestigationsIdIndexRoute: typeof AuthenticatedInvestigationsIdIndexRoute
   AuthenticatedServicesIdIndexRoute: typeof AuthenticatedServicesIdIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAlertsRouteRoute: AuthenticatedAlertsRouteRouteWithChildren,
   AuthenticatedIncidentsRouteRoute:
     AuthenticatedIncidentsRouteRouteWithChildren,
+  AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
-  AuthenticatedAlertsIndexRoute: AuthenticatedAlertsIndexRoute,
   AuthenticatedServicesIndexRoute: AuthenticatedServicesIndexRoute,
-  AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
-  AuthenticatedSettingsIntegrationsConfigureRoute:
-    AuthenticatedSettingsIntegrationsConfigureRoute,
-  AuthenticatedAlertsIdIndexRoute: AuthenticatedAlertsIdIndexRoute,
   AuthenticatedInvestigationsIdIndexRoute:
     AuthenticatedInvestigationsIdIndexRoute,
   AuthenticatedServicesIdIndexRoute: AuthenticatedServicesIdIndexRoute,

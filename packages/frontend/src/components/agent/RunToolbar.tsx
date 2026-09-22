@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { ChevronDown, Lock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Mono } from "@/components/shared/Mono";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import { useUpdateHarnessSettings } from "@/lib/api/hooks";
+import { AgentPicker, useAgentChoice } from "./AgentPicker";
+
+/** The model pill: the id the next run asks for, or the agent's own default. */
+function ModelPill() {
+	const { effective, model } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	const [open, setOpen] = useState(false);
+	const [draft, setDraft] = useState(model);
+	useEffect(() => setDraft(model), [model]);
+	const ignored = effective?.modelVia === "unsupported";
+	const shown = model || effective?.defaultModel || "agent default";
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-7 gap-1 px-2 text-record"
+					disabled={ignored}
+					title={ignored ? `${effective?.label} uses its own model` : undefined}
+					data-testid="model-pill"
+				>
+					<Mono className="max-w-40 truncate">{shown}</Mono>
+					<ChevronDown className="h-3 w-3 text-muted-foreground" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent align="start" className="w-72 space-y-2 p-3">
+				<p className="text-meta text-muted-foreground">
+					Model id in the agent's own format. Empty means{" "}
+					{effective?.defaultModel ? (
+						<Mono>{effective.defaultModel}</Mono>
+					) : (
+						"the agent's default"
+					)}
+					.
+				</p>
+				<form
+					className="flex gap-2"
+					onSubmit={(e) => {
+						e.preventDefault();
+						update.mutate({ model: draft.trim() || undefined });
+						setOpen(false);
+					}}
+				>
+					<Input
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						placeholder={effective?.defaultModel ?? "agent default"}
+						className="h-8 font-mono text-record"
+						aria-label="Model"
+					/>
+					<Button
+						type="submit"
+						size="sm"
+						className="h-8"
+						disabled={update.isPending}
+					>
+						Use
+					</Button>
+				</form>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+/**
+ * The strip under the composer input: which agent and model the next run uses,
+ * and how much it can be trusted (the fidelity of its read-only enforcement).
+ * The same choices live in Settings; this is where they are made at the moment
+ * of use.
+ */
+export function RunToolbar() {
+	const { fidelity } = useAgentChoice();
+	return (
+		<div
+			className="flex flex-wrap items-center gap-1"
+			data-testid="run-toolbar"
+		>
+			<AgentPicker />
+			<span className="h-4 w-px bg-border" aria-hidden />
+			<ModelPill />
+			{fidelity && (
+				<>
+					<span className="h-4 w-px bg-border" aria-hidden />
+					<span
+						className="inline-flex items-center gap-1 px-2 text-meta text-muted-foreground"
+						title="How the agent's read-only limit is enforced"
+					>
+						<Lock className="h-3 w-3" />
+						{fidelity} read-only
+					</span>
+				</>
+			)}
+		</div>
+	);
+}

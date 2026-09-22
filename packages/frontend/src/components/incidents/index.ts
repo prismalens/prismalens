@@ -23,6 +23,7 @@ export {
 	type DateRangeValue,
 	type QuickRange,
 } from "./DateRangeFilter";
+export { FirstRunPanel } from "./FirstRunPanel";
 export {
 	type ComposerCommand,
 	IncidentComposer,
