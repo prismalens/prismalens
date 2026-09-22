@@ -81,7 +81,7 @@ export function IncidentStateBand({
 			data-testid="incident-state-band"
 			className="border-b bg-background px-4 sm:px-6"
 		>
-			<div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 py-2">
+			<div className="flex min-h-12 items-center gap-x-3 py-1.5">
 				<Link
 					to="/incidents"
 					aria-label="Back to incidents"
@@ -114,7 +114,7 @@ export function IncidentStateBand({
 					</div>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-2">
+				<div className="flex shrink-0 items-center gap-2">
 					<StatusBadge status={incident.status} />
 					<StateChip tone={priorityTone(incident.priority)}>
 						{incident.priority.toUpperCase()}
@@ -161,7 +161,7 @@ export function IncidentStateBand({
 					</div>
 				)}
 
-				<div className="ml-auto flex items-center gap-2">
+				<div className="flex shrink-0 items-center gap-2">
 					{canAcknowledge && onAcknowledge && (
 						<Button variant="outline" size="sm" onClick={onAcknowledge}>
 							<CheckCircle className="mr-1.5 h-3.5 w-3.5" />

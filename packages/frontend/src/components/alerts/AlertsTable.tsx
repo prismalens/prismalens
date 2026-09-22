@@ -4,7 +4,6 @@
 import { type AlertWithRelations, canAlertAction } from "@prismalens/contracts";
 
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import { Bell, CheckCircle, ExternalLink, Eye } from "lucide-react";
 import { SetupNextStepHint } from "@/components/setup";
 import { Mono } from "@/components/shared/Mono";
@@ -27,6 +26,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ago, useNow } from "@/hooks/use-now";
 
 export interface AlertsTableProps {
 	alerts: AlertWithRelations[];
@@ -85,6 +85,7 @@ export function AlertsTable({
 	onAcknowledge,
 	onResolve,
 }: AlertsTableProps) {
+	const now = useNow();
 	return (
 		<TooltipProvider>
 			<div className="rounded-md border">
@@ -112,7 +113,7 @@ export function AlertsTable({
 											<Link
 												to="/alerts/$id"
 												params={{ id: alert.id }}
-												className="max-w-[280px] truncate hover:text-primary hover:underline"
+												className="line-clamp-2 hover:text-primary hover:underline"
 												title={alert.title}
 												data-testid="alert-row-link"
 											>
@@ -153,9 +154,7 @@ export function AlertsTable({
 									<TableCell className="text-sm text-muted-foreground">
 										<Tooltip>
 											<TooltipTrigger>
-												{formatDistanceToNow(new Date(alert.triggeredAt), {
-													addSuffix: true,
-												})}
+												{ago(alert.triggeredAt, now)}
 											</TooltipTrigger>
 											<TooltipContent>
 												<Mono>

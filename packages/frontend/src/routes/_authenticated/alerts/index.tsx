@@ -9,7 +9,7 @@ import {
 	useNavigate,
 	useSearch,
 } from "@tanstack/react-router";
-import { CloudDownload, RefreshCw } from "lucide-react";
+import { CloudDownload } from "lucide-react";
 import { useState } from "react";
 import { AlertFilters, AlertsTable } from "@/components/alerts";
 import { Button } from "@/components/ui/button";
@@ -53,12 +53,9 @@ function AlertsPage() {
 	};
 
 	// Fetch alerts
-	const {
-		data: alertsResponse,
-		isLoading,
-		refetch,
-		isRefetching,
-	} = useQuery(orpc.alerts.list.queryOptions({ input: queryParams }));
+	const { data: alertsResponse, isLoading } = useQuery(
+		orpc.alerts.list.queryOptions({ input: queryParams }),
+	);
 	const alerts = alertsResponse?.data ?? [];
 
 	// Fetch stats
@@ -170,17 +167,6 @@ function AlertsPage() {
 							className={`h-4 w-4 mr-2 ${pullMutation.isPending ? "animate-pulse" : ""}`}
 						/>
 						Pull from Alertmanager
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => refetch()}
-						disabled={isRefetching}
-					>
-						<RefreshCw
-							className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`}
-						/>
-						Refresh
 					</Button>
 				</div>
 			</div>
