@@ -2,16 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
 import { HarnessService } from "../harness/harness.service.js";
 import { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
+import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { ActiveRunsError, SettingsService } from "./settings.service.js";
 
-@UseGuards(ThrottlerGuard)
+@UseGuards(MutationThrottleGuard)
 @Controller()
 export class SettingsController {
 	constructor(

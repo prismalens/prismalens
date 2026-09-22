@@ -2,12 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
 import { settingsContract } from "@prismalens/contracts";
+import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { ReportDeliveryService } from "./report-delivery.service.js";
 
-@UseGuards(ThrottlerGuard)
+@UseGuards(MutationThrottleGuard)
 @Controller()
 export class ReportDeliveryController {
 	constructor(private readonly delivery: ReportDeliveryService) {}
