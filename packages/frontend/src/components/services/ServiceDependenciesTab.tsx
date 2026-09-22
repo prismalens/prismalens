@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+"use client";
+
 import { Link } from "@tanstack/react-router";
 import { Pencil, Plus, Server, Trash2 } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
+import { Mono } from "@/components/shared/Mono";
+import { StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
+import { DependencyEditor } from "./DependencyEditor";
 import { serviceTypeIcons } from "./service-detail.utils";
 
 interface ServiceDependenciesTabProps {
+	serviceId: string;
 	topology?: {
 		upstream: Array<{
 			service: {
@@ -31,22 +36,29 @@ interface ServiceDependenciesTabProps {
 			criticality: string;
 		}>;
 	};
-	onAddDependency: () => void;
-	onEditDependency: (dep: {
-		dependencyId: string;
-		name: string;
-		type: string;
-		criticality: string;
-	}) => void;
 	onRemoveDependency: (depId: string) => void;
+	onRefresh?: () => void;
 }
 
 export function ServiceDependenciesTab({
+	serviceId,
 	topology,
-	onAddDependency,
-	onEditDependency,
 	onRemoveDependency,
+	onRefresh,
 }: ServiceDependenciesTabProps) {
+	const [editorState, setEditorState] = useState<{
+		mode: "add" | "edit";
+		dep?: {
+			dependencyId: string;
+			name: string;
+			type: string;
+			criticality: string;
+		};
+	} | null>(null);
+
+	const existingUpstreamIds =
+		topology?.upstream?.map((e) => e.service.id) ?? [];
+
 	return (
 		<div className="space-y-6">
 			{/* Upstream Dependencies */}
@@ -55,11 +67,30 @@ export function ServiceDependenciesTab({
 					<h3 className="text-sm font-medium">
 						Upstream Dependencies ({topology?.upstream?.length ?? 0})
 					</h3>
-					<Button size="sm" variant="outline" onClick={onAddDependency}>
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => setEditorState({ mode: "add" })}
+					>
 						<Plus className="h-4 w-4 mr-1" />
 						Add Dependency
 					</Button>
 				</div>
+
+				{editorState && (
+					<DependencyEditor
+						mode={editorState.mode}
+						serviceId={serviceId}
+						dependency={editorState.dep}
+						existingDependencyIds={existingUpstreamIds}
+						onSuccess={() => {
+							setEditorState(null);
+							onRefresh?.();
+						}}
+						onCancel={() => setEditorState(null)}
+					/>
+				)}
+
 				<div className="max-h-96 overflow-y-auto rounded-md border">
 					{topology?.upstream && topology.upstream.length > 0 ? (
 						<div className="divide-y">
@@ -89,22 +120,31 @@ export function ServiceDependenciesTab({
 										</div>
 									</Link>
 									<div className="flex items-center gap-2 flex-shrink-0">
-										<Badge variant="outline" className="text-xs">
-											{edge.dependencyType}
-										</Badge>
-										<Badge variant="secondary" className="text-xs">
+										<StateChip tone="neutral">{edge.dependencyType}</StateChip>
+										<StateChip
+											tone={
+												edge.criticality === "required"
+													? "critical"
+													: edge.criticality === "degraded"
+														? "medium"
+														: "neutral"
+											}
+										>
 											{edge.criticality}
-										</Badge>
+										</StateChip>
 										<Button
 											variant="ghost"
 											size="sm"
 											className="h-7 w-7 p-0"
 											onClick={() =>
-												onEditDependency({
-													dependencyId: edge.service.id,
-													name: edge.service.displayName || edge.service.name,
-													type: edge.dependencyType,
-													criticality: edge.criticality,
+												setEditorState({
+													mode: "edit",
+													dep: {
+														dependencyId: edge.service.id,
+														name: edge.service.displayName || edge.service.name,
+														type: edge.dependencyType,
+														criticality: edge.criticality,
+													},
 												})
 											}
 										>
@@ -164,12 +204,18 @@ export function ServiceDependenciesTab({
 										</div>
 									</Link>
 									<div className="flex items-center gap-2 flex-shrink-0">
-										<Badge variant="outline" className="text-xs">
-											{edge.dependencyType}
-										</Badge>
-										<Badge variant="secondary" className="text-xs">
+										<StateChip tone="neutral">{edge.dependencyType}</StateChip>
+										<StateChip
+											tone={
+												edge.criticality === "required"
+													? "critical"
+													: edge.criticality === "degraded"
+														? "medium"
+														: "neutral"
+											}
+										>
 											{edge.criticality}
-										</Badge>
+										</StateChip>
 									</div>
 								</div>
 							))}

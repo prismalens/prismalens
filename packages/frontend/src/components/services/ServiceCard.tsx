@@ -10,6 +10,7 @@
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, GitBranch } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
 import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,18 +56,18 @@ export function ServiceCard({ service }: ServiceCardProps) {
 									{service.displayName || service.name}
 								</Link>
 							</CardTitle>
-							<p className="text-sm text-muted-foreground font-mono">
+							<Mono className="text-sm text-muted-foreground block">
 								{service.name}
-							</p>
+							</Mono>
 						</div>
 					</div>
 					<div className="flex flex-col items-end gap-1">
 						<StateChip tone={tierTones[service.tier] || "neutral"}>
 							{tierLabels[service.tier] || service.tier}
 						</StateChip>
-						<Badge variant="outline" className="text-xs capitalize">
+						<StateChip tone="neutral" className="capitalize">
 							{service.type}
-						</Badge>
+						</StateChip>
 					</div>
 				</div>
 			</CardHeader>
@@ -82,9 +83,13 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				{repos.length > 0 && (
 					<div className="flex flex-wrap gap-1">
 						{repos.map((sr) => (
-							<Badge key={sr.id} variant="secondary" className="text-xs">
-								🔗 {sr.repository.fullName}
-							</Badge>
+							<span
+								key={sr.id}
+								className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
+							>
+								<span>🔗</span>
+								<Mono>{sr.repository.fullName}</Mono>
+							</span>
 						))}
 					</div>
 				)}

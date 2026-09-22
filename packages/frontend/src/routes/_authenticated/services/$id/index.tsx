@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
@@ -17,21 +16,18 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { DetailPage, PageHeader } from "@/components/layout";
-import { AddDependencyDialog } from "@/components/services/AddDependencyDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
-import { EditDependencyDialog } from "@/components/services/EditDependencyDialog";
 import { ServiceDependenciesTab } from "@/components/services/ServiceDependenciesTab";
 import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
-import { ServiceIntegrationOverrideDialog } from "@/components/services/ServiceIntegrationOverrideDialog";
 import { ServiceIntegrationsTab } from "@/components/services/ServiceIntegrationsTab";
 import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigationTab";
 import { ServiceOverviewTab } from "@/components/services/ServiceOverviewTab";
 import { ServiceRepositoriesTab } from "@/components/services/ServiceRepositoriesTab";
 import { tierLabels } from "@/components/services/service-detail.utils";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
-import { MutationError } from "@/components/shared/MutationError";
-import { Badge } from "@/components/ui/badge";
+import { Mono } from "@/components/shared/Mono";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -40,13 +36,8 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-	useCreateServiceIntegration,
-	useDeleteServiceIntegration,
-	useGitOrganizations,
-	useGitRepositories,
 	useRemoveServiceDependency,
 	useServiceIntegrations,
-	useUpdateServiceIntegration,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -65,6 +56,13 @@ const TABS: { value: ServiceTab; label: string; icon: typeof Server }[] = [
 	{ value: "dependencies", label: "Dependencies", icon: GitBranch },
 ];
 
+const tierTones: Record<string, ChipTone> = {
+	tier_1: "critical",
+	tier_2: "high",
+	tier_3: "medium",
+	tier_4: "neutral",
+};
+
 export const Route = createFileRoute("/_authenticated/services/$id/")({
 	validateSearch: (search: Record<string, unknown>) => ({
 		tab: (TABS.some((t) => t.value === search.tab)
@@ -80,23 +78,6 @@ function ServiceDetailPage() {
 	const navigate = useNavigate({ from: "/services/$id/" });
 	const [showEditDialog, setShowEditDialog] = useState(false);
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-	const [showAddDepDialog, setShowAddDepDialog] = useState(false);
-	const [showOverrideDialog, setShowOverrideDialog] = useState(false);
-	const [selectedIntegration, setSelectedIntegration] =
-		useState<ServiceIntegrationWithStatus | null>(null);
-	const [selectedConnectionId, setSelectedConnectionId] = useState<
-		string | null
-	>(null);
-	const [editingOverrideId, setEditingOverrideId] = useState<string | null>(
-		null,
-	);
-	const [selectedOrg, setSelectedOrg] = useState<string | undefined>(undefined);
-	const [editingDep, setEditingDep] = useState<{
-		dependencyId: string;
-		name: string;
-		type: string;
-		criticality: string;
-	} | null>(null);
 	const [removingDepId, setRemovingDepId] = useState<string | null>(null);
 
 	// Fetch service details
@@ -117,98 +98,17 @@ function ServiceDetailPage() {
 	const { data: integrations = [], isLoading: isLoadingIntegrations } =
 		useServiceIntegrations(id);
 
-	// Git provider data for override dialog
-	const isGitHubIntegration =
-		selectedIntegration?.templateId?.startsWith("github") ?? false;
-	const { data: organizations = [], isLoading: isLoadingOrgs } =
-		useGitOrganizations(
-			isGitHubIntegration && selectedIntegration
-				? selectedIntegration.connectionId
-				: "",
-		);
-	const { data: repositories = [], isLoading: isLoadingRepos } =
-		useGitRepositories(
-			isGitHubIntegration && selectedIntegration
-				? selectedIntegration.connectionId
-				: "",
-			selectedOrg,
-		);
-
-	// Service integration mutations
-	const createOverride = useCreateServiceIntegration();
-	const updateOverride = useUpdateServiceIntegration();
-	const deleteOverride = useDeleteServiceIntegration();
 	const removeDep = useRemoveServiceDependency();
-
-	// Integration override handlers
-	const handleCreateOverride = (connectionId: string) => {
-		const integration = integrations.find(
-			(i) => i.connectionId === connectionId,
-		);
-		if (integration) {
-			setSelectedIntegration(integration);
-			setSelectedConnectionId(connectionId);
-			setEditingOverrideId(null);
-			setSelectedOrg(undefined);
-			setShowOverrideDialog(true);
-		}
-	};
-
-	const handleEditOverride = (
-		overrideId: string,
-		integration: ServiceIntegrationWithStatus,
-	) => {
-		setSelectedIntegration(integration);
-		setEditingOverrideId(overrideId);
-		setSelectedConnectionId(integration.connectionId);
-		const config = integration.serviceConfig as {
-			organization?: string;
-		} | null;
-		setSelectedOrg(config?.organization);
-		setShowOverrideDialog(true);
-	};
-
-	const handleDeleteOverride = (overrideId: string) => {
-		deleteOverride.mutate({ id: overrideId });
-	};
-
-	const handleSaveOverride = (config: Record<string, unknown>) => {
-		if (editingOverrideId) {
-			updateOverride.mutate(
-				{ id: editingOverrideId, config },
-				{
-					onSuccess: () => {
-						setShowOverrideDialog(false);
-						resetOverrideState();
-					},
-				},
-			);
-		} else if (selectedConnectionId) {
-			createOverride.mutate(
-				{ serviceId: id, connectionId: selectedConnectionId, config },
-				{
-					onSuccess: () => {
-						setShowOverrideDialog(false);
-						resetOverrideState();
-					},
-				},
-			);
-		}
-	};
-
-	const resetOverrideState = () => {
-		setSelectedIntegration(null);
-		setSelectedConnectionId(null);
-		setEditingOverrideId(null);
-		setSelectedOrg(undefined);
-	};
 
 	const handleRemoveDependency = () => {
 		if (!removingDepId) return;
 		removeDep.mutate(
 			{ id, dependencyId: removingDepId },
 			{
-				onSuccess: () => setRemovingDepId(null),
+				onSuccess: () => {
+					setRemovingDepId(null);
+					refetch();
+				},
 			},
 		);
 	};
@@ -230,21 +130,19 @@ function ServiceDetailPage() {
 		);
 	}
 
-	const existingDepIds = topology?.upstream?.map((d) => d.service.id) ?? [];
-
 	const header = (
 		<PageHeader
 			backLink={{ label: "Services", to: "/services" }}
 			title={service.displayName || service.name}
 			subtitle={
 				<span className="flex items-center gap-2">
-					<span className="font-mono">{service.name}</span>
-					<Badge variant="outline">
+					<Mono className="text-muted-foreground">{service.name}</Mono>
+					<StateChip tone={tierTones[service.tier] || "neutral"}>
 						{tierLabels[service.tier] || service.tier}
-					</Badge>
-					<Badge variant="secondary" className="capitalize">
+					</StateChip>
+					<StateChip tone="neutral" className="capitalize">
 						{service.type}
-					</Badge>
+					</StateChip>
 					{service.team && <span>{service.team}</span>}
 				</span>
 			}
@@ -298,28 +196,22 @@ function ServiceDetailPage() {
 					<ServiceRepositoriesTab serviceId={id} service={service} />
 				)}
 				{tab === "integrations" && (
-					<>
-						<MutationError error={deleteOverride.error} className="mb-4" />
-						<ServiceIntegrationsTab
-							serviceId={id}
-							serviceType={service.type}
-							integrations={integrations}
-							isLoading={isLoadingIntegrations}
-							onCreateOverride={handleCreateOverride}
-							onEditOverride={handleEditOverride}
-							onDeleteOverride={handleDeleteOverride}
-						/>
-					</>
+					<ServiceIntegrationsTab
+						serviceId={id}
+						serviceType={service.type}
+						integrations={integrations}
+						isLoading={isLoadingIntegrations}
+					/>
 				)}
 				{tab === "investigation" && (
 					<ServiceInvestigationTab serviceId={id} metadata={service.metadata} />
 				)}
 				{tab === "dependencies" && (
 					<ServiceDependenciesTab
+						serviceId={id}
 						topology={topology}
-						onAddDependency={() => setShowAddDepDialog(true)}
-						onEditDependency={(dep) => setEditingDep(dep)}
 						onRemoveDependency={(depId) => setRemovingDepId(depId)}
+						onRefresh={() => refetch()}
 					/>
 				)}
 			</DetailPage>
@@ -338,25 +230,6 @@ function ServiceDetailPage() {
 				serviceName={service.displayName || service.name}
 				onSuccess={() => navigate({ to: "/services" })}
 			/>
-			<AddDependencyDialog
-				open={showAddDepDialog}
-				onOpenChange={setShowAddDepDialog}
-				serviceId={id}
-				existingDependencyIds={existingDepIds}
-			/>
-			{editingDep && (
-				<EditDependencyDialog
-					open={!!editingDep}
-					onOpenChange={(open) => {
-						if (!open) setEditingDep(null);
-					}}
-					serviceId={id}
-					dependencyId={editingDep.dependencyId}
-					dependencyName={editingDep.name}
-					currentType={editingDep.type}
-					currentCriticality={editingDep.criticality}
-				/>
-			)}
 			<DestructiveConfirm
 				open={!!removingDepId}
 				onOpenChange={(open) => {
@@ -368,26 +241,7 @@ function ServiceDetailPage() {
 				}
 				confirmLabel="Remove"
 				onConfirm={handleRemoveDependency}
-			/>
-			<ServiceIntegrationOverrideDialog
-				open={showOverrideDialog}
-				onOpenChange={(open) => {
-					setShowOverrideDialog(open);
-					if (!open) resetOverrideState();
-				}}
-				serviceId={id}
-				serviceName={service.displayName || service.name}
-				overrideId={editingOverrideId ?? undefined}
-				integration={selectedIntegration ?? undefined}
-				connectionId={selectedConnectionId ?? undefined}
-				organizations={organizations}
-				repositories={repositories}
-				isLoadingOrgs={isLoadingOrgs}
-				isLoadingRepos={isLoadingRepos}
-				selectedOrg={selectedOrg}
-				onOrgChange={setSelectedOrg}
-				onSave={handleSaveOverride}
-				isSaving={createOverride.isPending || updateOverride.isPending}
+				isPending={removeDep.isPending}
 			/>
 		</>
 	);
