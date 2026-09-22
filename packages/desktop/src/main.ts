@@ -10,6 +10,7 @@
  */
 
 import type { ChildProcess } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { readWorkspaceLockState } from "@prismalens/config";
 import {
 	app,
@@ -102,6 +103,18 @@ function openWindow(path = "/"): void {
 		webPreferences: { contextIsolation: true, nodeIntegration: false },
 	});
 	window.once("ready-to-show", () => window?.show());
+	// PRISMALENS_DESKTOP_SMOKE=<png path>: prove the window rendered the app,
+	// write the capture, quit. What CI runs under xvfb, and what a box with no
+	// display server to look at runs by hand.
+	const smoke = process.env.PRISMALENS_DESKTOP_SMOKE;
+	if (smoke) {
+		window.webContents.once("did-finish-load", async () => {
+			await new Promise((r) => setTimeout(r, 4_000));
+			const image = await window?.webContents.capturePage();
+			if (image) writeFileSync(smoke, image.toPNG());
+			app.quit();
+		});
+	}
 	window.on("closed", () => {
 		window = null;
 	});

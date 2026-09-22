@@ -10,7 +10,13 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,4 +54,24 @@ execFileSync(
 	{ stdio: "inherit" },
 );
 rmSync(tmp, { recursive: true, force: true });
-console.log(`staged ${out}/lib/node_modules/prismalens`);
+
+// The backend runs under Electron's Node, whose ABI differs from the system
+// Node the tarball's better-sqlite3 was built for. Swap in the prebuilt
+// binary for Electron's ABI; no compiler is needed, which is what keeps this
+// runnable on a laptop and on a CI runner alike.
+const staged = join(out, "lib", "node_modules", "prismalens");
+const electronVersion = JSON.parse(
+	readFileSync(resolve(here, "../node_modules/electron/package.json"), "utf8"),
+).version;
+execFileSync(
+	"node",
+	[
+		join(staged, "node_modules", ".bin", "prebuild-install"),
+		"--runtime",
+		"electron",
+		"--target",
+		electronVersion,
+	],
+	{ cwd: join(staged, "node_modules", "better-sqlite3"), stdio: "inherit" },
+);
+console.log(`staged ${staged} for electron ${electronVersion}`);

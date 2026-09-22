@@ -98,3 +98,7 @@ packages/cli/.pack-staging/
 # leaves a file that looks committable.
 /PRISMALENS_ADMISSION.txt
 /PRISMALENS_CWD_PROBE.txt
+
+# Electron launcher: staged backend and built app
+packages/desktop/resources/
+packages/desktop/release/
