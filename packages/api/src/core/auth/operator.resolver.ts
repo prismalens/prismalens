@@ -15,8 +15,8 @@ import { Injectable } from "@nestjs/common";
 import type { Session, User } from "@prismalens/auth";
 import { resolvePlacement } from "@prismalens/config/harness";
 import type { Request } from "express";
-import type { PrismaService } from "../prisma/prisma.service.js";
-import type { AuthService } from "./auth.service.js";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { AuthService } from "./auth.service.js";
 import { isLocalOperatorRequest } from "./local-operator.js";
 
 export type OperatorVia = "session" | "loopback";
