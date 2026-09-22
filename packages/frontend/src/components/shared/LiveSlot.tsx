@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ago, useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 import { StateChip } from "./StateChip";
 
@@ -56,16 +57,6 @@ export type LiveSlotProps =
 	| LiveSlotFailed
 	| LiveSlotNotConfigured;
 
-function ago(at: string | Date): string {
-	const s = Math.max(
-		0,
-		Math.round((Date.now() - new Date(at).getTime()) / 1000),
-	);
-	if (s < 60) return `${s}s ago`;
-	if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-	return `${Math.floor(s / 3600)}h ago`;
-}
-
 /**
  * The one atom for a value that is queried now rather than quoted from the run.
  * Fixed geometry in all four states so arrival order never reflows its neighbours;
@@ -73,6 +64,7 @@ function ago(at: string | Date): string {
  */
 export function LiveSlot(props: LiveSlotProps) {
 	const { label, className } = props;
+	const now = useNow();
 	return (
 		<div
 			data-testid="live-slot"
@@ -138,7 +130,7 @@ export function LiveSlot(props: LiveSlotProps) {
 					<span className="truncate">
 						{props.source}
 						{props.window && ` · ${props.window}`}
-						{` · updated ${ago(props.updatedAt)}`}
+						{now !== null && ` · updated ${ago(props.updatedAt, now)}`}
 					</span>
 				)}
 				{props.state === "fetching" && (

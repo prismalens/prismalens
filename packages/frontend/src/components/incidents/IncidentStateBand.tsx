@@ -7,7 +7,6 @@ import {
 	isWorkflowLive,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNowStrict } from "date-fns";
 import {
 	Archive,
 	CheckCircle,
@@ -26,6 +25,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ago, useNow } from "@/hooks/use-now";
 import { priorityTone, runStatusTone } from "@/lib/state-tone";
 
 export interface RunCapsule {
@@ -68,6 +68,7 @@ export function IncidentStateBand({
 	investigateDisabled,
 	investigateDisabledReason,
 }: IncidentStateBandProps) {
+	const now = useNow();
 	const runLive = !!run && isWorkflowLive(run.status);
 	const canAcknowledge = canIncidentAction("acknowledge", incident.status);
 	const canInvestigate =
@@ -94,31 +95,30 @@ export function IncidentStateBand({
 				</Mono>
 				<SeverityBadge severity={incident.severity} />
 
-				<h1 className="min-w-0 flex-1 basis-64 truncate text-base font-semibold leading-tight">
-					{incident.title}
-				</h1>
+				<div className="min-w-0 flex-1 basis-72">
+					<h1 className="truncate text-base font-semibold leading-tight">
+						{incident.title}
+					</h1>
+					<div className="flex flex-wrap items-center gap-x-2 font-mono text-meta text-muted-foreground tabular-nums">
+						<span>opened {ago(incident.triggeredAt, now)}</span>
+						{incident.service && (
+							<Link
+								to="/services/$id"
+								params={{ id: incident.service.id }}
+								search={{ tab: "overview" }}
+								className="text-primary hover:underline"
+							>
+								{incident.service.displayName || incident.service.name}
+							</Link>
+						)}
+					</div>
+				</div>
 
 				<div className="flex flex-wrap items-center gap-2">
 					<StatusBadge status={incident.status} />
 					<StateChip tone={priorityTone(incident.priority)} mono>
 						{incident.priority.toUpperCase()}
 					</StateChip>
-					<span className="font-mono text-meta text-muted-foreground tabular-nums">
-						opened{" "}
-						{formatDistanceToNowStrict(new Date(incident.triggeredAt), {
-							addSuffix: true,
-						})}
-					</span>
-					{incident.service && (
-						<Link
-							to="/services/$id"
-							params={{ id: incident.service.id }}
-							search={{ tab: "overview" }}
-							className="font-mono text-meta text-primary hover:underline"
-						>
-							{incident.service.displayName || incident.service.name}
-						</Link>
-					)}
 				</div>
 
 				{run && (

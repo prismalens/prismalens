@@ -4,7 +4,6 @@
 import { canAlertAction } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNowStrict } from "date-fns";
 import {
 	CheckCircle,
 	ChevronLeft,
@@ -21,6 +20,7 @@ import { StateChip } from "@/components/shared/StateChip";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ago, useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
@@ -48,6 +48,7 @@ function prettyPayload(raw: string | null): string | null {
 export function AlertDetail({ alertId }: { alertId: string }) {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
+	const now = useNow();
 	const {
 		data: alert,
 		isLoading,
@@ -129,10 +130,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 					<div className="flex flex-wrap items-center gap-2">
 						<StatusBadge status={alert.status} kind="alert" />
 						<span className="font-mono text-meta text-muted-foreground tabular-nums">
-							fired{" "}
-							{formatDistanceToNowStrict(new Date(alert.triggeredAt), {
-								addSuffix: true,
-							})}
+							fired {ago(alert.triggeredAt, now)}
 						</span>
 						{alert.occurrenceCount > 1 && (
 							<StateChip tone="neutral" mono>
