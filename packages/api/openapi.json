@@ -19544,9 +19544,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -19636,7 +19633,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -19740,9 +19736,6 @@
                         "format": "uuid"
                       },
                       "label": {
-                        "type": "string"
-                      },
-                      "userId": {
                         "type": "string"
                       },
                       "status": {
@@ -20194,7 +20187,6 @@
                       "id",
                       "integrationId",
                       "label",
-                      "userId",
                       "status",
                       "tokenExpiresAt",
                       "grantedScopes",
@@ -20249,9 +20241,6 @@
                       "format": "uuid"
                     },
                     "label": {
-                      "type": "string"
-                    },
-                    "userId": {
                       "type": "string"
                     },
                     "status": {
@@ -20703,7 +20692,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -20802,9 +20790,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -20894,7 +20879,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -21202,9 +21186,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -21294,7 +21275,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -21477,9 +21457,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -21569,7 +21546,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -23170,15 +23146,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "setupComplete": {
-                      "type": "boolean"
-                    },
                     "steps": {
                       "type": "object",
                       "properties": {
-                        "owner": {
-                          "type": "boolean"
-                        },
                         "aiProvider": {
                           "type": "boolean"
                         },
@@ -23190,7 +23160,6 @@
                         }
                       },
                       "required": [
-                        "owner",
                         "aiProvider",
                         "codeLocation",
                         "firstIncident"
@@ -23198,7 +23167,6 @@
                     },
                     "currentStep": {
                       "enum": [
-                        "account",
                         "ai_provider",
                         "code_location",
                         "first_incident",
@@ -23208,88 +23176,8 @@
                     }
                   },
                   "required": [
-                    "setupComplete",
                     "steps",
                     "currentStep"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/setup": {
-      "post": {
-        "operationId": "setup.createOwner",
-        "summary": "Create the first admin account during initial setup",
-        "tags": [
-          "setup"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email"
-                  },
-                  "password": {
-                    "type": "string",
-                    "minLength": 8
-                  },
-                  "name": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "email",
-                  "password"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "user": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "email": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "email",
-                        "name"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "user"
                   ]
                 }
               }
@@ -23318,7 +23206,6 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "session",
                             "device"
                           ],
                           "type": "string"
@@ -23327,10 +23214,17 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
-                    "via"
+                    "via",
+                    "scopes"
                   ]
                 }
               }

@@ -13,7 +13,9 @@ import { join } from "node:path";
 import {
 	type CreatedPairingLink,
 	createPairingLink,
+	OPERATOR_SCOPES,
 	prismaPairingStore,
+	STARTUP_LINK_LABEL,
 } from "./pairing.js";
 
 export class WorkspaceError extends Error {
@@ -25,7 +27,7 @@ export class WorkspaceError extends Error {
 
 export async function createPairingLinkInWorkspace(
 	workspaceDir: string,
-	input: { label?: string } = {},
+	input: { label?: string; scopes?: readonly string[] } = {},
 ): Promise<CreatedPairingLink> {
 	// `@prismalens/database` builds its client from the config at import time,
 	// so the workspace has to be chosen before the import, not after.
@@ -42,4 +44,22 @@ export async function createPairingLinkInWorkspace(
 	} finally {
 		await prisma.$disconnect();
 	}
+}
+
+/**
+ * The link that gives the host its own session (ADR 0004 §8), minted by
+ * `pl up` once the API it started in this process is listening. It carries
+ * the operator's scopes and is named for this machine.
+ *
+ * The client is left connected: in `pl up` it can be the API's own.
+ */
+export async function createStartupLinkInWorkspace(
+	workspaceDir: string,
+): Promise<CreatedPairingLink> {
+	process.env.PRISMALENS_WORKSPACE_DIR = workspaceDir;
+	const { prisma } = await import("@prismalens/database");
+	return createPairingLink(prismaPairingStore(prisma), {
+		label: STARTUP_LINK_LABEL,
+		scopes: OPERATOR_SCOPES,
+	});
 }

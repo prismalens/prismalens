@@ -3,22 +3,26 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+	ACCESS_SCOPE,
 	authenticateDevice,
 	buildPairingUrl,
 	createPairingLink,
 	DEVICE_SCOPES,
 	type DeviceRecord,
 	hashToken,
+	OPERATOR_SCOPES,
 	PAIRING_LINK_TTL_MS,
 	PairingError,
 	type PairingStore,
 	redeemPairingLink,
+	STARTUP_LINK_LABEL,
 } from "./pairing.js";
 
 interface StoredLink {
 	id: string;
 	tokenHash: string;
 	label: string | null;
+	scopes: string;
 	expiresAt: Date;
 	usedAt: Date | null;
 }
@@ -40,12 +44,13 @@ function createInMemoryPairingStore() {
 	let deviceId = 0;
 
 	const store: PairingStore = {
-		createLink: async ({ tokenHash, label, expiresAt }) => {
+		createLink: async ({ tokenHash, label, scopes, expiresAt }) => {
 			const id = `link-${++linkId}`;
 			const link: StoredLink = {
 				id,
 				tokenHash,
 				label,
+				scopes,
 				expiresAt,
 				usedAt: null,
 			};
@@ -53,6 +58,7 @@ function createInMemoryPairingStore() {
 			return {
 				id: link.id,
 				label: link.label,
+				scopes: link.scopes,
 				expiresAt: link.expiresAt,
 				usedAt: link.usedAt,
 			};
@@ -63,6 +69,7 @@ function createInMemoryPairingStore() {
 					return {
 						id: link.id,
 						label: link.label,
+						scopes: link.scopes,
 						expiresAt: link.expiresAt,
 						usedAt: link.usedAt,
 					};
@@ -260,26 +267,26 @@ describe("redeemPairingLink", () => {
 		});
 	});
 
-	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES, name falls back to the label then Paired device", async () => {
+	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES; the name is the label, then the device's own, then Paired device", async () => {
 		const { store } = createInMemoryPairingStore();
 
-		// Success returns a device token distinct from link token, device.scopes equal DEVICE_SCOPES, name used directly
-		const link1 = await createPairingLink(store, { label: "Initial Label" });
+		// The operator's label wins over the name the device guesses
+		const link1 = await createPairingLink(store, { label: "Desk Mac" });
 		const redeemed1 = await redeemPairingLink(store, {
 			token: link1.token,
-			name: "Custom Device Name",
+			name: "Linux machine",
 		});
 		expect(redeemed1.token).not.toBe(link1.token);
 		expect(redeemed1.device.scopes).toEqual([...DEVICE_SCOPES]);
-		expect(redeemed1.device.name).toBe("Custom Device Name");
+		expect(redeemed1.device.name).toBe("Desk Mac");
 
-		// Name falls back to label when name is empty
-		const link2 = await createPairingLink(store, { label: "Desk Mac" });
+		// With no label, the device's own name
+		const link2 = await createPairingLink(store);
 		const redeemed2 = await redeemPairingLink(store, {
 			token: link2.token,
-			name: "   ",
+			name: "Android phone",
 		});
-		expect(redeemed2.device.name).toBe("Desk Mac");
+		expect(redeemed2.device.name).toBe("Android phone");
 
 		// Name falls back to "Paired device" when both name and label are empty
 		const link3 = await createPairingLink(store);
@@ -288,6 +295,28 @@ describe("redeemPairingLink", () => {
 			name: "",
 		});
 		expect(redeemed3.device.name).toBe("Paired device");
+	});
+
+	it("a link minted with OPERATOR_SCOPES pairs a device that holds them; the default link never carries admin:access", async () => {
+		const { store } = createInMemoryPairingStore();
+
+		const startup = await createPairingLink(store, {
+			label: STARTUP_LINK_LABEL,
+			scopes: OPERATOR_SCOPES,
+		});
+		const host = await redeemPairingLink(store, {
+			token: startup.token,
+			name: "",
+		});
+		expect(host.device.scopes).toEqual([...OPERATOR_SCOPES]);
+		expect(host.device.name).toBe(STARTUP_LINK_LABEL);
+
+		const plain = await createPairingLink(store);
+		const other = await redeemPairingLink(store, {
+			token: plain.token,
+			name: "Phone",
+		});
+		expect(other.device.scopes).not.toContain(ACCESS_SCOPE);
 	});
 
 	it("two concurrent redeemPairingLink calls on one link: exactly one resolves, the other rejects with reason used", async () => {

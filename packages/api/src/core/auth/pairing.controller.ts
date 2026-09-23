@@ -10,8 +10,10 @@
  */
 
 import { Controller, UseGuards } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
+	ACCESS_SCOPE,
 	buildPairingUrl,
 	createPairingLink,
 	PairingError,
@@ -22,7 +24,6 @@ import { pairingContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
-import { AuthService } from "./auth.service.js";
 import { deviceCookieHeader } from "./device-cookie.js";
 import { Public } from "./public.decorator.js";
 
@@ -95,8 +96,15 @@ export class PairingController {
 export class PairingRedeemController {
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly authService: AuthService,
+		private readonly config: ConfigService,
 	) {}
+
+	/** `Secure` follows the resolved origin's scheme, never NODE_ENV. */
+	private get secureCookies(): boolean {
+		const publicUrl = this.config.get<string>("PRISMALENS_PUBLIC_URL");
+		if (publicUrl) return publicUrl.startsWith("https://");
+		return this.config.get<string>("PRISMALENS_PROTOCOL") === "https";
+	}
 
 	@Implement(pairingContract.redeem)
 	redeem() {
@@ -114,7 +122,7 @@ export class PairingRedeemController {
 					);
 					request.res?.append(
 						"Set-Cookie",
-						deviceCookieHeader(redeemed.token, this.authService.secureCookies),
+						deviceCookieHeader(redeemed.token, this.secureCookies),
 					);
 					return {
 						device: { id: redeemed.device.id, name: redeemed.device.name },
@@ -133,9 +141,13 @@ export class PairingRedeemController {
 	}
 }
 
-/** A paired device may use the instance; it may not manage who else can. */
+/**
+ * A paired device may use the instance; only the host's own session, which
+ * holds `admin:access`, manages who else can. A link minted here delegates a
+ * device's scopes, never the access scope.
+ */
 function operatorOnly(request: Request): void {
-	if (request.operator?.via === "device") {
+	if (!request.operator?.device.scopes.includes(ACCESS_SCOPE)) {
 		throw new ORPCError("FORBIDDEN", {
 			message: "Pairing is managed from the host, not from a paired device.",
 		});

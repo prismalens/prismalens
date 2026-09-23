@@ -12,6 +12,7 @@
  * exactly the copy that shipped, not a developer's monorepo.
  */
 
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -20,6 +21,7 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import {
+	browserCommand,
 	displayUrl,
 	healthUrl,
 	readTelemetryState,
@@ -101,6 +103,12 @@ export default defineCommand({
 			description:
 				"Stream every log record to the terminal as well as the log file (default: warnings and errors only)",
 		},
+		open: {
+			type: "boolean",
+			default: true,
+			description:
+				"Open this machine's browser on the startup link (--no-open prints it only)",
+		},
 		telemetry: {
 			type: "string",
 			description:
@@ -181,6 +189,9 @@ export default defineCommand({
 		// the URL without the readiness line.
 		if (bind.protocol === "https") {
 			consola.info(`Starting at ${url}`);
+			consola.info(
+				"Once it is listening, `pl pair --operator` prints this machine's link.",
+			);
 			printUpdateNotice();
 			return;
 		}
@@ -189,6 +200,7 @@ export default defineCommand({
 		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
+			await printStartupLink(workspaceDir, url, args.open !== false);
 			// One pointer at Settings, never a prompt: consent is an owner
 			// decision and the CLI has no way to take it (#602, ADR 0005).
 			if ((await readTelemetryState(healthUrl(bind))) === "undecided") {
@@ -202,3 +214,35 @@ export default defineCommand({
 		printUpdateNotice();
 	},
 });
+
+/**
+ * The host's own browser pairs like any other device (ADR 0004 §8): one link,
+ * minted now, carrying the operator's scopes. A browser that already holds
+ * this machine's session skips it, so a restart adds no device.
+ */
+async function printStartupLink(
+	workspaceDir: string,
+	origin: string,
+	open: boolean,
+): Promise<void> {
+	const { buildPairingUrl, createStartupLinkInWorkspace } = await import(
+		"@prismalens/auth"
+	);
+	const link = await createStartupLinkInWorkspace(workspaceDir);
+	const startupUrl = buildPairingUrl(origin, link.token);
+	consola.info(`Open: ${startupUrl}`);
+	consola.info(
+		"It works once, for 15 minutes; treat it as a password. `pl pair --operator` prints another.",
+	);
+	const command = open
+		? browserCommand(process.platform, process.env, startupUrl)
+		: null;
+	if (!command) return;
+	const child = spawn(command.file, command.args, {
+		detached: true,
+		stdio: "ignore",
+		windowsVerbatimArguments: process.platform === "win32",
+	});
+	child.on("error", () => {});
+	child.unref();
+}

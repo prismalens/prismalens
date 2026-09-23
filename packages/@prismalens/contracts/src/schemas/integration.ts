@@ -99,7 +99,6 @@ export const ConnectionSchema = z.object({
 	id: z.string().uuid(),
 	integrationId: z.string().uuid(),
 	label: z.string(),
-	userId: z.string(),
 	status: ConnectionStatusSchema,
 	tokenExpiresAt: DateStringSchema.nullable(),
 	grantedScopes: z.array(z.string()),

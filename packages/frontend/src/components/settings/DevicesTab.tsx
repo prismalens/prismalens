@@ -25,10 +25,9 @@ export function useDevices(enabled = true) {
 }
 
 export function DevicesTab() {
-	const { via } = useOperator();
-	const isDevice = via === "device";
+	const { managesPairing } = useOperator();
 	const queryClient = useQueryClient();
-	const devices = useDevices(!isDevice);
+	const devices = useDevices(managesPairing);
 	const revoke = useMutation({
 		...orpc.pairing.manage.revokeDevice.mutationOptions(),
 		onSuccess: () =>
@@ -37,7 +36,7 @@ export function DevicesTab() {
 			}),
 	});
 
-	if (isDevice) {
+	if (!managesPairing) {
 		return (
 			<p className="text-record text-muted-foreground">
 				Devices are managed from the machine running prismalens, not from a

@@ -264,6 +264,7 @@ const env = Object.fromEntries(
 	Object.entries(process.env).filter(([k]) => !k.startsWith("PRISMALENS_")),
 );
 Object.assign(env, {
+	CI: process.env.CI ?? "true",
 	PRISMALENS_WORKSPACE_DIR: workspace,
 	PRISMALENS_HOST: "127.0.0.1",
 	PRISMALENS_PORT: String(port),
@@ -663,36 +664,70 @@ deep.status === 200 && isHtml(deepBody)
 			`status ${deep.status}, body starts "${deepBody.slice(0, 60)}"`,
 		);
 
-console.log("==> an authenticated /api call succeeds after first-run setup");
-const email = "app-boot@prismalens.test";
-const password = "app-boot-password-12345";
-let cookie = "";
+console.log("==> an authenticated /api call succeeds after pairing");
+const pairOut = runShim(shim, ["pair", "--workspace", workspace]);
+const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 
-const setup = await json("/api/setup", {
+const redeem = await json("/api/pairing/redeem", {
 	method: "POST",
-	body: JSON.stringify({ email, password, name: "Cross-OS App Boot" }),
+	body: JSON.stringify({ token: pairToken, name: "Cross-OS App Boot" }),
 });
-if (setup.ok) ok("POST /api/setup", `status ${setup.status}`);
-else
-	bad(
-		"POST /api/setup",
-		`status ${setup.status}: ${(await setup.text()).slice(0, 200)}`,
-	);
-
-const signIn = await json("/api/auth/sign-in/email", {
-	method: "POST",
-	body: JSON.stringify({ email, password }),
-});
-const signInBody = await signIn.text();
-const setCookie = signIn.headers.getSetCookie?.() ?? [];
-if (signIn.status === 200 && setCookie.length > 0) {
-	cookie = setCookie.map((c) => c.split(";")[0]).join("; ");
-	ok("POST /api/auth/sign-in/email 200 with a session cookie");
+const setCookie = redeem.headers.getSetCookie?.() ?? [];
+const deviceCookie = setCookie.find((c) => c.startsWith("prismalens.device="));
+const cookie = deviceCookie ? deviceCookie.split(";")[0] : "";
+if (redeem.status === 200 && cookie) {
+	ok("POST /api/pairing/redeem 200 with device cookie");
 } else {
 	bad(
-		"sign-in",
-		`status ${signIn.status}, cookies ${setCookie.length}, body ${signInBody.slice(0, 200)}`,
+		"POST /api/pairing/redeem",
+		`status ${redeem.status}, cookies ${setCookie.length}, body ${(await redeem.text()).slice(0, 200)}`,
 	);
+}
+
+const whoamiWith = await json("/api/operator/whoami", {
+	headers: { cookie },
+});
+const whoamiWithBody = await whoamiWith.json().catch(() => ({}));
+if (whoamiWith.status === 200 && whoamiWithBody.via === "device") {
+	ok("GET /api/operator/whoami with cookie says device");
+} else {
+	bad(
+		"GET /api/operator/whoami with cookie",
+		`status ${whoamiWith.status}, via ${whoamiWithBody.via}`,
+	);
+}
+
+const whoamiWithout = await json("/api/operator/whoami");
+const whoamiWithoutBody = await whoamiWithout.json().catch(() => ({}));
+if (whoamiWithout.status === 200 && whoamiWithoutBody.via === null) {
+	ok("GET /api/operator/whoami without cookie says null");
+} else {
+	bad(
+		"GET /api/operator/whoami without cookie",
+		`status ${whoamiWithout.status}, via ${whoamiWithoutBody.via}`,
+	);
+}
+
+const redeemAgain = await json("/api/pairing/redeem", {
+	method: "POST",
+	body: JSON.stringify({ token: pairToken, name: "Cross-OS App Boot" }),
+});
+if (redeemAgain.status === 400) {
+	ok("POST /api/pairing/redeem again 400");
+} else {
+	bad(
+		"POST /api/pairing/redeem again",
+		`status ${redeemAgain.status}: ${(await redeemAgain.text()).slice(0, 200)}`,
+	);
+}
+
+const devices = await fetch(`${base}/api/pairing/devices`, {
+	headers: { cookie },
+});
+if (devices.status === 403) {
+	ok("GET /api/pairing/devices with device cookie 403");
+} else {
+	bad("GET /api/pairing/devices", `status ${devices.status}`);
 }
 
 const incidents = await fetch(`${base}/api/incidents`, { headers: { cookie } });

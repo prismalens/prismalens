@@ -6,6 +6,13 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config/dist/index.js";
 import { NestFactory } from "@nestjs/core";
 import {
+	buildPairingUrl,
+	createPairingLink,
+	OPERATOR_SCOPES,
+	prismaPairingStore,
+	STARTUP_LINK_LABEL,
+} from "@prismalens/auth";
+import {
 	acquireWorkspaceLock,
 	armForcedExitOnSecondSignal,
 	ensureAppDataDir,
@@ -16,6 +23,7 @@ import { MigrationError, runMigrations } from "@prismalens/database/migrator";
 import { Logger } from "@prismalens/logger";
 import { LoggerService } from "@prismalens/logger/nestjs";
 import { AppModule } from "./app.module.js";
+import { PrismaService } from "./core/prisma/prisma.service.js";
 import { createHelmetMiddleware } from "./middlewares/helmet.middleware.js";
 import {
 	createHostAllowlistMiddleware,
@@ -304,6 +312,19 @@ async function bootstrap() {
 	logger.info(
 		`API documentation: ${protocolDisplay}://${host}:${port}/api/docs`,
 	);
+
+	// `pl up` mints the host's startup link itself (ADR 0004 §8). In dev
+	// nothing else does, and the browser is Vite's, so the API prints one.
+	if (process.env.NODE_ENV !== "production") {
+		const frontendPort = process.env.PRISMALENS_FRONTEND_PORT ?? "3000";
+		const link = await createPairingLink(
+			prismaPairingStore(app.get(PrismaService)),
+			{ label: STARTUP_LINK_LABEL, scopes: OPERATOR_SCOPES },
+		);
+		logger.info(
+			`Open this machine's session: ${buildPairingUrl(`http://localhost:${frontendPort}`, link.token)}`,
+		);
+	}
 }
 
 bootstrap();
