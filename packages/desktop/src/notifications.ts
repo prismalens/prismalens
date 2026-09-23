@@ -71,3 +71,17 @@ export function notificationText(inv: FinishedInvestigation): {
 		? { title: "Investigation finished", body: inv.summary ?? "" }
 		: { title: "Investigation failed", body: inv.summary ?? "" };
 }
+
+/** How many investigations are queued or running, for the tray. */
+export function runningCount(current: readonly InvestigationSummary[]): number {
+	return current.filter((i) => i.status === "pending" || i.status === "running")
+		.length;
+}
+
+/** The tray's status line and tooltip. */
+export function runningLabel(count: number): string {
+	if (count === 0) return "Nothing running";
+	return count === 1
+		? "1 investigation running"
+		: `${count} investigations running`;
+}

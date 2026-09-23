@@ -15,6 +15,7 @@ import { readWorkspaceLockState } from "@prismalens/config";
 import {
 	app,
 	BrowserWindow,
+	dialog,
 	Menu,
 	Notification,
 	nativeImage,
@@ -33,6 +34,8 @@ import {
 	type InvestigationSummary,
 	newlyFinished,
 	notificationText,
+	runningCount,
+	runningLabel,
 	snapshot,
 } from "./notifications.js";
 import { DEVICE_COOKIE, operatorToken } from "./session.js";
@@ -43,6 +46,7 @@ import {
 	pairOperatorSpawn,
 	pickFreePort,
 	planLaunch,
+	resetWorkspaceSpawn,
 } from "./supervisor.js";
 
 const READY_TIMEOUT_MS = 60_000;
@@ -57,6 +61,12 @@ let deviceToken = "";
 let ready = false;
 let quitting = false;
 let stopping = false;
+/** This launcher spawned the backend, rather than attaching to a `pl up`. */
+let owned = false;
+let backendMainPath = "";
+let running = 0;
+/** Rebuilds the tray menu; set once the tray exists. */
+let refreshTray: () => void = () => {};
 
 function workspaceDir(): string {
 	// Same default as `pl up`, so the CLI and the app share one workspace.
@@ -72,6 +82,8 @@ async function boot(): Promise<void> {
 		resourcesPath: process.resourcesPath,
 		env: process.env,
 	});
+	backendMainPath = backendMain;
+	owned = plan.kind === "spawn";
 	if (plan.kind === "spawn") {
 		const spawnPlan = backendSpawn({
 			execPath: process.execPath,
@@ -199,8 +211,15 @@ function buildTray(): void {
 	tray.setToolTip("PrismaLens");
 	const refresh = () => {
 		const login = app.getLoginItemSettings().openAtLogin;
+		const label = runningLabel(running);
+		tray?.setToolTip(`PrismaLens: ${label.toLowerCase()}`);
+		// macOS shows a title beside the icon; elsewhere the menu line carries it.
+		if (process.platform === "darwin")
+			tray?.setTitle(running ? String(running) : "");
 		tray?.setContextMenu(
 			Menu.buildFromTemplate([
+				{ label, enabled: false },
+				{ type: "separator" },
 				{ label: "Open PrismaLens", click: () => openWindow() },
 				{
 					label: "Pair a device",
@@ -217,12 +236,60 @@ function buildTray(): void {
 					},
 				},
 				{ type: "separator" },
+				{
+					label: owned
+						? "Reset workspace…"
+						: "Reset workspace… (stop `pl up` first)",
+					enabled: owned,
+					click: () => void confirmReset(),
+				},
 				{ label: "Quit", click: () => app.quit() },
 			]),
 		);
 	};
+	refreshTray = refresh;
 	refresh();
 	tray.on("click", () => openWindow());
+}
+
+/**
+ * Delete the workspace (`pl reset`) and start again from setup. Only when this
+ * launcher owns the backend: a `pl up` in a terminal holds the workspace, and
+ * the reset must not pull it from under that process.
+ */
+async function confirmReset(): Promise<void> {
+	const dir = workspaceDir();
+	const { response } = await dialog.showMessageBox({
+		type: "warning",
+		buttons: ["Cancel", "Delete and restart"],
+		defaultId: 0,
+		cancelId: 0,
+		message: "Reset the workspace?",
+		detail: `This deletes ${dir}: every incident, investigation, integration, paired device and secret. It cannot be undone.`,
+	});
+	if (response !== 1) return;
+	quitting = true;
+	const backend = child;
+	if (backend && backend.exitCode === null && backend.signalCode === null) {
+		await new Promise<void>((resolve) => {
+			backend.once("exit", () => resolve());
+			stopBackend(backend);
+		});
+	}
+	try {
+		await runForStdout(
+			resetWorkspaceSpawn({
+				execPath: process.execPath,
+				backendMain: backendMainPath,
+				workspaceDir: dir,
+				env: process.env,
+			}),
+		);
+	} catch (error) {
+		dialog.showErrorBox("Reset failed", String(error));
+	}
+	app.relaunch();
+	app.exit(0);
 }
 
 function trayIcon() {
@@ -272,6 +339,11 @@ function startPolling(): void {
 			}
 			previous = snapshot(current);
 			first = false;
+			const count = runningCount(current);
+			if (count !== running) {
+				running = count;
+				refreshTray();
+			}
 		} catch {
 			// The backend is the source of truth; a missed poll is retried next tick.
 		}

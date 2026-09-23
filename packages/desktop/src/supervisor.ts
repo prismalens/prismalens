@@ -92,6 +92,31 @@ export function pairOperatorSpawn(input: {
 	};
 }
 
+/**
+ * `pl reset --yes` for the launcher's workspace. The launcher asks first in its
+ * own dialog, and runs this only after its backend has exited (the command
+ * says "Stop `pl up` first"); `pl reset` itself refuses a directory that is
+ * not a workspace.
+ */
+export function resetWorkspaceSpawn(input: {
+	execPath: string;
+	backendMain: string;
+	workspaceDir: string;
+	env: NodeJS.ProcessEnv;
+}): BackendSpawn {
+	return {
+		command: input.execPath,
+		args: [
+			input.backendMain,
+			"reset",
+			"--yes",
+			"--workspace",
+			input.workspaceDir,
+		],
+		env: { ...input.env, ELECTRON_RUN_AS_NODE: "1" },
+	};
+}
+
 /** A free loopback port, asked of the OS. */
 export function pickFreePort(): Promise<number> {
 	return new Promise((resolve, reject) => {

@@ -8,10 +8,24 @@ import {
 	type InvestigationSummary,
 	newlyFinished,
 	notificationText,
+	runningCount,
+	runningLabel,
 	snapshot,
 } from "./notifications.js";
 
 describe("notifications", () => {
+	describe("runningCount", () => {
+		it("counts pending and running, not finished or cancelled", () => {
+			const at = (status: InvestigationStatus, id: string): InvestigationSummary => ({ id, summary: null, status });
+			expect(
+				runningCount([at("pending", "a"), at("running", "b"), at("completed", "c"), at("failed", "d"), at("cancelled", "e")]),
+			).toBe(2);
+			expect(runningLabel(0)).toBe("Nothing running");
+			expect(runningLabel(1)).toBe("1 investigation running");
+			expect(runningLabel(3)).toBe("3 investigations running");
+		});
+	});
+
 	describe("newlyFinished", () => {
 		it("announces running -> completed transition", () => {
 			const previous = new Map<string, InvestigationStatus>([

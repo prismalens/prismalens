@@ -7,11 +7,35 @@ import {
 	backendSpawn,
 	pairOperatorSpawn,
 	backendUrl,
+	resetWorkspaceSpawn,
 	pickFreePort,
 	planLaunch,
 } from "./supervisor.js";
 
 describe("supervisor", () => {
+	describe("resetWorkspaceSpawn", () => {
+		it("runs `pl reset --yes` on the launcher's workspace, as Node", () => {
+			expect(
+				resetWorkspaceSpawn({
+					execPath: "/app/PrismaLens",
+					backendMain: "/app/resources/backend/cli.js",
+					workspaceDir: "/home/u/.prismalens",
+					env: { PATH: "/usr/bin" },
+				}),
+			).toEqual({
+				command: "/app/PrismaLens",
+				args: [
+					"/app/resources/backend/cli.js",
+					"reset",
+					"--yes",
+					"--workspace",
+					"/home/u/.prismalens",
+				],
+				env: { PATH: "/usr/bin", ELECTRON_RUN_AS_NODE: "1" },
+			});
+		});
+	});
+
 	describe("planLaunch", () => {
 		it("attaches with port and pid when lock is held", () => {
 			const lock: WorkspaceLockState = {
