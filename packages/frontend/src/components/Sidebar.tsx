@@ -7,7 +7,7 @@
  * nothing leads away from a step that must finish. On narrow screens it folds
  * to a top strip.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Bell, LogOut, PanelLeft, Settings, Siren } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
@@ -25,6 +25,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 import { signOut, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -41,8 +42,8 @@ export function Sidebar() {
 }
 
 function SidebarBody({ pathname }: { pathname: string }) {
-	const { data: session } = useSession();
-	const signedIn = !!session?.user;
+	const { via } = useOperator();
+	const signedIn = via !== null;
 	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
 
 	// `[` folds the rail to icons, unless the operator is typing.
@@ -234,10 +235,14 @@ function getInitials(name: string | null | undefined): string {
 function UserMenu() {
 	const { data: session } = useSession();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	if (!session?.user) return null;
 	const { user } = session;
 	const handleSignOut = async () => {
 		await signOut();
+		// The login route's gate reads this cached answer; a stale "session" would
+		// bounce the signed-out browser straight back into the app.
+		queryClient.removeQueries({ queryKey: operatorQueryOptions().queryKey });
 		navigate({ to: "/auth/login", search: { redirect: undefined } });
 	};
 	return (
