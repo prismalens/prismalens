@@ -9,7 +9,8 @@ import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getSession, signIn } from "@/lib/auth";
+import { operatorQueryOptions } from "@/hooks/use-operator";
+import { signIn } from "@/lib/auth";
 
 function isValidRedirect(path: unknown): path is string {
 	if (typeof path !== "string") return false;
@@ -22,9 +23,10 @@ export const Route = createFileRoute("/auth/login")({
 	validateSearch: (search: Record<string, unknown>) => ({
 		redirect: isValidRedirect(search.redirect) ? search.redirect : undefined,
 	}),
-	beforeLoad: async ({ search }) => {
-		const session = await getSession();
-		if (session.data) {
+	beforeLoad: async ({ context, search }) => {
+		// Already the operator: nothing to sign in to.
+		const whoami = await context.queryClient.fetchQuery(operatorQueryOptions());
+		if (whoami.via) {
 			const safePath = isValidRedirect(search.redirect) ? search.redirect : "/";
 			throw redirect({ to: safePath });
 		}
@@ -61,7 +63,11 @@ function LoginPage() {
 			}
 
 			// Invalidate session cache so _authenticated beforeLoad gets the fresh session
-			await queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+			// The gate caches "who am I" for a minute; a fresh session must not
+			// answer from that cache or the browser bounces back here.
+			await queryClient.invalidateQueries({
+				queryKey: operatorQueryOptions().queryKey,
+			});
 
 			// Redirect to original page or dashboard on success
 			// Only allow same-origin relative paths to prevent open redirect

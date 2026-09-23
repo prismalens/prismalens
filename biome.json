@@ -58,7 +58,12 @@
 	},
 	"overrides": [
 		{
-			"includes": ["**/*.controller.ts", "**/*.service.ts", "**/*.guard.ts"],
+			"includes": [
+				"**/*.controller.ts",
+				"**/*.service.ts",
+				"**/*.guard.ts",
+				"**/*.resolver.ts"
+			],
 			"linter": {
 				"rules": {
 					"style": {
