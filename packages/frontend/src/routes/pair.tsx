@@ -3,18 +3,17 @@
 
 /**
  * The page a pairing link opens (ADR 0004 §8). The token rides in the URL
- * fragment, so it never reaches a server log; this page reads it, names the
- * device, redeems once, and lands in the app as a paired device.
+ * fragment, so it never reaches a server log. The page reads it, drops it
+ * from the address bar and redeems it at once, the way t3code does: no
+ * form, no click. The device's name is the link's label, or one guessed
+ * from the browser. What is left on screen is only what went wrong.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -23,8 +22,8 @@ export const Route = createFileRoute("/pair")({
 	component: PairPage,
 });
 
-function defaultDeviceName(): string {
-	if (typeof navigator === "undefined") return "";
+function guessDeviceName(): string | undefined {
+	if (typeof navigator === "undefined") return undefined;
 	const ua = navigator.userAgent;
 	if (/iPhone/.test(ua)) return "iPhone";
 	if (/iPad/.test(ua)) return "iPad";
@@ -32,21 +31,15 @@ function defaultDeviceName(): string {
 	if (/Macintosh/.test(ua)) return "Mac";
 	if (/Windows/.test(ua)) return "Windows PC";
 	if (/Linux/.test(ua)) return "Linux machine";
-	return "";
+	return undefined;
 }
 
 function PairPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [token, setToken] = useState<string | null>(null);
-	const [name, setName] = useState(defaultDeviceName);
 	const operator = useOperator();
-
-	// `pl up` prints a fresh link on every start. A browser that already holds
-	// this machine's session leaves it unused rather than pairing twice.
-	useEffect(() => {
-		if (token && operator.managesPairing) navigate({ to: "/" });
-	}, [token, operator.managesPairing, navigate]);
+	const started = useRef(false);
 
 	useEffect(() => {
 		const fragment = window.location.hash.replace(/^#/, "");
@@ -67,7 +60,19 @@ function PairPage() {
 		},
 	});
 
-	if (token === null || (token && operator.isPending)) return null;
+	useEffect(() => {
+		if (!token || operator.isPending || started.current) return;
+		started.current = true;
+		// `pl up` prints a fresh link on every start. A browser that already
+		// holds this machine's session leaves it unused rather than pairing twice.
+		if (operator.managesPairing) {
+			navigate({ to: "/" });
+			return;
+		}
+		redeem.mutate({ token, name: guessDeviceName() });
+	}, [token, operator.isPending, operator.managesPairing, navigate, redeem]);
+
+	if (token === null) return null;
 
 	if (!token) {
 		return (
@@ -81,41 +86,24 @@ function PairPage() {
 		);
 	}
 
-	return (
-		<Shell title="Pair this device">
-			<form
-				className="space-y-4"
-				onSubmit={(e) => {
-					e.preventDefault();
-					redeem.mutate({ token, name: name.trim() || undefined });
-				}}
-			>
+	if (redeem.isError) {
+		return (
+			<Shell title="Could not pair">
+				<MutationError error={redeem.error} />
 				<p className="text-record text-muted-foreground">
-					This device will reach the instance until it is revoked from the host.
+					A link works once, for 15 minutes. Create a new one on the machine
+					running prismalens: Settings → Devices, or <code>pl pair</code>.
 				</p>
-				<div className="space-y-2">
-					<Label htmlFor="device-name">Name this device</Label>
-					<Input
-						id="device-name"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						placeholder="Sumit's phone"
-						maxLength={80}
-						autoFocus
-					/>
-				</div>
-				{redeem.isError && <MutationError error={redeem.error} />}
-				<Button type="submit" className="w-full" disabled={redeem.isPending}>
-					{redeem.isPending ? (
-						<>
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							Pairing…
-						</>
-					) : (
-						"Pair"
-					)}
-				</Button>
-			</form>
+			</Shell>
+		);
+	}
+
+	return (
+		<Shell title="Pairing this device">
+			<div className="flex items-center gap-2 text-record text-muted-foreground">
+				<Loader2 className="h-4 w-4 animate-spin" />
+				Pairing…
+			</div>
 		</Shell>
 	);
 }

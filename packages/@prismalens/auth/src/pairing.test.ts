@@ -267,26 +267,26 @@ describe("redeemPairingLink", () => {
 		});
 	});
 
-	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES, name falls back to the label then Paired device", async () => {
+	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES; the name is the label, then the device's own, then Paired device", async () => {
 		const { store } = createInMemoryPairingStore();
 
-		// Success returns a device token distinct from link token, device.scopes equal DEVICE_SCOPES, name used directly
-		const link1 = await createPairingLink(store, { label: "Initial Label" });
+		// The operator's label wins over the name the device guesses
+		const link1 = await createPairingLink(store, { label: "Desk Mac" });
 		const redeemed1 = await redeemPairingLink(store, {
 			token: link1.token,
-			name: "Custom Device Name",
+			name: "Linux machine",
 		});
 		expect(redeemed1.token).not.toBe(link1.token);
 		expect(redeemed1.device.scopes).toEqual([...DEVICE_SCOPES]);
-		expect(redeemed1.device.name).toBe("Custom Device Name");
+		expect(redeemed1.device.name).toBe("Desk Mac");
 
-		// Name falls back to label when name is empty
-		const link2 = await createPairingLink(store, { label: "Desk Mac" });
+		// With no label, the device's own name
+		const link2 = await createPairingLink(store);
 		const redeemed2 = await redeemPairingLink(store, {
 			token: link2.token,
-			name: "   ",
+			name: "Android phone",
 		});
-		expect(redeemed2.device.name).toBe("Desk Mac");
+		expect(redeemed2.device.name).toBe("Android phone");
 
 		// Name falls back to "Paired device" when both name and label are empty
 		const link3 = await createPairingLink(store);
