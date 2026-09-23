@@ -6,7 +6,7 @@
  * answered here, for every harness. Read-only today; the act phase changes the
  * policy, not the seam. Bash walks through any text rule; there is no OS boundary (0004 §3), so this is a guardrail, not a boundary.
  */
-import { realpathSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 
 export interface PermissionOption {
@@ -150,24 +150,175 @@ function insideSnapshot(path: string, cwd: string): boolean {
 	return real === root || real.startsWith(root + sep);
 }
 
-/** The first path in `text` that resolves outside `cwd`, or null. */
-function outsideSnapshotToken(text: string, cwd: string): string | null {
-	for (const token of text.split(SHELL_SPLIT)) {
-		if (!token) continue;
-		if (token.startsWith("~") || /\$\{?HOME\b/.test(token)) return token;
-		if (DOTDOT_SEGMENT.test(token) && SHELL_VARIABLE.test(token)) return token;
-		// A backslash is a separator on Windows and a legal name character elsewhere;
-		// it is walked as a separator on every platform so the rule stays conservative.
-		if (insideSnapshot(token, cwd)) continue;
-		if (isAbsolute(token) || token.startsWith("/")) {
-			const real = physicalLocation(cwd, token)?.replace(/\\/g, "/");
-			if (
-				real &&
-				HARMLESS_ABSOLUTE.some((p) => real.startsWith(p) || `${real}/` === p)
-			)
-				continue;
+/** Whether one shell word, taken literally, lands outside `cwd`. */
+function wordOutside(word: string, cwd: string): boolean {
+	if (word.startsWith("~") || /\$\{?HOME\b/.test(word)) return true;
+	if (DOTDOT_SEGMENT.test(word) && SHELL_VARIABLE.test(word)) return true;
+	// A backslash is a separator on Windows and a legal name character elsewhere;
+	// it is walked as a separator on every platform so the rule stays conservative.
+	if (insideSnapshot(word, cwd)) return false;
+	if (isAbsolute(word) || word.startsWith("/")) {
+		const real = physicalLocation(cwd, word)?.replace(/\\/g, "/");
+		if (
+			real &&
+			HARMLESS_ABSOLUTE.some((p) => real.startsWith(p) || `${real}/` === p)
+		)
+			return false;
+	}
+	return true;
+}
+
+/**
+ * Glob and brace characters the shell expands, each with the stand-in that
+ * marks it quoted or escaped: a quoted `'a.*'` is a grep pattern, an unquoted
+ * `*` is a list of paths.
+ */
+const EXPANDING = "*?[{";
+const LITERAL = "\u0001\u0002\u0003\u0004";
+/** Past this many candidate paths the word is refused rather than judged. */
+const EXPANSION_LIMIT = 10_000;
+
+/** `text` with every quoted or backslash-escaped expanding character swapped for its stand-in; same length. */
+function markLiterals(text: string): string {
+	let out = "";
+	let quote: string | null = null;
+	for (let i = 0; i < text.length; i++) {
+		const c = text[i];
+		if (quote) {
+			if (c === quote) quote = null;
+			const k = EXPANDING.indexOf(c);
+			out += k >= 0 ? LITERAL[k] : c;
+		} else if (c === "'" || c === '"') {
+			quote = c;
+			out += c;
+		} else if (c === "\\" && EXPANDING.includes(text[i + 1] ?? "")) {
+			out += c + LITERAL[EXPANDING.indexOf(text[i + 1])];
+			i++;
+		} else {
+			out += c;
 		}
-		return token;
+	}
+	return out;
+}
+
+const unmark = (s: string): string =>
+	Array.from(s, (c) => EXPANDING[LITERAL.indexOf(c)] ?? c).join("");
+
+/** `a{b,c}d` as `abd`, `acd`; null for a sequence (`{1..9}`) or past the limit. */
+function expandBraces(word: string): string[] | null {
+	const open = word.indexOf("{");
+	if (open < 0) return [word];
+	let depth = 0;
+	const commas: number[] = [];
+	for (let i = open; i < word.length; i++) {
+		if (word[i] === "{") depth++;
+		else if (word[i] === "}" && --depth === 0) {
+			const body = word.slice(open + 1, i);
+			if (/^[^,]*\.\.[^,]*$/.test(body)) return null;
+			if (commas.length === 0) {
+				const rest = expandBraces(word.slice(i + 1));
+				return rest?.map((r) => word.slice(0, i + 1) + r);
+			}
+			const bounds = [open, ...commas, i];
+			const out: string[] = [];
+			for (let b = 0; b < bounds.length - 1; b++) {
+				const alt = expandBraces(
+					word.slice(0, open) +
+						word.slice(bounds[b] + 1, bounds[b + 1]) +
+						word.slice(i + 1),
+				);
+				if (!alt) return null;
+				out.push(...alt);
+				if (out.length > EXPANSION_LIMIT) return null;
+			}
+			return out;
+		} else if (word[i] === "," && depth === 1) commas.push(i);
+	}
+	return [word];
+}
+
+/** One path component's glob as a regex, or null when it holds no unquoted glob. */
+function segmentPattern(segment: string): RegExp | null {
+	if (!/[*?[]/.test(segment)) return null;
+	let re = "";
+	for (let i = 0; i < segment.length; i++) {
+		const c = segment[i];
+		if (c === "*") re += ".*";
+		else if (c === "?") re += ".";
+		else if (c === "[" && segment.indexOf("]", i + 2) > 0) {
+			const end = segment.indexOf("]", i + 2);
+			let body = segment.slice(i + 1, end);
+			if (body.startsWith("!")) body = `^${body.slice(1)}`;
+			re += `[${unmark(body).replace(/[\\\]]/g, "\\$&")}]`;
+			i = end;
+		} else re += unmark(c).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	}
+	return new RegExp(`^${re}$`, "s");
+}
+
+/**
+ * The paths an unquoted word expands to, the way the shell does it: braces,
+ * then one component at a time. Null when the answer cannot be trusted: a
+ * pattern that could match `.` or `..` (dash and older bash include them), a
+ * sequence, or more candidates than the limit. A glob with no match stays the
+ * literal word, as it does in the shell.
+ */
+function expandWord(marked: string, cwd: string): string[] | null {
+	const words = expandBraces(marked);
+	if (!words) return null;
+	const out: string[] = [];
+	for (const word of words) {
+		const absolute = word.startsWith("/");
+		let candidates = [absolute ? "/" : ""];
+		for (const segment of word.split("/")) {
+			if (!segment) continue;
+			const pattern = segmentPattern(segment);
+			if (!pattern) {
+				candidates = candidates.map((c) => `${c + unmark(segment)}/`);
+				continue;
+			}
+			if (segment.startsWith(".") && (pattern.test(".") || pattern.test("..")))
+				return null;
+			const next: string[] = [];
+			for (const c of candidates) {
+				let names: string[];
+				try {
+					names = readdirSync(resolve(cwd, c || "."));
+				} catch {
+					continue;
+				}
+				for (const name of names) {
+					if (name.startsWith(".") && !segment.startsWith(".")) continue;
+					if (pattern.test(name)) next.push(`${c}${name}/`);
+				}
+				if (next.length > EXPANSION_LIMIT) return null;
+			}
+			candidates = next;
+			if (candidates.length === 0) break;
+		}
+		if (candidates.length === 0) out.push(unmark(word));
+		else
+			out.push(...candidates.map((c) => (c.length > 1 ? c.slice(0, -1) : c)));
+		if (out.length > EXPANSION_LIMIT) return null;
+	}
+	return out;
+}
+
+/**
+ * The first word in `text` that resolves outside `cwd`, or null. An unquoted
+ * glob or brace word is judged by what the shell would expand it to (#685:
+ * `cat *` reads whatever `*` matches, including a symlink out).
+ */
+function outsideSnapshotToken(text: string, cwd: string): string | null {
+	for (const marked of markLiterals(text).split(SHELL_SPLIT)) {
+		if (!marked) continue;
+		const token = unmark(marked);
+		if (!/[*?[{]/.test(marked)) {
+			if (wordOutside(token, cwd)) return token;
+			continue;
+		}
+		const paths = expandWord(marked, cwd);
+		if (!paths || paths.some((p) => wordOutside(p, cwd))) return token;
 	}
 	return null;
 }

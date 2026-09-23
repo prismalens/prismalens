@@ -178,6 +178,41 @@ describe.skipIf(process.platform === "win32")(
 			}
 		});
 
+		it("judges an unquoted glob or brace by what the shell expands it to (#685)", () => {
+			const policy = readOnlyPolicyFor({ cwd });
+			for (const command of [
+				"cat *",
+				"cat l*",
+				"cat ?ink",
+				"cat [l]ink",
+				"ls */..",
+				"head d*/secret",
+				"cat {link,src/index.ts}",
+				"cat src/{..,.}/link",
+				"ls .*",
+				"ls src/.?",
+				"cat {1..3}",
+			]) {
+				const d = policy(req({ kind: "execute", rawInput: { command } }));
+				expect(d.allow, command).toBe(false);
+				expect(!d.allow && d.why, command).toMatch(/outside the snapshot/);
+			}
+			const inside = readOnlyPolicyFor({ cwd: join(cwd, "src") });
+			for (const [p, command] of [
+				[inside, "cat *"],
+				[inside, "ls *.ts"],
+				[policy, "cat src/*.ts"],
+				[policy, "grep -rn 'a.*b' src/"],
+				[policy, 'grep -E "l[i]nk|d.cs" src/'],
+				[policy, "cat \\*"],
+				[policy, "cat src/*.md"],
+				[policy, "[ -f src/index.ts ] && echo yes"],
+				[policy, "find src -name '*.ts' -exec head {} \\;"],
+			] as const) {
+				expect(p(req({ kind: "execute", rawInput: { command } })), command).toEqual({ allow: true, optionId: "once" });
+			}
+		});
+
 		it("allows paths not existing yet, symlinks resolving inside, and cwd reached through a symlink", () => {
 			const policy = readOnlyPolicyFor({ cwd });
 			expect(
