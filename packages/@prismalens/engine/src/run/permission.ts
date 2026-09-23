@@ -99,6 +99,9 @@ const SHELL_VARIABLE = /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/;
  * a path about to be created is judged where it would land. Null when the
  * filesystem refuses to say (a loop, no permission); callers treat null as outside.
  */
+/** A backslash separates path components on Windows only; elsewhere it is a legal name character. */
+const SEPARATORS = process.platform === "win32" ? /[/\\]/ : /\//;
+
 function physicalLocation(base: string, path: string): string | null {
 	const root = isAbsolute(path) ? parse(path).root : resolve(base);
 	const realRoot = realpathOrMissing(root);
@@ -107,7 +110,7 @@ function physicalLocation(base: string, path: string): string | null {
 	let cursor = realRoot ?? root;
 	for (const segment of path
 		.slice(isAbsolute(path) ? root.length : 0)
-		.split(/[/\\]/)) {
+		.split(SEPARATORS)) {
 		if (!segment || segment === ".") continue;
 		if (segment === "..") {
 			cursor = dirname(cursor);
@@ -150,12 +153,43 @@ function insideSnapshot(path: string, cwd: string): boolean {
 	return real === root || real.startsWith(root + sep);
 }
 
-/** Whether one shell word, taken literally, lands outside `cwd`. */
+/** A backslash before one of these is a shell escape on POSIX, never a separator. */
+const ESCAPABLE = `*?[{'"\\ $\``;
+
+/**
+ * What a shell word may name. On Windows the platform path module reads it.
+ * On POSIX the shell drops each escaping backslash, and a command written for
+ * Windows would treat the others as separators; a word stays inside only if
+ * both readings do. A path read back from the filesystem is taken as it is.
+ */
+function shellReadings(word: string): string[] {
+	if (process.platform === "win32" || !word.includes("\\")) return [word];
+	let posix = "";
+	let windows = "";
+	for (let i = 0; i < word.length; i++) {
+		const c = word[i];
+		if (c === "\\" && i + 1 < word.length) {
+			const next = word[i + 1];
+			posix += next;
+			windows += ESCAPABLE.includes(next) ? next : `/${next}`;
+			i++;
+		} else {
+			posix += c;
+			windows += c;
+		}
+	}
+	return [posix, windows];
+}
+
+/** Whether a shell word lands outside `cwd` under any of its readings. */
 function wordOutside(word: string, cwd: string): boolean {
+	return shellReadings(word).some((reading) => pathOutside(reading, cwd));
+}
+
+/** Whether one path, taken as it is, lands outside `cwd`. */
+function pathOutside(word: string, cwd: string): boolean {
 	if (word.startsWith("~") || /\$\{?HOME\b/.test(word)) return true;
 	if (DOTDOT_SEGMENT.test(word) && SHELL_VARIABLE.test(word)) return true;
-	// A backslash is a separator on Windows and a legal name character elsewhere;
-	// it is walked as a separator on every platform so the rule stays conservative.
 	if (insideSnapshot(word, cwd)) return false;
 	if (isAbsolute(word) || word.startsWith("/")) {
 		const real = physicalLocation(cwd, word)?.replace(/\\/g, "/");
@@ -178,23 +212,32 @@ const LITERAL = "\u0001\u0002\u0003\u0004";
 /** Past this many candidate paths the word is refused rather than judged. */
 const EXPANSION_LIMIT = 10_000;
 
-/** `text` with every quoted or backslash-escaped expanding character swapped for its stand-in; same length. */
+/**
+ * `text` with every quoted or backslash-escaped expanding character swapped
+ * for its stand-in; same length. Quoting follows the shell: nothing escapes
+ * inside single quotes, and elsewhere a backslash makes the next character
+ * literal, a quote included, so `\'` never opens a quoted region (#685 review).
+ */
 function markLiterals(text: string): string {
+	const mark = (ch: string) => {
+		const k = EXPANDING.indexOf(ch);
+		return k >= 0 ? LITERAL[k] : ch;
+	};
 	let out = "";
-	let quote: string | null = null;
+	let quote: "'" | '"' | null = null;
 	for (let i = 0; i < text.length; i++) {
 		const c = text[i];
-		if (quote) {
-			if (c === quote) quote = null;
-			const k = EXPANDING.indexOf(c);
-			out += k >= 0 ? LITERAL[k] : c;
-		} else if (c === "'" || c === '"') {
-			quote = c;
-			out += c;
-		} else if (c === "\\" && EXPANDING.includes(text[i + 1] ?? "")) {
-			out += c + LITERAL[EXPANDING.indexOf(text[i + 1])];
+		if (quote === "'") {
+			if (c === "'") quote = null;
+			out += mark(c);
+		} else if (c === "\\" && i + 1 < text.length) {
+			out += c + mark(text[i + 1]);
 			i++;
+		} else if (quote === '"') {
+			if (c === '"') quote = null;
+			out += mark(c);
 		} else {
+			if (c === "'" || c === '"') quote = c;
 			out += c;
 		}
 	}
@@ -237,23 +280,81 @@ function expandBraces(word: string): string[] | null {
 	return [word];
 }
 
-/** One path component's glob as a regex, or null when it holds no unquoted glob. */
-function segmentPattern(segment: string): RegExp | null {
+/** The longest name a filesystem allows; a longer glob segment is refused, not judged. */
+const MAX_SEGMENT = 255;
+
+type GlobToken =
+	| { star: true }
+	| { star: false; test: (ch: string) => boolean };
+
+/**
+ * One path component's glob as a matcher: null when it holds no unquoted
+ * glob, "refuse" for a form this does not judge (a POSIX class such as
+ * `[[:alpha:]]`, or a segment longer than any name). Matching is the linear
+ * wildcard walk, never a regex, so a run of `*` cannot backtrack for ever.
+ */
+function segmentMatcher(
+	segment: string,
+): ((name: string) => boolean) | null | "refuse" {
 	if (!/[*?[]/.test(segment)) return null;
-	let re = "";
+	if (segment.length > MAX_SEGMENT) return "refuse";
+	const tokens: GlobToken[] = [];
 	for (let i = 0; i < segment.length; i++) {
 		const c = segment[i];
-		if (c === "*") re += ".*";
-		else if (c === "?") re += ".";
-		else if (c === "[" && segment.indexOf("]", i + 2) > 0) {
-			const end = segment.indexOf("]", i + 2);
-			let body = segment.slice(i + 1, end);
-			if (body.startsWith("!")) body = `^${body.slice(1)}`;
-			re += `[${unmark(body).replace(/[\\\]]/g, "\\$&")}]`;
+		if (c === "*") {
+			if (!tokens.at(-1)?.star) tokens.push({ star: true });
+		} else if (c === "?") {
+			tokens.push({ star: false, test: () => true });
+		} else if (c === "[") {
+			let j = i + 1;
+			const negate = segment[j] === "!" || segment[j] === "^";
+			if (negate) j++;
+			const bodyStart = j;
+			if (segment[j] === "]") j++;
+			const end = segment.indexOf("]", j);
+			if (end < 0) {
+				tokens.push({ star: false, test: (ch) => ch === "[" });
+				continue;
+			}
+			const body = unmark(segment.slice(bodyStart, end));
+			if (body.includes("[")) return "refuse";
+			const test = (ch: string) => {
+				for (let k = 0; k < body.length; k++) {
+					if (body[k + 1] === "-" && k + 2 < body.length) {
+						if (ch >= body[k] && ch <= body[k + 2]) return true;
+						k += 2;
+					} else if (body[k] === ch) return true;
+				}
+				return false;
+			};
+			tokens.push({ star: false, test: negate ? (ch) => !test(ch) : test });
 			i = end;
-		} else re += unmark(c).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		} else {
+			const literal = unmark(c);
+			tokens.push({ star: false, test: (ch) => ch === literal });
+		}
 	}
-	return new RegExp(`^${re}$`, "s");
+	return (name) => {
+		let t = 0;
+		let n = 0;
+		let starT = -1;
+		let starN = 0;
+		while (n < name.length) {
+			const token = tokens[t];
+			if (token && !token.star && token.test(name[n])) {
+				t++;
+				n++;
+			} else if (token?.star) {
+				starT = t++;
+				starN = n;
+			} else if (starT >= 0) {
+				t = starT + 1;
+				n = ++starN;
+			} else return false;
+		}
+		while (tokens[t]?.star) t++;
+		return t === tokens.length;
+	};
 }
 
 /**
@@ -263,21 +364,27 @@ function segmentPattern(segment: string): RegExp | null {
  * sequence, or more candidates than the limit. A glob with no match stays the
  * literal word, as it does in the shell.
  */
-function expandWord(marked: string, cwd: string): string[] | null {
+function expandWord(
+	marked: string,
+	cwd: string,
+): { path: string; shell: boolean }[] | null {
 	const words = expandBraces(marked);
 	if (!words) return null;
-	const out: string[] = [];
+	const out: { path: string; shell: boolean }[] = [];
 	for (const word of words) {
 		const absolute = word.startsWith("/");
 		let candidates = [absolute ? "/" : ""];
 		for (const segment of word.split("/")) {
 			if (!segment) continue;
-			const pattern = segmentPattern(segment);
-			if (!pattern) {
-				candidates = candidates.map((c) => `${c + unmark(segment)}/`);
+			const matches = segmentMatcher(segment);
+			if (matches === "refuse") return null;
+			if (!matches) {
+				// A literal segment is shell text: its escapes are the shell's.
+				const literal = shellReadings(unmark(segment))[0];
+				candidates = candidates.map((c) => `${c + literal}/`);
 				continue;
 			}
-			if (segment.startsWith(".") && (pattern.test(".") || pattern.test("..")))
+			if (segment.startsWith(".") && (matches(".") || matches("..")))
 				return null;
 			const next: string[] = [];
 			for (const c of candidates) {
@@ -289,16 +396,22 @@ function expandWord(marked: string, cwd: string): string[] | null {
 				}
 				for (const name of names) {
 					if (name.startsWith(".") && !segment.startsWith(".")) continue;
-					if (pattern.test(name)) next.push(`${c}${name}/`);
+					if (matches(name)) next.push(`${c}${name}/`);
 				}
 				if (next.length > EXPANSION_LIMIT) return null;
 			}
 			candidates = next;
 			if (candidates.length === 0) break;
 		}
-		if (candidates.length === 0) out.push(unmark(word));
+		// No match leaves the word as typed, as the shell does; a match is a real path.
+		if (candidates.length === 0) out.push({ path: unmark(word), shell: true });
 		else
-			out.push(...candidates.map((c) => (c.length > 1 ? c.slice(0, -1) : c)));
+			out.push(
+				...candidates.map((c) => ({
+					path: c.length > 1 ? c.slice(0, -1) : c,
+					shell: false,
+				})),
+			);
 		if (out.length > EXPANSION_LIMIT) return null;
 	}
 	return out;
@@ -318,7 +431,13 @@ function outsideSnapshotToken(text: string, cwd: string): string | null {
 			continue;
 		}
 		const paths = expandWord(marked, cwd);
-		if (!paths || paths.some((p) => wordOutside(p, cwd))) return token;
+		if (
+			!paths ||
+			paths.some((p) =>
+				p.shell ? wordOutside(p.path, cwd) : pathOutside(p.path, cwd),
+			)
+		)
+			return token;
 	}
 	return null;
 }

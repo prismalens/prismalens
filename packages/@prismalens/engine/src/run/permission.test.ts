@@ -213,6 +213,29 @@ describe.skipIf(process.platform === "win32")(
 			}
 		});
 
+		it("closes the review's holes: escaped quotes, POSIX classes, runaway stars, backslash names (#685)", () => {
+			symlinkSync(base, join(cwd, "b\\d"), "dir"); // a directory symlink out, named with a backslash
+			const policy = readOnlyPolicyFor({ cwd });
+			for (const command of [
+				"echo \\'; cat *",
+				'echo \\"; cat l*',
+				"cat [[:lower:]]ink",
+				"cat 'b\\d'/secret",
+				"cat b*/secret",
+			]) {
+				const d = policy(req({ kind: "execute", rawInput: { command } }));
+				expect(d.allow, command).toBe(false);
+				expect(!d.allow && d.why, command).toMatch(/outside the snapshot/);
+			}
+			const trailing = policy(req({ kind: "execute", rawInput: { command: "ls src\\" } }));
+			expect(trailing).toEqual({ allow: true, optionId: "once" });
+
+			const stars = `cat src/${"*".repeat(200)}x`;
+			const started = Date.now();
+			policy(req({ kind: "execute", rawInput: { command: stars } }));
+			expect(Date.now() - started).toBeLessThan(1_000);
+		});
+
 		it("allows paths not existing yet, symlinks resolving inside, and cwd reached through a symlink", () => {
 			const policy = readOnlyPolicyFor({ cwd });
 			expect(
