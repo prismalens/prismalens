@@ -21,6 +21,7 @@ const {
 	escapeArgument,
 	escapeCommand,
 	killProcessTree,
+	reapLiveHarnesses,
 	windowsSpawnPlan,
 	wrapWithTreeKill,
 } = await import("./process.js");
@@ -354,25 +355,260 @@ describe("killProcessTree (win32 taskkill /T /F tree kill)", () => {
 		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
 	});
 
-	it("performs plain child.kill() on linux without calling taskkill", () => {
+	it("calls injected process.kill(-pid, 'SIGKILL') on linux", () => {
 		const fakeKill = vi.fn(() => true);
+		const fakeKillProcess = vi.fn(() => true) as unknown as typeof process.kill;
 		const fakeSpawnSync = vi.fn() as unknown as typeof import("node:child_process").spawnSync;
 		const child = { pid: 4321, kill: fakeKill, killed: false };
 
-		const result = killProcessTree(child, "SIGKILL", "linux", fakeSpawnSync);
+		const result = killProcessTree(
+			child,
+			"SIGKILL",
+			"linux",
+			fakeSpawnSync,
+			fakeKillProcess,
+		);
 
 		expect(result).toBe(true);
 		expect(fakeSpawnSync).not.toHaveBeenCalled();
+		expect(fakeKillProcess).toHaveBeenCalledWith(-4321, "SIGKILL");
+		expect(fakeKill).not.toHaveBeenCalled();
+		expect(child.killed).toBe(true);
+	});
+
+	it("defaults signal to SIGTERM on linux if unspecified", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeKillProcess = vi.fn(() => true) as unknown as typeof process.kill;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(
+			child,
+			undefined,
+			"linux",
+			undefined,
+			fakeKillProcess,
+		);
+
+		expect(result).toBe(true);
+		expect(fakeKillProcess).toHaveBeenCalledWith(-4321, "SIGTERM");
+		expect(fakeKill).not.toHaveBeenCalled();
+		expect(child.killed).toBe(true);
+	});
+
+	it("falls back to child.kill() on ESRCH", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeKillProcess = vi.fn(() => {
+			const err = new Error("kill ESRCH");
+			(err as NodeJS.ErrnoException).code = "ESRCH";
+			throw err;
+		}) as unknown as typeof process.kill;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(
+			child,
+			"SIGKILL",
+			"linux",
+			undefined,
+			fakeKillProcess,
+		);
+
+		expect(result).toBe(true);
+		expect(fakeKillProcess).toHaveBeenCalledWith(-4321, "SIGKILL");
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("falls back to child.kill() on EPERM", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeKillProcess = vi.fn(() => {
+			const err = new Error("kill EPERM");
+			(err as NodeJS.ErrnoException).code = "EPERM";
+			throw err;
+		}) as unknown as typeof process.kill;
+		const child = { pid: 4321, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(
+			child,
+			"SIGKILL",
+			"linux",
+			undefined,
+			fakeKillProcess,
+		);
+
+		expect(result).toBe(true);
+		expect(fakeKillProcess).toHaveBeenCalledWith(-4321, "SIGKILL");
+		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
+	});
+
+	it("falls back to child.kill() on linux if child pid is undefined", () => {
+		const fakeKill = vi.fn(() => true);
+		const fakeKillProcess = vi.fn(() => true) as unknown as typeof process.kill;
+		const child = { pid: undefined, kill: fakeKill, killed: false };
+
+		const result = killProcessTree(
+			child,
+			"SIGKILL",
+			"linux",
+			undefined,
+			fakeKillProcess,
+		);
+
+		expect(result).toBe(true);
+		expect(fakeKillProcess).not.toHaveBeenCalled();
 		expect(fakeKill).toHaveBeenCalledWith("SIGKILL");
 	});
 
 	it("wrapWithTreeKill delegates child.kill() through treeKill", () => {
 		const fakeKill = vi.fn(() => true);
+		const fakeKillProcess = vi.fn(() => true) as unknown as typeof process.kill;
 		const child = { pid: 9999, kill: fakeKill, killed: false };
-		const wrapped = wrapWithTreeKill(child);
+		const wrapped = wrapWithTreeKill(
+			child,
+			"linux",
+			undefined,
+			fakeKillProcess,
+		);
 
-		// Calling wrapped.kill on linux routes to plain fakeKill
 		wrapped.kill("SIGTERM");
-		expect(fakeKill).toHaveBeenCalledWith("SIGTERM");
+		expect(fakeKillProcess).toHaveBeenCalledWith(-9999, "SIGTERM");
 	});
 });
+
+describe.skipIf(process.platform === "win32")(
+	"process group tree kill (POSIX regression)",
+	() => {
+		async function pollForEsrch(pid: number, timeoutMs = 2000): Promise<void> {
+			const start = Date.now();
+			while (Date.now() - start < timeoutMs) {
+				try {
+					process.kill(pid, 0);
+				} catch (err) {
+					if ((err as NodeJS.ErrnoException).code === "ESRCH") {
+						return;
+					}
+				}
+				await new Promise((r) => setTimeout(r, 50));
+			}
+			expect(() => process.kill(pid, 0)).toThrow(
+				expect.objectContaining({ code: "ESRCH" }),
+			);
+		}
+
+		it("wallClockMs kills the harness and its descendant process tree", async () => {
+			const launcher = createProcessLauncher();
+			const child = launcher.spawn(
+				process.execPath,
+				[
+					"-e",
+					'const { spawn } = require("node:child_process"); const sub = spawn(process.execPath, ["-e", "setInterval(()=>{},1e3)"], { stdio: "ignore" }); process.stdout.write(String(sub.pid) + "\\n"); setInterval(()=>{}, 1e3);',
+				],
+				{ cwd: process.cwd(), limits: { wallClockMs: 500 } },
+			);
+
+			const [chunk] = (await once(child.stdout, "data")) as [Buffer];
+			const grandchildPid = Number.parseInt(chunk.toString().trim(), 10);
+			expect(grandchildPid).toBeGreaterThan(0);
+
+			try {
+				await once(child, "close");
+				expect(child.timedOut).toBe(true);
+				await pollForEsrch(grandchildPid, 2000);
+			} finally {
+				try {
+					process.kill(grandchildPid, "SIGKILL");
+				} catch {
+					// ESRCH if already dead
+				}
+				await launcher.destroy();
+			}
+		});
+
+		it("destroy() kills the harness and its descendant process tree without a deadline", async () => {
+			const launcher = createProcessLauncher();
+			const child = launcher.spawn(
+				process.execPath,
+				[
+					"-e",
+					'const { spawn } = require("node:child_process"); const sub = spawn(process.execPath, ["-e", "setInterval(()=>{},1e3)"], { stdio: "ignore" }); process.stdout.write(String(sub.pid) + "\\n"); setInterval(()=>{}, 1e3);',
+				],
+				{ cwd: process.cwd() },
+			);
+
+			const [chunk] = (await once(child.stdout, "data")) as [Buffer];
+			const grandchildPid = Number.parseInt(chunk.toString().trim(), 10);
+			expect(grandchildPid).toBeGreaterThan(0);
+
+			const closed = once(child, "close");
+			try {
+				await launcher.destroy();
+				await closed;
+				expect(child.killed).toBe(true);
+				await pollForEsrch(grandchildPid, 2000);
+			} finally {
+				try {
+					process.kill(grandchildPid, "SIGKILL");
+				} catch {
+					// ESRCH if already dead
+				}
+			}
+		});
+
+		it("reapLiveHarnesses() kills every launcher's harness tree on the way out", async () => {
+			const child = createProcessLauncher().spawn(
+				process.execPath,
+				[
+					"-e",
+					'const { spawn } = require("node:child_process"); const sub = spawn(process.execPath, ["-e", "setInterval(()=>{},1e3)"], { stdio: "ignore" }); process.stdout.write(String(sub.pid) + "\\n"); setInterval(()=>{}, 1e3);',
+				],
+				{ cwd: process.cwd() },
+			);
+
+			const [chunk] = (await once(child.stdout, "data")) as [Buffer];
+			const grandchildPid = Number.parseInt(chunk.toString().trim(), 10);
+			expect(grandchildPid).toBeGreaterThan(0);
+
+			const closed = once(child, "close");
+			try {
+				reapLiveHarnesses();
+				await closed;
+				await pollForEsrch(grandchildPid, 2000);
+			} finally {
+				try {
+					process.kill(grandchildPid, "SIGKILL");
+				} catch {
+					// ESRCH if already dead
+				}
+			}
+		});
+
+		it("reapLiveHarnesses() still kills a harness that ignored an earlier SIGTERM", async () => {
+			const child = createProcessLauncher().spawn(
+				process.execPath,
+				[
+					"-e",
+					'process.on("SIGTERM", () => {}); process.stdout.write(String(process.pid) + "\\n"); setInterval(()=>{}, 1e3);',
+				],
+				{ cwd: process.cwd() },
+			);
+			// The harness names its own pid, as the tree tests above do: HarnessChild has no pid.
+			const [chunk] = (await once(child.stdout, "data")) as [Buffer];
+			const pid = Number.parseInt(chunk.toString().trim(), 10);
+			expect(pid).toBeGreaterThan(0);
+			try {
+				child.kill("SIGTERM");
+				expect(child.killed).toBe(true);
+				await new Promise((r) => setTimeout(r, 200));
+				expect(() => process.kill(pid, 0)).not.toThrow(); // survived SIGTERM
+				const closed = once(child, "close");
+				reapLiveHarnesses();
+				await closed;
+				await pollForEsrch(pid, 2000);
+			} finally {
+				try {
+					process.kill(pid, "SIGKILL");
+				} catch {
+					// ESRCH if already dead
+				}
+			}
+		});
+	},
+);

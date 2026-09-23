@@ -9,8 +9,9 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, Layers, LogOut, PanelLeft, Settings, Siren } from "lucide-react";
+import { Bell, LogOut, PanelLeft, Settings, Siren } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { TelemetryConsent } from "@/components/settings";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -157,9 +158,7 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						className="flex min-w-0 flex-1 items-center gap-2 px-1 text-sm font-semibold tracking-tight"
 						title="PrismaLens"
 					>
-						<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground">
-							<Layers className="h-3.5 w-3.5" />
-						</span>
+						<PrismaLensMark className="h-6 w-6 shrink-0" />
 						{!sidebarFolded && <span className="truncate">PrismaLens</span>}
 					</Link>
 					{!sidebarFolded && (
@@ -207,7 +206,11 @@ function SidebarBody({ pathname }: { pathname: string }) {
 				className="flex items-center gap-1 border-b bg-card px-2 py-1 md:hidden"
 				data-testid="topbar"
 			>
-				<Link to="/incidents" className="px-2 text-sm font-semibold">
+				<Link
+					to="/incidents"
+					className="flex items-center gap-1.5 px-2 text-sm font-semibold"
+				>
+					<PrismaLensMark className="h-5 w-5" />
 					PrismaLens
 				</Link>
 				<nav className="flex flex-1 items-center gap-0.5">{nav(true)}</nav>

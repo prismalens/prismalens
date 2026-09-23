@@ -209,7 +209,10 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		);
 		await page.getByTestId("post-report-github-submit").click();
 
-		await expect(page.getByText("Posted")).toBeVisible({ timeout: 15_000 });
+		// The toast title and its screen-reader announcement both carry the text.
+		await expect(page.getByText("Posted", { exact: true }).first()).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(page.getByRole("link", { name: commentUrl })).toBeVisible();
 		await expect(page.getByRole("dialog")).toHaveCount(0);
 
