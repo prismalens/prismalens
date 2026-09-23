@@ -12,7 +12,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-export const OperatorViaEnum = z.enum(["session"]);
+export const OperatorViaEnum = z.enum(["session", "device"]);
 export type OperatorVia = z.infer<typeof OperatorViaEnum>;
 
 const WhoamiSchema = z.object({

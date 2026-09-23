@@ -97,3 +97,41 @@ model Verification {
 
   @@map("verification")
 }
+
+// =============================================================================
+// DEVICE PAIRING (ADR 0004 §8)
+// =============================================================================
+// A device that is not the host gets in by pairing: the operator mints a
+// one-time link on the host, the device that opens it holds a session until
+// revoked. Only hashes are stored; the raw token is shown once at creation.
+
+/// One-time pairing link, minted on the host
+model PairingLink {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  label     String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  device DeviceSession?
+
+  @@map("pairing_link")
+}
+
+/// A paired device's session: valid until revoked
+model DeviceSession {
+  id            String    @id @default(uuid())
+  tokenHash     String    @unique
+  name          String
+  scopes        String // JSON array of scope names (ADR 0004 §8)
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime?
+  revokedAt     DateTime?
+  pairingLinkId String    @unique
+
+  pairingLink PairingLink @relation(fields: [pairingLinkId], references: [id])
+
+  @@map("device_session")
+}

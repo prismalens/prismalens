@@ -18,6 +18,7 @@ import { prisma } from "@prismalens/database";
 export class AuthService implements OnModuleInit {
 	private readonly logger = new Logger(AuthService.name);
 	private _auth: Auth | null = null;
+	private _secureCookies = false;
 
 	constructor(private readonly configService: ConfigService) {}
 
@@ -106,6 +107,7 @@ export class AuthService implements OnModuleInit {
 			(url, i, arr) => arr.indexOf(url) === i,
 		);
 
+		this._secureCookies = secureCookies;
 		this._auth = createAuth(prisma, {
 			baseURL: publicUrl,
 			trustedOrigins,
@@ -119,6 +121,11 @@ export class AuthService implements OnModuleInit {
 	/**
 	 * Get the Better Auth instance
 	 */
+	/** Whether cookies this process issues carry `Secure` (the resolved origin is https). */
+	get secureCookies(): boolean {
+		return this._secureCookies;
+	}
+
 	get auth(): Auth {
 		if (!this._auth) {
 			throw new Error("Auth not initialized");

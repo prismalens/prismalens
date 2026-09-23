@@ -13,6 +13,26 @@
 export type { Session, User } from "better-auth/types";
 export { type Auth, type AuthOptions, createAuth } from "./auth.js";
 export {
+	authenticateDevice,
+	buildPairingUrl,
+	type CreatedPairingLink,
+	createPairingLink,
+	DEVICE_SCOPES,
+	type DeviceRecord,
+	type DeviceScope,
+	generateToken,
+	hashToken,
+	PAIRING_LINK_TTL_MS,
+	PAIRING_PATH,
+	PairingError,
+	type PairingErrorReason,
+	type PairingLinkRecord,
+	type PairingStore,
+	prismaPairingStore,
+	type RedeemedDevice,
+	redeemPairingLink,
+} from "./pairing.js";
+export {
 	type CredentialAccount,
 	generatePassword,
 	type OwnerAccountStore,
@@ -23,3 +43,7 @@ export {
 	resetOwnerPassword,
 	resetOwnerPasswordWith,
 } from "./reset-password.js";
+export {
+	createPairingLinkInWorkspace,
+	WorkspaceError,
+} from "./workspace.js";
