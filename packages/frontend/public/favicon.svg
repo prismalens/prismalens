@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>PrismaLens</title>
   <style>.i{stroke:#0F172A}.r{stroke:#4F46E5}@media(prefers-color-scheme:dark){.i{stroke:#E2E8F0}.r{stroke:#818CF8}}</style>
   <g fill="none" stroke-linecap="round">
     <path class="i" d="M1 34H18" opacity=".6" stroke-width="4.5"/>
