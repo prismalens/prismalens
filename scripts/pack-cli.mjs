@@ -108,7 +108,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { builtinModules, createRequire } from "node:module";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -448,21 +448,30 @@ function scanImports(stagedModules, union, copiedNames, optional) {
 // 5. Tarball assertions
 // ---------------------------------------------------------------------------
 
+/**
+ * Runs tar from the tarball's own folder with a relative name: GNU tar (Git
+ * Bash's, on a Windows runner) reads `C:\\…` as a remote `host:path`.
+ */
+function tar(tarball, args) {
+	return execFileSync(
+		"tar",
+		[...args.slice(0, 1), basename(tarball), ...args.slice(1)],
+		{
+			cwd: dirname(tarball),
+			encoding: "utf8",
+		},
+	);
+}
+
 function tarList(tarball) {
-	return execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" })
-		.split("\n")
-		.filter(Boolean);
+	return tar(tarball, ["-tzf"]).split("\n").filter(Boolean);
 }
 
 function assertTarball(tarball, copiedNames) {
 	const entries = tarList(tarball);
 	const has = (predicate) => entries.some(predicate);
 
-	const manifest = JSON.parse(
-		execFileSync("tar", ["-xzOf", tarball, "package/package.json"], {
-			encoding: "utf8",
-		}),
-	);
+	const manifest = JSON.parse(tar(tarball, ["-xzOf", "package/package.json"]));
 	const bundled = new Set(manifest.bundleDependencies ?? []);
 	for (const name of Object.keys(manifest.dependencies ?? {})) {
 		// Re-specified from the pre-#237 assertion ("no @prismalens/* in
@@ -525,9 +534,7 @@ function assertTarball(tarball, copiedNames) {
 	// outside this monorepo and would break `npm install` of the tarball.
 	const manifests = entries.filter((e) => e.endsWith("package.json"));
 	for (const entry of manifests) {
-		const body = execFileSync("tar", ["-xzOf", tarball, entry], {
-			encoding: "utf8",
-		});
+		const body = tar(tarball, ["-xzOf", entry]);
 		if (body.includes("workspace:") || body.includes("catalog:")) {
 			fail(
 				`${entry} still contains a \`workspace:\` or \`catalog:\` specifier`,
