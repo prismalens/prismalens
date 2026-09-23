@@ -19545,9 +19545,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -19637,7 +19634,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -19741,9 +19737,6 @@
                         "format": "uuid"
                       },
                       "label": {
-                        "type": "string"
-                      },
-                      "userId": {
                         "type": "string"
                       },
                       "status": {
@@ -20195,7 +20188,6 @@
                       "id",
                       "integrationId",
                       "label",
-                      "userId",
                       "status",
                       "tokenExpiresAt",
                       "grantedScopes",
@@ -20250,9 +20242,6 @@
                       "format": "uuid"
                     },
                     "label": {
-                      "type": "string"
-                    },
-                    "userId": {
                       "type": "string"
                     },
                     "status": {
@@ -20704,7 +20693,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -20803,9 +20791,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -20895,7 +20880,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -21203,9 +21187,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -21295,7 +21276,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -21478,9 +21458,6 @@
                     "label": {
                       "type": "string"
                     },
-                    "userId": {
-                      "type": "string"
-                    },
                     "status": {
                       "enum": [
                         "ACTIVE",
@@ -21570,7 +21547,6 @@
                     "id",
                     "integrationId",
                     "label",
-                    "userId",
                     "status",
                     "tokenExpiresAt",
                     "grantedScopes",
@@ -23285,15 +23261,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "setupComplete": {
-                      "type": "boolean"
-                    },
                     "steps": {
                       "type": "object",
                       "properties": {
-                        "owner": {
-                          "type": "boolean"
-                        },
                         "aiProvider": {
                           "type": "boolean"
                         },
@@ -23305,7 +23275,6 @@
                         }
                       },
                       "required": [
-                        "owner",
                         "aiProvider",
                         "codeLocation",
                         "firstIncident"
@@ -23313,7 +23282,6 @@
                     },
                     "currentStep": {
                       "enum": [
-                        "account",
                         "ai_provider",
                         "code_location",
                         "first_incident",
@@ -23323,88 +23291,8 @@
                     }
                   },
                   "required": [
-                    "setupComplete",
                     "steps",
                     "currentStep"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/setup": {
-      "post": {
-        "operationId": "setup.createOwner",
-        "summary": "Create the first admin account during initial setup",
-        "tags": [
-          "setup"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email"
-                  },
-                  "password": {
-                    "type": "string",
-                    "minLength": 8
-                  },
-                  "name": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "email",
-                  "password"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "user": {
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "email": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "email",
-                        "name"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "user"
                   ]
                 }
               }
@@ -23433,7 +23321,7 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "session"
+                            "device"
                           ],
                           "type": "string"
                         },
@@ -23441,10 +23329,233 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
-                    "via"
+                    "via",
+                    "scopes"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pairing/links": {
+      "post": {
+        "operationId": "pairing.manage.createLink",
+        "summary": "Mint a one-time pairing link for another device",
+        "tags": [
+          "pairing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "origin": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url",
+                    "expiresAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pairing/devices": {
+      "get": {
+        "operationId": "pairing.manage.listDevices",
+        "summary": "Paired devices that can reach this instance",
+        "tags": [
+          "pairing"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "lastSeenAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "createdAt",
+                          "lastSeenAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "devices"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pairing/devices/{id}": {
+      "delete": {
+        "operationId": "pairing.manage.revokeDevice",
+        "summary": "Revoke a paired device; its next request is refused",
+        "tags": [
+          "pairing"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "revoked"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pairing/redeem": {
+      "post": {
+        "operationId": "pairing.redeem",
+        "summary": "Exchange a pairing link for a device session",
+        "tags": [
+          "pairing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "device": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "device"
                   ]
                 }
               }

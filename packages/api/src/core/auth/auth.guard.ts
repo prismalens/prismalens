@@ -4,8 +4,8 @@
 /**
  * Auth Guard
  *
- * Global NestJS guard. A request is the operator when `OperatorResolver`
- * finds its credential. Respects the @Public() decorator to skip
+ * Global NestJS guard. A request is the operator when it carries a paired
+ * device's token (ADR 0004 §8). Respects the @Public() decorator to skip
  * authentication.
  */
 
@@ -37,13 +37,11 @@ export class AuthGuard implements CanActivate {
 		const request = context.switchToHttp().getRequest<Request>();
 
 		try {
-			const resolved = await this.operator.resolve(request);
-			if (!resolved) {
+			const operator = await this.operator.resolve(request);
+			if (!operator) {
 				throw new UnauthorizedException("Authentication required");
 			}
-			request.operator = resolved.operator;
-			request.user = resolved.user;
-			request.session = resolved.session;
+			request.operator = operator;
 			return true;
 		} catch (error) {
 			// Re-throw UnauthorizedException as-is; wrap other errors

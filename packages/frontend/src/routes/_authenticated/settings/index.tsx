@@ -8,6 +8,7 @@ import {
 	TelemetrySettings,
 } from "@/components/settings";
 import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
+import { DevicesTab } from "@/components/settings/DevicesTab";
 import { SettingsFrame } from "@/components/settings/SettingsFrame";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -30,6 +31,11 @@ const SECTIONS = {
 		title: "Connections",
 		intro:
 			"The accounts and tokens behind each integration. One integration can have several.",
+	},
+	devices: {
+		title: "Devices",
+		intro:
+			"Phones and laptops paired with this instance. Pair one with a one-time link; revoke it here.",
 	},
 	usage: {
 		title: "Usage data",
@@ -58,6 +64,7 @@ function SettingsPage() {
 			{tab === "harness" && <HarnessSettings />}
 			{tab === "integrations" && <IntegrationsSettings />}
 			{tab === "connections" && <ConnectionsTab />}
+			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
 			{tab === "danger" && <DangerZoneSettings />}
 		</SettingsFrame>

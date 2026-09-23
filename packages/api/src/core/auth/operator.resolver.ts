@@ -5,40 +5,39 @@
  * Who is making this request, and why they count as the operator.
  *
  * One answer for the guard and for `operator.whoami`, so the frontend gate and
- * the API agree. Every caller presents a credential, the host included: no
- * address, `Host` header or bind grants anything (ADR 0004 §8).
+ * the API agree. There is no account (ADR 0001 §2) and no address grants
+ * anything (ADR 0004 §8): the caller is a paired device or nobody. The host's
+ * own browser is a device too, paired through the startup link `pl up` prints.
  */
 
 import { Injectable } from "@nestjs/common";
-import type { Session, User } from "@prismalens/auth";
+import {
+	authenticateDevice,
+	type DeviceRecord,
+	prismaPairingStore,
+} from "@prismalens/auth";
 import type { Request } from "express";
-import { AuthService } from "./auth.service.js";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { readDeviceToken } from "./device-cookie.js";
 
-export type OperatorVia = "session";
+export type OperatorVia = "device";
 
 export interface Operator {
 	via: OperatorVia;
-}
-
-export interface ResolvedOperator {
-	operator: Operator;
-	user: User;
-	session: Session;
+	device: DeviceRecord;
 }
 
 @Injectable()
 export class OperatorResolver {
-	constructor(private readonly authService: AuthService) {}
+	constructor(private readonly prisma: PrismaService) {}
 
-	async resolve(request: Request): Promise<ResolvedOperator | null> {
-		const session = await this.authService.auth.api.getSession({
-			headers: request.headers as Record<string, string>,
-		});
-		if (!session?.user) return null;
-		return {
-			operator: { via: "session" },
-			user: session.user as User,
-			session: session.session as Session,
-		};
+	async resolve(request: Request): Promise<Operator | null> {
+		const deviceToken = readDeviceToken(request);
+		if (!deviceToken) return null;
+		const device = await authenticateDevice(
+			prismaPairingStore(this.prisma),
+			deviceToken,
+		);
+		return device ? { via: "device", device } : null;
 	}
 }
