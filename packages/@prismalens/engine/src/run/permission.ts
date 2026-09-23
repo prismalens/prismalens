@@ -217,7 +217,7 @@ function expandBraces(word: string): string[] | null {
 			if (/^[^,]*\.\.[^,]*$/.test(body)) return null;
 			if (commas.length === 0) {
 				const rest = expandBraces(word.slice(i + 1));
-				return rest?.map((r) => word.slice(0, i + 1) + r);
+				return rest ? rest.map((r) => word.slice(0, i + 1) + r) : null;
 			}
 			const bounds = [open, ...commas, i];
 			const out: string[] = [];
