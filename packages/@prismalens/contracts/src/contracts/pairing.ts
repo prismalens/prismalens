@@ -18,8 +18,6 @@ const DeviceSchema = z.object({
 	name: z.string(),
 	createdAt: z.string(),
 	lastSeenAt: z.string().nullable(),
-	/** The device making this request. */
-	current: z.boolean(),
 });
 export type PairedDevice = z.infer<typeof DeviceSchema>;
 
