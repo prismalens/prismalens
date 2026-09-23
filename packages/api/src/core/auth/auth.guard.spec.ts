@@ -7,7 +7,6 @@ import type { Session, User } from "@prismalens/auth";
 import type { Request } from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthGuard } from "./auth.guard.js";
-import type { AuthService } from "./auth.service.js";
 import type { OperatorResolver } from "./operator.resolver.js";
 import { IS_PUBLIC_KEY } from "./public.decorator.js";
 
@@ -15,7 +14,6 @@ describe("AuthGuard", () => {
 	let guard: AuthGuard;
 	let mockReflector: { getAllAndOverride: ReturnType<typeof vi.fn> };
 	let mockOperator: { resolve: ReturnType<typeof vi.fn> };
-	let mockAuthService: AuthService;
 	let request: Request;
 	let mockContext: ExecutionContext;
 
@@ -26,7 +24,6 @@ describe("AuthGuard", () => {
 		mockOperator = {
 			resolve: vi.fn(),
 		};
-		mockAuthService = {} as AuthService;
 
 		request = {} as Request;
 		mockContext = {
@@ -38,7 +35,6 @@ describe("AuthGuard", () => {
 		} as unknown as ExecutionContext;
 
 		guard = new AuthGuard(
-			mockAuthService,
 			mockOperator as unknown as OperatorResolver,
 			mockReflector as unknown as Reflector,
 		);
