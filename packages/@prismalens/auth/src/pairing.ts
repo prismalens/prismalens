@@ -173,7 +173,9 @@ export async function redeemPairingLink(
 	const device = await store.redeemLink({
 		linkId: link.id,
 		tokenHash: hashToken(deviceToken),
-		name: input.name.trim() || link.label || "Paired device",
+		// The label the operator gave the link wins over the name the device
+		// guesses for itself: a startup link is always "This machine".
+		name: link.label || input.name.trim() || "Paired device",
 		scopes: parseScopes(link.scopes),
 		userAgent: input.userAgent ?? null,
 	});

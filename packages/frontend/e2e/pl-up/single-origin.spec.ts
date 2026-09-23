@@ -50,7 +50,6 @@ test("first run: a fresh artifact serves the SPA from the same origin as its API
 	const token = out.match(/\/pair#([^\s#]+)/)?.[1];
 	expect(token, `no pairing link in:\n${out}`).toBeTruthy();
 	await page.goto(`/pair#${token}`);
-	await page.getByRole("button", { name: "Pair" }).click();
 	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
 	await page.context().storageState({ path: PAIRED_STATE });
 });

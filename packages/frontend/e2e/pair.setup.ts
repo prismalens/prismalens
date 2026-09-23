@@ -4,7 +4,7 @@
 /**
  * Pairs the suite's browser the way the host's own browser pairs: an
  * operator link from `pl pair --operator` on the workspace the servers run
- * on, opened and redeemed through the /pair page. The cookie it leaves is the
+ * on, opened on the /pair page, which redeems it with no click. The cookie it leaves is the
  * storage state every journey starts from.
  */
 
@@ -34,7 +34,6 @@ setup("pair this browser as the host", async ({ page }) => {
 	expect(token, `no pairing link in:\n${out}`).toBeTruthy();
 
 	await page.goto(`/pair#${token}`);
-	await page.getByRole("button", { name: "Pair" }).click();
 	await page.waitForURL(/\/incidents/);
 	await page
 		.context()
