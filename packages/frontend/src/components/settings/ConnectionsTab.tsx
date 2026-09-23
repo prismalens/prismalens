@@ -3,7 +3,10 @@
 
 "use client";
 
-import type { AuthTemplateResponse } from "@prismalens/contracts/schemas";
+import type {
+	AuthTemplateResponse,
+	ConnectionWithIntegration,
+} from "@prismalens/contracts/schemas";
 import {
 	AlertCircle,
 	CheckCircle,
@@ -15,9 +18,8 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import {
 	Select,
 	SelectContent,
@@ -30,12 +32,10 @@ import {
 	useDeleteConnection,
 	useTemplates,
 	useTestConnection,
-	useUpdateConnection,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-import { AddConnectionDialog } from "./AddConnectionDialog";
+import { ConnectionFormDialog } from "./ConnectionFormDialog";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
-import { EditConnectionDialog } from "./EditConnectionDialog";
 import { ConnectionStatusBadge, getTemplateIcon } from "./integration-utils";
 
 export function ConnectionsTab() {
@@ -46,7 +46,6 @@ export function ConnectionsTab() {
 	} = useConnections();
 	const { data: templates } = useTemplates();
 	const deleteConnection = useDeleteConnection();
-	const updateConnection = useUpdateConnection();
 	const testConnection = useTestConnection();
 
 	// Dialogs
@@ -55,17 +54,9 @@ export function ConnectionsTab() {
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
 	// Selected state
-	const [selectedConnectionId, setSelectedConnectionId] = useState<
-		string | null
-	>(null);
-	const [credentialValues, setCredentialValues] = useState<
-		Record<string, string>
-	>({});
-	const [connectionFieldValues, setConnectionFieldValues] = useState<
-		Record<string, string>
-	>({});
-	const [showCredErrors, setShowCredErrors] = useState(false);
-	const [editError, setEditError] = useState<Error | null>(null);
+	const [selectedConnection, setSelectedConnection] =
+		useState<ConnectionWithIntegration | null>(null);
+	const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 	const [deleteError, setDeleteError] = useState<Error | null>(null);
 
 	// Test results
@@ -87,119 +78,72 @@ export function ConnectionsTab() {
 	} | null>(null);
 
 	useEffect(() => {
-		if (typeof window === "undefined") return;
+		if (typeof window !== "undefined") {
+			const params = new URLSearchParams(window.location.search);
+			const oauth = params.get("oauth");
+			const status = params.get("status");
+			const connectionId = params.get("connectionId");
+			const error = params.get("error");
+			const errorDescription = params.get("error_description");
 
-		const params = new URLSearchParams(window.location.search);
-		const oauth = params.get("oauth");
-		const status = params.get("status");
-		const connectionId = params.get("connectionId");
-		const error = params.get("error");
-		const errorDescription = params.get("error_description");
+			if (!oauth) return;
 
-		if (!oauth) return;
+			if (status === "success") {
+				setOauthMessage({
+					type: "success",
+					message: connectionId
+						? `OAuth connection established successfully (ID: ${connectionId})`
+						: "OAuth connection established successfully",
+				});
+				refetchConnections();
+			} else if (status === "error" || error) {
+				setOauthMessage({
+					type: "error",
+					message:
+						errorDescription ||
+						error ||
+						"OAuth authorization failed. Please try again.",
+				});
+			}
 
-		const url = new URL(window.location.href);
-		url.searchParams.delete("oauth");
-		url.searchParams.delete("status");
-		url.searchParams.delete("connectionId");
-		url.searchParams.delete("error");
-		url.searchParams.delete("error_description");
-		window.history.replaceState({}, "", url.toString());
+			const timer = setTimeout(() => {
+				setOauthMessage(null);
+			}, 10000);
 
-		if (status === "success" && connectionId) {
-			setOauthMessage({
-				type: "success",
-				message: `Successfully connected to ${oauth}!`,
-			});
-			refetchConnections();
-			setTimeout(() => setOauthMessage(null), 5000);
-		} else if (status === "error") {
-			setOauthMessage({
-				type: "error",
-				message: (
-					errorDescription ||
-					error ||
-					`Failed to connect to ${oauth}`
-				).slice(0, 200),
-			});
-			setTimeout(() => setOauthMessage(null), 10000);
+			return () => clearTimeout(timer);
 		}
 	}, [refetchConnections]);
 
+	// Filter connections
+	const filteredConnections = connections?.filter((conn) => {
+		if (providerFilter !== "all" && conn.templateId !== providerFilter) {
+			return false;
+		}
+		if (statusFilter !== "all" && conn.status !== statusFilter) {
+			return false;
+		}
+		return true;
+	});
+
+	// Get unique template IDs for provider filter
+	const uniqueTemplateIds = Array.from(
+		new Set(connections?.map((c) => c.templateId).filter(Boolean)),
+	);
+
 	// --- Edit Connection ---
-	const handleEditConnection = (connectionId: string) => {
-		setSelectedConnectionId(connectionId);
-		setCredentialValues({});
-		setConnectionFieldValues({});
-		setShowCredErrors(false);
-		setEditError(null);
+	const handleEditConnection = (connection: ConnectionWithIntegration) => {
+		setSelectedConnection(connection);
 		setShowEditDialog(true);
-	};
-
-	const handleSaveEdit = async () => {
-		if (!selectedConnectionId) return;
-		setEditError(null);
-
-		const connection = connections?.find((c) => c.id === selectedConnectionId);
-		const template = templates?.find(
-			(t: AuthTemplateResponse) => t.id === connection?.templateId,
-		);
-
-		// For OAuth redirect, re-trigger the OAuth flow
-		if (template?.connectionCreationMode === "oauth_redirect") {
-			try {
-				const integrationId = connection?.integrationId;
-				if (!integrationId) throw new Error("Integration not found");
-
-				setShowEditDialog(false);
-				const res = await fetch(
-					`/api/integrations/oauth/${integrationId}/authorize`,
-					{
-						method: "POST",
-						credentials: "include",
-						headers: { "Content-Type": "application/json" },
-					},
-				);
-				if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
-				const { redirectUrl } = await res.json();
-				window.location.href = redirectUrl;
-			} catch (err) {
-				setEditError(
-					err instanceof Error ? err : new Error("Failed to re-authorize"),
-				);
-			}
-			return;
-		}
-
-		try {
-			const hasNewCredentials = Object.values(credentialValues).some(
-				(v) => v.trim() !== "",
-			);
-			await updateConnection.mutateAsync({
-				id: selectedConnectionId,
-				credentials: hasNewCredentials ? credentialValues : undefined,
-				connectionConfig:
-					Object.keys(connectionFieldValues).length > 0
-						? connectionFieldValues
-						: undefined,
-			});
-			setShowEditDialog(false);
-			setSelectedConnectionId(null);
-		} catch (err) {
-			setEditError(
-				err instanceof Error ? err : new Error("Failed to update connection"),
-			);
-		}
 	};
 
 	// --- Delete Connection ---
 	const handleDelete = async () => {
-		if (!selectedConnectionId) return;
+		if (!deleteTargetId) return;
 		setDeleteError(null);
 		try {
-			await deleteConnection.mutateAsync({ id: selectedConnectionId });
+			await deleteConnection.mutateAsync({ id: deleteTargetId });
 			setShowDeleteDialog(false);
-			setSelectedConnectionId(null);
+			setDeleteTargetId(null);
 		} catch (err) {
 			setDeleteError(
 				err instanceof Error ? err : new Error("Failed to delete connection"),
@@ -218,38 +162,18 @@ export function ConnectionsTab() {
 				...prev,
 				[connectionId]: { success: result.success },
 			}));
-			await refetchConnections();
 		} catch (err) {
 			setTestResults((prev) => ({
 				...prev,
 				[connectionId]: {
 					success: false,
-					error: err instanceof Error ? err.message : "Test failed",
+					error: err instanceof Error ? err.message : "Connection test failed",
 				},
 			}));
 		} finally {
 			setTestingConnectionId(null);
 		}
 	};
-
-	// --- Filter ---
-	const uniqueTemplateIds = Array.from(
-		new Set(connections?.map((c) => c.templateId).filter(Boolean)),
-	);
-	const filteredConnections = connections?.filter((c) => {
-		if (providerFilter !== "all" && c.templateId !== providerFilter)
-			return false;
-		if (statusFilter !== "all" && c.status !== statusFilter) return false;
-		return true;
-	});
-
-	// Edit dialog context
-	const editConnection = connections?.find(
-		(c) => c.id === selectedConnectionId,
-	);
-	const editTemplate = templates?.find(
-		(t: AuthTemplateResponse) => t.id === editConnection?.templateId,
-	);
 
 	if (isLoading) {
 		return (
@@ -261,234 +185,216 @@ export function ConnectionsTab() {
 
 	return (
 		<div className="space-y-6">
-			{/* OAuth callback message */}
+			{/* OAuth Feedback Banner */}
 			{oauthMessage && (
 				<div
 					className={cn(
-						"flex items-center gap-2 p-3 rounded-lg text-sm",
+						"flex items-center gap-2 p-4 rounded-lg border text-sm",
 						oauthMessage.type === "success"
-							? "bg-green-500/10 text-green-700 dark:text-green-400"
-							: "bg-destructive/10 text-destructive",
+							? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950/50 dark:border-green-800 dark:text-green-200"
+							: "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/50 dark:border-red-800 dark:text-red-200",
 					)}
 				>
 					{oauthMessage.type === "success" ? (
-						<CheckCircle className="h-5 w-5" />
+						<CheckCircle className="h-4 w-4 shrink-0" />
 					) : (
-						<AlertCircle className="h-5 w-5" />
+						<AlertCircle className="h-4 w-4 shrink-0" />
 					)}
 					<span>{oauthMessage.message}</span>
 				</div>
 			)}
 
-			{/* Connections Card */}
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2">
-							<Link2 className="h-5 w-5 text-muted-foreground" />
-							<CardTitle>Connections</CardTitle>
-						</div>
+			{/* Connections Section */}
+			<div className="rounded-lg border bg-card p-6 space-y-4">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<Link2 className="h-5 w-5 text-muted-foreground" />
+						<h3 className="text-base font-semibold">Connections</h3>
+					</div>
+					<Button onClick={() => setShowAddDialog(true)}>
+						<Plus className="h-4 w-4 mr-2" />
+						Add Connection
+					</Button>
+				</div>
+				<div className="flex items-center gap-3 pt-1">
+					<Select value={providerFilter} onValueChange={setProviderFilter}>
+						<SelectTrigger className="w-[180px]">
+							<SelectValue placeholder="All providers" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All providers</SelectItem>
+							{uniqueTemplateIds.map((tid) => {
+								const t = templates?.find(
+									(tmpl: AuthTemplateResponse) => tmpl.id === tid,
+								);
+								return (
+									<SelectItem key={tid} value={tid ?? ""}>
+										{t?.name ?? tid}
+									</SelectItem>
+								);
+							})}
+						</SelectContent>
+					</Select>
+					<Select value={statusFilter} onValueChange={setStatusFilter}>
+						<SelectTrigger className="w-[180px]">
+							<SelectValue placeholder="All statuses" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All statuses</SelectItem>
+							<SelectItem value="ACTIVE">Active</SelectItem>
+							<SelectItem value="TOKEN_EXPIRED">Token Expired</SelectItem>
+							<SelectItem value="REFRESH_FAILED">Refresh Failed</SelectItem>
+							<SelectItem value="CREDENTIALS_INVALID">
+								Credentials Invalid
+							</SelectItem>
+							<SelectItem value="REVOKED">Revoked</SelectItem>
+							<SelectItem value="ERROR">Error</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
+
+				{filteredConnections && filteredConnections.length > 0 ? (
+					<div className="space-y-3">
+						{filteredConnections.map((connection) => {
+							const testResult = testResults[connection.id];
+
+							return (
+								<div
+									key={connection.id}
+									className="flex items-center justify-between p-4 border rounded-lg"
+								>
+									<div className="flex items-center gap-3">
+										{getTemplateIcon(connection.templateId ?? "")}
+										<div>
+											<div className="flex items-center gap-2">
+												<span className="font-medium">
+													{connection.label ||
+														(connection.integration?.label ??
+															connection.templateName ??
+															"Connection")}
+												</span>
+												<ConnectionStatusBadge status={connection.status} />
+											</div>
+											<p className="text-sm text-muted-foreground">
+												{connection.templateName}
+												{connection.integration
+													? connection.integration.enabled
+														? " • Enabled"
+														: " • Disabled"
+													: ""}
+												{connection.lastRefreshedAt && (
+													<>
+														{" "}
+														• Last refreshed:{" "}
+														<Mono>
+															{new Date(
+																connection.lastRefreshedAt,
+															).toLocaleString()}
+														</Mono>
+													</>
+												)}
+											</p>
+											{connection.lastErrorMessage && (
+												<p className="text-xs text-destructive mt-1">
+													{connection.lastErrorMessage}
+												</p>
+											)}
+											{testResult && (
+												<p
+													className={cn(
+														"text-xs mt-1",
+														testResult.success
+															? "text-muted-foreground"
+															: "text-destructive",
+													)}
+												>
+													{testResult.success
+														? "Connection test passed"
+														: testResult.error}
+												</p>
+											)}
+										</div>
+									</div>
+									<div className="flex items-center gap-2">
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => handleTestConnection(connection.id)}
+											disabled={testingConnectionId === connection.id}
+										>
+											{testingConnectionId === connection.id ? (
+												<Loader2 className="h-4 w-4 animate-spin" />
+											) : (
+												<Sparkles className="h-4 w-4" />
+											)}
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => handleEditConnection(connection)}
+										>
+											<Pencil className="h-4 w-4" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => {
+												setDeleteTargetId(connection.id);
+												setDeleteError(null);
+												setShowDeleteDialog(true);
+											}}
+										>
+											<Trash2 className="h-4 w-4 text-destructive" />
+										</Button>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				) : (
+					<div
+						className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-4"
+						data-testid="connections-empty"
+					>
+						<p className="text-record text-muted-foreground">
+							{providerFilter !== "all" || statusFilter !== "all"
+								? "No connections match filters."
+								: "No connections configured yet."}
+						</p>
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
 							Add Connection
 						</Button>
 					</div>
-					<div className="flex items-center gap-3 pt-2">
-						<Select value={providerFilter} onValueChange={setProviderFilter}>
-							<SelectTrigger className="w-[180px]">
-								<SelectValue placeholder="All providers" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="all">All providers</SelectItem>
-								{uniqueTemplateIds.map((tid) => {
-									const t = templates?.find(
-										(tmpl: AuthTemplateResponse) => tmpl.id === tid,
-									);
-									return (
-										<SelectItem key={tid} value={tid ?? ""}>
-											{t?.name ?? tid}
-										</SelectItem>
-									);
-								})}
-							</SelectContent>
-						</Select>
-						<Select value={statusFilter} onValueChange={setStatusFilter}>
-							<SelectTrigger className="w-[180px]">
-								<SelectValue placeholder="All statuses" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="all">All statuses</SelectItem>
-								<SelectItem value="ACTIVE">Active</SelectItem>
-								<SelectItem value="TOKEN_EXPIRED">Token Expired</SelectItem>
-								<SelectItem value="REFRESH_FAILED">Refresh Failed</SelectItem>
-								<SelectItem value="CREDENTIALS_INVALID">
-									Credentials Invalid
-								</SelectItem>
-								<SelectItem value="REVOKED">Revoked</SelectItem>
-								<SelectItem value="ERROR">Error</SelectItem>
-							</SelectContent>
-						</Select>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{filteredConnections && filteredConnections.length > 0 ? (
-						<div className="space-y-3">
-							{filteredConnections.map((connection) => {
-								const testResult = testResults[connection.id];
+				)}
+			</div>
 
-								return (
-									<div
-										key={connection.id}
-										className="flex items-center justify-between p-4 border rounded-lg"
-									>
-										<div className="flex items-center gap-3">
-											{getTemplateIcon(connection.templateId ?? "")}
-											<div>
-												<div className="flex items-center gap-2">
-													<span className="font-medium">
-														{connection.label ||
-															(connection.integration?.label ??
-																connection.templateName ??
-																"Connection")}
-													</span>
-													<ConnectionStatusBadge status={connection.status} />
-												</div>
-												<p className="text-sm text-muted-foreground">
-													{connection.templateName}
-													{connection.integration
-														? connection.integration.enabled
-															? " • Enabled"
-															: " • Disabled"
-														: ""}
-													{connection.lastRefreshedAt && (
-														<>
-															{" "}
-															• Last refreshed:{" "}
-															{new Date(
-																connection.lastRefreshedAt,
-															).toLocaleString()}
-														</>
-													)}
-												</p>
-												{connection.lastErrorMessage && (
-													<p className="text-xs text-destructive mt-1">
-														{connection.lastErrorMessage}
-													</p>
-												)}
-												{testResult && (
-													<p
-														className={cn(
-															"text-xs mt-1",
-															testResult.success
-																? "text-muted-foreground"
-																: "text-destructive",
-														)}
-													>
-														{testResult.success
-															? "Connection test passed"
-															: testResult.error}
-													</p>
-												)}
-											</div>
-										</div>
-										<div className="flex items-center gap-2">
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleTestConnection(connection.id)}
-												disabled={testingConnectionId === connection.id}
-											>
-												{testingConnectionId === connection.id ? (
-													<Loader2 className="h-4 w-4 animate-spin" />
-												) : (
-													<Sparkles className="h-4 w-4" />
-												)}
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleEditConnection(connection.id)}
-											>
-												<Pencil className="h-4 w-4" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => {
-													setSelectedConnectionId(connection.id);
-													setDeleteError(null);
-													setShowDeleteDialog(true);
-												}}
-											>
-												<Trash2 className="h-4 w-4 text-destructive" />
-											</Button>
-										</div>
-									</div>
-								);
-							})}
-						</div>
-					) : (
-						<EmptyState
-							icon={Link2}
-							title={
-								providerFilter !== "all" || statusFilter !== "all"
-									? "No connections match filters"
-									: "No connections yet"
-							}
-							description="Add a connection to an existing integration"
-							actions={
-								<Button onClick={() => setShowAddDialog(true)}>
-									<Plus className="h-4 w-4 mr-2" />
-									Add Connection
-								</Button>
-							}
-						/>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Dialogs */}
-			<AddConnectionDialog
+			{/* Form dialogs */}
+			<ConnectionFormDialog
 				open={showAddDialog}
 				onOpenChange={setShowAddDialog}
+				mode="create"
 			/>
 
-			<EditConnectionDialog
+			<ConnectionFormDialog
 				open={showEditDialog}
 				onOpenChange={(open) => {
 					setShowEditDialog(open);
-					if (!open) {
-						setSelectedConnectionId(null);
-						setCredentialValues({});
-						setConnectionFieldValues({});
-						setShowCredErrors(false);
-						setEditError(null);
-					}
+					if (!open) setSelectedConnection(null);
 				}}
-				template={editTemplate}
-				credentialValues={credentialValues}
-				onCredentialValuesChange={setCredentialValues}
-				connectionFieldValues={connectionFieldValues}
-				onConnectionFieldValuesChange={setConnectionFieldValues}
-				showErrors={showCredErrors}
-				error={editError}
-				onSave={handleSaveEdit}
-				onCancel={() => {
-					setShowEditDialog(false);
-					setSelectedConnectionId(null);
-				}}
-				isSaving={updateConnection.isPending}
+				mode="edit"
+				connection={selectedConnection}
 			/>
 
 			<DeleteConnectionDialog
 				open={showDeleteDialog}
 				onOpenChange={setShowDeleteDialog}
-				connectionId={selectedConnectionId}
+				connectionId={deleteTargetId}
 				error={deleteError}
 				onDelete={handleDelete}
 				onCancel={() => {
 					setShowDeleteDialog(false);
-					setSelectedConnectionId(null);
+					setDeleteTargetId(null);
 					setDeleteError(null);
 				}}
 				isDeleting={deleteConnection.isPending}

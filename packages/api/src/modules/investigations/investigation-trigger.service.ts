@@ -18,6 +18,7 @@ import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 import {
 	DEFAULT_TRIGGER_POLICY,
+	LIVE_WORKFLOW_STATUSES,
 	type TriggerPolicy,
 	TriggerPolicySchema,
 	toFiringAlert,
@@ -122,7 +123,7 @@ export class InvestigationTriggerService {
 		const existingInvestigation = await this.prisma.investigation.findFirst({
 			where: {
 				incidentId: incident.id,
-				status: { in: ["pending", "running"] },
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
 			},
 		});
 		if (existingInvestigation) {

@@ -3,24 +3,10 @@
 
 "use client";
 
-import {
-	AlertCircle,
-	ArrowRight,
-	Eye,
-	EyeOff,
-	Loader2,
-	Shield,
-} from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateOwner } from "@/lib/api/hooks";
@@ -37,7 +23,7 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 		setIsMounted(true);
 	}, []);
 
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<Error | null>(null);
 
 	// Form state
 	const [name, setName] = useState("");
@@ -62,7 +48,7 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 
 		const validationError = validateForm();
 		if (validationError) {
-			setError(validationError);
+			setError(new Error(validationError));
 			onError?.(validationError);
 			return;
 		}
@@ -77,148 +63,121 @@ export function SetupStepOwner({ onComplete, onError }: SetupStepOwnerProps) {
 		} catch (err) {
 			const message =
 				err instanceof Error ? err.message : "An unexpected error occurred";
-			setError(message);
+			setError(new Error(message));
 			onError?.(message);
 		}
 	};
 
 	return (
-		<Card>
-			<CardHeader className="text-center">
-				<div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-					<Shield className="h-8 w-8 text-primary" />
+		<div className="w-full max-w-sm" data-testid="setup-owner">
+			<h1 className="text-xl font-semibold tracking-tight">
+				Create the owner account
+			</h1>
+			<p className="mt-1 text-record text-muted-foreground">
+				The only account on this PrismaLens. Sign-up closes after it.
+			</p>
+
+			<MutationError error={error} className="mt-4" />
+
+			{/* Render form only after client mount to avoid hydration mismatch from password manager extensions */}
+			{!isMounted ? (
+				<div className="mt-5 space-y-3">
+					{[1, 2, 3, 4].map((k) => (
+						<div
+							key={k}
+							className="h-9 w-full animate-pulse rounded bg-muted"
+						/>
+					))}
 				</div>
-				<CardTitle>
-					<h2>Welcome to PrismaLens</h2>
-				</CardTitle>
-				<CardDescription>
-					Create your administrator account to get started
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				{error && (
-					<Alert variant="destructive" className="mb-4">
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>{error}</AlertDescription>
-					</Alert>
-				)}
-
-				{/* Render form only after client mount to avoid hydration mismatch from password manager extensions */}
-				{!isMounted ? (
-					<div className="space-y-4">
-						<div className="space-y-2">
-							<div className="h-4 w-16 bg-muted rounded animate-pulse" />
-							<div className="h-10 w-full bg-muted rounded animate-pulse" />
-						</div>
-						<div className="space-y-2">
-							<div className="h-4 w-24 bg-muted rounded animate-pulse" />
-							<div className="h-10 w-full bg-muted rounded animate-pulse" />
-						</div>
-						<div className="space-y-2">
-							<div className="h-4 w-20 bg-muted rounded animate-pulse" />
-							<div className="h-10 w-full bg-muted rounded animate-pulse" />
-						</div>
-						<div className="space-y-2">
-							<div className="h-4 w-32 bg-muted rounded animate-pulse" />
-							<div className="h-10 w-full bg-muted rounded animate-pulse" />
-						</div>
-						<div className="h-10 w-full bg-muted rounded animate-pulse" />
+			) : (
+				<form onSubmit={handleSubmit} className="mt-5 space-y-3">
+					<div className="space-y-1">
+						<Label htmlFor="name" className="text-meta">
+							Name <span className="text-muted-foreground">(optional)</span>
+						</Label>
+						<Input
+							id="name"
+							type="text"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="Your name"
+							className="h-9 text-record"
+						/>
 					</div>
-				) : (
-					<form onSubmit={handleSubmit} className="space-y-4">
-						<div className="space-y-2">
-							<Label htmlFor="name">
-								Name <span className="text-muted-foreground">(optional)</span>
-							</Label>
+					<div className="space-y-1">
+						<Label htmlFor="email" className="text-meta">
+							Email address
+						</Label>
+						<Input
+							id="email"
+							type="email"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							placeholder="you@example.com"
+							required
+							className="h-9 text-record"
+						/>
+					</div>
+					<div className="space-y-1">
+						<Label htmlFor="password" className="text-meta">
+							Password
+						</Label>
+						<div className="relative">
 							<Input
-								id="name"
-								type="text"
-								value={name}
-								onChange={(e) => setName(e.target.value)}
-								placeholder="Your name"
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="email">Email address</Label>
-							<Input
-								id="email"
-								type="email"
-								value={email}
-								onChange={(e) => setEmail(e.target.value)}
-								placeholder="admin@example.com"
-								required
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="password">Password</Label>
-							<div className="relative">
-								<Input
-									id="password"
-									type={showPassword ? "text" : "password"}
-									value={password}
-									onChange={(e) => setPassword(e.target.value)}
-									placeholder="At least 8 characters"
-									required
-									minLength={8}
-									className="pr-10"
-								/>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon"
-									onClick={() => setShowPassword(!showPassword)}
-									className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-									aria-label={showPassword ? "Hide password" : "Show password"}
-								>
-									{showPassword ? (
-										<EyeOff className="h-4 w-4 text-muted-foreground" />
-									) : (
-										<Eye className="h-4 w-4 text-muted-foreground" />
-									)}
-								</Button>
-							</div>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="confirmPassword">Confirm Password</Label>
-							<Input
-								id="confirmPassword"
+								id="password"
 								type={showPassword ? "text" : "password"}
-								value={confirmPassword}
-								onChange={(e) => setConfirmPassword(e.target.value)}
-								placeholder="Confirm your password"
+								value={password}
+								onChange={(e) => setPassword(e.target.value)}
+								placeholder="At least 8 characters"
 								required
+								minLength={8}
+								className="h-9 pr-9 text-record"
 							/>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => setShowPassword(!showPassword)}
+								className="absolute right-0 top-0 h-9 w-9 hover:bg-transparent"
+								aria-label={showPassword ? "Hide password" : "Show password"}
+							>
+								{showPassword ? (
+									<EyeOff className="h-4 w-4 text-muted-foreground" />
+								) : (
+									<Eye className="h-4 w-4 text-muted-foreground" />
+								)}
+							</Button>
 						</div>
-
+					</div>
+					<div className="space-y-1">
+						<Label htmlFor="confirmPassword" className="text-meta">
+							Confirm password
+						</Label>
+						<Input
+							id="confirmPassword"
+							type={showPassword ? "text" : "password"}
+							value={confirmPassword}
+							onChange={(e) => setConfirmPassword(e.target.value)}
+							placeholder="Once more"
+							required
+							className="h-9 text-record"
+						/>
+					</div>
+					<div className="pt-1">
 						<Button
 							type="submit"
-							className="w-full"
+							size="sm"
+							className="h-8"
 							disabled={createOwner.isPending}
 						>
-							{createOwner.isPending ? (
-								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									Creating account...
-								</>
-							) : (
-								<>
-									Create Account
-									<ArrowRight className="ml-2 h-4 w-4" />
-								</>
+							{createOwner.isPending && (
+								<Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
 							)}
+							Create the owner account
 						</Button>
-					</form>
-				)}
-
-				<div className="mt-6 p-4 bg-muted/50 rounded-lg">
-					<p className="text-sm text-muted-foreground">
-						This account will have full administrative access to PrismaLens.
-					</p>
-				</div>
-			</CardContent>
-		</Card>
+					</div>
+				</form>
+			)}
+		</div>
 	);
 }

@@ -130,7 +130,7 @@ export function ServiceInvestigationTab({
 					{updateService.isPending ? "Saving..." : "Save"}
 				</Button>
 				{saved && (
-					<span className="text-sm text-green-600">Saved successfully</span>
+					<span className="text-sm text-run-done">Saved successfully</span>
 				)}
 				{saveError && (
 					<span className="text-sm text-destructive">{saveError}</span>

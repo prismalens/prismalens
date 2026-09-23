@@ -6,7 +6,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { orpc } from "@/lib/api/orpc-client";
@@ -41,9 +40,46 @@ export function useTelemetrySettings() {
 }
 
 /** The one-time question on /incidents, until the owner answers (#602). */
-export function TelemetryConsent() {
+export function TelemetryConsent({
+	variant = "card",
+}: {
+	variant?: "card" | "strip";
+}) {
 	const { query, update } = useTelemetrySettings();
 	if (!query.data || query.data.decided || query.data.forcedOff) return null;
+
+	if (variant === "strip") {
+		return (
+			<div
+				className="space-y-1.5 border-t px-3 py-2 text-meta text-muted-foreground"
+				data-testid="telemetry-consent"
+			>
+				<p>Share anonymous usage counts? Never an alert, a repo or a report.</p>
+				<div className="flex items-center gap-1">
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-6 flex-1 px-2 text-meta"
+						disabled={update.isPending}
+						onClick={() => update.mutate({ enabled: false })}
+					>
+						No thanks
+					</Button>
+					<Button
+						size="sm"
+						className="h-6 flex-1 px-2 text-meta"
+						disabled={update.isPending}
+						onClick={() => update.mutate({ enabled: true })}
+					>
+						Share
+					</Button>
+				</div>
+				{update.isError && (
+					<p className="text-destructive">Could not save — try again.</p>
+				)}
+			</div>
+		);
+	}
 
 	return (
 		<div
@@ -83,61 +119,57 @@ export function TelemetrySettings() {
 	const settings = query.data;
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle className="text-base">Usage data</CardTitle>
-			</CardHeader>
-			<CardContent className="space-y-4 text-sm">
-				<p className="text-muted-foreground">{TELEMETRY_SUMMARY}</p>
-				<div className="space-y-2 text-muted-foreground">
-					<p className="font-medium text-foreground">What is sent</p>
-					<ul className="list-disc space-y-1 pl-5">
-						{TELEMETRY_SENT.map((item) => (
-							<li key={item}>{item}</li>
-						))}
-					</ul>
-				</div>
-				<p className="text-muted-foreground">{TELEMETRY_NEVER_SENT}</p>
-				<div className="space-y-2 text-muted-foreground">
-					<p className="font-medium text-foreground">
-						The install id, and your consent
-					</p>
-					<p>
-						The install id is random, but it is the same on every event this
-						install sends — which is what makes it possible to count installs
-						rather than events. That makes it pseudonymous rather than
-						anonymous, so it is treated as personal data, and your consent — the
-						checkbox below — is the only basis on which any of it is collected.
-						It is not joined to an account or a profile, and the IP address a
-						request arrives from is discarded rather than stored or resolved to
-						a location.
-					</p>
-					<p>
-						Events are kept for 12 months and then deleted. Clearing the
-						checkbox withdraws consent and stops collection from that moment. A
-						factory reset deletes the id with everything else, so a reset
-						install starts over as a new, unrelated one.
-					</p>
-				</div>
-				<div className="flex items-center gap-2">
-					<Checkbox
-						id="telemetry-enabled"
-						checked={settings?.enabled ?? false}
-						disabled={!settings || settings.forcedOff || update.isPending}
-						onCheckedChange={(checked) =>
-							update.mutate({ enabled: checked === true })
-						}
-					/>
-					<Label htmlFor="telemetry-enabled">Share anonymous usage data</Label>
-				</div>
-				{settings?.forcedOff && (
-					<p className="text-muted-foreground">
-						Off for this process: <code>PRISMALENS_TELEMETRY=off</code> or{" "}
-						<code>pl up --telemetry=off</code> is set.
-					</p>
-				)}
-				<MutationError error={update.error} />
-			</CardContent>
-		</Card>
+		<div className="rounded-lg border bg-card p-6 space-y-4 text-sm">
+			<h3 className="text-base font-semibold text-foreground">Usage data</h3>
+			<p className="text-muted-foreground">{TELEMETRY_SUMMARY}</p>
+			<div className="space-y-2 text-muted-foreground">
+				<p className="font-medium text-foreground">What is sent</p>
+				<ul className="list-disc space-y-1 pl-5">
+					{TELEMETRY_SENT.map((item) => (
+						<li key={item}>{item}</li>
+					))}
+				</ul>
+			</div>
+			<p className="text-muted-foreground">{TELEMETRY_NEVER_SENT}</p>
+			<div className="space-y-2 text-muted-foreground">
+				<p className="font-medium text-foreground">
+					The install id, and your consent
+				</p>
+				<p>
+					The install id is random, but it is the same on every event this
+					install sends — which is what makes it possible to count installs
+					rather than events. That makes it pseudonymous rather than anonymous,
+					so it is treated as personal data, and your consent — the checkbox
+					below — is the only basis on which any of it is collected. It is not
+					joined to an account or a profile, and the IP address a request
+					arrives from is discarded rather than stored or resolved to a
+					location.
+				</p>
+				<p>
+					Events are kept for 12 months and then deleted. Clearing the checkbox
+					withdraws consent and stops collection from that moment. A factory
+					reset deletes the id with everything else, so a reset install starts
+					over as a new, unrelated one.
+				</p>
+			</div>
+			<div className="flex items-center gap-2">
+				<Checkbox
+					id="telemetry-enabled"
+					checked={settings?.enabled ?? false}
+					disabled={!settings || settings.forcedOff || update.isPending}
+					onCheckedChange={(checked) =>
+						update.mutate({ enabled: checked === true })
+					}
+				/>
+				<Label htmlFor="telemetry-enabled">Share anonymous usage data</Label>
+			</div>
+			{settings?.forcedOff && (
+				<p className="text-muted-foreground">
+					Off for this process: <code>PRISMALENS_TELEMETRY=off</code> or{" "}
+					<code>pl up --telemetry=off</code> is set.
+				</p>
+			)}
+			<MutationError error={update.error} />
+		</div>
 	);
 }

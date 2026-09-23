@@ -1,12 +1,6 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Sumit Patel
-
-"use client";
-
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { PageHeader } from "@/components/layout";
 import {
 	DangerZoneSettings,
 	HarnessSettings,
@@ -14,91 +8,58 @@ import {
 	TelemetrySettings,
 } from "@/components/settings";
 import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
+import { SettingsFrame } from "@/components/settings/SettingsFrame";
 import { orpc } from "@/lib/api/orpc-client";
-import { cn } from "@/lib/utils";
-
-type SettingsTab =
-	| "harness"
-	| "integrations"
-	| "connections"
-	| "usage"
-	| "danger";
-
-const TABS: { value: SettingsTab; label: string }[] = [
-	{ value: "harness", label: "Harness" },
-	{ value: "integrations", label: "Integrations" },
-	{ value: "connections", label: "Connections" },
-	{ value: "usage", label: "Usage data" },
-	{ value: "danger", label: "Danger Zone" },
-];
 
 export const Route = createFileRoute("/_authenticated/settings/")({
-	validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
-		TABS.some((t) => t.value === search.tab)
-			? { tab: search.tab as SettingsTab }
-			: {},
 	component: SettingsPage,
 });
 
+const SECTIONS = {
+	harness: {
+		title: "Agent",
+		intro:
+			"The coding agent a run rents to read the repo and the telemetry. It signs in on its own; a key is not always needed.",
+	},
+	integrations: {
+		title: "Integrations",
+		intro:
+			"Where alerts come from, where the report goes, and which git host holds the code.",
+	},
+	connections: {
+		title: "Connections",
+		intro:
+			"The accounts and tokens behind each integration. One integration can have several.",
+	},
+	usage: {
+		title: "Usage data",
+		intro:
+			"Anonymous counts of what gets used and whether runs finish. Off until you say yes.",
+	},
+	danger: {
+		title: "Danger zone",
+		intro: "Reset the records, or everything.",
+	},
+} as const;
+
 function SettingsPage() {
-	const { tab = "harness" } = Route.useSearch();
-	const navigate = useNavigate({ from: "/settings/" });
+	const { tab = "harness" } = useSearch({ from: "/_authenticated/settings" });
 	const queryClient = useQueryClient();
 
-	// Invalidate settings-related queries when switching tabs so data is fresh
+	// Actions on other screens change what these sections show; refetch on entry.
 	useEffect(() => {
 		queryClient.invalidateQueries({ queryKey: orpc.integrations.key() });
 		queryClient.invalidateQueries({ queryKey: orpc.settings.key() });
 	}, [queryClient]);
 
+	const section = SECTIONS[tab];
 	return (
-		<div className="px-4 py-6 sm:px-0">
-			<div className="mb-6">
-				<PageHeader title="Settings" />
-			</div>
-
-			<div className="flex gap-8">
-				{/* Sidebar Navigation */}
-				<nav className="w-48 flex-shrink-0">
-					<ul className="space-y-1">
-						{/* The services registry is reached from here since the screen-survivors demotion; the top bar has no entry. */}
-						<li>
-							<button
-								type="button"
-								onClick={() => navigate({ to: "/services" })}
-								className="w-full text-left text-sm px-3 py-2 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
-							>
-								Services
-							</button>
-						</li>
-						{TABS.map((t) => (
-							<li key={t.value}>
-								<button
-									type="button"
-									onClick={() => navigate({ search: { tab: t.value } })}
-									className={cn(
-										"w-full text-left text-sm px-3 py-2 rounded-md transition-colors",
-										tab === t.value
-											? "bg-accent text-accent-foreground font-medium"
-											: "text-muted-foreground hover:text-foreground hover:bg-muted",
-									)}
-								>
-									{t.label}
-								</button>
-							</li>
-						))}
-					</ul>
-				</nav>
-
-				{/* Content */}
-				<div className="flex-1 min-w-0">
-					{tab === "harness" && <HarnessSettings />}
-					{tab === "integrations" && <IntegrationsSettings />}
-					{tab === "connections" && <ConnectionsTab />}
-					{tab === "usage" && <TelemetrySettings />}
-					{tab === "danger" && <DangerZoneSettings />}
-				</div>
-			</div>
-		</div>
+		<SettingsFrame section={tab} title={section.title} intro={section.intro}>
+			{tab === "harness" && <HarnessSettings />}
+			{tab === "integrations" && <IntegrationsSettings />}
+			{tab === "connections" && <ConnectionsTab />}
+			{tab === "usage" && <TelemetrySettings />}
+			{tab === "danger" && <DangerZoneSettings />}
+		</SettingsFrame>
 	);
 }

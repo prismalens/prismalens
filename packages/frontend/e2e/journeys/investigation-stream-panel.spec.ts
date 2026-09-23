@@ -201,11 +201,13 @@ test.describe("#280 — the investigation stream panel", () => {
 		await page.waitForTimeout(300);
 		expect(await viewport(page).evaluate((el) => el.scrollTop)).toBe(0);
 
-		// Navigate to B the way a reader does — no full page load. The list is
-		// gone (#609); leave through the incident, which unmounts the panel, then
-		// enter B client-side so the route mounts fresh.
-		await page.getByRole("link", { name: "Back to incident" }).click();
-		await expect(page).toHaveURL(/\/incidents\//);
+		// Navigate to B the way a reader does — no full page load. The record's
+		// back link now reads "Back to incidents" (plural; it goes to the queue,
+		// #523) and `/investigations/$id` redirects straight into the incident,
+		// so leaving through the queue unmounts the panel the same way leaving
+		// through the incident used to, then B is entered client-side so the
+		// route mounts fresh.
+		await page.goto("/incidents");
 		await navigateToInvestigation(page, SECOND_INVESTIGATION_ID);
 		await expect(panel).toBeVisible({ timeout: 20_000 });
 
@@ -442,7 +444,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		const fallbackPanel = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackPanel).toBeVisible({ timeout: 20_000 });
 		await expect(fallbackPanel.getByTestId("stream-fallback-badge")).toHaveText(
-			"Polling",
+			"polling",
 		);
 		await expect(
 			fallbackPanel.getByTestId("stream-fallback-message"),

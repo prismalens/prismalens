@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Mono } from "@/components/shared/Mono";
+import { StateChip } from "@/components/shared/StateChip";
+import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -34,6 +36,33 @@ interface InvestigationStreamPanelProps {
 	events: CanonicalEvent[];
 	latestText: string | null;
 	status: "idle" | "connecting" | "streaming" | "completed" | "failed";
+	/** After a run ends the ledger folds to its one-line chain; the rows are one click away. */
+	collapsible?: boolean;
+}
+
+/** The run as one line: every tool the agent called, in order, then the report. */
+export function ledgerChain(events: CanonicalEvent[]): string[] {
+	const chain: string[] = [];
+	for (const event of events) {
+		if (event.kind === "agent_step") {
+			for (const call of event.toolCalls) chain.push(call.name);
+		} else if (event.kind === "report") {
+			chain.push("report");
+		}
+	}
+	return chain;
+}
+
+function runDuration(events: CanonicalEvent[]): string | null {
+	const first = events[0];
+	const last = events[events.length - 1];
+	if (!first || !last || !("ts" in first) || !("ts" in last)) return null;
+	const ms = new Date(last.ts).getTime() - new Date(first.ts).getTime();
+	if (!Number.isFinite(ms) || ms < 0) return null;
+	const s = Math.round(ms / 1000);
+	return s < 60
+		? `${s}s`
+		: `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
 }
 
 /**
@@ -45,7 +74,9 @@ export function InvestigationStreamPanel({
 	events,
 	latestText,
 	status,
+	collapsible = false,
 }: InvestigationStreamPanelProps) {
+	const [expanded, setExpanded] = useState(false);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	// Sampled while the reader scrolls, not after new rows land: at append time
 	// the viewport's own growth is indistinguishable from a scroll-up (#280).
@@ -83,48 +114,73 @@ export function InvestigationStreamPanel({
 		[events],
 	);
 
+	const chain = useMemo(() => ledgerChain(events), [events]);
+	const duration = useMemo(() => runDuration(events), [events]);
+	const folded = collapsible && !expanded;
+
 	return (
-		<Card data-testid="investigation-stream-panel">
-			<CardHeader className="pb-3">
-				<div className="flex items-center justify-between">
-					<CardTitle className="text-base flex items-center gap-2">
-						{status === "streaming" && (
-							<Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-						)}
-						{status === "completed" && (
-							<CheckCircle className="h-4 w-4 text-green-500" />
-						)}
-						{status === "failed" && (
-							<AlertTriangle className="h-4 w-4 text-red-500" />
-						)}
-						Investigation Progress
-						{isMultiBranch && (
-							<span
-								data-testid="stream-branch-badge"
-								className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex items-center gap-1"
-							>
-								<GitBranch className="h-3 w-3" />
-								{branches.length} branches
-							</span>
-						)}
-					</CardTitle>
+		<div
+			data-testid="investigation-stream-panel"
+			data-folded={folded ? "true" : undefined}
+			className="rounded-md border"
+		>
+			<div className="flex min-h-9 items-center justify-between gap-3 border-b px-3 py-1.5">
+				<div className="flex min-w-0 items-center gap-2">
+					{status === "streaming" && (
+						<StateChip tone="active" pulse>
+							streaming
+						</StateChip>
+					)}
+					{status === "connecting" && (
+						<StateChip tone="neutral">connecting</StateChip>
+					)}
+					{status === "completed" && (
+						<StateChip tone="done">completed</StateChip>
+					)}
+					{status === "failed" && <StateChip tone="failed">failed</StateChip>}
+					{isMultiBranch && (
+						<StateChip tone="neutral" mono data-testid="stream-branch-badge">
+							<GitBranch className="h-3 w-3" />
+							{branches.length} branches
+						</StateChip>
+					)}
 					{latestText && (
-						<span className="text-sm text-muted-foreground max-w-md truncate">
+						<span className="truncate text-meta text-muted-foreground">
 							{latestText}
 						</span>
 					)}
+					{folded && chain.length > 0 && (
+						<Mono className="truncate text-meta text-muted-foreground">
+							{chain.join(" → ")}
+							{duration ? ` · ${duration}` : ""}
+						</Mono>
+					)}
 				</div>
-			</CardHeader>
+				{collapsible && (
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-6 shrink-0 px-2 text-meta"
+						onClick={() => setExpanded((v) => !v)}
+						data-testid="ledger-toggle"
+					>
+						{expanded ? "Fold" : `${events.length} events`}
+					</Button>
+				)}
+			</div>
 
-			<CardContent className="pt-0">
-				<ScrollArea className="h-48" ref={scrollRef}>
-					<div className="space-y-1 pr-4">
+			{!folded && (
+				<ScrollArea
+					className={events.length > 8 ? "h-80" : undefined}
+					ref={scrollRef}
+				>
+					<div className="space-y-0.5 px-3 py-2 pr-4">
 						{!isMultiBranch &&
 							flatRows.length === 0 &&
 							status === "connecting" && (
 								<p
 									data-testid="stream-panel-connecting"
-									className="text-sm text-muted-foreground py-4 text-center"
+									className="py-4 text-center text-record text-muted-foreground"
 								>
 									Connecting to stream...
 								</p>
@@ -143,8 +199,8 @@ export function InvestigationStreamPanel({
 						)}
 					</div>
 				</ScrollArea>
-			</CardContent>
-		</Card>
+			)}
+		</div>
 	);
 }
 
@@ -194,25 +250,35 @@ function BranchSection({ group }: { group: BranchGroup }) {
 }
 
 const ICON_MAP: Record<EventRowData["icon"], React.ReactNode> = {
-	activity: <Activity className="h-3.5 w-3.5 text-blue-500 shrink-0" />,
-	brain: <Brain className="h-3.5 w-3.5 text-purple-500 shrink-0" />,
-	tool: <Wrench className="h-3.5 w-3.5 text-blue-500 shrink-0" />,
-	lightbulb: <Lightbulb className="h-3.5 w-3.5 text-green-500 shrink-0" />,
-	warning: <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
-	check: <CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />,
+	activity: <Activity className="h-3.5 w-3.5 text-run-active shrink-0" />,
+	brain: <Brain className="h-3.5 w-3.5 text-primary shrink-0" />,
+	tool: <Wrench className="h-3.5 w-3.5 text-sev-low shrink-0" />,
+	lightbulb: <Lightbulb className="h-3.5 w-3.5 text-run-done shrink-0" />,
+	warning: <AlertTriangle className="h-3.5 w-3.5 text-stale shrink-0" />,
+	check: <CheckCircle className="h-3.5 w-3.5 text-run-done shrink-0" />,
 };
 
 function EventRow({ row }: { row: EventRowData }) {
 	return (
 		<div
 			data-testid="stream-event-row"
-			className="flex items-start gap-2 py-1 text-sm"
+			className="flex items-start gap-2 py-1 text-record"
 		>
-			{ICON_MAP[row.icon]}
+			<span className="mt-0.5">{ICON_MAP[row.icon]}</span>
 			<div className="min-w-0">
-				<span className="text-foreground">{row.message}</span>
+				<span
+					className={
+						row.icon === "tool"
+							? "font-mono text-foreground"
+							: "text-foreground"
+					}
+				>
+					{row.message}
+				</span>
 				{row.detail && (
-					<p className="text-xs text-muted-foreground truncate">{row.detail}</p>
+					<p className="truncate text-meta text-muted-foreground">
+						{row.detail}
+					</p>
 				)}
 			</div>
 		</div>

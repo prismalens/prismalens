@@ -3,13 +3,18 @@
 
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { alertsContract } from "@prismalens/contracts";
+import {
+	ALERT_ACTION_FROM,
+	alertsContract,
+	canAlertAction,
+} from "@prismalens/contracts";
 import type {
 	Alert,
 	AlertDetail,
 	AlertWithRelations,
 } from "@prismalens/contracts/schemas";
 import type { Alert as PrismaAlert } from "@prismalens/database";
+import { AlertPullService } from "./alert-pull.service.js";
 import { AlertsService } from "./alerts.service.js";
 import type { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 import { IncidentCorrelationService } from "./incident-correlation.service.js";
@@ -19,6 +24,7 @@ export class AlertsController {
 	constructor(
 		private readonly alertsService: AlertsService,
 		private readonly incidentCorrelation: IncidentCorrelationService,
+		private readonly alertPullService: AlertPullService,
 	) {}
 
 	/**
@@ -120,6 +126,7 @@ export class AlertsController {
 			// POST /alerts/:id/acknowledge - Acknowledge an alert
 			acknowledge: implement(alertsContract.acknowledge).handler(
 				async ({ input }) => {
+					await this.refuseUnless("acknowledge", input.id);
 					const alert = await this.alertsService.acknowledge(input.id);
 					if (!alert) {
 						throw new ORPCError("NOT_FOUND", {
@@ -132,6 +139,7 @@ export class AlertsController {
 
 			// POST /alerts/:id/resolve - Resolve an alert
 			resolve: implement(alertsContract.resolve).handler(async ({ input }) => {
+				await this.refuseUnless("resolve", input.id);
 				const alert = await this.alertsService.resolve(input.id);
 				if (!alert) {
 					throw new ORPCError("NOT_FOUND", {
@@ -186,6 +194,11 @@ export class AlertsController {
 				}
 				// Return void for DELETE
 			}),
+
+			// POST /alerts/pull - Pull firing alerts from Alertmanager and catch up from Prometheus
+			pull: implement(alertsContract.pull).handler(async () => {
+				return await this.alertPullService.pull();
+			}),
 		};
 	}
 
@@ -193,6 +206,21 @@ export class AlertsController {
 	 * Serialize alert for API response
 	 * Converts Date objects to ISO strings
 	 */
+	/** The action rules are the contracts package's; the UI greys the same controls. */
+	private async refuseUnless(
+		action: keyof typeof ALERT_ACTION_FROM,
+		id: string,
+	): Promise<void> {
+		const alert = await this.alertsService.findById(id);
+		if (!alert) {
+			throw new ORPCError("NOT_FOUND", { message: `Alert ${id} not found` });
+		}
+		if (canAlertAction(action, alert.status)) return;
+		throw new ORPCError("CONFLICT", {
+			message: `Cannot ${action} an alert that is ${alert.status}; allowed from ${ALERT_ACTION_FROM[action].join(", ")}`,
+		});
+	}
+
 	private serializeAlert(alert: PrismaAlert): Alert {
 		// Explicit whitelist — never spread the raw Prisma row. The `tenantId` column
 		// (ADR-0011 §6 dormant multi-tenancy hedge) and any future internal columns

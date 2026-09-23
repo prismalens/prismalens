@@ -2,6 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import {
+	ENDED_INCIDENT_STATUSES,
+	type IncidentStats,
+	incidentAttention,
+	isIncidentEnded,
+	OPEN_INCIDENT_STATUSES,
+} from "@prismalens/contracts";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -148,6 +155,7 @@ export class IncidentsService {
 	 */
 	async findAll(options?: {
 		status?: string;
+		open?: boolean;
 		severity?: string;
 		priority?: string;
 		serviceId?: string;
@@ -157,7 +165,11 @@ export class IncidentsService {
 		offset?: number;
 	}): Promise<{ data: IncidentWithRelations[]; total: number }> {
 		const where = {
-			...(options?.status && { status: options.status }),
+			...(options?.status
+				? { status: options.status }
+				: options?.open
+					? { status: { in: [...OPEN_INCIDENT_STATUSES] } }
+					: {}),
 			...(options?.severity && { severity: options.severity }),
 			...(options?.priority && { priority: options.priority }),
 			...(options?.serviceId && { serviceId: options.serviceId }),
@@ -239,10 +251,7 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
-				if (
-					(dto.status === "resolved" || dto.status === "closed") &&
-					!existing.resolvedAt
-				) {
+				if (isIncidentEnded(dto.status) && !existing.resolvedAt) {
 					updateData.resolvedAt = new Date();
 					updateData.timeToResolve = Math.floor(
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
@@ -434,6 +443,77 @@ export class IncidentsService {
 		// The fact that one was closed, with no identifier and no content (#602).
 		if (incident) await this.telemetry.capture("incident_closed", {});
 		return incident;
+	}
+
+	/**
+	 * Counts over a window, never over a page: the queue's stats and the
+	 * "needs you" numbers come from here so they agree with the rows, which
+	 * read the same `incidentAttention` predicate from the contracts.
+	 */
+	async getStats(options?: {
+		serviceId?: string;
+		fromDate?: Date;
+		toDate?: Date;
+	}): Promise<IncidentStats> {
+		const where = {
+			...(options?.serviceId && { serviceId: options.serviceId }),
+			...((options?.fromDate || options?.toDate) && {
+				triggeredAt: {
+					...(options?.fromDate && { gte: options.fromDate }),
+					...(options?.toDate && { lte: options.toDate }),
+				},
+			}),
+		};
+		const [byStatus, bySeverity, ended, candidates] = await Promise.all([
+			this.prisma.incident.groupBy({ by: ["status"], where, _count: true }),
+			this.prisma.incident.groupBy({ by: ["severity"], where, _count: true }),
+			this.prisma.incident.aggregate({
+				where: {
+					...where,
+					status: { in: [...ENDED_INCIDENT_STATUSES] },
+					timeToResolve: { not: null },
+				},
+				_avg: { timeToResolve: true },
+			}),
+			// Everything that could want a human: open, plus resolved-not-closed.
+			this.prisma.incident.findMany({
+				where: {
+					...where,
+					status: { in: [...OPEN_INCIDENT_STATUSES, "resolved"] },
+				},
+				select: {
+					status: true,
+					investigations: {
+						orderBy: { createdAt: "desc" },
+						take: 1,
+						select: { status: true },
+					},
+				},
+			}),
+		]);
+
+		const statusCounts = Object.fromEntries(
+			byStatus.map((row) => [row.status, row._count]),
+		);
+		const attention = { failed_run: 0, unacknowledged: 0, awaiting_close: 0 };
+		for (const row of candidates) {
+			const why = incidentAttention(row.status, row.investigations[0]?.status);
+			if (why) attention[why] += 1;
+		}
+
+		return {
+			total: byStatus.reduce((acc, row) => acc + row._count, 0),
+			open: OPEN_INCIDENT_STATUSES.reduce(
+				(acc, s) => acc + (statusCounts[s] ?? 0),
+				0,
+			),
+			byStatus: statusCounts,
+			bySeverity: Object.fromEntries(
+				bySeverity.map((row) => [row.severity, row._count]),
+			),
+			attention,
+			avgTimeToResolve: ended._avg.timeToResolve ?? null,
+		};
 	}
 
 	/**

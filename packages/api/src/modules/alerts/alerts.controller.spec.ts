@@ -3,6 +3,7 @@
 
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ORPCError } from "@orpc/nest";
+import { AlertPullService } from "./alert-pull.service.js";
 import { AlertsController } from "./alerts.controller.js";
 import { AlertsService } from "./alerts.service.js";
 import { IncidentCorrelationService } from "./incident-correlation.service.js";
@@ -22,6 +23,10 @@ const mockAlertsService = {
 const mockIncidentCorrelationService = {
 	correlateAlert: vi.fn(),
 	resolveIncidentIfNoFiringAlerts: vi.fn(),
+};
+
+const mockAlertPullService = {
+	pull: vi.fn(),
 };
 
 const now = new Date("2026-08-01T00:00:00.000Z");
@@ -65,6 +70,7 @@ describe("AlertsController", () => {
 			providers: [
 				{ provide: AlertsService, useValue: mockAlertsService },
 				{ provide: IncidentCorrelationService, useValue: mockIncidentCorrelationService },
+				{ provide: AlertPullService, useValue: mockAlertPullService },
 			],
 		}).compile();
 
@@ -181,6 +187,25 @@ describe("AlertsController", () => {
 				status: "triggered",
 				occurrenceCount: 1,
 			});
+		});
+	});
+
+	describe("pull (#605)", () => {
+		it("delegates to AlertPullService.pull and returns its result", async () => {
+			const pullResult = {
+				sources: 2,
+				received: 3,
+				processed: 2,
+				caughtUp: 1,
+				errors: [] as string[],
+			};
+			mockAlertPullService.pull.mockResolvedValue(pullResult);
+
+			const handlers = getHandlers();
+			const result = await handlers.pull({ input: {} } as any);
+
+			expect(mockAlertPullService.pull).toHaveBeenCalledWith();
+			expect(result).toEqual(pullResult);
 		});
 	});
 });

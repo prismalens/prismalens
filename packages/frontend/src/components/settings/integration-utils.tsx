@@ -3,9 +3,9 @@
 
 "use client";
 
-import { AlertCircle, CheckCircle, Link2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { GithubIcon } from "@/components/icons/github-icon";
-import { Badge } from "@/components/ui/badge";
+import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 
 /**
  * Shared utilities for Integrations and Connections settings tabs.
@@ -18,34 +18,25 @@ export function getTemplateIcon(templateId: string) {
 	return <Link2 className="h-5 w-5" />;
 }
 
-// Connection status badge
+// Connection status badge rendered via StateChip primitive
 export function ConnectionStatusBadge({ status }: { status: string }) {
-	switch (status) {
-		case "ACTIVE":
-			return (
-				<Badge variant="secondary">
-					<CheckCircle className="h-3 w-3 mr-1" />
-					Connected
-				</Badge>
-			);
-		case "TOKEN_EXPIRED":
-			return (
-				<Badge variant="secondary">
-					<AlertCircle className="h-3 w-3 mr-1" />
-					Token Expired
-				</Badge>
-			);
-		case "REFRESH_FAILED":
-		case "CREDENTIALS_INVALID":
-		case "REVOKED":
-		case "ERROR":
-			return (
-				<Badge variant="destructive">
-					<AlertCircle className="h-3 w-3 mr-1" />
-					{status.replace(/_/g, " ")}
-				</Badge>
-			);
-		default:
-			return <Badge variant="outline">{status}</Badge>;
+	const s = status.toUpperCase();
+	let tone: ChipTone = "neutral";
+	let label = status.replace(/_/g, " ").toLowerCase();
+
+	if (s === "ACTIVE") {
+		tone = "done";
+		label = "connected";
+	} else if (
+		s.includes("FAIL") ||
+		s === "ERROR" ||
+		s === "CREDENTIALS_INVALID" ||
+		s === "REVOKED"
+	) {
+		tone = "failed";
+	} else if (s === "PENDING" || s === "INACTIVE" || s === "TOKEN_EXPIRED") {
+		tone = "neutral";
 	}
+
+	return <StateChip tone={tone}>{label}</StateChip>;
 }

@@ -3,18 +3,8 @@
 
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { useDeleteService } from "@/lib/api/hooks";
 
 export interface DeleteServiceDialogProps {
@@ -42,39 +32,25 @@ export function DeleteServiceDialog({
 			onOpenChange(false);
 			onSuccess?.();
 		} catch (err) {
-			const message =
-				err instanceof Error ? err.message : "Failed to delete service";
-			setError(message);
+			setError(err instanceof Error ? err.message : "Failed to delete service");
 		}
 	};
 
 	return (
-		<AlertDialog open={open} onOpenChange={onOpenChange}>
-			<AlertDialogContent>
-				<AlertDialogHeader>
-					<AlertDialogTitle>Delete Service?</AlertDialogTitle>
-					<AlertDialogDescription>
-						This will permanently delete <strong>{serviceName}</strong> from the
-						service catalog. This action cannot be undone.
-					</AlertDialogDescription>
-				</AlertDialogHeader>
-				{error && (
-					<p className="text-sm text-destructive text-center">{error}</p>
-				)}
-				<AlertDialogFooter>
-					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction
-						onClick={handleDelete}
-						className="bg-destructive hover:bg-destructive/90"
-						disabled={deleteService.isPending}
-					>
-						{deleteService.isPending && (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						)}
-						Delete
-					</AlertDialogAction>
-				</AlertDialogFooter>
-			</AlertDialogContent>
-		</AlertDialog>
+		<DestructiveConfirm
+			open={open}
+			onOpenChange={onOpenChange}
+			title="Delete service?"
+			description={
+				<p>
+					This removes <strong>{serviceName}</strong> from the catalog.
+					Incidents that named it keep their record.
+				</p>
+			}
+			confirmLabel="Delete"
+			onConfirm={handleDelete}
+			isPending={deleteService.isPending}
+			error={error}
+		/>
 	);
 }

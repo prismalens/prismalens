@@ -29,11 +29,18 @@ export const harnessKeys = {
  * verdicts move with the machine, not with the app (#501).
  */
 export function useHarnesses() {
-	return useQuery(
-		orpc.settings.harnesses.getHarnesses.queryOptions({
+	return useQuery({
+		...orpc.settings.harnesses.getHarnesses.queryOptions({
 			input: {},
 		}),
-	);
+		// Several observers share this query (the settings card, the agent
+		// picker it renders once loaded, the frame's readiness line). With no
+		// data, a failed query flips back to pending on every refetch, and a
+		// mount after the error would start one: the card spins, mounts the
+		// picker, which refetches, which spins the card again, forever. The
+		// error stays until "Try again" or the settings page's own invalidate.
+		retryOnMount: false,
+	});
 }
 
 /**

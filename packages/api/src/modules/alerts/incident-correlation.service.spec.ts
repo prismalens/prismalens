@@ -252,7 +252,7 @@ describe("IncidentCorrelationService", () => {
 				expect.objectContaining({
 					where: expect.objectContaining({
 						incident: expect.objectContaining({
-							status: { notIn: ["resolved", "closed"] },
+							status: { in: ["triggered", "investigating", "identified", "monitoring"] },
 						}),
 					}),
 				}),

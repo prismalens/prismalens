@@ -7,25 +7,25 @@
  * Shows AI-generated recommendations for the incident
  */
 
-import type { RecommendationWithRelations } from "@prismalens/contracts";
+import {
+	RECOMMENDATION_STATUS_LABEL,
+	type RecommendationStatus,
+	type RecommendationWithRelations,
+} from "@prismalens/contracts";
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle, Clock, Lightbulb, Play, XCircle } from "lucide-react";
+import { Mono } from "@/components/shared/Mono";
+import { StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { recommendationPriorityTone } from "@/lib/state-tone";
 
 export interface RecommendationsListProps {
 	recommendations: RecommendationWithRelations[];
 	onComplete?: (id: string) => void;
 	onDismiss?: (id: string) => void;
 }
-
-const priorityColors: Record<string, string> = {
-	critical: "bg-red-600 text-white",
-	high: "bg-orange-500 text-white",
-	medium: "bg-yellow-500 text-black",
-	low: "bg-blue-500 text-white",
-};
 
 const categoryLabels: Record<string, string> = {
 	immediate_action: "Immediate Action",
@@ -35,12 +35,12 @@ const categoryLabels: Record<string, string> = {
 	monitoring: "Monitoring",
 };
 
-const statusConfig: Record<string, { icon: React.ReactNode; label: string }> = {
-	pending: { icon: <Clock className="h-4 w-4" />, label: "Pending" },
-	in_progress: { icon: <Play className="h-4 w-4" />, label: "In Progress" },
-	completed: { icon: <CheckCircle className="h-4 w-4" />, label: "Completed" },
-	rejected: { icon: <XCircle className="h-4 w-4" />, label: "Rejected" },
-	deferred: { icon: <Clock className="h-4 w-4" />, label: "Deferred" },
+const statusIcons: Record<string, React.ReactNode> = {
+	pending: <Clock className="h-4 w-4" />,
+	in_progress: <Play className="h-4 w-4" />,
+	completed: <CheckCircle className="h-4 w-4" />,
+	rejected: <XCircle className="h-4 w-4" />,
+	deferred: <Clock className="h-4 w-4" />,
 };
 
 export function RecommendationsList({
@@ -78,7 +78,10 @@ export function RecommendationsList({
 
 			<div className="grid gap-3">
 				{recommendations.map((rec) => {
-					const status = statusConfig[rec.status] || statusConfig.pending;
+					const icon = statusIcons[rec.status] ?? statusIcons.pending;
+					const statusLabel =
+						RECOMMENDATION_STATUS_LABEL[rec.status as RecommendationStatus] ??
+						rec.status;
 					const isPending = rec.status === "pending";
 					const isActionable = rec.actionable && isPending;
 
@@ -88,7 +91,7 @@ export function RecommendationsList({
 								<div className="flex items-start justify-between gap-4">
 									<div className="space-y-1">
 										<CardTitle className="text-base font-medium flex items-center gap-2">
-											<Lightbulb className="h-4 w-4 text-yellow-500" />
+											<Lightbulb className="h-4 w-4 text-stale" />
 											{rec.title}
 										</CardTitle>
 										{rec.description && (
@@ -98,12 +101,10 @@ export function RecommendationsList({
 										)}
 									</div>
 									<div className="flex flex-col items-end gap-1">
-										<Badge
-											className={priorityColors[rec.priority] || "bg-gray-500"}
-										>
+										<StateChip tone={recommendationPriorityTone(rec.priority)}>
 											{rec.priority.charAt(0).toUpperCase() +
 												rec.priority.slice(1)}
-										</Badge>
+										</StateChip>
 										{rec.category && (
 											<Badge variant="outline" className="text-xs">
 												{categoryLabels[rec.category] || rec.category}
@@ -116,8 +117,8 @@ export function RecommendationsList({
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-4 text-sm text-muted-foreground">
 										<span className="flex items-center gap-1">
-											{status.icon}
-											{status.label}
+											{icon}
+											{statusLabel}
 										</span>
 										{rec.estimatedEffort && (
 											<span>Effort: {rec.estimatedEffort}</span>
@@ -161,7 +162,9 @@ export function RecommendationsList({
 								{rec.implementedAt && rec.implementedBy && (
 									<div className="mt-2 text-xs text-muted-foreground">
 										Implemented by {rec.implementedBy} on{" "}
-										{new Date(rec.implementedAt).toLocaleDateString()}
+										<Mono>
+											{new Date(rec.implementedAt).toLocaleDateString()}
+										</Mono>
 									</div>
 								)}
 							</CardContent>

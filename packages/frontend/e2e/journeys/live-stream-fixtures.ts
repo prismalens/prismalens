@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type Route } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 
 /**
@@ -40,6 +40,44 @@ declare global {
 }
 
 /**
+ * A route this file rewrites one field of, `route.fetch()`-then-`fulfill()`.
+ * Dev mode double-invokes effects (React StrictMode), so `GET
+ * /api/investigations/:id` can fire twice for one navigation; the browser
+ * cancels whichever one a newer request supersedes, and reading `.json()` on
+ * that cancelled response throws `Response has been disposed` (observed
+ * 2026-09-22, `investigation-stream-panel.spec.ts`'s "renders terminal failed
+ * state..." — reproduces in the full suite, not always alone). That discarded
+ * fetch has nothing left reading it — the surviving duplicate carries the
+ * page — so this is swallowed rather than failing the test.
+ */
+function isDisposedResponse(error: unknown): boolean {
+	return error instanceof Error && /disposed/i.test(error.message);
+}
+
+/** Fetch the real response and hand it to `rewrite` for `route.fulfill()`. */
+async function rewriteJsonResponse(
+	page: Page,
+	route: Route,
+	rewrite: (body: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+	try {
+		const response = await route.fetch();
+		const body = (await response.json()) as Record<string, unknown>;
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify(rewrite(body)),
+		});
+	} catch (error) {
+		if (page.isClosed() || isDisposedResponse(error)) {
+			return;
+		}
+		await route.abort().catch(() => {});
+		throw error;
+	}
+}
+
+/**
  * Serve the seeded investigation as `running`. `isActive` is what enables the
  * stream at all; one field of the real response is rewritten, the rest is the
  * API's own payload.
@@ -50,22 +88,52 @@ export async function serveAsRunning(
 ): Promise<void> {
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${investigationId}`,
+		(route) =>
+			rewriteJsonResponse(page, route, (body) => ({
+				...body,
+				status: "running",
+			})),
+	);
+}
+
+/**
+ * Rewrite arbitrary fields of a real `GET /api/investigations/:id` response,
+ * the same one-field-rewrite technique `serveAsRunning` uses for `status`.
+ * Lets a spec put an investigation into a terminal state (`failed`,
+ * `cancelled`) that the seed data does not carry, without inventing a whole
+ * fixture investigation.
+ */
+export async function serveInvestigationAs(
+	page: Page,
+	investigationId: string,
+	overrides: Record<string, unknown>,
+): Promise<void> {
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${investigationId}`,
+		(route) =>
+			rewriteJsonResponse(page, route, (body) => ({ ...body, ...overrides })),
+	);
+}
+
+/**
+ * Fake the durable canonical event history (`GET /investigations/:id/events`)
+ * for an investigation whose events the seed never wrote — the demo seed
+ * ships completed investigations with a report but no event rows, so the
+ * ledger otherwise has nothing to unfold.
+ */
+export async function serveEventsHistory(
+	page: Page,
+	investigationId: string,
+	events: CanonicalEvent[],
+): Promise<void> {
+	await page.route(
+		(url) => url.pathname === `/api/investigations/${investigationId}/events`,
 		async (route) => {
-			try {
-				const response = await route.fetch();
-				const body = (await response.json()) as Record<string, unknown>;
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({ ...body, status: "running" }),
-				});
-			} catch (error) {
-				if (page.isClosed()) {
-					return;
-				}
-				await route.abort().catch(() => {});
-				throw error;
-			}
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ events, nextCursor: null }),
+			});
 		},
 	);
 }

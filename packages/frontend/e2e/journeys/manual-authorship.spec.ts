@@ -21,10 +21,9 @@ const NO_HARNESS_REASON =
 	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
 
 /**
- * The Investigation tab's own "start" button, scoped inside
- * `investigation-empty` — it shares an accessible name ("Investigate") with
- * the incident-detail header's button, which stays mounted once the tab is
- * switched, so an unscoped `getByRole` is a strict-mode violation.
+ * The empty state's own "start" button, scoped inside `investigation-empty` —
+ * it shares an accessible name ("Investigate") with the state band's button,
+ * so an unscoped `getByRole` is a strict-mode violation.
  */
 function tabInvestigateButton(page: Page) {
 	return page
@@ -63,7 +62,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// 1. The incidents page offers the authorship affordance.
 		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.getByTestId("create-incident-button").click();
@@ -80,27 +79,45 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
 			timeout: 15_000,
 		});
-		await expect(page.getByRole("heading", { name: title })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-state-band")
+				.getByRole("heading", { name: title }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 
 		// 3. A hand-authored incident carries no alerts, and the UI says so
 		//    rather than implying a correlation that never happened.
-		await expect(page.getByRole("tab", { name: "Alerts (0)" })).toBeVisible();
+		await page.getByTestId("surface-alerts").click();
+		const alertsPane = page.getByTestId("surface-pane-alerts");
+		await expect(alertsPane).toBeVisible();
+		await expect(alertsPane).toContainText(
+			"No alerts are correlated to this incident yet",
+		);
+
+		// Author a timeline note via the composer
+		const note = "Authored by hand from the composer";
+		await page.getByTestId("composer-input").fill(note);
+		await page.getByTestId("composer-input").press("Enter");
+		await page.getByTestId("composer-input").blur();
+
+		// Open timeline surface ('t') before asserting the note
+		await page.keyboard.press("t");
+		await expect(page.getByTestId("surface-pane-timeline")).toContainText(note);
 
 		// 4. Start the investigation — incidents.investigate must accept an
 		//    incident that has zero alerts.
-		await page.getByRole("tab", { name: "Investigation" }).click();
 		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
 		await tabInvestigateButton(page).click();
 
 		// 5. An investigation exists and the app stays on the incident, now
-		//    pointed at it — the investigation tab carries `?investigation=<id>`
+		//    pointed at it — the incident URL carries `?investigation=<id>`
 		//    rather than navigating away to a separate /investigations/:id route.
 		await expect(page).toHaveURL(
-			/\/incidents\/[0-9a-f-]{36}\?tab=investigation&investigation=[0-9a-f-]{36}$/,
+			/\/incidents\/[0-9a-f-]{36}\?investigation=[0-9a-f-]{36}$/,
 			{ timeout: 20_000 },
 		);
 	});
@@ -145,7 +162,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/light/);
-		await page.getByRole("tab", { name: "Investigation" }).click();
 
 		// The client's own gate is open — this is the surface #531 fixes: a
 		// server refusal the client didn't anticipate must not be a silent no-op.
@@ -169,7 +185,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
-		await page.getByRole("tab", { name: "Investigation" }).click();
 		await expect(tabInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
@@ -291,20 +306,17 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		const incident: { id: string } = await created.json();
 
 		await page.goto(`/incidents/${incident.id}`);
-		await page.getByRole("tab", { name: "Investigation" }).click();
 
 		// Both affordances for the same procedure must agree that it is blocked,
 		// and the gate's own words say why (#521).
 		await expect(tabInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: "Investigate", exact: true }).first(),
-		).toBeDisabled();
+		await expect(page.getByTestId("band-investigate")).toBeDisabled();
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {
 		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.getByTestId("create-incident-button").click();

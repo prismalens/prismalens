@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AlertStatus, Severity } from "@prismalens/contracts";
+import {
+	ALERT_STATUS_LABEL,
+	type AlertStatus,
+	AlertStatusSchema,
+	enumOptions,
+	SEVERITY_LABEL,
+	type Severity,
+	SeveritySchema,
+} from "@prismalens/contracts";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,20 +30,12 @@ export interface AlertFiltersProps {
 
 const statusOptions: { value: AlertStatus | "all"; label: string }[] = [
 	{ value: "all", label: "All Statuses" },
-	{ value: "triggered", label: "Triggered" },
-	{ value: "acknowledged", label: "Acknowledged" },
-	{ value: "correlated", label: "Correlated" },
-	{ value: "resolved", label: "Resolved" },
-	{ value: "suppressed", label: "Suppressed" },
+	...enumOptions(AlertStatusSchema, ALERT_STATUS_LABEL),
 ];
 
 const severityOptions: { value: Severity | "all"; label: string }[] = [
 	{ value: "all", label: "All Severities" },
-	{ value: "critical", label: "Critical" },
-	{ value: "high", label: "High" },
-	{ value: "medium", label: "Medium" },
-	{ value: "low", label: "Low" },
-	{ value: "info", label: "Info" },
+	...enumOptions(SeveritySchema, SEVERITY_LABEL),
 ];
 
 export function AlertFilters({

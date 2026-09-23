@@ -6,7 +6,9 @@ import { expect, type Page, test } from "@playwright/test";
 /**
  * #520 part B — Incidents list investigate button gating & refusal handling.
  *
- * Covers the incidents-list Investigate button:
+ * Covers the incident record's state-band Investigate action, reached by
+ * opening a row (#523 moved the affordance off the list itself and onto the
+ * band):
  * - Disabled with reason tooltip when no provider or harness is usable.
  * - Enabled when a usable provider or harness is available.
  * - Handles HTTP 412 server refusal by displaying the refusal reason in a toast.
@@ -133,50 +135,59 @@ async function serveRunnableLlmAndHarnesses(page: Page) {
 	});
 }
 
-test.describe("#520 part B — incidents list investigate gate", () => {
-	test("incidents-list investigate button is disabled with visible reason when no harness or provider is usable", async ({
+async function createIncident(page: Page, title: string): Promise<string> {
+	const created = await page.request.post("/api/incidents", {
+		data: { title },
+	});
+	expect(created.ok()).toBeTruthy();
+	const incident: { id: string } = await created.json();
+	return incident.id;
+}
+
+/** The band's primary action, and its tooltip trigger wrapper. */
+function bandInvestigate(page: Page) {
+	return page.getByTestId("band-investigate");
+}
+function bandInvestigateTrigger(page: Page) {
+	return page.getByTestId("band-investigate-trigger");
+}
+
+test.describe("#520 part B — incident record investigate gate", () => {
+	test("band investigate is disabled with visible reason when no harness or provider is usable", async ({
 		page,
 	}) => {
 		await serveUnusableLlmAndHarnesses(page);
+		const id = await createIncident(page, `Gate disabled ${Date.now()}`);
 
-		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		const investigateBtn = page
-			.getByTestId("incident-investigate-button")
-			.first();
+		const investigateBtn = bandInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeDisabled();
 
 		// Reason is visible on screen on hover / focus
-		const trigger = page
-			.getByTestId("incident-investigate-trigger")
-			.first();
+		const trigger = bandInvestigateTrigger(page);
 		await trigger.hover();
 		await expect(
-			page
-				.getByText(
-					UNUSABLE_SELECTION_REASON,
-				)
-				.first(),
+			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
 	});
 
-	test("incidents-list investigate button is enabled when a harness or provider is usable", async ({
+	test("band investigate is enabled when a harness or provider is usable", async ({
 		page,
 	}) => {
 		await serveRunnableLlmAndHarnesses(page);
+		const id = await createIncident(page, `Gate enabled ${Date.now()}`);
 
-		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		const investigateBtn = page
-			.getByTestId("incident-investigate-button")
-			.first();
+		const investigateBtn = bandInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeEnabled();
 	});
@@ -189,6 +200,7 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 
 		// Set client view as runnable so the button can be clicked
 		await serveRunnableLlmAndHarnesses(page);
+		const id = await createIncident(page, `Gate refusal ${Date.now()}`);
 
 		// Server returns 412 refusal (Part A wire protocol)
 		await page.route("**/api/incidents/*/investigate", async (route) => {
@@ -210,14 +222,12 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		const investigateBtn = page
-			.getByTestId("incident-investigate-button")
-			.first();
+		const investigateBtn = bandInvestigate(page);
 		await expect(investigateBtn).toBeEnabled();
 		await investigateBtn.click();
 
@@ -244,29 +254,25 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 		// 1. Default (light): disabled button with reason tooltip visible
 		await page.emulateMedia({ colorScheme: "light" });
 		await serveUnusableLlmAndHarnesses(page);
-		await page.goto("/incidents");
+		const defaultId = await createIncident(
+			page,
+			`Gate evidence default ${Date.now()}`,
+		);
+		await page.goto(`/incidents/${defaultId}`);
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/light/);
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
-		const defaultBtn = page
-			.getByTestId("incident-investigate-button")
-			.first();
+		const defaultBtn = bandInvestigate(page);
 		await expect(defaultBtn).toBeVisible({ timeout: 15_000 });
-		const defaultTrigger = page
-			.getByTestId("incident-investigate-trigger")
-			.first();
+		const defaultTrigger = bandInvestigateTrigger(page);
 		await defaultTrigger.hover();
 		await expect(
-			page
-				.getByText(
-					UNUSABLE_SELECTION_REASON,
-				)
-				.first(),
+			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
 		await shot("incidents-list-investigate-default");
@@ -278,21 +284,15 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible({
+		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
-		const darkBtn = page.getByTestId("incident-investigate-button").first();
+		const darkBtn = bandInvestigate(page);
 		await expect(darkBtn).toBeVisible({ timeout: 15_000 });
-		const darkTrigger = page
-			.getByTestId("incident-investigate-trigger")
-			.first();
+		const darkTrigger = bandInvestigateTrigger(page);
 		await darkTrigger.hover();
 		await expect(
-			page
-				.getByText(
-					UNUSABLE_SELECTION_REASON,
-				)
-				.first(),
+			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
 		await shot("incidents-list-investigate-dark");
@@ -306,6 +306,10 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 		});
 		await page.reload();
 		await serveRunnableLlmAndHarnesses(page);
+		const errorId = await createIncident(
+			page,
+			`Gate evidence error ${Date.now()}`,
+		);
 		await page.route("**/api/incidents/*/investigate", async (route) => {
 			if (route.request().method() === "POST") {
 				await route.fulfill({
@@ -324,9 +328,9 @@ test.describe("#520 part B — incidents list investigate gate", () => {
 			}
 			await route.fallback();
 		});
-		await page.goto("/incidents");
+		await page.goto(`/incidents/${errorId}`);
 		await expect(page.locator("html")).toHaveClass(/light/);
-		const errorBtn = page.getByTestId("incident-investigate-button").first();
+		const errorBtn = bandInvestigate(page);
 		await expect(errorBtn).toBeEnabled({ timeout: 15_000 });
 		await errorBtn.click();
 		await expect(

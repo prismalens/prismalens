@@ -3,7 +3,15 @@
 
 "use client";
 
-import type { Priority, Severity } from "@prismalens/contracts";
+import {
+	enumOptions,
+	PRIORITY_LABEL,
+	type Priority,
+	PrioritySchema,
+	SEVERITY_LABEL,
+	type Severity,
+	SeveritySchema,
+} from "@prismalens/contracts";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,21 +42,9 @@ export interface CreateIncidentDialogProps {
 	onCreated?: (incidentId: string) => void;
 }
 
-const SEVERITIES: { value: Severity; label: string }[] = [
-	{ value: "critical", label: "Critical" },
-	{ value: "high", label: "High" },
-	{ value: "medium", label: "Medium" },
-	{ value: "low", label: "Low" },
-	{ value: "info", label: "Info" },
-];
+const SEVERITIES = enumOptions(SeveritySchema, SEVERITY_LABEL);
 
-const PRIORITIES: { value: Priority; label: string }[] = [
-	{ value: "p1", label: "P1" },
-	{ value: "p2", label: "P2" },
-	{ value: "p3", label: "P3" },
-	{ value: "p4", label: "P4" },
-	{ value: "p5", label: "P5" },
-];
+const PRIORITIES = enumOptions(PrioritySchema, PRIORITY_LABEL);
 
 /** Select forbids an empty-string item value, so "no service" needs a sentinel. */
 const NO_SERVICE = "none";

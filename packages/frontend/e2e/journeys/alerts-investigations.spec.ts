@@ -18,9 +18,12 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 3. Open culprit investigation (d0111111) and verify culprit fields on Analysis tab
+		// 3. Open culprit investigation (d0111111) and verify culprit fields on
+		//    the record's Report section (#523 — the route redirects to the
+		//    incident record, and the section is `#report`, not a standalone
+		//    "Root Cause Analysis" heading).
 		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
@@ -38,7 +41,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		//    no service, change ref, or mechanism is invented (culprit: null
 		//    in the seed, so AnalysisTab must render no Culprit section at all).
 		await page.goto("/investigations/d0222222-2222-4222-8222-222222222222");
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
@@ -71,17 +74,17 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
 
-		const rows = page.locator("table tbody tr");
+		const rows = page.getByTestId("alert-row-link");
 		await expect(rows.first()).toBeVisible({ timeout: 15_000 });
 		const rowCount = await rows.count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThan(60); // fewer than the full 60-alert seed
-		// An unmapped alert renders no "INC-" incident link (AlertsTable).
+		// An unmapped alert renders no "INC-" incident link.
 		await expect(page.getByText(/^INC-/)).toHaveCount(0);
 
 		// 2. Switching tabs updates the URL and the result set.
 		await page.getByRole("tab", { name: "All Alerts" }).click();
-		await expect(page).toHaveURL(/tab=all/);
+		await expect(page).not.toHaveURL(/tab=unmapped/);
 		await expect(page.getByTestId("alerts-total-count")).toHaveText("60", {
 			timeout: 15_000,
 		});
@@ -163,7 +166,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByText("Acknowledged Alert Without Incident"),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("table tbody tr")).toHaveCount(2);
+		await expect(page.getByTestId("alert-row-link")).toHaveCount(2);
 
 		expect(requested.some((search) => search.includes("unassigned=true"))).toBe(
 			true,
@@ -215,7 +218,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("table tbody tr")).toHaveCount(
+		await expect(page.getByTestId("alert-row-link")).toHaveCount(
 			unassignedRows.length,
 		);
 		await expect(page.getByText("Unassigned Alert 1")).toBeVisible();
@@ -241,7 +244,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("table tbody tr").first()).toBeVisible({
+		await expect(page.getByTestId("alert-row-link").first()).toBeVisible({
 			timeout: 15_000,
 		});
 
@@ -295,7 +298,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
-		await expect(page.getByText("Root Cause Analysis")).toBeVisible({
+		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
 		await setTheme("light");
@@ -312,5 +315,152 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			path: `${SHOTS}/investigation-detail-dark.png`,
 			fullPage: true,
 		});
+	});
+
+	/**
+	 * #605 — the "Pull from Alertmanager" button on /alerts. The pull itself
+	 * is server-side (AlertPullService); the button only starts it and shows
+	 * the result as a toast. Both branches of that toast are asserted here.
+	 */
+	test("pull button reports sources/received/processed/caughtUp counts in a toast", async ({
+		page,
+	}) => {
+		await page.route(
+			(url) => url.pathname === "/api/alerts/pull",
+			async (route) => {
+				if (route.request().method() !== "POST") {
+					await route.fallback();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						sources: 1,
+						received: 2,
+						processed: 2,
+						caughtUp: 0,
+						errors: [],
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.getByTestId("alerts-pull").click();
+
+		await expect(
+			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.unroute("**/api/alerts/pull");
+	});
+
+	test("pull button reports no configured connection when sources is 0", async ({
+		page,
+	}) => {
+		await page.route(
+			(url) => url.pathname === "/api/alerts/pull",
+			async (route) => {
+				if (route.request().method() !== "POST") {
+					await route.fallback();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						sources: 0,
+						received: 0,
+						processed: 0,
+						caughtUp: 0,
+						errors: [],
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.getByTestId("alerts-pull").click();
+
+		await expect(
+			page.getByText("No Alertmanager or Prometheus connection is configured", {
+				exact: true,
+			}),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.getByText("Add a connection under Settings → Integrations.", {
+				exact: true,
+			}),
+		).toBeVisible({ timeout: 15_000 });
+
+		await page.unroute("**/api/alerts/pull");
+	});
+
+	test("design evidence: alerts pull toast in default and dark themes", async ({
+		page,
+	}) => {
+		const shot = (name: string) =>
+			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+
+		const setTheme = async (theme: "light" | "dark") => {
+			await page.evaluate((value) => {
+				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
+			}, theme);
+			await page.reload();
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+		};
+
+		await page.route(
+			(url) => url.pathname === "/api/alerts/pull",
+			async (route) => {
+				if (route.request().method() !== "POST") {
+					await route.fallback();
+					return;
+				}
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						sources: 1,
+						received: 2,
+						processed: 2,
+						caughtUp: 0,
+						errors: [],
+					}),
+				});
+			},
+		);
+
+		await page.goto("/alerts");
+		await expect(
+			page.getByRole("heading", { name: "Alerts" }),
+		).toBeVisible({ timeout: 15_000 });
+
+		await setTheme("light");
+		await page.getByTestId("alerts-pull").click();
+		await expect(
+			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-pull-default");
+
+		await setTheme("dark");
+		await page.getByTestId("alerts-pull").click();
+		await expect(
+			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
+		await shot("alerts-pull-dark");
+
+		await page.unroute("**/api/alerts/pull");
 	});
 });
