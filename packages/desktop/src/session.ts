@@ -47,7 +47,7 @@ export async function operatorToken(deps: SessionDeps): Promise<string> {
 	const res = await fetchImpl(`${deps.baseUrl}/api/pairing/redeem`, {
 		method: "POST",
 		headers: { "content-type": "application/json", origin: deps.baseUrl },
-		body: JSON.stringify({ token: link, name: "PrismaLens app" }),
+		body: JSON.stringify({ token: link }),
 	});
 	const token = deviceTokenFrom(res.headers.getSetCookie());
 	if (!res.ok || !token) {

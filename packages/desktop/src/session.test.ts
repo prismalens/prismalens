@@ -75,7 +75,7 @@ describe("operatorToken", () => {
 				`${baseUrl}/api/pairing/redeem`,
 				expect.objectContaining({
 					method: "POST",
-					body: JSON.stringify({ token: "link", name: "PrismaLens app" }),
+					body: JSON.stringify({ token: "link" }),
 				}),
 			);
 		}
