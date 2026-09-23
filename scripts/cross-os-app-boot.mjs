@@ -265,8 +265,6 @@ const env = Object.fromEntries(
 );
 Object.assign(env, {
 	CI: process.env.CI ?? "true",
-	// The no-cookie whoami check expects null, which only a server placement gives.
-	PRISMALENS_PLACEMENT: "server",
 	PRISMALENS_WORKSPACE_DIR: workspace,
 	PRISMALENS_HOST: "127.0.0.1",
 	PRISMALENS_PORT: String(port),

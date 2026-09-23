@@ -5,9 +5,9 @@
  * Authenticated Layout Route
  *
  * Pathless layout route that protects all child routes: the browser must be
- * the operator (`operator.whoami`: the host itself by the loopback rule, or a
- * paired device). Anyone else lands on /pair, which explains where a link
- * comes from. There is no account (ADR 0001 §2).
+ * a paired device (`operator.whoami`); the host's own browser pairs through
+ * the startup link `pl up` prints (ADR 0004 §8). Anyone else lands on /pair,
+ * which explains where a link comes from. There is no account (ADR 0001 §2).
  *
  * SSR is disabled because the check needs the browser's cookies.
  */

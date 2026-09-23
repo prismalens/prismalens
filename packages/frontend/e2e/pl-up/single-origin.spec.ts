@@ -6,15 +6,20 @@
  * the packed tarball installed into a throwaway prefix — one process, one port,
  * an empty workspace.
  *
- * They are serial, and they assert nothing about whether an owner exists: the
- * There is no first-run wizard and no account: opening the app on the host is
- * being the operator (ADR 0001 §2, 0004 §8).
- * account. That keeps the two files order-independent.
+ * They are serial. There is no first-run wizard and no account: the host's
+ * browser pairs like any other device, through a link that carries the
+ * operator's scopes (ADR 0001 §2, 0004 §8). The first test pairs and saves the
+ * cookie; the rest start from it.
  */
 
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
+
+const prefix = process.env.PL_UP_PREFIX ?? "";
+const PAIRED_STATE = join(prefix, "paired-state.json");
 
 test("first run: a fresh artifact serves the SPA from the same origin as its API", async ({
 	page,
@@ -29,13 +34,29 @@ test("first run: a fresh artifact serves the SPA from the same origin as its API
 	// A prerendered shell hydrating into the router — no SSR, no server functions.
 	await expect(page.locator("html")).toHaveAttribute("class", /dark|light/);
 
-	// The root is guarded; on loopback the browser is the operator, so the guard
-	// resolves in the browser and lands on the incidents list. That proves the
-	// bundle loaded and reached the API on this same origin; a blank page proves
-	// it did not.
+	// The root is guarded and this browser holds no device cookie, so the guard
+	// resolves in the browser and sends it to /pair. That proves the bundle
+	// loaded and reached the API on this same origin; a blank page proves it
+	// did not. Being on the host grants nothing (ADR 0004 §8).
+	await page.waitForURL(/\/pair/, { timeout: 30_000 });
+	await expect(page.getByText("Nothing to pair")).toBeVisible();
+
+	// The operator link, redeemed through the page, lands on the incidents list.
+	const out = execFileSync(
+		join(prefix, "node_modules", ".bin", "pl"),
+		["pair", "--operator", "--workspace", join(prefix, "workspace")],
+		{ encoding: "utf8" },
+	);
+	const token = out.match(/\/pair#([^\s#]+)/)?.[1];
+	expect(token, `no pairing link in:\n${out}`).toBeTruthy();
+	await page.goto(`/pair#${token}`);
+	await page.getByRole("button", { name: "Pair" }).click();
 	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
-	await expect(page.locator("body")).not.toBeEmpty();
+	await page.context().storageState({ path: PAIRED_STATE });
 });
+
+test.describe("paired", () => {
+	test.use({ storageState: PAIRED_STATE });
 
 test("read journey: a deep client route is served by the SPA fallback, and its data comes from the same origin", async ({
 	page,
@@ -95,4 +116,5 @@ test("error state: a route the API answers with a 404 does not become the SPA sh
 
 	const api = await page.request.get("/api/also-not-a-route");
 	expect(api.status()).toBe(404);
+});
 });

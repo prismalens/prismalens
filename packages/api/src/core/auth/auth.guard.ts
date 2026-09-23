@@ -4,9 +4,9 @@
 /**
  * Auth Guard
  *
- * Global NestJS guard. A request is the operator when it comes from the host
- * itself (the loopback rule, ADR 0004 §8) or from a paired device. Respects
- * the @Public() decorator to skip authentication.
+ * Global NestJS guard. A request is the operator when it carries a paired
+ * device's token (ADR 0004 §8). Respects the @Public() decorator to skip
+ * authentication.
  */
 
 import {

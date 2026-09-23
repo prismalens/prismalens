@@ -33,6 +33,11 @@ export default defineCommand({
 			description:
 				"A name for the device, shown in Settings until it sends its own",
 		},
+		operator: {
+			type: "boolean",
+			description:
+				"A link for this machine's own browser: it may also pair and revoke devices",
+		},
 	},
 	async run({ args }) {
 		if (args.workspace) {
@@ -55,17 +60,27 @@ export default defineCommand({
 			lock.port,
 		);
 
-		const { buildPairingUrl, createPairingLinkInWorkspace, WorkspaceError } =
-			await import("@prismalens/auth");
+		const {
+			buildPairingUrl,
+			createPairingLinkInWorkspace,
+			OPERATOR_SCOPES,
+			STARTUP_LINK_LABEL,
+			WorkspaceError,
+		} = await import("@prismalens/auth");
 		try {
 			const link = await createPairingLinkInWorkspace(workspaceDir, {
-				label: args.label ? String(args.label) : undefined,
+				label: args.operator
+					? STARTUP_LINK_LABEL
+					: args.label
+						? String(args.label)
+						: undefined,
+				scopes: args.operator ? OPERATOR_SCOPES : undefined,
 			});
 			consola.log(`\n  ${buildPairingUrl(origin, link.token)}\n`);
 			consola.info(
-				`Open it on the other device within 15 minutes. It works once; treat it as a password.`,
+				`Open it ${args.operator ? "in this machine's browser" : "on the other device"} within 15 minutes. It works once; treat it as a password.`,
 			);
-			if (loopback) {
+			if (loopback && !args.operator) {
 				consola.warn(
 					"This address reaches only this machine. Pass --address with an address the other device can reach (LAN IP, tailnet name).",
 				);

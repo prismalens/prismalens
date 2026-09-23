@@ -5,10 +5,11 @@
  * @prismalens/auth
  *
  * Device pairing for a single-operator instance (ADR 0004 §8). There is no
- * account: the host is the operator, other devices pair.
+ * account: every browser pairs, the host's own through the startup link.
  */
 
 export {
+	ACCESS_SCOPE,
 	authenticateDevice,
 	buildPairingUrl,
 	type CreatedPairingLink,
@@ -18,6 +19,7 @@ export {
 	type DeviceScope,
 	generateToken,
 	hashToken,
+	OPERATOR_SCOPES,
 	PAIRING_LINK_TTL_MS,
 	PAIRING_PATH,
 	PairingError,
@@ -27,8 +29,10 @@ export {
 	prismaPairingStore,
 	type RedeemedDevice,
 	redeemPairingLink,
+	STARTUP_LINK_LABEL,
 } from "./pairing.js";
 export {
 	createPairingLinkInWorkspace,
+	createStartupLinkInWorkspace,
 	WorkspaceError,
 } from "./workspace.js";

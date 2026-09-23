@@ -26,6 +26,19 @@ export const DEVICE_SCOPES = [
 ] as const;
 export type DeviceScope = (typeof DEVICE_SCOPES)[number];
 
+/** Manages who else may pair. */
+export const ACCESS_SCOPE = "admin:access";
+
+/**
+ * The host's own session: a device's scopes plus managing pairing. Only a
+ * credential that already holds the workspace mints a link with these: the
+ * startup link `pl up` prints, and the Electron launcher's.
+ */
+export const OPERATOR_SCOPES = [...DEVICE_SCOPES, ACCESS_SCOPE] as const;
+
+/** The name a startup link gives the device that redeems it. */
+export const STARTUP_LINK_LABEL = "This machine";
+
 export const PAIRING_LINK_TTL_MS = 15 * 60 * 1000;
 
 /** The path the link opens; the SPA reads the token from the fragment, which never reaches a server log. */
@@ -46,6 +59,7 @@ export class PairingError extends Error {
 export interface PairingLinkRecord {
 	id: string;
 	label: string | null;
+	scopes: string;
 	expiresAt: Date;
 	usedAt: Date | null;
 }
@@ -63,6 +77,7 @@ export interface PairingStore {
 	createLink(input: {
 		tokenHash: string;
 		label: string | null;
+		scopes: string;
 		expiresAt: Date;
 	}): Promise<PairingLinkRecord>;
 	findLinkByHash(tokenHash: string): Promise<PairingLinkRecord | null>;
@@ -108,13 +123,20 @@ export interface CreatedPairingLink {
 
 export async function createPairingLink(
 	store: PairingStore,
-	input: { label?: string; ttlMs?: number; now?: Date } = {},
+	input: {
+		label?: string;
+		/** What the redeemed device may do; a paired device's by default. */
+		scopes?: readonly string[];
+		ttlMs?: number;
+		now?: Date;
+	} = {},
 ): Promise<CreatedPairingLink> {
 	const token = generateToken();
 	const now = input.now ?? new Date();
 	const link = await store.createLink({
 		tokenHash: hashToken(token),
 		label: input.label?.trim() || null,
+		scopes: JSON.stringify(input.scopes ?? DEVICE_SCOPES),
 		expiresAt: new Date(now.getTime() + (input.ttlMs ?? PAIRING_LINK_TTL_MS)),
 	});
 	return { id: link.id, token, expiresAt: link.expiresAt };
@@ -152,7 +174,7 @@ export async function redeemPairingLink(
 		linkId: link.id,
 		tokenHash: hashToken(deviceToken),
 		name: input.name.trim() || link.label || "Paired device",
-		scopes: [...DEVICE_SCOPES],
+		scopes: parseScopes(link.scopes),
 		userAgent: input.userAgent ?? null,
 	});
 	return { token: deviceToken, device };
@@ -274,7 +296,12 @@ interface DeviceRow {
 interface PrismaPairingClient {
 	pairingLink: {
 		create(args: {
-			data: { tokenHash: string; label: string | null; expiresAt: Date };
+			data: {
+				tokenHash: string;
+				label: string | null;
+				scopes: string;
+				expiresAt: Date;
+			};
 		}): Promise<PairingLinkRecord>;
 		findUnique(args: {
 			where: { tokenHash: string };

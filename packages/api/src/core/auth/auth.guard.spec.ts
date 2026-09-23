@@ -53,16 +53,6 @@ describe("AuthGuard", () => {
 		expect(mockOperator.resolve).not.toHaveBeenCalled();
 	});
 
-	it('resolver returns {via:"loopback"} -> true, request.operator set', async () => {
-		mockReflector.getAllAndOverride.mockReturnValue(false);
-		mockOperator.resolve.mockResolvedValue({ via: "loopback" });
-
-		const result = await guard.canActivate(mockContext);
-
-		expect(result).toBe(true);
-		expect(request.operator).toEqual({ via: "loopback" });
-	});
-
 	it('resolver returns {via:"device", device} -> true, request.operator set', async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
 		const device = {

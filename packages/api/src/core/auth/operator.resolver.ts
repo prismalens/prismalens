@@ -5,8 +5,9 @@
  * Who is making this request, and why they count as the operator.
  *
  * One answer for the guard and for `operator.whoami`, so the frontend gate and
- * the API agree. Order: a paired device's token, then the loopback rule. There
- * is no account (ADR 0001 §2): the host is the operator, other devices pair.
+ * the API agree. There is no account (ADR 0001 §2) and no address grants
+ * anything (ADR 0004 §8): the caller is a paired device or nobody. The host's
+ * own browser is a device too, paired through the startup link `pl up` prints.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -15,18 +16,15 @@ import {
 	type DeviceRecord,
 	prismaPairingStore,
 } from "@prismalens/auth";
-import { resolvePlacement } from "@prismalens/config/harness";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { readDeviceToken } from "./device-cookie.js";
-import { isLocalOperatorRequest } from "./local-operator.js";
 
-export type OperatorVia = "loopback" | "device";
+export type OperatorVia = "device";
 
 export interface Operator {
 	via: OperatorVia;
-	/** Present when `via` is `device`. */
-	device?: DeviceRecord;
+	device: DeviceRecord;
 }
 
 @Injectable()
@@ -35,19 +33,11 @@ export class OperatorResolver {
 
 	async resolve(request: Request): Promise<Operator | null> {
 		const deviceToken = readDeviceToken(request);
-		if (deviceToken) {
-			const device = await authenticateDevice(
-				prismaPairingStore(this.prisma),
-				deviceToken,
-			);
-			if (device) return { via: "device", device };
-		}
-
-		const local = isLocalOperatorRequest({
-			remoteAddress: request.socket?.remoteAddress,
-			headers: request.headers,
-			placement: resolvePlacement(),
-		});
-		return local ? { via: "loopback" } : null;
+		if (!deviceToken) return null;
+		const device = await authenticateDevice(
+			prismaPairingStore(this.prisma),
+			deviceToken,
+		);
+		return device ? { via: "device", device } : null;
 	}
 }

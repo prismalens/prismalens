@@ -13,6 +13,7 @@ import { Controller, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
+	ACCESS_SCOPE,
 	buildPairingUrl,
 	createPairingLink,
 	PairingError,
@@ -140,9 +141,13 @@ export class PairingRedeemController {
 	}
 }
 
-/** A paired device may use the instance; it may not manage who else can. */
+/**
+ * A paired device may use the instance; only the host's own session, which
+ * holds `admin:access`, manages who else can. A link minted here delegates a
+ * device's scopes, never the access scope.
+ */
 function operatorOnly(request: Request): void {
-	if (request.operator?.via === "device") {
+	if (!request.operator?.device.scopes.includes(ACCESS_SCOPE)) {
 		throw new ORPCError("FORBIDDEN", {
 			message: "Pairing is managed from the host, not from a paired device.",
 		});

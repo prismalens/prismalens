@@ -4,6 +4,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	browserCommand,
 	displayUrl,
 	healthUrl,
 	readTelemetryState,
@@ -165,5 +166,29 @@ describe("readTelemetryState (#602)", () => {
 		expect(TELEMETRY_CONSENT_NOTICE).toContain("Settings");
 		expect(TELEMETRY_CONSENT_NOTICE).toContain("nothing is sent");
 		expect(TELEMETRY_CONSENT_NOTICE).not.toMatch(/\[y\/n\]|\?$/);
+	});
+});
+
+describe("browserCommand", () => {
+	const url = "http://localhost:3001/pair#t0ken";
+
+	it("opens with the platform's own opener", () => {
+		expect(browserCommand("darwin", {}, url)).toEqual({
+			file: "open",
+			args: [url],
+		});
+		expect(browserCommand("win32", {}, url)).toEqual({
+			file: "cmd",
+			args: ["/c", "start", '""', url],
+		});
+		expect(browserCommand("linux", { DISPLAY: ":0" }, url)).toEqual({
+			file: "xdg-open",
+			args: [url],
+		});
+	});
+
+	it("opens nothing on CI or on Linux with no display", () => {
+		expect(browserCommand("darwin", { CI: "true" }, url)).toBeNull();
+		expect(browserCommand("linux", {}, url)).toBeNull();
 	});
 });
