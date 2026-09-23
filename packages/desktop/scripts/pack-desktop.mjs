@@ -78,7 +78,9 @@ const electronVersion = JSON.parse(
 execFileSync(
 	"node",
 	[
-		join(staged, "node_modules", ".bin", "prebuild-install"),
+		// The package's own entry, not `.bin/prebuild-install`: on Windows that is a
+		// shell shim node cannot run.
+		join(staged, "node_modules", "prebuild-install", "bin.js"),
 		"--runtime",
 		"electron",
 		"--target",
