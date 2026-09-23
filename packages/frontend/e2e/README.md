@@ -23,8 +23,8 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 
 | # | Journey | Route(s) | Capability | Covering spec | Verdict |
 |---|---|---|---|---|---|
-| J1 | First-run setup (owner account) | `/setup` | C11 | — | ⬜ |
-| J2 | Sign in & session guard | `/auth/login`, `/_authenticated` | — | `auth.setup.ts` | 🟦 happy path only |
+| J1 | First-run setup | — | C11 | — | ◻️ no setup screen; `pl up` is the setup |
+| J2 | Operator gate | `/_authenticated`, `/pair` | `pair.setup.ts`, `pl-up/single-origin.spec.ts` | — | ◐ operator link covered; revocation and `/pair` errors not yet |
 | J3 | Command center (landing) | `/` | C5, C6 | — | ⬜ |
 | J4 | Service catalog & discovery | `/services`, `/services/discovery` | C1 | `services-discovery.spec.ts` | 🟦 |
 | J5 | Service detail — repos, deployments, dependencies | `/services/$id` | C1 | `services-discovery.spec.ts` | 🟦 title + tier only |
@@ -51,36 +51,29 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
 
 ## The journeys
 
-### J1 — First-run setup (owner account)
+### J1 — First-run setup
 
-- **Entry point**: any URL while `setup.getStatus().setupComplete` is false. The
-  `/_authenticated` layout's `beforeLoad` throws `redirect({ to: "/setup" })` with the original
-  href preserved in `?redirect=`.
-- **Route**: `/setup` → `SetupWizard` → `SetupStepOwner` → `setup.createOwner`.
-- **Goal**: create the administrator account that the whole app hangs off.
-- **States**: `currentStep: "account"` (the wizard renders); `currentStep: "complete"` (the route's
-  own `beforeLoad` redirects back out to `?redirect` or `/`); **API unreachable** — the loader
-  swallows the error and falls back to `initialStep: "account"`, so a dead API renders a wizard
-  that cannot submit; form validation errors on the owner form.
-- **Coverage**: none. The harness seeds a database where setup is already complete, so this route
-  is never reached in any spec. **This is the single most important gap**: it is the first screen
-  a `pl up` user sees, and the only one where failure means the product never starts.
+- **No UI surface.** There is no account to create and no wizard (ADR 0001 §2): `pl up` creates
+  the database and applies its migrations, and the browser pairs through the startup link it
+  prints (J2). The first screen a `pl up` user sees is the command center (J3).
 
-### J2 — Sign in & session guard
+### J2 — Operator gate
 
-- **Entry point**: `/auth/login`, or any authenticated route without a session.
-- **Routes**: `/auth/login` (has its own `beforeLoad` + `redirect`), `/_authenticated` guard.
-- **Goal**: obtain a Better Auth session (cookie, 7-day lifetime; cached in TanStack Query with a
-  60s `staleTime`).
-- **States**: unauthenticated → redirect carrying `?redirect=<href>`; invalid credentials → inline
-  error; submitting; already-signed-in → redirect away from `/auth/login`; expired session
-  mid-session.
-- **Coverage**: `e2e/auth.setup.ts` performs the happy path once to mint the storage state. No spec
-  asserts the failure state, the `?redirect` round-trip, or sign-out.
+- **Entry point**: any authenticated route; `/pair#<token>` from a pairing link.
+- **Routes**: `/_authenticated` guard (`operator.whoami`), `/pair`.
+- **Goal**: be the operator. Every browser pairs, the host's own included (ADR 0004 §8): `pl up`
+  opens it on a startup link with the operator's scopes. Another device pairs once from Settings →
+  Devices or `pl pair` and holds a device cookie until revoked.
+- **States**: paired device → straight in; startup link in a browser that already holds this
+  machine's session → straight in, link unused; anyone else → `/pair` with an explanation; used or
+  expired link → inline error on `/pair`; revoked device → 401, back to `/pair`.
+- **Coverage**: the `pair` setup project redeems a `pl pair --operator` link through `/pair` and
+  every chromium spec starts from its cookie; the pl-up spec checks an unpaired browser lands on
+  `/pair`, then pairs. No spec covers revocation or the `/pair` error states.
 
 ### J3 — Command center (landing)
 
-- **Entry point**: `/` after sign-in — the app's front door.
+- **Entry point**: `/` — the app's front door.
 - **Route**: `/_authenticated/` (423 lines, the largest route in the app).
 - **Goal**: see what needs attention now — active incidents, triggered alerts, pending
   recommendations — and launch an investigation from it (`incidents.investigate`).
@@ -88,8 +81,7 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
   (`DashboardEmptyState`); **LLM not configured** (`LLMWarningBanner`, driven by
   `llmSettings.activeProvider`); **API down** (`ApiStatusCheck`); incident selected → detail panel;
   investigate-in-flight.
-- **Coverage**: none. `auth.setup.ts` incidentally asserts the string `Services` is visible after
-  landing on `/`, which is a navbar assertion, not a dashboard one. The empty state and the
+- **Coverage**: none. The empty state and the
   LLM-warning banner — the two states a brand-new `pl up` install renders — are untested.
 
 ### J4 — Service catalog & discovery

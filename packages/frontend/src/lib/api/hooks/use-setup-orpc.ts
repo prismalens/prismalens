@@ -8,7 +8,7 @@
  *
  * Type-safe hooks for initial setup operations using oRPC with TanStack Query.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 
 /**
@@ -40,19 +40,3 @@ export function useSetupStatus() {
 /**
  * Create the first admin account during initial setup
  */
-export function useCreateOwner() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.setup.createOwner.mutationOptions(),
-		onSuccess: () => {
-			// Invalidate setup status to reflect the new state, and "who am I":
-			// the wizard leaves the browser signed in, and the gate must not
-			// answer from the null it cached before the account existed.
-			queryClient.invalidateQueries({ queryKey: setupKeys.status() });
-			queryClient.invalidateQueries({
-				queryKey: orpc.operator.whoami.queryKey({ input: {} }),
-			});
-		},
-	});
-}

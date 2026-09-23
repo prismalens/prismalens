@@ -13,6 +13,7 @@ export {
 	operatorContract,
 	type Whoami,
 } from "./operator.js";
+export { type PairedDevice, pairingContract } from "./pairing.js";
 export { recommendationsContract } from "./recommendations.js";
 export { repositoriesContract } from "./repositories.js";
 export { servicesContract } from "./services.js";
@@ -34,6 +35,7 @@ import { incidentsContract } from "./incidents.js";
 import { integrationsContract, oauthContract } from "./integrations.js";
 import { investigationsContract } from "./investigations.js";
 import { operatorContract } from "./operator.js";
+import { pairingContract } from "./pairing.js";
 import { recommendationsContract } from "./recommendations.js";
 import { repositoriesContract } from "./repositories.js";
 import { servicesContract } from "./services.js";
@@ -61,6 +63,7 @@ export const contract = {
 	settings: settingsContract,
 	setup: setupContract,
 	operator: operatorContract,
+	pairing: pairingContract,
 };
 
 export type Contract = typeof contract;

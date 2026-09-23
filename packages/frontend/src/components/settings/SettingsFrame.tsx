@@ -7,11 +7,14 @@ import {
 	Boxes,
 	KeyRound,
 	Plug,
+	Smartphone,
 	Sparkles,
 	TriangleAlert,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useDevices } from "@/components/settings/DevicesTab";
 import { StateWord } from "@/components/shared/StateChip";
+import { useOperator } from "@/hooks/use-operator";
 import {
 	useConnections,
 	useIntegrations,
@@ -23,6 +26,7 @@ export type SettingsSection =
 	| "harness"
 	| "integrations"
 	| "connections"
+	| "devices"
 	| "services"
 	| "usage"
 	| "danger";
@@ -57,6 +61,8 @@ export function SettingsFrame({
 	const readiness = useInvestigationReadiness();
 	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();
+	const { managesPairing } = useOperator();
+	const { data: devices } = useDevices(managesPairing);
 	const items: Item[] = [
 		{
 			section: "harness",
@@ -89,6 +95,14 @@ export function SettingsFrame({
 			line: connections
 				? `${connections.length} connected`
 				: "accounts and tokens",
+		},
+		{
+			section: "devices",
+			label: "Devices",
+			icon: <Smartphone className="h-4 w-4" />,
+			tab: "devices",
+			to: "/settings",
+			line: devices ? `${devices.devices.length} paired` : "phones and laptops",
 		},
 		{
 			section: "services",

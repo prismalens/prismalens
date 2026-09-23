@@ -124,7 +124,7 @@ export {
 	useUpdateHarnessSettings,
 } from "./use-settings-orpc";
 // Setup hooks
-export { setupKeys, useCreateOwner, useSetupStatus } from "./use-setup-orpc";
+export { setupKeys, useSetupStatus } from "./use-setup-orpc";
 // Timeline hooks
 export {
 	timelineKeys,

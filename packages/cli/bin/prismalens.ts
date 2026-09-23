@@ -51,8 +51,8 @@ const main = defineCommand({
 	subCommands: {
 		up: lazy("up"),
 		doctor: lazy("doctor"),
+		pair: lazy("pair"),
 		reset: lazy("reset"),
-		"reset-password": lazy("reset-password"),
 	},
 });
 

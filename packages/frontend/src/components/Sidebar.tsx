@@ -7,27 +7,16 @@
  * nothing leads away from a step that must finish. On narrow screens it folds
  * to a top strip.
  */
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, LogOut, PanelLeft, Settings, Siren } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation } from "@tanstack/react-router";
+import { Bell, Layers, PanelLeft, Settings, Siren } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
-import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { TelemetryConsent } from "@/components/settings";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
-import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
+import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
-import { signOut, useSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
@@ -158,7 +147,9 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						className="flex min-w-0 flex-1 items-center gap-2 px-1 text-sm font-semibold tracking-tight"
 						title="PrismaLens"
 					>
-						<PrismaLensMark className="h-6 w-6 shrink-0" />
+						<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground">
+							<Layers className="h-3.5 w-3.5" />
+						</span>
 						{!sidebarFolded && <span className="truncate">PrismaLens</span>}
 					</Link>
 					{!sidebarFolded && (
@@ -197,7 +188,6 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						) : (
 							<ThemeToggle />
 						)}
-						<UserMenu />
 					</div>
 				</div>
 			</aside>
@@ -206,16 +196,11 @@ function SidebarBody({ pathname }: { pathname: string }) {
 				className="flex items-center gap-1 border-b bg-card px-2 py-1 md:hidden"
 				data-testid="topbar"
 			>
-				<Link
-					to="/incidents"
-					className="flex items-center gap-1.5 px-2 text-sm font-semibold"
-				>
-					<PrismaLensMark className="h-5 w-5" />
+				<Link to="/incidents" className="px-2 text-sm font-semibold">
 					PrismaLens
 				</Link>
 				<nav className="flex flex-1 items-center gap-0.5">{nav(true)}</nav>
 				<ThemeToggle />
-				<UserMenu />
 			</div>
 		</>
 	);
@@ -230,52 +215,4 @@ function getInitials(name: string | null | undefined): string {
 		.slice(0, 2)
 		.join("")
 		.toUpperCase();
-}
-
-function UserMenu() {
-	const { data: session } = useSession();
-	const navigate = useNavigate();
-	const queryClient = useQueryClient();
-	if (!session?.user) return null;
-	const { user } = session;
-	const handleSignOut = async () => {
-		await signOut();
-		// The login route's gate reads this cached answer; a stale "session" would
-		// bounce the signed-out browser straight back into the app.
-		queryClient.removeQueries({ queryKey: operatorQueryOptions().queryKey });
-		navigate({ to: "/auth/login", search: { redirect: undefined } });
-	};
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button
-					variant="ghost"
-					size="icon"
-					className="h-8 w-8 rounded-full"
-					aria-label="User menu"
-				>
-					<Avatar className="h-7 w-7">
-						<AvatarFallback className="bg-primary text-primary-foreground text-xs">
-							{getInitials(user.name)}
-						</AvatarFallback>
-					</Avatar>
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-56">
-				<DropdownMenuLabel className="font-normal">
-					<div className="flex flex-col space-y-1">
-						<p className="text-sm font-medium leading-none">{user.name}</p>
-						<p className="text-xs leading-none text-muted-foreground">
-							{user.email}
-						</p>
-					</div>
-				</DropdownMenuLabel>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
-					<LogOut className="mr-2 h-4 w-4" />
-					Sign out
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
 }

@@ -3,7 +3,7 @@
 
 import { type ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
-import type { Session, User } from "@prismalens/auth";
+import type { DeviceRecord } from "@prismalens/auth";
 import type { Request } from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthGuard } from "./auth.guard.js";
@@ -53,22 +53,22 @@ describe("AuthGuard", () => {
 		expect(mockOperator.resolve).not.toHaveBeenCalled();
 	});
 
-	it('resolver returns {operator:{via:"session"}, user, session} -> true, all three set', async () => {
+	it('resolver returns {via:"device", device} -> true, request.operator set', async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
-		const user = { id: "user-2", email: "session-user@example.com" } as User;
-		const session = { id: "session-1", userId: "user-2" } as Session;
-		mockOperator.resolve.mockResolvedValue({
-			operator: { via: "session" },
-			user,
-			session,
-		});
+		const device = {
+			id: "device-1",
+			name: "Ada's phone",
+			scopes: [],
+			createdAt: new Date(),
+			lastSeenAt: null,
+			revokedAt: null,
+		} as DeviceRecord;
+		mockOperator.resolve.mockResolvedValue({ via: "device", device });
 
 		const result = await guard.canActivate(mockContext);
 
 		expect(result).toBe(true);
-		expect(request.operator).toEqual({ via: "session" });
-		expect(request.user).toBe(user);
-		expect(request.session).toBe(session);
+		expect(request.operator).toEqual({ via: "device", device });
 	});
 
 	it("resolver returns null -> throws UnauthorizedException", async () => {

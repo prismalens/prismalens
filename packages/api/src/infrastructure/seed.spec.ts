@@ -2,14 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The owner-bootstrap branch of `packages/api/scripts/seed.ts` — the standalone
- * `prisma db seed` entry that replaced `DevSeedModule` (#601). Runs against a
- * fake Prisma delegate + a fake Better Auth instance, no database.
+ * `packages/api/scripts/seed.ts`, the standalone `prisma db seed` entry. There
+ * is no account to bootstrap (ADR 0001 §2); what is left to prove is that demo
+ * data lands in an empty database and nowhere else. Runs against a fake
+ * Prisma delegate, no database.
  *
  * `seedDemoData` is mocked at the module boundary: it is a real
  * `@prismalens/database` export that expects a full Prisma client, out of
  * scope for this fake-delegate test — only whether it gets CALLED matters here.
  */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ seedDemoData: vi.fn(async () => {}) }));
@@ -21,86 +23,36 @@ vi.mock("@prismalens/database", () => ({
 
 const { seed } = await import("../../scripts/seed.js");
 
-function fakeDb(overrides: { existingOwner?: unknown } = {}) {
+function fakeDb() {
 	return {
-		user: {
-			findFirst: vi.fn(async () => overrides.existingOwner ?? null),
-		},
-		session: {
-			deleteMany: vi.fn(async () => ({ count: 1 })),
-		},
 		alert: { count: vi.fn(async () => 0) },
 		incident: { count: vi.fn(async () => 0) },
 		// biome-ignore lint/suspicious/noExplicitAny: structural test double.
 	} as any;
 }
 
-function fakeAuth(user: { id: string; token?: string } | null = { id: "user-1", token: "tok-1" }) {
-	return {
-		api: {
-			signUpEmail: vi.fn(async () =>
-				user ? { user: { id: user.id }, token: user.token } : null,
-			),
-		},
-		// biome-ignore lint/suspicious/noExplicitAny: structural test double.
-	} as any;
-}
-
-describe("seed — owner bootstrap", () => {
+describe("seed — demo data", () => {
 	beforeEach(() => {
 		mocks.seedDemoData.mockClear();
 	});
 
-	it("creates the account via signUpEmail and drops the server-side session", async () => {
-		const db = fakeDb();
-		const auth = fakeAuth();
-
-		await seed(db, auth);
-
-		expect(auth.api.signUpEmail).toHaveBeenCalledWith({
-			body: {
-				email: "admin@prismalens.dev",
-				password: "admin123",
-				name: "Admin",
-			},
-		});
-		expect(db.session.deleteMany).toHaveBeenCalledWith({
-			where: { token: "tok-1" },
-		});
-	});
-
-	it("skips when an account already exists", async () => {
-		const db = fakeDb({ existingOwner: { id: "existing" } });
-		const auth = fakeAuth();
-
-		await seed(db, auth);
-
-		expect(auth.api.signUpEmail).not.toHaveBeenCalled();
-	});
-
-	it("throws when signUpEmail returns no user", async () => {
-		const db = fakeDb();
-		const auth = fakeAuth(null);
-
-		await expect(seed(db, auth)).rejects.toThrow(/failed to create the owner/);
-	});
-
 	it("seeds demo data when the database has neither alerts nor incidents", async () => {
-		const db = fakeDb({ existingOwner: { id: "existing" } });
-		const auth = fakeAuth();
-
-		await seed(db, auth);
-
+		const db = fakeDb();
+		await seed(db);
 		expect(mocks.seedDemoData).toHaveBeenCalledWith(db);
 	});
 
 	it("does not seed demo data when the database already has alerts", async () => {
-		const db = fakeDb({ existingOwner: { id: "existing" } });
+		const db = fakeDb();
 		db.alert.count.mockResolvedValue(1);
-		const auth = fakeAuth();
+		await seed(db);
+		expect(mocks.seedDemoData).not.toHaveBeenCalled();
+	});
 
-		await seed(db, auth);
-
+	it("does not seed demo data when the database already has incidents", async () => {
+		const db = fakeDb();
+		db.incident.count.mockResolvedValue(3);
+		await seed(db);
 		expect(mocks.seedDemoData).not.toHaveBeenCalled();
 	});
 });

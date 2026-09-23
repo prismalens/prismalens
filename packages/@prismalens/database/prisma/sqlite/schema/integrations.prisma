@@ -38,13 +38,14 @@ model Integration {
 // CONNECTION - User tokens / API keys
 // =============================================================================
 
-/// Connection stores a user's encrypted credentials for an integration.
+/// Connection stores the operator's encrypted credentials for an integration.
+/// `userId` is a leftover of the account era, kept only so installed rows load.
 model Connection {
   id                  String   @id @default(uuid())
   tenantId            String?  // dormant multi-tenancy hedge (ADR-0011 §6) — cloud-only, no reads/writes in OSS core
   integrationId       String
   label               String   @default("") // User-friendly name to distinguish multiple connections
-  userId              String
+  userId              String?
   connectionConfigEnc Bytes?   // Encrypted connection-specific config
   credentialsEnc      Bytes    // Encrypted credentials JSON
   tokenExpiresAt      DateTime?

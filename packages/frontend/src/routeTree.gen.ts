@@ -10,12 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as PairRouteImport } from './routes/pair'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenticated/alerts/route'
 import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authenticated/incidents/route'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
-import { Route as AuthLoginRouteImport } from './routes/auth/login'
-import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
@@ -28,6 +27,11 @@ import { Route as AuthenticatedSettingsIntegrationsConfigureRouteImport } from '
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -53,16 +57,6 @@ const AuthenticatedSettingsRouteRoute =
     path: '/settings',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthLoginRoute = AuthLoginRouteImport.update({
-  id: '/auth/login',
-  path: '/auth/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SetupIndexRoute = SetupIndexRouteImport.update({
-  id: '/setup/',
-  path: '/setup/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthenticatedAlertsIndexRoute =
   AuthenticatedAlertsIndexRouteImport.update({
     id: '/',
@@ -120,11 +114,10 @@ const AuthenticatedSettingsIntegrationsConfigureRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/pair': typeof PairRoute
   '/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
-  '/auth/login': typeof AuthLoginRoute
-  '/setup/': typeof SetupIndexRoute
   '/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/services/': typeof AuthenticatedServicesIndexRoute
@@ -136,9 +129,8 @@ export interface FileRoutesByFullPath {
   '/services/$id/': typeof AuthenticatedServicesIdIndexRoute
 }
 export interface FileRoutesByTo {
-  '/auth/login': typeof AuthLoginRoute
+  '/pair': typeof PairRoute
   '/': typeof AuthenticatedIndexRoute
-  '/setup': typeof SetupIndexRoute
   '/alerts': typeof AuthenticatedAlertsIndexRoute
   '/incidents': typeof AuthenticatedIncidentsIndexRoute
   '/services': typeof AuthenticatedServicesIndexRoute
@@ -152,12 +144,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/pair': typeof PairRoute
   '/_authenticated/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
-  '/auth/login': typeof AuthLoginRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
-  '/setup/': typeof SetupIndexRoute
   '/_authenticated/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/_authenticated/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/_authenticated/services/': typeof AuthenticatedServicesIndexRoute
@@ -172,11 +163,10 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/pair'
     | '/alerts'
     | '/incidents'
     | '/settings'
-    | '/auth/login'
-    | '/setup/'
     | '/alerts/'
     | '/incidents/'
     | '/services/'
@@ -188,9 +178,8 @@ export interface FileRouteTypes {
     | '/services/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/auth/login'
+    | '/pair'
     | '/'
-    | '/setup'
     | '/alerts'
     | '/incidents'
     | '/services'
@@ -203,12 +192,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/pair'
     | '/_authenticated/alerts'
     | '/_authenticated/incidents'
     | '/_authenticated/settings'
-    | '/auth/login'
     | '/_authenticated/'
-    | '/setup/'
     | '/_authenticated/alerts/'
     | '/_authenticated/incidents/'
     | '/_authenticated/services/'
@@ -222,8 +210,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
-  AuthLoginRoute: typeof AuthLoginRoute
-  SetupIndexRoute: typeof SetupIndexRoute
+  PairRoute: typeof PairRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -233,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -262,20 +256,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
-    }
-    '/auth/login': {
-      id: '/auth/login'
-      path: '/auth/login'
-      fullPath: '/auth/login'
-      preLoaderRoute: typeof AuthLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/setup/': {
-      id: '/setup/'
-      path: '/setup'
-      fullPath: '/setup/'
-      preLoaderRoute: typeof SetupIndexRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/alerts/': {
       id: '/_authenticated/alerts/'
@@ -420,8 +400,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
-  AuthLoginRoute: AuthLoginRoute,
-  SetupIndexRoute: SetupIndexRoute,
+  PairRoute: PairRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
