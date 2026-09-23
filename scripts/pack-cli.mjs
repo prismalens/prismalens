@@ -149,8 +149,19 @@ function readJson(path) {
 	return JSON.parse(readFileSync(path, "utf8"));
 }
 
+/**
+ * On Windows `npm` and `pnpm` are `.cmd` shims, which Node will not spawn
+ * without a shell (CVE-2024-27980); run them through cmd.exe, as
+ * packages/desktop/scripts/pack-desktop.mjs does.
+ */
 function run(cmd, args, cwd = ROOT) {
-	execFileSync(cmd, args, { cwd, stdio: "inherit" });
+	const viaCmd =
+		process.platform === "win32" && (cmd === "npm" || cmd === "pnpm");
+	execFileSync(
+		viaCmd ? "cmd.exe" : cmd,
+		viaCmd ? ["/d", "/c", cmd, ...args] : args,
+		{ cwd, stdio: "inherit" },
+	);
 }
 
 // ---------------------------------------------------------------------------
