@@ -19,7 +19,12 @@ import { PassThrough, Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { HarnessChild, HarnessLauncher } from "../launch/types.js";
-import { AcpSession, type AcpStreamItem, offeredModels } from "./acp-client.js";
+import {
+	type AcpDrift,
+	AcpSession,
+	type AcpStreamItem,
+	offeredModels,
+} from "./acp-client.js";
 
 /** A child whose stdin fails every write the way a dead peer's pipe does. */
 function brokenPipeChild(code: string): HarnessChild {
@@ -229,6 +234,36 @@ describe("AcpSession tolerant wire decoding", () => {
 
 		const last = items[items.length - 1];
 		expect(last).toEqual({ kind: "done", stopReason: "unknown_stop_reason" });
+	});
+
+	it("reports each value the SDK does not know once, never an extra field, and never fails the turn (#639)", async () => {
+		const drift: AcpDrift[] = [];
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			env: { ...process.env, FAKE_ACP_MODE: "tolerant" },
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+			onDrift: (d) => drift.push(d),
+		});
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) items.push(item);
+		await session.close();
+
+		expect(drift).toHaveLength(3);
+		expect(drift).toEqual(
+			expect.arrayContaining([
+				{ method: "session/update", field: "sessionUpdate", value: "unknown_session_update_kind" },
+				{ method: "session/update", field: "kind", value: "unknown_tool_kind" },
+				{ method: "session/prompt", field: "stopReason", value: "unknown_stop_reason" },
+			]),
+		);
+		expect(JSON.stringify(drift)).not.toContain("extra");
+		expect(items.some((i) => i.kind === "error")).toBe(false);
+		expect(items.at(-1)).toEqual({ kind: "done", stopReason: "unknown_stop_reason" });
 	});
 });
 
