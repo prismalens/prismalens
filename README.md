@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.png">
-    <img alt="PrismaLens — AI root-cause investigation, in your terminal" src=".github/assets/banner-light.png" width="830">
+    <img alt="PrismaLens — your coding agent, investigating your incidents" src=".github/assets/banner-light.png" width="830">
   </picture>
 </p>
 
