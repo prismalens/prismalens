@@ -12,14 +12,21 @@
  * 1. The TCP peer is a loopback address.
  * 2. `Host` names loopback (`localhost` or a loopback IP literal), so a page
  *    reached through a proxy or a rebound hostname fails here.
- * 3. No `Forwarded` / `X-Forwarded-*` header: every proxy adds one, and a
- *    client cannot remove what a proxy in front of it appends.
+ * 3. No `Forwarded` / `X-Forwarded-*` header: a client cannot remove what a
+ *    proxy in front of it appends.
  * 4. The placement is `laptop`. A server placement is reached over a route
  *    and pairs its clients; nothing on it is the operator by proximity.
  *
- * This decides whether a session is ISSUED, never whether one is checked:
- * state changes still carry the cookie, and the Host/Origin allowlist rejects
- * a foreign `Origin`, so a cross-site form POST to loopback does not pass.
+ * Test 3 only catches a proxy that says it is one. A same-host proxy that
+ * forwards a loopback `Host` and appends nothing (nginx's `proxy_pass` default
+ * sends `Host: $proxy_host` and no `X-Forwarded-For`) is indistinguishable
+ * from a local client, so any instance behind a proxy runs with
+ * `PRISMALENS_PLACEMENT=server`.
+ *
+ * A request that passes is the operator for reads and writes alike: a process
+ * on the host can already read the workspace. What keeps a browser page from
+ * borrowing that is the Host/Origin allowlist, which rejects a foreign
+ * `Origin`, so a cross-site form POST to loopback does not pass.
  */
 
 import type { IncomingHttpHeaders } from "node:http";
