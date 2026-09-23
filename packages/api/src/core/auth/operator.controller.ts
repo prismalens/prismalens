@@ -23,10 +23,13 @@ export class OperatorController {
 		return {
 			whoami: implement(operatorContract.whoami).handler(
 				async ({ context }) => {
-					const resolved = await this.operator.resolve(
+					const operator = await this.operator.resolve(
 						context.request as Request,
 					);
-					return { via: resolved?.operator.via ?? null };
+					return {
+						via: operator?.via ?? null,
+						scopes: operator?.device.scopes ?? [],
+					};
 				},
 			),
 		};

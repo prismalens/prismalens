@@ -132,3 +132,24 @@ export async function readTelemetryState(
 /** The one line `pl up` prints while consent is undecided. */
 export const TELEMETRY_CONSENT_NOTICE =
 	"Usage data is off. PrismaLens can count anonymous product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";
+
+/**
+ * The command that opens a URL in the host's browser, or null when there is
+ * no browser to open: CI, or Linux with no display (a server, an SSH shell).
+ * The link is printed either way.
+ */
+export function browserCommand(
+	platform: NodeJS.Platform,
+	env: NodeJS.ProcessEnv,
+	url: string,
+): { file: string; args: string[] } | null {
+	if (env.CI) return null;
+	if (platform === "darwin") return { file: "open", args: [url] };
+	if (platform === "win32") {
+		return { file: "cmd", args: ["/c", "start", '""', url] };
+	}
+	if (env.DISPLAY || env.WAYLAND_DISPLAY) {
+		return { file: "xdg-open", args: [url] };
+	}
+	return null;
+}

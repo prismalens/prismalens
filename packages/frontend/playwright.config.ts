@@ -38,6 +38,11 @@ const repoRoot = resolve(__dirname, "../..");
  */
 const PL_UP = process.env.PL_UP_E2E === "1";
 const PL_UP_PORT = process.env.PL_UP_PORT ?? "3100";
+// `pl-up-e2e.mjs` installs into this prefix and runs its workspace under it;
+// the pl-up spec reads the same variable to pair with `pl pair --operator`.
+if (PL_UP) {
+	process.env.PL_UP_PREFIX ??= mkdtempSync(join(tmpdir(), "pl-up-e2e-"));
+}
 
 // Validated, not coerced: a junk value would otherwise reach Vite as NaN, which
 // makes it bind a random port and every later failure point at the wrong thing.
@@ -56,7 +61,12 @@ function resolvePort(name: string, fallback: string): string {
 const FRONTEND_PORT = resolvePort("PRISMALENS_FRONTEND_PORT", "3000");
 const API_PORT = resolvePort("PRISMALENS_PORT", "3001");
 
-const workspaceDir = mkdtempSync(join(tmpdir(), "prismalens-e2e-"));
+// Workers re-evaluate this file; they inherit the runner's env, so they all
+// name the one workspace the servers run on and `pair.setup.ts` pairs with.
+process.env.PRISMALENS_E2E_WORKSPACE_DIR ??= mkdtempSync(
+	join(tmpdir(), "prismalens-e2e-"),
+);
+const workspaceDir = process.env.PRISMALENS_E2E_WORKSPACE_DIR;
 
 /**
  * A stub harness on PATH, so the SERVER-side gate reports runnable.
@@ -113,6 +123,8 @@ if (!PL_UP) {
 	execSync("pnpm db:init", { cwd: repoRoot, env, stdio: "inherit" });
 }
 
+const PAIRED_STATE = join(workspaceDir, "paired-state.json");
+
 const baseURL = PL_UP
 	? `http://localhost:${PL_UP_PORT}`
 	: `http://localhost:${FRONTEND_PORT}`;
@@ -132,7 +144,7 @@ export default defineConfig({
 				{
 					command: `node "${join(repoRoot, "scripts/pl-up-e2e.mjs")}"`,
 					url: `http://localhost:${PL_UP_PORT}/health`,
-					env: { ...process.env, PL_UP_PORT },
+					env: { ...process.env, PL_UP_PORT, PRISMALENS_PLACEMENT: "laptop" },
 					reuseExistingServer: false,
 					// Packing + a cold npm install of the tarball.
 					timeout: 300_000,
@@ -158,24 +170,25 @@ export default defineConfig({
 	projects: PL_UP
 		? [
 				{
-					// The artifact starts with no owner account, so the journey that
-					// covers it IS the setup flow — no storageState, no setup project.
 					name: "pl-up",
 					testDir: "./e2e/pl-up",
 					use: { ...devices["Desktop Chrome"] },
 				},
 			]
 		: [
-				{ name: "setup", testMatch: /auth\.setup\.ts/ },
+				{
+					// The browser pairs the way the host's own does (ADR 0004 §8):
+					// one operator link, redeemed once, its cookie shared by the suite.
+					name: "pair",
+					testMatch: /pair\.setup\.ts/,
+					use: { ...devices["Desktop Chrome"] },
+				},
 				{
 					// Note: Firefox and WebKit projects are a deliberate follow-up for broader browser coverage.
 					name: "chromium",
 					testIgnore: /pl-up\//,
-					use: {
-						...devices["Desktop Chrome"],
-						storageState: "e2e/.auth/owner.json",
-					},
-					dependencies: ["setup"],
+					dependencies: ["pair"],
+					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
 			],
 });

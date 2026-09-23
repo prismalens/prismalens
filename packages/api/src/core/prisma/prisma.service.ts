@@ -108,13 +108,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return prisma.incidentSimilarity;
 	}
 
-	// Better Auth models
-	get session() {
-		return prisma.session;
+	// Device pairing (ADR 0004 §8)
+	get pairingLink() {
+		return prisma.pairingLink;
 	}
 
-	get account() {
-		return prisma.account;
+	get deviceSession() {
+		return prisma.deviceSession;
 	}
 
 	get verification() {

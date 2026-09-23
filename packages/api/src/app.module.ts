@@ -70,7 +70,6 @@ import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
 import { SetupModule } from "./core/setup/setup.module.js";
 import { TelemetryModule } from "./core/telemetry/telemetry.module.js";
-import { UsersModule } from "./core/users/users.module.js";
 // Infrastructure modules
 import { DispatchModule } from "./infrastructure/dispatch/dispatch.module.js";
 import { HealthModule } from "./infrastructure/health/health.module.js";
@@ -152,9 +151,8 @@ const orpcLogger = new Logger({ context: "oRPC" });
 
 		// Core
 		PrismaModule,
-		AuthModule, // Better Auth for authentication
-		UsersModule,
-		SetupModule, // Initial setup (oRPC)
+		AuthModule, // the loopback rule and device pairing (ADR 0004 §8)
+		SetupModule, // on-ramp status (oRPC)
 		SettingsModule,
 		TelemetryModule,
 

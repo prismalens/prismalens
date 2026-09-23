@@ -49,8 +49,6 @@ const REPO = process.env.PACKED_INTAKE_REPO
 	? resolve(process.env.PACKED_INTAKE_REPO)
 	: null;
 const SERVICE_NAME = "packed-intake";
-const EMAIL = "intake@prismalens.test";
-const PASSWORD = "packed-intake-12345";
 
 function findTarball() {
 	if (process.env.PRISMALENS_TARBALL)
@@ -119,6 +117,7 @@ async function main() {
 		stdio: ["ignore", "pipe", "pipe"],
 		env: {
 			...process.env,
+			CI: process.env.CI ?? "true",
 			PRISMALENS_WORKSPACE_DIR: workspace,
 			// The default (quiet) console level sends info records to the log
 			// file only (#610) — the readiness line this script polls for is
@@ -168,34 +167,77 @@ async function main() {
 			},
 		});
 
-	// --- first-run: create the owner, then sign in (same shape as packed-smoke.sh) ---
-	const setup = await json("/api/setup", {
-		method: "POST",
-		body: JSON.stringify({
-			email: EMAIL,
-			password: PASSWORD,
-			name: "Packed Intake",
-		}),
+	// --- pairing: pair a device instead of creating an owner ---
+	const pairOut = execFileSync(bin, ["pair", "--workspace", workspace], {
+		encoding: "utf8",
 	});
-	if (setup.status < 200 || setup.status >= 300) {
-		throw new Error(
-			`POST /api/setup failed: status ${setup.status}: ${(await setup.text()).slice(0, 200)}`,
-		);
-	}
-	console.log("[packed-intake] OK   POST /api/setup");
+	const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 
-	const signIn = await json("/api/auth/sign-in/email", {
+	const redeem = await json("/api/pairing/redeem", {
 		method: "POST",
-		body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+		body: JSON.stringify({ token: pairToken, name: "packed intake" }),
 	});
-	const setCookie = signIn.headers.getSetCookie?.() ?? [];
-	if (signIn.status !== 200 || setCookie.length === 0) {
+	const setCookie = redeem.headers.getSetCookie?.() ?? [];
+	const deviceCookie = setCookie.find((c) =>
+		c.startsWith("prismalens.device="),
+	);
+	const cookie = deviceCookie ? deviceCookie.split(";")[0] : "";
+	if (redeem.status !== 200 || !cookie) {
 		throw new Error(
-			`sign-in failed: status ${signIn.status}, cookies ${setCookie.length}`,
+			`POST /api/pairing/redeem failed: status ${redeem.status}, cookies ${setCookie.length}`,
 		);
 	}
-	const cookie = setCookie.map((c) => c.split(";")[0]).join("; ");
-	console.log("[packed-intake] OK   POST /api/auth/sign-in/email");
+	console.log(
+		"[packed-intake] OK   POST /api/pairing/redeem 200 with device cookie",
+	);
+
+	const whoamiWith = await json("/api/operator/whoami", {
+		headers: { cookie },
+	});
+	const whoamiWithBody = await whoamiWith.json().catch(() => ({}));
+	if (whoamiWith.status !== 200 || whoamiWithBody.via !== "device") {
+		throw new Error(
+			`GET /api/operator/whoami with cookie failed: status ${whoamiWith.status}, via ${whoamiWithBody.via}`,
+		);
+	}
+	console.log(
+		"[packed-intake] OK   GET /api/operator/whoami with cookie says device",
+	);
+
+	const whoamiWithout = await json("/api/operator/whoami");
+	const whoamiWithoutBody = await whoamiWithout.json().catch(() => ({}));
+	if (whoamiWithout.status !== 200 || whoamiWithoutBody.via !== null) {
+		throw new Error(
+			`GET /api/operator/whoami without cookie failed: status ${whoamiWithout.status}, via ${whoamiWithoutBody.via}`,
+		);
+	}
+	console.log(
+		"[packed-intake] OK   GET /api/operator/whoami without cookie says null",
+	);
+
+	const redeemAgain = await json("/api/pairing/redeem", {
+		method: "POST",
+		body: JSON.stringify({ token: pairToken, name: "packed intake" }),
+	});
+	if (redeemAgain.status !== 400) {
+		throw new Error(
+			`POST /api/pairing/redeem again failed: status ${redeemAgain.status}`,
+		);
+	}
+	console.log("[packed-intake] OK   POST /api/pairing/redeem again 400");
+
+	const devices = await fetch(BASE + "/api/pairing/devices", {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		headers: { cookie },
+	});
+	if (devices.status !== 403) {
+		throw new Error(
+			`GET /api/pairing/devices with device cookie failed: status ${devices.status}`,
+		);
+	}
+	console.log(
+		"[packed-intake] OK   GET /api/pairing/devices with device cookie 403",
+	);
 
 	if (REPO) await mapRepository(json, cookie);
 

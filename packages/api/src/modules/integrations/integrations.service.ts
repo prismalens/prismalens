@@ -337,10 +337,7 @@ export class IntegrationsService implements OnModuleInit {
 	// CONNECTIONS (user tokens / API keys)
 	// =========================================================================
 
-	async createConnection(
-		dto: CreateConnectionDto,
-		userId: string,
-	): Promise<Connection> {
+	async createConnection(dto: CreateConnectionDto): Promise<Connection> {
 		const integration = await this.findIntegrationById(dto.integrationId);
 		if (!integration) {
 			throw new NotFoundException("Integration not found");
@@ -360,7 +357,6 @@ export class IntegrationsService implements OnModuleInit {
 			data: {
 				integrationId: dto.integrationId,
 				label: dto.label,
-				userId,
 				credentialsEnc: this.credentialsService.encrypt(dto.credentials),
 				connectionConfigEnc: dto.connectionConfig
 					? this.credentialsService.encrypt(dto.connectionConfig)
@@ -378,7 +374,6 @@ export class IntegrationsService implements OnModuleInit {
 	async findAllConnections(options?: {
 		status?: string;
 		integrationId?: string;
-		userId?: string;
 	}): Promise<ConnectionWithIntegration[]> {
 		return this.prisma.connection.findMany({
 			where: {
@@ -386,7 +381,6 @@ export class IntegrationsService implements OnModuleInit {
 				...(options?.integrationId && {
 					integrationId: options.integrationId,
 				}),
-				...(options?.userId && { userId: options.userId }),
 			},
 			include: { integration: true },
 			orderBy: { createdAt: "desc" },
@@ -395,10 +389,9 @@ export class IntegrationsService implements OnModuleInit {
 
 	async findConnectionById(
 		id: string,
-		userId?: string,
 	): Promise<ConnectionWithIntegration | null> {
 		return this.prisma.connection.findFirst({
-			where: { id, ...(userId && { userId }) },
+			where: { id },
 			include: { integration: true },
 		});
 	}
@@ -406,9 +399,8 @@ export class IntegrationsService implements OnModuleInit {
 	async updateConnection(
 		id: string,
 		dto: UpdateConnectionDto,
-		userId?: string,
 	): Promise<Connection | null> {
-		const connection = await this.findConnectionById(id, userId);
+		const connection = await this.findConnectionById(id);
 		if (!connection) return null;
 
 		const updateData: Record<string, unknown> = {};
@@ -431,8 +423,8 @@ export class IntegrationsService implements OnModuleInit {
 		});
 	}
 
-	async deleteConnection(id: string, userId?: string): Promise<boolean> {
-		const connection = await this.findConnectionById(id, userId);
+	async deleteConnection(id: string): Promise<boolean> {
+		const connection = await this.findConnectionById(id);
 		if (!connection) return false;
 
 		try {
@@ -461,9 +453,8 @@ export class IntegrationsService implements OnModuleInit {
 
 	async testConnection(
 		id: string,
-		userId?: string,
 	): Promise<{ success: boolean; error?: string }> {
-		const connection = await this.findConnectionById(id, userId);
+		const connection = await this.findConnectionById(id);
 		if (!connection) {
 			throw new NotFoundException("Connection not found");
 		}
@@ -527,18 +518,7 @@ export class IntegrationsService implements OnModuleInit {
 	// TOKEN RESOLUTION (auth-mode-aware)
 	// =========================================================================
 
-	async resolveAccessToken(
-		connectionId: string,
-		userId?: string,
-	): Promise<string> {
-		// Verify user has access to this connection
-		if (userId) {
-			const connection = await this.findConnectionById(connectionId, userId);
-			if (!connection) {
-				throw new NotFoundException("Connection not found");
-			}
-		}
-
+	async resolveAccessToken(connectionId: string): Promise<string> {
 		return this.getAuthManager().resolveAccessToken(connectionId);
 	}
 
@@ -563,7 +543,6 @@ export class IntegrationsService implements OnModuleInit {
 	async connectGitHubInstallation(
 		integrationId: string,
 		installationId: string,
-		userId: string,
 		organization?: string,
 		permissionOverrides?: Record<string, string>,
 	): Promise<Connection> {
@@ -631,7 +610,6 @@ export class IntegrationsService implements OnModuleInit {
 				label: organization
 					? `GitHub App (${organization})`
 					: `GitHub App (${installationId})`,
-				userId,
 				credentialsEnc: this.credentialsService.encrypt(credentials),
 				connectionConfigEnc:
 					Object.keys(connectionConfig).length > 0
@@ -677,11 +655,8 @@ export class IntegrationsService implements OnModuleInit {
 	// GIT PROVIDER OPERATIONS
 	// =========================================================================
 
-	async getGitOrganizations(
-		connectionId: string,
-		userId?: string,
-	): Promise<GitOrganization[]> {
-		const connection = await this.findConnectionById(connectionId, userId);
+	async getGitOrganizations(connectionId: string): Promise<GitOrganization[]> {
+		const connection = await this.findConnectionById(connectionId);
 		if (!connection) {
 			throw new NotFoundException("Connection not found");
 		}
@@ -725,9 +700,8 @@ export class IntegrationsService implements OnModuleInit {
 	async getGitRepositories(
 		connectionId: string,
 		org?: string,
-		userId?: string,
 	): Promise<GitRepository[]> {
-		const connection = await this.findConnectionById(connectionId, userId);
+		const connection = await this.findConnectionById(connectionId);
 		if (!connection) {
 			throw new NotFoundException("Connection not found");
 		}
@@ -758,9 +732,8 @@ export class IntegrationsService implements OnModuleInit {
 	async updateConnectionConfig(
 		connectionId: string,
 		config: Record<string, unknown>,
-		userId?: string,
 	): Promise<Connection> {
-		const connection = await this.findConnectionById(connectionId, userId);
+		const connection = await this.findConnectionById(connectionId);
 		if (!connection) {
 			throw new NotFoundException("Connection not found");
 		}
@@ -1128,9 +1101,9 @@ export class IntegrationsService implements OnModuleInit {
 		return this.buildDeletionImpact(integration.connections);
 	}
 
-	async getConnectionDeletionImpact(connectionId: string, userId?: string) {
+	async getConnectionDeletionImpact(connectionId: string) {
 		const connection = await this.prisma.connection.findFirst({
-			where: { id: connectionId, ...(userId ? { userId } : {}) },
+			where: { id: connectionId },
 			include: {
 				repositories: {
 					include: { services: { include: { service: true } } },

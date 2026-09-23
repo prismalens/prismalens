@@ -17,7 +17,6 @@ import type {
 	ServiceIntegration,
 } from "@prismalens/database";
 import { type AuthTemplate, getTemplate } from "@prismalens/integrations";
-import { extractUserId } from "../../core/auth/index.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
 
@@ -128,22 +127,17 @@ export class IntegrationsController {
 			createConnection: implement(
 				integrationsContract.createConnection,
 			).handler(async ({ input, context }) => {
-				const userId = extractUserId(context);
-				const connection = await this.integrationsService.createConnection(
-					input,
-					userId,
-				);
+				const connection =
+					await this.integrationsService.createConnection(input);
 				this.logger.log(`Created connection: ${connection.id}`);
 				return this.serializeConnection(connection);
 			}),
 
 			listConnections: implement(integrationsContract.listConnections).handler(
 				async ({ input, context }) => {
-					const userId = extractUserId(context);
 					const connections = await this.integrationsService.findAllConnections(
 						{
 							status: input.status,
-							userId,
 						},
 					);
 					return connections.map((c) =>
@@ -154,10 +148,8 @@ export class IntegrationsController {
 
 			getConnection: implement(integrationsContract.getConnection).handler(
 				async ({ input, context }) => {
-					const userId = extractUserId(context);
 					const connection = await this.integrationsService.findConnectionById(
 						input.id,
-						userId,
 					);
 					if (!connection) {
 						throw new ORPCError("NOT_FOUND", {
@@ -171,12 +163,10 @@ export class IntegrationsController {
 			updateConnection: implement(
 				integrationsContract.updateConnection,
 			).handler(async ({ input, context }) => {
-				const userId = extractUserId(context);
 				const { id, ...updateData } = input;
 				const connection = await this.integrationsService.updateConnection(
 					id,
 					updateData,
-					userId,
 				);
 				if (!connection) {
 					throw new ORPCError("NOT_FOUND", {
@@ -203,10 +193,8 @@ export class IntegrationsController {
 
 			testConnection: implement(integrationsContract.testConnection).handler(
 				async ({ input, context }) => {
-					const userId = extractUserId(context);
 					const result = await this.integrationsService.testConnection(
 						input.id,
-						userId,
 					);
 					return { success: result.success };
 				},
@@ -249,30 +237,22 @@ export class IntegrationsController {
 			getGitOrganizations: implement(
 				integrationsContract.getGitOrganizations,
 			).handler(async ({ input, context }) => {
-				const userId = extractUserId(context);
-				return this.integrationsService.getGitOrganizations(input.id, userId);
+				return this.integrationsService.getGitOrganizations(input.id);
 			}),
 
 			getGitRepositories: implement(
 				integrationsContract.getGitRepositories,
 			).handler(async ({ input, context }) => {
-				const userId = extractUserId(context);
-				return this.integrationsService.getGitRepositories(
-					input.id,
-					input.org,
-					userId,
-				);
+				return this.integrationsService.getGitRepositories(input.id, input.org);
 			}),
 
 			updateConnectionConfig: implement(
 				integrationsContract.updateConnectionConfig,
 			).handler(async ({ input, context }) => {
-				const userId = extractUserId(context);
 				const connection =
 					await this.integrationsService.updateConnectionConfig(
 						input.id,
 						input.config,
-						userId,
 					);
 				this.logger.log(`Updated config for connection: ${input.id}`);
 				return this.serializeConnection(connection);
@@ -285,7 +265,6 @@ export class IntegrationsController {
 			listGitHubInstallations: implement(
 				integrationsContract.listGitHubInstallations,
 			).handler(async ({ input, context }) => {
-				extractUserId(context);
 				const installations =
 					await this.integrationsService.listGitHubInstallations(input.id);
 				return installations.map((inst) => ({
@@ -307,12 +286,10 @@ export class IntegrationsController {
 			connectGitHubInstallation: implement(
 				integrationsContract.connectGitHubInstallation,
 			).handler(async ({ input, context }) => {
-				const userId = extractUserId(context);
 				const connection =
 					await this.integrationsService.connectGitHubInstallation(
 						input.id,
 						input.installationId,
-						userId,
 						input.organization,
 						input.permissionOverrides,
 					);
@@ -423,7 +400,6 @@ export class IntegrationsController {
 			id: connection.id,
 			integrationId: connection.integrationId,
 			label: connection.label ?? "",
-			userId: connection.userId,
 			status: connection.status as ConnectionResponse["status"],
 			tokenExpiresAt: connection.tokenExpiresAt?.toISOString() ?? null,
 			grantedScopes: this.parseStringArray(connection.grantedScopes),
