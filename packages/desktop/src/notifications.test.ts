@@ -20,7 +20,7 @@ describe("notifications", () => {
 			const current: InvestigationSummary[] = [
 				{
 					id: "inv-1",
-					title: "API latency spike",
+					summary: "API latency spike",
 					status: "completed",
 					incidentId: "inc-100",
 				},
@@ -28,7 +28,7 @@ describe("notifications", () => {
 			expect(newlyFinished(previous, current)).toEqual([
 				{
 					id: "inv-1",
-					title: "API latency spike",
+					summary: "API latency spike",
 					status: "completed",
 					incidentId: "inc-100",
 				},
@@ -42,7 +42,7 @@ describe("notifications", () => {
 			const current: InvestigationSummary[] = [
 				{
 					id: "inv-2",
-					title: "Database connection timeouts",
+					summary: "Database connection timeouts",
 					status: "failed",
 					incidentId: "inc-101",
 				},
@@ -50,7 +50,7 @@ describe("notifications", () => {
 			expect(newlyFinished(previous, current)).toEqual([
 				{
 					id: "inv-2",
-					title: "Database connection timeouts",
+					summary: "Database connection timeouts",
 					status: "failed",
 					incidentId: "inc-101",
 				},
@@ -64,7 +64,7 @@ describe("notifications", () => {
 			const current: InvestigationSummary[] = [
 				{
 					id: "inv-3",
-					title: "Queue worker backlog",
+					summary: "Queue worker backlog",
 					status: "running",
 				},
 			];
@@ -76,12 +76,12 @@ describe("notifications", () => {
 			const current: InvestigationSummary[] = [
 				{
 					id: "inv-4a",
-					title: "Historical completed investigation",
+					summary: "Historical completed investigation",
 					status: "completed",
 				},
 				{
 					id: "inv-4b",
-					title: "Historical failed investigation",
+					summary: "Historical failed investigation",
 					status: "failed",
 				},
 			];
@@ -96,12 +96,12 @@ describe("notifications", () => {
 			const current: InvestigationSummary[] = [
 				{
 					id: "inv-5a",
-					title: "Already completed",
+					summary: "Already completed",
 					status: "completed",
 				},
 				{
 					id: "inv-5b",
-					title: "Already failed",
+					summary: "Already failed",
 					status: "failed",
 				},
 			];
@@ -115,7 +115,7 @@ describe("notifications", () => {
 			const currentRunningToCancelled: InvestigationSummary[] = [
 				{
 					id: "inv-6a",
-					title: "Cancelled after running",
+					summary: "Cancelled after running",
 					status: "cancelled",
 				},
 			];
@@ -127,7 +127,7 @@ describe("notifications", () => {
 			const currentPendingToCancelled: InvestigationSummary[] = [
 				{
 					id: "inv-6b",
-					title: "Cancelled while pending",
+					summary: "Cancelled while pending",
 					status: "cancelled",
 				},
 			];
@@ -136,7 +136,7 @@ describe("notifications", () => {
 			const firstSeenCancelled: InvestigationSummary[] = [
 				{
 					id: "inv-6c",
-					title: "First seen cancelled",
+					summary: "First seen cancelled",
 					status: "cancelled",
 				},
 			];
@@ -152,7 +152,7 @@ describe("notifications", () => {
 			expect(newlyFinished(previous, current)).toEqual([]);
 		});
 
-		it("returns id, title, status, and incidentId", () => {
+		it("returns id, summary, status, and incidentId", () => {
 			const previous = new Map<string, InvestigationStatus>([
 				["inv-with-inc", "running"],
 				["inv-without-inc", "running"],
@@ -160,26 +160,26 @@ describe("notifications", () => {
 			const current: InvestigationSummary[] = [
 				{
 					id: "inv-with-inc",
-					title: "With Incident",
+					summary: "With Incident",
 					status: "completed",
 					incidentId: "inc-999",
 				},
 				{
 					id: "inv-without-inc",
-					title: "Without Incident",
+					summary: "Without Incident",
 					status: "failed",
 				},
 			];
 			expect(newlyFinished(previous, current)).toEqual([
 				{
 					id: "inv-with-inc",
-					title: "With Incident",
+					summary: "With Incident",
 					status: "completed",
 					incidentId: "inc-999",
 				},
 				{
 					id: "inv-without-inc",
-					title: "Without Incident",
+					summary: "Without Incident",
 					status: "failed",
 					incidentId: undefined,
 				},
@@ -190,9 +190,9 @@ describe("notifications", () => {
 	describe("snapshot", () => {
 		it("builds the map of investigation ids to statuses", () => {
 			const current: InvestigationSummary[] = [
-				{ id: "inv-1", title: "One", status: "running" },
-				{ id: "inv-2", title: "Two", status: "completed" },
-				{ id: "inv-3", title: "Three", status: "pending" },
+				{ id: "inv-1", summary: "One", status: "running" },
+				{ id: "inv-2", summary: "Two", status: "completed" },
+				{ id: "inv-3", summary: "Three", status: "pending" },
 			];
 			const map = snapshot(current);
 			expect(map).toBeInstanceOf(Map);
@@ -204,10 +204,10 @@ describe("notifications", () => {
 	});
 
 	describe("notificationText", () => {
-		it("picks 'Investigation finished' with title as body for completed status", () => {
+		it("picks 'Investigation finished' with the summary as body for completed status", () => {
 			const inv: FinishedInvestigation = {
 				id: "inv-1",
-				title: "High CPU usage across nodes",
+				summary: "High CPU usage across nodes",
 				status: "completed",
 			};
 			expect(notificationText(inv)).toEqual({
@@ -216,15 +216,27 @@ describe("notifications", () => {
 			});
 		});
 
-		it("picks 'Investigation failed' with title as body for failed status", () => {
+		it("picks 'Investigation failed' with the summary as body for failed status", () => {
 			const inv: FinishedInvestigation = {
 				id: "inv-2",
-				title: "OOM killer invoked on cluster",
+				summary: "OOM killer invoked on cluster",
 				status: "failed",
 			};
 			expect(notificationText(inv)).toEqual({
 				title: "Investigation failed",
 				body: "OOM killer invoked on cluster",
+			});
+		});
+
+		it("an investigation with no summary yet gets an empty body", () => {
+			const inv: FinishedInvestigation = {
+				id: "inv-3",
+				summary: null,
+				status: "failed",
+			};
+			expect(notificationText(inv)).toEqual({
+				title: "Investigation failed",
+				body: "",
 			});
 		});
 	});

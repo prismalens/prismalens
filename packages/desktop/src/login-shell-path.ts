@@ -10,6 +10,10 @@
 
 import { execFile } from "node:child_process";
 
+// An interactive shell may print a banner or rc output around the PATH.
+const START = "__PRISMALENS_PATH_START__";
+const END = "__PRISMALENS_PATH_END__";
+
 export function readLoginShellPath(
 	env: NodeJS.ProcessEnv = process.env,
 	timeoutMs = 5_000,
@@ -19,11 +23,15 @@ export function readLoginShellPath(
 	return new Promise((resolve) => {
 		execFile(
 			shell,
-			["-ilc", 'printf "%s" "$PATH"'],
+			["-ilc", `printf "%s%s%s" "${START}" "$PATH" "${END}"`],
 			{ timeout: timeoutMs, env },
 			(error, stdout) => {
-				if (error || !stdout.trim()) return resolve(undefined);
-				resolve(stdout.trim());
+				if (error) return resolve(undefined);
+				const start = stdout.indexOf(START);
+				const end = stdout.indexOf(END, start + START.length);
+				if (start === -1 || end === -1) return resolve(undefined);
+				const path = stdout.slice(start + START.length, end).trim();
+				resolve(path || undefined);
 			},
 		);
 	});

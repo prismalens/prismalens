@@ -48,7 +48,9 @@ let child: ChildProcess | null = null;
 let window: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let baseUrl = "";
+let ready = false;
 let quitting = false;
+let stopping = false;
 
 function workspaceDir(): string {
 	// Same default as `pl up`, so the CLI and the app share one workspace.
@@ -84,11 +86,15 @@ async function boot(): Promise<void> {
 		});
 	}
 	baseUrl = backendUrl(plan.port);
-	const ready = await waitForHealth(plan.port, READY_TIMEOUT_MS);
-	if (!ready) throw new Error(`Backend not ready at ${baseUrl}`);
+	if (!(await waitForHealth(plan.port, READY_TIMEOUT_MS))) {
+		throw new Error(`Backend not ready at ${baseUrl}`);
+	}
+	ready = true;
 }
 
 function openWindow(path = "/"): void {
+	// `second-instance` and `activate` can fire while the backend is booting.
+	if (!ready) return;
 	if (window) {
 		window.show();
 		window.focus();
@@ -121,7 +127,18 @@ function openWindow(path = "/"): void {
 	// Only the backend's own origin renders inside the app; anything else goes
 	// to the system browser.
 	window.webContents.setWindowOpenHandler(({ url }) => {
-		if (!url.startsWith(baseUrl)) shell.openExternal(url);
+		// Compare origins, not prefixes: `http://127.0.0.1:3001.evil` starts
+		// with the base URL.
+		let target: URL;
+		try {
+			target = new URL(url);
+		} catch {
+			return { action: "deny" };
+		}
+		const external =
+			target.origin !== new URL(baseUrl).origin &&
+			(target.protocol === "http:" || target.protocol === "https:");
+		if (external) void shell.openExternal(target.href);
 		return { action: "deny" };
 	});
 	window.loadURL(`${baseUrl}${path}`);
@@ -231,8 +248,17 @@ if (!app.requestSingleInstanceLock()) {
 		// Presence: closing the window leaves the tray and the backend running.
 	});
 	app.on("activate", () => openWindow());
-	app.on("before-quit", () => {
+	app.on("before-quit", (event) => {
 		quitting = true;
-		if (child) stopBackend(child);
+		const running = child;
+		if (!running || running.exitCode !== null || running.signalCode !== null) {
+			return;
+		}
+		// Hold the quit until the backend has exited, so it is never orphaned.
+		event.preventDefault();
+		if (stopping) return;
+		stopping = true;
+		running.once("exit", () => app.quit());
+		stopBackend(running);
 	});
 }

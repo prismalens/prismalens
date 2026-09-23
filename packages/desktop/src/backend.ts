@@ -54,8 +54,12 @@ export async function waitForHealth(
 	const deadline = Date.now() + timeoutMs;
 	const url = `${backendUrl(port)}/health`;
 	while (Date.now() < deadline) {
+		// A stalled request must not outlive the deadline, nor eat the whole of it.
+		const remaining = Math.max(1, deadline - Date.now());
 		try {
-			const res = await fetchImpl(url);
+			const res = await fetchImpl(url, {
+				signal: AbortSignal.timeout(Math.min(remaining, 2_000)),
+			});
 			if (res.ok) return true;
 		} catch {
 			// not up yet

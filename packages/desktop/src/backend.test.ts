@@ -101,7 +101,10 @@ describe("backend", () => {
 			);
 			expect(ok).toBe(true);
 			expect(calls).toBe(3);
-			expect(injectedFetch).toHaveBeenCalledWith("http://127.0.0.1:3001/health");
+			expect(injectedFetch).toHaveBeenCalledWith(
+				"http://127.0.0.1:3001/health",
+				expect.objectContaining({ signal: expect.any(AbortSignal) }),
+			);
 		});
 
 		it("resolves false when the deadline passes with nothing ok", async () => {
@@ -115,6 +118,26 @@ describe("backend", () => {
 				injectedFetch as unknown as typeof fetch,
 			);
 			expect(ok).toBe(false);
+		});
+
+		it("a request that never answers is aborted by the deadline", async () => {
+			const injectedFetch = vi.fn(
+				(_url: string | URL | Request, init?: RequestInit) =>
+					new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener("abort", () =>
+							reject(init.signal?.reason),
+						);
+					}),
+			);
+
+			const started = Date.now();
+			const ok = await waitForHealth(
+				3001,
+				200,
+				injectedFetch as unknown as typeof fetch,
+			);
+			expect(ok).toBe(false);
+			expect(Date.now() - started).toBeLessThan(1_500);
 		});
 	});
 

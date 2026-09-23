@@ -51,18 +51,46 @@ describe("readLoginShellPath", () => {
 		}
 	});
 
-	it("resolves the fixed PATH when SHELL points to a script in a temp dir", async () => {
+	/** A fake login shell: runs the `-c` command it is given with a fixed PATH, after `banner`. */
+	function fakeShell(fixedPath: string, banner: string): string {
 		tempDir = mkdtempSync(join(tmpdir(), "pl-login-shell-"));
 		const scriptPath = join(tempDir, "shell.sh");
-		const fixedPath = "/custom/bin:/usr/local/bin:/usr/bin";
-		writeFileSync(scriptPath, `#!/bin/sh\nprintf "%s" "${fixedPath}"\n`);
+		writeFileSync(
+			scriptPath,
+			`#!/bin/sh\nprintf "%s" "${banner}"\nPATH="${fixedPath}"\neval "$2"\nprintf "done\\n"\n`,
+		);
 		chmodSync(scriptPath, 0o755);
+		return scriptPath;
+	}
 
+	it("resolves the PATH the login shell reports", async () => {
+		const fixedPath = "/custom/bin:/usr/local/bin:/usr/bin";
+		const result = await readLoginShellPath({
+			...process.env,
+			SHELL: fakeShell(fixedPath, ""),
+		});
+		expect(result).toBe(fixedPath);
+	});
+
+	it("ignores what an interactive shell prints around the PATH", async () => {
+		const fixedPath = "/custom/bin:/usr/bin";
+		const result = await readLoginShellPath({
+			...process.env,
+			SHELL: fakeShell(fixedPath, "Welcome to your shell\\n"),
+		});
+		expect(result).toBe(fixedPath);
+	});
+
+	it("resolves undefined when the shell prints no marked PATH", async () => {
+		tempDir = mkdtempSync(join(tmpdir(), "pl-login-shell-"));
+		const scriptPath = join(tempDir, "shell.sh");
+		writeFileSync(scriptPath, `#!/bin/sh\nprintf "%s" "/usr/bin"\n`);
+		chmodSync(scriptPath, 0o755);
 		const result = await readLoginShellPath({
 			...process.env,
 			SHELL: scriptPath,
 		});
-		expect(result).toBe(fixedPath);
+		expect(result).toBeUndefined();
 	});
 
 	it("resolves undefined when SHELL points to /bin/false", async () => {

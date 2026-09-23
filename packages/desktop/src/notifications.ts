@@ -16,7 +16,7 @@ export type InvestigationStatus =
 
 export interface InvestigationSummary {
 	id: string;
-	title: string;
+	summary: string | null;
 	status: InvestigationStatus;
 	incidentId?: string;
 }
@@ -28,7 +28,7 @@ export const FINISHED: ReadonlySet<InvestigationStatus> = new Set([
 
 export interface FinishedInvestigation {
 	id: string;
-	title: string;
+	summary: string | null;
 	status: "completed" | "failed";
 	incidentId?: string;
 }
@@ -49,7 +49,7 @@ export function newlyFinished(
 		if (before === undefined || FINISHED.has(before)) continue;
 		out.push({
 			id: inv.id,
-			title: inv.title,
+			summary: inv.summary,
 			status: inv.status as "completed" | "failed",
 			incidentId: inv.incidentId,
 		});
@@ -68,6 +68,6 @@ export function notificationText(inv: FinishedInvestigation): {
 	body: string;
 } {
 	return inv.status === "completed"
-		? { title: "Investigation finished", body: inv.title }
-		: { title: "Investigation failed", body: inv.title };
+		? { title: "Investigation finished", body: inv.summary ?? "" }
+		: { title: "Investigation failed", body: inv.summary ?? "" };
 }

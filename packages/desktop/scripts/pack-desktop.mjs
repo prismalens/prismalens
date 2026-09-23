@@ -40,9 +40,15 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 // `npm install` into a prefix resolves the tarball's bundled dependencies the
 // way a global install does; the result is <out>/lib/node_modules/prismalens.
+// On Windows npm is `npm.cmd`, which Node will not spawn without a shell.
+const npm =
+	process.platform === "win32"
+		? { command: "cmd.exe", prefix: ["/d", "/c", "npm"] }
+		: { command: "npm", prefix: [] };
 execFileSync(
-	"npm",
+	npm.command,
 	[
+		...npm.prefix,
 		"install",
 		"-g",
 		"--prefix",
