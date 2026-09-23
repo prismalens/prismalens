@@ -579,5 +579,34 @@ describe.skipIf(process.platform === "win32")(
 				}
 			}
 		});
+
+		it("reapLiveHarnesses() still kills a harness that ignored an earlier SIGTERM", async () => {
+			const child = createProcessLauncher().spawn(
+				process.execPath,
+				[
+					"-e",
+					'process.on("SIGTERM", () => {}); process.stdout.write("ready\\n"); setInterval(()=>{}, 1e3);',
+				],
+				{ cwd: process.cwd() },
+			);
+			await once(child.stdout, "data");
+			const pid = child.pid as number;
+			try {
+				child.kill("SIGTERM");
+				expect(child.killed).toBe(true);
+				await new Promise((r) => setTimeout(r, 200));
+				expect(() => process.kill(pid, 0)).not.toThrow(); // survived SIGTERM
+				const closed = once(child, "close");
+				reapLiveHarnesses();
+				await closed;
+				await pollForEsrch(pid, 2000);
+			} finally {
+				try {
+					process.kill(pid, "SIGKILL");
+				} catch {
+					// ESRCH if already dead
+				}
+			}
+		});
 	},
 );

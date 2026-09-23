@@ -292,7 +292,8 @@ let exitReapArmed = false;
 /** Kills every live harness's process tree. Synchronous, so it is safe in an `exit` listener. */
 export function reapLiveHarnesses(): void {
 	for (const child of liveHarnesses) {
-		if (!child.killed) child.kill("SIGKILL");
+		// `killed` only says a signal was sent; a harness that ignored SIGTERM still runs.
+		child.kill("SIGKILL");
 	}
 	liveHarnesses.clear();
 }
