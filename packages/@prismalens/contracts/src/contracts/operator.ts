@@ -4,16 +4,15 @@
 /**
  * Operator route contracts
  *
- * Who the caller is to this instance. `via` is `loopback` for a request from
- * the host itself (ADR 0004 §8), `session` for a signed-in browser, and null
- * for anyone else. The frontend gate reads this instead of the session alone,
- * so a laptop operator never sees a login page.
+ * Who the caller is to this instance. `via` names the credential that makes
+ * the caller the operator, or is null for anyone else. Every caller presents
+ * one, the host included (ADR 0004 §8).
  */
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-export const OperatorViaEnum = z.enum(["loopback", "session"]);
+export const OperatorViaEnum = z.enum(["session"]);
 export type OperatorVia = z.infer<typeof OperatorViaEnum>;
 
 const WhoamiSchema = z.object({

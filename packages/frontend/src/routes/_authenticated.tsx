@@ -6,8 +6,7 @@
  *
  * Pathless layout route that protects all child routes:
  * 1. Checks if initial setup is complete — redirects to /setup if not
- * 2. Verifies the browser is the operator (`operator.whoami`: the host itself
- *    by the loopback rule, or a Better Auth session) — redirects to
+ * 2. Verifies the browser is the operator (`operator.whoami`) — redirects to
  *    /auth/login if not
  *
  * SSR is disabled because auth checks require browser cookies.
