@@ -71,14 +71,7 @@ export function DevicesTab() {
 								className="flex items-center justify-between gap-4 px-3 py-2"
 							>
 								<div className="min-w-0">
-									<p className="truncate text-record">
-										{d.name}
-										{d.current && (
-											<span className="ml-2 text-meta text-muted-foreground">
-												this device
-											</span>
-										)}
-									</p>
+									<p className="truncate text-record">{d.name}</p>
 									<p className="text-meta text-muted-foreground">
 										paired {new Date(d.createdAt).toLocaleDateString()}
 										{d.lastSeenAt &&

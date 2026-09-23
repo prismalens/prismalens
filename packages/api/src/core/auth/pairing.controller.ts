@@ -56,7 +56,6 @@ export class PairingController {
 				async ({ context }) => {
 					const request = context.request as Request;
 					operatorOnly(request);
-					const current = request.operator?.device?.id;
 					const devices = await this.store.listDevices();
 					return {
 						devices: devices.map((d) => ({
@@ -64,7 +63,6 @@ export class PairingController {
 							name: d.name,
 							createdAt: d.createdAt.toISOString(),
 							lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
-							current: d.id === current,
 						})),
 					};
 				},
