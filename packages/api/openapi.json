@@ -23319,17 +23319,13 @@
                                 "type": "null"
                               }
                             ]
-                          },
-                          "current": {
-                            "type": "boolean"
                           }
                         },
                         "required": [
                           "id",
                           "name",
                           "createdAt",
-                          "lastSeenAt",
-                          "current"
+                          "lastSeenAt"
                         ]
                       }
                     }
