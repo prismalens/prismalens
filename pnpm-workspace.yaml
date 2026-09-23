@@ -19,6 +19,7 @@ catalog:
 
 onlyBuiltDependencies:
   - '@nestjs/core'
+  - electron
   - '@prisma/engines'
   - better-sqlite3
   - esbuild
