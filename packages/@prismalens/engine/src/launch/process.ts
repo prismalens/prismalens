@@ -174,9 +174,10 @@ export function buildChildEnv(
 const TREE_KILL_WRAPPED = Symbol.for("prismalens.treeKillWrapped");
 
 /**
- * Terminate a process, tree-killing on win32 via taskkill so cmd.exe shims do
- * not orphan their underlying harness process when killed. Falls back to
- * child.kill() if taskkill fails or on non-win32 platforms.
+ * Terminate a process, tree-killing on non-win32 via process.kill(-pid) so the
+ * whole process group is terminated, and on win32 via taskkill so cmd.exe shims
+ * do not orphan their underlying harness process. Falls back to child.kill() if
+ * group kill / taskkill fails or when child pid is undefined.
  */
 export function killProcessTree(
 	child: {
@@ -187,6 +188,7 @@ export function killProcessTree(
 	signal?: NodeJS.Signals,
 	platform: NodeJS.Platform = process.platform,
 	syncSpawn: typeof spawnSync = spawnSync,
+	killProcess: typeof process.kill = process.kill,
 ): boolean {
 	if (platform === "win32" && child.pid !== undefined) {
 		try {
@@ -203,13 +205,21 @@ export function killProcessTree(
 		} catch {
 			// Fall through to child.kill() fallback
 		}
+	} else if (platform !== "win32" && child.pid !== undefined) {
+		try {
+			killProcess(-child.pid, signal ?? "SIGTERM");
+			child.killed = true;
+			return true;
+		} catch {
+			// Fall through to child.kill(signal) on ESRCH/EPERM or a throw
+		}
 	}
 	return child.kill(signal);
 }
 
 /**
- * Wrap child.kill with tree-kill semantics on win32 while keeping the same
- * object identity and ChildProcess contract.
+ * Wrap child.kill with tree-kill semantics on win32 and POSIX while keeping the
+ * same object identity and ChildProcess contract.
  */
 export function wrapWithTreeKill<
 	T extends {
@@ -217,7 +227,12 @@ export function wrapWithTreeKill<
 		kill(signal?: NodeJS.Signals): boolean;
 		killed?: boolean;
 	},
->(child: T): T {
+>(
+	child: T,
+	platform: NodeJS.Platform = process.platform,
+	syncSpawn: typeof spawnSync = spawnSync,
+	killProcess: typeof process.kill = process.kill,
+): T {
 	if ((child as Record<symbol, unknown>)[TREE_KILL_WRAPPED]) return child;
 	const rawKill = child.kill.bind(child);
 	child.kill = (signal?: NodeJS.Signals): boolean =>
@@ -233,6 +248,9 @@ export function wrapWithTreeKill<
 				},
 			},
 			signal,
+			platform,
+			syncSpawn,
+			killProcess,
 		);
 	(child as Record<symbol, unknown>)[TREE_KILL_WRAPPED] = true;
 	return child;
@@ -263,8 +281,29 @@ export function withWallClock(
 	return proc;
 }
 
+/**
+ * Every harness any launcher still has running. A POSIX harness leads its own
+ * process group, so a terminal Ctrl-C no longer reaches it: the API has to reap
+ * it on the way out.
+ */
+const liveHarnesses = new Set<HarnessChild>();
+let exitReapArmed = false;
+
+/** Kills every live harness's process tree. Synchronous, so it is safe in an `exit` listener. */
+export function reapLiveHarnesses(): void {
+	for (const child of liveHarnesses) {
+		// `killed` only says a signal was sent; a harness that ignored SIGTERM still runs.
+		child.kill("SIGKILL");
+	}
+	liveHarnesses.clear();
+}
+
 /** Spawns the harness as a child of the API. One per run; `destroy()` reaps stragglers. */
 export function createProcessLauncher(): HarnessLauncher {
+	if (!exitReapArmed) {
+		exitReapArmed = true;
+		process.once("exit", reapLiveHarnesses);
+	}
 	const children = new Set<HarnessChild>();
 	return {
 		spawn(command, args, options: LaunchOptions): HarnessChild {
@@ -273,11 +312,16 @@ export function createProcessLauncher(): HarnessLauncher {
 				cwd: options.cwd,
 				env: buildChildEnv(options.env),
 				stdio: ["pipe", "pipe", "pipe"],
+				detached: process.platform !== "win32",
 				...plan.options,
 			});
 			const proc = withWallClock(child, options.limits);
 			children.add(proc);
-			proc.on("close", () => children.delete(proc));
+			liveHarnesses.add(proc);
+			proc.on("close", () => {
+				children.delete(proc);
+				liveHarnesses.delete(proc);
+			});
 			return proc;
 		},
 		async destroy(): Promise<void> {

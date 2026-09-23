@@ -13,12 +13,14 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthController } from "./auth.controller.js";
 import { AuthGuard } from "./auth.guard.js";
 import { AuthService } from "./auth.service.js";
+import { OperatorController } from "./operator.controller.js";
+import { OperatorResolver } from "./operator.resolver.js";
 
 @Global()
 @Module({
 	imports: [ConfigModule],
-	controllers: [AuthController],
-	providers: [AuthService, AuthGuard],
-	exports: [AuthService, AuthGuard],
+	controllers: [AuthController, OperatorController],
+	providers: [AuthService, OperatorResolver, AuthGuard],
+	exports: [AuthService, OperatorResolver, AuthGuard],
 })
 export class AuthModule {}
