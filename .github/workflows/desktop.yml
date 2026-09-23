@@ -35,7 +35,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # windows-2022, not windows-latest: windows-latest moved to Visual Studio
+        # 2026 (installed at ...\Microsoft Visual Studio\18\...) in June 2026, and
+        # the node-gyp pnpm vendors doesn't parse that version string — it finds
+        # the install, can't read its version, and fails better-sqlite3's native
+        # build with "Could not find any Visual Studio installation to use".
+        # windows-2022 still ships VS2022 and stays supported for the next 3 years.
+        os: [ubuntu-latest, macos-latest, windows-2022]
     defaults:
       run:
         shell: bash
