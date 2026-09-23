@@ -11,7 +11,8 @@
 		"test": "vitest run",
 		"start": "electron .",
 		"stage:backend": "node scripts/pack-desktop.mjs",
-		"dist": "pnpm run build && pnpm run stage:backend && electron-builder --dir"
+		"dist": "pnpm run build && pnpm run stage:backend && electron-builder --dir",
+		"smoke": "node scripts/smoke-desktop.mjs"
 	},
 	"dependencies": {
 		"@prismalens/config": "workspace:*"
@@ -44,10 +45,12 @@
 			"target": "dir"
 		},
 		"linux": {
-			"target": "dir"
+			"target": "dir",
+			"executableName": "prismalens"
 		},
 		"win": {
-			"target": "dir"
+			"target": "dir",
+			"executableName": "PrismaLens"
 		}
 	}
 }

@@ -65,7 +65,13 @@ rmSync(tmp, { recursive: true, force: true });
 // Node the tarball's better-sqlite3 was built for. Swap in the prebuilt
 // binary for Electron's ABI; no compiler is needed, which is what keeps this
 // runnable on a laptop and on a CI runner alike.
-const staged = join(out, "lib", "node_modules", "prismalens");
+// A global install's layout: `lib/node_modules` on POSIX, `node_modules` on Windows.
+const staged = join(
+	out,
+	...(process.platform === "win32" ? [] : ["lib"]),
+	"node_modules",
+	"prismalens",
+);
 const electronVersion = JSON.parse(
 	readFileSync(resolve(here, "../node_modules/electron/package.json"), "utf8"),
 ).version;

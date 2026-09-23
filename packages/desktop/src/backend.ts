@@ -19,9 +19,16 @@ export function resolveBackendMain(input: {
 	const dir =
 		input.env.PRISMALENS_DESKTOP_BACKEND ??
 		join(input.resourcesPath, "prismalens");
+	// `npm install -g --prefix` lays a package out under `lib/node_modules` on
+	// POSIX and under `node_modules` on Windows.
 	const main = input.env.PRISMALENS_DESKTOP_BACKEND
 		? join(dir, "dist", "bin", "prismalens.js")
-		: join(
+		: (["lib/node_modules", "node_modules"]
+				.map((layout) =>
+					join(dir, layout, "prismalens", "dist", "bin", "prismalens.js"),
+				)
+				.find((path) => existsSync(path)) ??
+			join(
 				dir,
 				"lib",
 				"node_modules",
@@ -29,7 +36,7 @@ export function resolveBackendMain(input: {
 				"dist",
 				"bin",
 				"prismalens.js",
-			);
+			));
 	if (!existsSync(main)) {
 		throw new Error(
 			`No packed prismalens at ${dir}. Run \`pnpm --filter @prismalens/desktop stage:backend\`, or set PRISMALENS_DESKTOP_BACKEND to a packed package.`,
