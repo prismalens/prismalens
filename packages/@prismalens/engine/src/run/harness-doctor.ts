@@ -150,7 +150,7 @@ export async function probeHarness(
 				outcome: "answers-acp",
 				detail,
 				hard: false,
-				models: session.models,
+				...(session.models.length ? { models: session.models } : {}),
 			};
 		} catch (err) {
 			return { id: harness, ...classify(err, session, timeoutMs), hard: false };
