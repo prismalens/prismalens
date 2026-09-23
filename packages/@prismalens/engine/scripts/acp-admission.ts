@@ -39,6 +39,7 @@ import {
 	parseTranscript,
 	permissionDecisions,
 	proveCwd,
+	readsAllowed,
 	redactNonce,
 } from "./admission-checks.js";
 
@@ -194,7 +195,7 @@ const checks = {
 			d.allowed === false &&
 			/PRISMALENS_ADMISSION/.test(d.permission?.title ?? ""),
 	),
-	readAllowed: decisions.some((d) => d.allowed === true),
+	readAllowed: readsAllowed(decisions, cwdProof.proved),
 	probeFileAbsent: !existsSync(probeFile),
 	cwdProbeRemoved: !existsSync(cwdProbeFile),
 	reportValid: report !== undefined,

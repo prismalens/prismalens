@@ -25,9 +25,29 @@ export interface WireLine {
 
 /** A permission decision, as `runInvestigation` synthesises it onto the wire. */
 export interface PermissionDecisionLine {
-	permission?: { title?: string };
+	permission?: { title?: string; kind?: string };
 	allowed?: boolean;
 	why?: string;
+}
+
+/**
+ * Reads work: the harness read the planted nonce (`cwdProved`) and the policy
+ * refused no read or search. A harness may read without asking at all
+ * (claude-agent-acp asks only before a write), so a read need not appear as an
+ * allowed permission request (#634).
+ */
+export function readsAllowed(
+	decisions: PermissionDecisionLine[],
+	cwdProved: boolean,
+): boolean {
+	return (
+		cwdProved &&
+		!decisions.some(
+			(d) =>
+				d.allowed === false &&
+				(d.permission?.kind === "read" || d.permission?.kind === "search"),
+		)
+	);
 }
 
 /** Verdict on whether the harness really executed inside the clone. */

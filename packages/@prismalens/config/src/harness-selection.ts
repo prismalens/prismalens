@@ -92,6 +92,8 @@ export interface HarnessStatus {
 	installed: boolean;
 	verified: boolean;
 	admission: { version: string; date: string } | null;
+	/** Why it is not admitted, with the version and date that was measured; null when unknown or admitted. */
+	admissionGap: string | null;
 	install: string;
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
@@ -115,6 +117,9 @@ export function listHarnessStatus(
 			verified: isAdmitted(d),
 			admission: d.admission
 				? { version: d.admission.version, date: d.admission.date }
+				: null,
+			admissionGap: d.admissionGap
+				? `${d.admissionGap.reason} (${d.admissionGap.version}, ${d.admissionGap.date})`
 				: null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,

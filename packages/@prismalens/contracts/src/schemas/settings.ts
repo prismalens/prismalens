@@ -30,6 +30,8 @@ export const HarnessStatusSchema = z.object({
 			date: z.string(),
 		})
 		.nullable(),
+	/** Why it is not admitted, with the version and date measured; null when unknown or admitted (#634). */
+	admissionGap: z.string().nullable(),
 	/** One-line install hint, shown when not installed. */
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */

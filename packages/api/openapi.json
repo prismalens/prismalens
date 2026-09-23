@@ -22861,6 +22861,16 @@
                               }
                             ]
                           },
+                          "admissionGap": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "install": {
                             "type": "string"
                           },
@@ -22893,6 +22903,7 @@
                           "installed",
                           "verified",
                           "admission",
+                          "admissionGap",
                           "install",
                           "defaultModel",
                           "modelVia",

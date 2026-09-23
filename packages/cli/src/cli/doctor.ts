@@ -182,7 +182,7 @@ export function checkAutoSelection(): Check[] {
 		{
 			name: "Selected harness",
 			pass: true,
-			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${selection.verified ? "" : ", not yet verified"}`,
+			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${selection.verified ? "" : `, not yet verified${gapOf(selection.harness)}`}`,
 			hard: false,
 		},
 		{
@@ -195,6 +195,12 @@ export function checkAutoSelection(): Check[] {
 			hard: false,
 		},
 	];
+}
+
+/** ": <why>" when the registry names why the row is not admitted (#634). */
+function gapOf(id: HarnessId): string {
+	const gap = HARNESS_REGISTRY[id].admissionGap;
+	return gap ? `: ${gap.reason} (${gap.version}, ${gap.date})` : "";
 }
 
 export function checkWebhookToken(): Check {

@@ -78,13 +78,16 @@ describe("resolveHarnessSelection", () => {
 		});
 		expect(rows[1]).toMatchObject({
 			installed: false,
-			verified: false,
-			admission: null,
+			verified: true,
+			admission: { version: "0.81.1", date: "2026-09-23" },
+			admissionGap: null,
 			defaultModel: null,
 		});
-		for (const row of rows.slice(1)) {
+		// Not admitted, each with the reason its admission run named (#634).
+		for (const row of rows.slice(2)) {
 			expect(row.admission).toBeNull();
 			expect(row.verified).toBe(false);
+			expect(row.admissionGap).toMatch(/\(\d[\d.]*, 2026-09-23\)$/);
 		}
 	});
 });

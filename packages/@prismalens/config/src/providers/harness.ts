@@ -103,6 +103,12 @@ export interface HarnessDescriptor {
 	/** The unattended admission run this row passed (ADR 0003 §10), or absent: never admitted. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
 	admission?: { version: string; date: string; result: "pass" };
 	/**
+	 * Why the row is not admitted, when an admission run named the reason
+	 * (#634): the version and date it was measured on, and the failure in one
+	 * line. Shown beside "not verified" by the picker and the doctor.
+	 */
+	admissionGap?: { version: string; date: string; reason: string };
+	/**
 	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
 	 * `configFiles` writes), `env` (a var `acpEnv` sets), or `unsupported` (the
 	 * harness has no way to take it, so an operator-set model is logged and
@@ -220,6 +226,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP session/request_permission answered by prismalens; settingSources: [] keeps repo settings and hooks inert",
+		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud with PRISMALENS_PLACEMENT=server (#634).
+		admission: { version: "0.81.1", date: "2026-09-23", result: "pass" },
 		modelVia: "env",
 		loginHint:
 			"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
@@ -241,6 +249,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",
+		admissionGap: {
+			version: "1.13.1",
+			date: "2026-09-23",
+			reason:
+				"applies writes without asking first (no session/request_permission), even in read-only mode",
+		},
 		modelVia: "unsupported",
 		loginHint:
 			"`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
@@ -262,6 +276,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP permission answers; GEMINI_CLI_HOME isolates the user's approvalMode",
+		admissionGap: {
+			version: "0.60.0",
+			date: "2026-09-23",
+			reason: "needs a GEMINI_API_KEY; no keyless model to admit it on",
+		},
 		modelVia: "unsupported",
 		loginHint: "`GEMINI_API_KEY` in env",
 	},
@@ -280,6 +299,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: "ACP permission answers; --no-mcp",
+		admissionGap: {
+			version: "0.1.75",
+			date: "2026-09-23",
+			reason:
+				"passes the run checks, but its own config is not isolated: the row sets no config-dir variable",
+		},
 		modelVia: "unsupported",
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 	},

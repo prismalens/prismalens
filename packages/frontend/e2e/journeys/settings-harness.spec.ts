@@ -31,6 +31,7 @@ type HarnessFixture = {
 	install: string;
 	defaultModel: string | null;
 	admission: { version: string; date: string } | null;
+	admissionGap: string | null;
 	modelVia: "config" | "env" | "unsupported";
 	loginHint: string;
 };
@@ -44,6 +45,7 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 	defaultModel: null,
 	admission: null,
+	admissionGap: null,
 	modelVia: "env",
 	loginHint:
 		"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
@@ -58,6 +60,7 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	install: "curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
 	defaultModel: null,
 	admission: { version: "1.18.30", date: "2026-09-20" },
+	admissionGap: null,
 	modelVia: "config",
 	loginHint:
 		"Keyless default model; `opencode auth login` or a provider key in env for others",
@@ -72,6 +75,7 @@ const CODEX_INSTALLED: HarnessFixture = {
 	install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
 	defaultModel: null,
 	admission: null,
+	admissionGap: null,
 	modelVia: "unsupported",
 	loginHint: "`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
 };
@@ -85,6 +89,7 @@ const DEEPAGENTS_MISSING: HarnessFixture = {
 	install: "pip install deepagents-acp",
 	defaultModel: null,
 	admission: null,
+	admissionGap: null,
 	modelVia: "unsupported",
 	loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 };

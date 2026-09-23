@@ -200,6 +200,7 @@ export function HarnessSettings() {
 									) : (
 										<StateWord
 											tone="stale"
+											title={harness.admissionGap ?? undefined}
 											data-testid={`harness-admission-${harness.id}`}
 										>
 											not verified
