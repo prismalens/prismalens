@@ -181,8 +181,10 @@ else
 	SETSID=
 fi
 # The gates below read info-level records off the console; quiet (the default) sends
-# those only to the log file, which is asserted separately (#610).
+# those only to the log file, which is asserted separately (#610). The no-cookie
+# whoami gate expects null, which only a server placement gives.
 CI="${CI:-true}" \
+PRISMALENS_PLACEMENT=server \
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \

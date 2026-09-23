@@ -31,7 +31,7 @@ pl up --port 8080     # or wherever you like
 ```
 
 Open the URL: on that machine the browser is the operator, no account. Everything else is
-configured after sign-in. A coding agent must be installed on the machine for
+configured in the dashboard. A coding agent must be installed on the machine for
 investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
 PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
 is the verified default). For each one on PATH it also opens an ACP handshake and

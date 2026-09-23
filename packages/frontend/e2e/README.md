@@ -23,7 +23,7 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 
 | # | Journey | Route(s) | Capability | Covering spec | Verdict |
 |---|---|---|---|---|---|
-| J1 | First-run setup (owner account) | `/setup` | C11 | — | ⬜ |
+| J1 | First-run setup | — | C11 | — | ◻️ no setup screen; `pl up` is the setup |
 | J2 | Operator gate | `/_authenticated`, `/pair` | — | — | ⬜ loopback is the operator; pairing not yet covered |
 | J3 | Command center (landing) | `/` | C5, C6 | — | ⬜ |
 | J4 | Service catalog & discovery | `/services`, `/services/discovery` | C1 | `services-discovery.spec.ts` | 🟦 |
@@ -51,20 +51,11 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
 
 ## The journeys
 
-### J1 — First-run setup (owner account)
+### J1 — First-run setup
 
-- **Entry point**: any URL while `setup.getStatus().setupComplete` is false. The
-  `/_authenticated` layout's `beforeLoad` throws `redirect({ to: "/setup" })` with the original
-  href preserved in `?redirect=`.
-- **Route**: `/setup` → `SetupWizard` → `SetupStepOwner` → `setup.createOwner`.
-- **Goal**: create the administrator account that the whole app hangs off.
-- **States**: `currentStep: "account"` (the wizard renders); `currentStep: "complete"` (the route's
-  own `beforeLoad` redirects back out to `?redirect` or `/`); **API unreachable** — the loader
-  swallows the error and falls back to `initialStep: "account"`, so a dead API renders a wizard
-  that cannot submit; form validation errors on the owner form.
-- **Coverage**: none. The harness seeds a database where setup is already complete, so this route
-  is never reached in any spec. **This is the single most important gap**: it is the first screen
-  a `pl up` user sees, and the only one where failure means the product never starts.
+- **No UI surface.** There is no account to create and no wizard (ADR 0001 §2): `pl up` creates
+  the database and applies its migrations, and on the host the browser is the operator by the
+  loopback rule (J2). The first screen a `pl up` user sees is the command center (J3).
 
 ### J2 — Operator gate
 
