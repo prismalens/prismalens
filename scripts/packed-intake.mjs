@@ -118,6 +118,9 @@ async function main() {
 		env: {
 			...process.env,
 			CI: process.env.CI ?? "true",
+			// The no-cookie whoami check below expects null, which only a server
+			// placement gives; CI=false alone would resolve to laptop.
+			PRISMALENS_PLACEMENT: "server",
 			PRISMALENS_WORKSPACE_DIR: workspace,
 			// The default (quiet) console level sends info records to the log
 			// file only (#610) — the readiness line this script polls for is
