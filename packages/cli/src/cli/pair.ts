@@ -4,7 +4,7 @@
 /**
  * `pl pair` — mint a one-time link that lets another device reach this
  * instance (ADR 0004 §8). Runs on the host, straight against the workspace
- * database, the same way `pl reset-password` does: whoever can run it already
+ * database, the same way `pl reset` does: whoever can run it already
  * holds the workspace, so it grants nothing new.
  */
 
