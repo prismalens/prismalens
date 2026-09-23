@@ -23206,7 +23206,6 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "loopback",
                             "device"
                           ],
                           "type": "string"
@@ -23215,10 +23214,17 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
-                    "via"
+                    "via",
+                    "scopes"
                   ]
                 }
               }

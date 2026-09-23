@@ -26,7 +26,10 @@ export class OperatorController {
 					const operator = await this.operator.resolve(
 						context.request as Request,
 					);
-					return { via: operator?.via ?? null };
+					return {
+						via: operator?.via ?? null,
+						scopes: operator?.device.scopes ?? [],
+					};
 				},
 			),
 		};

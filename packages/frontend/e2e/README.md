@@ -24,7 +24,7 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | # | Journey | Route(s) | Capability | Covering spec | Verdict |
 |---|---|---|---|---|---|
 | J1 | First-run setup | — | C11 | — | ◻️ no setup screen; `pl up` is the setup |
-| J2 | Operator gate | `/_authenticated`, `/pair` | — | — | ⬜ loopback is the operator; pairing not yet covered |
+| J2 | Operator gate | `/_authenticated`, `/pair` | `pair.setup.ts`, `pl-up/single-origin.spec.ts` | — | ◐ operator link covered; revocation and `/pair` errors not yet |
 | J3 | Command center (landing) | `/` | C5, C6 | — | ⬜ |
 | J4 | Service catalog & discovery | `/services`, `/services/discovery` | C1 | `services-discovery.spec.ts` | 🟦 |
 | J5 | Service detail — repos, deployments, dependencies | `/services/$id` | C1 | `services-discovery.spec.ts` | 🟦 title + tier only |
@@ -54,20 +54,22 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
 ### J1 — First-run setup
 
 - **No UI surface.** There is no account to create and no wizard (ADR 0001 §2): `pl up` creates
-  the database and applies its migrations, and on the host the browser is the operator by the
-  loopback rule (J2). The first screen a `pl up` user sees is the command center (J3).
+  the database and applies its migrations, and the browser pairs through the startup link it
+  prints (J2). The first screen a `pl up` user sees is the command center (J3).
 
 ### J2 — Operator gate
 
 - **Entry point**: any authenticated route; `/pair#<token>` from a pairing link.
 - **Routes**: `/_authenticated` guard (`operator.whoami`), `/pair`.
-- **Goal**: be the operator. On the host itself the browser is the operator by the loopback rule
-  (ADR 0004 §8), so there is no sign-in. Another device pairs once and holds a device cookie until
-  revoked (Settings → Devices, or `pl pair`).
-- **States**: loopback → straight in; paired device → straight in; anyone else → `/pair` with an
-  explanation; used or expired link → inline error on `/pair`; revoked device → 401, back to `/pair`.
-- **Coverage**: the chromium project runs on loopback and inherits the operator gate on every spec.
-  No spec covers pairing, revocation or the `/pair` error states.
+- **Goal**: be the operator. Every browser pairs, the host's own included (ADR 0004 §8): `pl up`
+  opens it on a startup link with the operator's scopes. Another device pairs once from Settings →
+  Devices or `pl pair` and holds a device cookie until revoked.
+- **States**: paired device → straight in; startup link in a browser that already holds this
+  machine's session → straight in, link unused; anyone else → `/pair` with an explanation; used or
+  expired link → inline error on `/pair`; revoked device → 401, back to `/pair`.
+- **Coverage**: the `pair` setup project redeems a `pl pair --operator` link through `/pair` and
+  every chromium spec starts from its cookie; the pl-up spec checks an unpaired browser lands on
+  `/pair`, then pairs. No spec covers revocation or the `/pair` error states.
 
 ### J3 — Command center (landing)
 

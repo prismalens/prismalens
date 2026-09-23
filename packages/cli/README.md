@@ -25,7 +25,7 @@ pl up
 | --- | --- |
 | `up` | Run PrismaLens as a single process serving the API and web dashboard. |
 | `doctor` | Preflight-check the environment: a harness binary on PATH, and its ACP handshake (answers ACP, sign in needed, no answer in 10s, or failed to start). |
-| `pair` | Print a one-time link that pairs another device with this instance. |
+| `pair` | Print a one-time link that pairs another device with this instance, or with `--operator` this machine's own browser. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
 
 ## Documentation

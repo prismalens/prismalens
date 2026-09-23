@@ -2,9 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Who the browser is to this instance. `via` is `loopback` on the host
- * itself, `session` when signed in, null otherwise. One query, shared by the
- * route gate, the login page and the sidebar, so they cannot disagree.
+ * Who the browser is to this instance: a paired device or nobody, and whether
+ * it manages pairing (`admin:access`, the host's own session). One query,
+ * shared by the route gate, the pair page, settings and the sidebar, so they
+ * cannot disagree.
  */
 
 import {
@@ -22,7 +23,11 @@ export const operatorQueryOptions = () => ({
 
 export function useOperator() {
 	const query = useQuery(operatorQueryOptions());
-	return { ...query, via: query.data?.via ?? null };
+	return {
+		...query,
+		via: query.data?.via ?? null,
+		managesPairing: query.data?.scopes.includes("admin:access") ?? false,
+	};
 }
 
 /**

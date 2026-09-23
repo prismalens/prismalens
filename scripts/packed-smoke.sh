@@ -181,10 +181,9 @@ else
 	SETSID=
 fi
 # The gates below read info-level records off the console; quiet (the default) sends
-# those only to the log file, which is asserted separately (#610). The no-cookie
-# whoami gate expects null, which only a server placement gives.
+# those only to the log file, which is asserted separately (#610). CI keeps `pl up`
+# from opening a browser on the startup link it prints.
 CI="${CI:-true}" \
-PRISMALENS_PLACEMENT=server \
 PRISMALENS_WORKSPACE_DIR="$UP_DIR/workspace" \
 PRISMALENS_LOG_CONSOLE=verbose \
 PRISMALENS_HOST=127.0.0.1 \
@@ -394,6 +393,34 @@ const json = (path, init) =>
 		ok("GET /api/pairing/devices with device cookie 403");
 	} else {
 		bad("GET /api/pairing/devices", `status ${devices.status}`);
+	}
+
+	// --- the startup link: the host's own session (ADR 0004 §8) ---------------
+	// `pl up` prints it after /health answers, so it can trail the boot line.
+	let startupToken = "";
+	for (let i = 0; i < 60 && !startupToken; i++) {
+		startupToken =
+			fs.readFileSync(bootLog, "utf8").match(/Open: \S+\/pair#([^\s#]+)/)?.[1] ?? "";
+		if (!startupToken) await new Promise((r) => setTimeout(r, 500));
+	}
+	const hostRedeem = await json("/api/pairing/redeem", {
+		method: "POST",
+		body: JSON.stringify({ token: startupToken }),
+	});
+	const hostCookie =
+		(hostRedeem.headers.getSetCookie?.() ?? [])
+			.find((c) => c.startsWith("prismalens.device="))
+			?.split(";")[0] ?? "";
+	const hostDevices = hostCookie
+		? await fetch(base + "/api/pairing/devices", { headers: { cookie: hostCookie } })
+		: null;
+	if (hostDevices?.status === 200) {
+		ok("pl up's startup link pairs a session that manages devices");
+	} else {
+		bad(
+			"pl up's startup link",
+			`token ${startupToken ? "found" : "missing"}, redeem ${hostRedeem.status}, devices ${hostDevices?.status}`,
+		);
 	}
 
 	// --- an authenticated call, i.e. the global APP_GUARD is satisfiable -------

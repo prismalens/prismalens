@@ -15,7 +15,7 @@ import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { operatorQueryOptions } from "@/hooks/use-operator";
+import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/pair")({
@@ -40,10 +40,19 @@ function PairPage() {
 	const queryClient = useQueryClient();
 	const [token, setToken] = useState<string | null>(null);
 	const [name, setName] = useState(defaultDeviceName);
+	const operator = useOperator();
+
+	// `pl up` prints a fresh link on every start. A browser that already holds
+	// this machine's session leaves it unused rather than pairing twice.
+	useEffect(() => {
+		if (token && operator.managesPairing) navigate({ to: "/" });
+	}, [token, operator.managesPairing, navigate]);
 
 	useEffect(() => {
 		const fragment = window.location.hash.replace(/^#/, "");
-		setToken(fragment || "");
+		// A second run (StrictMode in dev) finds the fragment already dropped and
+		// must keep the token the first run read.
+		setToken((read) => fragment || read || "");
 		// The token is a one-time secret: drop it from the address bar at once.
 		if (fragment) history.replaceState(null, "", window.location.pathname);
 	}, []);
@@ -58,14 +67,15 @@ function PairPage() {
 		},
 	});
 
-	if (token === null) return null;
+	if (token === null || (token && operator.isPending)) return null;
 
 	if (!token) {
 		return (
 			<Shell title="Nothing to pair">
 				<p className="text-record text-muted-foreground">
-					This page needs a pairing link. Create one on the machine running
-					prismalens: Settings → Devices, or <code>pl pair</code>.
+					This page needs a pairing link. On the machine running prismalens,
+					open the link <code>pl up</code> printed, or create one: Settings →
+					Devices, or <code>pl pair</code>.
 				</p>
 			</Shell>
 		);

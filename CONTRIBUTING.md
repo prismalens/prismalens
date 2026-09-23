@@ -60,7 +60,7 @@ pnpm db:init      # initialise the local SQLite database
 pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 ```
 
-There is no login: on the machine running the app, the browser is the operator. `pnpm db:init` on an empty database seeds demo data (~60 alerts, incidents, investigations) when `NODE_ENV=development` or `PRISMALENS_SEED_DEMO=1` — the same gate e2e tests and CI use to force it outside development. `pnpm --filter @prismalens/database db:seed` reruns the seed directly.
+There is no login. The dev API logs `Open this machine's session: <link>` when it starts; open it once and the browser holds a device cookie from then on. `pnpm db:init` on an empty database seeds demo data (~60 alerts, incidents, investigations) when `NODE_ENV=development` or `PRISMALENS_SEED_DEMO=1` — the same gate e2e tests and CI use to force it outside development. `pnpm --filter @prismalens/database db:seed` reruns the seed directly.
 
 ### Browser e2e tier
 

@@ -61,8 +61,8 @@ export function SettingsFrame({
 	const readiness = useInvestigationReadiness();
 	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();
-	const { via } = useOperator();
-	const { data: devices } = useDevices(via !== "device");
+	const { managesPairing } = useOperator();
+	const { data: devices } = useDevices(managesPairing);
 	const items: Item[] = [
 		{
 			section: "harness",

@@ -110,6 +110,7 @@ model PairingLink {
   id        String    @id @default(uuid())
   tokenHash String    @unique
   label     String?
+  scopes    String    @default("[\"investigate:read\",\"investigate:operate\"]") // JSON array the redeemed device gets
   createdAt DateTime  @default(now())
   expiresAt DateTime
   usedAt    DateTime?
