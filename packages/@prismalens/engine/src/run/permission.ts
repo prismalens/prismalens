@@ -158,9 +158,11 @@ const ESCAPABLE = `*?[{'"\\ $\``;
 
 /**
  * What a shell word may name. On Windows the platform path module reads it.
- * On POSIX the shell drops each escaping backslash, and a command written for
- * Windows would treat the others as separators; a word stays inside only if
- * both readings do. A path read back from the filesystem is taken as it is.
+ * On POSIX an unquoted backslash escapes the next character, a backslash in
+ * double quotes before an ordinary character is kept (`"b\\d"` names `b\\d`),
+ * and a command written for Windows would read it as a separator. Quoting is
+ * gone by now, so every reading is judged, and the word stays inside only if
+ * all of them do. A path read back from the filesystem is taken as it is.
  */
 function shellReadings(word: string): string[] {
 	if (process.platform === "win32" || !word.includes("\\")) return [word];
@@ -178,7 +180,7 @@ function shellReadings(word: string): string[] {
 			windows += c;
 		}
 	}
-	return [posix, windows];
+	return [posix, word, windows];
 }
 
 /** Whether a shell word lands outside `cwd` under any of its readings. */

@@ -221,6 +221,8 @@ describe.skipIf(process.platform === "win32")(
 				'echo \\"; cat l*',
 				"cat [[:lower:]]ink",
 				"cat 'b\\d'/secret",
+				'cat "b\\d/secret"',
+				"cat b\\\\d/secret",
 				"cat b*/secret",
 			]) {
 				const d = policy(req({ kind: "execute", rawInput: { command } }));
