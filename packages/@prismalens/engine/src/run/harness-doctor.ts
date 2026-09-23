@@ -19,7 +19,11 @@ import {
 	type HarnessDescriptor,
 	type HarnessId,
 } from "@prismalens/config/harness";
-import { AcpRpcError, AcpSession } from "../runner/acp-client.js";
+import {
+	type AcpOfferedModel,
+	AcpRpcError,
+	AcpSession,
+} from "../runner/acp-client.js";
 import { prepareRunEnv } from "./investigate.js";
 import { readOnlyPolicy } from "./permission.js";
 
@@ -39,6 +43,8 @@ export interface HarnessProbeResult {
 	/** The outcome's fixed words, plus the auth method names or the harness's stderr tail when there are any. One line. */
 	detail: string;
 	hard: false;
+	/** The models the harness itself offered on `session/new`; absent when it did not answer. */
+	models?: AcpOfferedModel[];
 }
 
 function oneLine(message: string): string {
@@ -144,6 +150,7 @@ export async function probeHarness(
 				outcome: "answers-acp",
 				detail,
 				hard: false,
+				models: session.models,
 			};
 		} catch (err) {
 			return { id: harness, ...classify(err, session, timeoutMs), hard: false };

@@ -26,3 +26,12 @@ export {
 	resolvePermissionOutcome,
 	resolvePlacement,
 } from "./providers/harness.js";
+export {
+	annotateModel,
+	BUNDLED_MODEL_CATALOGUE,
+	catalogueModels,
+	type ModelCatalogue,
+	type ModelEntry,
+	parseModelCatalogue,
+	pickModelCatalogue,
+} from "./providers/model-catalogue.js";

@@ -80,7 +80,14 @@ export function useUpdateHarnessSettings() {
  * operator asks for it, never on page load.
  */
 export function useCheckHarness() {
-	return useMutation(orpc.settings.harnesses.checkHarness.mutationOptions());
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.harnesses.checkHarness.mutationOptions(),
+		// A harness that answered may have offered its own model list (#639).
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: harnessKeys.status() }),
+	});
 }
 
 export interface InvestigationReadiness {

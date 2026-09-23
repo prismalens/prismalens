@@ -15,6 +15,7 @@ import {
 import { HARNESS_IDS, type HarnessId } from "@prismalens/config/harness";
 import type { HarnessesResponse } from "@prismalens/contracts/schemas";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { HarnessModelsService } from "./harness-models.service.js";
 
 const SETTING_KEY = "HARNESS";
 
@@ -27,7 +28,10 @@ export interface HarnessSettings {
 
 @Injectable()
 export class HarnessService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly models: HarnessModelsService = new HarnessModelsService(),
+	) {}
 
 	async getSettings(): Promise<HarnessSettings> {
 		const row = await this.prisma.setting.findUnique({
@@ -86,7 +90,13 @@ export class HarnessService {
 	async getStatus(): Promise<HarnessesResponse> {
 		const selection = await this.resolveSelection();
 		return {
-			harnesses: listHarnessStatus(),
+			harnesses: (() => {
+				const catalogue = this.models.catalogue();
+				return listHarnessStatus().map((h) => ({
+					...h,
+					models: this.models.modelsFor(h.id, catalogue),
+				}));
+			})(),
 			selection: selection.runnable
 				? {
 						runnable: true,

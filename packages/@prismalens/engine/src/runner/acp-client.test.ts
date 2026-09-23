@@ -19,7 +19,7 @@ import { PassThrough, Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { HarnessChild, HarnessLauncher } from "../launch/types.js";
-import { AcpSession, type AcpStreamItem } from "./acp-client.js";
+import { AcpSession, type AcpStreamItem, offeredModels } from "./acp-client.js";
 
 /** A child whose stdin fails every write the way a dead peer's pipe does. */
 function brokenPipeChild(code: string): HarnessChild {
@@ -229,5 +229,32 @@ describe("AcpSession tolerant wire decoding", () => {
 
 		const last = items[items.length - 1];
 		expect(last).toEqual({ kind: "done", stopReason: "unknown_stop_reason" });
+	});
+});
+
+describe("offeredModels (#639)", () => {
+	it("reads the model select option, flattening groups, and skips shapes it does not know", () => {
+		expect(
+			offeredModels([
+				{ id: "mode", type: "select", category: "mode", currentValue: "a", options: [{ value: "a", name: "A" }] },
+				{
+					id: "model",
+					type: "select",
+					category: "model",
+					currentValue: "m1",
+					options: [
+						{ value: "m1", name: "Model One" },
+						{ group: "g", name: "Group", options: [{ value: "m2", name: "Model Two" }, { value: 3 }] },
+						"garbage",
+					],
+				},
+				{ id: "model-flag", type: "boolean", category: "model", currentValue: true },
+			]),
+		).toEqual([
+			{ id: "m1", name: "Model One" },
+			{ id: "m2", name: "Model Two" },
+		]);
+		expect(offeredModels(undefined)).toEqual([]);
+		expect(offeredModels({ not: "an array" })).toEqual([]);
 	});
 });

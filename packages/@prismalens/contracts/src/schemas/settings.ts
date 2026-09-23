@@ -38,6 +38,22 @@ export const HarnessStatusSchema = z.object({
 	modelVia: z.enum(["config", "env", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: z.string(),
+	/**
+	 * Models to suggest (#639). `harness`: the list the harness itself offered at
+	 * its last readiness check, which wins. `catalogue`: prismalens's model
+	 * catalogue as of `asOf`. Suggestions only; any id is accepted as typed.
+	 */
+	models: z.object({
+		source: z.enum(["harness", "catalogue"]),
+		asOf: z.string(),
+		entries: z.array(
+			z.object({
+				id: z.string(),
+				name: z.string(),
+				status: z.string().nullable(),
+			}),
+		),
+	}),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
@@ -88,6 +104,8 @@ export const HarnessProbeResultSchema = z.object({
 	]),
 	detail: z.string(),
 	hard: z.literal(false),
+	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */
+	models: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
 

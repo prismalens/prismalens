@@ -1,0 +1,39 @@
+{
+	"version": 1,
+	"updatedAt": "2026-09-23T00:00:00Z",
+	"harnesses": {
+		"opencode": {
+			"models": [
+				{
+					"id": "opencode/muse-spark-1.3-contributor-free",
+					"name": "Muse Spark 1.3 (free)",
+					"status": "current"
+				}
+			]
+		},
+		"claude-code": {
+			"models": [
+				{
+					"id": "claude-fable-5-1",
+					"name": "Claude Fable 5.1",
+					"status": "current"
+				},
+				{
+					"id": "claude-opus-5-5",
+					"name": "Claude Opus 5.5",
+					"status": "current"
+				},
+				{
+					"id": "claude-sonnet-5",
+					"name": "Claude Sonnet 5",
+					"status": "current"
+				},
+				{
+					"id": "claude-haiku-4-5-20251001",
+					"name": "Claude Haiku 4.5",
+					"status": "current"
+				}
+			]
+		}
+	}
+}

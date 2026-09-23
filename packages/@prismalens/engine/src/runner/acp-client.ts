@@ -11,6 +11,7 @@
 import { createInterface } from "node:readline";
 import type {
 	InitializeResponse,
+	NewSessionResponse,
 	RequestPermissionRequest,
 } from "@agentclientprotocol/sdk";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
@@ -102,6 +103,41 @@ export interface AcpAuthMethod {
 	name?: string;
 }
 
+/** One model the harness itself offers for this session. */
+export interface AcpOfferedModel {
+	id: string;
+	name: string;
+}
+
+/**
+ * The models a `session/new` answer offers: the `select` config option in
+ * category `model`, flattening groups. Empty when the harness offers none.
+ * Tolerant: an option of an unknown shape is skipped, never fatal.
+ */
+export function offeredModels(
+	configOptions: NewSessionResponse["configOptions"] | unknown,
+): AcpOfferedModel[] {
+	if (!Array.isArray(configOptions)) return [];
+	const out: AcpOfferedModel[] = [];
+	for (const option of configOptions as Array<Record<string, unknown>>) {
+		if (option?.category !== "model" || option.type !== "select") continue;
+		const entries = Array.isArray(option.options) ? option.options : [];
+		for (const entry of entries as Array<Record<string, unknown>>) {
+			const flat = Array.isArray(entry?.options)
+				? (entry.options as Array<Record<string, unknown>>)
+				: [entry];
+			for (const o of flat) {
+				if (typeof o?.value !== "string") continue;
+				out.push({
+					id: o.value,
+					name: typeof o.name === "string" ? o.name : o.value,
+				});
+			}
+		}
+	}
+	return out;
+}
+
 export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
@@ -119,6 +155,8 @@ export class AcpSession {
 	private readonly stderrChunks: string[] = [];
 	agent: AcpAgentInfo = {};
 	authMethods: AcpAuthMethod[] = [];
+	/** What `session/new` offered in its `model` config option; empty when nothing. */
+	models: AcpOfferedModel[] = [];
 
 	constructor(private readonly config: AcpSessionConfig) {
 		this.launcher = config.launcher ?? createProcessLauncher();
@@ -219,10 +257,11 @@ export class AcpSession {
 				...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-		)) as { sessionId?: string } | null;
+		)) as Partial<NewSessionResponse> | null;
 		if (!session?.sessionId)
 			throw new Error("ACP session/new returned no sessionId");
 		this.sessionId = session.sessionId;
+		this.models = offeredModels(session.configOptions);
 	}
 
 	/** One prompt turn. Yields updates and permission decisions, then exactly one done or error. */

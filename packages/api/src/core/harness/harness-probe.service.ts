@@ -12,16 +12,22 @@ import { Injectable } from "@nestjs/common";
 import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessProbeResult } from "@prismalens/contracts/schemas";
 import { probeHarness } from "@prismalens/engine";
+import { HarnessModelsService } from "./harness-models.service.js";
 
 @Injectable()
 export class HarnessProbeService {
+	constructor(private readonly models: HarnessModelsService) {}
+
 	async check(id: HarnessId): Promise<HarnessProbeResult> {
 		const result = await probeHarness(id);
+		if (result.outcome === "answers-acp")
+			this.models.remember(id, result.models);
 		return {
 			id: result.id,
 			outcome: result.outcome,
 			detail: result.detail,
 			hard: result.hard,
+			...(result.models?.length ? { models: result.models } : {}),
 		};
 	}
 }
