@@ -585,12 +585,14 @@ describe.skipIf(process.platform === "win32")(
 				process.execPath,
 				[
 					"-e",
-					'process.on("SIGTERM", () => {}); process.stdout.write("ready\\n"); setInterval(()=>{}, 1e3);',
+					'process.on("SIGTERM", () => {}); process.stdout.write(String(process.pid) + "\\n"); setInterval(()=>{}, 1e3);',
 				],
 				{ cwd: process.cwd() },
 			);
-			await once(child.stdout, "data");
-			const pid = child.pid as number;
+			// The harness names its own pid, as the tree tests above do: HarnessChild has no pid.
+			const [chunk] = (await once(child.stdout, "data")) as [Buffer];
+			const pid = Number.parseInt(chunk.toString().trim(), 10);
+			expect(pid).toBeGreaterThan(0);
 			try {
 				child.kill("SIGTERM");
 				expect(child.killed).toBe(true);
