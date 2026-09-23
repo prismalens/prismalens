@@ -62,15 +62,6 @@ describe("backend", () => {
 			expect(result).toBe(jsPath);
 		});
 
-		it("finds the Windows global layout, which has no lib/ (#83)", () => {
-			const tempResources = createTempDir("pl-resources-win-");
-			const binDir = join(tempResources, "prismalens", "node_modules", "prismalens", "dist", "bin");
-			mkdirSync(binDir, { recursive: true });
-			const jsPath = join(binDir, "prismalens.js");
-			writeFileSync(jsPath, "// dummy packaged backend");
-			expect(resolveBackendMain({ resourcesPath: tempResources, env: {} })).toBe(jsPath);
-		});
-
 		it("throws naming the directory when missing", () => {
 			const missingResources = "/nonexistent/test-resources-dir";
 			expect(() =>

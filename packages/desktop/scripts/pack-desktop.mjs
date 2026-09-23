@@ -15,6 +15,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -65,13 +66,14 @@ rmSync(tmp, { recursive: true, force: true });
 // Node the tarball's better-sqlite3 was built for. Swap in the prebuilt
 // binary for Electron's ABI; no compiler is needed, which is what keeps this
 // runnable on a laptop and on a CI runner alike.
-// A global install's layout: `lib/node_modules` on POSIX, `node_modules` on Windows.
-const staged = join(
-	out,
-	...(process.platform === "win32" ? [] : ["lib"]),
-	"node_modules",
-	"prismalens",
-);
+// A global install lays packages out under `lib/node_modules` on POSIX and
+// `node_modules` on Windows. electron-builder drops a top-level `node_modules`
+// from extraResources, so Windows moves to the POSIX layout the app reads.
+if (process.platform === "win32") {
+	mkdirSync(join(out, "lib"), { recursive: true });
+	renameSync(join(out, "node_modules"), join(out, "lib", "node_modules"));
+}
+const staged = join(out, "lib", "node_modules", "prismalens");
 const electronVersion = JSON.parse(
 	readFileSync(resolve(here, "../node_modules/electron/package.json"), "utf8"),
 ).version;
