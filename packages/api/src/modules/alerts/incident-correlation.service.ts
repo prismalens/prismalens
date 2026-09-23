@@ -90,11 +90,10 @@ export class IncidentCorrelationService {
 		}
 
 		if (alert.fingerprint) {
-			// The fingerprint is title + description only, so two alerts from
-			// different services can share one (#633 edge 12: a grouped payload
-			// spanning two services, and incidents merged by identical title).
-			// Absent data must narrow the match, never widen it: an alert with no
-			// service matches only an incident with no service.
+			// The fingerprint carries the alert's `service` label, so two services
+			// in one grouped delivery never share one (#633 edge 12). The service
+			// scope below still narrows, never widens: an alert with no registered
+			// service matches only an incident with none.
 			const openMatch = await this.prisma.alert.findFirst({
 				where: {
 					fingerprint: alert.fingerprint,

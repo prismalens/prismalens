@@ -51,4 +51,19 @@ describe("buildInvestigationPrompt (#633)", () => {
 			"- Application SOURCE CODE is in your current working directory",
 		);
 	});
+
+	it("tells the agent how to cite a context-pack fact only when a pack is present", () => {
+		const pack = {
+			window: { start: "2026-09-23T10:00:00Z", end: "2026-09-23T11:00:00Z" },
+			changes: [],
+			neighbors: [],
+			priorIncidents: [],
+			unavailable: [],
+			assembledAt: "2026-09-23T11:00:00Z",
+		};
+		expect(buildInvestigationPrompt({ ...baseContext, contextPack: pack } as InvestigationContext)).toContain(
+			'cites source "context-pack:<which fact>"',
+		);
+		expect(buildInvestigationPrompt(baseContext)).not.toContain("context-pack:");
+	});
 });
