@@ -1,0 +1,122 @@
+# The desktop app (#83): build the unpacked Electron app on each OS from the
+# same packed `prismalens` the npm channel ships, launch it on an empty
+# workspace, and assert the window rendered the app. On a published release the
+# three unpacked apps are zipped and attached to it, unsigned (signing is #697).
+name: Desktop
+
+on:
+  pull_request:
+    paths:
+      - "packages/desktop/**"
+      - "scripts/pack-cli.mjs"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/desktop/**"
+      - "scripts/pack-cli.mjs"
+      - ".github/workflows/desktop.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-2022, not windows-latest: windows-latest moved to Visual Studio
+        # 2026 (installed at ...\Microsoft Visual Studio\18\...) in June 2026, and
+        # the node-gyp pnpm vendors doesn't parse that version string — it finds
+        # the install, can't read its version, and fails better-sqlite3's native
+        # build with "Could not find any Visual Studio installation to use".
+        # windows-2022 still ships VS2022 and stays supported for the next 3 years.
+        os: [ubuntu-latest, macos-latest, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the workspace
+        run: pnpm build
+
+      - name: Build the unpacked app
+        run: pnpm --filter @prismalens/desktop dist
+
+      - name: Launch it and assert the window rendered (xvfb on Linux)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum pnpm --filter @prismalens/desktop smoke "$GITHUB_WORKSPACE/desktop-smoke-${RUNNER_OS}.png"
+          else
+            pnpm --filter @prismalens/desktop smoke "$GITHUB_WORKSPACE/desktop-smoke-${RUNNER_OS}.png"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: desktop-smoke-${{ runner.os }}
+          path: desktop-smoke-*.png
+          retention-days: 7
+
+      - name: Zip the unpacked app
+        id: zip
+        run: |
+          cd packages/desktop/release
+          dir=$(find . -mindepth 1 -maxdepth 1 -type d | head -1)
+          name="PrismaLens-${RUNNER_OS}-${RUNNER_ARCH}-unsigned.zip"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "$GITHUB_WORKSPACE/$name" "$dir" >/dev/null
+          else
+            # ditto keeps the .app bundle's symlinks and modes on macOS.
+            if [ "$RUNNER_OS" = "macOS" ]; then ditto -c -k --keepParent "$dir" "$GITHUB_WORKSPACE/$name"; else zip -qry "$GITHUB_WORKSPACE/$name" "$dir"; fi
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ runner.os }}
+          path: ${{ steps.zip.outputs.name }}
+          retention-days: 7
+
+  attach:
+    name: Attach to the release
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: apps
+          merge-multiple: true
+
+      - name: Upload the unsigned apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" apps/*.zip --repo "$GITHUB_REPOSITORY" --clobber
