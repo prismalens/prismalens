@@ -46,8 +46,13 @@ export function useCreateOwner() {
 	return useMutation({
 		...orpc.setup.createOwner.mutationOptions(),
 		onSuccess: () => {
-			// Invalidate setup status to reflect the new state
+			// Invalidate setup status to reflect the new state, and "who am I":
+			// the wizard leaves the browser signed in, and the gate must not
+			// answer from the null it cached before the account existed.
 			queryClient.invalidateQueries({ queryKey: setupKeys.status() });
+			queryClient.invalidateQueries({
+				queryKey: orpc.operator.whoami.queryKey({ input: {} }),
+			});
 		},
 	});
 }
