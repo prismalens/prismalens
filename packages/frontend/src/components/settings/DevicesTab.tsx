@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { Button } from "@/components/ui/button";
@@ -52,43 +52,51 @@ export function DevicesTab() {
 
 			<section className="space-y-3">
 				<h3 className="text-label font-medium">Paired devices</h3>
+				{devices.isPending && (
+					<div className="flex items-center justify-center py-6">
+						<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+					</div>
+				)}
+				{devices.isError && <MutationError error={devices.error} />}
 				{devices.data?.devices.length === 0 && (
 					<p className="text-record text-muted-foreground">
 						No device is paired. Only this machine can reach the instance.
 					</p>
 				)}
-				<ul className="divide-y rounded-md border">
-					{devices.data?.devices.map((d) => (
-						<li
-							key={d.id}
-							className="flex items-center justify-between gap-4 px-3 py-2"
-						>
-							<div className="min-w-0">
-								<p className="truncate text-record">
-									{d.name}
-									{d.current && (
-										<span className="ml-2 text-meta text-muted-foreground">
-											this device
-										</span>
-									)}
-								</p>
-								<p className="text-meta text-muted-foreground">
-									paired {new Date(d.createdAt).toLocaleDateString()}
-									{d.lastSeenAt &&
-										` · last seen ${new Date(d.lastSeenAt).toLocaleString()}`}
-								</p>
-							</div>
-							<Button
-								variant="outline"
-								size="sm"
-								disabled={revoke.isPending}
-								onClick={() => revoke.mutate({ id: d.id })}
+				{!!devices.data?.devices.length && (
+					<ul className="divide-y rounded-md border">
+						{devices.data.devices.map((d) => (
+							<li
+								key={d.id}
+								className="flex items-center justify-between gap-4 px-3 py-2"
 							>
-								Revoke
-							</Button>
-						</li>
-					))}
-				</ul>
+								<div className="min-w-0">
+									<p className="truncate text-record">
+										{d.name}
+										{d.current && (
+											<span className="ml-2 text-meta text-muted-foreground">
+												this device
+											</span>
+										)}
+									</p>
+									<p className="text-meta text-muted-foreground">
+										paired {new Date(d.createdAt).toLocaleDateString()}
+										{d.lastSeenAt &&
+											` · last seen ${new Date(d.lastSeenAt).toLocaleString()}`}
+									</p>
+								</div>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={revoke.isPending}
+									onClick={() => revoke.mutate({ id: d.id })}
+								>
+									Revoke
+								</Button>
+							</li>
+						))}
+					</ul>
+				)}
 				{revoke.isError && <MutationError error={revoke.error} />}
 			</section>
 		</div>
@@ -100,7 +108,7 @@ function PairAnother() {
 		typeof window === "undefined" ? "" : window.location.origin,
 	);
 	const [label, setLabel] = useState("");
-	const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
 	const create = useMutation({
 		...orpc.pairing.manage.createLink.mutationOptions(),
 	});
@@ -119,7 +127,7 @@ function PairAnother() {
 				className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]"
 				onSubmit={(e) => {
 					e.preventDefault();
-					setCopied(false);
+					setCopied("idle");
 					create.mutate({
 						origin: origin.trim() || undefined,
 						label: label.trim() || undefined,
@@ -160,24 +168,34 @@ function PairAnother() {
 			{create.isError && <MutationError error={create.error} />}
 			{create.data && (
 				<div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
-					<code className="min-w-0 flex-1 truncate text-meta">
+					<code className="min-w-0 flex-1 select-all truncate text-meta">
 						{create.data.url}
 					</code>
 					<Button
 						variant="ghost"
 						size="sm"
-						onClick={async () => {
-							await navigator.clipboard.writeText(create.data.url);
-							setCopied(true);
+						aria-label="Copy link"
+						onClick={() => {
+							// Clipboard access needs a secure context and a permission; the
+							// link stays on screen to copy by hand when it is refused.
+							navigator.clipboard
+								.writeText(create.data.url)
+								.then(() => setCopied("copied"))
+								.catch(() => setCopied("failed"));
 						}}
 					>
-						{copied ? (
+						{copied === "copied" ? (
 							<Check className="h-4 w-4" />
 						) : (
 							<Copy className="h-4 w-4" />
 						)}
 					</Button>
 				</div>
+			)}
+			{copied === "failed" && (
+				<p className="text-meta text-muted-foreground">
+					Copying was blocked. Select the link and copy it by hand.
+				</p>
 			)}
 		</section>
 	);
