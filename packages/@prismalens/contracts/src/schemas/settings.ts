@@ -70,15 +70,27 @@ export type HarnessSelectionStatus = z.infer<
 	typeof HarnessSelectionStatusSchema
 >;
 
-/** Persisted harness choice; PRISMALENS_HARNESS wins over it. */
+const ModelIdSchema = z.string().min(1).max(200);
+
+/**
+ * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
+ * stored per harness (#639): an id is in one harness's own format, so a model
+ * set for one never reaches another.
+ */
 export const HarnessSettingsSchema = z.object({
 	harness: HarnessSettingSchema,
-	/** Model id in the harness's own format; absent means the harness default. */
-	model: z.string().min(1).max(200).optional(),
+	/** Model id per harness; a harness without one uses its default. */
+	models: z.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema).optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
-export const UpdateHarnessSettingsSchema = HarnessSettingsSchema.partial();
+/** A patch: `models` merges per harness, and `null` clears that harness's model. */
+export const UpdateHarnessSettingsSchema = z.object({
+	harness: HarnessSettingSchema.optional(),
+	models: z
+		.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
+		.optional(),
+});
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
 
 export const HarnessesResponseSchema = z.object({

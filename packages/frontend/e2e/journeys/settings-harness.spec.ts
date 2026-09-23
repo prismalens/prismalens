@@ -174,7 +174,7 @@ const isHarnessSettingsUrl = (url: URL) => url.pathname === "/api/settings/harne
 /** The persisted harness choice `GET /settings/harness` answers with. */
 async function serveHarnessSettings(
 	page: Page,
-	settings: { harness: string; model?: string },
+	settings: { harness: string; models?: Record<string, string | null> },
 ): Promise<void> {
 	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
@@ -202,7 +202,9 @@ async function serveHarnessSettings(
 
 async function openHarnessSettings(
 	page: Page,
-	settings: { harness: string; model?: string } = { harness: "auto" },
+	settings: { harness: string; models?: Record<string, string | null> } = {
+		harness: "auto",
+	},
 ): Promise<void> {
 	await serveHarnessSettings(page, settings);
 	await page.goto("/settings?tab=harness");
@@ -277,6 +279,33 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await page.getByTestId("agent-picker").click();
 		await page.getByTestId("agent-option-codex").click();
+		await expect(modelPill).toBeDisabled();
+	});
+
+	test("keeps the pill open on a harness that cannot take a model when one is stored for it, so it can be cleared (#639)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: false,
+			harness: "codex",
+			pinned: true,
+			pinnedBy: "settings",
+			blockedReason:
+				"Codex does not take a model setting; clear Model for it in Settings → Harness",
+		});
+		await openHarnessSettings(page, {
+			harness: "codex",
+			models: { codex: "vendor/stale" },
+		});
+
+		await expect(page.getByTestId("harness-selection")).toContainText(
+			"Codex does not take a model setting",
+		);
+		const modelPill = page.getByTestId("model-pill");
+		await expect(modelPill).toBeEnabled();
+		await modelPill.click();
+		await page.getByLabel("Model").fill("");
+		await page.getByRole("button", { name: "Use", exact: true }).click();
 		await expect(modelPill).toBeDisabled();
 	});
 
@@ -378,7 +407,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page, { harness: "auto" });
 
 		const patches: Record<string, unknown>[] = [];
-		let current: { harness: string; model?: string } = { harness: "auto" };
+		let current: { harness: string; models?: Record<string, string | null> } = {
+			harness: "auto",
+		};
 		await page.route(isHarnessSettingsUrl, async (route) => {
 			if (route.request().method() === "PATCH") {
 				const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -415,7 +446,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await modelInput.fill("sonnet-4");
 		await page.getByRole("button", { name: "Use", exact: true }).click();
 		await expect.poll(() => patches.length).toBeGreaterThanOrEqual(2);
-		expect(patches[1]).toMatchObject({ model: "sonnet-4" });
+		expect(patches[1]).toEqual({ models: { opencode: "sonnet-4" } });
 		await expect(page.getByTestId("model-pill")).toContainText("sonnet-4");
 	});
 

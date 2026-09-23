@@ -33,7 +33,8 @@ function ModelPill() {
 			: `the model catalogue of ${suggestions?.asOf.slice(0, 10)}`;
 
 	const choose = (id: string | undefined) => {
-		update.mutate({ model: id });
+		if (!effective) return;
+		update.mutate({ models: { [effective.id]: id ?? null } });
 		setOpen(false);
 	};
 
@@ -44,8 +45,16 @@ function ModelPill() {
 					variant="ghost"
 					size="sm"
 					className="h-7 gap-1 px-2 text-record"
-					disabled={ignored}
-					title={ignored ? `${effective?.label} uses its own model` : undefined}
+					// A model stored for a harness that cannot take one blocks the run; the
+					// pill stays open for it so it can be cleared.
+					disabled={ignored && !model}
+					title={
+						ignored
+							? model
+								? `${effective?.label} cannot take a model; clear it to run`
+								: `${effective?.label} uses its own model`
+							: undefined
+					}
 					data-testid="model-pill"
 				>
 					<Mono className="max-w-40 truncate">{shown}</Mono>

@@ -22,6 +22,7 @@ export {
 	PLACEMENTS,
 	type Placement,
 	type ResolvedModel,
+	refuseModel,
 	resolveHarnessModel,
 	resolvePermissionOutcome,
 	resolvePlacement,
