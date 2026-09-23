@@ -9,7 +9,7 @@
  * never embeds the API.
  */
 
-import type { ChildProcess } from "node:child_process";
+import { type ChildProcess, execFile } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { readWorkspaceLockState } from "@prismalens/config";
 import {
@@ -18,6 +18,7 @@ import {
 	Menu,
 	Notification,
 	nativeImage,
+	session,
 	shell,
 	Tray,
 } from "electron";
@@ -34,9 +35,12 @@ import {
 	notificationText,
 	snapshot,
 } from "./notifications.js";
+import { DEVICE_COOKIE, operatorToken } from "./session.js";
 import {
+	type BackendSpawn,
 	backendSpawn,
 	backendUrl,
+	pairOperatorSpawn,
 	pickFreePort,
 	planLaunch,
 } from "./supervisor.js";
@@ -48,6 +52,8 @@ let child: ChildProcess | null = null;
 let window: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let baseUrl = "";
+/** The window's device token, also the Bearer the notification poll sends. */
+let deviceToken = "";
 let ready = false;
 let quitting = false;
 let stopping = false;
@@ -62,13 +68,14 @@ function workspaceDir(): string {
 async function boot(): Promise<void> {
 	const dir = workspaceDir();
 	const plan = planLaunch(readWorkspaceLockState(dir), await pickFreePort());
+	const backendMain = resolveBackendMain({
+		resourcesPath: process.resourcesPath,
+		env: process.env,
+	});
 	if (plan.kind === "spawn") {
 		const spawnPlan = backendSpawn({
 			execPath: process.execPath,
-			backendMain: resolveBackendMain({
-				resourcesPath: process.resourcesPath,
-				env: process.env,
-			}),
+			backendMain,
 			port: plan.port,
 			workspaceDir: dir,
 			env: process.env,
@@ -89,7 +96,50 @@ async function boot(): Promise<void> {
 	if (!(await waitForHealth(plan.port, READY_TIMEOUT_MS))) {
 		throw new Error(`Backend not ready at ${baseUrl}`);
 	}
+	await pairWindow(backendMain, dir);
 	ready = true;
+}
+
+/** The window pairs like any browser (ADR 0004 §8); see `session.ts`. */
+async function pairWindow(backendMain: string, dir: string): Promise<void> {
+	const jar = session.defaultSession.cookies;
+	const [stored] = await jar.get({ url: baseUrl, name: DEVICE_COOKIE });
+	deviceToken = await operatorToken({
+		baseUrl,
+		storedToken: stored?.value ?? null,
+		pairOperator: () =>
+			runForStdout(
+				pairOperatorSpawn({
+					execPath: process.execPath,
+					backendMain,
+					workspaceDir: dir,
+					env: process.env,
+				}),
+			),
+	});
+	if (deviceToken !== stored?.value) {
+		await jar.set({
+			url: baseUrl,
+			name: DEVICE_COOKIE,
+			value: deviceToken,
+			path: "/",
+			httpOnly: true,
+			sameSite: "lax",
+			// Validity is revocation, not expiry: the server's own cookie is a year.
+			expirationDate: Date.now() / 1000 + 365 * 24 * 60 * 60,
+		});
+	}
+}
+
+function runForStdout(plan: BackendSpawn): Promise<string> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			plan.command,
+			plan.args,
+			{ env: plan.env, windowsHide: true, timeout: 30_000 },
+			(error, stdout) => (error ? reject(error) : resolve(stdout)),
+		);
+	});
 }
 
 function openWindow(path = "/"): void {
@@ -204,7 +254,9 @@ function startPolling(): void {
 	let first = true;
 	const tick = async () => {
 		try {
-			const res = await fetch(`${baseUrl}/api/investigations?limit=25`);
+			const res = await fetch(`${baseUrl}/api/investigations?limit=25`, {
+				headers: { authorization: `Bearer ${deviceToken}` },
+			});
 			if (!res.ok) return;
 			const body = (await res.json()) as { data: InvestigationSummary[] };
 			const current = body.data;

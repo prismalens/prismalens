@@ -5,6 +5,7 @@ import type { WorkspaceLockState } from "@prismalens/config";
 import { describe, expect, it } from "vitest";
 import {
 	backendSpawn,
+	pairOperatorSpawn,
 	backendUrl,
 	pickFreePort,
 	planLaunch,
@@ -68,6 +69,26 @@ describe("supervisor", () => {
 		});
 	});
 
+	describe("pairOperatorSpawn", () => {
+		it("runs `pair --operator` on the workspace under the same binary, as Node", () => {
+			const plan = pairOperatorSpawn({
+				execPath: "/path/to/electron",
+				backendMain: "/path/to/prismalens.js",
+				workspaceDir: "/home/u/.prismalens",
+				env: { PATH: "/usr/bin" },
+			});
+			expect(plan.command).toBe("/path/to/electron");
+			expect(plan.args).toEqual([
+				"/path/to/prismalens.js",
+				"pair",
+				"--operator",
+				"--workspace",
+				"/home/u/.prismalens",
+			]);
+			expect(plan.env.ELECTRON_RUN_AS_NODE).toBe("1");
+		});
+	});
+
 	describe("backendSpawn", () => {
 		it("uses execPath as command and standard args without workspace", () => {
 			const spawn = backendSpawn({
@@ -84,6 +105,7 @@ describe("supervisor", () => {
 				"3001",
 				"--host",
 				"127.0.0.1",
+				"--no-open",
 			]);
 		});
 
@@ -101,6 +123,7 @@ describe("supervisor", () => {
 				"3001",
 				"--host",
 				"127.0.0.1",
+				"--no-open",
 			]);
 
 			const withWs = backendSpawn({
@@ -117,6 +140,7 @@ describe("supervisor", () => {
 				"3001",
 				"--host",
 				"127.0.0.1",
+				"--no-open",
 				"--workspace",
 				"/data/custom-workspace",
 			]);

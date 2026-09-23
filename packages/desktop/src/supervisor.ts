@@ -37,8 +37,8 @@ export interface BackendSpawn {
 
 /**
  * The child is `pl up` on a loopback port with the laptop placement declared,
- * so the API's loopback rule makes the window the operator and the harness
- * credential follows the placement (ADR 0004 §8, 0003 §9).
+ * so the harness credential follows the placement (0003 §9). It opens no
+ * browser: the window is this app's, and it pairs itself (`session.ts`).
  */
 export function backendSpawn(input: {
 	execPath: string;
@@ -55,6 +55,7 @@ export function backendSpawn(input: {
 		String(input.port),
 		"--host",
 		"127.0.0.1",
+		"--no-open",
 	];
 	if (input.workspaceDir) args.push("--workspace", input.workspaceDir);
 	const env: NodeJS.ProcessEnv = {
@@ -66,6 +67,29 @@ export function backendSpawn(input: {
 		...(input.loginShellPath ? { PATH: input.loginShellPath } : {}),
 	};
 	return { command: input.execPath, args, env };
+}
+
+/**
+ * `pl pair --operator` on the workspace, run the same way as the backend: the
+ * link it prints is the window's way in (ADR 0004 §8).
+ */
+export function pairOperatorSpawn(input: {
+	execPath: string;
+	backendMain: string;
+	workspaceDir: string;
+	env: NodeJS.ProcessEnv;
+}): BackendSpawn {
+	return {
+		command: input.execPath,
+		args: [
+			input.backendMain,
+			"pair",
+			"--operator",
+			"--workspace",
+			input.workspaceDir,
+		],
+		env: { ...input.env, ELECTRON_RUN_AS_NODE: "1" },
+	};
 }
 
 /** A free loopback port, asked of the OS. */
