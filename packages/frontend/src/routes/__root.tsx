@@ -53,7 +53,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 					"Open-source AI-powered incident analysis and root cause detection",
 			},
 		],
-		links: [{ rel: "stylesheet", href: appCss }],
+		links: [
+			{ rel: "stylesheet", href: appCss },
+			{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+		],
 		// The head function's `scripts` key is what router-core maps onto the
 		// match's `headScripts`, i.e. this renders INSIDE <head>. A raw <script>
 		// written into the JSX <head> is not an option: TanStack Start renders
