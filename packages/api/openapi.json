@@ -23318,7 +23318,6 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "loopback",
                             "session",
                             "device"
                           ],

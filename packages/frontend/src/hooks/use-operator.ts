@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Who the browser is to this instance. `via` is `loopback` on the host
- * itself, `session` when signed in, null otherwise. One query, shared by the
+ * Who the browser is to this instance: the credential that makes it the
+ * operator, or null. One query, shared by the
  * route gate, the login page and the sidebar, so they cannot disagree.
  */
 

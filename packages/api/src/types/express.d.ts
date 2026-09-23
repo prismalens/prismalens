@@ -3,9 +3,7 @@
 
 /**
  * Adds `operator`, `user` and `session` to Express Request, set by AuthGuard.
- * `operator` says why the request counts as the operator; `user` and `session`
- * are present for a Better Auth session, and `user` alone on loopback when the
- * instance's account exists.
+ * `operator` says which credential made the request the operator.
  */
 
 import type { Session, User } from "@prismalens/auth";

@@ -57,22 +57,6 @@ describe("AuthGuard", () => {
 		expect(mockOperator.resolve).not.toHaveBeenCalled();
 	});
 
-	it('resolver returns {operator:{via:"loopback"}, user} -> true and request.operator/user set, request.session undefined', async () => {
-		mockReflector.getAllAndOverride.mockReturnValue(false);
-		const user = { id: "user-1", email: "operator@example.com" } as User;
-		mockOperator.resolve.mockResolvedValue({
-			operator: { via: "loopback" },
-			user,
-		});
-
-		const result = await guard.canActivate(mockContext);
-
-		expect(result).toBe(true);
-		expect(request.operator).toEqual({ via: "loopback" });
-		expect(request.user).toBe(user);
-		expect(request.session).toBeUndefined();
-	});
-
 	it('resolver returns {operator:{via:"session"}, user, session} -> true, all three set', async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
 		const user = { id: "user-2", email: "session-user@example.com" } as User;

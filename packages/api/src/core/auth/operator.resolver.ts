@@ -5,11 +5,11 @@
  * Who is making this request, and why they count as the operator.
  *
  * One answer for the guard and for `operator.whoami`, so the frontend gate and
- * the API agree. Order: a Better Auth session (a signed-in browser keeps its
- * own session), then a paired device's token, then the loopback rule. On
- * loopback with no session the instance's one account, when it exists, is the
- * acting user so records that attribute to a user (integrations, timeline)
- * keep working.
+ * the API agree. Every caller presents a credential, the host included: no
+ * address, `Host` header or bind grants anything (ADR 0004 §8). Order: a
+ * Better Auth session, then a paired device's token. A device acts as the
+ * instance's one account, when it exists, so records that attribute to a user
+ * (integrations, timeline) keep working.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -20,14 +20,12 @@ import {
 	type Session,
 	type User,
 } from "@prismalens/auth";
-import { resolvePlacement } from "@prismalens/config/harness";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { AuthService } from "./auth.service.js";
 import { readDeviceToken } from "./device-cookie.js";
-import { isLocalOperatorRequest } from "./local-operator.js";
 
-export type OperatorVia = "session" | "loopback" | "device";
+export type OperatorVia = "session" | "device";
 
 export interface Operator {
 	via: OperatorVia;
@@ -61,28 +59,14 @@ export class OperatorResolver {
 		}
 
 		const deviceToken = readDeviceToken(request);
-		if (deviceToken) {
-			const device = await authenticateDevice(
-				prismaPairingStore(this.prisma),
-				deviceToken,
-			);
-			if (device) {
-				return {
-					operator: { via: "device", device },
-					user: (await this.owner()) ?? undefined,
-				};
-			}
-		}
-
-		const local = isLocalOperatorRequest({
-			remoteAddress: request.socket?.remoteAddress,
-			headers: request.headers,
-			placement: resolvePlacement(),
-		});
-		if (!local) return null;
-
+		if (!deviceToken) return null;
+		const device = await authenticateDevice(
+			prismaPairingStore(this.prisma),
+			deviceToken,
+		);
+		if (!device) return null;
 		return {
-			operator: { via: "loopback" },
+			operator: { via: "device", device },
 			user: (await this.owner()) ?? undefined,
 		};
 	}

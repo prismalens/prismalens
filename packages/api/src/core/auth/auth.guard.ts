@@ -4,9 +4,9 @@
 /**
  * Auth Guard
  *
- * Global NestJS guard. A request is the operator when it comes from the host
- * itself (the loopback rule, ADR 0004 §8) or carries a valid Better Auth
- * session. Respects the @Public() decorator to skip authentication.
+ * Global NestJS guard. A request is the operator when `OperatorResolver`
+ * finds its credential. Respects the @Public() decorator to skip
+ * authentication.
  */
 
 import {
