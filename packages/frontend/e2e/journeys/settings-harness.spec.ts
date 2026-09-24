@@ -92,7 +92,7 @@ const CODEX_INSTALLED: HarnessFixture = {
 	defaultModel: null,
 	tested: null,
 	modelVia: "unsupported",
-	loginHint: "`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
+	loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	models: NO_MODELS,
 };
 
@@ -234,7 +234,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			registry.getByText("Claude Code"),
 		).toBeVisible();
-		await expect(registry.getByText("Codex")).toBeVisible();
+		await expect(
+			registry.locator("span.flex.items-center.gap-2").filter({ hasText: "Codex" }),
+		).toBeVisible();
 		// Same collision as opencode above: the binary "deepagents-acp" and the
 		// install hint "pip install deepagents-acp" both contain "deepagents".
 		await expect(
@@ -299,8 +301,10 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		const modelPill = page.getByTestId("model-pill");
 		await expect(modelPill).toBeEnabled();
 		await modelPill.click();
-		await page.getByLabel("Model").fill("");
-		await page.getByRole("button", { name: "Use", exact: true }).click();
+		// Clearing is the only action: no suggestions, no input to store another.
+		await expect(page.getByTestId("model-suggestions")).toHaveCount(0);
+		await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+		await page.getByTestId("model-clear").click();
 		await expect(modelPill).toBeDisabled();
 	});
 
@@ -436,7 +440,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		// Set model through model-pill -> input Model -> Use
 		await page.getByTestId("model-pill").click();
-		const modelInput = page.getByLabel("Model");
+		const modelInput = page.getByLabel("Model", { exact: true });
 		await expect(modelInput).toBeVisible();
 		await modelInput.fill("sonnet-4");
 		await page.getByRole("button", { name: "Use", exact: true }).click();
@@ -462,7 +466,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(suggestions).toContainText("Fixture Current");
 		await expect(suggestions).toContainText("legacy");
 
-		const modelInput = page.getByLabel("Model");
+		const modelInput = page.getByLabel("Model", { exact: true });
 		await modelInput.fill("vendor/fixture-old");
 		await expect(page.getByTestId("model-note")).toHaveText(
 			"Marked legacy in the model catalogue of 2026-09-23.",
