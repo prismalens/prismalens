@@ -9,6 +9,7 @@
  * block, one for a block that fails the schema (see `retryBudgetKey`).
  */
 import {
+	type Evidence,
 	type InvestigationReport,
 	InvestigationReportSchema,
 } from "@prismalens/contracts/schemas";
@@ -119,9 +120,38 @@ export function retryPrompt(failure: ReportFailure): string {
 Reply with ONLY one fenced \`\`\`json block that validates against the schema you were given, and nothing else. Do not run more tools.`;
 }
 
+/** The prefix a report's evidence `source` carries for a fact the host supplied. */
+export const CONTEXT_PACK_SOURCE = "context-pack:";
+
+/**
+ * A fact the host supplied is never promoted to "verified" by the model
+ * (ADR-0016 §5, #633): evidence whose source cites the context pack, or that
+ * labels itself so, is recorded as inferred with no tool call. Keyed on the
+ * source as well as `origin`, so a model that omits `origin` does not escape.
+ */
+function coercePackEvidence<E extends Evidence>(e: E): E {
+	const fromPack =
+		e.origin === "context-pack" ||
+		e.source.trim().toLowerCase().startsWith(CONTEXT_PACK_SOURCE);
+	return fromPack
+		? { ...e, status: "inferred", toolCallId: null, origin: "context-pack" }
+		: e;
+}
+
 export function stampReport(
 	report: ModelReport,
 	fidelity: InvestigationReport["fidelity"],
 ): InvestigationReport {
-	return { ...report, ...(fidelity ? { fidelity } : {}) };
+	return {
+		...report,
+		hypotheses: report.hypotheses.map((h) => ({
+			...h,
+			evidence: h.evidence.map(coercePackEvidence),
+		})),
+		ruledOut: report.ruledOut.map((r) => ({
+			...r,
+			evidence: r.evidence.map(coercePackEvidence),
+		})),
+		...(fidelity ? { fidelity } : {}),
+	};
 }

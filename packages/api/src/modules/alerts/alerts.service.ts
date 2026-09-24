@@ -96,10 +96,16 @@ export class AlertsService {
 	}
 
 	/**
-	 * Generate fingerprint for similarity matching
+	 * The alert's correlation key: which open incident it joins (ADR 0006 §3).
+	 * Title and description, scoped to the alert's `service` label when it has
+	 * one, the label service mapping reads. Two services firing the same alert
+	 * in one grouped delivery stay two incidents even when neither is a
+	 * registered service (#633 edge 12); instances of one service still join.
 	 */
 	generateFingerprint(dto: CreateAlertDto): string {
+		const service = dto.labels?.service?.trim();
 		const normalized = [
+			...(service ? [`service=${service}`] : []),
 			dto.title.toLowerCase().replace(/[^a-z0-9]/g, ""),
 			(dto.description ?? "")
 				.toLowerCase()
