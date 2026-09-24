@@ -37,6 +37,22 @@ export const HarnessStatusSchema = z.object({
 	modelVia: z.enum(["config", "env", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: z.string(),
+	/**
+	 * Models to suggest (#639). `harness`: the list the harness itself offered at
+	 * its last readiness check, which wins. `catalogue`: prismalens's model
+	 * catalogue as of `asOf`. Suggestions only; any id is accepted as typed.
+	 */
+	models: z.object({
+		source: z.enum(["harness", "catalogue"]),
+		asOf: z.string(),
+		entries: z.array(
+			z.object({
+				id: z.string(),
+				name: z.string(),
+				status: z.string().nullable(),
+			}),
+		),
+	}),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
@@ -53,15 +69,27 @@ export type HarnessSelectionStatus = z.infer<
 	typeof HarnessSelectionStatusSchema
 >;
 
-/** Persisted harness choice; PRISMALENS_HARNESS wins over it. */
+const ModelIdSchema = z.string().min(1).max(200);
+
+/**
+ * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
+ * stored per harness (#639): an id is in one harness's own format, so a model
+ * set for one never reaches another.
+ */
 export const HarnessSettingsSchema = z.object({
 	harness: HarnessSettingSchema,
-	/** Model id in the harness's own format; absent means the harness default. */
-	model: z.string().min(1).max(200).optional(),
+	/** Model id per harness; a harness without one uses its default. */
+	models: z.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema).optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
-export const UpdateHarnessSettingsSchema = HarnessSettingsSchema.partial();
+/** A patch: `models` merges per harness, and `null` clears that harness's model. */
+export const UpdateHarnessSettingsSchema = z.object({
+	harness: HarnessSettingSchema.optional(),
+	models: z
+		.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
+		.optional(),
+});
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
 
 export const HarnessesResponseSchema = z.object({
@@ -87,6 +115,8 @@ export const HarnessProbeResultSchema = z.object({
 	]),
 	detail: z.string(),
 	hard: z.literal(false),
+	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */
+	models: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
 

@@ -3,6 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	resolveHarnessModel,
@@ -185,5 +186,16 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 
 	it("names the harness default as the source when a row has none", () => {
 		expect(resolveHarnessModel("gemini", "")).toEqual({ source: "harness-default" });
+	});
+});
+
+describe("refuseModel (#639 rec 4)", () => {
+	it("refuses a model on a harness that cannot take one, and nothing else", () => {
+		expect(refuseModel("codex", "synthetic/model-a")).toMatch(
+			/^Codex does not take a model setting/,
+		);
+		expect(refuseModel("codex", undefined)).toBeNull();
+		expect(refuseModel("codex", "  ")).toBeNull();
+		expect(refuseModel("opencode", "synthetic/model-a")).toBeNull();
 	});
 });

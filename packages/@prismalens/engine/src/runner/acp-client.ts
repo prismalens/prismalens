@@ -11,7 +11,12 @@
 import { createInterface } from "node:readline";
 import type {
 	InitializeResponse,
+	NewSessionResponse,
 	RequestPermissionRequest,
+	SessionUpdate,
+	StopReason,
+	ToolCallStatus,
+	ToolKind,
 } from "@agentclientprotocol/sdk";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
@@ -35,6 +40,86 @@ export type AcpStreamItem =
 	| { kind: "done"; stopReason: string }
 	| { kind: "error"; message: string };
 
+/**
+ * Every value SDK 1.4.0's types allow, for the fields a harness drifts on
+ * first. The SDK's zod schemas are private and its transport drops or strips
+ * what they reject, so the transport stays ours and these lists are how the
+ * SDK stays the authority (#639 rec 2). The `Covers` check below fails to
+ * compile when an SDK upgrade adds a value one of them lacks.
+ */
+const KNOWN_UPDATES = [
+	"agent_message_chunk",
+	"agent_thought_chunk",
+	"available_commands_update",
+	"compaction_summary_chunk",
+	"compaction_update",
+	"config_option_update",
+	"current_mode_update",
+	"plan",
+	"plan_removed",
+	"plan_update",
+	"session_info_update",
+	"tool_call",
+	"tool_call_update",
+	"usage_update",
+	"user_message_chunk",
+] as const satisfies readonly SessionUpdate["sessionUpdate"][];
+const KNOWN_TOOL_KINDS = [
+	"read",
+	"edit",
+	"delete",
+	"move",
+	"search",
+	"execute",
+	"think",
+	"fetch",
+	"switch_mode",
+	"other",
+] as const satisfies readonly ToolKind[];
+const KNOWN_TOOL_STATUSES = [
+	"pending",
+	"in_progress",
+	"completed",
+	"failed",
+] as const satisfies readonly ToolCallStatus[];
+const KNOWN_STOP_REASONS = [
+	"end_turn",
+	"max_tokens",
+	"max_turn_requests",
+	"refusal",
+	"cancelled",
+] as const satisfies readonly StopReason[];
+type Covers<Union, List extends readonly unknown[]> = [
+	Exclude<Union, List[number]>,
+] extends [never]
+	? true
+	: never;
+const _covers: [
+	Covers<SessionUpdate["sessionUpdate"], typeof KNOWN_UPDATES>,
+	Covers<ToolKind, typeof KNOWN_TOOL_KINDS>,
+	Covers<ToolCallStatus, typeof KNOWN_TOOL_STATUSES>,
+	Covers<StopReason, typeof KNOWN_STOP_REASONS>,
+] = [true, true, true, true];
+void _covers;
+
+const KNOWN: Record<AcpDrift["field"], ReadonlySet<string>> = {
+	sessionUpdate: new Set(KNOWN_UPDATES),
+	kind: new Set(KNOWN_TOOL_KINDS),
+	status: new Set(KNOWN_TOOL_STATUSES),
+	stopReason: new Set(KNOWN_STOP_REASONS),
+};
+
+/**
+ * A value the harness sent that SDK 1.4.0 does not know. It is logged and the
+ * message passes through unchanged; drift never fails a run. Extra fields are
+ * not drift: ACP allows them (`_meta`, custom variants).
+ */
+export interface AcpDrift {
+	method: "session/update" | "session/prompt";
+	field: "sessionUpdate" | "kind" | "status" | "stopReason";
+	value: string;
+}
+
 export interface AcpSessionConfig {
 	command: string;
 	args: string[];
@@ -51,6 +136,8 @@ export interface AcpSessionConfig {
 	onWire?: (direction: "in" | "out", line: string) => void;
 	/** Harness stderr as it arrives, so the host can log it (#600). */
 	onStderr?: (chunk: string) => void;
+	/** A value unknown to the ACP SDK, once per session per value. */
+	onDrift?: (drift: AcpDrift) => void;
 }
 
 const DEFAULT_INIT_TIMEOUT_MS = 120_000;
@@ -102,6 +189,41 @@ export interface AcpAuthMethod {
 	name?: string;
 }
 
+/** One model the harness itself offers for this session. */
+export interface AcpOfferedModel {
+	id: string;
+	name: string;
+}
+
+/**
+ * The models a `session/new` answer offers: the `select` config option in
+ * category `model`, flattening groups. Empty when the harness offers none.
+ * Tolerant: an option of an unknown shape is skipped, never fatal.
+ */
+export function offeredModels(
+	configOptions: NewSessionResponse["configOptions"] | unknown,
+): AcpOfferedModel[] {
+	if (!Array.isArray(configOptions)) return [];
+	const out: AcpOfferedModel[] = [];
+	for (const option of configOptions as Array<Record<string, unknown>>) {
+		if (option?.category !== "model" || option.type !== "select") continue;
+		const entries = Array.isArray(option.options) ? option.options : [];
+		for (const entry of entries as Array<Record<string, unknown>>) {
+			const flat = Array.isArray(entry?.options)
+				? (entry.options as Array<Record<string, unknown>>)
+				: [entry];
+			for (const o of flat) {
+				if (typeof o?.value !== "string") continue;
+				out.push({
+					id: o.value,
+					name: typeof o.name === "string" ? o.name : o.value,
+				});
+			}
+		}
+	}
+	return out;
+}
+
 export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
@@ -117,8 +239,11 @@ export class AcpSession {
 	private closed = false;
 	private exitMessage: string | null = null;
 	private readonly stderrChunks: string[] = [];
+	private readonly driftSeen = new Set<string>();
 	agent: AcpAgentInfo = {};
 	authMethods: AcpAuthMethod[] = [];
+	/** What `session/new` offered in its `model` config option; empty when nothing. */
+	models: AcpOfferedModel[] = [];
 
 	constructor(private readonly config: AcpSessionConfig) {
 		this.launcher = config.launcher ?? createProcessLauncher();
@@ -219,10 +344,11 @@ export class AcpSession {
 				...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 			},
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
-		)) as { sessionId?: string } | null;
+		)) as Partial<NewSessionResponse> | null;
 		if (!session?.sessionId)
 			throw new Error("ACP session/new returned no sessionId");
 		this.sessionId = session.sessionId;
+		this.models = offeredModels(session.configOptions);
 	}
 
 	/** One prompt turn. Yields updates and permission decisions, then exactly one done or error. */
@@ -240,6 +366,7 @@ export class AcpSession {
 		)
 			.then((res) => {
 				const stopReason = (res as { stopReason?: string } | null)?.stopReason;
+				this.drift("session/prompt", "stopReason", stopReason);
 				this.push({ kind: "done", stopReason: stopReason ?? "end_turn" });
 			})
 			.catch((err: unknown) => {
@@ -285,6 +412,19 @@ export class AcpSession {
 		this.queue.push(item);
 		this.wake?.();
 		this.wake = null;
+	}
+
+	/** Reports `value` once per session when it is a string the SDK does not know. */
+	private drift(
+		method: AcpDrift["method"],
+		field: AcpDrift["field"],
+		value: unknown,
+	): void {
+		if (typeof value !== "string" || KNOWN[field].has(value)) return;
+		const key = `${method}.${field}=${value}`;
+		if (this.driftSeen.has(key)) return;
+		this.driftSeen.add(key);
+		this.config.onDrift?.({ method, field, value });
 	}
 
 	private stderrTail(): string {
@@ -356,8 +496,18 @@ export class AcpSession {
 			else p.resolve(msg.result);
 		} else if (msg.method === "session/update") {
 			const update = msg.params?.update;
-			if (update && typeof update === "object")
+			if (update && typeof update === "object") {
+				const u = update as Record<string, unknown>;
+				this.drift("session/update", "sessionUpdate", u.sessionUpdate);
+				if (
+					u.sessionUpdate === "tool_call" ||
+					u.sessionUpdate === "tool_call_update"
+				) {
+					this.drift("session/update", "kind", u.kind);
+					this.drift("session/update", "status", u.status);
+				}
 				this.push({ kind: "update", update: update as AcpUpdate });
+			}
 		}
 	}
 

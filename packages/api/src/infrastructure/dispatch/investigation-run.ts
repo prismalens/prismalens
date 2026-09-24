@@ -202,6 +202,7 @@ async function runJobInternal(
 					if (line) logger.debug(`harness stderr: ${line}`);
 				},
 				onPolicyWarning: (message) => logger.warn(message),
+				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
 			},
 			{ sink, store },

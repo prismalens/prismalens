@@ -79,6 +79,10 @@ async function turn(sessionId, promptText) {
 			extraField: "extra_update_val",
 		});
 		notify(sessionId, {
+			sessionUpdate: "unknown_session_update_kind",
+			extraField: "extra_update_val_again",
+		});
+		notify(sessionId, {
 			sessionUpdate: "tool_call",
 			toolCallId: "t_custom",
 			title: "custom tool",

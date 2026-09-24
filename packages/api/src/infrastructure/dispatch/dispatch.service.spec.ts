@@ -154,26 +154,15 @@ describe("DispatchService.onModuleInit", () => {
 	});
 });
 
-describe("resolveHarnessRunModel (#634)", () => {
+describe("resolveHarnessRunModel (#634, #639)", () => {
 	it("resolves a model and its source for a harness that can take one", () => {
-		const onIgnored = vi.fn();
-		expect(resolveHarnessRunModel("opencode", "zen/free", onIgnored)).toEqual({
-			model: "zen/free",
+		expect(resolveHarnessRunModel("opencode", "synthetic/model-a")).toEqual({
+			model: "synthetic/model-a",
 			modelSource: "operator",
 		});
-		expect(onIgnored).not.toHaveBeenCalled();
 	});
 
-	it("drops the model and reports it ignored for a modelVia: unsupported harness", () => {
-		const onIgnored = vi.fn();
-		expect(resolveHarnessRunModel("codex", "gpt-5", onIgnored)).toEqual({});
-		expect(onIgnored).toHaveBeenCalledWith("codex");
-	});
-
-	it("never reports ignored when the operator set no model at all", () => {
-		const onIgnored = vi.fn();
-		expect(resolveHarnessRunModel("gemini", undefined, onIgnored)).toEqual({});
-		expect(resolveHarnessRunModel("gemini", "  ", onIgnored)).toEqual({});
-		expect(onIgnored).not.toHaveBeenCalled();
+	it("claims no model and no source for a modelVia: unsupported harness", () => {
+		expect(resolveHarnessRunModel("gemini", undefined)).toEqual({});
 	});
 });

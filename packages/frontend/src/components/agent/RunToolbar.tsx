@@ -4,6 +4,7 @@
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
+import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +24,19 @@ function ModelPill() {
 	useEffect(() => setDraft(model), [model]);
 	const ignored = effective?.modelVia === "unsupported";
 	const shown = model || effective?.defaultModel || "agent default";
+	const suggestions = effective?.models;
+	const typed = draft.trim();
+	const match = suggestions?.entries.find((m) => m.id === typed);
+	const listName =
+		suggestions?.source === "harness"
+			? `${effective?.label}'s own list`
+			: `the model catalogue of ${suggestions?.asOf.slice(0, 10)}`;
+
+	const choose = (id: string | undefined) => {
+		if (!effective) return;
+		update.mutate({ models: { [effective.id]: id ?? null } });
+		setOpen(false);
+	};
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -31,8 +45,16 @@ function ModelPill() {
 					variant="ghost"
 					size="sm"
 					className="h-7 gap-1 px-2 text-record"
-					disabled={ignored}
-					title={ignored ? `${effective?.label} uses its own model` : undefined}
+					// A model stored for a harness that cannot take one blocks the run; the
+					// pill stays open for it so it can be cleared.
+					disabled={ignored && !model}
+					title={
+						ignored
+							? model
+								? `${effective?.label} cannot take a model; clear it to run`
+								: `${effective?.label} uses its own model`
+							: undefined
+					}
 					data-testid="model-pill"
 				>
 					<Mono className="max-w-40 truncate">{shown}</Mono>
@@ -40,39 +62,95 @@ function ModelPill() {
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-72 space-y-2 p-3">
-				<p className="text-meta text-muted-foreground">
-					Model id in the agent's own format. Empty means{" "}
-					{effective?.defaultModel ? (
-						<Mono>{effective.defaultModel}</Mono>
-					) : (
-						"the agent's default"
-					)}
-					.
-				</p>
-				<form
-					className="flex gap-2"
-					onSubmit={(e) => {
-						e.preventDefault();
-						update.mutate({ model: draft.trim() || undefined });
-						setOpen(false);
-					}}
-				>
-					<Input
-						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						placeholder={effective?.defaultModel ?? "agent default"}
-						className="h-8 font-mono text-record"
-						aria-label="Model"
-					/>
-					<Button
-						type="submit"
-						size="sm"
-						className="h-8"
-						disabled={update.isPending}
-					>
-						Use
-					</Button>
-				</form>
+				{ignored ? (
+					<>
+						<p className="text-meta text-muted-foreground">
+							{effective?.label} cannot take a model. Clear <Mono>{model}</Mono>{" "}
+							to run it on its own default.
+						</p>
+						<Button
+							size="sm"
+							className="h-8"
+							disabled={update.isPending}
+							onClick={() => choose(undefined)}
+							data-testid="model-clear"
+						>
+							Clear model
+						</Button>
+					</>
+				) : (
+					<>
+						<p className="text-meta text-muted-foreground">
+							Model id in the agent's own format. Empty means{" "}
+							{effective?.defaultModel ? (
+								<Mono>{effective.defaultModel}</Mono>
+							) : (
+								"the agent's default"
+							)}
+							.
+						</p>
+						<form
+							className="flex gap-2"
+							onSubmit={(e) => {
+								e.preventDefault();
+								choose(typed || undefined);
+							}}
+						>
+							<Input
+								value={draft}
+								onChange={(e) => setDraft(e.target.value)}
+								placeholder={effective?.defaultModel ?? "agent default"}
+								className="h-8 font-mono text-record"
+								aria-label="Model"
+							/>
+							<Button
+								type="submit"
+								size="sm"
+								className="h-8"
+								disabled={update.isPending}
+							>
+								Use
+							</Button>
+						</form>
+						{typed && suggestions && suggestions.entries.length > 0 && (
+							<p
+								className="text-meta text-muted-foreground"
+								data-testid="model-note"
+							>
+								{match
+									? match.status && match.status !== "current"
+										? `Marked ${match.status} in ${listName}.`
+										: `In ${listName}.`
+									: `Not in ${listName}; sent as typed.`}
+							</p>
+						)}
+						{suggestions && suggestions.entries.length > 0 && (
+							<ul
+								className="max-h-48 space-y-0.5 overflow-y-auto border-t pt-2"
+								aria-label="Suggested models"
+								data-testid="model-suggestions"
+							>
+								{suggestions.entries.map((m) => (
+									<li key={m.id}>
+										<button
+											type="button"
+											className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-record hover:bg-muted"
+											onClick={() => choose(m.id)}
+										>
+											<span className="min-w-0 flex-1 truncate">{m.name}</span>
+											{m.status && m.status !== "current" && (
+												<StateWord tone="stale">{m.status}</StateWord>
+											)}
+											<Mono className="max-w-32 truncate text-meta text-muted-foreground">
+												{m.id}
+											</Mono>
+										</button>
+									</li>
+								))}
+							</ul>
+						)}
+					</>
+				)}
 			</PopoverContent>
 		</Popover>
 	);

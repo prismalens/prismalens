@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessSetting, HarnessStatus } from "@prismalens/contracts";
 import { Check, ChevronDown, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +51,10 @@ export function useAgentChoice() {
 		selection,
 		setting,
 		effective,
-		model: settingsQuery.data?.model ?? "",
+		// Stored per harness (#639): the pill shows the effective harness's own.
+		model:
+			(effective && settingsQuery.data?.models?.[effective.id as HarnessId]) ??
+			"",
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
 	};

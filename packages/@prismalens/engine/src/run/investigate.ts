@@ -71,6 +71,8 @@ export interface RunInvestigationOptions {
 	onHarnessStderr?: (chunk: string) => void;
 	/** A permission the policy allowed without naming its kind; the host logs it at warn. */
 	onPolicyWarning?: (message: string) => void;
+	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
+	onHarnessDrift?: (message: string) => void;
 	signal?: AbortSignal;
 }
 
@@ -172,6 +174,12 @@ export async function* runInvestigation(
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,
 		onStderr: opts.onHarnessStderr,
+		onDrift: (drift) => {
+			wire("in", JSON.stringify({ drift }));
+			opts.onHarnessDrift?.(
+				`harness drift: ${drift.method} ${drift.field}=${JSON.stringify(drift.value)} (unknown to ACP SDK 1.4.0; passed through)`,
+			);
+		},
 	});
 
 	let text = "";

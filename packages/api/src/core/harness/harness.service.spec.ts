@@ -68,13 +68,13 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("returns the persisted pin and model", async () => {
+		it("returns the persisted pin and models", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "opencode", model: "zen/free" }),
+				settingRow({ harness: "opencode", models: { opencode: "synthetic/model-a" } }),
 			);
 			await expect(service().getSettings()).resolves.toEqual({
 				harness: "opencode",
-				model: "zen/free",
+				models: { opencode: "synthetic/model-a" },
 			});
 		});
 
@@ -102,29 +102,71 @@ describe("HarnessService", () => {
 	describe("updateSettings", () => {
 		it("merges the patch over what is stored and upserts it", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "opencode", model: "zen/free" }),
+				settingRow({ harness: "opencode", models: { opencode: "synthetic/model-a" } }),
 			);
 
 			const next = await service().updateSettings({ harness: "codex" });
 
-			expect(next).toEqual({ harness: "codex", model: "zen/free" });
+			expect(next).toEqual({ harness: "codex", models: { opencode: "synthetic/model-a" } });
 			const call = mockPrismaService.setting.upsert.mock.calls[0][0];
 			expect(call.where).toEqual({ key: "HARNESS" });
 			expect(JSON.parse(call.create.value)).toEqual({
 				harness: "codex",
-				model: "zen/free",
+				models: { opencode: "synthetic/model-a" },
 			});
 			expect(call.create.category).toBe("ai");
 		});
 
-		it("keeps the stored pin when only the model is patched", async () => {
+		it("merges models per harness, and null clears one (#639)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "opencode" }),
+				settingRow({ harness: "opencode", models: { opencode: "synthetic/model-a", codex: "synthetic/stale" } }),
 			);
 
 			await expect(
-				service().updateSettings({ model: "anthropic/claude" }),
-			).resolves.toEqual({ harness: "opencode", model: "anthropic/claude" });
+				service().updateSettings({ models: { "claude-code": "synthetic/model-b", codex: null } }),
+			).resolves.toEqual({
+				harness: "opencode",
+				models: { opencode: "synthetic/model-a", "claude-code": "synthetic/model-b" },
+			});
+		});
+
+		it("drops the old shared `model` key and anything that is not a registry id", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "opencode", model: "synthetic/old", models: { nope: "x", opencode: " " } }),
+			);
+			await expect(service().getSettings()).resolves.toEqual({ harness: "opencode" });
+		});
+	});
+
+	describe("a model stored for a harness that cannot take one (#639 rec 4)", () => {
+		it("makes the selection not runnable, with the reason", async () => {
+			process.env.PATH = pathWith("codex-acp");
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "codex", models: { codex: "synthetic/model-a" } }),
+			);
+			await expect(service().resolveSelection()).resolves.toMatchObject({
+				runnable: false,
+				failure: "model-unsupported",
+				harness: "codex",
+				pinnedBy: "settings",
+				reason: expect.stringMatching(/does not take a model/),
+			});
+		});
+
+		it("never lets another harness's model block the run", async () => {
+			process.env.PATH = pathWith("codex-acp");
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "codex", models: { opencode: "synthetic/model-a" } }),
+			);
+			await expect(service().resolveSelection()).resolves.toMatchObject({ runnable: true, harness: "codex" });
+		});
+
+		it("runs a harness that takes a model with one set", async () => {
+			process.env.PATH = pathWith("opencode");
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "opencode", models: { opencode: "synthetic/model-a" } }),
+			);
+			await expect(service().resolveSelection()).resolves.toMatchObject({ runnable: true, harness: "opencode" });
 		});
 	});
 
@@ -139,8 +181,6 @@ describe("HarnessService", () => {
 			const selection = await service().resolveSelection();
 
 			expect(selection).toMatchObject({ runnable: true, harness: "codex" });
-			// The env pin short-circuits before the persisted value is ever read.
-			expect(mockPrismaService.setting.findUnique).not.toHaveBeenCalled();
 		});
 
 		it("uses the persisted pin when no env pin is set", async () => {

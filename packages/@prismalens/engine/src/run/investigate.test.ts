@@ -95,6 +95,25 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(existsSync(join(runDir, "config", "marker.json"))).toBe(true);
 	});
 
+	it("records a value the ACP SDK does not know in the transcript and hands the host a warning (#639)", async () => {
+		const warnings: string[] = [];
+		const { runDir } = await collect("tolerant", { onHarnessDrift: (m) => warnings.push(m) });
+		const drift = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { m: string })
+			.flatMap((e) => {
+				try {
+					const m = JSON.parse(e.m) as { drift?: unknown };
+					return m.drift ? [m.drift] : [];
+				} catch {
+					return [];
+				}
+			});
+		expect(drift).toContainEqual({ method: "session/update", field: "sessionUpdate", value: "unknown_session_update_kind" });
+		expect(warnings.join("\n")).toContain("unknown_stop_reason");
+	});
+
 	it("retries once in the same session when the first report is invalid", async () => {
 		const { events } = await collect("retry");
 		expect(events.at(-1)?.kind).toBe("report");

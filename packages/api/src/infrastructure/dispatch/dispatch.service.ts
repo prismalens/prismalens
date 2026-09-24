@@ -66,20 +66,15 @@ const PRIORITY_ORDER: Record<string, number> = {
 const RESTART_REASON = "API restarted while the run was in flight";
 
 /**
- * The model-resolution branch `resolveHarness` uses, pulled out of the ports
- * closure so a `modelVia: "unsupported"` harness's behaviour (drop the model,
- * tell the caller to log it, never claim a `modelSource`) is unit-testable
- * without constructing the whole service and running a job through it.
+ * The model a run asks for and where it came from. A harness that cannot take
+ * a model never gets here with one set: the selection refused it first
+ * (`refuseModel`, #639 rec 4), and it never claims a `modelSource`.
  */
 export function resolveHarnessRunModel(
 	harnessId: HarnessId,
 	operatorModel: string | undefined,
-	onIgnored: (harnessId: HarnessId) => void,
 ): { model?: string; modelSource?: ModelSource } {
-	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") {
-		if (operatorModel?.trim()) onIgnored(harnessId);
-		return {};
-	}
+	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") return {};
 	const resolved = resolveHarnessModel(harnessId, operatorModel);
 	return {
 		...(resolved.model ? { model: resolved.model } : {}),
@@ -155,8 +150,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (!selection.runnable) return { selection };
 				const modelResult = resolveHarnessRunModel(
 					selection.harness,
-					settings.model,
-					(harness) => this.logger.warn(`model ignored by ${harness}`),
+					settings.models?.[selection.harness],
 				);
 				return { selection, ...modelResult };
 			},

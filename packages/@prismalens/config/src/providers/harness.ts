@@ -29,6 +29,8 @@ export const HARNESS_SELECTION_FAILURES = [
 	"pinned-harness-missing",
 	/** No registry harness is on PATH. */
 	"no-harness",
+	/** A model is set for a harness that has no way to take one (#639 rec 4). */
+	"model-unsupported",
 ] as const;
 export type HarnessSelectionFailure =
 	(typeof HARNESS_SELECTION_FAILURES)[number];
@@ -86,8 +88,8 @@ export interface HarnessDescriptor {
 	/**
 	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
 	 * `configFiles` writes), `env` (a var `acpEnv` sets), or `unsupported` (the
-	 * harness has no way to take it, so an operator-set model is logged and
-	 * dropped rather than silently ignored).
+	 * harness has no way to take it, so an operator-set model refuses the run
+	 * before it starts; see `refuseModel`).
 	 */
 	modelVia: "config" | "env" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
@@ -363,4 +365,18 @@ export function resolvePermissionOutcome(
 		fidelity: registry.readOnlyFidelity,
 		mechanism: registry.readOnlyMechanism,
 	};
+}
+
+/**
+ * Why a run on `harnessId` must not start with `model` set, or null. A run
+ * refuses what the row lacks rather than dropping it and running anyway
+ * (ADR 0003 item 5, #639 rec 4).
+ */
+export function refuseModel(
+	harnessId: HarnessId,
+	model: string | undefined,
+): string | null {
+	const row = HARNESS_REGISTRY[harnessId];
+	if (row.modelVia !== "unsupported" || !model?.trim()) return null;
+	return `${row.label} does not take a model setting; clear Model for it in Settings → Harness`;
 }

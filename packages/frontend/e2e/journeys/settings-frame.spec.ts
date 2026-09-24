@@ -80,7 +80,7 @@ test.describe("#523 — the settings frame", () => {
 		const modelPill = page.getByTestId("model-pill");
 		if (await modelPill.isEnabled()) {
 			await modelPill.click();
-			const modelInput = page.getByLabel("Model");
+			const modelInput = page.getByLabel("Model", { exact: true });
 			await expect(modelInput).toBeVisible();
 			await modelInput.fill("gpt-4o-mini");
 			await page.getByRole("button", { name: "Use", exact: true }).click();

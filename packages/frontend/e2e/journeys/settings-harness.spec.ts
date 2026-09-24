@@ -32,6 +32,17 @@ type HarnessFixture = {
 	tested: { version: string; date: string } | null;
 	modelVia: "config" | "env" | "unsupported";
 	loginHint: string;
+	models: {
+		source: "harness" | "catalogue";
+		asOf: string;
+		entries: { id: string; name: string; status: string | null }[];
+	};
+};
+
+const NO_MODELS: HarnessFixture["models"] = {
+	source: "catalogue",
+	asOf: "2026-09-23T00:00:00Z",
+	entries: [],
 };
 
 const CLAUDE_INSTALLED: HarnessFixture = {
@@ -45,6 +56,17 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	modelVia: "env",
 	loginHint:
 		"`claude /login`, or `ANTHROPIC_API_KEY` in env",
+	models: NO_MODELS,
+};
+
+// Synthetic ids: the fixture proves the picker's behaviour, not the catalogue's contents.
+const OPENCODE_MODELS: HarnessFixture["models"] = {
+	source: "catalogue",
+	asOf: "2026-09-23T00:00:00Z",
+	entries: [
+		{ id: "vendor/fixture-current", name: "Fixture Current", status: "current" },
+		{ id: "vendor/fixture-old", name: "Fixture Old", status: "legacy" },
+	],
 };
 
 const OPENCODE_INSTALLED: HarnessFixture = {
@@ -58,6 +80,7 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	modelVia: "config",
 	loginHint:
 		"Keyless default model; `opencode auth login` or a provider key in env for others",
+	models: OPENCODE_MODELS,
 };
 
 const CODEX_INSTALLED: HarnessFixture = {
@@ -69,7 +92,8 @@ const CODEX_INSTALLED: HarnessFixture = {
 	defaultModel: null,
 	tested: null,
 	modelVia: "unsupported",
-	loginHint: "`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
+	loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
+	models: NO_MODELS,
 };
 
 const DEEPAGENTS_MISSING: HarnessFixture = {
@@ -82,6 +106,7 @@ const DEEPAGENTS_MISSING: HarnessFixture = {
 	tested: null,
 	modelVia: "unsupported",
 	loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
+	models: NO_MODELS,
 };
 
 /** A machine with opencode (CI-tested, on PATH), claude-code and codex (both
@@ -144,7 +169,7 @@ const isHarnessSettingsUrl = (url: URL) => url.pathname === "/api/settings/harne
 /** The persisted harness choice `GET /settings/harness` answers with. */
 async function serveHarnessSettings(
 	page: Page,
-	settings: { harness: string; model?: string },
+	settings: { harness: string; models?: Record<string, string | null> },
 ): Promise<void> {
 	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
@@ -172,7 +197,9 @@ async function serveHarnessSettings(
 
 async function openHarnessSettings(
 	page: Page,
-	settings: { harness: string; model?: string } = { harness: "auto" },
+	settings: { harness: string; models?: Record<string, string | null> } = {
+		harness: "auto",
+	},
 ): Promise<void> {
 	await serveHarnessSettings(page, settings);
 	await page.goto("/settings?tab=harness");
@@ -207,7 +234,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			registry.getByText("Claude Code"),
 		).toBeVisible();
-		await expect(registry.getByText("Codex")).toBeVisible();
+		await expect(
+			registry.locator("span.flex.items-center.gap-2").filter({ hasText: "Codex" }),
+		).toBeVisible();
 		// Same collision as opencode above: the binary "deepagents-acp" and the
 		// install hint "pip install deepagents-acp" both contain "deepagents".
 		await expect(
@@ -247,6 +276,35 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await page.getByTestId("agent-picker").click();
 		await page.getByTestId("agent-option-codex").click();
+		await expect(modelPill).toBeDisabled();
+	});
+
+	test("keeps the pill open on a harness that cannot take a model when one is stored for it, so it can be cleared (#639)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: false,
+			harness: "codex",
+			pinned: true,
+			pinnedBy: "settings",
+			blockedReason:
+				"Codex does not take a model setting; clear Model for it in Settings → Harness",
+		});
+		await openHarnessSettings(page, {
+			harness: "codex",
+			models: { codex: "vendor/stale" },
+		});
+
+		await expect(page.getByTestId("harness-selection")).toContainText(
+			"Codex does not take a model setting",
+		);
+		const modelPill = page.getByTestId("model-pill");
+		await expect(modelPill).toBeEnabled();
+		await modelPill.click();
+		// Clearing is the only action: no suggestions, no input to store another.
+		await expect(page.getByTestId("model-suggestions")).toHaveCount(0);
+		await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+		await page.getByTestId("model-clear").click();
 		await expect(modelPill).toBeDisabled();
 	});
 
@@ -348,7 +406,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page, { harness: "auto" });
 
 		const patches: Record<string, unknown>[] = [];
-		let current: { harness: string; model?: string } = { harness: "auto" };
+		let current: { harness: string; models?: Record<string, string | null> } = {
+			harness: "auto",
+		};
 		await page.route(isHarnessSettingsUrl, async (route) => {
 			if (route.request().method() === "PATCH") {
 				const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -380,13 +440,51 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		// Set model through model-pill -> input Model -> Use
 		await page.getByTestId("model-pill").click();
-		const modelInput = page.getByLabel("Model");
+		const modelInput = page.getByLabel("Model", { exact: true });
 		await expect(modelInput).toBeVisible();
 		await modelInput.fill("sonnet-4");
 		await page.getByRole("button", { name: "Use", exact: true }).click();
 		await expect.poll(() => patches.length).toBeGreaterThanOrEqual(2);
-		expect(patches[1]).toMatchObject({ model: "sonnet-4" });
+		expect(patches[1]).toEqual({ models: { opencode: "sonnet-4" } });
 		await expect(page.getByTestId("model-pill")).toContainText("sonnet-4");
+	});
+
+	test("suggests models from the list, notes an id it does not know, and sends it as typed (#639)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		await openHarnessSettings(page, { harness: "opencode" });
+
+		await page.getByTestId("model-pill").click();
+		const suggestions = page.getByTestId("model-suggestions");
+		await expect(suggestions).toContainText("Fixture Current");
+		await expect(suggestions).toContainText("legacy");
+
+		const modelInput = page.getByLabel("Model", { exact: true });
+		await modelInput.fill("vendor/fixture-old");
+		await expect(page.getByTestId("model-note")).toHaveText(
+			"Marked legacy in the model catalogue of 2026-09-23.",
+		);
+		await modelInput.fill("vendor/typed-by-hand");
+		await expect(page.getByTestId("model-note")).toHaveText(
+			"Not in the model catalogue of 2026-09-23; sent as typed.",
+		);
+		await page.getByRole("button", { name: "Use", exact: true }).click();
+		await expect(page.getByTestId("model-pill")).toContainText(
+			"vendor/typed-by-hand",
+		);
+
+		await page.getByTestId("model-pill").click();
+		await suggestions.getByText("Fixture Current").click();
+		await expect(page.getByTestId("model-pill")).toContainText(
+			"vendor/fixture-current",
+		);
 	});
 
 	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({

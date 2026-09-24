@@ -5249,7 +5249,8 @@
                               "enum": [
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
-                                "no-harness"
+                                "no-harness",
+                                "model-unsupported"
                               ],
                               "type": "string"
                             },
@@ -22794,6 +22795,55 @@
                           },
                           "loginHint": {
                             "type": "string"
+                          },
+                          "models": {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "harness",
+                                  "catalogue"
+                                ],
+                                "type": "string"
+                              },
+                              "asOf": {
+                                "type": "string"
+                              },
+                              "entries": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name",
+                                    "status"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "asOf",
+                              "entries"
+                            ]
                           }
                         },
                         "required": [
@@ -22805,7 +22855,8 @@
                           "install",
                           "defaultModel",
                           "modelVia",
-                          "loginHint"
+                          "loginHint",
+                          "models"
                         ]
                       }
                     },
@@ -22900,10 +22951,23 @@
                       ],
                       "type": "string"
                     },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 200
+                    "models": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
                     }
                   },
                   "required": [
@@ -22939,10 +23003,30 @@
                     ],
                     "type": "string"
                   },
-                  "model": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200
+                  "models": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
                   }
                 }
               }
@@ -22968,10 +23052,23 @@
                       ],
                       "type": "string"
                     },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 200
+                    "models": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
                     }
                   },
                   "required": [
@@ -23048,6 +23145,24 @@
                     },
                     "hard": {
                       "const": false
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ]
+                      }
                     }
                   },
                   "required": [
