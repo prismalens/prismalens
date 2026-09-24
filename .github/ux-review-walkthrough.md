@@ -120,6 +120,43 @@ gh pr comment <n> --body 'UX sign-off: …'
 
 Anything wrong goes back through the fix loop via that PR's issue.
 
+## The per-PR gate (suspended)
+
+Suspended while releases are 0.5.x patches (#337); it returns when `versioning: always-bump-patch`
+leaves `release-please-config.json`, and these two requirements move back into `AGENTS.md` then.
+
+- **Design validation before merge, with the screenshots on the PR.** Capture the changed
+  surface from the running dev stack in `default` and `dark`, plus `empty` and `error` for
+  each of those the surface can actually reach, and pass a design review against the
+  frontend-design standards. Capturing locally is no longer enough — they go *on the PR*. No
+  screenshots visible there and no recorded verdict, no merge. (Mechanical enforcement is
+  planned as **#304**, not yet built. It must not be a SHA-keyed evidence status modelled on
+  #301's `review-evidence` gate — that pattern was retired in #415 because it derived trust
+  from a third-party reviewer's incidental artifacts, which are undocumented and summonable,
+  so every predicate over them relocated the hole rather than closing it. A deterministic
+  check over this repo's own content — the `## UX review` section and `ux-review` label
+  in `AGENTS.md` — is the legitimate direction, not a decision #304 has made yet.)
+- **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303). Until
+  the harness lands, name the intended spec in the PR body so coverage debt stays visible.
+
+### Screenshots
+
+Commit them beside the spec that exercises the surface, as
+`packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png` — `<suite>` is the Playwright
+directory (`journeys/`, `pl-up/`, …), `<state>` is `default`, `dark`, `empty`, or `error`.
+Generate them from the spec (`await page.screenshot(...)`) wherever it already reaches that
+state. **This repo is public and a committed PNG is permanent**: seeded or synthetic state
+only, and look at every file before `git add` — no keys, tokens, real alert or incident
+payloads, personal names, or emails.
+
+Embed each in the PR body with a raw URL pinned to the **head SHA** (`git rev-parse HEAD` after
+the final push), never the branch name — branch-pinned images 404 once the branch is deleted
+on merge:
+
+```
+![Incidents — dark](https://raw.githubusercontent.com/prismalens/prismalens/<head-sha>/packages/frontend/e2e/journeys/screenshots/incidents-dark.png)
+```
+
 ## History
 
 Entries from before 2026-08-09 are in the frozen ledger at

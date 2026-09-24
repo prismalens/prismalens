@@ -48,58 +48,28 @@ README files in this repository follow a three-tier model. The root `README.md` 
 
 ## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
 
-**Suspended while releases are 0.5.x patches** (ruled on #337, 2026-09-11, as "until 0.8"; re-keyed
-2026-09-19 when releases went patch-only). The screens are being deleted and merged faster than a
-per-PR gate pays back, so requirements 1 and 3 below are not per-PR. One UX walk runs at the end of
-each milestone over every PR carrying the `ux-review` label. Requirement 2 stays in force on every
-frontend PR: the label and the `## UX review` section are how the walk finds the change. The full
-per-PR gate returns when `versioning: always-bump-patch` leaves `release-please-config.json`.
+**Suspended while releases are 0.5.x patches** (ruled on #337, 2026-09-11, as "until 0.8";
+re-keyed 2026-09-19 when releases went patch-only). The screens are being deleted and merged
+faster than a per-PR gate pays back, so the design gate and the per-change e2e spec are not
+per-PR. One UX walk runs at the end of each milestone over every PR carrying the `ux-review`
+label. The UX review section and label stay in force on every frontend PR: they are how the walk
+finds the change. The full per-PR gate returns when `versioning: always-bump-patch` leaves
+`release-please-config.json`.
 
-Every PR touching `packages/frontend` — regardless of which agent or session produces it:
+Every PR touching `packages/frontend`, whichever agent or session produces it, carries a
+`## UX review` section in the PR body and the `ux-review` label. Fill in the template below. The
+heading text and the label are both load-bearing: they are how the operator finds this change
+again at milestone sign-off.
 
-1. **Design validation before merge, with the screenshots on the PR.** Capture the changed
-   surface from the running dev stack in `default` and `dark`, plus `empty` and `error` for
-   each of those the surface can actually reach, and pass a design review against the
-   frontend-design standards. Capturing locally is no longer enough — they go *on the PR*. No
-   screenshots visible there and no recorded verdict, no merge. (Mechanical enforcement is
-   planned as **#304**, not yet built. It must not be a SHA-keyed evidence status modelled on
-   #301's `review-evidence` gate — that pattern was retired in #415 because it derived trust
-   from a third-party reviewer's incidental artifacts, which are undocumented and summonable,
-   so every predicate over them relocated the hole rather than closing it. A deterministic
-   check over this repo's own content — the `## UX review` section and `ux-review` label
-   below — is the legitimate direction, not a decision #304 has made yet.)
-2. **A `## UX review` section in the PR body, and the `ux-review` label on the PR.** Fill in
-   the template below. The heading text and the label are both load-bearing: they are how the
-   operator finds this change again at milestone sign-off.
-3. **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303). Until
-   the harness lands, name the intended spec in the PR body so coverage debt stays visible.
+**UX-shape changes** (a new page, a navigation change, a new interaction model) are flagged to
+the operator **immediately and out of band**, never batched into the milestone walk.
 
-**UX-shape changes** — a new page, a navigation change, a new interaction model — are flagged
-to the operator **immediately and out of band**, never batched into the milestone walk.
-
-An implementation spec for frontend work that omits these deliverables is incomplete — do not
-start implementation until they are added. Requirement 2 replaced an append-to-a-local-file
-ledger on 2026-08-09; that file is frozen, and the operator's side of this — walking a
-milestone, auditing for PRs that forgot the label — is now
-[`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md).
-
-### Screenshots
-
-Commit them beside the spec that exercises the surface, as
-`packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png` — `<suite>` is the Playwright
-directory (`journeys/`, `pl-up/`, …), `<state>` is `default`, `dark`, `empty`, or `error`.
-Generate them from the spec (`await page.screenshot(...)`) wherever it already reaches that
-state. **This repo is public and a committed PNG is permanent**: seeded or synthetic state
-only, and look at every file before `git add` — no keys, tokens, real alert or incident
-payloads, personal names, or emails.
-
-Embed each in the PR body with a raw URL pinned to the **head SHA** (`git rev-parse HEAD` after
-the final push), never the branch name — branch-pinned images 404 once the branch is deleted
-on merge:
-
-```
-![Incidents — dark](https://raw.githubusercontent.com/prismalens/prismalens/<head-sha>/packages/frontend/e2e/journeys/screenshots/incidents-dark.png)
-```
+The suspended requirements (design validation with screenshots on the PR, and a Playwright spec
+per change) and the screenshot conventions are in
+[`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md) §The per-PR gate
+(suspended), which is also the operator's side of this: walking a milestone and auditing for PRs
+that forgot the label. An implementation spec for frontend work that omits the UX review
+section is incomplete.
 
 ### The `## UX review` template
 
