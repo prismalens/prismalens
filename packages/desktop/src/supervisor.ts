@@ -36,9 +36,7 @@ export interface BackendSpawn {
 }
 
 /**
- * The child is `pl up` on a loopback port with the laptop placement declared,
- * so the harness credential follows the placement (0003 §9). It opens no
- * browser: the window is this app's, and it pairs itself (`session.ts`).
+ * The child is `pl up` on a loopback port. It opens no browser: the window is this app's, and it pairs itself (`session.ts`).
  */
 export function backendSpawn(input: {
 	execPath: string;
@@ -61,7 +59,6 @@ export function backendSpawn(input: {
 	const env: NodeJS.ProcessEnv = {
 		...input.env,
 		ELECTRON_RUN_AS_NODE: "1",
-		PRISMALENS_PLACEMENT: "laptop",
 		PRISMALENS_RUN_MODE: "electron",
 		// A GUI-launched app inherits no shell rc; the harness must still resolve.
 		...(input.loginShellPath ? { PATH: input.loginShellPath } : {}),

@@ -4,7 +4,6 @@
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../prisma/prisma.service.js";
-import { PLACEMENTS } from "@prismalens/config/harness";
 import {
 	ALLOWED_PROPERTY_VALUES,
 	classifyError,
@@ -135,7 +134,6 @@ describe("TelemetryService (#602)", () => {
 			"harness",
 			"node_major",
 			"os",
-			"placement",
 			"run_mode",
 			"trigger",
 		]);
@@ -167,9 +165,6 @@ describe("TelemetryService (#602)", () => {
 		const { service, propsOf } = setup();
 		await service.setEnabled(true);
 		expect(propsOf(0).run_mode).toBe(RUN_MODE);
-		// #663 landed `resolvePlacement()`, so this is real rather than omitted.
-		// It says which kind of machine runs the backend, never which machine.
-		expect(PLACEMENTS).toContain(propsOf(0).placement as string);
 		expect(propsOf(0).os).toBe(process.platform);
 		expect(propsOf(0).arch).toBe(process.arch);
 		expect(propsOf(0).node_major).toBe(

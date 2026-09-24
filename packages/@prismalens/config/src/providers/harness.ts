@@ -36,23 +36,6 @@ export type HarnessSelectionFailure =
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
 
 /**
- * Where `pl up` runs decides the harness credential and isolation (ADR 0003 §9).
- * `laptop`: the user's own config dir and sign-in. `server` (VM, cloud, CI): an
- * empty per-run config dir and an API key in env; a subscription never runs there.
- */
-export const PLACEMENTS = ["laptop", "server"] as const;
-export type Placement = (typeof PLACEMENTS)[number];
-
-/** `PRISMALENS_PLACEMENT` wins; otherwise CI is a server and anything else a laptop. */
-export function resolvePlacement(
-	env: NodeJS.ProcessEnv = process.env,
-): Placement {
-	const explicit = env.PRISMALENS_PLACEMENT?.trim();
-	if (explicit === "laptop" || explicit === "server") return explicit;
-	return env.CI && env.CI !== "false" ? "server" : "laptop";
-}
-
-/**
  * Per-run environment for the harness child. Config is isolated to what
  * prismalens generates; the user's own login and data home stay reachable
  * (ADR 0003 §2: prismalens never touches harness credentials).
@@ -64,7 +47,6 @@ export interface HarnessRunEnv {
 	cwd: string;
 	/** Model id in the harness's own format, when the operator set one; otherwise the harness default. */
 	model?: string;
-	placement: Placement;
 	/** Absolute path of the row's `companionBinary` on PATH, when found. */
 	companionPath?: string;
 }
@@ -187,10 +169,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "claude-agent-acp",
 		companionBinary: "claude",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir, model, placement, companionPath }) => ({
-			// A laptop keeps the user's own config dir, so their `claude /login` is what
-			// runs; isolation comes from `settingSources: []` below (ADR 0003 §9, #650).
-			...(placement === "server" ? { CLAUDE_CONFIG_DIR: dataDir } : {}),
+		acpEnv: ({ model, companionPath }) => ({
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 			// Claude Code reads the model from env; one model for every tier and sub-agent.
@@ -206,8 +185,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		}),
 		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
 		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
-		// Anthropic SDK default env var (docs.anthropic.com); the only credential on a server
-		// placement, where CLAUDE_CONFIG_DIR is the empty per-run dir.
+		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		providerKeys: [
 			"ANTHROPIC_API_KEY",
@@ -219,20 +197,17 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP session/request_permission answered by prismalens; settingSources: [] keeps repo settings and hooks inert",
-		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud with PRISMALENS_PLACEMENT=server (#634).
+		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "0.81.1", date: "2026-09-23" },
 		modelVia: "env",
-		loginHint:
-			"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
+		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
 		id: "codex",
 		label: "Codex",
 		binary: "codex-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir, placement }) => ({
-			// A laptop keeps the user's own CODEX_HOME, so their `codex login` runs (ADR 0003 §9).
-			...(placement === "server" ? { CODEX_HOME: dataDir } : {}),
+		acpEnv: () => ({
 			// codex-acp reads an env key only once the client picks its api-key method;
 			// without this it answers -32000 when no login exists (codex-acp 1.13.1, #634).
 			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
@@ -247,31 +222,24 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",
-		// 3 of 3 with PRISMALENS_PLACEMENT=laptop, a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
+		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "1.13.1", date: "2026-09-24" },
 		modelVia: "unsupported",
-		loginHint:
-			"Laptop: `codex login`. Server: `OPENAI_API_KEY` with `PRISMALENS_PLACEMENT=server`",
+		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--experimental-acp"],
-		// GEMINI_CLI_HOME is Gemini CLI's documented directory its own .gemini folder is
-		// created under (geminicli.com/docs/cli/enterprise); it isolates the user's
-		// approvalMode and other user-level settings. A project .gemini/settings.json in
-		// the snapshot still loads (Trusted Folders is a user setting) — recorded here,
-		// not fixed, until #639's login-vs-isolation ruling lands.
-		acpEnv: ({ dataDir }) => ({ GEMINI_CLI_HOME: dataDir }),
+		acpEnv: () => ({}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism:
-			"ACP permission answers; GEMINI_CLI_HOME isolates the user's approvalMode",
+		readOnlyMechanism: "ACP permission answers",
 		modelVia: "unsupported",
-		loginHint: "`GEMINI_API_KEY` in env",
+		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 	},
 	deepagents: {
 		id: "deepagents",

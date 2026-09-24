@@ -18,10 +18,7 @@ export {
 	type PermissionFidelity,
 	type PermissionMode,
 	type PermissionOutcome,
-	PLACEMENTS,
-	type Placement,
 	type ResolvedModel,
 	resolveHarnessModel,
 	resolvePermissionOutcome,
-	resolvePlacement,
 } from "./providers/harness.js";

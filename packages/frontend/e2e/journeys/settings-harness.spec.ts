@@ -17,7 +17,7 @@ import { expect, type Page, test } from "@playwright/test";
  * the picker.
  *
  * Every verdict here is served from a fixture rather than the machine running
- * the suite, so a CI box and a developer laptop assert the same thing.
+ * the suite, so a CI box and a developer machine assert the same thing.
  */
 
 const SHOTS = "e2e/journeys/screenshots";
@@ -44,7 +44,7 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	tested: null,
 	modelVia: "env",
 	loginHint:
-		"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
+		"`claude /login`, or `ANTHROPIC_API_KEY` in env",
 };
 
 const OPENCODE_INSTALLED: HarnessFixture = {

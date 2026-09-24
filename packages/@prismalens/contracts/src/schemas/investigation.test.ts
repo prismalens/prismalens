@@ -23,17 +23,18 @@ import {
 } from "./investigation.js";
 
 describe("RunFidelitySchema", () => {
-	it("parses a fidelity record with placement and model, and strips a legacy sandbox key", () => {
+	it("parses a fidelity record with a model, and strips keys older records carry", () => {
 		const parsed = RunFidelitySchema.parse({
 			harness: "opencode",
 			mode: "read-only",
 			fidelity: "cooperative",
 			mechanism: "native permission flags",
-			placement: "laptop",
+			placement: "server",
 			model: "opencode/muse-spark-1.3-contributor-free",
 			sandbox: { requested: "auto", actual: "process-floor", fidelity: "cooperative" },
 		});
-		expect(parsed.placement).toBe("laptop");
+		expect(parsed.model).toBe("opencode/muse-spark-1.3-contributor-free");
+		expect("placement" in parsed).toBe(false);
 		expect("sandbox" in parsed).toBe(false);
 	});
 });

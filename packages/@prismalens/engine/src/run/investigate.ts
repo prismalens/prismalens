@@ -15,9 +15,7 @@ import {
 	type HarnessId,
 	type HarnessRunEnv,
 	type ModelSource,
-	type Placement,
 	resolvePermissionOutcome,
-	resolvePlacement,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
@@ -84,12 +82,10 @@ export function isCancelledError(message: string): boolean {
 export function buildRunFidelity(
 	harness: HarnessId,
 	model?: { id?: string; source?: ModelSource },
-	placement: Placement = resolvePlacement(),
 ): RunFidelity {
 	const outcome = resolvePermissionOutcome(harness, "read-only");
 	return {
 		harness,
-		placement,
 		mode: outcome.mode,
 		fidelity: outcome.fidelity,
 		...(model?.id ? { model: model.id } : {}),
@@ -126,7 +122,6 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		configDir,
 		dataDir,
 		cwd: opts.cwd,
-		placement: resolvePlacement(),
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 	};
