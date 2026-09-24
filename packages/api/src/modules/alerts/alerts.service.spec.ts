@@ -178,6 +178,34 @@ describe("AlertsService (BDD)", () => {
 		});
 	});
 
+	describe("generateFingerprint (#633 edge 12)", () => {
+		const alert = (labels?: Record<string, string>): CreateAlertDto => ({
+			source: "prometheus",
+			title: "HighLatency",
+			description: "p99 above 2s",
+			severity: Severity.high,
+			...(labels ? { labels } : {}),
+		});
+
+		it("two services firing the same alert get two keys, even with neither registered", () => {
+			expect(service.generateFingerprint(alert({ alertname: "HighLatency", service: "api" }))).not.toBe(
+				service.generateFingerprint(alert({ alertname: "HighLatency", service: "db" })),
+			);
+		});
+
+		it("instances of one service share a key, so they join one incident", () => {
+			expect(
+				service.generateFingerprint(alert({ alertname: "HighLatency", service: "api", instance: "a" })),
+			).toBe(service.generateFingerprint(alert({ alertname: "HighLatency", service: "api", instance: "b" })));
+		});
+
+		it("an alert with no service label keys on title and description as before", () => {
+			expect(service.generateFingerprint(alert())).toBe(
+				service.generateFingerprint(alert({ alertname: "HighLatency", instance: "x" })),
+			);
+		});
+	});
+
 	// ==========================================================================
 	// #231 — ruled dedup / flap-suppression semantics.
 	// Fake timers pin "now"; the flap window comes from the injected config mock.

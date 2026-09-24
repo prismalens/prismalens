@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { parseReport, reportJsonSchema, retryPrompt } from "./report.js";
+import {
+	parseReport,
+	reportJsonSchema,
+	retryPrompt,
+	stampReport,
+} from "./report.js";
 
 const VALID = {
 	summary: "pool exhausted",
@@ -62,5 +67,43 @@ describe("parseReport", () => {
 		expect(schema.properties).toHaveProperty("hypotheses");
 		expect(schema.properties).toHaveProperty("flaggedContent");
 		expect(schema.properties).not.toHaveProperty("fidelity");
+	});
+});
+
+describe("stampReport: host facts stay inferred (#633)", () => {
+	const evidence = (source: string, extra: Record<string, unknown> = {}) => ({
+		observation: "deploy 4f2a landed 3m before the alert",
+		source,
+		direction: "supports" as const,
+		status: "verified" as const,
+		toolCallId: "call-1",
+		...extra,
+	});
+
+	it("records evidence citing the context pack as inferred with no tool call, even without `origin`", () => {
+		const stamped = stampReport(
+			{
+				...VALID,
+				hypotheses: [
+					{
+						statement: "the deploy did it",
+						status: "supported" as const,
+						evidence: [evidence("context-pack:changes[0]"), evidence("git log -5")],
+					},
+				],
+				ruledOut: [
+					{
+						statement: "the neighbour",
+						why: "quiet",
+						evidence: [evidence("anything", { origin: "context-pack" })],
+					},
+				],
+			} as never,
+			undefined,
+		);
+		const [pack, tool] = stamped.hypotheses[0].evidence;
+		expect(pack).toMatchObject({ status: "inferred", toolCallId: null, origin: "context-pack" });
+		expect(tool).toMatchObject({ status: "verified", toolCallId: "call-1" });
+		expect(stamped.ruledOut[0].evidence[0]).toMatchObject({ status: "inferred", toolCallId: null });
 	});
 });

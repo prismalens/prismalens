@@ -3,6 +3,8 @@
 # Story: prismalens/gh-workflows#33.
 version: 1
 review:
+  # CodeRabbit reviews every PR; this lane reviews only PRs labelled claude_review (Sumit1993/rig#150).
+  admission: label
   auto_pause_rounds: 3
   path_filters:
     - "packages/@prismalens/database/**"
