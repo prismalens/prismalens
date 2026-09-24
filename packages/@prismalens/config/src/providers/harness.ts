@@ -230,21 +230,28 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Codex",
 		binary: "codex-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir }) => ({
-			CODEX_HOME: dataDir,
+		acpEnv: ({ dataDir, placement }) => ({
+			// A laptop keeps the user's own CODEX_HOME, so their `codex login` runs (ADR 0003 §9).
+			...(placement === "server" ? { CODEX_HOME: dataDir } : {}),
+			// codex-acp reads an env key only once the client picks its api-key method;
+			// without this it answers -32000 when no login exists (codex-acp 1.13.1, #634).
+			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
 			// codex-acp's own read-only mode, so the harness refuses writes before
 			// prismalens's permission answer is asked (codex-acp readme-dev.md, #634).
 			INITIAL_AGENT_MODE: "read-only",
 		}),
-		// codex-acp's own install line names this as its env-based login fallback.
-		providerKeys: ["OPENAI_API_KEY"],
-		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
+		// codex-acp README: CODEX_API_KEY wins over OPENAI_API_KEY for the api-key method.
+		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
+		install:
+			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY on a server)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",
+		// 3 of 3 with PRISMALENS_PLACEMENT=laptop, a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
+		tested: { version: "1.13.1", date: "2026-09-24" },
 		modelVia: "unsupported",
 		loginHint:
-			"`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
+			"Laptop: `codex login`. Server: `OPENAI_API_KEY` with `PRISMALENS_PLACEMENT=server`",
 	},
 	gemini: {
 		id: "gemini",

@@ -76,7 +76,7 @@ describe("resolveHarnessSelection", () => {
 			tested: { version: "0.81.1", date: "2026-09-23" },
 			defaultModel: null,
 		});
-		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", null, null, "0.1.75"]);
+		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", "1.13.1", null, "0.1.75"]);
 	});
 });
 
